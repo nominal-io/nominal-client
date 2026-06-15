@@ -107,7 +107,14 @@ class ChannelSyncOptions:
     missing-bucket units, the total known up front from detection). Route logs to a file when
     enabled, since the live display and interleaved log lines on stdout corrupt each other."""
     output_dir: Path | None = None
-    """Directory for exported CSVs; a temporary directory is used (and cleaned up) when omitted."""
+    """Directory for exported CSVs; a temporary directory is used (and cleaned up) when omitted.
+    Required when ``phase`` is ``"download"`` or ``"stream"`` (those phases must persist/read files)."""
+    phase: Literal["all", "plan", "download", "stream"] = "all"
+    """Which stage(s) to run. ``"all"`` (default) detects, downloads+streams (pipelined), then settles
+    and re-detects/retries. ``"plan"`` only detects and reports what would sync. ``"download"`` detects
+    and exports the missing ranges to ``output_dir`` without streaming (files are kept). ``"stream"``
+    skips detection/export and streams every CSV already in ``output_dir`` into the destination. The
+    single-stage phases run once with no settle/retry loop, and compose across separate invocations."""
 
 
 @dataclass(frozen=True)
@@ -131,6 +138,9 @@ class ChannelSyncReport:
     """Channels that started short and ended fully filled."""
     points_streamed: int = 0
     still_short: list[StillShort] = field(default_factory=list)
+    planned_ranges: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
+    """For ``phase="plan"``: ``{channel_name: [(start, end), ...]}`` of the missing ranges that a full
+    run would sync. Empty for the other phases."""
 
 
 @contextlib.contextmanager
@@ -182,6 +192,8 @@ def sync_missing_channel_data(
     listed in ``report.still_short`` rather than raising.
     """
     options = options or ChannelSyncOptions()
+    if options.phase in ("download", "stream") and options.output_dir is None:
+        raise ValueError(f"phase={options.phase!r} requires output_dir (files must be persisted/read from disk)")
     report = ChannelSyncReport()
 
     all_channels = list(source_dataset.search_channels())
@@ -198,6 +210,18 @@ def sync_missing_channel_data(
         return report
 
     source_by_name = {ch.name: ch for ch in source_channels}
+    type_by_name: dict[str, ChannelDataType] = {
+        ch.name: dt for ch in source_channels if (dt := ch.data_type) is not None
+    }
+
+    # phase="stream": don't detect or export -- just push whatever CSVs are already on disk. Source
+    # channels are listed only to know each column's data type (and tags/bucket) for the re-read.
+    if options.phase == "stream":
+        assert options.output_dir is not None  # guaranteed by the phase validation above
+        logger.info("Streaming pre-downloaded files from %s into the destination", options.output_dir)
+        report.points_streamed = _stream_from_dir(destination_dataset, options.output_dir, type_by_name, options)
+        return report
+
     # Source counts never change across retries -- compute them once, in batch.
     logger.info("Counting source data across %d channel(s)", len(source_channels))
     with _progress_bar(options.show_progress, len(source_channels), "Counting source channels") as advance:
@@ -223,6 +247,15 @@ def sync_missing_channel_data(
         logger.info("Destination is already complete over the window; nothing to sync")
         return report
 
+    # phase="plan": report what a full run would sync and stop before touching the destination.
+    if options.phase == "plan":
+        report.planned_ranges = {name: list(ranges) for name, ranges in missing.items()}
+        total_ranges = sum(len(ranges) for ranges in missing.values())
+        logger.info("Plan: %d channel(s) short across %d range(s)", len(missing), total_ranges)
+        for name, ranges in missing.items():
+            logger.info("  %s: %s", name, [(rs, re) for rs, re in ranges])
+        return report
+
     handler = PolarsExportHandler(
         source_client,
         points_per_request=options.points_per_request,
@@ -231,6 +264,36 @@ def sync_missing_channel_data(
         num_workers=options.num_workers,
         max_concurrent_links=options.max_concurrent_links,
     )
+
+    # phase="download": export the missing ranges to output_dir without streaming, then stop. A later
+    # phase="stream" (or phase="all", which reuses size-matched files) ingests them.
+    if options.phase == "download":
+        logger.info("Downloading %d channel(s) with missing data to %s", len(missing), options.output_dir)
+        _stream_missing(handler, destination_dataset, missing, source_by_name, non_precise, options, download_only=True)
+        return report
+
+    # phase="all": stream, settle, re-detect, and retry whatever is still short.
+    _sync_and_retry(
+        handler, destination_dataset, missing, source_by_name, non_precise, source_counts, start, end, options, report
+    )
+    return report
+
+
+def _sync_and_retry(
+    handler: PolarsExportHandler,
+    destination_dataset: Dataset,
+    missing: dict[str, list[tuple[int, int]]],
+    source_by_name: Mapping[str, Channel],
+    non_precise: set[str],
+    source_counts: Mapping[str, ChannelBucketCounts],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    options: ChannelSyncOptions,
+    report: ChannelSyncReport,
+) -> None:
+    """Stream the missing ranges, then settle + re-detect + re-stream until nothing is short or retries
+    are exhausted. Mutates ``report`` (points_streamed, channels_synced, still_short).
+    """
     for attempt in range(options.max_retries + 1):
         if attempt == 0:
             logger.info("Syncing %d channel(s) with missing data", len(missing))
@@ -265,8 +328,6 @@ def sync_missing_channel_data(
                 options.max_retries + 1,
             )
             report.still_short.append(StillShort(name, base_tags, time_range))
-
-    return report
 
 
 def _detect_missing(
@@ -323,6 +384,7 @@ def _stream_missing(
     source_by_name: Mapping[str, Channel],
     non_precise: set[str],
     options: ChannelSyncOptions,
+    download_only: bool = False,
 ) -> int:
     """Export each channel's missing ranges from the source and stream them to the destination.
 
@@ -330,6 +392,10 @@ def _stream_missing(
     signature and exported together. Channels detection could only presence-probe (``non_precise`` --
     e.g. high-cardinality enums the rate estimator rejects) are exported one channel at a time with a
     recursive-halving fallback (see :func:`_export_and_stream_channel`). Returns points streamed.
+
+    When ``download_only`` is set, no write stream is opened: each exported file is downloaded to
+    ``output_dir`` and kept (not streamed, not deleted). The progress bar still advances by the slices
+    each downloaded file covers. The return value is the would-stream point count and is ignored.
     """
     # Source channels were filtered to exportable (non-None) data types upstream, so data_type is
     # always present here; the comprehension makes that explicit for the type checker.
@@ -349,12 +415,19 @@ def _stream_missing(
     total_slices = sum(_buckets_in_range(rs, re, options.bucket) for ranges in missing.values() for rs, re in ranges)
 
     points = 0
+    description = "Downloading slices" if download_only else "Syncing slices"
     # One progress display for the whole pass (the export's own per-call bars are disabled). The bar
-    # advances per streamed file -- by the slices that file covers -- so it moves smoothly and only
-    # counts data that actually landed (failed exports don't advance it).
+    # advances per processed file -- by the slices that file covers -- so it moves smoothly and only
+    # counts data that actually landed (failed exports don't advance it). In download-only mode no
+    # write stream is opened; files are downloaded and kept rather than streamed.
+    stream_ctx: contextlib.AbstractContextManager[DataStream | None] = (
+        contextlib.nullcontext(None)
+        if download_only
+        else destination_dataset.get_write_stream(batch_size=options.batch_size)
+    )
     with (
-        _progress_bar(options.show_progress, total_slices, "Syncing slices") as advance,
-        destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
+        _progress_bar(options.show_progress, total_slices, description) as advance,
+        stream_ctx as stream,
     ):
         for signature, channels in groups.items():
             for range_start, range_end in signature:
@@ -372,7 +445,7 @@ def _stream_missing(
 
 def _export_and_stream(
     handler: PolarsExportHandler,
-    stream: DataStream,
+    stream: DataStream | None,
     channels: Sequence[Channel],
     range_start: int,
     range_end: int,
@@ -387,7 +460,9 @@ def _export_and_stream(
     decide how to handle it. A single-file *streaming* failure is non-fatal (logged, range left short).
 
     ``on_file_complete`` fires serially from the export's download-driving thread (no locking needed);
-    ``advance`` (when given) moves the shared bar by the slices each file covers as it streams.
+    ``advance`` (when given) moves the shared bar by the slices each file covers as it streams. When
+    ``stream`` is ``None`` (download-only), each file is downloaded and kept but not streamed; the bar
+    still advances by the file's slices.
     """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -409,7 +484,7 @@ def _export_and_stream(
             if advance is not None:
                 advance(slices)
         except Exception:
-            logger.exception("Failed to stream exported file %s; range will be retried on re-detect", path)
+            logger.exception("Failed to process exported file %s; range will be retried on re-detect", path)
         finally:
             if cleanup_files:
                 path.unlink(missing_ok=True)
@@ -435,7 +510,7 @@ def _export_and_stream(
 
 def _export_and_stream_range(
     handler: PolarsExportHandler,
-    stream: DataStream,
+    stream: DataStream | None,
     channels: Sequence[Channel],
     range_start: int,
     range_end: int,
@@ -461,7 +536,7 @@ def _export_and_stream_range(
 
 def _export_and_stream_channel(
     handler: PolarsExportHandler,
-    stream: DataStream,
+    stream: DataStream | None,
     channel: Channel,
     range_start: int,
     range_end: int,
@@ -516,6 +591,42 @@ def _export_and_stream_channel(
         ) + _export_and_stream_channel(handler, stream, channel, mid, range_end, type_by_name, options, advance)
 
 
+def _stream_from_dir(
+    destination_dataset: Dataset,
+    output_dir: Path,
+    type_by_name: Mapping[str, ChannelDataType],
+    options: ChannelSyncOptions,
+) -> int:
+    """Stream every exported CSV already in ``output_dir`` into the destination (the ``"stream"`` phase).
+
+    This is the read-from-disk counterpart of the download phase: no detection or export runs, so the
+    files are taken as-is and each is fed through :func:`_stream_file`. There is no detection plan to
+    size the bar in slices, so it advances per file. Files are left on disk. Returns points streamed.
+    """
+    files = sorted(p for p in output_dir.glob("*.csv*") if p.is_file())
+    if not files:
+        logger.warning("No exported CSVs found in %s; nothing to stream", output_dir)
+        return 0
+
+    logger.info("Streaming %d file(s) from %s", len(files), output_dir)
+    points = 0
+    with (
+        _progress_bar(options.show_progress, len(files), "Streaming files") as advance,
+        destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
+    ):
+        for path in files:
+            try:
+                streamed, _ = _stream_file(stream, path, type_by_name, options.tags, options.bucket)
+                points += streamed
+            except Exception:
+                logger.exception("Failed to stream file %s; skipping", path)
+            finally:
+                if advance is not None:
+                    advance(1)
+    # Exiting the context flushes and closes the stream (wait=True).
+    return points
+
+
 def _polars_dtype(data_type: ChannelDataType) -> pl.DataType:
     """Map a channel data type to the polars dtype used to force the CSV re-read schema.
 
@@ -532,7 +643,7 @@ def _polars_dtype(data_type: ChannelDataType) -> pl.DataType:
 
 
 def _stream_file(
-    stream: DataStream,
+    stream: DataStream | None,
     path: Path,
     type_by_name: Mapping[str, ChannelDataType],
     tags: Mapping[str, str] | None,
@@ -543,6 +654,9 @@ def _stream_file(
     The file is a wide CSV: one timestamp column (epoch nanoseconds) plus one column per channel.
     The timestamp column is the single column that is not a known channel name. Channel columns are
     parsed with their source data type so values stream up with the correct type.
+
+    When ``stream`` is ``None`` the file is read and measured but not enqueued (download-only mode):
+    the returned point count reflects what *would* stream, and the slice count still advances the bar.
 
     Returns ``(points_streamed, slices_covered)`` where a slice is one (channel, ``bucket``-wide
     bucket) cell that had data in this file -- used to advance the per-file progress bar. Each
@@ -587,7 +701,8 @@ def _stream_file(
         # int so a genuine integer channel streams as INT, while non-integral values stay float.
         if type_by_name[channel_name] == ChannelDataType.INT:
             values = [int(v) if isinstance(v, float) and v.is_integer() else v for v in values]
-        stream.enqueue_batch(channel_name, timestamps, values, tags)
+        if stream is not None:
+            stream.enqueue_batch(channel_name, timestamps, values, tags)
         points += len(values)
         # Distinct buckets this channel has data in within this file -- one slice each.
         slices += (column.get_column(time_col) // int(bucket)).n_unique()
