@@ -404,3 +404,92 @@ def test_sync_retries_then_reports_still_short(monkeypatch: pytest.MonkeyPatch) 
     assert report.points_streamed == 14
     assert [s.channel for s in report.still_short] == ["b"]
     assert report.still_short[0].time_range == (0, SEC)
+
+
+# --- phase selection (plan / download / stream) -------------------------------------------
+
+
+def test_sync_phase_plan_detects_only_and_records_ranges(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("a"), _channel("b")])
+    dest = SimpleNamespace(rid="dst")
+
+    monkeypatch.setattr(sync_mod, "count_channels", lambda *a, **k: {})
+    monkeypatch.setattr(sync_mod, "_detect_missing", lambda *a, **k: {"a": [(0, SEC)], "b": [(SEC, 2 * SEC)]})
+    # plan must not export or stream.
+    monkeypatch.setattr(sync_mod, "PolarsExportHandler", lambda *a, **k: pytest.fail("plan must not export"))
+    monkeypatch.setattr(sync_mod, "_stream_missing", lambda *a, **k: pytest.fail("plan must not stream"))
+
+    report = sync_missing_channel_data(source, object(), dest, 0, 2 * SEC, ChannelSyncOptions(phase="plan"))
+
+    assert report.channels_missing == 2
+    assert report.planned_ranges == {"a": [(0, SEC)], "b": [(SEC, 2 * SEC)]}
+    assert report.points_streamed == 0
+
+
+def test_sync_phase_download_exports_without_streaming(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("rpm")])
+    # A write stream must never be opened in download phase.
+    dest = SimpleNamespace(rid="dst", get_write_stream=lambda **k: pytest.fail("download must not open a stream"))
+
+    monkeypatch.setattr(sync_mod, "count_channels", lambda *a, **k: {})
+    monkeypatch.setattr(sync_mod, "_detect_missing", lambda *a, **k: {"rpm": [(0, SEC)]})
+    handler = FakeHandler([("rpm.csv.gz", "timestamp,rpm\n0,1\n1000000000,2\n")])
+    monkeypatch.setattr(sync_mod, "PolarsExportHandler", lambda *a, **k: handler)
+
+    report = sync_missing_channel_data(
+        source, object(), dest, 0, SEC, ChannelSyncOptions(phase="download", output_dir=tmp_path)
+    )
+
+    # File was downloaded and kept; nothing was streamed.
+    assert (tmp_path / "rpm.csv.gz").exists()
+    assert report.points_streamed == 0
+    assert report.channels_missing == 1
+
+
+def test_sync_phase_stream_reads_dir_without_detecting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_csv_gz(tmp_path / "part.csv.gz", "timestamp,rpm\n0,1\n1000000000,2\n")
+    source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("rpm")])
+    stream = FakeStream()
+    dest = SimpleNamespace(rid="dst", get_write_stream=lambda **k: stream)
+
+    # stream phase must skip detection and export entirely.
+    monkeypatch.setattr(sync_mod, "count_channels", lambda *a, **k: pytest.fail("stream must not detect"))
+    monkeypatch.setattr(sync_mod, "_detect_missing", lambda *a, **k: pytest.fail("stream must not detect"))
+    monkeypatch.setattr(sync_mod, "PolarsExportHandler", lambda *a, **k: pytest.fail("stream must not export"))
+
+    report = sync_missing_channel_data(
+        source, object(), dest, 0, SEC, ChannelSyncOptions(phase="stream", output_dir=tmp_path)
+    )
+
+    assert report.points_streamed == 2
+    assert [c[0] for c in stream.calls] == ["rpm"]
+    assert stream.calls[0][1] == [0, SEC]
+
+
+@pytest.mark.parametrize("phase", ["download", "stream"])
+def test_sync_phase_requires_output_dir(phase: str) -> None:
+    source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("a")])
+    dest = SimpleNamespace(rid="dst")
+    with pytest.raises(ValueError, match="requires output_dir"):
+        sync_missing_channel_data(source, object(), dest, 0, SEC, ChannelSyncOptions(phase=phase))  # type: ignore[arg-type]
+
+
+def test_stream_from_dir_streams_every_file(tmp_path: Path) -> None:
+    _write_csv_gz(tmp_path / "a.csv.gz", "timestamp,rpm\n0,1\n")
+    _write_csv_gz(tmp_path / "b.csv.gz", "timestamp,rpm\n1000000000,2\n")
+    stream = FakeStream()
+    dest = SimpleNamespace(get_write_stream=lambda **k: stream)
+
+    points = sync_mod._stream_from_dir(dest, tmp_path, {"rpm": ChannelDataType.DOUBLE}, ChannelSyncOptions())
+
+    assert points == 2
+    assert sorted(c[1][0] for c in stream.calls) == [0, SEC]
+
+
+def test_stream_file_measures_without_streaming_when_stream_is_none(tmp_path: Path) -> None:
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, "timestamp,rpm\n0,1\n1000000000,2\n")
+    # stream=None -> read + count, but never enqueue (download-only measurement path).
+    points, slices = sync_mod._stream_file(None, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
+    assert points == 2
+    assert slices == 2

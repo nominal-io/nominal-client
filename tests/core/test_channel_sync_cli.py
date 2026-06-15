@@ -106,3 +106,58 @@ def test_sync_channels_command_wires_args(monkeypatch: pytest.MonkeyPatch) -> No
     assert captured["bucket"] == SEC // 2
     assert captured["tags"] == {"site": "daq", "unit": "2"}
     assert captured["max_retries"] == 0
+
+
+def _base_args(*extra: str) -> list[str]:
+    return [
+        "sync-channels",
+        "--source-profile",
+        "SRC",
+        "--destination-profile",
+        "DST",
+        "--source-dataset-rid",
+        "src-rid",
+        "--destination-dataset-rid",
+        "dst-rid",
+        "--start",
+        "1970-01-01T00:00:00Z",
+        "--end",
+        "1970-01-01T00:00:01Z",
+        *extra,
+    ]
+
+
+def test_sync_channels_phase_is_forwarded(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    datasets = {"src-rid": SimpleNamespace(rid="src-rid"), "dst-rid": SimpleNamespace(rid="dst-rid")}
+    fake_client = SimpleNamespace(get_dataset=lambda rid: datasets[rid])
+    monkeypatch.setattr(NominalClient, "from_profile", classmethod(lambda cls, *a, **k: fake_client))
+
+    captured: dict[str, Any] = {}
+
+    def fake_sync(src: Any, scl: Any, dst: Any, start: int, end: int, options: Any) -> ChannelSyncReport:
+        captured["phase"] = options.phase
+        return ChannelSyncReport()
+
+    monkeypatch.setattr(migration_cli, "sync_missing_channel_data", fake_sync)
+
+    result = CliRunner().invoke(
+        migration_cli.migrate_cmd, _base_args("--phase", "download", "--output-dir", str(tmp_path))
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["phase"] == "download"
+
+
+@pytest.mark.parametrize("phase", ["download", "stream"])
+def test_sync_channels_phase_requires_output_dir(monkeypatch: pytest.MonkeyPatch, phase: str) -> None:
+    fake_client = SimpleNamespace(get_dataset=lambda rid: SimpleNamespace(rid=rid))
+    monkeypatch.setattr(NominalClient, "from_profile", classmethod(lambda cls, *a, **k: fake_client))
+    monkeypatch.setattr(migration_cli, "sync_missing_channel_data", lambda *a, **k: pytest.fail("should not run"))
+
+    result = CliRunner().invoke(migration_cli.migrate_cmd, _base_args("--phase", phase))
+    assert result.exit_code != 0
+    assert "requires --output-dir" in result.output
+
+
+def test_sync_channels_rejects_unknown_phase(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = CliRunner().invoke(migration_cli.migrate_cmd, _base_args("--phase", "bogus"))
+    assert result.exit_code != 0
