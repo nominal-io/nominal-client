@@ -167,7 +167,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 if self.ctx.dry_run:
                     logger.info(
                         "[DRY RUN] Would add dataset '%s' to asset '%s' scope '%s'",
-                        new_dataset.name, destination_asset.name, source_data_scope_name,
+                        new_dataset.name,
+                        destination_asset.name,
+                        source_data_scope_name,
                     )
                 else:
                     destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
@@ -208,7 +210,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 if self.ctx.dry_run:
                     logger.info(
                         "[DRY RUN] Would execute checklist '%s' against run %s",
-                        destination_checklist.name, destination_run_rid,
+                        destination_checklist.name,
+                        destination_run_rid,
                     )
                     self.ctx.migration_state.record_mapping(
                         ResourceType.DATA_REVIEW, source_data_review.rid, source_data_review.rid
@@ -228,7 +231,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
         if new_attachments:
             if self.ctx.dry_run:
-                logger.info("[DRY RUN] Would add %d attachment(s) to asset '%s'", len(new_attachments), destination_asset.name)
+                logger.info(
+                    "[DRY RUN] Would add %d attachment(s) to asset '%s'", len(new_attachments), destination_asset.name
+                )
             else:
                 destination_asset.add_attachments(new_attachments)
 
@@ -246,7 +251,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 if self.ctx.dry_run:
                     logger.info(
                         "[DRY RUN] Would add video '%s' to asset '%s' scope '%s'",
-                        new_video_dataset.name, new_asset.name, data_scope,
+                        new_video_dataset.name,
+                        new_asset.name,
+                        data_scope,
                     )
                 else:
                     new_asset.add_video(data_scope, new_video_dataset)
