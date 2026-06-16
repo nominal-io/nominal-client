@@ -155,7 +155,7 @@ def test_epoch_seconds(request, client: NominalClient, temperature_data: list[tu
         timestamp_type="epoch_seconds",
         expected_start=temperature_data[0][1],
         expected_end=temperature_data[-1][1],
-        tolerance_ns=NS_PER_US,
+        # tolerance_ns=NS_PER_US,
     )
 
 
@@ -172,7 +172,7 @@ def test_epoch_milliseconds(request, client: NominalClient, temperature_data: li
         timestamp_type="epoch_milliseconds",
         expected_start=temperature_data[0][1],
         expected_end=temperature_data[-1][1],
-        tolerance_ns=NS_PER_US,
+        # tolerance_ns=NS_PER_US,
     )
 
 
