@@ -31,6 +31,10 @@ from tests.e2e import POLL_INTERVAL
 
 Formatter = Callable[[int, datetime], str]
 
+# Float-encoded epoch values (epoch_seconds, epoch_milliseconds) lose sub-µs
+# precision when converted to nanoseconds; allow 1 µs of slack on those tests.
+NS_PER_US = 1_000
+
 
 @pytest.fixture(scope="module")
 def temperature_data() -> list[tuple[int, datetime]]:
@@ -52,11 +56,6 @@ def _create_csv_data(data: list[tuple[int, datetime]], formatter: Formatter) -> 
     return ("temperature,timestamp\n" + "\n".join(formatter(temp, ts) for temp, ts in data)).encode()
 
 
-def _truncate_to_ms(dt: datetime) -> datetime:
-    """Truncate a datetime to millisecond precision (drop sub-millisecond microseconds)."""
-    return dt.replace(microsecond=(dt.microsecond // 1000) * 1000)
-
-
 def _assert_bounds(
     dataset_file: DatasetFile,
     dataset: Dataset,
@@ -71,9 +70,9 @@ def _assert_bounds(
         dataset: The parent dataset; refreshed in-place before its bounds are checked.
         expected_start: Expected lower bound of the ingested time range.
         expected_end: Expected upper bound of the ingested time range.
-        tolerance_ns: Allowed absolute error in nanoseconds. Use 0 for exact match.
-                      Set to ~1000 for epoch_seconds where float64 precision causes
-                      sub-microsecond rounding errors.
+        tolerance_ns: Allowed absolute error in nanoseconds. Defaults to 0 (exact match);
+                      set to the precision floor of the timestamp format under test when the
+                      format cannot round-trip to nanosecond precision.
     """
     expected_start_ns = _SecondsNanos.from_datetime(expected_start).to_nanoseconds()
     expected_end_ns = _SecondsNanos.from_datetime(expected_end).to_nanoseconds()
@@ -133,46 +132,47 @@ def test_iso_8601(request, client: NominalClient, temperature_data: list[tuple[i
     desc = f"timestamp test {request.node.name}"
     csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.isoformat()}")
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "iso_8601",
-        temperature_data[0][1],
-        temperature_data[-1][1],
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type="iso_8601",
+        expected_start=temperature_data[0][1],
+        expected_end=temperature_data[-1][1],
     )
 
 
 def test_epoch_seconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """Epoch-seconds timestamps ingest correctly; float64 CSV values have sub-microsecond rounding."""
+    """Epoch-seconds timestamps ingest correctly; float64 → ns conversion has sub-µs rounding."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
     csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.timestamp()}")
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "epoch_seconds",
-        temperature_data[0][1],
-        temperature_data[-1][1],
-        tolerance_ns=1_000,
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type="epoch_seconds",
+        expected_start=temperature_data[0][1],
+        expected_end=temperature_data[-1][1],
+        tolerance_ns=NS_PER_US,
     )
 
 
 def test_epoch_milliseconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """Epoch-milliseconds timestamps ingest correctly; sub-millisecond precision is truncated."""
+    """Epoch-milliseconds preserves sub-ms precision from the float-encoded value (with float64 sub-µs rounding)."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
     csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.timestamp() * 1000}")
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "epoch_milliseconds",
-        _truncate_to_ms(temperature_data[0][1]),
-        _truncate_to_ms(temperature_data[-1][1]),
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type="epoch_milliseconds",
+        expected_start=temperature_data[0][1],
+        expected_end=temperature_data[-1][1],
+        tolerance_ns=NS_PER_US,
     )
 
 
@@ -195,7 +195,15 @@ def test_relative_microseconds(request, client: NominalClient, temperature_data:
     # expected bounds are start + the integer µs values for the first and last samples
     expected_start = start + timedelta(microseconds=_micros(temperature_data[0][1]))
     expected_end = start + timedelta(microseconds=_micros(temperature_data[-1][1]))
-    _upload_and_assert(client, name, desc, csv_bytes, Relative("microseconds", start), expected_start, expected_end)
+    _upload_and_assert(
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Relative(unit="microseconds", start=start),
+        expected_start=expected_start,
+        expected_end=expected_end,
+    )
 
 
 def test_custom_ctime(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
@@ -211,13 +219,13 @@ def test_custom_ctime(request, client: NominalClient, temperature_data: list[tup
 
     csv_bytes = _create_csv_data(temperature_data, fmt)
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"EEE MMM dd HH:mm:ss.SSSSSS yyyy"),
-        temperature_data[0][1],
-        temperature_data[-1][1],
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Custom(r"EEE MMM dd HH:mm:ss.SSSSSS yyyy"),
+        expected_start=temperature_data[0][1],
+        expected_end=temperature_data[-1][1],
     )
 
 
@@ -232,13 +240,13 @@ def test_custom_irig(request, client: NominalClient, temperature_data: list[tupl
 
     csv_bytes = _create_csv_data(temperature_data, fmt)
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024),
-        temperature_data[0][1],
-        temperature_data[-1][1],
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024),
+        expected_start=temperature_data[0][1],
+        expected_end=temperature_data[-1][1],
     )
 
 
@@ -261,11 +269,11 @@ def test_custom_day_of_year(request, client: NominalClient, temperature_data: li
         2024, 1, 1, last_ts.hour, last_ts.minute, last_ts.second, last_ts.microsecond, tzinfo=timezone.utc
     )
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1),
-        expected_start,
-        expected_end,
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1),
+        expected_start=expected_start,
+        expected_end=expected_end,
     )
