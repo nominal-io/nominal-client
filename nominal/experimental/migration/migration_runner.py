@@ -57,6 +57,7 @@ class MigrationRunner:
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
                 destination client for each source resource. Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
+            dry_run (bool): If True, read source resources but skip all destination writes and state saves.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config

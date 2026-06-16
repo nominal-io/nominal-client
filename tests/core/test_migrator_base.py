@@ -244,7 +244,8 @@ def test_dry_run_preserves_real_prior_mapping() -> None:
 
 def test_dry_run_placeholder_returns_none_from_get_existing() -> None:
     """A placeholder mapping (src→src) in dry_run should make get_existing return None so
-    the resource falls through to the 'would create' log path."""
+    the resource falls through to the 'would create' log path.
+    """
     ctx = _make_context(dry_run=True)
     ctx.migration_state.record_mapping(ResourceType.ASSET, "src-1", "src-1")
     migrator = _TrackingFakeMigrator(ctx)
