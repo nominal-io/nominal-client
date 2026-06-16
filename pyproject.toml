@@ -46,8 +46,6 @@ dependencies = [
     # list only the exact platforms supported
     # TODO(drake): support more architectures and clean up dependency markers.
     "nominal-streaming==0.8.2; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l' or platform_machine=='aarch64' or platform_machine=='arm64')))",
-    # dagger-client is used by upload_point_cloud to call dagger directly via scout's reverse proxy at /api/dagger.
-    "dagger-client>=30.0.0,<31",
 ]
 
 
@@ -85,21 +83,16 @@ dev = [
 [tool.uv.sources]
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
+nominal-ouster = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nominal-tdms>=1.143.0"]
+ouster = ["nominal-ouster>=1.146.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
-]
-ouster = [
-    # Ouster conversion also needs ouster-sdk at runtime, but it is intentionally
-    # not declared here because its transitive dependencies include licenses
-    # blocked by Nominal's dependency policy.
-    "numpy>=1.24",
-    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -169,7 +162,7 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.tdms"]
+packages = ["nominal", "nominal.tdms", "nominal.ouster"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
