@@ -1,10 +1,14 @@
 name: Publish PyPI
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to simulate (e.g. nominal-tdms-v1.143.1)'
+        required: true
   push:
     tags:
       - "v*.*.*"
-    branches:
-      - main
+      - "*-v*.*.*"
 
 permissions:
   contents: read
@@ -21,7 +25,17 @@ jobs:
           version: "0.8.x"
           enable-cache: false
           cache-dependency-glob: "uv.lock"
-      - name: Build and Publish Package to PYPI
+      - name: Determine package from tag
+        id: package
         run: |
-          uv build --all-packages
-          uv publish --trusted-publishing always
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ "$TAG" == v* ]]; then
+            echo "name=nominal" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${TAG%-v*}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build package
+        run: uv build --package ${{ steps.package.outputs.name }}
+      - name: Publish to PyPI
+        if: github.event_name == 'push'
+        run: uv publish --trusted-publishing always

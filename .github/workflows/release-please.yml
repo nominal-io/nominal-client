@@ -17,7 +17,8 @@ jobs:
         id: release
         with:
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
-          release-type: python
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
       - name: Check out release PR branch
         if: ${{ steps.release.outputs.pr }}
