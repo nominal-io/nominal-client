@@ -13,15 +13,12 @@ from nominal.experimental.extractor import (
 )
 
 
-def _env(input_dir: Path, output_dir: Path, *, manifest: bool = False, **extra: str) -> dict[str, str]:
-    env = {
+def _env(input_dir: Path, output_dir: Path, **extra: str) -> dict[str, str]:
+    return {
         "OUTPUT_DIR": str(output_dir),
         "NOMINAL_EXTRACTOR_INPUT_DIR": str(input_dir),
         **extra,
     }
-    if manifest:
-        env["MANIFEST_FILE_NAME"] = "manifest.json"
-    return env
 
 
 @pytest.fixture
@@ -53,14 +50,14 @@ def test_manifest_mode_writes_manifest_from_outputs(dirs: tuple[Path, Path]) -> 
     input_dir, output_dir = dirs
     (input_dir / "data.parquet").write_text("rows")
 
-    @extractor
+    @extractor(manifest=True)
     def split(ctx: ExtractorContext) -> None:
         for i in range(2):
             part = ctx.output_dir / f"part_{i}.parquet"
             part.write_text(f"part-{i}")
             ctx.add_output(part, ingest_type=IngestType.TABULAR, tag_columns={"vehicle": "veh_id"})
 
-    split.run(env=_env(input_dir, output_dir, manifest=True), exit=False)
+    split.run(env=_env(input_dir, output_dir), exit=False)
 
     manifest = json.loads((output_dir / "manifest.json").read_text())
     assert manifest == {
@@ -74,13 +71,13 @@ def test_manifest_mode_writes_manifest_from_outputs(dirs: tuple[Path, Path]) -> 
 def test_manifest_includes_channel_prefix_when_set(dirs: tuple[Path, Path]) -> None:
     input_dir, output_dir = dirs
 
-    @extractor
+    @extractor(manifest=True)
     def emit(ctx: ExtractorContext) -> None:
         out = ctx.output_dir / "telemetry.jsonl"
         out.write_text("{}")
         ctx.add_output(out, ingest_type=IngestType.JSON_L, channel_prefix="telemetry/")
 
-    emit.run(env=_env(input_dir, output_dir, manifest=True), exit=False)
+    emit.run(env=_env(input_dir, output_dir), exit=False)
 
     [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
     assert entry["channelPrefix"] == "telemetry/"
@@ -103,12 +100,12 @@ def test_single_file_mode_rejects_multiple_outputs(dirs: tuple[Path, Path]) -> N
 def test_manifest_mode_rejects_zero_outputs(dirs: tuple[Path, Path]) -> None:
     input_dir, output_dir = dirs
 
-    @extractor
+    @extractor(manifest=True)
     def noop(ctx: ExtractorContext) -> None:
         return None
 
     with pytest.raises(ExtractorError, match="no outputs"):
-        noop.run(env=_env(input_dir, output_dir, manifest=True), exit=False)
+        noop.run(env=_env(input_dir, output_dir), exit=False)
 
 
 def test_params_are_coerced_with_defaults(dirs: tuple[Path, Path]) -> None:
@@ -160,12 +157,12 @@ def test_add_output_rejects_file_outside_output_dir(dirs: tuple[Path, Path]) -> 
     stray = input_dir / "stray.parquet"
     stray.write_text("x")
 
-    @extractor
+    @extractor(manifest=True)
     def misplaced(ctx: ExtractorContext) -> None:
         ctx.add_output(stray)
 
     with pytest.raises(ExtractorError, match="not inside the output directory"):
-        misplaced.run(env=_env(input_dir, output_dir, manifest=True), exit=False)
+        misplaced.run(env=_env(input_dir, output_dir), exit=False)
 
 
 def test_run_exits_nonzero_on_failure(dirs: tuple[Path, Path]) -> None:

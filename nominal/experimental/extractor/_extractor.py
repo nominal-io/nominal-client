@@ -2,21 +2,26 @@
 
 A containerized extractor is a Docker image Nominal runs during ingest: it mounts the
 uploaded input file(s), runs your code, and ingests whatever your code writes to the
-output directory. The contract is entirely environment-driven:
+output directory. The contract is environment-driven:
 
 - each input file is placed in the input mount (``/input``), and its path is also exposed
   in the environment variable declared for that input at registration time;
 - output goes to the directory named by ``$OUTPUT_DIR``;
 - single-file extractors must write exactly one file there;
 - ``MANIFEST``-typed extractors instead write several files plus a ``manifest.json``
-  (named by ``$MANIFEST_FILE_NAME``) describing each one.
+  describing each one.
 
 This module wraps that contract so authors write only their transform. The ``@extractor``
 decorator turns a ``def fn(ctx)`` into a container entrypoint: ``ctx`` resolves inputs and
-parameters from the environment, collects the files you write via :meth:`ExtractorContext.add_output`,
-and :meth:`Extractor.run` finalizes them -- writing ``manifest.json`` automatically in
-manifest mode, enforcing the single-file rule otherwise, and turning any failure into a
-non-zero exit so the ingest job fails cleanly.
+parameters from the environment, collects the files you write via
+:meth:`ExtractorContext.add_output`, and :meth:`Extractor.run` finalizes them -- writing
+``manifest.json`` automatically for manifest extractors, enforcing the single-file rule
+otherwise, and turning any failure into a non-zero exit so the ingest job fails cleanly.
+
+The container is not told its registered output format -- Nominal injects that only into the
+uploader sidecar -- so you declare it here with ``@extractor(manifest=True)``. This declaration
+must match the output format the image is registered with (``MANIFEST`` vs a single-file
+format); they live in two places and must agree.
 
 It depends only on the standard library, so it stays lightweight inside a minimal extractor
 image. Registering the built image with Nominal is a separate step (see the Nominal Hosted
@@ -32,14 +37,14 @@ import sys
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, Type, TypeVar
+from typing import Any, Callable, Mapping, Type, TypeVar, overload
 
-# Mirrors the mount/env contract the Nominal ingest pipeline establishes for the
-# customer container. ``MANIFEST_FILE_NAME`` is present in the environment only when the
-# image was registered with the MANIFEST output format, which is how we detect the mode.
+# Mirrors the mount/env contract the Nominal ingest pipeline establishes for the customer
+# container. The pipeline does NOT tell the container its registered output format, so the
+# author declares manifest-vs-single-file via @extractor(manifest=...).
 _DEFAULT_INPUT_DIR = "/input"
 _OUTPUT_DIR_ENV = "OUTPUT_DIR"
-_MANIFEST_FILE_NAME_ENV = "MANIFEST_FILE_NAME"
+_MANIFEST_FILENAME = "manifest.json"
 # Lets tests (and non-default mounts) point input discovery somewhere other than /input.
 _INPUT_DIR_ENV = "NOMINAL_EXTRACTOR_INPUT_DIR"
 
@@ -90,6 +95,7 @@ class ExtractorContext:
     """
 
     output_dir: Path
+    manifest_mode: bool
     _env: Mapping[str, str] = field(repr=False)
     _input_dir: Path = field(repr=False)
     _outputs: list[_Output] = field(default_factory=list, repr=False)
@@ -150,9 +156,9 @@ class ExtractorContext:
         """Declare a file you wrote to the output directory.
 
         Records the file (it must already exist under ``output_dir``); it does not write
-        anything itself. In manifest mode these become the ``manifest.json`` entries; in
-        single-file mode exactly one must be declared. The metadata args apply only in
-        manifest mode.
+        anything itself. For a manifest extractor these become the ``manifest.json`` entries;
+        for a single-file extractor exactly one must be declared. The metadata args apply only
+        to manifest extractors.
         """
         resolved = Path(path)
         if not resolved.is_file():
@@ -170,11 +176,6 @@ class ExtractorContext:
             )
         )
         return resolved
-
-    @property
-    def manifest_mode(self) -> bool:
-        """True when Nominal registered this image with the MANIFEST output format."""
-        return bool(self._env.get(_MANIFEST_FILE_NAME_ENV))
 
     def build_manifest(self) -> dict[str, Any]:
         """Build the manifest document from the declared outputs (the ``ExtractorManifest`` shape)."""
@@ -203,6 +204,7 @@ class Extractor:
     """
 
     _fn: _ExtractorFn
+    manifest: bool = False
 
     def __call__(self, ctx: ExtractorContext) -> None:
         self._fn(ctx)
@@ -232,29 +234,51 @@ class Extractor:
         if not output_dir:
             raise ExtractorError(f"{_OUTPUT_DIR_ENV} is not set; this code must run inside a Nominal extractor")
         input_dir = env.get(_INPUT_DIR_ENV, _DEFAULT_INPUT_DIR)
-        return ExtractorContext(output_dir=Path(output_dir), _env=env, _input_dir=Path(input_dir))
+        return ExtractorContext(
+            output_dir=Path(output_dir),
+            manifest_mode=self.manifest,
+            _env=env,
+            _input_dir=Path(input_dir),
+        )
 
     def _finalize(self, ctx: ExtractorContext) -> None:
-        if ctx.manifest_mode:
+        if self.manifest:
             if not ctx._outputs:
                 raise ExtractorError("manifest extractor produced no outputs; call ctx.add_output() for each file")
-            manifest_name = ctx._env[_MANIFEST_FILE_NAME_ENV]
-            (ctx.output_dir / manifest_name).write_text(json.dumps(ctx.build_manifest()))
+            (ctx.output_dir / _MANIFEST_FILENAME).write_text(json.dumps(ctx.build_manifest()))
         elif len(ctx._outputs) != 1:
             raise ExtractorError(
                 f"single-file extractor must produce exactly one output, got {len(ctx._outputs)}; "
-                "register the image with the MANIFEST output format to emit multiple files"
+                "declare @extractor(manifest=True) and register the image with the MANIFEST output format "
+                "to emit multiple files"
             )
 
 
-def extractor(fn: _ExtractorFn) -> Extractor:
+@overload
+def extractor(fn: _ExtractorFn) -> Extractor: ...
+
+
+@overload
+def extractor(*, manifest: bool = ...) -> Callable[[_ExtractorFn], Extractor]: ...
+
+
+def extractor(
+    fn: _ExtractorFn | None = None,
+    *,
+    manifest: bool = False,
+) -> Extractor | Callable[[_ExtractorFn], Extractor]:
     """Turn ``def fn(ctx: ExtractorContext) -> None`` into a Nominal extractor entrypoint.
+
+    Use ``@extractor`` for a single-file extractor (write one file to ``ctx.output_dir``), or
+    ``@extractor(manifest=True)`` for a manifest extractor (write several files plus an
+    auto-generated ``manifest.json``). The ``manifest`` choice must match the output format the
+    image is registered with.
 
     Example::
 
         from nominal.experimental.extractor import extractor, ExtractorContext, IngestType
 
-        @extractor
+        @extractor(manifest=True)
         def split(ctx: ExtractorContext) -> None:
             table = read_parquet(ctx.input())
             for i, chunk in enumerate(chunks_of(table, ctx.param("PARTS", int, default=2))):
@@ -265,4 +289,8 @@ def extractor(fn: _ExtractorFn) -> Extractor:
         if __name__ == "__main__":
             split.run()
     """
-    return Extractor(fn)
+
+    def wrap(target: _ExtractorFn) -> Extractor:
+        return Extractor(target, manifest=manifest)
+
+    return wrap if fn is None else wrap(fn)
