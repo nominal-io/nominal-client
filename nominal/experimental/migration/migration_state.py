@@ -28,7 +28,7 @@ class MigrationState:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MigrationState:
         skipped_resources = [
-            SkippedResource(**item) for item in data.get("skipped_resources", []) if isinstance(item, dict)
+            SkippedResource(**item) for item in data.get("skipped_resources", data.get("skippedResources", [])) if isinstance(item, dict)
         ]
         return cls(
             rid_mapping=data.get("rid_mapping", data.get("ridMapping", {})),
