@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.146.0](https://github.com/nominal-io/nominal-client/compare/v1.145.1...v1.146.0) (2026-06-16)
+
+
+### Features
+
+* cleanup dependencies ([#803](https://github.com/nominal-io/nominal-client/issues/803)) ([48791aa](https://github.com/nominal-io/nominal-client/commit/48791aa8d66f97332e947824fec234f19ab457a3))
+* improve export batch calculations in polars export handler ([#699](https://github.com/nominal-io/nominal-client/issues/699)) ([cb2b303](https://github.com/nominal-io/nominal-client/commit/cb2b3031bc3356bf163096ac777637d4052697b6))
+* independent version bumping for release namespaces ([#813](https://github.com/nominal-io/nominal-client/issues/813)) ([dc3e571](https://github.com/nominal-io/nominal-client/commit/dc3e5710d355a0131368b5b66b8d258364104223))
+
 ## [1.145.1](https://github.com/nominal-io/nominal-client/compare/v1.145.0...v1.145.1) (2026-06-11)
 
 
