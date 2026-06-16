@@ -22,6 +22,10 @@ class VideoFileMigrator:
             logger.debug("Skipping video file (rid: %s): already in migration state", source_file.rid)
             return
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would copy video file %s to destination", source_file.rid)
+            return
+
         new_file = copy_video_file_to_video_dataset(source_file, destination_video)
         if new_file is not None:
             self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, new_file.rid)

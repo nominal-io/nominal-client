@@ -68,6 +68,11 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         )
         dataset_labels = options.new_dataset_labels if options.new_dataset_labels is not None else source.labels
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create dataset '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_dataset = self._create_destination_dataset(
             source,
             options,

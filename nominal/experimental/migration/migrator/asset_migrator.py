@@ -105,6 +105,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         if existing_asset is not None:
             return existing_asset
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create asset '%s' (source: %s)", source_asset.name, source_asset.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, source_asset.rid)
+            return source_asset
+
         new_asset = self.destination_client_for(source_asset).create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
@@ -157,7 +162,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             scope_key = f"{source_asset.rid}:{source_data_scope_name}"
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
-                destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
+                if self.ctx.dry_run:
+                    logger.info(
+                        "[DRY RUN] Would add dataset '%s' to asset '%s' scope '%s'",
+                        new_dataset.name, destination_asset.name, source_data_scope_name,
+                    )
+                else:
+                    destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
                 self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_dataset.rid)
             else:
                 logger.debug(
@@ -192,10 +203,19 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
                 continue
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:
-                new_data_review = destination_checklist.execute(destination_run_rid)
-                self.ctx.migration_state.record_mapping(
-                    ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
-                )
+                if self.ctx.dry_run:
+                    logger.info(
+                        "[DRY RUN] Would execute checklist '%s' against run %s",
+                        destination_checklist.name, destination_run_rid,
+                    )
+                    self.ctx.migration_state.record_mapping(
+                        ResourceType.DATA_REVIEW, source_data_review.rid, source_data_review.rid
+                    )
+                else:
+                    new_data_review = destination_checklist.execute(destination_run_rid)
+                    self.ctx.migration_state.record_mapping(
+                        ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
+                    )
             else:
                 logger.debug(
                     "Skipping data review execution for %s: already in migration state", source_data_review.rid
@@ -205,7 +225,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         attachment_migrator = AttachmentMigrator(self.ctx)
         new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
         if new_attachments:
-            destination_asset.add_attachments(new_attachments)
+            if self.ctx.dry_run:
+                logger.info("[DRY RUN] Would add %d attachment(s) to asset '%s'", len(new_attachments), destination_asset.name)
+            else:
+                destination_asset.add_attachments(new_attachments)
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(self.ctx)
@@ -218,7 +241,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             )
             scope_key = f"{source_asset.rid}:{data_scope}"
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
-                new_asset.add_video(data_scope, new_video_dataset)
+                if self.ctx.dry_run:
+                    logger.info(
+                        "[DRY RUN] Would add video '%s' to asset '%s' scope '%s'",
+                        new_video_dataset.name, new_asset.name, data_scope,
+                    )
+                else:
+                    new_asset.add_video(data_scope, new_video_dataset)
                 self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_video_dataset.rid)
             else:
                 logger.debug(

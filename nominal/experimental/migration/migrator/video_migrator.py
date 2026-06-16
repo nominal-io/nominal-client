@@ -48,6 +48,11 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
         if existing_video is not None:
             return existing_video
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create video '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_video = self.destination_client_for(source).create_video(
             name=options.new_video_name if options.new_video_name is not None else source.name,
             description=options.new_video_description
