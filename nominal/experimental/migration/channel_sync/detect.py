@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -119,6 +120,7 @@ def count_channels(
     *,
     channels_per_request: int = DEFAULT_DETECT_CHANNELS_PER_REQUEST,
     workers: int = DEFAULT_DETECT_WORKERS,
+    request_delay: float = 0.0,
     on_advance: Callable[[int], None] | None = None,
 ) -> dict[str, ChannelBucketCounts]:
     """Count per-bucket data for many channels using batched, parallel server-side compute.
@@ -152,9 +154,13 @@ def count_channels(
         )
         done = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, len(chunks)))) as pool:
-            for chunk_counts, chunk_errored in pool.map(
-                lambda chunk: _count_chunk(chunk, start, end, bucket, starts, tags), chunks
-            ):
+            futures = []
+            for i, chunk in enumerate(chunks):
+                if request_delay > 0 and i > 0:
+                    time.sleep(request_delay)
+                futures.append(pool.submit(_count_chunk, chunk, start, end, bucket, starts, tags))
+            for future in concurrent.futures.as_completed(futures):
+                chunk_counts, chunk_errored = future.result()
                 results.update(chunk_counts)
                 errored.extend(chunk_errored)
                 done += len(chunk_counts) + len(chunk_errored)

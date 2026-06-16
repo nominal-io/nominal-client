@@ -9,6 +9,7 @@ from nominal.experimental.migration.channel_sync.sync import (
     ChannelSyncReport,
     StillShort,
     sync_missing_channel_data,
+    sync_missing_channel_data_for_tag_filters,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ChannelSyncReport",
     "StillShort",
     "sync_missing_channel_data",
+    "sync_missing_channel_data_for_tag_filters",
 ]

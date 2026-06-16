@@ -32,7 +32,7 @@ import logging
 import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
@@ -90,6 +90,8 @@ class ChannelSyncOptions:
     """Threads issuing batched detection (count) requests concurrently."""
     detect_channels_per_request: int = DEFAULT_DETECT_CHANNELS_PER_REQUEST
     """Channels summarized per batched detection request (batch_compute_with_units)."""
+    detect_request_delay: float = 0.0
+    """Seconds to sleep between consecutive batch_compute_with_units submissions (rate-limiting)."""
     num_workers: int = DEFAULT_NUM_WORKERS
     """Worker threads for the export download pool."""
     batch_size: int = 50_000
@@ -180,7 +182,7 @@ def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable
 def sync_missing_channel_data(
     source_dataset: Dataset,
     source_client: NominalClient,
-    destination_dataset: Dataset,
+    destination_dataset: Dataset | None,
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
     options: ChannelSyncOptions | None = None,
@@ -190,10 +192,16 @@ def sync_missing_channel_data(
     ``source_client`` is the source tenant's client (used to drive the export). Returns a
     :class:`ChannelSyncReport`; channels/ranges that could not be filled are logged as warnings and
     listed in ``report.still_short`` rather than raising.
+
+    ``destination_dataset`` may be ``None`` only for ``phase="plan"`` and ``phase="download"``: the
+    destination is treated as empty (all source data in the window is considered missing). This lets
+    you export and inspect data without configuring destination credentials.
     """
     options = options or ChannelSyncOptions()
     if options.phase in ("download", "stream") and options.output_dir is None:
         raise ValueError(f"phase={options.phase!r} requires output_dir (files must be persisted/read from disk)")
+    if destination_dataset is None and options.phase in ("stream", "all"):
+        raise ValueError(f"phase={options.phase!r} requires destination_dataset")
     report = ChannelSyncReport()
 
     all_channels = list(source_dataset.search_channels())
@@ -218,11 +226,14 @@ def sync_missing_channel_data(
     # channels are listed only to know each column's data type (and tags/bucket) for the re-read.
     if options.phase == "stream":
         assert options.output_dir is not None  # guaranteed by the phase validation above
+        assert destination_dataset is not None  # guaranteed by the phase validation above
         logger.info("Streaming pre-downloaded files from %s into the destination", options.output_dir)
         report.points_streamed = _stream_from_dir(destination_dataset, options.output_dir, type_by_name, options)
         return report
 
-    # Source counts never change across retries -- compute them once, in batch.
+    # Source counts never change across retries -- compute them once, in batch. Always running source
+    # detection (even when destination is None) filters out channels with no data in the window,
+    # avoiding wasted export requests for empty channels.
     logger.info("Counting source data across %d channel(s)", len(source_channels))
     with _progress_bar(options.show_progress, len(source_channels), "Counting source channels") as advance:
         source_counts = count_channels(
@@ -233,6 +244,7 @@ def sync_missing_channel_data(
             options.tags,
             channels_per_request=options.detect_channels_per_request,
             workers=options.detect_workers,
+            request_delay=options.detect_request_delay,
             on_advance=advance,
         )
 
@@ -240,8 +252,10 @@ def sync_missing_channel_data(
     # can't estimate (e.g. high-cardinality enums that error with Compute:TooManyCategories). They get
     # the per-channel recursive-halving export fallback instead of the rate-sized grouped path.
     non_precise = {name for name, counts in source_counts.items() if not counts.precise}
-
+    # When destination is None, _detect_missing treats it as empty: any source bucket with data > 0
+    # is flagged as missing, so channels with zero source data are silently skipped.
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)
+
     report.channels_missing = len(missing)
     if not missing:
         logger.info("Destination is already complete over the window; nothing to sync")
@@ -252,8 +266,9 @@ def sync_missing_channel_data(
         report.planned_ranges = {name: list(ranges) for name, ranges in missing.items()}
         total_ranges = sum(len(ranges) for ranges in missing.values())
         logger.info("Plan: %d channel(s) short across %d range(s)", len(missing), total_ranges)
+        tags_label = f" tags={dict(options.tags)}" if options.tags else ""
         for name, ranges in missing.items():
-            logger.info("  %s: %s", name, [(rs, re) for rs, re in ranges])
+            logger.info("  %s%s: %s", name, tags_label, [(rs, re) for rs, re in ranges])
         return report
 
     handler = PolarsExportHandler(
@@ -332,7 +347,7 @@ def _sync_and_retry(
 
 def _detect_missing(
     source_counts: Mapping[str, ChannelBucketCounts],
-    destination_dataset: Dataset,
+    destination_dataset: Dataset | None,
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
     options: ChannelSyncOptions,
@@ -343,23 +358,34 @@ def _detect_missing(
     ``only`` restricts the comparison to the given channels (used on retries); otherwise every
     channel in ``source_counts`` is checked. Destination channels are looked up fresh each call so
     a re-detect sees newly-streamed data, and counted in batch.
+
+    When ``destination_dataset`` is ``None``, the destination is treated as empty: every source
+    bucket is considered missing.
     """
     scope_names = {ch.name for ch in only} if only is not None else set(source_counts)
-    dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()}
-    in_scope_dest = [dest_by_name[name] for name in scope_names if name in dest_by_name]
 
-    logger.info("Counting destination data across %d of %d in-scope channel(s)", len(in_scope_dest), len(scope_names))
-    with _progress_bar(options.show_progress, len(in_scope_dest), "Counting destination channels") as advance:
-        dest_counts = count_channels(
-            in_scope_dest,
-            start,
-            end,
-            options.bucket,
-            options.tags,
-            channels_per_request=options.detect_channels_per_request,
-            workers=options.detect_workers,
-            on_advance=advance,
+    if destination_dataset is None:
+        logger.info("No destination configured; treating destination as empty — only channels with source data will sync")
+        dest_counts: Mapping[str, ChannelBucketCounts] = {}
+    else:
+        dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()}
+        in_scope_dest = [dest_by_name[name] for name in scope_names if name in dest_by_name]
+
+        logger.info(
+            "Counting destination data across %d of %d in-scope channel(s)", len(in_scope_dest), len(scope_names)
         )
+        with _progress_bar(options.show_progress, len(in_scope_dest), "Counting destination channels") as advance:
+            dest_counts = count_channels(
+                in_scope_dest,
+                start,
+                end,
+                options.bucket,
+                options.tags,
+                channels_per_request=options.detect_channels_per_request,
+                workers=options.detect_workers,
+                request_delay=options.detect_request_delay,
+                on_advance=advance,
+            )
 
     missing: dict[str, list[tuple[int, int]]] = {}
     for name in scope_names:
@@ -379,7 +405,7 @@ def _buckets_in_range(range_start: int, range_end: int, bucket: IntegralNanoseco
 
 def _stream_missing(
     handler: PolarsExportHandler,
-    destination_dataset: Dataset,
+    destination_dataset: Dataset | None,
     missing: Mapping[str, list[tuple[int, int]]],
     source_by_name: Mapping[str, Channel],
     non_precise: set[str],
@@ -707,3 +733,68 @@ def _stream_file(
         # Distinct buckets this channel has data in within this file -- one slice each.
         slices += (column.get_column(time_col) // int(bucket)).n_unique()
     return points, slices
+
+
+_TAGS_METADATA_FILE = "sync_tags.json"
+
+
+def sync_missing_channel_data_for_tag_filters(
+    source_dataset: Dataset,
+    source_client: NominalClient,
+    destination_dataset: Dataset | None,
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    tag_filters: Sequence[Mapping[str, str]] | None = None,
+    base_options: ChannelSyncOptions | None = None,
+) -> list[ChannelSyncReport]:
+    """Run :func:`sync_missing_channel_data` once per tag filter, returning one report per filter.
+
+    ``tag_filters`` is a list of tag dicts (e.g. ``[{"asset_id": "cr230"}, {"asset_id": "cr236"}]``).
+    Each filter drives a separate sync pass over the same ``[start, end)`` window.
+
+    When ``base_options.output_dir`` is set, each filter's exported files land in a subdirectory
+    named after the filter (e.g. ``output_dir/asset_id_cr236/``), and a ``sync_tags.json`` file is
+    written there so the stream phase can reconstruct the tag mapping without re-specifying it.
+
+    For ``phase="stream"``, ``tag_filters`` may be omitted: the function auto-discovers subdirectories
+    under ``base_options.output_dir`` that contain a ``sync_tags.json`` written by a prior download.
+    """
+    import json
+
+    base_options = base_options or ChannelSyncOptions()
+
+    if tag_filters is None:
+        if base_options.phase != "stream" or base_options.output_dir is None:
+            raise ValueError("tag_filters is required unless phase='stream' and output_dir is set (auto-discovery)")
+        tag_filters = _discover_tag_filters(base_options.output_dir)
+        if not tag_filters:
+            logger.warning("No %s files found under %s; nothing to stream", _TAGS_METADATA_FILE, base_options.output_dir)
+            return []
+
+    reports = []
+    for tags in tag_filters:
+        tag_label = "_".join(f"{k}_{v}" for k, v in tags.items())
+        output_dir = base_options.output_dir / tag_label if base_options.output_dir is not None else None
+        options = replace(base_options, tags=tags, output_dir=output_dir)
+        logger.info("=== Syncing tag filter: %s ===", tag_label)
+
+        if base_options.phase == "download" and output_dir is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / _TAGS_METADATA_FILE).write_text(json.dumps(dict(tags)))
+
+        report = sync_missing_channel_data(source_dataset, source_client, destination_dataset, start, end, options)
+        reports.append(report)
+    return reports
+
+
+def _discover_tag_filters(output_dir: Path) -> list[dict[str, str]]:
+    """Return tag dicts from ``sync_tags.json`` files in subdirectories of ``output_dir``."""
+    import json
+
+    filters = []
+    for subdir in sorted(output_dir.iterdir()):
+        meta = subdir / _TAGS_METADATA_FILE
+        if subdir.is_dir() and meta.exists():
+            filters.append(json.loads(meta.read_text()))
+            logger.debug("Discovered tag filter %s from %s", filters[-1], meta)
+    return filters
