@@ -92,13 +92,25 @@ class _SingleflightFakeMigrator(_FakeMigrator):
         return super()._copy_from_impl(source, options)
 
 
-def _make_context() -> MigrationContext:
+def _make_context(*, dry_run: bool = False) -> MigrationContext:
     mock_client = MagicMock()
     mock_client._clients.workspace_rid = "ws-rid"
     mock_workspace = MagicMock()
     mock_workspace.rid = "ws-rid"
     mock_client.get_workspace.return_value = mock_workspace
-    return MigrationContext(destination_client=mock_client, migration_state=MigrationState())
+    return MigrationContext(destination_client=mock_client, migration_state=MigrationState(), dry_run=dry_run)
+
+
+class _TrackingFakeMigrator(_FakeMigrator):
+    """FakeMigrator that counts destination fetches."""
+
+    def __init__(self, ctx: MigrationContext) -> None:
+        super().__init__(ctx)
+        self.destination_fetch_count = 0
+
+    def _get_existing_destination_resource(self, destination_client: MagicMock, mapped_rid: str) -> _FakeResource:
+        self.destination_fetch_count += 1
+        return super()._get_existing_destination_resource(destination_client, mapped_rid)
 
 
 def test_copy_from_logs_new_created_for_new_resource(caplog: pytest.LogCaptureFixture) -> None:
@@ -203,3 +215,40 @@ def test_copy_from_singleflight_propagates_base_exception_to_waiters() -> None:
             future_a.result(timeout=5)
         with pytest.raises(KeyboardInterrupt, match="stop"):
             future_b.result(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Dry-run behavior
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_skips_destination_fetch_for_prior_mapping() -> None:
+    """In dry_run, already-mapped resources must not hit the destination API."""
+    ctx = _make_context(dry_run=True)
+    ctx.migration_state.record_mapping(ResourceType.ASSET, "src-1", "dest-1")
+    migrator = _TrackingFakeMigrator(ctx)
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    migrator.copy_from(source)
+    assert migrator.destination_fetch_count == 0
+
+
+def test_dry_run_preserves_real_prior_mapping() -> None:
+    """In dry_run, a real prior mapping must not be overwritten with a stand-in placeholder."""
+    ctx = _make_context(dry_run=True)
+    ctx.migration_state.record_mapping(ResourceType.ASSET, "src-1", "dest-1")
+    migrator = _TrackingFakeMigrator(ctx)
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    migrator.copy_from(source)
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "dest-1"
+
+
+def test_dry_run_placeholder_returns_none_from_get_existing() -> None:
+    """A placeholder mapping (src→src) in dry_run should make get_existing return None so
+    the resource falls through to the 'would create' log path."""
+    ctx = _make_context(dry_run=True)
+    ctx.migration_state.record_mapping(ResourceType.ASSET, "src-1", "src-1")
+    migrator = _TrackingFakeMigrator(ctx)
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    result = migrator.get_existing_destination_resource(source)
+    assert result is None
+    assert migrator.destination_fetch_count == 0

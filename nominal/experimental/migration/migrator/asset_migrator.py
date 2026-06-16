@@ -63,7 +63,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         new_asset = self._resolve_destination_asset(source_asset, options)
         # Record immediately so a crash during child migrations doesn't duplicate the asset on resume.
         # base.copy_from will call record_mapping again after this returns, which is idempotent.
-        self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, new_asset.rid)
+        # In dry_run, new_asset is always a stand-in for source, so skip to avoid overwriting a real prior mapping.
+        if not (self.ctx.dry_run and new_asset.rid == source_asset.rid):
+            self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, new_asset.rid)
 
         if options.dataset_config is not None:
             self._copy_asset_datasets(source_asset, new_asset, options)
