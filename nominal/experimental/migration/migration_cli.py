@@ -559,10 +559,18 @@ def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
 )
 @migration_client_options
 @global_options
-@click.option("--source-dataset-rid", required=True, help="RID of the source dataset to copy data from.")
+@click.option(
+    "--source-dataset-rid",
+    default=None,
+    help="RID of the source dataset to copy data from. Required unless --phase stream.",
+)
 @click.option("--destination-dataset-rid", required=True, help="RID of the destination dataset to fill.")
-@click.option("--start", required=True, help="Window start (ISO-8601, or epoch nanoseconds).")
-@click.option("--end", required=True, help="Window end (ISO-8601, or epoch nanoseconds).")
+@click.option(
+    "--start", default=None, help="Window start (ISO-8601, or epoch nanoseconds). Required unless --phase stream."
+)
+@click.option(
+    "--end", default=None, help="Window end (ISO-8601, or epoch nanoseconds). Required unless --phase stream."
+)
 @click.option(
     "--bucket-seconds",
     default=3600.0,
@@ -621,10 +629,10 @@ def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
 )
 def sync_channels(
     clients: tuple[NominalClient, NominalClient],
-    source_dataset_rid: str,
+    source_dataset_rid: str | None,
     destination_dataset_rid: str,
-    start: str,
-    end: str,
+    start: str | None,
+    end: str | None,
     bucket_seconds: float,
     tag: tuple[str, ...],
     max_retries: int,
@@ -639,13 +647,20 @@ def sync_channels(
 
     if phase in ("download", "stream") and output_dir is None:
         raise click.UsageError(f"--phase {phase} requires --output-dir (files must be persisted/read from disk)")
+    if phase != "stream":
+        if source_dataset_rid is None:
+            raise click.UsageError("--source-dataset-rid is required unless --phase stream")
+        if start is None:
+            raise click.UsageError("--start is required unless --phase stream")
+        if end is None:
+            raise click.UsageError("--end is required unless --phase stream")
 
     source_client, destination_client = clients
-    source_dataset = source_client.get_dataset(source_dataset_rid)
+    source_dataset = source_client.get_dataset(source_dataset_rid) if source_dataset_rid else None
     destination_dataset = destination_client.get_dataset(destination_dataset_rid)
 
-    start_ns = _SecondsNanos.from_flexible(start).to_nanoseconds()
-    end_ns = _SecondsNanos.from_flexible(end).to_nanoseconds()
+    start_ns = _SecondsNanos.from_flexible(start).to_nanoseconds() if start else 0
+    end_ns = _SecondsNanos.from_flexible(end).to_nanoseconds() if end else 0
     tags = _parse_tags(tag)
     options = ChannelSyncOptions(
         bucket=int(bucket_seconds * 1_000_000_000),

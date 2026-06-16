@@ -179,9 +179,38 @@ def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable
         yield lambda n: progress.advance(task, n)
 
 
+def _run_stream_phase(
+    source_dataset: Dataset | None,
+    destination_dataset: Dataset,
+    options: ChannelSyncOptions,
+) -> int:
+    """Execute the stream phase: push pre-downloaded CSVs from output_dir into the destination.
+
+    Channel types are loaded from the source dataset when provided, or inferred from CSV columns
+    otherwise. Tags are loaded from sync_tags.json in output_dir when not set on options.
+    """
+    import json
+
+    assert options.output_dir is not None
+
+    type_by_name: dict[str, ChannelDataType] = {}
+    if source_dataset is not None:
+        all_channels = list(source_dataset.search_channels())
+        type_by_name = {ch.name: dt for ch in all_channels if (dt := ch.data_type) is not None}
+
+    if options.tags is None:
+        tags_file = options.output_dir / _TAGS_METADATA_FILE
+        if tags_file.exists():
+            options = replace(options, tags=json.loads(tags_file.read_text()))
+            logger.info("Loaded tags from %s: %s", tags_file, dict(options.tags))
+
+    logger.info("Streaming pre-downloaded files from %s into the destination", options.output_dir)
+    return _stream_from_dir(destination_dataset, options.output_dir, type_by_name, options)
+
+
 def sync_missing_channel_data(
-    source_dataset: Dataset,
-    source_client: NominalClient,
+    source_dataset: Dataset | None,
+    source_client: NominalClient | None,
     destination_dataset: Dataset | None,
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
@@ -196,13 +225,27 @@ def sync_missing_channel_data(
     ``destination_dataset`` may be ``None`` only for ``phase="plan"`` and ``phase="download"``: the
     destination is treated as empty (all source data in the window is considered missing). This lets
     you export and inspect data without configuring destination credentials.
+
+    ``source_dataset`` and ``source_client`` may be ``None`` only for ``phase="stream"``: channel
+    type metadata is inferred from the CSV files themselves so no source API call is needed.
     """
     options = options or ChannelSyncOptions()
     if options.phase in ("download", "stream") and options.output_dir is None:
         raise ValueError(f"phase={options.phase!r} requires output_dir (files must be persisted/read from disk)")
     if destination_dataset is None and options.phase in ("stream", "all"):
         raise ValueError(f"phase={options.phase!r} requires destination_dataset")
+    if source_dataset is None and options.phase != "stream":
+        raise ValueError(f"phase={options.phase!r} requires source_dataset")
     report = ChannelSyncReport()
+
+    if options.phase == "stream":
+        assert options.output_dir is not None  # guaranteed by the phase validation above
+        assert destination_dataset is not None  # guaranteed by the phase validation above
+        report.points_streamed = _run_stream_phase(source_dataset, destination_dataset, options)
+        return report
+
+    assert source_dataset is not None  # guaranteed by the phase != "stream" check above
+    assert source_client is not None
 
     all_channels = list(source_dataset.search_channels())
     report.channels_examined = len(all_channels)
@@ -218,18 +261,6 @@ def sync_missing_channel_data(
         return report
 
     source_by_name = {ch.name: ch for ch in source_channels}
-    type_by_name: dict[str, ChannelDataType] = {
-        ch.name: dt for ch in source_channels if (dt := ch.data_type) is not None
-    }
-
-    # phase="stream": don't detect or export -- just push whatever CSVs are already on disk. Source
-    # channels are listed only to know each column's data type (and tags/bucket) for the re-read.
-    if options.phase == "stream":
-        assert options.output_dir is not None  # guaranteed by the phase validation above
-        assert destination_dataset is not None  # guaranteed by the phase validation above
-        logger.info("Streaming pre-downloaded files from %s into the destination", options.output_dir)
-        report.points_streamed = _stream_from_dir(destination_dataset, options.output_dir, type_by_name, options)
-        return report
 
     # Source counts never change across retries -- compute them once, in batch. Always running source
     # detection (even when destination is None) filters out channels with no data in the window,
@@ -365,7 +396,9 @@ def _detect_missing(
     scope_names = {ch.name for ch in only} if only is not None else set(source_counts)
 
     if destination_dataset is None:
-        logger.info("No destination configured; treating destination as empty — only channels with source data will sync")
+        logger.info(
+            "No destination configured; treating destination as empty — only channels with source data will sync"
+        )
         dest_counts: Mapping[str, ChannelBucketCounts] = {}
     else:
         dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()}
@@ -707,13 +740,19 @@ def _stream_file(
     if frame.height == 0:
         return 0, 0
 
-    data_columns = [col for col in frame.columns if col in type_by_name]
-    time_candidates = [col for col in frame.columns if col not in type_by_name]
-    if len(time_candidates) == 1:
-        time_col = time_candidates[0]
+    if type_by_name:
+        data_columns = [col for col in frame.columns if col in type_by_name]
+        time_candidates = [col for col in frame.columns if col not in type_by_name]
+        if len(time_candidates) == 1:
+            time_col = time_candidates[0]
+        else:
+            # Fallback: a channel literally named "timestamp" can confuse the heuristic above.
+            time_col = _get_exported_timestamp_channel(data_columns)
     else:
-        # Fallback: a channel literally named "timestamp" can confuse the heuristic above.
-        time_col = _get_exported_timestamp_channel(data_columns)
+        # No source type metadata: identify the timestamp column by the exported name convention,
+        # treat every other column as a data column, and let polars infer each column's type.
+        time_col = _get_exported_timestamp_channel([])
+        data_columns = [col for col in frame.columns if col != time_col]
 
     points = 0
     slices = 0
@@ -725,7 +764,7 @@ def _stream_file(
         values = column.get_column(channel_name).to_list()
         # INT channels were read as Float64 (see _polars_dtype); re-cast whole-number values back to
         # int so a genuine integer channel streams as INT, while non-integral values stay float.
-        if type_by_name[channel_name] == ChannelDataType.INT:
+        if type_by_name.get(channel_name) == ChannelDataType.INT:
             values = [int(v) if isinstance(v, float) and v.is_integer() else v for v in values]
         if stream is not None:
             stream.enqueue_batch(channel_name, timestamps, values, tags)
@@ -739,8 +778,8 @@ _TAGS_METADATA_FILE = "sync_tags.json"
 
 
 def sync_missing_channel_data_for_tag_filters(
-    source_dataset: Dataset,
-    source_client: NominalClient,
+    source_dataset: Dataset | None,
+    source_client: NominalClient | None,
     destination_dataset: Dataset | None,
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
@@ -768,7 +807,9 @@ def sync_missing_channel_data_for_tag_filters(
             raise ValueError("tag_filters is required unless phase='stream' and output_dir is set (auto-discovery)")
         tag_filters = _discover_tag_filters(base_options.output_dir)
         if not tag_filters:
-            logger.warning("No %s files found under %s; nothing to stream", _TAGS_METADATA_FILE, base_options.output_dir)
+            logger.warning(
+                "No %s files found under %s; nothing to stream", _TAGS_METADATA_FILE, base_options.output_dir
+            )
             return []
 
     reports = []
