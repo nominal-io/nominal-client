@@ -31,9 +31,13 @@ class MigrationState:
             SkippedResource(**item) for item in data.get("skipped_resources", []) if isinstance(item, dict)
         ]
         return cls(
-            rid_mapping=data.get("rid_mapping", {}),
-            pending_multi_asset_workbooks=data.get("pending_multi_asset_workbooks", {}),
-            pending_multi_run_workbooks=data.get("pending_multi_run_workbooks", {}),
+            rid_mapping=data.get("rid_mapping", data.get("ridMapping", {})),
+            pending_multi_asset_workbooks=data.get(
+                "pending_multi_asset_workbooks", data.get("pendingMultiAssetWorkbooks", {})
+            ),
+            pending_multi_run_workbooks=data.get(
+                "pending_multi_run_workbooks", data.get("pendingMultiRunWorkbooks", {})
+            ),
             skipped_resources=skipped_resources,
         )
 
