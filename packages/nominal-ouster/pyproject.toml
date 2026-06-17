@@ -11,7 +11,7 @@ license-files = ["LICENSE", "NOTICE"]
 readme = { text = "Ouster pointcloud integration for the Nominal Python Client", content-type = "text/markdown" }
 requires-python = ">=3.10,<4"
 dependencies = [
-    "nominal>=1.143.0",
+    "nominal>=1.146.0",
     # dagger-client is used by upload_point_cloud to call dagger directly via scout's reverse proxy at /api/dagger.
     "dagger-client>=30.0.0,<31",
     "numpy>=1.24",

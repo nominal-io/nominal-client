@@ -57,6 +57,13 @@ Repository = "https://github.com/nominal-io/nominal-client"
 [tool.uv]
 default-groups = ["dev"]
 
+# Resolution overrides are only honored at the workspace root, not in member packages.
+override-dependencies = [
+    # waitress<3.0.1 has CVEs (CVE-2024-49768/49769); ouster-sdk pulls it in transitively in nominal-ouster.
+    # the CVE is explicitly ignored as this breaks support for python 3.8 in ouster-sdk, but we don't support python <3.10
+    "waitress>=3.0.1"
+]
+
 [tool.uv.workspace]
 members = ["packages/*"]
 

@@ -23,6 +23,7 @@ members = [
     "nominal-ouster",
     "nominal-tdms",
 ]
+overrides = [{ name = "waitress", specifier = ">=3.0.1" }]
 
 [[package]]
 name = "anyio"
@@ -1286,7 +1287,7 @@ wheels = [
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1272.0"
+version = "0.1276.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -1295,7 +1296,7 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/32/2707a84fff8d691e4d53f68d4f0dbbffa12e7fd4d5b1ec609de58f150277/nominal_api_protos-0.1272.0-py3-none-any.whl", hash = "sha256:28eb88e1aff38b28941b1007726f8144598de62675a33880ae8b67691345a275", size = 363032, upload-time = "2026-06-16T16:13:34.657Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/a2/dd4f807aa967c88ebcbbe3ed11ce5edb48c518af851a30dcf1e4fdaee86c/nominal_api_protos-0.1276.0-py3-none-any.whl", hash = "sha256:ff5674fcdb7b528547b47a6492c8d853bb19bc8da23d084437ab14bee2da957a", size = 357246, upload-time = "2026-06-16T22:51:21.255Z" },
 ]
 
 [[package]]
@@ -2368,11 +2369,11 @@ wheels = [
 
 [[package]]
 name = "waitress"
-version = "3.0.0"
+version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/70/34/cb77e5249c433eb177a11ab7425056b32d3b57855377fa1e38b397412859/waitress-3.0.0.tar.gz", hash = "sha256:005da479b04134cdd9dd602d1ee7c49d79de0537610d653674cc6cbde222b8a1", size = 179393, upload-time = "2024-02-04T23:33:55.126Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/cb/04ddb054f45faa306a230769e868c28b8065ea196891f09004ebace5b184/waitress-3.0.2.tar.gz", hash = "sha256:682aaaf2af0c44ada4abfb70ded36393f0e307f4ab9456a215ce0020baefc31f", size = 179901, upload-time = "2024-11-16T20:02:35.195Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/a9/485c953a1ac4cb98c28e41fd2c7184072df36bbf99734a51d44d04176878/waitress-3.0.0-py3-none-any.whl", hash = "sha256:2a06f242f4ba0cc563444ca3d1998959447477363a2d7e9b8b4d75d35cfd1669", size = 56698, upload-time = "2024-02-04T23:33:53.516Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/57/a27182528c90ef38d82b636a11f606b0cbb0e17588ed205435f8affe3368/waitress-3.0.2-py3-none-any.whl", hash = "sha256:c56d67fd6e87c2ee598b76abdd4e96cfad1f24cacdea5078d382b1f9d7b5ed2e", size = 56232, upload-time = "2024-11-16T20:02:33.858Z" },
 ]
 
 [[package]]
