@@ -18,10 +18,14 @@ parameters from the environment, collects the files you write via
 ``manifest.json`` automatically for manifest extractors, enforcing the single-file rule
 otherwise, and turning any failure into a non-zero exit so the ingest job fails cleanly.
 
-The container is not told its registered output format -- Nominal injects that only into the
-uploader sidecar -- so you declare it here with ``@extractor(manifest=True)``. This declaration
-must match the output format the image is registered with (``MANIFEST`` vs a single-file
-format); they live in two places and must agree.
+Nominal describes the extractor's registered contract to the container through ``_NOMINAL_*``
+environment variables -- the registered output format (``_NOMINAL_OUTPUT_FORMAT``) and the
+mounted inputs (``_NOMINAL_INPUTS``). The decorator reads these so it neither has to inspect the
+filesystem nor be told the mode: manifest-vs-single-file is taken from the registered format. You
+may still pass ``@extractor(manifest=...)`` to assert the mode you expect -- if it disagrees with
+the registered format the decorator fails loudly rather than emitting output the uploader will
+reject. When the variables are absent (an older backend, or a local run) the decorator falls back
+to the declared flag and to listing the input mount.
 
 It depends only on the standard library, so it stays lightweight inside a minimal extractor
 image. Registering the built image with Nominal is a separate step (see the Nominal Hosted
@@ -40,13 +44,17 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Type, TypeVar, overload
 
 # Mirrors the mount/env contract the Nominal ingest pipeline establishes for the customer
-# container. The pipeline does NOT tell the container its registered output format, so the
-# author declares manifest-vs-single-file via @extractor(manifest=...).
+# container.
 _DEFAULT_INPUT_DIR = "/input"
 _OUTPUT_DIR_ENV = "OUTPUT_DIR"
 _MANIFEST_FILENAME = "manifest.json"
 # Lets tests (and non-default mounts) point input discovery somewhere other than /input.
 _INPUT_DIR_ENV = "NOMINAL_EXTRACTOR_INPUT_DIR"
+# Contract metadata Nominal injects describing the registered extractor (scout
+# ContainerizedExtractorV1ActivitiesImpl). Both optional: absent on older backends and local runs.
+_OUTPUT_FORMAT_ENV = "_NOMINAL_OUTPUT_FORMAT"  # registered FileOutputFormat name, e.g. "MANIFEST", "PARQUET"
+_INPUTS_ENV = "_NOMINAL_INPUTS"  # JSON: [{"name","environmentVariable","path","required"}]
+_MANIFEST_FORMAT = "MANIFEST"  # the _NOMINAL_OUTPUT_FORMAT value that means manifest mode
 
 _T = TypeVar("_T")
 _UNSET = object()
@@ -90,6 +98,36 @@ class TimestampMetadata:
 
 
 @dataclass(frozen=True)
+class _InputSpec:
+    """A mounted input file as described by ``_NOMINAL_INPUTS`` (registered name + resolved path)."""
+
+    environment_variable: str
+    name: str
+    path: str
+    required: bool
+
+
+def _parse_input_specs(env: Mapping[str, str]) -> list[_InputSpec] | None:
+    """Parse ``_NOMINAL_INPUTS`` into specs, or ``None`` when Nominal didn't inject it."""
+    raw = env.get(_INPUTS_ENV)
+    if not raw:
+        return None
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError as ex:
+        raise ExtractorError(f"{_INPUTS_ENV} is not valid JSON: {raw!r}") from ex
+    return [
+        _InputSpec(
+            environment_variable=entry["environmentVariable"],
+            name=entry.get("name", entry["environmentVariable"]),
+            path=entry["path"],
+            required=bool(entry.get("required", False)),
+        )
+        for entry in entries
+    ]
+
+
+@dataclass(frozen=True)
 class _Output:
     relative_path: str
     ingest_type: IngestType
@@ -124,11 +162,18 @@ class ExtractorContext:
     manifest_mode: bool
     _env: Mapping[str, str] = field(repr=False)
     _input_dir: Path = field(repr=False)
+    _input_specs: list[_InputSpec] | None = field(default=None, repr=False)
     _outputs: list[_Output] = field(default_factory=list, repr=False)
 
     @property
     def inputs(self) -> list[Path]:
-        """All input files Nominal mounted for this run, sorted by name."""
+        """All input files Nominal mounted for this run.
+
+        Taken from the registered ``_NOMINAL_INPUTS`` metadata when present (in registration
+        order); otherwise discovered by listing the input mount, sorted by name.
+        """
+        if self._input_specs is not None:
+            return [Path(spec.path) for spec in self._input_specs]
         if not self._input_dir.is_dir():
             return []
         return sorted(path for path in self._input_dir.iterdir() if path.is_file())
@@ -136,19 +181,25 @@ class ExtractorContext:
     def input(self, name: str | None = None) -> Path:
         """Resolve an input file.
 
-        With ``name``, returns the path from that input's environment variable. Without it,
-        returns the sole mounted input file, raising if there is not exactly one.
+        With ``name`` -- the input's registered display name or its environment variable -- returns
+        that input's path. Without it, returns the sole mounted input file, raising if there is not
+        exactly one.
         """
         if name is not None:
+            if self._input_specs is not None:
+                for spec in self._input_specs:
+                    if name in (spec.environment_variable, spec.name):
+                        return Path(spec.path)
             value = self._env.get(name)
-            if not value:
-                raise ExtractorError(f"input environment variable {name!r} is not set")
-            return Path(value)
+            if value:
+                return Path(value)
+            raise ExtractorError(
+                f"input {name!r} is not set; no matching _NOMINAL_INPUTS entry or environment variable"
+            )
         files = self.inputs
         if len(files) != 1:
             raise ExtractorError(
-                f"expected exactly one input file in {self._input_dir}, found {len(files)}; "
-                "pass an environment-variable name to input() to select one"
+                f"expected exactly one input file, found {len(files)}; pass an input name to input() to select one"
             )
         return files[0]
 
@@ -241,7 +292,7 @@ class Extractor:
     """
 
     _fn: _ExtractorFn
-    manifest: bool = False
+    manifest: bool | None = None
 
     def __call__(self, ctx: ExtractorContext) -> None:
         self._fn(ctx)
@@ -273,20 +324,40 @@ class Extractor:
         input_dir = env.get(_INPUT_DIR_ENV, _DEFAULT_INPUT_DIR)
         return ExtractorContext(
             output_dir=Path(output_dir),
-            manifest_mode=self.manifest,
+            manifest_mode=self._resolve_manifest_mode(env),
             _env=env,
             _input_dir=Path(input_dir),
+            _input_specs=_parse_input_specs(env),
         )
 
+    def _resolve_manifest_mode(self, env: Mapping[str, str]) -> bool:
+        """Decide manifest-vs-single-file from the registered output format and the declared flag.
+
+        The registered format (``_NOMINAL_OUTPUT_FORMAT``) wins when present; the declared
+        ``manifest=`` flag is an assertion that must agree with it. Falls back to the declared flag
+        (default single-file) when Nominal didn't inject the format.
+        """
+        registered = env.get(_OUTPUT_FORMAT_ENV)
+        registered_manifest = (registered == _MANIFEST_FORMAT) if registered else None
+        if self.manifest is None:
+            return False if registered_manifest is None else registered_manifest
+        if registered_manifest is not None and registered_manifest != self.manifest:
+            raise ExtractorError(
+                f"@extractor(manifest={self.manifest}) disagrees with the image's registered output "
+                f"format {registered!r} (_NOMINAL_OUTPUT_FORMAT). Re-register the image or fix the "
+                "decorator so the declared mode and the registered format agree."
+            )
+        return self.manifest
+
     def _finalize(self, ctx: ExtractorContext) -> None:
-        if self.manifest:
+        if ctx.manifest_mode:
             if not ctx._outputs:
                 raise ExtractorError("manifest extractor produced no outputs; call ctx.add_output() for each file")
             (ctx.output_dir / _MANIFEST_FILENAME).write_text(json.dumps(ctx.build_manifest()))
         elif len(ctx._outputs) != 1:
             raise ExtractorError(
                 f"single-file extractor must produce exactly one output, got {len(ctx._outputs)}; "
-                "declare @extractor(manifest=True) and register the image with the MANIFEST output format "
+                "register the image with the MANIFEST output format (or declare @extractor(manifest=True)) "
                 "to emit multiple files"
             )
 
@@ -296,20 +367,22 @@ def extractor(fn: _ExtractorFn) -> Extractor: ...
 
 
 @overload
-def extractor(*, manifest: bool = ...) -> Callable[[_ExtractorFn], Extractor]: ...
+def extractor(*, manifest: bool | None = ...) -> Callable[[_ExtractorFn], Extractor]: ...
 
 
 def extractor(
     fn: _ExtractorFn | None = None,
     *,
-    manifest: bool = False,
+    manifest: bool | None = None,
 ) -> Extractor | Callable[[_ExtractorFn], Extractor]:
     """Turn ``def fn(ctx: ExtractorContext) -> None`` into a Nominal extractor entrypoint.
 
-    Use ``@extractor`` for a single-file extractor (write one file to ``ctx.output_dir``), or
-    ``@extractor(manifest=True)`` for a manifest extractor (write several files plus an
-    auto-generated ``manifest.json``). The ``manifest`` choice must match the output format the
-    image is registered with.
+    Whether the extractor writes a single file or several files plus a ``manifest.json`` is taken
+    from the output format the image is registered with (Nominal injects it as
+    ``_NOMINAL_OUTPUT_FORMAT``), so ``@extractor`` alone works for both. Pass ``manifest=True`` (or
+    ``manifest=False``) only when you want to assert the mode -- the decorator then fails loudly if
+    your assertion disagrees with the registered format. When the format isn't injected (older
+    backend, or a local run) the declared flag is used, defaulting to single-file.
 
     Example::
 

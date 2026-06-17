@@ -201,6 +201,93 @@ def test_add_output_rejects_file_outside_output_dir(dirs: tuple[Path, Path]) -> 
         misplaced.run(env=_env(input_dir, output_dir), exit=False)
 
 
+def test_manifest_mode_inferred_from_registered_output_format(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor  # no manifest= flag: mode comes from _NOMINAL_OUTPUT_FORMAT
+    def split(ctx: ExtractorContext) -> None:
+        assert ctx.manifest_mode is True
+        for i in range(2):
+            part = ctx.output_dir / f"part_{i}.parquet"
+            part.write_text("x")
+            ctx.add_output(part)
+
+    split.run(env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="MANIFEST"), exit=False)
+
+    assert (output_dir / "manifest.json").exists()
+
+
+def test_single_file_mode_inferred_from_registered_output_format(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor
+    def passthrough(ctx: ExtractorContext) -> None:
+        assert ctx.manifest_mode is False
+        out = ctx.output_dir / "out.parquet"
+        out.write_text("x")
+        ctx.add_output(out)
+
+    passthrough.run(env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="PARQUET"), exit=False)
+
+    assert not (output_dir / "manifest.json").exists()
+
+
+def test_declared_manifest_flag_mismatch_with_registered_format_raises(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor(manifest=True)
+    def split(ctx: ExtractorContext) -> None:  # pragma: no cover - must fail before the body runs
+        raise AssertionError("body should not run when the declared mode is rejected")
+
+    with pytest.raises(ExtractorError, match="disagrees with the image's registered output format"):
+        split.run(env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="PARQUET"), exit=False)
+
+
+def test_declared_manifest_flag_agreeing_with_registered_format_is_allowed(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor(manifest=True)
+    def split(ctx: ExtractorContext) -> None:
+        out = ctx.output_dir / "part_0.parquet"
+        out.write_text("x")
+        ctx.add_output(out)
+
+    split.run(env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="MANIFEST"), exit=False)
+
+    assert (output_dir / "manifest.json").exists()
+
+
+def test_inputs_enumerated_from_nominal_inputs_metadata(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+    nominal_inputs = json.dumps(
+        [
+            {
+                "name": "Telemetry",
+                "environmentVariable": "TELEMETRY",
+                "path": "/input/telemetry.parquet",
+                "required": True,
+            },
+            {"name": "Events", "environmentVariable": "EVENTS", "path": "/input/events.parquet", "required": False},
+        ]
+    )
+
+    @extractor
+    def reads_inputs(ctx: ExtractorContext) -> None:
+        # Enumerated from metadata in registration order, without listing the filesystem.
+        assert ctx.inputs == [Path("/input/telemetry.parquet"), Path("/input/events.parquet")]
+        # Resolvable by environment variable or by registered display name.
+        assert ctx.input("EVENTS") == Path("/input/events.parquet")
+        assert ctx.input("Telemetry") == Path("/input/telemetry.parquet")
+        out = ctx.output_dir / "out.parquet"
+        out.write_text("x")
+        ctx.add_output(out)
+
+    reads_inputs.run(
+        env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="PARQUET", _NOMINAL_INPUTS=nominal_inputs),
+        exit=False,
+    )
+
+
 def test_run_exits_nonzero_on_failure(dirs: tuple[Path, Path]) -> None:
     input_dir, output_dir = dirs
 
