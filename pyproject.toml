@@ -200,10 +200,14 @@ ignore_missing_imports = true
 module = "nominal_video"
 ignore_missing_imports = true
 
-# ouster-sdk (used by nominal-ouster) ships no type stubs / py.typed marker.
+# ouster-sdk ships a py.typed marker, but its package __init__ files pull public
+# symbols (ChanField, XYZLut, PcapScanSource, ...) in via `from .data import X`
+# with no __all__, so strict mode's no-implicit-reexport rejects
+# `from ouster... import X`. Allow implicit re-export (as we do for nominal_api).
 [[tool.mypy.overrides]]
 module = "ouster.*"
 ignore_missing_imports = true
+implicit_reexport = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"

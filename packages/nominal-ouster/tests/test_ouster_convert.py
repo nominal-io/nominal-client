@@ -4,9 +4,8 @@ import csv
 import io
 import logging
 import struct
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -36,13 +35,6 @@ def _write_buf3(
         data.extend(struct.pack(f"<{len(values)}d", *values.values()))
 
     path.write_bytes(data)
-
-
-@pytest.fixture
-def stub_ouster_sdk() -> Iterator[MagicMock]:
-    """Stub the ouster-sdk import check so dataset conversion can run without decoding a real PCAP."""
-    with patch.object(_convert, "_ensure_ouster_sdk") as stub:
-        yield stub
 
 
 @pytest.fixture
@@ -224,9 +216,7 @@ def test_parse_ouster_params_reads_sensor_offset(tmp_path: Path) -> None:
     np.testing.assert_allclose(rpy, np.array([0.1, 0.2, 0.3]))
 
 
-def test_convert_ouster_dataset_rejects_manifest_without_daqs(
-    stub_ouster_sdk: MagicMock, write_data_yaml: Callable[[str], Path]
-) -> None:
+def test_convert_ouster_dataset_rejects_manifest_without_daqs(write_data_yaml: Callable[[str], Path]) -> None:
     """Raises when the manifest contains no ousterDaqs entries."""
     dataset_dir = write_data_yaml("ousterDaqs: []\n")
     with pytest.raises(ValueError, match="No 'ousterDaqs' entries"):
@@ -234,7 +224,6 @@ def test_convert_ouster_dataset_rejects_manifest_without_daqs(
 
 
 def test_convert_ouster_dataset_skips_missing_pcap(
-    stub_ouster_sdk: MagicMock,
     write_data_yaml: Callable[[str], Path],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -248,18 +237,14 @@ def test_convert_ouster_dataset_skips_missing_pcap(
     assert "Ouster conversion produced 0/1 CSV file(s)" in caplog.text
 
 
-def test_convert_ouster_dataset_fails_fast_on_missing_pcap(
-    stub_ouster_sdk: MagicMock, write_data_yaml: Callable[[str], Path]
-) -> None:
+def test_convert_ouster_dataset_fails_fast_on_missing_pcap(write_data_yaml: Callable[[str], Path]) -> None:
     """Raises on a missing PCAP when fail_on_missing_files is set."""
     dataset_dir = write_data_yaml("ousterDaqs:\n  - pcap: missing.pcap\n    info: missing.json\n")
     with pytest.raises(FileNotFoundError, match="missing.pcap"):
         _convert.convert_ouster_dataset(dataset_dir, apply_nav=False, fail_on_missing_files=True)
 
 
-def test_convert_ouster_dataset_fails_fast_on_missing_metadata(
-    stub_ouster_sdk: MagicMock, write_data_yaml: Callable[[str], Path]
-) -> None:
+def test_convert_ouster_dataset_fails_fast_on_missing_metadata(write_data_yaml: Callable[[str], Path]) -> None:
     """Raises on missing sensor metadata when fail_on_missing_files is set, even if the PCAP exists."""
     dataset_dir = write_data_yaml("ousterDaqs:\n  - pcap: present.pcap\n    info: missing.json\n")
     (dataset_dir / "present.pcap").write_bytes(b"")
@@ -267,15 +252,13 @@ def test_convert_ouster_dataset_fails_fast_on_missing_metadata(
         _convert.convert_ouster_dataset(dataset_dir, apply_nav=False, fail_on_missing_files=True)
 
 
-def test_convert_ouster_dataset_rejects_negative_point_threshold(stub_ouster_sdk: MagicMock, tmp_path: Path) -> None:
+def test_convert_ouster_dataset_rejects_negative_point_threshold(tmp_path: Path) -> None:
     """Raises when min_valid_point_distance_m is negative."""
     with pytest.raises(ValueError, match="min_valid_point_distance_m"):
         _convert.convert_ouster_dataset(tmp_path, min_valid_point_distance_m=-0.1)
 
 
-def test_convert_ouster_dataset_rejects_non_positive_progress_interval(
-    stub_ouster_sdk: MagicMock, tmp_path: Path
-) -> None:
+def test_convert_ouster_dataset_rejects_non_positive_progress_interval(tmp_path: Path) -> None:
     """Raises when progress_log_interval_scans is not positive."""
     with pytest.raises(ValueError, match="progress_log_interval_scans"):
         _convert.convert_ouster_dataset(tmp_path, progress_log_interval_scans=0)
@@ -322,12 +305,3 @@ def test_write_scan_points_formats_rows() -> None:
     )
 
     assert output.getvalue() == "1.2346,2.3457,3.4568,0.123457,42,18,9\r\n"
-
-
-def test_ensure_ouster_sdk_reports_optional_dependency() -> None:
-    """Raises a helpful ImportError pointing at the [ouster] extra when the SDK cannot be imported."""
-    with (
-        patch("importlib.import_module", side_effect=ImportError("no module named ouster")),
-        pytest.raises(ImportError, match=r"pip install nominal\[ouster\] ouster-sdk"),
-    ):
-        _convert._ensure_ouster_sdk()

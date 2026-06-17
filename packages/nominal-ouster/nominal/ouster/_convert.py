@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-import importlib
+import json
 import logging
 import struct
 from pathlib import Path
@@ -9,6 +9,10 @@ from typing import Any, NoReturn
 
 import numpy as np
 import numpy.typing as npt
+import yaml
+
+from ouster.sdk.core import ChanField, XYZLut
+from ouster.sdk.pcap import PcapScanSource
 
 logger = logging.getLogger(__name__)
 
@@ -23,32 +27,6 @@ def _validate_conversion_options(min_valid_point_distance_m: float, progress_log
         raise ValueError("min_valid_point_distance_m must be non-negative")
     if progress_log_interval_scans is not None and progress_log_interval_scans <= 0:
         raise ValueError("progress_log_interval_scans must be positive or None")
-
-
-def _load_yaml() -> Any:
-    try:
-        import yaml
-    except ImportError as e:
-        raise ImportError(
-            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster]"
-        ) from e
-    return yaml
-
-
-def _load_ouster_sdk() -> tuple[Any, Any, Any]:
-    try:
-        core = importlib.import_module("ouster.sdk.core")
-        pcap = importlib.import_module("ouster.sdk.pcap")
-    except ImportError as e:
-        raise ImportError(
-            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster] "
-            "ouster-sdk"
-        ) from e
-    return core.ChanField, core.XYZLut, pcap.PcapScanSource
-
-
-def _ensure_ouster_sdk() -> None:
-    _load_ouster_sdk()
 
 
 def _raise_missing_file(reason: str) -> NoReturn:
@@ -107,10 +85,7 @@ def convert_ouster_dataset(
 
     Raises:
         FileNotFoundError: If data.yaml is not found in dataset_dir.
-        ImportError: If ouster-sdk or pyyaml is not installed.
     """
-    yaml = _load_yaml()
-    _ensure_ouster_sdk()
     _validate_conversion_options(min_valid_point_distance_m, progress_log_interval_scans)
 
     if output_dir is None:
@@ -367,18 +342,16 @@ def _find_nav_file(dataset_dir: Path) -> Path | None:
 
 
 def _build_structured_metadata(meta_path: Path) -> str:
-    import json as _json
-
     lines = [line.strip() for line in meta_path.read_text().splitlines() if line.strip()]
     if len(lines) >= 6:
-        return _json.dumps(
+        return json.dumps(
             {
-                "lidar_data_format": _json.loads(lines[0]),
-                "beam_intrinsics": _json.loads(lines[1]),
-                "sensor_info": _json.loads(lines[2]),
-                "imu_intrinsics": _json.loads(lines[3]),
-                "lidar_intrinsics": _json.loads(lines[4]),
-                "config_params": _json.loads(lines[5]),
+                "lidar_data_format": json.loads(lines[0]),
+                "beam_intrinsics": json.loads(lines[1]),
+                "sensor_info": json.loads(lines[2]),
+                "imu_intrinsics": json.loads(lines[3]),
+                "lidar_intrinsics": json.loads(lines[4]),
+                "config_params": json.loads(lines[5]),
                 "calibration_status": {},
             }
         )
@@ -449,8 +422,6 @@ def _convert_sensor(
     min_valid_point_distance_m: float,
     progress_log_interval_scans: int | None,
 ) -> int:
-    ChanField, XYZLut, PcapScanSource = _load_ouster_sdk()
-
     logger.info("Loading metadata: %s", meta_path.name)
     meta_json = _build_structured_metadata(meta_path)
 
