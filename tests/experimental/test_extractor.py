@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 
 from nominal.experimental.extractor import (
+    EpochTimeUnit,
     ExtractorContext,
     ExtractorError,
     IngestType,
+    TimestampMetadata,
     extractor,
 )
 
@@ -81,6 +83,40 @@ def test_manifest_includes_channel_prefix_when_set(dirs: tuple[Path, Path]) -> N
 
     [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
     assert entry["channelPrefix"] == "telemetry/"
+
+
+def test_manifest_includes_timestamp_metadata_when_set(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor(manifest=True)
+    def emit(ctx: ExtractorContext) -> None:
+        out = ctx.output_dir / "telemetry.jsonl"
+        out.write_text("{}")
+        ctx.add_output(
+            out,
+            ingest_type=IngestType.JSON_L,
+            timestamp_metadata=TimestampMetadata("ts", EpochTimeUnit.MICROSECONDS),
+        )
+
+    emit.run(env=_env(input_dir, output_dir), exit=False)
+
+    [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
+    assert entry["timestampMetadata"] == {"seriesName": "ts", "epochTimeUnit": "MICROSECONDS"}
+
+
+def test_manifest_omits_timestamp_metadata_when_unset(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor(manifest=True)
+    def emit(ctx: ExtractorContext) -> None:
+        out = ctx.output_dir / "data.parquet"
+        out.write_text("rows")
+        ctx.add_output(out)
+
+    emit.run(env=_env(input_dir, output_dir), exit=False)
+
+    [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
+    assert "timestampMetadata" not in entry
 
 
 def test_single_file_mode_rejects_multiple_outputs(dirs: tuple[Path, Path]) -> None:

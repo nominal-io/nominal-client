@@ -64,12 +64,38 @@ class IngestType(str, enum.Enum):
     JSON_L = "JSON_L"
 
 
+class EpochTimeUnit(str, enum.Enum):
+    """Time unit of a numeric epoch timestamp. Mirrors ``ManifestEpochTimeUnit``."""
+
+    SECONDS = "SECONDS"
+    MILLISECONDS = "MILLISECONDS"
+    MICROSECONDS = "MICROSECONDS"
+    NANOSECONDS = "NANOSECONDS"
+
+
+@dataclass(frozen=True)
+class TimestampMetadata:
+    """Per-output timestamp metadata for a manifest entry. Mirrors ``ManifestTimestampMetadata``.
+
+    ``series_name`` is the column (TABULAR) or top-level JSON field (JSON_L) that holds the
+    timestamp for this output; ``epoch_time_unit`` is the unit of that numeric value. When set on
+    an output it overrides the job-level timestamp metadata for that file, letting outputs of
+    different formats use different timestamp fields. Only numeric epoch timestamps are
+    expressible here -- outputs needing ISO 8601 / custom-format timestamps should omit it and
+    rely on the job-level metadata.
+    """
+
+    series_name: str
+    epoch_time_unit: EpochTimeUnit
+
+
 @dataclass(frozen=True)
 class _Output:
     relative_path: str
     ingest_type: IngestType
     tag_columns: dict[str, str]
     channel_prefix: str | None
+    timestamp_metadata: TimestampMetadata | None
 
 
 def _coerce(type_: Type[_T], raw: str, name: str) -> _T:
@@ -152,6 +178,7 @@ class ExtractorContext:
         ingest_type: IngestType = IngestType.TABULAR,
         tag_columns: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
+        timestamp_metadata: TimestampMetadata | None = None,
     ) -> Path:
         """Declare a file you wrote to the output directory.
 
@@ -159,6 +186,10 @@ class ExtractorContext:
         anything itself. For a manifest extractor these become the ``manifest.json`` entries;
         for a single-file extractor exactly one must be declared. The metadata args apply only
         to manifest extractors.
+
+        ``timestamp_metadata`` overrides the job-level timestamp metadata for this output, so a
+        manifest job can give each file its own timestamp field. For ``JSON_L`` outputs each line
+        must still contain a ``MESSAGE`` field; that path is log ingest.
         """
         resolved = Path(path)
         if not resolved.is_file():
@@ -173,6 +204,7 @@ class ExtractorContext:
                 ingest_type=IngestType(ingest_type),
                 tag_columns=dict(tag_columns or {}),
                 channel_prefix=channel_prefix,
+                timestamp_metadata=timestamp_metadata,
             )
         )
         return resolved
@@ -188,6 +220,11 @@ class ExtractorContext:
             }
             if output.channel_prefix is not None:
                 entry["channelPrefix"] = output.channel_prefix
+            if output.timestamp_metadata is not None:
+                entry["timestampMetadata"] = {
+                    "seriesName": output.timestamp_metadata.series_name,
+                    "epochTimeUnit": output.timestamp_metadata.epoch_time_unit.value,
+                }
             outputs.append(entry)
         return {"outputs": outputs}
 
