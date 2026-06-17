@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import pytest
 
-from nominal.thirdparty.ouster import _convert
+from nominal.ouster import _convert
 
 
 def _write_buf3(path, field_names, records):
