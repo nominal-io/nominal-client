@@ -122,12 +122,12 @@ def test_get_video_fetches_scoped_video(mock_run, mock_clients, mock_video):
     from_conjure.assert_called_once_with(mock_clients, raw_video)
 
 
-def test_get_dataset_raises_key_error_when_dataset_scope_is_missing(mock_run):
+def test_get_dataset_raises_value_error_when_dataset_scope_is_missing(mock_run):
     """A missing typed dataset ref name does not fetch a backing dataset."""
     with (
         patch.object(Run, "_list_datasource_rids", return_value={}) as list_rids,
         patch("nominal.core.run._get_dataset") as get_dataset,
-        pytest.raises(KeyError, match=f"No dataset with ref name '{SCOPE_NAME}' found for this run"),
+        pytest.raises(ValueError, match=f"No dataset with ref name '{SCOPE_NAME}' found for this run"),
     ):
         mock_run.get_dataset(SCOPE_NAME)
 
@@ -135,12 +135,12 @@ def test_get_dataset_raises_key_error_when_dataset_scope_is_missing(mock_run):
     get_dataset.assert_not_called()
 
 
-def test_get_connection_raises_key_error_when_connection_scope_is_missing(mock_run, mock_clients):
+def test_get_connection_raises_value_error_when_connection_scope_is_missing(mock_run, mock_clients):
     """A missing typed connection ref name does not fetch a backing connection."""
     with (
         patch.object(Run, "_list_datasource_rids", return_value={}) as list_rids,
         patch.object(Connection, "_from_conjure") as from_conjure,
-        pytest.raises(KeyError, match=f"No connection with ref name '{SCOPE_NAME}' found for this run"),
+        pytest.raises(ValueError, match=f"No connection with ref name '{SCOPE_NAME}' found for this run"),
     ):
         mock_run.get_connection(SCOPE_NAME)
 
@@ -149,12 +149,12 @@ def test_get_connection_raises_key_error_when_connection_scope_is_missing(mock_r
     from_conjure.assert_not_called()
 
 
-def test_get_video_raises_key_error_when_video_scope_is_missing(mock_run):
+def test_get_video_raises_value_error_when_video_scope_is_missing(mock_run):
     """A missing typed video ref name does not fetch a backing video."""
     with (
         patch.object(Run, "_list_datasource_rids", return_value={}) as list_rids,
         patch("nominal.core.run._get_video") as get_video,
-        pytest.raises(KeyError, match=f"No video with ref name '{SCOPE_NAME}' found for this run"),
+        pytest.raises(ValueError, match=f"No video with ref name '{SCOPE_NAME}' found for this run"),
     ):
         mock_run.get_video(SCOPE_NAME)
 

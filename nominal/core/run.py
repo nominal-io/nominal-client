@@ -389,37 +389,37 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
 
-    def get_dataset(self, data_scope_name: str) -> Dataset:
+    def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name."""
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
         try:
-            dataset_rid = dataset_rids_by_ref_name[data_scope_name]
+            dataset_rid = dataset_rids_by_ref_name[ref_name]
         except KeyError:
-            raise KeyError(f"No dataset with ref name '{data_scope_name}' found for this run") from None
+            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run") from None
         return Dataset._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
         )
 
-    def get_connection(self, data_scope_name: str) -> Connection:
+    def get_connection(self, ref_name: str) -> Connection:
         """Get a connection for this run by its ref name."""
         connection_rids_by_ref_name = self._list_datasource_rids("connection")
         try:
-            connection_rid = connection_rids_by_ref_name[data_scope_name]
+            connection_rid = connection_rids_by_ref_name[ref_name]
         except KeyError:
-            raise KeyError(f"No connection with ref name '{data_scope_name}' found for this run") from None
+            raise ValueError(f"No connection with ref name '{ref_name}' found for this run") from None
         return Connection._from_conjure(
             self._clients,
             self._clients.connection.get_connection(self._clients.auth_header, connection_rid),
         )
 
-    def get_video(self, data_scope_name: str) -> Video:
+    def get_video(self, ref_name: str) -> Video:
         """Get a video for this run by its ref name."""
         video_rids_by_ref_name = self._list_datasource_rids("video")
         try:
-            video_rid = video_rids_by_ref_name[data_scope_name]
+            video_rid = video_rids_by_ref_name[ref_name]
         except KeyError:
-            raise KeyError(f"No video with ref name '{data_scope_name}' found for this run") from None
+            raise ValueError(f"No video with ref name '{ref_name}' found for this run") from None
         return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
