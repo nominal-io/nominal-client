@@ -5,7 +5,7 @@ import json
 import logging
 import struct
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +20,17 @@ MIN_VALID_NAV_TIMESTAMP = 1e9
 MIN_VALID_POINT_DISTANCE_M = 0.1
 FloatArray = npt.NDArray[np.float64]
 BoolArray = npt.NDArray[np.bool_]
+
+# buf3 nav record field names: the synthetic timestamp key written by
+# `_parse_buf3`, plus the translation (x/y/z) and orientation (roll/pitch/yaw)
+# fields read back when building a `_NavTrajectory`.
+_NAV_TIMESTAMP = "_timestamp"
+_NAV_TRANS_X = "navdata2tranrelx"
+_NAV_TRANS_Y = "navdata2tranrely"
+_NAV_TRANS_Z = "navdata2tranrelz"
+_NAV_ROLL = "navdata2rpyrelr"
+_NAV_PITCH = "navdata2rpyrelp"
+_NAV_YAW = "navdata2rpyrely"
 
 
 def _validate_conversion_options(min_valid_point_distance_m: float, progress_log_interval_scans: int | None) -> None:
@@ -49,6 +60,17 @@ def _log_conversion_summary(csv_paths: list[Path], skipped: list[str], n_sensors
             "; ".join(skipped),
         )
     logger.info("Ouster conversion produced %d/%d CSV file(s)", len(csv_paths), n_sensors)
+
+
+class _OusterDaqRequired(TypedDict):
+    pcap: str
+    info: str
+
+
+class _OusterDaq(_OusterDaqRequired, total=False):
+    """A single Ouster DAQ entry from the dataset's data.yaml manifest."""
+
+    config: str
 
 
 def convert_ouster_dataset(
@@ -98,7 +120,7 @@ def convert_ouster_dataset(
     with open(data_yaml) as f:
         manifest = yaml.safe_load(f)
 
-    ouster_daqs = manifest.get("ousterDaqs", [])
+    ouster_daqs: list[_OusterDaq] = manifest.get("ousterDaqs", [])
     if not ouster_daqs:
         raise ValueError(
             f"No 'ousterDaqs' entries found in {data_yaml}. Expected at least one Ouster DAQ configuration."
@@ -212,7 +234,7 @@ def _parse_buf3(path: Path) -> tuple[list[str], list[dict[str, float]]]:
         values = struct.unpack_from(f"<{n}d", data, offset)
         offset += n * 8
 
-        rec = {"_timestamp": ts}
+        rec = {_NAV_TIMESTAMP: ts}
         for idx, val in zip(indices, values):
             fi = idx - 1
             if 0 <= fi < len(field_names):
@@ -229,15 +251,15 @@ class _NavTrajectory:
     def __init__(self, records: list[dict[str, float]]) -> None:
         poses = []
         for rec in records:
-            ts = rec.get("_timestamp", 0.0)
+            ts = rec.get(_NAV_TIMESTAMP, 0.0)
             if ts < MIN_VALID_NAV_TIMESTAMP:
                 continue
-            tx = rec.get("navdata2tranrelx", 0.0)
-            ty = rec.get("navdata2tranrely", 0.0)
-            tz = rec.get("navdata2tranrelz", 0.0)
-            roll = rec.get("navdata2rpyrelr", 0.0)
-            pitch = rec.get("navdata2rpyrelp", 0.0)
-            yaw = rec.get("navdata2rpyrely", 0.0)
+            tx = rec.get(_NAV_TRANS_X, 0.0)
+            ty = rec.get(_NAV_TRANS_Y, 0.0)
+            tz = rec.get(_NAV_TRANS_Z, 0.0)
+            roll = rec.get(_NAV_ROLL, 0.0)
+            pitch = rec.get(_NAV_PITCH, 0.0)
+            yaw = rec.get(_NAV_YAW, 0.0)
             poses.append((ts, tx, ty, tz, roll, pitch, yaw))
 
         poses.sort(key=lambda p: p[0])
@@ -319,7 +341,7 @@ def _parse_ouster_params(path: Path) -> tuple[FloatArray, FloatArray] | None:
 # -- Metadata discovery --------------------------------------------------------
 
 
-def _find_metadata(dataset_dir: Path, daq: dict[str, Any]) -> Path | None:
+def _find_metadata(dataset_dir: Path, daq: _OusterDaq) -> Path | None:
     info_path = dataset_dir / str(daq["info"])
     studio_path = Path(str(info_path).replace("ousterinfo.", "ousterstudio."))
     if studio_path.exists():

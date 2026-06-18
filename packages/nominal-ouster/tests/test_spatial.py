@@ -8,7 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from dagger_client.models import SamplerType
+from nominal_api import scout_spatial_api
 
+from nominal.core.exceptions import NominalIngestError
 from nominal.ouster import spatial
 
 _WORKSPACE_LOCATOR = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -98,7 +100,7 @@ def uploaded(
         sensor_model="Ouster OS1-128",
         coordinate_system="ENU",
         resolution_mm=10.0,
-        scan_pattern="ROTATING",
+        scan_pattern=spatial.ScanPattern.ROTATING,
     )
     return _UploadResult(rid=rid, clients=clients, workspace=workspace, dagger=dagger_mocks)
 
@@ -288,7 +290,7 @@ def test_build_archetype_override_unknown_column_raises() -> None:
 def test_build_archetype_override_invalid_type_raises() -> None:
     """Raises when an override value is not one of int/real/string."""
     with pytest.raises(ValueError, match="must be one of"):
-        spatial._build_archetype("x,y,z,stress", ["1.0,2.0,3.0,1"], {"stress": "float64"})
+        spatial._build_archetype("x,y,z,stress", ["1.0,2.0,3.0,1"], {"stress": "float64"})  # type: ignore[dict-item]
 
 
 def test_build_archetype_override_falls_through_to_inference() -> None:
@@ -298,12 +300,6 @@ def test_build_archetype_override_falls_through_to_inference() -> None:
     columns, _ = spatial._build_archetype(header, samples, {"stress": "real"})
     assert columns.real == [3]
     assert columns.int_ == [4]
-
-
-def test_scan_pattern_enum_rejects_invalid_value() -> None:
-    """Raises for a scan pattern that is not defined on ScanPattern."""
-    with pytest.raises(ValueError, match="Invalid scan_pattern"):
-        spatial._scan_pattern_enum("SIDEWAYS")
 
 
 @pytest.mark.parametrize(
@@ -383,6 +379,7 @@ def test_upload_point_cloud_creates_spatial_asset_with_metadata(uploaded: _Uploa
     assert point_cloud.sensor_model == "Ouster OS1-128"
     assert point_cloud.coordinate_system == "ENU"
     assert point_cloud.resolution_mm == 10.0
+    assert point_cloud.scan_pattern == scout_spatial_api.ScanPattern.ROTATING
 
 
 def test_upload_point_cloud_raises_on_missing_file() -> None:
@@ -396,7 +393,7 @@ def test_upload_point_cloud_propagates_dagger_failure(
     make_clients: Callable[..., tuple[MagicMock, MagicMock]],
     dagger_mocks: _DaggerMocks,
 ) -> None:
-    """Raises RuntimeError when the dagger import endpoint returns a non-202 status."""
+    """Raises NominalIngestError when the dagger import endpoint returns a non-202 status."""
     csv_path = tmp_path / "ouster.csv"
     csv_path.write_text("x,y,z,t\n1,2,3,4\n")
 
@@ -405,5 +402,5 @@ def test_upload_point_cloud_propagates_dagger_failure(
     nominal_client._clients = clients
     dagger_mocks.post_import.return_value = MagicMock(status_code=500, content=b"upstream broken")
 
-    with pytest.raises(RuntimeError, match="Dagger POST"):
+    with pytest.raises(NominalIngestError, match="Dagger POST"):
         spatial.upload_point_cloud(nominal_client, csv_path)

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Literal, Mapping, Sequence, get_args
 
 from dagger_client import AuthenticatedClient
 from dagger_client.api.import_ import post_import
@@ -33,6 +34,7 @@ from nominal_api import api, ingest_api, scout_spatial_api
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.multipart import upload_multipart_file
+from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileTypes
 
 if TYPE_CHECKING:
@@ -46,6 +48,32 @@ logger = logging.getLogger(__name__)
 _DAGGER_PROXY_PATH = "/api/dagger"
 
 
+class ScanPattern(Enum):
+    """Point-cloud scan pattern, wrapping `nominal_api.scout_spatial_api.ScanPattern`."""
+
+    FLASH = "FLASH"
+    MECHANICAL = "MECHANICAL"
+    ROTATING = "ROTATING"
+    SOLID_STATE = "SOLID_STATE"
+    UNKNOWN = "UNKNOWN"
+
+    def _to_conjure(self) -> scout_spatial_api.ScanPattern:
+        return _SCAN_PATTERN_TO_CONJURE[self]
+
+
+_SCAN_PATTERN_TO_CONJURE: Mapping[ScanPattern, scout_spatial_api.ScanPattern] = {
+    ScanPattern.FLASH: scout_spatial_api.ScanPattern.FLASH,
+    ScanPattern.MECHANICAL: scout_spatial_api.ScanPattern.MECHANICAL,
+    ScanPattern.ROTATING: scout_spatial_api.ScanPattern.ROTATING,
+    ScanPattern.SOLID_STATE: scout_spatial_api.ScanPattern.SOLID_STATE,
+    ScanPattern.UNKNOWN: scout_spatial_api.ScanPattern.UNKNOWN,
+}
+
+# Per-column data type accepted in `upload_point_cloud`'s `column_types` override
+# and produced by the CSV sampling classifier.
+ColumnDataType = Literal["int", "real", "string"]
+
+
 def upload_point_cloud(
     client: NominalClient,
     path: PathLike,
@@ -57,8 +85,8 @@ def upload_point_cloud(
     sensor_model: str | None = None,
     coordinate_system: str | None = None,
     resolution_mm: float | None = None,
-    scan_pattern: str | None = None,
-    column_types: Mapping[str, str] | None = None,
+    scan_pattern: ScanPattern | None = None,
+    column_types: Mapping[str, ColumnDataType] | None = None,
 ) -> str:
     """Upload a CSV point cloud file and trigger spatial import into Dagger.
 
@@ -72,15 +100,16 @@ def upload_point_cloud(
     ``"int"``, ``"real"``, or ``"string"``. Geometry columns (x/y/z) are
     silently ignored if listed. Unknown column names raise ``ValueError``.
 
-    ``scan_pattern`` must be one of ``"FLASH"``, ``"MECHANICAL"``,
-    ``"ROTATING"``, ``"SOLID_STATE"``, or ``"UNKNOWN"``.
+    Pass ``scan_pattern`` as a :class:`ScanPattern` member, e.g.
+    ``ScanPattern.ROTATING``.
 
     Returns:
         The spatial asset RID.
 
     Raises:
-        ValueError: If ``scan_pattern`` is not one of the values supported by
-            ``nominal_api.scout_spatial_api.ScanPattern``.
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError: If ``column_types`` references unknown columns or invalid types.
+        NominalIngestError: If the Dagger object-space or import request fails.
     """
     path = Path(path)
     if not path.exists():
@@ -89,7 +118,7 @@ def upload_point_cloud(
     if name is None:
         name = path.stem
 
-    scan_pattern_value = _scan_pattern_enum(scan_pattern)
+    scan_pattern_value = scan_pattern._to_conjure() if scan_pattern is not None else None
 
     clients = client._clients
 
@@ -122,7 +151,7 @@ def upload_point_cloud(
         client=dagger_client,
     )
     if put_resp.status_code >= 400:
-        raise RuntimeError(
+        raise NominalIngestError(
             f"Dagger PUT /v1/object-spaces failed: status={put_resp.status_code} body={put_resp.content!r}"
         )
 
@@ -141,7 +170,7 @@ def upload_point_cloud(
         client=dagger_client,
     )
     if import_resp.status_code != 202:
-        raise RuntimeError(
+        raise NominalIngestError(
             f"Dagger POST /v1/imports/{model_uuid} failed: "
             f"status={import_resp.status_code} body={import_resp.content!r}"
         )
@@ -169,16 +198,6 @@ def upload_point_cloud(
 
     spatial = clients.spatial.create(clients.auth_header, create_request)
     return spatial.rid
-
-
-def _scan_pattern_enum(scan_pattern: str | None) -> scout_spatial_api.ScanPattern | None:
-    if scan_pattern is None:
-        return None
-    try:
-        return cast(scout_spatial_api.ScanPattern, getattr(scout_spatial_api.ScanPattern, scan_pattern))
-    except AttributeError:
-        valid = [name for name in dir(scout_spatial_api.ScanPattern) if name.isupper()]
-        raise ValueError(f"Invalid scan_pattern: {scan_pattern}. Valid values: {valid}") from None
 
 
 def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
@@ -229,13 +248,10 @@ def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SA
     return header, samples
 
 
-_VALID_COLUMN_TYPES = frozenset({"int", "real", "string"})
-
-
 def _build_archetype(
     header_line: str,
     sample_lines: Sequence[str],
-    column_type_overrides: Mapping[str, str] | None = None,
+    column_type_overrides: Mapping[str, ColumnDataType] | None = None,
 ) -> tuple[ColumnSelection, Archetype]:
     overrides = column_type_overrides or {}
     if not header_line.strip():
@@ -249,9 +265,10 @@ def _build_archetype(
         raise ValueError(
             f"column_types references columns not in CSV header: {sorted(unknown)}; available columns: {headers}"
         )
-    bad_types = {name: ty for name, ty in overrides.items() if ty not in _VALID_COLUMN_TYPES}
+    valid_types = get_args(ColumnDataType)
+    bad_types = {name: ty for name, ty in overrides.items() if ty not in valid_types}
     if bad_types:
-        raise ValueError(f"column_types values must be one of {sorted(_VALID_COLUMN_TYPES)}: got {bad_types}")
+        raise ValueError(f"column_types values must be one of {sorted(valid_types)}: got {bad_types}")
 
     parsed_samples: list[list[str]] = []
     for line in sample_lines:
@@ -320,7 +337,7 @@ def _build_archetype(
     return columns, Archetype(attributes=attributes)
 
 
-def _classify_column(values: Sequence[str]) -> str:
+def _classify_column(values: Sequence[str]) -> ColumnDataType:
     """Most permissive type that covers every non-empty sample value.
 
     Any non-numeric value forces string. A mix of int- and float-looking
@@ -353,7 +370,7 @@ def _find_geometry_indices(headers: Sequence[str]) -> list[int]:
         raise ValueError(f"CSV is missing required point-cloud columns x/y/z; got headers={list(headers)}") from e
 
 
-def _classify(value: str) -> str:
+def _classify(value: str) -> ColumnDataType:
     if not value:
         return "string"
     try:
