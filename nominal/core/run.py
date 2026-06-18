@@ -30,7 +30,7 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effecti
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
@@ -388,6 +388,39 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
+
+    def get_dataset(self, data_scope_name: str) -> Dataset:
+        """Get a dataset for this run by its ref name."""
+        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        try:
+            dataset_rid = dataset_rids_by_ref_name[data_scope_name]
+        except KeyError:
+            raise KeyError(f"No dataset with ref name '{data_scope_name}' found for this run") from None
+        return Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+        )
+
+    def get_connection(self, data_scope_name: str) -> Connection:
+        """Get a connection for this run by its ref name."""
+        connection_rids_by_ref_name = self._list_datasource_rids("connection")
+        try:
+            connection_rid = connection_rids_by_ref_name[data_scope_name]
+        except KeyError:
+            raise KeyError(f"No connection with ref name '{data_scope_name}' found for this run") from None
+        return Connection._from_conjure(
+            self._clients,
+            self._clients.connection.get_connection(self._clients.auth_header, connection_rid),
+        )
+
+    def get_video(self, data_scope_name: str) -> Video:
+        """Get a video for this run by its ref name."""
+        video_rids_by_ref_name = self._list_datasource_rids("video")
+        try:
+            video_rid = video_rids_by_ref_name[data_scope_name]
+        except KeyError:
+            raise KeyError(f"No video with ref name '{data_scope_name}' found for this run") from None
+        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
