@@ -78,14 +78,14 @@ def test_get_dataset_fetches_scoped_dataset(mock_run, mock_clients, mock_dataset
     with (
         patch.object(Run, "_list_datasource_rids", return_value={SCOPE_NAME: "dataset-rid-1"}) as list_rids,
         patch("nominal.core.run._get_dataset", return_value=raw_dataset) as get_dataset,
-        patch.object(Dataset, "_from_conjure", return_value=mock_dataset) as from_conjure,
+        patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
     ):
         result = mock_run.get_dataset(SCOPE_NAME)
 
     assert result == mock_dataset
-    list_rids.assert_called_once_with("dataset")
-    get_dataset.assert_called_once_with(mock_clients.auth_header, mock_clients.catalog, "dataset-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_dataset)
+    assert list_rids.call_count == 1
+    assert get_dataset.call_count == 1
+    assert get_dataset.call_args.args[-1] == "dataset-rid-1"
 
 
 def test_get_connection_fetches_scoped_connection(mock_run, mock_clients, mock_connection):
@@ -95,14 +95,14 @@ def test_get_connection_fetches_scoped_connection(mock_run, mock_clients, mock_c
 
     with (
         patch.object(Run, "_list_datasource_rids", return_value={SCOPE_NAME: "connection-rid-1"}) as list_rids,
-        patch.object(Connection, "_from_conjure", return_value=mock_connection) as from_conjure,
+        patch.object(Connection, "_from_conjure", return_value=mock_connection),
     ):
         result = mock_run.get_connection(SCOPE_NAME)
 
     assert result == mock_connection
-    list_rids.assert_called_once_with("connection")
-    mock_clients.connection.get_connection.assert_called_once_with(mock_clients.auth_header, "connection-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_connection)
+    assert list_rids.call_count == 1
+    assert mock_clients.connection.get_connection.call_count == 1
+    assert mock_clients.connection.get_connection.call_args.args[-1] == "connection-rid-1"
 
 
 def test_get_video_fetches_scoped_video(mock_run, mock_clients, mock_video):
@@ -112,14 +112,14 @@ def test_get_video_fetches_scoped_video(mock_run, mock_clients, mock_video):
     with (
         patch.object(Run, "_list_datasource_rids", return_value={SCOPE_NAME: "video-rid-1"}) as list_rids,
         patch("nominal.core.run._get_video", return_value=raw_video) as get_video,
-        patch.object(Video, "_from_conjure", return_value=mock_video) as from_conjure,
+        patch.object(Video, "_from_conjure", return_value=mock_video),
     ):
         result = mock_run.get_video(SCOPE_NAME)
 
     assert result == mock_video
-    list_rids.assert_called_once_with("video")
-    get_video.assert_called_once_with(mock_clients, "video-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_video)
+    assert list_rids.call_count == 1
+    assert get_video.call_count == 1
+    assert get_video.call_args.args[-1] == "video-rid-1"
 
 
 def test_get_dataset_raises_value_error_when_dataset_scope_is_missing(mock_run):

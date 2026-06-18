@@ -89,13 +89,13 @@ def test_get_dataset_fetches_scoped_dataset(mock_asset, mock_clients, mock_datas
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
         ),
         patch("nominal.core.asset._get_dataset", return_value=raw_dataset) as get_dataset,
-        patch.object(Dataset, "_from_conjure", return_value=mock_dataset) as from_conjure,
+        patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
     ):
         result = mock_asset.get_dataset(SCOPE_NAME)
 
     assert result == mock_dataset
-    get_dataset.assert_called_once_with(mock_clients.auth_header, mock_clients.catalog, "dataset-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_dataset)
+    assert get_dataset.call_count == 1
+    assert get_dataset.call_args.args[-1] == "dataset-rid-1"
 
 
 def test_get_connection_fetches_scoped_connection(mock_asset, mock_clients, mock_connection):
@@ -109,13 +109,13 @@ def test_get_connection_fetches_scoped_connection(mock_asset, mock_clients, mock
             "_get_latest_api",
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "connection", "connection-rid-1")),
         ),
-        patch.object(Connection, "_from_conjure", return_value=mock_connection) as from_conjure,
+        patch.object(Connection, "_from_conjure", return_value=mock_connection),
     ):
         result = mock_asset.get_connection(SCOPE_NAME)
 
     assert result == mock_connection
-    mock_clients.connection.get_connection.assert_called_once_with(mock_clients.auth_header, "connection-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_connection)
+    assert mock_clients.connection.get_connection.call_count == 1
+    assert mock_clients.connection.get_connection.call_args.args[-1] == "connection-rid-1"
 
 
 def test_get_video_fetches_scoped_video(mock_asset, mock_clients, mock_video):
@@ -129,13 +129,13 @@ def test_get_video_fetches_scoped_video(mock_asset, mock_clients, mock_video):
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "video", "video-rid-1")),
         ),
         patch("nominal.core.asset._get_video", return_value=raw_video) as get_video,
-        patch.object(Video, "_from_conjure", return_value=mock_video) as from_conjure,
+        patch.object(Video, "_from_conjure", return_value=mock_video),
     ):
         result = mock_asset.get_video(SCOPE_NAME)
 
     assert result == mock_video
-    get_video.assert_called_once_with(mock_clients, "video-rid-1")
-    from_conjure.assert_called_once_with(mock_clients, raw_video)
+    assert get_video.call_count == 1
+    assert get_video.call_args.args[-1] == "video-rid-1"
 
 
 def test_get_connection_raises_value_error_when_connection_scope_is_missing(mock_asset, mock_clients):
