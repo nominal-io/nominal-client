@@ -402,11 +402,10 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             ValueError: If no dataset reference exists with the provided name.
         """
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-
-        if ref_name not in dataset_rids_by_ref_name:
+        dataset_rid = dataset_rids_by_ref_name.get(ref_name)
+        if dataset_rid is None:
             raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
 
-        dataset_rid = dataset_rids_by_ref_name[ref_name]
         return Dataset._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
@@ -425,11 +424,10 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             ValueError: If no connection reference exists with the provided name.
         """
         connection_rids_by_ref_name = self._list_datasource_rids("connection")
-
-        if ref_name not in connection_rids_by_ref_name:
+        connection_rid = connection_rids_by_ref_name.get(ref_name)
+        if connection_rid is None:
             raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
 
-        connection_rid = connection_rids_by_ref_name[ref_name]
         return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
     def get_video(self, ref_name: str) -> Video:
@@ -445,11 +443,10 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             ValueError: If no video reference exists with the provided name.
         """
         video_rids_by_ref_name = self._list_datasource_rids("video")
-
-        if ref_name not in video_rids_by_ref_name:
+        video_rid = video_rids_by_ref_name.get(ref_name)
+        if video_rid is None:
             raise ValueError(f"No video with ref name '{ref_name}' found for this run")
 
-        video_rid = video_rids_by_ref_name[ref_name]
         return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:

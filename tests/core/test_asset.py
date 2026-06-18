@@ -6,9 +6,40 @@ import pytest
 
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, DatasetBounds
 
 SCOPE_NAME = "test-scope"
+
+
+@pytest.fixture
+def mock_clients():
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_asset(mock_clients):
+    return Asset(
+        rid="asset-rid-1",
+        name="Test Asset",
+        description=None,
+        properties={},
+        labels=[],
+        created_at=0,
+        _clients=mock_clients,
+    )
+
+
+@pytest.fixture
+def mock_dataset(mock_clients):
+    return Dataset(
+        rid="dataset-rid-1",
+        name="Test Dataset",
+        description=None,
+        bounds=DatasetBounds(start=0, end=1),
+        properties={},
+        labels=[],
+        _clients=mock_clients,
+    )
 
 
 def test_get_or_create_dataset_returns_existing_when_no_tags(mock_asset, mock_dataset):
