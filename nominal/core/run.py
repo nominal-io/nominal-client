@@ -29,7 +29,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection, _get_connections
+from nominal.core.connection import Connection, _get_connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
@@ -392,10 +392,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name."""
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-        try:
-            dataset_rid = dataset_rids_by_ref_name[ref_name]
-        except KeyError:
-            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run") from None
+
+        if ref_name not in dataset_rids_by_ref_name:
+            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
+
+        dataset_rid = dataset_rids_by_ref_name[ref_name]
         return Dataset._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
@@ -404,22 +405,21 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def get_connection(self, ref_name: str) -> Connection:
         """Get a connection for this run by its ref name."""
         connection_rids_by_ref_name = self._list_datasource_rids("connection")
-        try:
-            connection_rid = connection_rids_by_ref_name[ref_name]
-        except KeyError:
-            raise ValueError(f"No connection with ref name '{ref_name}' found for this run") from None
-        return Connection._from_conjure(
-            self._clients,
-            self._clients.connection.get_connection(self._clients.auth_header, connection_rid),
-        )
+
+        if ref_name not in connection_rids_by_ref_name:
+            raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
+
+        connection_rid = connection_rids_by_ref_name[ref_name]
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
     def get_video(self, ref_name: str) -> Video:
         """Get a video for this run by its ref name."""
         video_rids_by_ref_name = self._list_datasource_rids("video")
-        try:
-            video_rid = video_rids_by_ref_name[ref_name]
-        except KeyError:
-            raise ValueError(f"No video with ref name '{ref_name}' found for this run") from None
+
+        if ref_name not in video_rids_by_ref_name:
+            raise ValueError(f"No video with ref name '{ref_name}' found for this run")
+
+        video_rid = video_rids_by_ref_name[ref_name]
         return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:

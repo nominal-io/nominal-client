@@ -8,64 +8,10 @@ import pytest
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.connection import Connection
-from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.core.dataset import Dataset
 from nominal.core.video import Video
 
 SCOPE_NAME = "test-scope"
-
-
-@pytest.fixture
-def mock_clients():
-    return MagicMock()
-
-
-@pytest.fixture
-def mock_asset(mock_clients):
-    return Asset(
-        rid="asset-rid-1",
-        name="Test Asset",
-        description=None,
-        properties={},
-        labels=[],
-        created_at=0,
-        _clients=mock_clients,
-    )
-
-
-@pytest.fixture
-def mock_dataset(mock_clients):
-    return Dataset(
-        rid="dataset-rid-1",
-        name="Test Dataset",
-        description=None,
-        bounds=DatasetBounds(start=0, end=1),
-        properties={},
-        labels=[],
-        _clients=mock_clients,
-    )
-
-
-@pytest.fixture
-def mock_connection(mock_clients):
-    return Connection(
-        rid="connection-rid-1",
-        name="Test Connection",
-        description=None,
-        _clients=mock_clients,
-    )
-
-
-@pytest.fixture
-def mock_video(mock_clients):
-    return Video(
-        rid="video-rid-1",
-        name="Test Video",
-        description=None,
-        properties={},
-        labels=[],
-        created_at=0,
-        _clients=mock_clients,
-    )
 
 
 def _asset_api_with_scopes(*scopes):
@@ -78,184 +24,148 @@ def _scope(scope_name: str, scope_type: str, rid: str):
     return SimpleNamespace(data_scope_name=scope_name, data_source=data_source)
 
 
+def _set_asset_scopes(mock_clients, asset_rid: str, *scopes):
+    mock_clients.assets.get_assets.return_value = {asset_rid: _asset_api_with_scopes(*scopes)}
+
+
+def _assert_asset_fetched(mock_clients, asset_rid: str):
+    mock_clients.assets.get_assets.assert_called_once_with(mock_clients.auth_header, [asset_rid])
+
+
+def _assert_dataset_fetched(mock_clients, dataset_rid: str):
+    mock_clients.catalog.get_enriched_datasets.assert_called_once()
+    args = mock_clients.catalog.get_enriched_datasets.call_args.args
+    assert args[0] == mock_clients.auth_header
+    assert args[1].dataset_rids == [dataset_rid]
+
+
 def test_get_dataset_fetches_scoped_dataset(mock_asset, mock_clients, mock_dataset):
     """A dataset scope name is resolved to one backing dataset fetch."""
     raw_dataset = MagicMock()
+    mock_clients.catalog.get_enriched_datasets.return_value = [raw_dataset]
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "dataset", "dataset-rid-1"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
-        ),
-        patch("nominal.core.asset._get_dataset", return_value=raw_dataset) as get_dataset,
-        patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
-    ):
+    with patch.object(Dataset, "_from_conjure", return_value=mock_dataset) as from_conjure:
         result = mock_asset.get_dataset(SCOPE_NAME)
 
     assert result == mock_dataset
-    assert get_dataset.call_count == 1
-    assert get_dataset.call_args.args[-1] == "dataset-rid-1"
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    _assert_dataset_fetched(mock_clients, "dataset-rid-1")
+    from_conjure.assert_called_once_with(mock_clients, raw_dataset)
 
 
 def test_get_connection_fetches_scoped_connection(mock_asset, mock_clients, mock_connection):
     """A connection scope name is resolved to one backing connection fetch."""
     raw_connection = MagicMock()
     mock_clients.connection.get_connection.return_value = raw_connection
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "connection", "connection-rid-1"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "connection", "connection-rid-1")),
-        ),
-        patch.object(Connection, "_from_conjure", return_value=mock_connection),
-    ):
+    with patch.object(Connection, "_from_conjure", return_value=mock_connection) as from_conjure:
         result = mock_asset.get_connection(SCOPE_NAME)
 
     assert result == mock_connection
-    assert mock_clients.connection.get_connection.call_count == 1
-    assert mock_clients.connection.get_connection.call_args.args[-1] == "connection-rid-1"
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.connection.get_connection.assert_called_once_with(mock_clients.auth_header, "connection-rid-1")
+    from_conjure.assert_called_once_with(mock_clients, raw_connection)
 
 
 def test_get_video_fetches_scoped_video(mock_asset, mock_clients, mock_video):
     """A video scope name is resolved to one backing video fetch."""
     raw_video = MagicMock()
+    mock_clients.video.get.return_value = raw_video
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "video", "video-rid-1"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "video", "video-rid-1")),
-        ),
-        patch("nominal.core.asset._get_video", return_value=raw_video) as get_video,
-        patch.object(Video, "_from_conjure", return_value=mock_video),
-    ):
+    with patch.object(Video, "_from_conjure", return_value=mock_video) as from_conjure:
         result = mock_asset.get_video(SCOPE_NAME)
 
     assert result == mock_video
-    assert get_video.call_count == 1
-    assert get_video.call_args.args[-1] == "video-rid-1"
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.video.get.assert_called_once_with(mock_clients.auth_header, "video-rid-1")
+    from_conjure.assert_called_once_with(mock_clients, raw_video)
 
 
 def test_get_connection_raises_value_error_when_connection_scope_is_missing(mock_asset, mock_clients):
     """A same-named scope of another type does not satisfy a typed connection lookup."""
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
-        ),
-        pytest.raises(ValueError, match=f"No connection with data scope name '{SCOPE_NAME}' found for this asset"),
-    ):
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "dataset", "dataset-rid-1"))
+
+    with pytest.raises(ValueError, match=f"No connection with data scope name '{SCOPE_NAME}' found for this asset"):
         mock_asset.get_connection(SCOPE_NAME)
 
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
     mock_clients.connection.get_connection.assert_not_called()
 
 
-def test_get_dataset_raises_value_error_when_dataset_scope_is_missing(mock_asset):
+def test_get_dataset_raises_value_error_when_dataset_scope_is_missing(mock_asset, mock_clients):
     """A same-named scope of another type does not satisfy a typed dataset lookup."""
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "video", "video-rid-1")),
-        ),
-        patch("nominal.core.asset._get_dataset") as get_dataset,
-        pytest.raises(ValueError, match=f"No dataset with data scope name '{SCOPE_NAME}' found for this asset"),
-    ):
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "video", "video-rid-1"))
+
+    with pytest.raises(ValueError, match=f"No dataset with data scope name '{SCOPE_NAME}' found for this asset"):
         mock_asset.get_dataset(SCOPE_NAME)
 
-    get_dataset.assert_not_called()
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.catalog.get_enriched_datasets.assert_not_called()
 
 
-def test_get_video_raises_value_error_when_video_scope_is_missing(mock_asset):
+def test_get_video_raises_value_error_when_video_scope_is_missing(mock_asset, mock_clients):
     """A same-named scope of another type does not satisfy a typed video lookup."""
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
-        ),
-        patch("nominal.core.asset._get_video") as get_video,
-        pytest.raises(ValueError, match=f"No video with data scope name '{SCOPE_NAME}' found for this asset"),
-    ):
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "dataset", "dataset-rid-1"))
+
+    with pytest.raises(ValueError, match=f"No video with data scope name '{SCOPE_NAME}' found for this asset"):
         mock_asset.get_video(SCOPE_NAME)
 
-    get_video.assert_not_called()
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.video.get.assert_not_called()
 
 
-def test_get_dataset_propagates_backing_dataset_error(mock_asset):
+def test_get_dataset_propagates_backing_dataset_error(mock_asset, mock_clients):
     """If the scope exists but the dataset fetch fails, the fetch error is surfaced."""
     error = ValueError("dataset 'stale-dataset-rid' not found")
+    mock_clients.catalog.get_enriched_datasets.side_effect = error
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "dataset", "stale-dataset-rid"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "stale-dataset-rid")),
-        ),
-        patch("nominal.core.asset._get_dataset", side_effect=error),
-        patch.object(Dataset, "_from_conjure") as from_conjure,
-        pytest.raises(ValueError) as exc_info,
-    ):
+    with pytest.raises(ValueError) as exc_info:
         mock_asset.get_dataset(SCOPE_NAME)
 
     assert exc_info.value is error
-    from_conjure.assert_not_called()
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    _assert_dataset_fetched(mock_clients, "stale-dataset-rid")
 
 
 def test_get_connection_propagates_backing_connection_error(mock_asset, mock_clients):
     """If the scope exists but the connection fetch fails, the fetch error is surfaced."""
     error = RuntimeError("connection 'stale-connection-rid' not found")
     mock_clients.connection.get_connection.side_effect = error
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "connection", "stale-connection-rid"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "connection", "stale-connection-rid")),
-        ),
-        patch.object(Connection, "_from_conjure") as from_conjure,
-        pytest.raises(RuntimeError) as exc_info,
-    ):
+    with pytest.raises(RuntimeError) as exc_info:
         mock_asset.get_connection(SCOPE_NAME)
 
     assert exc_info.value is error
-    from_conjure.assert_not_called()
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.connection.get_connection.assert_called_once_with(mock_clients.auth_header, "stale-connection-rid")
 
 
-def test_get_video_propagates_backing_video_error(mock_asset):
+def test_get_video_propagates_backing_video_error(mock_asset, mock_clients):
     """If the scope exists but the video fetch fails, the fetch error is surfaced."""
     error = RuntimeError("video 'stale-video-rid' not found")
+    mock_clients.video.get.side_effect = error
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "video", "stale-video-rid"))
 
-    with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "video", "stale-video-rid")),
-        ),
-        patch("nominal.core.asset._get_video", side_effect=error),
-        patch.object(Video, "_from_conjure") as from_conjure,
-        pytest.raises(RuntimeError) as exc_info,
-    ):
+    with pytest.raises(RuntimeError) as exc_info:
         mock_asset.get_video(SCOPE_NAME)
 
     assert exc_info.value is error
-    from_conjure.assert_not_called()
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
+    mock_clients.video.get.assert_called_once_with(mock_clients.auth_header, "stale-video-rid")
 
 
 def test_get_or_create_video_creates_when_scope_is_missing(mock_asset, mock_clients, mock_video):
     """A missing video scope still enters the get-or-create create path."""
     raw_video = MagicMock()
     mock_clients.resolve_default_workspace_rid.return_value = "workspace-rid"
+    _set_asset_scopes(mock_clients, mock_asset.rid, _scope(SCOPE_NAME, "dataset", "dataset-rid-1"))
 
     with (
-        patch.object(
-            Asset,
-            "_get_latest_api",
-            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
-        ),
         patch("nominal.core.asset._create_video", return_value=raw_video) as create_video,
         patch.object(Video, "_from_conjure", return_value=mock_video) as from_conjure,
         patch.object(Asset, "add_video") as add_video,
@@ -269,6 +179,7 @@ def test_get_or_create_video_creates_when_scope_is_missing(mock_asset, mock_clie
         )
 
     assert result == mock_video
+    _assert_asset_fetched(mock_clients, mock_asset.rid)
     create_video.assert_called_once_with(
         mock_clients.auth_header,
         mock_clients.video,

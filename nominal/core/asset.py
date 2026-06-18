@@ -34,7 +34,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection, _get_connections
+from nominal.core.connection import Connection, _get_connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
@@ -467,10 +467,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def get_dataset(self, data_scope_name: str) -> Dataset:
         """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
         dataset_rids_by_scope_name = self._scope_rids("dataset")
-        try:
-            dataset_rid = dataset_rids_by_scope_name[data_scope_name]
-        except KeyError:
-            raise ValueError(f"No dataset with data scope name '{data_scope_name}' found for this asset") from None
+
+        if data_scope_name not in dataset_rids_by_scope_name:
+            raise ValueError(f"No dataset with data scope name '{data_scope_name}' found for this asset")
+
+        dataset_rid = dataset_rids_by_scope_name[data_scope_name]
         return Dataset._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
@@ -479,23 +480,22 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def get_connection(self, data_scope_name: str) -> Connection:
         """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
         connection_rids_by_scope_name = self._scope_rids("connection")
-        try:
-            connection_rid = connection_rids_by_scope_name[data_scope_name]
-        except KeyError:
-            raise ValueError(f"No connection with data scope name '{data_scope_name}' found for this asset") from None
-        return Connection._from_conjure(
-            self._clients,
-            self._clients.connection.get_connection(self._clients.auth_header, connection_rid),
-        )
+
+        if data_scope_name not in connection_rids_by_scope_name:
+            raise ValueError(f"No connection with data scope name '{data_scope_name}' found for this asset")
+
+        connection_rid = connection_rids_by_scope_name[data_scope_name]
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
     def get_video(self, data_scope_name: str) -> Video:
         """Retrieve a video by data scope name, or raise ValueError if one is not found."""
         video_rids_by_scope_name = self._scope_rids("video")
-        try:
-            video_rid = video_rids_by_scope_name[data_scope_name]
-        except KeyError:
-            raise ValueError(f"No video with data scope name '{data_scope_name}' found for this asset") from None
-        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
+
+        if data_scope_name not in video_rids_by_scope_name:
+            raise ValueError(f"No video with data scope name '{data_scope_name}' found for this asset")
+
+        data_scope_rid = video_rids_by_scope_name[data_scope_name]
+        return Video._from_conjure(self._clients, _get_video(self._clients, data_scope_rid))
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
