@@ -29,8 +29,8 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.connection import Connection, _get_connection, _get_connections
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
@@ -388,6 +388,66 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
+
+    def get_dataset(self, ref_name: str) -> Dataset:
+        """Get a dataset for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Dataset associated with the ref name.
+
+        Raises:
+            ValueError: If no dataset reference exists with the provided name.
+        """
+        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        dataset_rid = dataset_rids_by_ref_name.get(ref_name)
+        if dataset_rid is None:
+            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
+
+        return Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+        )
+
+    def get_connection(self, ref_name: str) -> Connection:
+        """Get a connection for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Connection associated with the ref name.
+
+        Raises:
+            ValueError: If no connection reference exists with the provided name.
+        """
+        connection_rids_by_ref_name = self._list_datasource_rids("connection")
+        connection_rid = connection_rids_by_ref_name.get(ref_name)
+        if connection_rid is None:
+            raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
+
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+
+    def get_video(self, ref_name: str) -> Video:
+        """Get a video for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Video associated with the ref name.
+
+        Raises:
+            ValueError: If no video reference exists with the provided name.
+        """
+        video_rids_by_ref_name = self._list_datasource_rids("video")
+        video_rid = video_rids_by_ref_name.get(ref_name)
+        if video_rid is None:
+            raise ValueError(f"No video with ref name '{ref_name}' found for this run")
+
+        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
