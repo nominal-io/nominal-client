@@ -43,6 +43,7 @@ VIDEO_REF = "video-ref"
 
 
 def _create_test_connection(client: NominalClient, tag: str) -> Connection:
+    """Create a streaming connection for datasource getter e2e tests."""
     with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
         return client.create_streaming_connection(
             f"datasource-{tag}",
@@ -131,7 +132,7 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     assert ds2.rid == ds.rid
 
 
-def test_add_datasources_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn):
+def test_add_datasources_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
     """Run typed getters resolve only datasources of the requested type by ref name."""
     tag = uuid4().hex
     dataset = client.create_dataset(f"dataset-{tag}")
@@ -306,7 +307,7 @@ def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, arc
         asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
 
 
-def test_add_datasources_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn):
+def test_add_datasources_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:
     """Asset typed getters resolve only datasources of the requested type by data-scope name."""
     tag = uuid4().hex
     asset = client.create_asset(f"asset-{tag}")

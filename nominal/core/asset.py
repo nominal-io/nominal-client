@@ -465,7 +465,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
 
     def get_dataset(self, data_scope_name: str) -> Dataset:
-        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
+        """Retrieve a dataset by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Dataset associated with the data scope name.
+
+        Raises:
+            ValueError: If no dataset data scope exists with the provided name.
+        """
         dataset_rids_by_scope_name = self._scope_rids("dataset")
 
         if data_scope_name not in dataset_rids_by_scope_name:
@@ -478,7 +488,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
 
     def get_connection(self, data_scope_name: str) -> Connection:
-        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
+        """Retrieve a connection by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Connection associated with the data scope name.
+
+        Raises:
+            ValueError: If no connection data scope exists with the provided name.
+        """
         connection_rids_by_scope_name = self._scope_rids("connection")
 
         if data_scope_name not in connection_rids_by_scope_name:
@@ -488,7 +508,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
     def get_video(self, data_scope_name: str) -> Video:
-        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
+        """Retrieve a video by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Video associated with the data scope name.
+
+        Raises:
+            ValueError: If no video data scope exists with the provided name.
+        """
         video_rids_by_scope_name = self._scope_rids("video")
 
         if data_scope_name not in video_rids_by_scope_name:

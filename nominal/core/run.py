@@ -390,7 +390,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         return list(self._iter_list_videos())
 
     def get_dataset(self, ref_name: str) -> Dataset:
-        """Get a dataset for this run by its ref name."""
+        """Get a dataset for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Dataset associated with the ref name.
+
+        Raises:
+            ValueError: If no dataset reference exists with the provided name.
+        """
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
 
         if ref_name not in dataset_rids_by_ref_name:
@@ -403,7 +413,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         )
 
     def get_connection(self, ref_name: str) -> Connection:
-        """Get a connection for this run by its ref name."""
+        """Get a connection for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Connection associated with the ref name.
+
+        Raises:
+            ValueError: If no connection reference exists with the provided name.
+        """
         connection_rids_by_ref_name = self._list_datasource_rids("connection")
 
         if ref_name not in connection_rids_by_ref_name:
@@ -413,7 +433,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
     def get_video(self, ref_name: str) -> Video:
-        """Get a video for this run by its ref name."""
+        """Get a video for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Video associated with the ref name.
+
+        Raises:
+            ValueError: If no video reference exists with the provided name.
+        """
         video_rids_by_ref_name = self._list_datasource_rids("video")
 
         if ref_name not in video_rids_by_ref_name:
