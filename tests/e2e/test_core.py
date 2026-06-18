@@ -4,7 +4,7 @@ Covers:
   - Updating metadata (name, description, properties, labels) on datasets, runs, and attachments
   - Updating a run's time window (start/end)
   - Uploading multiple CSV files to a single dataset
-  - Linking datasets and attachments to a run, then listing them back
+  - Linking datasources and attachments to runs/assets, then reading them back
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
   - Creating channels on a datasource via add_channel and batch_add_channels
@@ -27,6 +27,7 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
+from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
 from nominal.core.datasource import CreateChannelRequest
@@ -35,6 +36,18 @@ from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
 ArchiveFn = Callable[[object], None]
+
+DATASET_REF = "dataset-ref"
+CONNECTION_REF = "connection-ref"
+VIDEO_REF = "video-ref"
+
+
+def _create_test_connection(client: NominalClient, tag: str) -> Connection:
+    with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
+        return client.create_streaming_connection(
+            f"datasource-{tag}",
+            f"connection-{tag}",
+        )
 
 
 def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
@@ -116,6 +129,35 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     ref_name2, ds2 = ds_list[0]
     assert ref_name2 == ref_name
     assert ds2.rid == ds.rid
+
+
+def test_add_datasources_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn):
+    """Run typed getters resolve only datasources of the requested type by ref name."""
+    tag = uuid4().hex
+    dataset = client.create_dataset(f"dataset-{tag}")
+    archive(dataset)
+    video = client.create_video(f"video-{tag}")
+    archive(video)
+    connection = _create_test_connection(client, tag)
+    archive(connection)
+
+    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    archive(run)
+
+    run.add_dataset(DATASET_REF, dataset)
+    run.add_connection(CONNECTION_REF, connection)
+    run.add_video(VIDEO_REF, video)
+
+    assert run.get_dataset(DATASET_REF).rid == dataset.rid
+    assert run.get_connection(CONNECTION_REF).rid == connection.rid
+    assert run.get_video(VIDEO_REF).rid == video.rid
+
+    with pytest.raises(ValueError, match=f"No connection with ref name '{DATASET_REF}' found for this run"):
+        run.get_connection(DATASET_REF)
+    with pytest.raises(ValueError, match=f"No video with ref name '{CONNECTION_REF}' found for this run"):
+        run.get_video(CONNECTION_REF)
+    with pytest.raises(ValueError, match=f"No dataset with ref name '{VIDEO_REF}' found for this run"):
+        run.get_dataset(VIDEO_REF)
 
 
 def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: ArchiveFn):
@@ -262,6 +304,34 @@ def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, arc
 
     with pytest.raises(ValueError, match="datascope already exists"):
         asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
+
+
+def test_add_datasources_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn):
+    """Asset typed getters resolve only datasources of the requested type by data-scope name."""
+    tag = uuid4().hex
+    asset = client.create_asset(f"asset-{tag}")
+    archive(asset)
+    dataset = client.create_dataset(f"dataset-{tag}")
+    archive(dataset)
+    video = client.create_video(f"video-{tag}")
+    archive(video)
+    connection = _create_test_connection(client, tag)
+    archive(connection)
+
+    asset.add_dataset(DATASET_REF, dataset)
+    asset.add_connection(CONNECTION_REF, connection)
+    asset.add_video(VIDEO_REF, video)
+
+    assert asset.get_dataset(DATASET_REF).rid == dataset.rid
+    assert asset.get_connection(CONNECTION_REF).rid == connection.rid
+    assert asset.get_video(VIDEO_REF).rid == video.rid
+
+    with pytest.raises(ValueError, match=f"No connection with data scope name '{DATASET_REF}' found for this asset"):
+        asset.get_connection(DATASET_REF)
+    with pytest.raises(ValueError, match=f"No video with data scope name '{CONNECTION_REF}' found for this asset"):
+        asset.get_video(CONNECTION_REF)
+    with pytest.raises(ValueError, match=f"No dataset with data scope name '{VIDEO_REF}' found for this asset"):
+        asset.get_dataset(VIDEO_REF)
 
 
 def test_download_dataset_file_roundtrips_to_disk(
