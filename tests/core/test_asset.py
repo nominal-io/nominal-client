@@ -138,7 +138,7 @@ def test_get_video_fetches_scoped_video(mock_asset, mock_clients, mock_video):
     from_conjure.assert_called_once_with(mock_clients, raw_video)
 
 
-def test_get_connection_raises_key_error_when_connection_scope_is_missing(mock_asset, mock_clients):
+def test_get_connection_raises_value_error_when_connection_scope_is_missing(mock_asset, mock_clients):
     """A same-named scope of another type does not satisfy a typed connection lookup."""
     with (
         patch.object(
@@ -146,14 +146,14 @@ def test_get_connection_raises_key_error_when_connection_scope_is_missing(mock_a
             "_get_latest_api",
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
         ),
-        pytest.raises(KeyError, match=f"No connection with data scope name '{SCOPE_NAME}' found for this asset"),
+        pytest.raises(ValueError, match=f"No connection with data scope name '{SCOPE_NAME}' found for this asset"),
     ):
         mock_asset.get_connection(SCOPE_NAME)
 
     mock_clients.connection.get_connection.assert_not_called()
 
 
-def test_get_dataset_raises_key_error_when_dataset_scope_is_missing(mock_asset):
+def test_get_dataset_raises_value_error_when_dataset_scope_is_missing(mock_asset):
     """A same-named scope of another type does not satisfy a typed dataset lookup."""
     with (
         patch.object(
@@ -162,14 +162,14 @@ def test_get_dataset_raises_key_error_when_dataset_scope_is_missing(mock_asset):
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "video", "video-rid-1")),
         ),
         patch("nominal.core.asset._get_dataset") as get_dataset,
-        pytest.raises(KeyError, match=f"No dataset with data scope name '{SCOPE_NAME}' found for this asset"),
+        pytest.raises(ValueError, match=f"No dataset with data scope name '{SCOPE_NAME}' found for this asset"),
     ):
         mock_asset.get_dataset(SCOPE_NAME)
 
     get_dataset.assert_not_called()
 
 
-def test_get_video_raises_key_error_when_video_scope_is_missing(mock_asset):
+def test_get_video_raises_value_error_when_video_scope_is_missing(mock_asset):
     """A same-named scope of another type does not satisfy a typed video lookup."""
     with (
         patch.object(
@@ -178,7 +178,7 @@ def test_get_video_raises_key_error_when_video_scope_is_missing(mock_asset):
             return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
         ),
         patch("nominal.core.asset._get_video") as get_video,
-        pytest.raises(KeyError, match=f"No video with data scope name '{SCOPE_NAME}' found for this asset"),
+        pytest.raises(ValueError, match=f"No video with data scope name '{SCOPE_NAME}' found for this asset"),
     ):
         mock_asset.get_video(SCOPE_NAME)
 
@@ -243,6 +243,43 @@ def test_get_video_propagates_backing_video_error(mock_asset):
 
     assert exc_info.value is error
     from_conjure.assert_not_called()
+
+
+def test_get_or_create_video_creates_when_scope_is_missing(mock_asset, mock_clients, mock_video):
+    """A missing video scope still enters the get-or-create create path."""
+    raw_video = MagicMock()
+    mock_clients.resolve_default_workspace_rid.return_value = "workspace-rid"
+
+    with (
+        patch.object(
+            Asset,
+            "_get_latest_api",
+            return_value=_asset_api_with_scopes(_scope(SCOPE_NAME, "dataset", "dataset-rid-1")),
+        ),
+        patch("nominal.core.asset._create_video", return_value=raw_video) as create_video,
+        patch.object(Video, "_from_conjure", return_value=mock_video) as from_conjure,
+        patch.object(Asset, "add_video") as add_video,
+    ):
+        result = mock_asset.get_or_create_video(
+            SCOPE_NAME,
+            name="created-video",
+            description="description",
+            labels=["label"],
+            properties={"key": "value"},
+        )
+
+    assert result == mock_video
+    create_video.assert_called_once_with(
+        mock_clients.auth_header,
+        mock_clients.video,
+        "created-video",
+        description="description",
+        properties={"key": "value"},
+        labels=["label"],
+        workspace_rid="workspace-rid",
+    )
+    from_conjure.assert_called_once_with(mock_clients, raw_video)
+    add_video.assert_called_once_with(SCOPE_NAME, mock_video)
 
 
 def test_get_or_create_dataset_returns_existing_when_no_tags(mock_asset, mock_dataset):
