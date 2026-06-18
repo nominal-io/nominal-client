@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.147.0](https://github.com/nominal-io/nominal-client/compare/v1.146.0...v1.147.0) (2026-06-18)
+
+
+### Features
+
+* adding/updating dataset/video/connection getters for run.py and asset.py ([#830](https://github.com/nominal-io/nominal-client/issues/830)) ([b47b728](https://github.com/nominal-io/nominal-client/commit/b47b72803aadfcadd57eccf2cc5385aa9cb22d7d))
+
+
+### Bug Fixes
+
+* **migration:** handle camelCase keys in legacy migration state files ([#823](https://github.com/nominal-io/nominal-client/issues/823)) ([96cd804](https://github.com/nominal-io/nominal-client/commit/96cd804a1798d4807959d88eca992268f3d33ce5))
+
 ## [1.146.0](https://github.com/nominal-io/nominal-client/compare/v1.145.1...v1.146.0) (2026-06-16)
 
 
