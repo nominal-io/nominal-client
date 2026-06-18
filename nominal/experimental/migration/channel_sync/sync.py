@@ -488,15 +488,17 @@ def _stream_missing(
         _progress_bar(options.show_progress, total_slices, description) as advance,
         stream_ctx as stream,
     ):
-        for signature, channels in groups.items():
+        for group_idx, (signature, channels) in enumerate(groups.items()):
             for range_start, range_end in signature:
                 points += _export_and_stream_range(
-                    handler, stream, channels, range_start, range_end, type_by_name, options, advance
+                    handler, stream, channels, range_start, range_end, type_by_name, options, advance,
+                    group_idx=group_idx,
                 )
-        for channel, ranges in fallback:
+        for ch_idx, (channel, ranges) in enumerate(fallback):
             for range_start, range_end in ranges:
                 points += _export_and_stream_channel(
-                    handler, stream, channel, range_start, range_end, type_by_name, options, advance
+                    handler, stream, channel, range_start, range_end, type_by_name, options, advance,
+                    channel_idx=ch_idx,
                 )
     # Exiting the context flushes and closes the stream (wait=True).
     return points
@@ -513,6 +515,7 @@ def _export_and_stream(
     advance: Callable[[int], None] | None,
     *,
     skip_rate_estimation: bool = False,
+    group_idx: int = 0,
 ) -> int:
     """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file the instant it
     finishes downloading. Returns points streamed; **re-raises** any whole-export failure so callers can
@@ -556,7 +559,7 @@ def _export_and_stream(
             out_dir,
             tags=options.tags,
             timestamp_type=_TIMESTAMP_TYPE,
-            file_prefix=f"sync_{range_start}_{range_end}",
+            file_prefix=f"sync_{range_start}_{range_end}_g{group_idx:04d}",
             show_progress=False,
             on_file_complete=_on_file_complete,
             # Reuse files a prior attempt/run already downloaded (size-matched) instead of failing to
@@ -576,12 +579,17 @@ def _export_and_stream_range(
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
     advance: Callable[[int], None] | None = None,
+    *,
+    group_idx: int = 0,
 ) -> int:
     """Grouped, rate-sized export of ``channels`` over a range (the normal path). A whole-export
     failure is non-fatal: logged, and the range is left short for the verify/re-detect loop to retry.
     """
     try:
-        return _export_and_stream(handler, stream, channels, range_start, range_end, type_by_name, options, advance)
+        return _export_and_stream(
+            handler, stream, channels, range_start, range_end, type_by_name, options, advance,
+            group_idx=group_idx,
+        )
     except Exception as exc:
         logger.exception(
             "Export failed for range [%d, %d) over %d channel(s) (%s); range will be retried on re-detect",
@@ -602,6 +610,8 @@ def _export_and_stream_channel(
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
     advance: Callable[[int], None] | None,
+    *,
+    channel_idx: int = 0,
 ) -> int:
     """Export+stream one channel whose rate can't be estimated, halving the range and retrying on
     export failure.
@@ -623,6 +633,7 @@ def _export_and_stream_channel(
             options,
             advance,
             skip_rate_estimation=True,
+            group_idx=channel_idx,
         )
     except Exception as exc:
         span = range_end - range_start
@@ -646,8 +657,10 @@ def _export_and_stream_channel(
             mid,
         )
         return _export_and_stream_channel(
-            handler, stream, channel, range_start, mid, type_by_name, options, advance
-        ) + _export_and_stream_channel(handler, stream, channel, mid, range_end, type_by_name, options, advance)
+            handler, stream, channel, range_start, mid, type_by_name, options, advance, channel_idx=channel_idx,
+        ) + _export_and_stream_channel(
+            handler, stream, channel, mid, range_end, type_by_name, options, advance, channel_idx=channel_idx,
+        )
 
 
 def _stream_from_dir(
