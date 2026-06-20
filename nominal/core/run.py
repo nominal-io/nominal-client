@@ -262,8 +262,30 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     ) -> Sequence[Event]:
         """Search for events associated with any of the assets of this run.
 
-        See nominal.core.event._search_events for details.
+        The run's assets are matched as a union: an event is included if it is associated with at
+        least one of the run's assets. The remaining filters are ANDed together with that asset
+        filter and with each other.
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by_rid: Rid of the author that must be present on an event to be included.
+            workbook_rid: Search for events on the given workbook.
+            data_review_rid: Search for events from the given data review.
+            assignee_rid: Search for events with the given assignee.
+            event_type: Search for events of the given type.
+            origin_types: Search for events created by any of the given origin types.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
+
+        Returns:
+            Events associated with any of this run's assets that match all of the provided filters.
+            Returns an empty sequence if the run has no associated assets.
         """
+        if not self.assets:
+            return []
         return _search_events(
             self._clients,
             search_text=search_text,

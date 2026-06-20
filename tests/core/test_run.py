@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
+from nominal.core._utils.query_tools import AssetMatch
 from nominal.core.run import Run
 
 
@@ -42,11 +42,11 @@ def test_search_events_ors_run_assets(mock_run):
     assert mock_search_events.call_args.kwargs["asset_match"] == AssetMatch.ANY
 
 
-def test_search_events_passes_archive_status(mock_run):
-    """Run.search_events forwards archive_status to the shared event search helper."""
+def test_search_events_empty_assets_returns_no_events(mock_run):
+    """A run with no associated assets returns no events instead of searching all events."""
+    object.__setattr__(mock_run, "assets", [])
     with patch("nominal.core.run._search_events", return_value=[]) as mock_search_events:
-        result = mock_run.search_events(archive_status=ArchiveStatusFilter.ANY)
+        result = mock_run.search_events()
 
     assert result == []
-    mock_search_events.assert_called_once()
-    assert mock_search_events.call_args.kwargs["archive_status"] == ArchiveStatusFilter.ANY
+    mock_search_events.assert_not_called()
