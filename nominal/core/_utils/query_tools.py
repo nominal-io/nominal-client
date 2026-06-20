@@ -24,6 +24,17 @@ from nominal._utils.deprecation_tools import _NotProvided
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
+class AssetMatch(Enum):
+    """How a set of asset rids should be matched when searching for events.
+
+    Use ALL to require an event to reference every given asset (rids ANDed together),
+    or ANY to match events referencing at least one of the given assets (rids ORed together).
+    """
+
+    ALL = "ALL"
+    ANY = "ANY"
+
+
 class ArchiveStatusFilter(Enum):
     """Filter for archive status in search methods.
 
@@ -502,6 +513,7 @@ def create_search_events_query(  # noqa: PLR0912
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
     asset_rids: Iterable[str] | None = None,
+    asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
     created_by_rid: str | None = None,
@@ -520,8 +532,13 @@ def create_search_events_query(  # noqa: PLR0912
     if before is not None:
         queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
     if asset_rids:
-        for asset in asset_rids:
-            queries.append(event.SearchQuery(asset=asset))
+        if asset_match is AssetMatch.ANY:
+            queries.append(
+                event.SearchQuery(assets=event.AssetsFilter(assets=list(asset_rids), operator=api.SetOperator.OR))
+            )
+        else:
+            for asset in asset_rids:
+                queries.append(event.SearchQuery(asset=asset))
     if labels:
         for label in labels:
             queries.append(event.SearchQuery(label=label))

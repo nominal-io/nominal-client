@@ -26,7 +26,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
-from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
+from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connection, _get_connections
@@ -260,7 +260,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         origin_types: Iterable[SearchEventOriginType] | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
-        """Search for events associated with all assets of this run.
+        """Search for events associated with any of the assets of this run.
 
         See nominal.core.event._search_events for details.
         """
@@ -270,6 +270,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             after=after,
             before=before,
             asset_rids=list(self.assets),
+            asset_match=AssetMatch.ANY,
             labels=labels,
             properties=properties,
             created_by_rid=created_by_rid,
