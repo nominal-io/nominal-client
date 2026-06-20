@@ -16,7 +16,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
-from nominal.core._event_types import EventType
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -32,7 +32,7 @@ from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, _create_event
+from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
@@ -242,6 +242,43 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             assets=self.assets,
             properties=properties,
             labels=labels,
+        )
+
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by_rid: str | None = None,
+        workbook_rid: str | None = None,
+        data_review_rid: str | None = None,
+        assignee_rid: str | None = None,
+        event_type: EventType | None = None,
+        origin_types: Iterable[SearchEventOriginType] | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    ) -> Sequence[Event]:
+        """Search for events associated with all assets of this run.
+
+        See nominal.core.event._search_events for details.
+        """
+        return _search_events(
+            self._clients,
+            search_text=search_text,
+            after=after,
+            before=before,
+            asset_rids=list(self.assets),
+            labels=labels,
+            properties=properties,
+            created_by_rid=created_by_rid,
+            workbook_rid=workbook_rid,
+            data_review_rid=data_review_rid,
+            assignee_rid=assignee_rid,
+            event_type=event_type,
+            origin_types=origin_types,
+            archive_status=archive_status,
         )
 
     def add_dataset(
