@@ -44,7 +44,7 @@ def test_search_events_ors_run_assets(mock_run):
 
 def test_search_events_empty_assets_returns_no_events(mock_run):
     """A run with no associated assets returns no events instead of searching all events."""
-    object.__setattr__(mock_run, "assets", [])
+    mock_run.assets = []
     with patch("nominal.core.run._search_events", return_value=[]) as mock_search_events:
         result = mock_run.search_events()
 
