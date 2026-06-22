@@ -85,6 +85,16 @@ def test_create_dagger_model_returns_uuid_and_source_handle(
     assert import_request.columns.real == [3]
     assert import_request.columns.int_ == [4]
 
+    # Assert that the PUT and import calls received the correct UUIDs derived from the workspace.
+    expected_object_space = spatial._extract_rid_locator_uuid(workspace.rid)
+    expected_tenant = spatial._extract_rid_locator_uuid(workspace.org)
+    put_kwargs = dagger_mocks.put_object_space.call_args.kwargs
+    assert put_kwargs["id"] == expected_object_space
+    assert put_kwargs["tenant"] == expected_tenant
+    post_kwargs = dagger_mocks.post_import.call_args.kwargs
+    assert post_kwargs["object_space"] == expected_object_space
+    assert post_kwargs["tenant"] == expected_tenant
+
 
 def test_create_dagger_model_raises_on_missing_file() -> None:
     """create_dagger_model raises FileNotFoundError when the CSV path does not exist."""
@@ -106,6 +116,23 @@ def test_create_dagger_model_propagates_dagger_failure(
     dagger_mocks.post_import.return_value = MagicMock(status_code=500, content=b"upstream broken")
 
     with pytest.raises(NominalIngestError, match="Dagger POST"):
+        spatial.create_dagger_model(nominal_client, csv_path)
+
+
+def test_create_dagger_model_propagates_put_failure(
+    tmp_path: Path,
+    make_clients: Callable[..., tuple[MagicMock, MagicMock]],
+    dagger_mocks: _DaggerMocks,
+) -> None:
+    """Raises NominalIngestError when the dagger PUT object-space endpoint returns a non-2xx status."""
+    csv_path = tmp_path / "ouster.csv"
+    csv_path.write_text("x,y,z,t\n1,2,3,4\n")
+    clients, _ = make_clients()
+    nominal_client = MagicMock()
+    nominal_client._clients = clients
+    dagger_mocks.put_object_space.return_value = MagicMock(status_code=500, content=b"object space broken")
+
+    with pytest.raises(NominalIngestError, match="Dagger PUT"):
         spatial.create_dagger_model(nominal_client, csv_path)
 
 
