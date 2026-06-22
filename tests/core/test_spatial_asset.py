@@ -44,3 +44,12 @@ def test_spatial_metadata_from_conjure_reads_point_cloud() -> None:
     assert isinstance(md, PointCloudMetadata)
     assert md.sensor_model == "Ouster OS1-128"
     assert md.scan_pattern == ScanPattern.ROTATING
+
+
+def test_spatial_metadata_from_conjure_returns_empty_on_missing_point_cloud() -> None:
+    """A SpatialTypeMetadata with an empty point_cloud arm returns an empty PointCloudMetadata."""
+    conjure = scout_spatial_api.SpatialTypeMetadata(
+        point_cloud=scout_spatial_api.PointCloudMetadata()
+    )
+    md = _spatial_metadata_from_conjure(conjure)
+    assert md == PointCloudMetadata()
