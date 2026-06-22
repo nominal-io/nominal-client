@@ -96,7 +96,7 @@ class SpatialAsset(HasRid, RefreshableMixin[scout_spatial_api.Spatial]):
     properties: Mapping[str, str]
     is_archived: bool
     dagger_uuid: str
-    sensor_model: str | None
+    metadata: SpatialMetadata
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
@@ -140,7 +140,6 @@ class SpatialAsset(HasRid, RefreshableMixin[scout_spatial_api.Spatial]):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, raw_spatial: scout_spatial_api.Spatial) -> Self:
-        point_cloud = raw_spatial.type_metadata.point_cloud
         return cls(
             rid=raw_spatial.rid,
             name=raw_spatial.title,
@@ -149,7 +148,7 @@ class SpatialAsset(HasRid, RefreshableMixin[scout_spatial_api.Spatial]):
             properties=MappingProxyType(raw_spatial.properties),
             is_archived=raw_spatial.is_archived,
             dagger_uuid=raw_spatial.dagger_uuid,
-            sensor_model=point_cloud.sensor_model if point_cloud is not None else None,
+            metadata=_spatial_metadata_from_conjure(raw_spatial.type_metadata),
             created_at=_SecondsNanos.from_flexible(raw_spatial.created_at).to_nanoseconds(),
             _clients=clients,
             created_by_rid=raw_spatial.created_by,
