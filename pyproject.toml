@@ -57,6 +57,13 @@ Repository = "https://github.com/nominal-io/nominal-client"
 [tool.uv]
 default-groups = ["dev"]
 
+# Resolution overrides are only honored at the workspace root, not in member packages.
+override-dependencies = [
+    # waitress<3.0.1 has CVEs (CVE-2024-49768/49769); ouster-sdk pulls it in transitively in nominal-ouster.
+    # the CVE is explicitly ignored as this breaks support for python 3.8 in ouster-sdk, but we don't support python <3.10
+    "waitress>=3.0.1"
+]
+
 [tool.uv.workspace]
 members = ["packages/*"]
 
@@ -83,11 +90,13 @@ dev = [
 [tool.uv.sources]
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
+nominal-ouster = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nominal-tdms>=1.143.0"]
+ouster = ["nominal-ouster>=1.146.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
@@ -112,6 +121,10 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
+# One shared lint/format config covers the core package (nominal/**), every
+# workspace sub-package source + co-located tests (packages/**), and the root
+# tests (tests/**). Sub-packages intentionally do not define their own ruff
+# config so style stays uniform across the workspace.
 include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
@@ -160,7 +173,14 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.tdms"]
+# These are checked as *installed* namespace packages (one shared `nominal`
+# namespace split across distributions). Two consequences for sub-packages:
+#   1. Each `nominal.*` sub-package must be listed here explicitly — mypy does
+#      not auto-discover namespace sub-packages from the top-level entry.
+#   2. Each sub-package must ship a `py.typed` marker (PEP 561) in its build
+#      `include`, or mypy aborts with "cannot be type checked due to missing
+#      py.typed marker" (see packages/nominal-*/pyproject.toml).
+packages = ["nominal", "nominal.tdms", "nominal.ouster"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
@@ -180,6 +200,15 @@ ignore_missing_imports = true
 module = "nominal_video"
 ignore_missing_imports = true
 
+# ouster-sdk ships a py.typed marker, but its package __init__ files pull public
+# symbols (ChanField, XYZLut, PcapScanSource, ...) in via `from .data import X`
+# with no __all__, so strict mode's no-implicit-reexport rejects
+# `from ouster... import X`. Allow implicit re-export (as we do for nominal_api).
+[[tool.mypy.overrides]]
+module = "ouster.*"
+ignore_missing_imports = true
+implicit_reexport = true
+
 [[tool.mypy.overrides]]
 module = "tests.*"
 disable_error_code = ["no-untyped-def"]
@@ -188,10 +217,20 @@ disable_error_code = ["no-untyped-def"]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
 ]
-testpaths = ["tests"]
+# Tests are co-located with each workspace package. List every package's tests
+# dir here so a single `uv run pytest` (what `just test` and CI run) validates
+# the whole workspace. Co-located test dirs must NOT contain an __init__.py —
+# otherwise they become a second importable package literally named `tests` and
+# collide with the root tests package. Add a new line here per package that
+# grows a tests/ dir.
+testpaths = ["tests", "packages/nominal-ouster/tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
-addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
+# importlib mode is the recommended pytest layout for a monorepo: with no
+# __init__.py in test dirs, each test module gets a unique, rootdir-relative
+# name, so same-named test files across packages (e.g. two test_client.py) can
+# never shadow each other the way the default "prepend" mode would.
+addopts = "--import-mode=importlib --cov=nominal --cov-branch --cov-report=html --cov-report=term"
 
 [tool.coverage.run]
 omit = ["tests/*", "*__init__*", "nominal/__main__.py"]

@@ -23,6 +23,9 @@ Repository = "https://github.com/nominal-io/nominal-client"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# PEP 420 namespace package (no nominal/__init__.py); merges into the shared
+# `nominal` namespace. The `nominal/tdms/**` glob must ship the py.typed marker
+# so mypy can type-check `nominal.tdms` as an installed package (PEP 561).
 [tool.hatch.build.targets.sdist]
 include = ["LICENSE", "NOTICE", "nominal/tdms/**"]
 

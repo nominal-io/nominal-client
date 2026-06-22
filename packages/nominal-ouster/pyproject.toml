@@ -1,0 +1,53 @@
+[project]
+name = "nominal-ouster"
+version = "1.146.0"
+description = "Ouster pointcloud integration for the Nominal Python Client"
+authors = [
+    { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
+    { name = "Drake Eidukas", email = "drake@nominal.io" },
+]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+readme = "README.md"
+
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+requires-python = ">=3.10,<4"
+dependencies = [
+    "nominal>=1.146.0",
+    # dagger-client is used by create_dagger_model to call dagger directly via scout's reverse proxy at /api/dagger.
+    "dagger-client>=30.0.0,<31",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "ouster-sdk>=0.16.2",
+]
+
+[project.urls]
+Homepage = "https://nominal.io"
+Documentation = "https://docs.nominal.io"
+Repository = "https://github.com/nominal-io/nominal-client"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# This is a PEP 420 namespace package: there is no nominal/__init__.py, so
+# `nominal.ouster` merges into the shared `nominal` namespace alongside the core
+# package at install time. The `nominal/ouster/**` glob ships the whole package
+# INCLUDING the py.typed marker — that marker is required for PEP 561, both for
+# our own `uv run mypy` (which checks nominal.ouster as an installed package)
+# and for downstream consumers to type-check against it. Drop the glob or the
+# marker and type-checking breaks. Co-located tests/ are intentionally excluded.
+[tool.hatch.build.targets.sdist]
+include = ["LICENSE", "NOTICE", "README.md", "nominal/ouster/**"]
+
+[tool.hatch.build.targets.wheel]
+include = ["LICENSE", "NOTICE", "README.md", "nominal/ouster/**"]

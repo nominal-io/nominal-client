@@ -97,6 +97,7 @@ from nominal.core.exceptions import NominalConfigError, NominalError, NominalMet
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
+from nominal.core.spatial_asset import DaggerModel, SpatialAsset, SpatialMetadata, _create_spatial_asset
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -845,6 +846,42 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     create_empty_video = create_video
+
+    def create_spatial_asset(
+        self,
+        name: str,
+        *,
+        dagger_model: DaggerModel,
+        metadata: SpatialMetadata,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> SpatialAsset:
+        """Create a spatial asset referencing an existing Dagger model.
+
+        Args:
+            name: Human-readable name for the spatial asset.
+            dagger_model: The Dagger model (uuid + optional source handle) the asset references.
+            metadata: Type-specific metadata, e.g. `PointCloudMetadata(...)`.
+            description: Optional description.
+            labels: Labels to apply.
+            properties: Key-value properties to apply.
+
+        Returns:
+            The created spatial asset.
+        """
+        response = _create_spatial_asset(
+            self._clients.auth_header,
+            self._clients.spatial,
+            name,
+            dagger_model=dagger_model,
+            metadata=metadata,
+            description=description,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
+        )
+        return SpatialAsset._from_conjure(self._clients, response)
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""

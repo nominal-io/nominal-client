@@ -33,6 +33,7 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
+from nominal.core.spatial_asset import SpatialAsset, _get_spatial
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
@@ -62,6 +63,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         Attachment._Clients,
         DataSource._Clients,
         Video._Clients,
+        SpatialAsset._Clients,
         Workbook._Clients,
         Protocol,
     ):
@@ -175,11 +177,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         self,
         *,
         ref_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+        data_sources: Sequence[Connection | Dataset | Video | SpatialAsset | str] | None = None,
     ) -> None:
         """Remove data sources from this run.
 
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        The list data_sources can contain Connection, Dataset, Video, or SpatialAsset instances, or rids as string.
         """
         ref_names = ref_names or []
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
@@ -194,7 +196,15 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             )
             for ref_name, rds in conjure_run.data_sources.items()
             if ref_name not in ref_names
-            and (rds.data_source.dataset or rds.data_source.connection or rds.data_source.video) not in data_source_rids
+            and all(
+                rid not in data_source_rids
+                for rid in (
+                    rds.data_source.dataset,
+                    rds.data_source.connection,
+                    rds.data_source.video,
+                    rds.data_source.spatial,
+                )
+            )
         }
 
         updated_run = self._clients.run.update_run(
@@ -330,6 +340,15 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         )
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
 
+    def add_spatial(self, ref_name: str, spatial: SpatialAsset | str) -> None:
+        """Add a spatial asset to a run via SpatialAsset object or RID."""
+        request = scout_run_api.CreateRunDataSource(
+            data_source=scout_run_api.DataSource(spatial=rid_from_instance_or_string(spatial)),
+            series_tags={},
+            offset=None,
+        )
+        self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
+
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this run.
 
@@ -388,6 +407,19 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
+
+    def _iter_list_spatials(self) -> Iterable[tuple[str, SpatialAsset]]:
+        spatial_rids_by_ref_name = self._list_datasource_rids("spatial")
+        spatials_by_rids = {
+            rid: SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, rid))
+            for rid in spatial_rids_by_ref_name.values()
+        }
+        for ref_name, rid in spatial_rids_by_ref_name.items():
+            yield (ref_name, spatials_by_rids[rid])
+
+    def list_spatials(self) -> Sequence[tuple[str, SpatialAsset]]:
+        """List a sequence of refname, SpatialAsset tuples associated with this Run."""
+        return list(self._iter_list_spatials())
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
@@ -448,6 +480,25 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             raise ValueError(f"No video with ref name '{ref_name}' found for this run")
 
         return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
+
+    def get_spatial(self, ref_name: str) -> SpatialAsset:
+        """Get a spatial asset for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            SpatialAsset associated with the ref name.
+
+        Raises:
+            ValueError: If no spatial asset reference exists with the provided name.
+        """
+        spatial_rids_by_ref_name = self._list_datasource_rids("spatial")
+        spatial_rid = spatial_rids_by_ref_name.get(ref_name)
+        if spatial_rid is None:
+            raise ValueError(f"No spatial asset with ref name '{ref_name}' found for this run")
+
+        return SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, spatial_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
