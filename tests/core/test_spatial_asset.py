@@ -123,5 +123,7 @@ def test_create_spatial_asset_builds_request_and_returns_asset() -> None:
     assert req.type_metadata.point_cloud.sensor_model == "OS1-128"
     assert req.type_metadata.point_cloud.scan_pattern == scout_spatial_api.ScanPattern.ROTATING
     assert req.source_handle.s3 == "s3://bucket/scan.csv"
+    assert req.labels == ["lidar"]
+    assert req.properties == {"k": "v"}
     assert isinstance(asset, SpatialAsset)
     assert asset.rid == "ri.scout.x.spatial.abc"

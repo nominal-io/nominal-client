@@ -181,7 +181,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     ) -> None:
         """Remove data sources from this run.
 
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        The list data_sources can contain Connection, Dataset, Video, or SpatialAsset instances, or rids as string.
         """
         ref_names = ref_names or []
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
@@ -196,13 +196,15 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             )
             for ref_name, rds in conjure_run.data_sources.items()
             if ref_name not in ref_names
-            and (
-                rds.data_source.dataset
-                or rds.data_source.connection
-                or rds.data_source.video
-                or rds.data_source.spatial
+            and all(
+                rid not in data_source_rids
+                for rid in (
+                    rds.data_source.dataset,
+                    rds.data_source.connection,
+                    rds.data_source.video,
+                    rds.data_source.spatial,
+                )
             )
-            not in data_source_rids
         }
 
         updated_run = self._clients.run.update_run(
