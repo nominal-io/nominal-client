@@ -10,6 +10,7 @@ import pytest
 from dagger_client.models import SamplerType
 from nominal_api import scout_spatial_api
 
+from nominal.core import SpatialAsset
 from nominal.core.exceptions import NominalIngestError
 from nominal.ouster import spatial
 
@@ -69,7 +70,7 @@ def dagger_mocks() -> Iterator[_DaggerMocks]:
 
 @dataclass
 class _UploadResult:
-    rid: str
+    asset: SpatialAsset
     clients: MagicMock
     workspace: MagicMock
     dagger: _DaggerMocks
@@ -88,9 +89,21 @@ def uploaded(
     clients, workspace = make_clients()
     nominal_client = MagicMock()
     nominal_client._clients = clients
-    clients.spatial.create.return_value = MagicMock(rid="ri.scout.cerulean-staging.spatial.abc-123")
 
-    rid = spatial.upload_point_cloud(
+    # The create response is the full Spatial bean that SpatialAsset._from_conjure hydrates from.
+    created = MagicMock()
+    created.rid = "ri.scout.cerulean-staging.spatial.abc-123"
+    created.title = "my-cloud"
+    created.description = "a test"
+    created.labels = ["lidar"]
+    created.properties = {"site": "north"}
+    created.is_archived = False
+    created.dagger_uuid = "dagger-model-uuid"
+    created.created_at = 1_700_000_000_000_000_000
+    created.created_by = "ri.scout.cerulean-staging.user.abc"
+    clients.spatial.create.return_value = created
+
+    asset = spatial.upload_point_cloud(
         nominal_client,
         csv_path,
         name="my-cloud",
@@ -102,7 +115,7 @@ def uploaded(
         resolution_mm=10.0,
         scan_pattern=spatial.ScanPattern.ROTATING,
     )
-    return _UploadResult(rid=rid, clients=clients, workspace=workspace, dagger=dagger_mocks)
+    return _UploadResult(asset=asset, clients=clients, workspace=workspace, dagger=dagger_mocks)
 
 
 def test_extract_rid_locator_uuid_from_full_rid() -> None:
@@ -318,9 +331,11 @@ def test_dagger_base_url_resolves_proxy_path(base_url: str) -> None:
     assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
 
 
-def test_upload_point_cloud_returns_created_spatial_rid(uploaded: _UploadResult) -> None:
-    """Returns the RID of the spatial asset created for the upload."""
-    assert uploaded.rid == "ri.scout.cerulean-staging.spatial.abc-123"
+def test_upload_point_cloud_returns_spatial_asset(uploaded: _UploadResult) -> None:
+    """Returns a SpatialAsset hydrated from the create response."""
+    assert isinstance(uploaded.asset, SpatialAsset)
+    assert uploaded.asset.rid == "ri.scout.cerulean-staging.spatial.abc-123"
+    assert uploaded.asset.name == "my-cloud"
 
 
 def test_upload_point_cloud_uploads_csv_under_resolved_workspace(uploaded: _UploadResult) -> None:

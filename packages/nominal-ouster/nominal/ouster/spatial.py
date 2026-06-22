@@ -36,6 +36,7 @@ from nominal.core._types import PathLike
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileTypes
+from nominal.core.spatial_asset import SpatialAsset
 
 if TYPE_CHECKING:
     from nominal.core.client import NominalClient
@@ -87,7 +88,7 @@ def upload_point_cloud(
     resolution_mm: float | None = None,
     scan_pattern: ScanPattern | None = None,
     column_types: Mapping[str, ColumnDataType] | None = None,
-) -> str:
+) -> SpatialAsset:
     """Upload a CSV point cloud file and trigger spatial import into Dagger.
 
     The CSV must contain at minimum x, y, z columns (case-insensitive). The
@@ -104,7 +105,7 @@ def upload_point_cloud(
     ``ScanPattern.ROTATING``.
 
     Returns:
-        The spatial asset RID.
+        The created spatial asset.
 
     Raises:
         FileNotFoundError: If ``path`` does not exist.
@@ -197,7 +198,7 @@ def upload_point_cloud(
     )
 
     spatial = clients.spatial.create(clients.auth_header, create_request)
-    return spatial.rid
+    return SpatialAsset._from_conjure(clients, spatial)
 
 
 def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
