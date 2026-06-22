@@ -29,7 +29,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.spatial_asset import SpatialAsset
+from nominal.core.spatial_asset import DaggerModel, PointCloudMetadata, ScanPattern, SpatialAsset, SpatialMetadata
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
@@ -55,6 +55,7 @@ __all__ = [
     "DataReviewBuilder",
     "Dataset",
     "DatasetFile",
+    "DaggerModel",
     "DataSource",
     "DataStream",
     "DockerImageSource",
@@ -72,10 +73,13 @@ __all__ = [
     "Comment",
     "NominalClient",
     "poll_until_ingestion_completed",
+    "PointCloudMetadata",
     "Run",
+    "ScanPattern",
     "SearchEventOriginType",
     "Secret",
     "SpatialAsset",
+    "SpatialMetadata",
     "TagDetails",
     "TimestampMetadata",
     "Unit",

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import scout_spatial, scout_spatial_api
 from typing_extensions import Self
@@ -10,6 +11,78 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+class ScanPattern(Enum):
+    """Point-cloud scan pattern, wrapping `nominal_api.scout_spatial_api.ScanPattern`."""
+
+    FLASH = "FLASH"
+    MECHANICAL = "MECHANICAL"
+    ROTATING = "ROTATING"
+    SOLID_STATE = "SOLID_STATE"
+    UNKNOWN = "UNKNOWN"
+
+    def _to_conjure(self) -> scout_spatial_api.ScanPattern:
+        return _SCAN_PATTERN_TO_CONJURE[self]
+
+    @classmethod
+    def _from_conjure(cls, value: scout_spatial_api.ScanPattern) -> ScanPattern:
+        return _SCAN_PATTERN_FROM_CONJURE.get(value, cls.UNKNOWN)
+
+
+_SCAN_PATTERN_TO_CONJURE: Mapping[ScanPattern, scout_spatial_api.ScanPattern] = {
+    ScanPattern.FLASH: scout_spatial_api.ScanPattern.FLASH,
+    ScanPattern.MECHANICAL: scout_spatial_api.ScanPattern.MECHANICAL,
+    ScanPattern.ROTATING: scout_spatial_api.ScanPattern.ROTATING,
+    ScanPattern.SOLID_STATE: scout_spatial_api.ScanPattern.SOLID_STATE,
+    ScanPattern.UNKNOWN: scout_spatial_api.ScanPattern.UNKNOWN,
+}
+_SCAN_PATTERN_FROM_CONJURE: Mapping[scout_spatial_api.ScanPattern, ScanPattern] = {
+    v: k for k, v in _SCAN_PATTERN_TO_CONJURE.items()
+}
+
+
+@dataclass(frozen=True)
+class PointCloudMetadata:
+    """Point-cloud-specific metadata for a spatial asset."""
+
+    sensor_model: str | None = None
+    coordinate_system: str | None = None
+    resolution_mm: float | None = None
+    scan_pattern: ScanPattern | None = None
+
+    def _to_conjure(self) -> scout_spatial_api.SpatialTypeMetadata:
+        return scout_spatial_api.SpatialTypeMetadata(
+            point_cloud=scout_spatial_api.PointCloudMetadata(
+                sensor_model=self.sensor_model,
+                coordinate_system=self.coordinate_system,
+                resolution_mm=self.resolution_mm,
+                scan_pattern=None if self.scan_pattern is None else self.scan_pattern._to_conjure(),
+            )
+        )
+
+
+SpatialMetadata: TypeAlias = PointCloudMetadata
+
+
+def _spatial_metadata_from_conjure(type_metadata: scout_spatial_api.SpatialTypeMetadata) -> SpatialMetadata:
+    point_cloud = type_metadata.point_cloud
+    if point_cloud is None:
+        return PointCloudMetadata()
+    return PointCloudMetadata(
+        sensor_model=point_cloud.sensor_model,
+        coordinate_system=point_cloud.coordinate_system,
+        resolution_mm=point_cloud.resolution_mm,
+        scan_pattern=None if point_cloud.scan_pattern is None else ScanPattern._from_conjure(point_cloud.scan_pattern),
+    )
+
+
+@dataclass(frozen=True)
+class DaggerModel:
+    """A reference to a created Dagger model plus the uploaded source's location."""
+
+    dagger_uuid: str
+    source_handle: str | None = None
 
 
 @dataclass(frozen=True)

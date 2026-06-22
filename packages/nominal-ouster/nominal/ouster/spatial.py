@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Mapping, Sequence, get_args
 
@@ -36,7 +35,7 @@ from nominal.core._types import PathLike
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileTypes
-from nominal.core.spatial_asset import SpatialAsset
+from nominal.core.spatial_asset import ScanPattern, SpatialAsset
 
 if TYPE_CHECKING:
     from nominal.core.client import NominalClient
@@ -47,28 +46,6 @@ logger = logging.getLogger(__name__)
 # combined-service. `NominalClient._api_base_url` is the bare host (no `/api`
 # suffix), so the constant must carry the full proxy prefix.
 _DAGGER_PROXY_PATH = "/api/dagger"
-
-
-class ScanPattern(Enum):
-    """Point-cloud scan pattern, wrapping `nominal_api.scout_spatial_api.ScanPattern`."""
-
-    FLASH = "FLASH"
-    MECHANICAL = "MECHANICAL"
-    ROTATING = "ROTATING"
-    SOLID_STATE = "SOLID_STATE"
-    UNKNOWN = "UNKNOWN"
-
-    def _to_conjure(self) -> scout_spatial_api.ScanPattern:
-        return _SCAN_PATTERN_TO_CONJURE[self]
-
-
-_SCAN_PATTERN_TO_CONJURE: Mapping[ScanPattern, scout_spatial_api.ScanPattern] = {
-    ScanPattern.FLASH: scout_spatial_api.ScanPattern.FLASH,
-    ScanPattern.MECHANICAL: scout_spatial_api.ScanPattern.MECHANICAL,
-    ScanPattern.ROTATING: scout_spatial_api.ScanPattern.ROTATING,
-    ScanPattern.SOLID_STATE: scout_spatial_api.ScanPattern.SOLID_STATE,
-    ScanPattern.UNKNOWN: scout_spatial_api.ScanPattern.UNKNOWN,
-}
 
 # Per-column data type accepted in `upload_point_cloud`'s `column_types` override
 # and produced by the CSV sampling classifier.
