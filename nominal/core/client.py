@@ -292,12 +292,12 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
         """
         raw_workspace = self._clients.resolve_workspace(workspace_rid)
-        return Workspace._from_conjure(raw_workspace)
+        return Workspace._from_conjure(self._clients, raw_workspace)
 
     def list_workspaces(self) -> Sequence[Workspace]:
         """Return all workspaces visible to the current user"""
         return [
-            Workspace._from_conjure(raw_workspace)
+            Workspace._from_conjure(self._clients, raw_workspace)
             for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
         ]
 
