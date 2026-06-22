@@ -81,3 +81,7 @@ class SpatialAsset(HasRid, RefreshableMixin[scout_spatial_api.Spatial]):
             _clients=clients,
             created_by_rid=raw_spatial.created_by,
         )
+
+
+def _get_spatial(clients: SpatialAsset._Clients, rid: str) -> scout_spatial_api.Spatial:
+    return clients.spatial.get(clients.auth_header, rid)

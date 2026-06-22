@@ -38,11 +38,12 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.spatial_asset import SpatialAsset, _get_spatial
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
-ScopeType: TypeAlias = Connection | Dataset | Video
+ScopeType: TypeAlias = Connection | Dataset | Video | SpatialAsset
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     class _Clients(
         DataSource._Clients,
         Video._Clients,
+        SpatialAsset._Clients,
         Attachment._Clients,
         Event._Clients,
         Workbook._Clients,
@@ -159,9 +161,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """List scopes associated with this asset.
 
         Returns:
-            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video.
+            (data_scope_name, scope) pairs, where scope can be a dataset, connection, video, or spatial asset.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self.list_videos(), *self.list_spatials())
 
     def remove_data_scopes(
         self,
@@ -192,7 +194,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             if ds.data_scope_name not in scope_names_to_remove
             and all(
                 rid not in scope_rids_to_remove
-                for rid in (ds.data_source.dataset, ds.data_source.connection, ds.data_source.video)
+                for rid in (
+                    ds.data_source.dataset,
+                    ds.data_source.connection,
+                    ds.data_source.video,
+                    ds.data_source.spatial,
+                )
             )
         ]
 
@@ -277,6 +284,24 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
                     series_tags={**series_tags} if series_tags else {},
                 )
+            ]
+        )
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_spatial(self, data_scope_name: str, spatial: SpatialAsset | str) -> None:
+        """Add a spatial asset to this asset.
+
+        Assets map "data_scope_name" (the name within the asset for the data) to a SpatialAsset (or a spatial asset
+        rid). The same type of spatial asset should use the same data scope name across assets, since checklists and
+        templates use data scope names to reference data.
+        """
+        request = scout_asset_api.AddDataScopesToAssetRequest(
+            data_scopes=[
+                scout_asset_api.CreateAssetDataScope(
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(spatial=rid_from_instance_or_string(spatial)),
+                    series_tags={},
+                ),
             ]
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
@@ -524,6 +549,25 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
         return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
+    def get_spatial(self, data_scope_name: str) -> SpatialAsset:
+        """Retrieve a spatial asset by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            SpatialAsset associated with the data scope name.
+
+        Raises:
+            ValueError: If no spatial data scope exists with the provided name.
+        """
+        spatial_rids = self._scope_rids("spatial")
+        spatial_rid = spatial_rids.get(data_scope_name)
+        if spatial_rid is None:
+            raise ValueError(f"No spatial asset with data scope name '{data_scope_name}' found for this asset")
+
+        return SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, spatial_rid))
+
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
@@ -560,6 +604,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         scope_rid = self._scope_rids(scope_type="video")
         return [
             (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def list_spatials(self) -> Sequence[tuple[str, SpatialAsset]]:
+        """List the spatial assets associated with this asset.
+        Returns (data_scope_name, spatial_asset) pairs for each spatial asset.
+        """
+        scope_rid = self._scope_rids(scope_type="spatial")
+        return [
+            (scope, SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, rid)))
             for (scope, rid) in scope_rid.items()
         ]
 
