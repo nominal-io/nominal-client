@@ -5,7 +5,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence, TypeAlias
 
-from nominal_api import scout_spatial, scout_spatial_api
+from nominal_api import api, scout_spatial, scout_spatial_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -153,6 +153,32 @@ class SpatialAsset(HasRid, RefreshableMixin[scout_spatial_api.Spatial]):
             _clients=clients,
             created_by_rid=raw_spatial.created_by,
         )
+
+
+def _create_spatial_asset(
+    auth_header: str,
+    spatial_service: scout_spatial.SpatialService,
+    name: str,
+    *,
+    dagger_model: DaggerModel,
+    metadata: SpatialMetadata,
+    description: str | None,
+    labels: Sequence[str],
+    properties: Mapping[str, str] | None,
+    workspace_rid: str,
+) -> scout_spatial_api.Spatial:
+    request = scout_spatial_api.CreateSpatialRequest(
+        title=name,
+        dagger_uuid=dagger_model.dagger_uuid,
+        type_metadata=metadata._to_conjure(),
+        labels=list(labels),
+        properties=dict(properties) if properties else {},
+        marking_rids=[],
+        description=description,
+        source_handle=None if dagger_model.source_handle is None else api.Handle(s3=dagger_model.source_handle),
+        workspace=workspace_rid,
+    )
+    return spatial_service.create(auth_header, request)
 
 
 def _get_spatial(clients: SpatialAsset._Clients, rid: str) -> scout_spatial_api.Spatial:

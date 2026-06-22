@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from nominal_api import scout_spatial_api
 
 from nominal.core.spatial_asset import (
+    DaggerModel,
     PointCloudMetadata,
     ScanPattern,
     SpatialAsset,
@@ -80,3 +81,49 @@ def test_spatial_asset_from_conjure_builds_typed_metadata() -> None:
 
     assert asset.metadata == PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING)
     assert not hasattr(asset, "sensor_model")
+
+
+def test_create_spatial_asset_builds_request_and_returns_asset() -> None:
+    """create_spatial_asset posts a CreateSpatialRequest with the dagger uuid, metadata, and source handle."""
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    clients.resolve_default_workspace_rid.return_value = "ri.scout.x.workspace.w"
+    created = MagicMock()
+    created.rid = "ri.scout.x.spatial.abc"
+    created.title = "scan"
+    created.description = "d"
+    created.labels = []
+    created.properties = {}
+    created.is_archived = False
+    created.dagger_uuid = "dagger-uuid"
+    created.created_at = 1_700_000_000_000_000_000
+    created.created_by = "ri.user.1"
+    created.type_metadata = scout_spatial_api.SpatialTypeMetadata(
+        point_cloud=scout_spatial_api.PointCloudMetadata(sensor_model="OS1-128")
+    )
+    clients.spatial.create.return_value = created
+    nominal_client = MagicMock()
+    nominal_client._clients = clients
+
+    from nominal.core.client import NominalClient
+
+    asset = NominalClient.create_spatial_asset(
+        nominal_client,
+        "scan",
+        dagger_model=DaggerModel(dagger_uuid="dagger-uuid", source_handle="s3://bucket/scan.csv"),
+        metadata=PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING),
+        description="d",
+        labels=["lidar"],
+        properties={"k": "v"},
+    )
+
+    clients.spatial.create.assert_called_once()
+    req = clients.spatial.create.call_args.args[1]
+    assert req.title == "scan"
+    assert req.dagger_uuid == "dagger-uuid"
+    assert req.workspace == "ri.scout.x.workspace.w"
+    assert req.type_metadata.point_cloud.sensor_model == "OS1-128"
+    assert req.type_metadata.point_cloud.scan_pattern == scout_spatial_api.ScanPattern.ROTATING
+    assert req.source_handle.s3 == "s3://bucket/scan.csv"
+    assert isinstance(asset, SpatialAsset)
+    assert asset.rid == "ri.scout.x.spatial.abc"
