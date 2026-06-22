@@ -28,14 +28,14 @@ from dagger_client.models import (
 from dagger_client.models import (
     FseAttributeTypeType3 as _FseTypeInt,
 )
-from nominal_api import api, ingest_api, scout_spatial_api
+from nominal_api import ingest_api
 
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileTypes
-from nominal.core.spatial_asset import ScanPattern, SpatialAsset
+from nominal.core.spatial_asset import DaggerModel
 
 if TYPE_CHECKING:
     from nominal.core.client import NominalClient
@@ -47,56 +47,33 @@ logger = logging.getLogger(__name__)
 # suffix), so the constant must carry the full proxy prefix.
 _DAGGER_PROXY_PATH = "/api/dagger"
 
-# Per-column data type accepted in `upload_point_cloud`'s `column_types` override
+# Per-column data type accepted in `create_dagger_model`'s `column_types` override
 # and produced by the CSV sampling classifier.
 ColumnDataType = Literal["int", "real", "string"]
 
 
-def upload_point_cloud(
+def create_dagger_model(
     client: NominalClient,
-    path: PathLike,
-    name: str | None = None,
+    csv_path: PathLike,
     *,
-    description: str | None = None,
-    labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
-    sensor_model: str | None = None,
-    coordinate_system: str | None = None,
-    resolution_mm: float | None = None,
-    scan_pattern: ScanPattern | None = None,
     column_types: Mapping[str, ColumnDataType] | None = None,
-) -> SpatialAsset:
-    """Upload a CSV point cloud file and trigger spatial import into Dagger.
+) -> DaggerModel:
+    """Upload a point-cloud CSV and import it into a Dagger model.
 
-    The CSV must contain at minimum x, y, z columns (case-insensitive). The
-    remaining columns are auto-classified as int/real/string by sampling the
-    first ~1000 data rows.
-
-    Pass ``column_types`` to override inference for any column whose early
-    rows would mislead the classifier (e.g. a float column with an
-    integer-valued first row). Keys are CSV column names; values are
-    ``"int"``, ``"real"``, or ``"string"``. Geometry columns (x/y/z) are
-    silently ignored if listed. Unknown column names raise ``ValueError``.
-
-    Pass ``scan_pattern`` as a :class:`ScanPattern` member, e.g.
-    ``ScanPattern.ROTATING``.
+    The CSV must contain at minimum x, y, z columns (case-insensitive); remaining columns
+    are auto-classified as int/real/string by sampling the first ~1000 data rows. Pass
+    ``column_types`` to override inference for specific columns.
 
     Returns:
-        The created spatial asset.
+        A `DaggerModel` referencing the created model (uuid + the uploaded CSV's s3 source handle).
 
     Raises:
-        FileNotFoundError: If ``path`` does not exist.
-        ValueError: If ``column_types`` references unknown columns or invalid types.
+        FileNotFoundError: If ``csv_path`` does not exist.
         NominalIngestError: If the Dagger object-space or import request fails.
     """
-    path = Path(path)
+    path = Path(csv_path)
     if not path.exists():
         raise FileNotFoundError(f"No such file: {path}")
-
-    if name is None:
-        name = path.stem
-
-    scan_pattern_value = scan_pattern._to_conjure() if scan_pattern is not None else None
 
     clients = client._clients
 
@@ -153,29 +130,7 @@ def upload_point_cloud(
             f"status={import_resp.status_code} body={import_resp.content!r}"
         )
 
-    type_metadata = scout_spatial_api.SpatialTypeMetadata(
-        point_cloud=scout_spatial_api.PointCloudMetadata(
-            sensor_model=sensor_model,
-            coordinate_system=coordinate_system,
-            resolution_mm=resolution_mm,
-            scan_pattern=scan_pattern_value,
-        )
-    )
-
-    create_request = scout_spatial_api.CreateSpatialRequest(
-        title=name,
-        dagger_uuid=str(model_uuid),
-        type_metadata=type_metadata,
-        labels=list(labels),
-        properties=dict(properties) if properties else {},
-        marking_rids=[],
-        description=description,
-        source_handle=api.Handle(s3=s3_path),
-        workspace=workspace_rid,
-    )
-
-    spatial = clients.spatial.create(clients.auth_header, create_request)
-    return SpatialAsset._from_conjure(clients, spatial)
+    return DaggerModel(dagger_uuid=str(model_uuid), source_handle=s3_path)
 
 
 def _presign_download(clients: ClientsBunch, s3_path: str) -> str:

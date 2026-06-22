@@ -8,9 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from dagger_client.models import SamplerType
-from nominal_api import scout_spatial_api
 
-from nominal.core import SpatialAsset
 from nominal.core.exceptions import NominalIngestError
 from nominal.ouster import spatial
 
@@ -49,73 +47,66 @@ class _DaggerMocks:
     authenticated_client: MagicMock
     put_object_space: MagicMock
     post_import: MagicMock
-    create_spatial_request: MagicMock
 
 
 @pytest.fixture
 def dagger_mocks() -> Iterator[_DaggerMocks]:
-    """Patch the upload + dagger integration so upload_point_cloud runs without any network calls."""
+    """Patch the upload + dagger integration so create_dagger_model runs without network."""
     with (
         patch.object(spatial, "upload_multipart_file", return_value=_FAKE_S3_PATH) as upload,
         patch.object(spatial, "AuthenticatedClient") as authenticated_client,
         patch("nominal.ouster.spatial.put_object_space.sync_detailed", return_value=MagicMock(status_code=200)) as put,
         patch("nominal.ouster.spatial.post_import.sync_detailed", return_value=MagicMock(status_code=202)) as post,
-        patch(
-            "nominal.ouster.spatial.scout_spatial_api.CreateSpatialRequest",
-            side_effect=lambda **kwargs: kwargs,
-        ) as create_request,
     ):
-        yield _DaggerMocks(upload, authenticated_client, put, post, create_request)
+        yield _DaggerMocks(upload, authenticated_client, put, post)
 
 
-@dataclass
-class _UploadResult:
-    asset: SpatialAsset
-    clients: MagicMock
-    workspace: MagicMock
-    dagger: _DaggerMocks
-
-
-@pytest.fixture
-def uploaded(
+def test_create_dagger_model_returns_uuid_and_source_handle(
     tmp_path: Path,
     make_clients: Callable[..., tuple[MagicMock, MagicMock]],
     dagger_mocks: _DaggerMocks,
-) -> _UploadResult:
-    """Run upload_point_cloud once with representative args and expose the result + mocks for assertions."""
+) -> None:
+    """create_dagger_model uploads the CSV, imports it, and returns the model uuid + source handle."""
     csv_path = tmp_path / "ouster.csv"
     csv_path.write_text("x,y,z,time,reflectivity\n1.0,2.0,3.0,1700000000.0,42\n")
-
     clients, workspace = make_clients()
     nominal_client = MagicMock()
     nominal_client._clients = clients
 
-    # The create response is the full Spatial bean that SpatialAsset._from_conjure hydrates from.
-    created = MagicMock()
-    created.rid = "ri.scout.cerulean-staging.spatial.abc-123"
-    created.title = "my-cloud"
-    created.description = "a test"
-    created.labels = ["lidar"]
-    created.properties = {"site": "north"}
-    created.is_archived = False
-    created.dagger_uuid = "dagger-model-uuid"
-    created.created_at = 1_700_000_000_000_000_000
-    created.created_by = "ri.scout.cerulean-staging.user.abc"
-    clients.spatial.create.return_value = created
+    model = spatial.create_dagger_model(nominal_client, csv_path)
 
-    asset = spatial.upload_point_cloud(
-        nominal_client,
-        csv_path,
-        name="my-cloud",
-        description="a test",
-        labels=["lidar"],
-        properties={"site": "north"},
-        sensor_model="Ouster OS1-128",
-        coordinate_system="ENU",
-        resolution_mm=10.0,
-        scan_pattern=spatial.ScanPattern.ROTATING,
-    )
-    return _UploadResult(asset=asset, clients=clients, workspace=workspace, dagger=dagger_mocks)
+    assert model.source_handle == _FAKE_S3_PATH
+    # dagger_uuid is the model_uuid passed to the import POST
+    assert model.dagger_uuid == str(dagger_mocks.post_import.call_args.kwargs["model_uuid"])
+    dagger_mocks.upload_multipart_file.assert_called_once()
+    import_request = dagger_mocks.post_import.call_args.kwargs["body"]
+    assert import_request.source_uri == _PRESIGNED_URL
+    assert import_request.columns.geometry == [0, 1, 2]
+    assert import_request.columns.real == [3]
+    assert import_request.columns.int_ == [4]
+
+
+def test_create_dagger_model_raises_on_missing_file() -> None:
+    """create_dagger_model raises FileNotFoundError when the CSV path does not exist."""
+    with pytest.raises(FileNotFoundError):
+        spatial.create_dagger_model(MagicMock(), "/no/such/path.csv")
+
+
+def test_create_dagger_model_propagates_dagger_failure(
+    tmp_path: Path,
+    make_clients: Callable[..., tuple[MagicMock, MagicMock]],
+    dagger_mocks: _DaggerMocks,
+) -> None:
+    """Raises NominalIngestError when the dagger import endpoint returns a non-202 status."""
+    csv_path = tmp_path / "ouster.csv"
+    csv_path.write_text("x,y,z,t\n1,2,3,4\n")
+    clients, _ = make_clients()
+    nominal_client = MagicMock()
+    nominal_client._clients = clients
+    dagger_mocks.post_import.return_value = MagicMock(status_code=500, content=b"upstream broken")
+
+    with pytest.raises(NominalIngestError, match="Dagger POST"):
+        spatial.create_dagger_model(nominal_client, csv_path)
 
 
 def test_extract_rid_locator_uuid_from_full_rid() -> None:
@@ -329,93 +320,3 @@ def test_dagger_base_url_resolves_proxy_path(base_url: str) -> None:
     clients = MagicMock()
     clients._api_base_url = base_url
     assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
-
-
-def test_upload_point_cloud_returns_spatial_asset(uploaded: _UploadResult) -> None:
-    """Returns a SpatialAsset hydrated from the create response."""
-    assert isinstance(uploaded.asset, SpatialAsset)
-    assert uploaded.asset.rid == "ri.scout.cerulean-staging.spatial.abc-123"
-    assert uploaded.asset.name == "my-cloud"
-
-
-def test_upload_point_cloud_uploads_csv_under_resolved_workspace(uploaded: _UploadResult) -> None:
-    """Uploads the CSV under the resolved workspace and presigns it for dagger to fetch."""
-    uploaded.dagger.upload_multipart_file.assert_called_once()
-    assert uploaded.dagger.upload_multipart_file.call_args.args[1] == uploaded.workspace.rid
-
-    uploaded.clients.upload.sign_download.assert_called_once()
-    sign_call = uploaded.clients.upload.sign_download.call_args
-    assert sign_call.args[0] == "Bearer test-token-123"
-    assert sign_call.args[1].path == _FAKE_S3_PATH
-
-
-def test_upload_point_cloud_builds_dagger_client_with_proxy_and_bare_token(uploaded: _UploadResult) -> None:
-    """Builds the dagger client against the /api/dagger proxy with the bearer-stripped token."""
-    uploaded.dagger.authenticated_client.assert_called_once()
-    kwargs = uploaded.dagger.authenticated_client.call_args.kwargs
-    assert kwargs["base_url"] == "https://api.nominal.test/api/dagger"
-    assert kwargs["token"] == "test-token-123"
-
-
-def test_upload_point_cloud_imports_classified_columns_into_object_space(uploaded: _UploadResult) -> None:
-    """Ensures the workspace object space and posts an import with the presigned URI and classified columns."""
-    workspace_uuid = uuid.UUID(_WORKSPACE_LOCATOR)
-    org_uuid = uuid.UUID(_ORG_UUID)
-
-    put_kwargs = uploaded.dagger.put_object_space.call_args.kwargs
-    assert put_kwargs["id"] == workspace_uuid
-    assert put_kwargs["tenant"] == org_uuid
-
-    post_kwargs = uploaded.dagger.post_import.call_args.kwargs
-    assert post_kwargs["tenant"] == org_uuid
-    assert post_kwargs["object_space"] == workspace_uuid
-    import_request = post_kwargs["body"]
-    assert import_request.source_uri == _PRESIGNED_URL
-    assert import_request.columns.geometry == [0, 1, 2]
-    assert import_request.columns.real == [3]
-    assert import_request.columns.int_ == [4]
-
-
-def test_upload_point_cloud_creates_spatial_asset_with_metadata(uploaded: _UploadResult) -> None:
-    """Creates the spatial asset with the title, labels, properties, sensor metadata, and dagger UUID."""
-    create_kwargs = uploaded.dagger.create_spatial_request.call_args.kwargs
-    post_kwargs = uploaded.dagger.post_import.call_args.kwargs
-
-    assert create_kwargs["title"] == "my-cloud"
-    assert create_kwargs["dagger_uuid"] == str(post_kwargs["model_uuid"])
-    assert create_kwargs["description"] == "a test"
-    assert create_kwargs["labels"] == ["lidar"]
-    assert create_kwargs["properties"] == {"site": "north"}
-    assert create_kwargs["marking_rids"] == []
-    assert create_kwargs["workspace"] == uploaded.workspace.rid
-    assert create_kwargs["source_handle"].s3 == _FAKE_S3_PATH
-
-    point_cloud = create_kwargs["type_metadata"].point_cloud
-    assert point_cloud.sensor_model == "Ouster OS1-128"
-    assert point_cloud.coordinate_system == "ENU"
-    assert point_cloud.resolution_mm == 10.0
-    assert point_cloud.scan_pattern == scout_spatial_api.ScanPattern.ROTATING
-
-
-def test_upload_point_cloud_raises_on_missing_file() -> None:
-    """Raises FileNotFoundError when the CSV path does not exist."""
-    with pytest.raises(FileNotFoundError):
-        spatial.upload_point_cloud(MagicMock(), "/no/such/path.csv")
-
-
-def test_upload_point_cloud_propagates_dagger_failure(
-    tmp_path: Path,
-    make_clients: Callable[..., tuple[MagicMock, MagicMock]],
-    dagger_mocks: _DaggerMocks,
-) -> None:
-    """Raises NominalIngestError when the dagger import endpoint returns a non-202 status."""
-    csv_path = tmp_path / "ouster.csv"
-    csv_path.write_text("x,y,z,t\n1,2,3,4\n")
-
-    clients, _ = make_clients()
-    nominal_client = MagicMock()
-    nominal_client._clients = clients
-    dagger_mocks.post_import.return_value = MagicMock(status_code=500, content=b"upstream broken")
-
-    with pytest.raises(NominalIngestError, match="Dagger POST"):
-        spatial.upload_point_cloud(nominal_client, csv_path)
