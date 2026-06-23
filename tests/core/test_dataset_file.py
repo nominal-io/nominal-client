@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -89,6 +90,23 @@ def test_poll_until_ingestion_completed_raises_ingest_error_on_failure():
     mock_sleep.assert_not_called()
 
 
+def test_poll_until_ingestion_completed_warns_and_waits_through_unknown_status(caplog: pytest.LogCaptureFixture):
+    """Unknown future statuses preserve historical polling behavior while emitting a warning."""
+    unknown_status = cast(IngestStatus, "future_status")
+    file = _make_file("file-1", [unknown_status, IngestStatus.SUCCESS])
+
+    with (
+        caplog.at_level(logging.WARNING, logger="nominal.core.dataset_file"),
+        patch("nominal.core.dataset_file.time.sleep") as mock_sleep,
+    ):
+        result = DatasetFile.poll_until_ingestion_completed(file, interval=timedelta(seconds=2))
+
+    assert result.id == file.id
+    assert result.ingest_status is IngestStatus.SUCCESS
+    mock_sleep.assert_called_once_with(2.0)
+    assert "unknown ingest status future_status" in caplog.text
+
+
 def test_wait_for_files_to_ingest_sleeps_between_polls_without_timeout():
     """Polls once and sleeps once when a single file transitions from IN_PROGRESS to SUCCESS."""
     file = _make_file("file-1", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
@@ -126,15 +144,19 @@ def test_wait_for_files_to_ingest_treats_deleted_statuses_as_done():
     assert not not_done
 
 
-def test_wait_for_files_to_ingest_treats_unknown_status_as_done_for_compatibility():
+def test_wait_for_files_to_ingest_treats_unknown_status_as_done_for_compatibility(
+    caplog: pytest.LogCaptureFixture,
+):
     """Unknown future statuses preserve historical wait behavior by counting as done."""
     unknown_status = cast(IngestStatus, "future_status")
     file = _make_file("file-1", [unknown_status])
 
-    done, not_done = wait_for_files_to_ingest([file])
+    with caplog.at_level(logging.WARNING, logger="nominal.core.dataset_file"):
+        done, not_done = wait_for_files_to_ingest([file])
 
     assert done == [file]
     assert not not_done
+    assert "unknown ingest status future_status" in caplog.text
 
 
 def test_wait_for_files_to_ingest_puts_failed_file_in_done_with_all_completed():

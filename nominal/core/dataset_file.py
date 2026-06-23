@@ -111,9 +111,11 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                     # Ingestion still proceeding
                     pass
                 case _:
-                    raise NominalIngestError(
-                        f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
-                        f"dataset_rid={self.dataset_rid!r}"
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; continuing to poll.",
+                        self.id,
+                        self.dataset_rid,
+                        self.ingest_status,
                     )
 
             # Sleep for specified interval
