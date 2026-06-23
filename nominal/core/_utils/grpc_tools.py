@@ -19,15 +19,23 @@ import ssl
 import sys
 from abc import abstractmethod
 from collections import namedtuple
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterator, TypeVar
 from urllib.parse import urlparse
 
 import grpc  # type: ignore[import-untyped]
 from conjure_python_client import ServiceConfiguration
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
+from nominal.core.exceptions import (
+    NominalAuthenticationError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalNotFoundError,
+    NominalPermissionDeniedError,
+)
 
 TStub = TypeVar("TStub")
 
@@ -286,3 +294,28 @@ def create_grpc_stub_factory(
         return stub_class(channel)  # type: ignore[call-arg]  # grpc stub constructors are untyped
 
     return factory
+
+
+_GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
+    grpc.StatusCode.PERMISSION_DENIED: NominalPermissionDeniedError,
+    grpc.StatusCode.UNAUTHENTICATED: NominalAuthenticationError,
+    grpc.StatusCode.NOT_FOUND: NominalNotFoundError,
+    grpc.StatusCode.INVALID_ARGUMENT: NominalInvalidArgumentError,
+}
+
+
+@contextmanager
+def translate_grpc_errors() -> Iterator[None]:
+    """Re-raise any ``grpc.RpcError`` raised in the block as a ``NominalError``.
+
+    Maps the common status codes to dedicated ``NominalError`` subclasses and falls back to the base
+    ``NominalError`` otherwise, preserving the gRPC status code/details in the message and chaining the
+    original error. Wrap gRPC calls with this so callers never see ``grpc.RpcError``. A call site needing
+    status-specific behavior may either catch the mapped subclass around this block, or ``except
+    grpc.RpcError`` itself inside the block (its handler runs first).
+    """
+    try:
+        yield
+    except grpc.RpcError as e:
+        exc_type = _GRPC_STATUS_TO_EXCEPTION.get(e.code(), NominalError)
+        raise exc_type(f"{e.code()}: {e.details()}") from e

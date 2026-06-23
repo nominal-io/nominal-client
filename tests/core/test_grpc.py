@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 from conjure_python_client import ServiceConfiguration
 
+import grpc  # noqa: E402
+
 from nominal.core._utils import grpc_tools
 from nominal.core._utils.grpc_tools import (
     _AuthMetadataInterceptor,
@@ -16,9 +18,17 @@ from nominal.core._utils.grpc_tools import (
     api_base_url_to_grpc_target,
     create_grpc_channel,
     create_grpc_stub_factory,
+    translate_grpc_errors,
 )
 from nominal.core._utils.networking import StaticHeaderProvider
-from nominal.core.exceptions import HeaderConflictError
+from nominal.core.exceptions import (
+    HeaderConflictError,
+    NominalAuthenticationError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalNotFoundError,
+    NominalPermissionDeniedError,
+)
 
 
 def _config() -> ServiceConfiguration:
@@ -198,3 +208,48 @@ def test_create_grpc_stub_factory_binds_stubs_to_one_shared_channel(monkeypatch)
     first_channel = stub_class.call_args_list[0].args[0]
     assert first_channel == "intercepted-channel"
     assert first_channel is stub_class.call_args_list[1].args[0]
+
+
+class _FakeRpcError(grpc.RpcError):
+    def __init__(self, code: grpc.StatusCode, details: str = "boom") -> None:
+        self._code = code
+        self._details = details
+
+    def code(self) -> grpc.StatusCode:
+        return self._code
+
+    def details(self) -> str:
+        return self._details
+
+
+@pytest.mark.parametrize(
+    "code, expected",
+    [
+        (grpc.StatusCode.PERMISSION_DENIED, NominalPermissionDeniedError),
+        (grpc.StatusCode.UNAUTHENTICATED, NominalAuthenticationError),
+        (grpc.StatusCode.NOT_FOUND, NominalNotFoundError),
+        (grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
+    ],
+)
+def test_translate_grpc_errors_maps_known_status_codes(code, expected) -> None:
+    """Each mapped status code raises its dedicated NominalError subclass, chained to the RpcError."""
+    with pytest.raises(expected) as exc_info:
+        with translate_grpc_errors():
+            raise _FakeRpcError(code)
+    assert isinstance(exc_info.value.__cause__, grpc.RpcError)
+    assert "boom" in str(exc_info.value)
+
+
+def test_translate_grpc_errors_falls_back_to_base_for_unmapped_code() -> None:
+    """An unmapped status code raises the base NominalError, not a subclass."""
+    with pytest.raises(NominalError) as exc_info:
+        with translate_grpc_errors():
+            raise _FakeRpcError(grpc.StatusCode.INTERNAL)
+    assert type(exc_info.value) is NominalError
+
+
+def test_translate_grpc_errors_passes_through_on_success() -> None:
+    """A block that does not raise is unaffected."""
+    with translate_grpc_errors():
+        value = 5
+    assert value == 5
