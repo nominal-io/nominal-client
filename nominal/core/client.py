@@ -300,7 +300,7 @@ class NominalClient:
         Raises:
             NominalConfigError: Raises a NominalConfigError if no workspace provided and no default workspace can
                 be resolved.
-            conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
+            NominalPermissionDeniedError: Requested workspace is unavailable to the user.
         """
         return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 

@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 from conjure_python_client import ServiceConfiguration
-
-import grpc  # noqa: E402
 
 from nominal.core._utils import grpc_tools
 from nominal.core._utils.grpc_tools import (

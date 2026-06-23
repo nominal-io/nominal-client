@@ -10,10 +10,10 @@ from nominal_api import (
     scout_units_api,
     timeseries_logicalseries_api,
 )
-from nominal.protos.units.v1 import units_pb2, units_pb2_grpc
 from typing_extensions import Self
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.units.v1 import units_pb2, units_pb2_grpc
 
 logger = logging.getLogger(__name__)
 

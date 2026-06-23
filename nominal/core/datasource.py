@@ -10,7 +10,6 @@ from nominal_api import (
     authentication_api,
     datasource_api,
     ingest_api,
-    scout,
     scout_catalog,
     scout_compute_api,
     scout_dataexport_api,

@@ -12,9 +12,6 @@ from nominal_api import (
     scout_assets,
     scout_run_api,
 )
-
-from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from typing_extensions import Self
 
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
@@ -28,6 +25,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
@@ -37,6 +35,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:

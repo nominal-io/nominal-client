@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from nominal.core.unit import Unit, _available_units, _error_on_invalid_units
 from nominal.protos.units.v1 import units_pb2
-
-import pytest
 
 
 def test_available_units_flattens_units_by_property() -> None:
