@@ -8,7 +8,7 @@ from conjure_python_client import ConjureHTTPError
 from requests import HTTPError, Response
 
 from nominal.cli.util.verify_connection import validate_token_url
-from nominal.core.exceptions import NominalConfigError
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalNotFoundError
 
 
 def _conjure_error(status_code: int) -> ConjureHTTPError:
@@ -74,16 +74,16 @@ def test_validate_token_url_surfaces_missing_default_workspace() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status_code", "expected_message"),
+    ("exc", "expected_message"),
     [
-        (404, "base_url may be incorrect"),
-        (500, "misconfiguration; received status_code=500"),
+        (NominalNotFoundError("not found"), "base_url may be incorrect"),
+        (NominalError("13: internal"), "misconfiguration resolving the workspace"),
     ],
 )
-def test_validate_token_url_surfaces_workspace_lookup_http_failures(status_code: int, expected_message: str) -> None:
-    """Workspace lookup HTTP failures should be translated into actionable click errors."""
+def test_validate_token_url_surfaces_workspace_lookup_failures(exc: NominalError, expected_message: str) -> None:
+    """Workspace lookup gRPC-translated failures should be translated into actionable click errors."""
     client = MagicMock()
-    client.get_workspace.side_effect = _conjure_error(status_code)
+    client.get_workspace.side_effect = exc
 
     with (
         patch("nominal.cli.util.verify_connection.NominalClient.create", return_value=client),

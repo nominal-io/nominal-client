@@ -85,6 +85,7 @@ def _error_on_invalid_units(unit_map: UnitMapping, unit_service: units_pb2_grpc.
         resolved = unit_service.GetBatchUnits(units_pb2.GetBatchUnitsRequest(units=requested))
     valid_units = set(resolved.responses.keys())
 
+    # None means "clear this channel's unit" and is intentionally excluded from invalid-unit detection.
     invalid_units = set(channels_to_units.values()) - valid_units - {None}
 
     for channel, unit_symbol in channels_to_units.items():

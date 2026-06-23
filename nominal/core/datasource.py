@@ -265,6 +265,7 @@ class DataSource(HasRid):
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
+            NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
         channel_names = set(channel.name for channel in self.get_channels())

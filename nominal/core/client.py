@@ -269,7 +269,8 @@ class NominalClient:
             case Workspace(rid=search_rid):
                 return search_rid
             case str() as search_rid:
-                # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+                # NOTE: raises a NominalError (e.g. NominalPermissionDeniedError) if the given rid is not visible
+                # to the user (or doesn't exist period)
                 return self._clients.resolve_workspace(search_rid).rid
             case WorkspaceSearchType.ALL:
                 return None

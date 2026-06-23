@@ -36,3 +36,14 @@ def test_error_on_invalid_units_passes_when_all_resolve() -> None:
     stub.GetBatchUnits.return_value = resp
 
     _error_on_invalid_units({"ch1": "C"}, stub)  # no raise
+
+
+def test_error_on_invalid_units_none_is_not_invalid() -> None:
+    """None (clear unit) should not be treated as an invalid unit symbol."""
+    stub = MagicMock()
+    resp = units_pb2.GetBatchUnitsResponse()
+    resp.responses["C"].CopyFrom(units_pb2.Unit(name="coulomb", symbol="C"))
+    stub.GetBatchUnits.return_value = resp
+
+    # ch1=None means "clear unit" — must not raise even though None is not in valid_units
+    _error_on_invalid_units({"ch1": None, "ch2": "C"}, stub)  # no raise
