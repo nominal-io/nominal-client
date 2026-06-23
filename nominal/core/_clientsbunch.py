@@ -171,6 +171,16 @@ class ClientsBunch:
     roles: roles_pb2_grpc.RoleServiceStub
     sandbox_workspace: scout_sandbox_api.SandboxWorkspaceService
 
+    def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
+        """Fetch a single workspace by its RID via the gRPC workspace service.
+
+        Centralizes the one place the untyped gRPC stub's response is narrowed to the proto `Workspace` type.
+        """
+        with translate_grpc_errors():
+            return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
+                workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
+            ).workspace
+
     def _fetch_default_workspace(self) -> workspaces_pb2.Workspace:
         """Fetch the workspace object this client should treat as its default.
 
@@ -179,10 +189,7 @@ class ClientsBunch:
         """
         # User has explicitly configured a default workspace in the config profile -> retrieve that workspace
         if self.workspace_rid is not None:
-            with translate_grpc_errors():
-                return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
-                    workspaces_pb2.GetWorkspaceRequest(workspace_rid=self.workspace_rid)
-                ).workspace
+            return self._get_workspace_by_rid(self.workspace_rid)
 
         # User has not explicitly configured a default workspace in the config profile -> get tenant-wide default
         with translate_grpc_errors():
@@ -247,10 +254,7 @@ class ClientsBunch:
                 return raw_workspace
 
         # Retrieve the workspace by rid
-        with translate_grpc_errors():
-            return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
-                workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
-            ).workspace
+        return self._get_workspace_by_rid(workspace_rid)
 
     @classmethod
     def from_config(
