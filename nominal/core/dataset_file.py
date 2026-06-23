@@ -312,11 +312,11 @@ class IngestStatus(Enum):
         match status.type:
             case "success":
                 ingest_status = cls.SUCCESS
-            case "in_progress":
+            case "inProgress":
                 ingest_status = cls.IN_PROGRESS
             case "error":
                 ingest_status = cls.FAILED
-            case "deletion_in_progress":
+            case "deletionInProgress":
                 ingest_status = cls.DELETION_IN_PROGRESS
             case "deleted":
                 ingest_status = cls.DELETED

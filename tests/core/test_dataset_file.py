@@ -213,16 +213,24 @@ def test_batch_refresh_reports_no_missing_files_when_all_present():
 @pytest.mark.parametrize(
     ("raw_status", "expected_status"),
     [
+        (api.IngestStatusV2(success=api.SuccessResult()), IngestStatus.SUCCESS),
+        (
+            api.IngestStatusV2(error=api.ErrorResult(message="failed", error_type="UNKNOWN_ERROR")),
+            IngestStatus.FAILED,
+        ),
+        (api.IngestStatusV2(in_progress=api.InProgressResult()), IngestStatus.IN_PROGRESS),
+        (api.IngestStatusV2(deletion_in_progress=api.DeletionInProgress()), IngestStatus.DELETION_IN_PROGRESS),
+        (api.IngestStatusV2(deleted=api.Deleted()), IngestStatus.DELETED),
         (api.IngestStatusV2(queued=api.Queued()), IngestStatus.QUEUED),
         (api.IngestStatusV2(parsing=api.Parsing()), IngestStatus.PARSING),
         (api.IngestStatusV2(ingesting=api.Ingesting()), IngestStatus.INGESTING),
     ],
 )
-def test_ingest_status_from_conjure_maps_new_pending_statuses(
+def test_ingest_status_from_conjure_maps_generated_statuses(
     raw_status: api.IngestStatusV2,
     expected_status: IngestStatus,
 ):
-    """The client enum maps every new generated non-terminal ingest status."""
+    """The client enum maps every generated ingest status."""
     assert IngestStatus._from_conjure(raw_status) is expected_status
 
 
