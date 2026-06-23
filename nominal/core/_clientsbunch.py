@@ -34,11 +34,13 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
+from nominal.core._utils.grpc_tools import create_grpc_stub_factory
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
+from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
@@ -164,6 +166,7 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    roles: roles_pb2_grpc.RoleServiceStub
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -259,6 +262,14 @@ class ClientsBunch:
                 header_provider=header_provider,
             )(service_class)
 
+        grpc_factory = create_grpc_stub_factory(
+            api_base_url=base_url,
+            service_config=cfg,
+            user_agent=agent,
+            auth_header=f"Bearer {token}",
+            header_provider=header_provider,
+        )
+
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
@@ -297,6 +308,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
         )
 
 

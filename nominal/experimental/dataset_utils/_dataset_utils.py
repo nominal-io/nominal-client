@@ -1,10 +1,9 @@
 from collections.abc import Mapping, Sequence
-from typing import cast
-from urllib.parse import urlparse
 
 from nominal_api import scout_catalog
 
 from nominal.core import Dataset, NominalClient, User
+from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
 def create_dataset_with_uuid(
@@ -55,10 +54,7 @@ def create_dataset_with_uuid(
 
 
 def get_dataset_owner_rid(dataset: Dataset) -> str:
-    """Retrieve the owner RID for a dataset via the role service.
-
-    This helper is experimental because it depends on optional gRPC proto packages
-    (`nominal[protos]`) that are not part of the default install surface.
+    """Retrieve the owner RID for a dataset via the Role Service.
 
     Args:
         dataset: Dataset to resolve the owner RID for.
@@ -67,57 +63,16 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
         The RID of the user with the dataset owner role.
 
     Raises:
-        ImportError: `nominal[protos]` is required for this lookup.
         ValueError: No owner assignment could be resolved for the dataset.
     """
-    owner_rid = _lookup_dataset_owner_rid(
-        auth_header=dataset._clients.auth_header,
-        api_base_url=dataset._clients._api_base_url,  # type: ignore[attr-defined]
-        dataset_rid=dataset.rid,
-    )
-    if owner_rid is None:
-        raise ValueError(f"Could not resolve an owner for dataset {dataset.rid}")
-    return owner_rid
+    response = dataset._clients.roles.GetResourceRoles(roles_pb2.GetResourceRolesRequest(resource=dataset.rid))
+    for assignment in response.role_assignments:
+        if assignment.role == roles_pb2.ROLE_OWNER and assignment.user_rid:
+            return str(assignment.user_rid)
+    raise ValueError(f"Could not resolve an owner for dataset {dataset.rid}")
 
 
 def get_dataset_owner(dataset: Dataset) -> User:
-    """Retrieve the owner user for a dataset via the role service."""
+    """Retrieve the owner user for a dataset via the Role Service."""
     owner_rid = get_dataset_owner_rid(dataset)
-    return User._from_conjure(
-        dataset._clients.authentication.get_user(dataset._clients.auth_header, owner_rid)  # type: ignore[attr-defined]
-    )
-
-
-def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
-    try:
-        import grpc  # type: ignore[import-untyped]
-        from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
-    except ImportError as ex:
-        raise ImportError("nominal[protos] is required to use experimental dataset owner lookup") from ex
-
-    target = _api_base_url_to_grpc_target(api_base_url)
-    metadata = (("authorization", auth_header),)
-    channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
-
-    with channel:
-        stub = roles_pb2_grpc.RoleServiceStub(channel)  # type: ignore[no-untyped-call]
-        response = stub.GetResourceRoles(
-            roles_pb2.GetResourceRolesRequest(resource=dataset_rid),
-            metadata=metadata,
-        )
-
-    for assignment in response.role_assignments:
-        if assignment.role != roles_pb2.ROLE_OWNER:
-            continue
-        user_rid = assignment.user_rid
-        if user_rid:
-            return cast(str, user_rid)
-
-    return None
-
-
-def _api_base_url_to_grpc_target(api_base_url: str) -> str:
-    parsed = urlparse(api_base_url)
-    if not parsed.netloc:
-        raise ValueError(f"Could not derive gRPC target from API base URL: {api_base_url}")
-    return parsed.netloc
+    return User._from_conjure(dataset._clients.authentication.get_user(dataset._clients.auth_header, owner_rid))

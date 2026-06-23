@@ -213,8 +213,32 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_service.get_default_workspace.assert_not_called()
 
 
-def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
+def test_from_config_wires_roles_via_the_grpc_factory(monkeypatch):
+    """from_config builds `roles` through the gRPC stub factory, forwarding the client's auth and config."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
+    roles_stub = object()
+    grpc_factory = MagicMock(return_value=MagicMock(return_value=roles_stub))
+    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_stub_factory", grpc_factory)
+
+    clients = ClientsBunch.from_config(
+        ServiceConfiguration(uris=["https://api.nominal.test"]),
+        "https://api.nominal.test",
+        "test-agent",
+        "token",
+        None,
+    )
+
+    assert clients.roles is roles_stub
+    assert grpc_factory.call_args.kwargs["auth_header"] == "Bearer token"
+    assert grpc_factory.call_args.kwargs["api_base_url"] == "https://api.nominal.test"
+    assert grpc_factory.call_args.kwargs["header_provider"] is None
+
+
+def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
+    """as_user returns a new client that injects the on-behalf-of header on both the HTTP and gRPC paths."""
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
+    grpc_factory = MagicMock(return_value=MagicMock(return_value=MagicMock(name="roles")))
+    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_stub_factory", grpc_factory)
 
     client = NominalClient(
         _clients=ClientsBunch.from_config(
@@ -237,3 +261,8 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
+    # The impersonation header_provider must also reach the gRPC stub factory (spec section 12); the most
+    # recent factory call is the impersonated client's.
+    header_provider = grpc_factory.call_args.kwargs["header_provider"]
+    assert header_provider is not None
+    assert header_provider.headers()[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
