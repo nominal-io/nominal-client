@@ -143,6 +143,9 @@ class ChannelSyncReport:
     planned_ranges: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
     """For ``phase="plan"``: ``{channel_name: [(start, end), ...]}`` of the missing ranges that a full
     run would sync. Empty for the other phases."""
+    channels_already_present: list[str] = field(default_factory=list)
+    """Channels in the source that were not short in the destination (already fully present).
+    Populated for ``phase="plan"`` and ``phase="download"``."""
 
 
 @contextlib.contextmanager
@@ -288,6 +291,7 @@ def sync_missing_channel_data(
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)
 
     report.channels_missing = len(missing)
+    report.channels_already_present = sorted(set(source_counts) - set(missing))
     if not missing:
         logger.info("Destination is already complete over the window; nothing to sync")
         return report
