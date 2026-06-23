@@ -107,14 +107,17 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                         f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset "
                         f"'{self.dataset_rid!r}': {self._ingest_error_message or 'no error details available'}"
                     )
-                case IngestStatus.IN_PROGRESS:
+                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
                     # Ingestion still proceeding
                     pass
                 case _:
-                    raise NominalIngestError(
-                        f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
-                        f"dataset_rid={self.dataset_rid!r}"
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                        self.id,
+                        self.dataset_rid,
+                        self.ingest_status,
                     )
+                    break
 
             # Sleep for specified interval
             logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
@@ -303,20 +306,32 @@ class IngestStatus(Enum):
     FAILED = "FAILED"
     DELETION_IN_PROGRESS = "DELETION_IN_PROGRESS"
     DELETED = "DELETED"
+    QUEUED = "QUEUED"
+    PARSING = "PARSING"
+    INGESTING = "INGESTING"
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
-        if status.success is not None:
-            return cls.SUCCESS
-        elif status.in_progress is not None:
-            return cls.IN_PROGRESS
-        elif status.error is not None:
-            return cls.FAILED
-        elif status.deletion_in_progress is not None:
-            return cls.DELETION_IN_PROGRESS
-        elif status.deleted is not None:
-            return cls.DELETED
-        raise ValueError(f"Unknown ingest status: {status.type}")
+        match status.type:
+            case "success":
+                ingest_status = cls.SUCCESS
+            case "inProgress":
+                ingest_status = cls.IN_PROGRESS
+            case "error":
+                ingest_status = cls.FAILED
+            case "deletionInProgress":
+                ingest_status = cls.DELETION_IN_PROGRESS
+            case "deleted":
+                ingest_status = cls.DELETED
+            case "queued":
+                ingest_status = cls.QUEUED
+            case "parsing":
+                ingest_status = cls.PARSING
+            case "ingesting":
+                ingest_status = cls.INGESTING
+            case _:
+                raise ValueError(f"Unknown ingest status: {status.type}")
+        return ingest_status
 
 
 class IngestWaitType(Enum):
@@ -409,8 +424,16 @@ def wait_for_files_to_ingest(
                     )
                     done.append(file)
                     has_failed = True
-                case IngestStatus.IN_PROGRESS:
+                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
                     next_not_done.append(file)
+                case _:
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                        file.id,
+                        file.dataset_rid,
+                        file.ingest_status,
+                    )
+                    done.append(file)
 
         not_done = next_not_done
 
