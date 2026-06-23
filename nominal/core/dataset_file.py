@@ -424,10 +424,13 @@ def wait_for_files_to_ingest(
                 case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
                     next_not_done.append(file)
                 case _:
-                    raise NominalIngestError(
-                        f"Unknown ingest status {file.ingest_status} for file={file.id!r} and "
-                        f"dataset_rid={file.dataset_rid!r}"
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                        file.id,
+                        file.dataset_rid,
+                        file.ingest_status,
                     )
+                    done.append(file)
 
         not_done = next_not_done
 

@@ -126,6 +126,17 @@ def test_wait_for_files_to_ingest_treats_deleted_statuses_as_done():
     assert not not_done
 
 
+def test_wait_for_files_to_ingest_treats_unknown_status_as_done_for_compatibility():
+    """Unknown future statuses preserve historical wait behavior by counting as done."""
+    unknown_status = cast(IngestStatus, "future_status")
+    file = _make_file("file-1", [unknown_status])
+
+    done, not_done = wait_for_files_to_ingest([file])
+
+    assert done == [file]
+    assert not not_done
+
+
 def test_wait_for_files_to_ingest_puts_failed_file_in_done_with_all_completed():
     """In default ALL_COMPLETED mode, a failed file is moved to done rather than raising."""
     file = _make_file("file-1", [IngestStatus.FAILED])
