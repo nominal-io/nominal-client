@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
-import conjure_python_client
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -43,6 +42,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
@@ -99,6 +99,7 @@ from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
+from nominal.protos.units.v1 import units_pb2
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -1027,7 +1028,7 @@ class NominalClient:
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
-        return _available_units(self._clients.auth_header, self._clients.units)
+        return _available_units(self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
         """Get details of the given unit symbol, or none if the symbol is not recognized by Nominal.
@@ -1043,19 +1044,17 @@ class NominalClient:
             if no such unit symbol matches.
 
         """
-        try:
-            api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
-            return None if api_unit is None else Unit._from_conjure(api_unit)
-        except conjure_python_client.ConjureHTTPError as ex:
-            logger.debug("Error getting unit '%s': '%s'", unit_symbol, ex)
-            return None
+        with translate_grpc_errors():
+            response = self._clients.units.GetUnit(units_pb2.GetUnitRequest(unit=unit_symbol))
+        return Unit._from_proto(response.unit) if response.HasField("unit") else None
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
-        return [
-            Unit._from_conjure(unit)
-            for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
-        ]
+        with translate_grpc_errors():
+            response = self._clients.units.GetCommensurableUnits(
+                units_pb2.GetCommensurableUnitsRequest(unit=unit_symbol)
+            )
+        return [Unit._from_proto(unit) for unit in response.units]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""

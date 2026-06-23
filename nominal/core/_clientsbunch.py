@@ -41,6 +41,7 @@ from nominal.core._utils.networking import (
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
@@ -147,7 +148,7 @@ class ClientsBunch:
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
     run: scout.RunService
-    units: scout.UnitsService
+    units: units_pb2_grpc.UnitsServiceStub
     upload: upload_api.UploadService
     video: scout_video.VideoService
     video_file: scout_video.VideoFileService
@@ -289,7 +290,7 @@ class ClientsBunch:
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
             run=client_factory(scout.RunService),
-            units=client_factory(scout.UnitsService),
+            units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),

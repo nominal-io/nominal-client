@@ -33,6 +33,7 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
     _to_export_timestamp_format,
@@ -70,7 +71,7 @@ class DataSource(HasRid):
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
-        def units(self) -> scout.UnitsService: ...
+        def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         @property
@@ -283,7 +284,7 @@ class DataSource(HasRid):
             return
 
         if not allow_display_only_units:
-            _error_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
+            _error_on_invalid_units(channels_to_units, self._clients.units)
 
         # For each channel / unit combination, create an update request
         update_requests = [
