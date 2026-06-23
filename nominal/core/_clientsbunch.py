@@ -9,7 +9,6 @@ from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
-    comments_api,
     event,
     ingest_api,
     scout,
@@ -41,6 +40,7 @@ from nominal.core._utils.networking import (
 )
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
@@ -160,7 +160,7 @@ class ClientsBunch:
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
     event: event.EventService
-    comments: comments_api.CommentsService
+    comments: comments_pb2_grpc.CommentsServiceStub
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: security_api_workspace.WorkspaceService
@@ -302,7 +302,7 @@ class ClientsBunch:
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
-            comments=client_factory(comments_api.CommentsService),
+            comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),

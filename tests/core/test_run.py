@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 from nominal_api import api
 
+from nominal.core.comment import Comment
 from nominal.core.run import Run
+from nominal.protos.comments.v1 import comments_pb2
 
 
 @pytest.fixture
@@ -69,3 +71,40 @@ def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
 
     assert result == []
     mock_clients.event.search_events.assert_not_called()
+
+
+def _make_run() -> Run:
+    clients = MagicMock()
+    clients.auth_header = "Bearer test-token"
+    return Run(
+        rid="ri.run.1",
+        name="r",
+        description="",
+        properties={},
+        labels=[],
+        links=[],
+        run_number=1,
+        start=0,
+        end=1,
+        assets=[],
+        created_at=0,
+        _clients=clients,
+    )
+
+
+def test_add_comment_builds_proto_request_and_returns_comment() -> None:
+    """add_comment posts a RUN-scoped CreateCommentRequest and returns the converted Comment."""
+    run = _make_run()
+    created = comments_pb2.Comment(rid="ri.comment.1", author_rid="ri.user.1", content="hi")
+    created.created_at.FromNanoseconds(1_700_000_000_000_000_000)
+    run._clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(comment=created)  # type: ignore[attr-defined]
+
+    result = run.add_comment("hi")
+
+    request = run._clients.comments.CreateComment.call_args.args[0]  # type: ignore[attr-defined]
+    assert request.content == "hi"
+    assert request.parent.resource.resource_type == comments_pb2.ResourceType.RUN
+    assert request.parent.resource.resource_rid == "ri.run.1"
+    assert result == Comment(
+        rid="ri.comment.1", author_rid="ri.user.1", content="hi", created_at=1_700_000_000_000_000_000
+    )

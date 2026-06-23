@@ -7,13 +7,14 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    comments_api,
     event,
     scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
+
+from nominal.protos.comments.v1 import comments_pb2_grpc
 from typing_extensions import Self
 
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
@@ -72,7 +73,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def comments(self) -> comments_api.CommentsService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
         @property

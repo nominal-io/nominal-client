@@ -6,13 +6,15 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    comments_api,
     event,
     scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
+
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from typing_extensions import Self
 
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
@@ -68,7 +70,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def comments(self) -> comments_api.CommentsService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def event(self) -> event.EventService: ...
         @property
@@ -135,18 +137,19 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         Returns:
             The created `Comment`.
         """
-        request = comments_api.CreateCommentRequest(
-            parent=comments_api.CommentParent(
-                resource=comments_api.CommentParentResource(
-                    resource_type=comments_api.ResourceType.RUN,
+        request = comments_pb2.CreateCommentRequest(
+            parent=comments_pb2.CommentParent(
+                resource=comments_pb2.CommentParentResource(
+                    resource_type=comments_pb2.ResourceType.RUN,
                     resource_rid=self.rid,
                 )
             ),
             content=content,
             attachments=[],
         )
-        api_comment = self._clients.comments.create_comment(self._clients.auth_header, request)
-        return Comment._from_conjure(api_comment)
+        with translate_grpc_errors():
+            response = self._clients.comments.CreateComment(request)
+        return Comment._from_proto(response.comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()
