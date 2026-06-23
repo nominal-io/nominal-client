@@ -423,7 +423,8 @@ def _validate_demo_workbook_metadata(source_client: NominalClient, migration_res
 
 def _create_sandbox_workspace_service(target_client: NominalClient) -> SandboxWorkspaceService:
     """Create a SandboxWorkspaceService by reusing the connection details from the target client."""
-    existing_service = target_client._clients.workspace
+    # `workspace` is now a gRPC stub; borrow conjure connection details from the catalog service instead.
+    existing_service = target_client._clients.catalog
     return SandboxWorkspaceService(
         requests_session=existing_service._requests_session,
         uris=existing_service._uris,

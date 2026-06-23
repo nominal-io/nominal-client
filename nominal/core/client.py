@@ -99,12 +99,13 @@ from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
-from nominal.protos.units.v1 import units_pb2
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.units.v1 import units_pb2
+from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -301,15 +302,13 @@ class NominalClient:
                 be resolved.
             conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
         """
-        raw_workspace = self._clients.resolve_workspace(workspace_rid)
-        return Workspace._from_conjure(raw_workspace)
+        return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 
     def list_workspaces(self) -> Sequence[Workspace]:
         """Return all workspaces visible to the current user"""
-        return [
-            Workspace._from_conjure(raw_workspace)
-            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
-        ]
+        with translate_grpc_errors():
+            response = self._clients.workspace.GetWorkspaces(workspaces_pb2.GetWorkspacesRequest())
+        return [Workspace._from_proto(workspace) for workspace in response.workspaces]
 
     def get_user(self, user_rid: str | None = None) -> User:
         """Retrieve the specified user.

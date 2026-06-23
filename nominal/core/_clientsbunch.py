@@ -23,7 +23,6 @@ from nominal_api import (
     scout_datasource_connection,
     scout_video,
     secrets_api,
-    security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
@@ -33,7 +32,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
-from nominal.core._utils.grpc_tools import create_grpc_stub_factory
+from nominal.core._utils.grpc_tools import create_grpc_stub_factory, translate_grpc_errors
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
@@ -42,6 +41,7 @@ from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
+from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
@@ -131,7 +131,7 @@ class ClientsBunch:
     _token: str = field(repr=False)
     _service_config: ServiceConfiguration = field(repr=False)
 
-    _default_workspace: LazyField[security_api_workspace.Workspace] = field(
+    _default_workspace: LazyField[workspaces_pb2.Workspace] = field(
         default_factory=LazyField,
         init=False,
         repr=False,
@@ -164,12 +164,12 @@ class ClientsBunch:
     comments: comments_pb2_grpc.CommentsServiceStub
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     series_metadata: timeseries_metadata.SeriesMetadataService
-    workspace: security_api_workspace.WorkspaceService
+    workspace: workspaces_pb2_grpc.WorkspaceServiceStub
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
 
-    def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
+    def _fetch_default_workspace(self) -> workspaces_pb2.Workspace:
         """Fetch the workspace object this client should treat as its default.
 
         Pinned clients resolve their configured workspace RID as the default. Unpinned clients fall back to the
@@ -177,12 +177,16 @@ class ClientsBunch:
         """
         # User has explicitly configured a default workspace in the config profile -> retrieve that workspace
         if self.workspace_rid is not None:
-            return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
+            with translate_grpc_errors():
+                return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
+                    workspaces_pb2.GetWorkspaceRequest(workspace_rid=self.workspace_rid)
+                ).workspace
 
         # User has not explicitly configured a default workspace in the config profile -> get tenant-wide default
-        raw_workspace = self.workspace.get_default_workspace(self.auth_header)
-        if raw_workspace is not None:
-            return raw_workspace
+        with translate_grpc_errors():
+            response = self.workspace.GetDefaultWorkspace(workspaces_pb2.GetDefaultWorkspaceRequest())
+        if response.HasField("workspace"):
+            return response.workspace  # type: ignore[no-any-return]
 
         raise NominalConfigError(
             "Could not retrieve default workspace! "
@@ -209,7 +213,7 @@ class ClientsBunch:
         """
         return self._default_workspace.get_or_init(self._fetch_default_workspace).rid
 
-    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace:
+    def resolve_workspace(self, workspace_rid: str | None = None) -> workspaces_pb2.Workspace:
         """Resolve an optionally provided workspace rid to the correct RID to use in requests.
 
         Args:
@@ -226,7 +230,7 @@ class ClientsBunch:
 
         Raises:
             NominalConfigError: If `workspace_rid` is None and no default workspace can be resolved.
-            conjure_python_client.ConjureHTTPError: If an explicit workspace RID is unavailable to the user.
+            NominalPermissionDeniedError: If an explicit workspace RID is unavailable to the user.
         """
         if workspace_rid is None:
             # `_default_workspace` caches the single workspace object this client resolves as "default", whether that
@@ -241,7 +245,10 @@ class ClientsBunch:
                 return raw_workspace
 
         # Retrieve the workspace by rid
-        return self.workspace.get_workspace(self.auth_header, workspace_rid)
+        with translate_grpc_errors():
+            return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
+                workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
+            ).workspace
 
     @classmethod
     def from_config(
@@ -306,7 +313,7 @@ class ClientsBunch:
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
-            workspace=client_factory(security_api_workspace.WorkspaceService),
+            workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
@@ -322,7 +329,7 @@ class HasScoutParams(Protocol):
     def app_base_url(self) -> str: ...
     @property
     def header_provider(self) -> HeaderProvider | None: ...
-    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
+    def resolve_workspace(self, workspace_rid: str | None = None) -> workspaces_pb2.Workspace: ...
     def resolve_default_workspace_rid(self) -> str: ...
 
 
