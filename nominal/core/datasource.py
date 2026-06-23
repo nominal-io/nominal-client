@@ -7,6 +7,7 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     api,
+    authentication_api,
     datasource_api,
     ingest_api,
     scout,
@@ -31,6 +32,7 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
     _to_export_timestamp_format,
@@ -85,6 +87,10 @@ class DataSource(HasRid):
         def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
         def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
+        @property
+        def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
+        @property
+        def roles(self) -> roles_pb2_grpc.RoleServiceStub: ...
 
     def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):

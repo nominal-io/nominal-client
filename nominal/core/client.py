@@ -142,8 +142,11 @@ class NominalClient:
 
         Args:
             profile: profile name in the Nominal config.
-            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
-                certifi's trust store is used.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
@@ -179,8 +182,11 @@ class NominalClient:
             base_url: The URL of the Nominal API platform.
             workspace_rid: Optional workspace RID to pin the client to for operations that require a single
                 workspace. If not provided, those operations lazily resolve a default workspace when required.
-            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
-                certifi's trust store is used.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
@@ -219,8 +225,11 @@ class NominalClient:
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
         token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-            certifi's trust store is used.
+        trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+            transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+            store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+            client works on corporate networks with no extra configuration. On macOS, point this at
+            your corporate CA PEM if you are behind a TLS-inspecting proxy.
         connect_timeout: Timeout for any single request to the Nominal API.
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
