@@ -5,6 +5,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import api
 
 from nominal.core.dataset_file import (
     DatasetFile,
@@ -62,6 +63,19 @@ def test_poll_until_ingestion_completed_sleeps_until_success():
     mock_sleep.assert_called_once_with(2.0)
 
 
+@pytest.mark.parametrize("pending_status", [IngestStatus.QUEUED, IngestStatus.PARSING, IngestStatus.INGESTING])
+def test_poll_until_ingestion_completed_sleeps_through_new_pending_statuses(pending_status: IngestStatus):
+    """Polls through new non-terminal ingest states until the file transitions to SUCCESS."""
+    file = _make_file("file-1", [pending_status, IngestStatus.SUCCESS])
+
+    with patch("nominal.core.dataset_file.time.sleep") as mock_sleep:
+        result = DatasetFile.poll_until_ingestion_completed(file, interval=timedelta(seconds=2))
+
+    assert result.id == file.id
+    assert result.ingest_status is IngestStatus.SUCCESS
+    mock_sleep.assert_called_once_with(2.0)
+
+
 def test_poll_until_ingestion_completed_raises_ingest_error_on_failure():
     """Raises NominalIngestError immediately when the file status is FAILED."""
     file = _make_file("file-1", [IngestStatus.FAILED])
@@ -78,6 +92,21 @@ def test_poll_until_ingestion_completed_raises_ingest_error_on_failure():
 def test_wait_for_files_to_ingest_sleeps_between_polls_without_timeout():
     """Polls once and sleeps once when a single file transitions from IN_PROGRESS to SUCCESS."""
     file = _make_file("file-1", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
+
+    with patch("nominal.core.dataset_file.time.sleep") as mock_sleep:
+        done, not_done = wait_for_files_to_ingest([file], poll_interval=timedelta(seconds=3))
+
+    assert done == [file]
+    assert not not_done
+    mock_sleep.assert_called_once_with(3.0)
+
+
+@pytest.mark.parametrize("pending_status", [IngestStatus.QUEUED, IngestStatus.PARSING, IngestStatus.INGESTING])
+def test_wait_for_files_to_ingest_keeps_new_pending_statuses_not_done_until_success(
+    pending_status: IngestStatus,
+):
+    """New non-terminal ingest states remain not-done until a later poll reports SUCCESS."""
+    file = _make_file("file-1", [pending_status, IngestStatus.SUCCESS])
 
     with patch("nominal.core.dataset_file.time.sleep") as mock_sleep:
         done, not_done = wait_for_files_to_ingest([file], poll_interval=timedelta(seconds=3))
@@ -179,6 +208,22 @@ def test_batch_refresh_reports_no_missing_files_when_all_present():
     result = _batch_refresh_files([file1, file2])
 
     assert result == set()
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "expected_status"),
+    [
+        (api.IngestStatusV2(queued=api.Queued()), IngestStatus.QUEUED),
+        (api.IngestStatusV2(parsing=api.Parsing()), IngestStatus.PARSING),
+        (api.IngestStatusV2(ingesting=api.Ingesting()), IngestStatus.INGESTING),
+    ],
+)
+def test_ingest_status_from_conjure_maps_new_pending_statuses(
+    raw_status: api.IngestStatusV2,
+    expected_status: IngestStatus,
+):
+    """The client enum maps every new generated non-terminal ingest status."""
+    assert IngestStatus._from_conjure(raw_status) is expected_status
 
 
 def test_wait_for_files_to_ingest_treats_absent_file_as_failed():
