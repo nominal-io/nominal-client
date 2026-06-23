@@ -47,6 +47,18 @@ def normalize_header_provider(headers: HeaderProvider | Mapping[str, str] | None
     return StaticHeaderProvider(headers)
 
 
+def raise_header_conflict(header_key: str) -> None:
+    """Raise when a HeaderProvider tries to override a header the request already set.
+
+    Shared by the HTTP (`HeaderProviderSession`) and gRPC (`_AuthMetadataInterceptor`) paths so the
+    conflict policy and message live in one place.
+    """
+    raise HeaderConflictError(
+        f"HeaderProvider returned header {header_key!r}, but the request already set that header; "
+        "HeaderProvider cannot override explicit request headers."
+    )
+
+
 class HeaderProviderSession(requests.Session):
     def __init__(self, header_provider: HeaderProvider | None = None) -> None:
         super().__init__()
@@ -61,10 +73,7 @@ class HeaderProviderSession(requests.Session):
         request_headers = CaseInsensitiveDict(request.headers or {})
         for key, value in self._header_provider.headers().items():
             if key in request_headers:
-                raise HeaderConflictError(
-                    f"HeaderProvider returned header {key!r}, but the request already set that header; "
-                    "HeaderProvider cannot override explicit request headers."
-                )
+                raise_header_conflict(key)
             prepared.headers[key] = value
         return prepared
 
