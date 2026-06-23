@@ -112,11 +112,12 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                     pass
                 case _:
                     logger.warning(
-                        "Dataset file %s from dataset %s had unknown ingest status %s; continuing to poll.",
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
                         self.id,
                         self.dataset_rid,
                         self.ingest_status,
                     )
+                    break
 
             # Sleep for specified interval
             logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())

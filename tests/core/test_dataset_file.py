@@ -90,8 +90,10 @@ def test_poll_until_ingestion_completed_raises_ingest_error_on_failure():
     mock_sleep.assert_not_called()
 
 
-def test_poll_until_ingestion_completed_warns_and_waits_through_unknown_status(caplog: pytest.LogCaptureFixture):
-    """Unknown future statuses preserve historical polling behavior while emitting a warning."""
+def test_poll_until_ingestion_completed_warns_and_stops_waiting_on_unknown_status(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Unknown future statuses stop waiting after emitting a warning."""
     unknown_status = cast(IngestStatus, "future_status")
     file = _make_file("file-1", [unknown_status, IngestStatus.SUCCESS])
 
@@ -102,8 +104,8 @@ def test_poll_until_ingestion_completed_warns_and_waits_through_unknown_status(c
         result = DatasetFile.poll_until_ingestion_completed(file, interval=timedelta(seconds=2))
 
     assert result.id == file.id
-    assert result.ingest_status is IngestStatus.SUCCESS
-    mock_sleep.assert_called_once_with(2.0)
+    assert result.ingest_status == unknown_status
+    mock_sleep.assert_not_called()
     assert "unknown ingest status future_status" in caplog.text
 
 
