@@ -21,6 +21,7 @@ from nominal_api import (
     scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
+    scout_sandbox_api,
     scout_video,
     secrets_api,
     storage_datasource_api,
@@ -168,6 +169,7 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
+    sandbox_workspace: scout_sandbox_api.SandboxWorkspaceService
 
     def _fetch_default_workspace(self) -> workspaces_pb2.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -317,6 +319,7 @@ class ClientsBunch:
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
+            sandbox_workspace=client_factory(scout_sandbox_api.SandboxWorkspaceService),
         )
 
 
