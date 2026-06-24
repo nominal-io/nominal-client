@@ -89,6 +89,9 @@ nominal-tdms = { workspace = true }
 mis = ["openpyxl>=3.1.0"]
 tdms = ["nominal-tdms>=1.143.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
+compute = [
+    "nominal-compute==0.1282.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
+]
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
 ]
@@ -180,8 +183,6 @@ ignore_missing_imports = true
 module = "nominal_video"
 ignore_missing_imports = true
 
-# nominal-compute is an optional dependency (see nominal.experimental.compute.derived_datasets); it is not
-# installed in CI, so let mypy treat its imports as untyped rather than failing on the missing stub.
 [[tool.mypy.overrides]]
 module = "nominal_compute"
 ignore_missing_imports = true
