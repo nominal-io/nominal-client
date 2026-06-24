@@ -1527,11 +1527,13 @@ class NominalClient:
         workspace_rid: str | None = None,
     ) -> Sequence[NominalHostedExtractor]:
         """Search Nominal Hosted extractors in a workspace, following pagination."""
-        return NominalHostedExtractor._search(
-            self._clients,
-            include_archived=include_archived,
-            file_extension=file_extension,
-            workspace_rid=workspace_rid,
+        return list(
+            NominalHostedExtractor._search(
+                self._clients,
+                include_archived=include_archived,
+                file_extension=file_extension,
+                workspace_rid=workspace_rid,
+            )
         )
 
     def search_container_images(
@@ -1541,7 +1543,7 @@ class NominalClient:
         workspace_rid: str | None = None,
     ) -> Sequence[ContainerImage]:
         """Search container images in a workspace, optionally filtered, following pagination."""
-        return ContainerImage._search(self._clients, filter=filter, workspace_rid=workspace_rid)
+        return list(ContainerImage._search(self._clients, filter=filter, workspace_rid=workspace_rid))
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

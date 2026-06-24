@@ -22,36 +22,34 @@ import them from one place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence
+from typing import Any, Iterable, Protocol, Sequence
 
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
-from nominal.protos.ingest.v2 import containerized_extractor_pb2 as _extractor_pb2
-from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc as _extractor_grpc
-from nominal.protos.registry.v2 import registry_pb2 as _registry_pb2
-from nominal.protos.registry.v2 import registry_pb2_grpc as _registry_grpc
+from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.protos.ingest.v2 import containerized_extractor_pb2 as extractor_pb2
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc as extractor_grpc
+from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.registry.v2 import registry_pb2_grpc as registry_grpc
 
-# The extractor schema leaf types and the image/search messages are the generated protobuf
-# messages from the registry.v2 package. Re-export the leaf types here for one-import convenience.
-FileExtractionInput = _registry_pb2.FileExtractionInput
-FileExtractionParameter = _registry_pb2.FileExtractionParameter
-FileOutputFormat = _registry_pb2.FileOutputFormat
-TimestampMetadata = _registry_pb2.TimestampMetadata
-ContainerImageStatus = _registry_pb2.ContainerImageStatus
-# Filter for searching container images.
-SearchFilter = _registry_pb2.SearchFilter
+# Re-export the registry.v2 schema/query types callers need so they can be imported from one place.
+FileExtractionInput = registry_pb2.FileExtractionInput
+FileExtractionParameter = registry_pb2.FileExtractionParameter
+FileOutputFormat = registry_pb2.FileOutputFormat
+TimestampMetadata = registry_pb2.TimestampMetadata
+ContainerImageStatus = registry_pb2.ContainerImageStatus
+SearchFilter = registry_pb2.SearchFilter
 
 _DEFAULT_PAGE_SIZE = 100
 
 
 class _Clients(HasScoutParams, Protocol):
     @property
-    def nominal_hosted_extractors(self) -> _extractor_grpc.ContainerizedExtractorServiceStub: ...
+    def nominal_hosted_extractors(self) -> extractor_grpc.ContainerizedExtractorServiceStub: ...
     @property
-    def registry(self) -> _registry_grpc.RegistryServiceStub: ...
+    def registry(self) -> registry_grpc.RegistryServiceStub: ...
 
 
 @dataclass(frozen=True)
@@ -72,12 +70,11 @@ class ContainerImage(HasRid):
 
     def delete(self) -> None:
         """Delete this image. Fails if an extractor still references it."""
-        self._clients.registry.DeleteImage(
-            _registry_pb2.DeleteImageRequest(rid=self.rid, workspace_rid=self._workspace_rid)
-        )
+        request = registry_pb2.DeleteImageRequest(rid=self.rid, workspace_rid=self._workspace_rid)
+        self._clients.registry.DeleteImage(request)
 
     @classmethod
-    def _from_proto(cls, clients: _Clients, workspace_rid: str, image: _registry_pb2.ContainerImage) -> Self:
+    def _from_proto(cls, clients: _Clients, workspace_rid: str, image: registry_pb2.ContainerImage) -> Self:
         return cls(
             rid=image.rid,
             tag=image.tag,
@@ -95,20 +92,20 @@ class ContainerImage(HasRid):
         filter: SearchFilter | None = None,
         workspace_rid: str | None = None,
         page_size: int = _DEFAULT_PAGE_SIZE,
-    ) -> Sequence[Self]:
+    ) -> Iterable[Self]:
         resolved_workspace = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
-        images: list[Self] = []
         next_page_token = ""
         while True:
-            request = _registry_pb2.SearchImagesRequest(workspace_rid=resolved_workspace, page_size=page_size)
-            if filter is not None:
-                request.filter.CopyFrom(filter)
-            if next_page_token:
-                request.next_page_token = next_page_token
+            request = registry_pb2.SearchImagesRequest(
+                workspace_rid=resolved_workspace,
+                page_size=page_size,
+                filter=filter,
+                next_page_token=next_page_token,
+            )
             response = clients.registry.SearchImages(request)
-            images.extend(cls._from_proto(clients, resolved_workspace, image) for image in response.images)
+            yield from (cls._from_proto(clients, resolved_workspace, image) for image in response.images)
             if not response.next_page_token:
-                return images
+                return
             next_page_token = response.next_page_token
 
 
@@ -141,15 +138,17 @@ class NominalHostedExtractor(HasRid):
 
         Returns this instance with its fields refreshed from the server response.
         """
-        request = _extractor_pb2.UpdateContainerizedExtractorRequest(rid=self.rid, workspace_rid=self._workspace_rid)
-        if name is not None:
-            request.name = name
-        if description is not None:
-            request.description = description
-        if is_archived is not None:
-            request.is_archived = is_archived
-        if active_container_image_rid is not None:
-            request.active_container_image_rid = active_container_image_rid
+        updates: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "is_archived": is_archived,
+            "active_container_image_rid": active_container_image_rid,
+        }
+        request = extractor_pb2.UpdateContainerizedExtractorRequest(
+            rid=self.rid,
+            workspace_rid=self._workspace_rid,
+            **{key: value for key, value in updates.items() if value is not None},
+        )
         response = self._clients.nominal_hosted_extractors.UpdateContainerizedExtractor(request)
         update_dataclass(self, self._from_proto(self._clients, response.extractor), self.__dataclass_fields__)
         return self
@@ -164,8 +163,7 @@ class NominalHostedExtractor(HasRid):
 
     def set_active_image(self, image: ContainerImage | str) -> Self:
         """Select the image this extractor runs. The image must be ``READY`` and built for it."""
-        image_rid = image.rid if isinstance(image, ContainerImage) else image
-        return self.update(active_container_image_rid=image_rid)
+        return self.update(active_container_image_rid=rid_from_instance_or_string(image))
 
     def register_image(
         self,
@@ -183,7 +181,7 @@ class NominalHostedExtractor(HasRid):
         path as ``object_path``. The returned image starts ``PENDING``; poll :meth:`get_image`
         until it reaches ``READY``, then :meth:`set_active_image`.
         """
-        request = _registry_pb2.CreateImageRequest(
+        request = registry_pb2.CreateImageRequest(
             workspace_rid=self._workspace_rid,
             tag=tag,
             object_path=object_path,
@@ -198,26 +196,24 @@ class NominalHostedExtractor(HasRid):
 
     def get_image(self, rid: str) -> ContainerImage:
         """Fetch a container image registered against this extractor, including its push ``status``."""
-        response = self._clients.registry.GetImage(
-            _registry_pb2.GetImageRequest(rid=rid, workspace_rid=self._workspace_rid)
-        )
+        request = registry_pb2.GetImageRequest(rid=rid, workspace_rid=self._workspace_rid)
+        response = self._clients.registry.GetImage(request)
         return ContainerImage._from_proto(self._clients, self._workspace_rid, response.image)
 
     @classmethod
     def _create(cls, clients: _Clients, name: str, *, description: str | None, workspace_rid: str | None) -> Self:
         resolved_workspace = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
-        request = _extractor_pb2.CreateContainerizedExtractorRequest(workspace_rid=resolved_workspace, name=name)
-        if description is not None:
-            request.description = description
+        request = extractor_pb2.CreateContainerizedExtractorRequest(
+            workspace_rid=resolved_workspace, name=name, description=description
+        )
         response = clients.nominal_hosted_extractors.CreateContainerizedExtractor(request)
         return cls._from_proto(clients, response.extractor)
 
     @classmethod
     def _get(cls, clients: _Clients, rid: str, *, workspace_rid: str | None) -> Self:
         resolved_workspace = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
-        response = clients.nominal_hosted_extractors.GetContainerizedExtractor(
-            _extractor_pb2.GetContainerizedExtractorRequest(rid=rid, workspace_rid=resolved_workspace)
-        )
+        request = extractor_pb2.GetContainerizedExtractorRequest(rid=rid, workspace_rid=resolved_workspace)
+        response = clients.nominal_hosted_extractors.GetContainerizedExtractor(request)
         return cls._from_proto(clients, response.extractor)
 
     @classmethod
@@ -229,28 +225,25 @@ class NominalHostedExtractor(HasRid):
         file_extension: str | None,
         workspace_rid: str | None,
         page_size: int = _DEFAULT_PAGE_SIZE,
-    ) -> Sequence[Self]:
+    ) -> Iterable[Self]:
         resolved_workspace = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
-        extractors: list[Self] = []
         next_page_token = ""
         while True:
-            request = _extractor_pb2.SearchContainerizedExtractorsRequest(
+            request = extractor_pb2.SearchContainerizedExtractorsRequest(
                 workspace_rid=resolved_workspace,
                 include_archived=include_archived,
                 page_size=page_size,
+                file_extension=file_extension,
+                next_page_token=next_page_token,
             )
-            if file_extension is not None:
-                request.file_extension = file_extension
-            if next_page_token:
-                request.next_page_token = next_page_token
             response = clients.nominal_hosted_extractors.SearchContainerizedExtractors(request)
-            extractors.extend(cls._from_proto(clients, extractor) for extractor in response.extractors)
+            yield from (cls._from_proto(clients, extractor) for extractor in response.extractors)
             if not response.next_page_token:
-                return extractors
+                return
             next_page_token = response.next_page_token
 
     @classmethod
-    def _from_proto(cls, clients: _Clients, extractor: _extractor_pb2.ContainerizedExtractor) -> Self:
+    def _from_proto(cls, clients: _Clients, extractor: extractor_pb2.ContainerizedExtractor) -> Self:
         active_image_rid = (
             extractor.active_container_image.rid if extractor.HasField("active_container_image") else None
         )
