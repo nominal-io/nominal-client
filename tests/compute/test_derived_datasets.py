@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from nominal_api import scout_compute_api
@@ -31,12 +31,14 @@ def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
 
 
 def test_bridge_decodes_saved_dataset() -> None:
+    """A saved dataset bridges to the conjure saved-dataset type."""
     nc = pytest.importorskip("nominal_compute")
     bridged = to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc"))
     assert bridged == _conjure_saved("ri.catalog.ws.dataset.abc")
 
 
 def test_bridge_decodes_dataset_transform() -> None:
+    """A dataset transform (time_shift) bridges to the matching conjure type."""
     nc = pytest.importorskip("nominal_compute")
     bridged = to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5)))
     assert isinstance(bridged, scout_compute_api.Dataset)
@@ -46,18 +48,19 @@ def test_bridge_decodes_dataset_transform() -> None:
 # --- lifecycle functions ---
 
 
-def test_create_derived_dataset_sets_derived_definition(monkeypatch: pytest.MonkeyPatch, client: MagicMock) -> None:
+def test_create_derived_dataset_sets_derived_definition(client: MagicMock) -> None:
+    """create_derived_dataset bridges the spec and sets it as the create request's derived definition."""
     nc = pytest.importorskip("nominal_compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc")
     sentinel = object()
-    monkeypatch.setattr(
-        "nominal.experimental.compute.derived_datasets._derived_datasets.Dataset._from_conjure",
-        lambda clients, resp: sentinel,
-    )
     client._clients.resolve_default_workspace_rid.return_value = "ri.workspace.w"
     client._clients.catalog.create_dataset = Mock()
 
-    result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})
+    with patch(
+        "nominal.experimental.compute.derived_datasets._derived_datasets.Dataset._from_conjure",
+        return_value=sentinel,
+    ):
+        result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})
 
     assert result is sentinel
     auth, details = client._clients.catalog.create_dataset.call_args[0]
@@ -72,6 +75,7 @@ def test_create_derived_dataset_sets_derived_definition(monkeypatch: pytest.Monk
 
 
 def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> None:
+    """get_derived_definition forwards the dataset RID and a null commit to the catalog client."""
     result = get_derived_definition(client, "ri.catalog.ws.dataset.abc")
     assert result is client._clients.catalog.get_dataset_derived_definition.return_value
     assert client._clients.catalog.get_dataset_derived_definition.call_args == (
@@ -80,6 +84,7 @@ def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> No
 
 
 def test_get_derived_definition_accepts_dataset_and_commit(client: MagicMock) -> None:
+    """get_derived_definition accepts a Dataset instance and forwards an explicit commit."""
     dataset = MagicMock()
     dataset.rid = "ri.catalog.ws.dataset.abc"
     get_derived_definition(client, dataset, commit="ri.commit.123")
@@ -89,6 +94,7 @@ def test_get_derived_definition_accepts_dataset_and_commit(client: MagicMock) ->
 
 
 def test_commit_derived_definition_builds_request(client: MagicMock) -> None:
+    """commit_derived_definition builds the request with the bridged spec, message, and latest commit."""
     nc = pytest.importorskip("nominal_compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5))
     result = commit_derived_definition(
