@@ -205,6 +205,7 @@ def _run_stream_phase(
     import json
 
     assert options.output_dir is not None
+    output_dir = options.output_dir
 
     type_by_name: dict[str, ChannelDataType] = {}
     if source_dataset is not None:
@@ -212,13 +213,14 @@ def _run_stream_phase(
         type_by_name = {ch.name: dt for ch in all_channels if (dt := ch.data_type) is not None}
 
     if options.tags is None:
-        tags_file = options.output_dir / _TAGS_METADATA_FILE
+        tags_file = output_dir / _TAGS_METADATA_FILE
         if tags_file.exists():
-            options = replace(options, tags=json.loads(tags_file.read_text()))
-            logger.info("Loaded tags from %s: %s", tags_file, dict(options.tags))
+            loaded_tags = json.loads(tags_file.read_text())
+            options = replace(options, tags=loaded_tags)
+            logger.info("Loaded tags from %s: %s", tags_file, loaded_tags)
 
-    logger.info("Streaming pre-downloaded files from %s into the destination", options.output_dir)
-    return _stream_from_dir(destination_dataset, options.output_dir, type_by_name, options)
+    logger.info("Streaming pre-downloaded files from %s into the destination", output_dir)
+    return _stream_from_dir(destination_dataset, output_dir, type_by_name, options)
 
 
 def sync_missing_channel_data(
@@ -328,13 +330,15 @@ def sync_missing_channel_data(
     )
 
     # phase="download": export the missing ranges to output_dir without streaming, then stop. A later
-    # phase="stream" (or phase="all", which reuses size-matched files) ingests them.
+    # phase="stream" ingests them.
     if options.phase == "download":
         logger.info("Downloading %d channel(s) with missing data to %s", len(missing), options.output_dir)
         _stream_missing(handler, destination_dataset, missing, source_by_name, non_precise, options, download_only=True)
         return report
 
-    # phase="all": stream, settle, re-detect, and retry whatever is still short.
+    # phase="all": stream, settle, re-detect, and retry whatever is still short. The phase validation
+    # at the top guarantees a destination here.
+    assert destination_dataset is not None
     _sync_and_retry(
         handler, destination_dataset, missing, source_by_name, non_precise, source_counts, start, end, options, report
     )
@@ -499,11 +503,13 @@ def _stream_missing(
     # advances per processed file -- by the slices that file covers -- so it moves smoothly and only
     # counts data that actually landed (failed exports don't advance it). In download-only mode no
     # write stream is opened; files are downloaded and kept rather than streamed.
-    stream_ctx: contextlib.AbstractContextManager[DataStream | None] = (
-        contextlib.nullcontext(None)
-        if download_only
-        else destination_dataset.get_write_stream(batch_size=options.batch_size)
-    )
+    stream_ctx: contextlib.AbstractContextManager[DataStream | None]
+    if download_only:
+        stream_ctx = contextlib.nullcontext(None)
+    else:
+        # Not download-only -> the caller (phase "all"/retry) always passes a destination.
+        assert destination_dataset is not None
+        stream_ctx = destination_dataset.get_write_stream(batch_size=options.batch_size)
     with (
         _progress_bar(options.show_progress, total_slices, description) as advance,
         stream_ctx as stream,
