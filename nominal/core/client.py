@@ -74,6 +74,7 @@ from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.containerized_extractor import (
     ContainerImage,
+    ContainerImageStatus,
     ContainerizedExtractor,
     _search_images,
 )
@@ -105,7 +106,6 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
@@ -1456,10 +1456,14 @@ class NominalClient:
         )
 
     def search_container_images(
-        self, *, filter: registry_pb2.SearchFilter | None = None, workspace_rid: str | None = None
+        self,
+        *,
+        tag: str | None = None,
+        status: ContainerImageStatus | None = None,
+        workspace_rid: str | None = None,
     ) -> Sequence[ContainerImage]:
         """Search container images across extractors, following pagination internally."""
-        return _search_images(self._clients, filter=filter, workspace_rid=workspace_rid)
+        return _search_images(self._clients, tag=tag, status=status, workspace_rid=workspace_rid)
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

@@ -449,6 +449,42 @@ def _typed_timestamp_type_to_proto(typed: TypedTimestampType) -> _time_pb2.Times
     raise TypeError(f"Unsupported timestamp type: {type(typed).__name__}")
 
 
+def _proto_timestamp_type_to_typed(proto: _time_pb2.TimestampType) -> TypedTimestampType:
+    """Convert a proto TimestampType back to an SDK TypedTimestampType.
+
+    Mirrors `_typed_timestamp_type_to_proto` in reverse. The `time_unit` field is stored as an
+    upper-cased string (e.g. "NANOSECONDS") — we lower-case it back to produce the SDK literal.
+
+    NOTE: this conversion is NOT unit-tested (project convention). Integration-verify against a live
+    server when adding or modifying extractor timestamp metadata.
+    """
+    which = proto.WhichOneof("option")
+    if which == "absolute":
+        abs_ts = proto.absolute
+        which_abs = abs_ts.WhichOneof("option")
+        if which_abs == "iso8601":
+            return Iso8601()
+        elif which_abs == "epoch_of_time_unit":
+            return Epoch(unit=abs_ts.epoch_of_time_unit.time_unit.lower())  # type: ignore[arg-type]
+        elif which_abs == "custom_format":
+            cf = abs_ts.custom_format
+            return Custom(
+                format=cf.format,
+                default_year=cf.default_year if cf.HasField("default_year") else None,
+                default_day_of_year=cf.default_day_of_year if cf.HasField("default_day_of_year") else None,
+            )
+        else:
+            raise ValueError(f"Unknown absolute timestamp type option: {which_abs!r}")
+    elif which == "relative":
+        rel = proto.relative
+        return Relative(
+            unit=rel.time_unit.lower(),  # type: ignore[arg-type]
+            start=rel.offset.ToNanoseconds(),
+        )
+    else:
+        raise ValueError(f"Unknown timestamp type option: {which!r}")
+
+
 def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.TimestampType) -> TypedTimestampType:
     if type_.absolute is not None:
         if type_.absolute.iso8601 is not None:

@@ -52,6 +52,9 @@ class ContainerImageStatus(Enum):
     READY = "READY"
     FAILED = "FAILED"
 
+    def _to_proto(self) -> int:
+        return _registry_pb2.ContainerImageStatus.Value(f"CONTAINER_IMAGE_STATUS_{self.value}")
+
     @classmethod
     def _from_proto(cls, value: int) -> ContainerImageStatus:
         return cls(_registry_pb2.ContainerImageStatus.Name(value).removeprefix("CONTAINER_IMAGE_STATUS_"))
@@ -85,7 +88,7 @@ class FileExtractionInput:
         return cls(
             name=msg.name,
             environment_variable=msg.environment_variable,
-            file_suffixes=tuple(ff.suffix.suffix for ff in msg.file_filters),
+            file_suffixes=tuple(ff.suffix.suffix for ff in msg.file_filters if ff.WhichOneof("filter") == "suffix"),
             description=msg.description if msg.HasField("description") else None,
             required=msg.required,
         )
@@ -131,6 +134,13 @@ class TimestampMetadata:
             timestamp_type=ts._typed_timestamp_type_to_proto(ts._to_typed_timestamp_type(self.timestamp_type)),
         )
 
+    @classmethod
+    def _from_proto(cls, msg: _registry_pb2.TimestampMetadata) -> Self:
+        return cls(
+            series_name=msg.series_name,
+            timestamp_type=ts._proto_timestamp_type_to_typed(msg.timestamp_type),
+        )
+
 
 class _Clients(HasScoutParams, Protocol):
     @property
@@ -154,6 +164,7 @@ class ContainerImage(HasRid):
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
     file_output_format: FileOutputFormat
+    default_timestamp_metadata: TimestampMetadata
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -176,6 +187,7 @@ class ContainerImage(HasRid):
             inputs=tuple(FileExtractionInput._from_proto(i) for i in msg.inputs),
             parameters=tuple(FileExtractionParameter._from_proto(p) for p in msg.parameters),
             file_output_format=FileOutputFormat._from_proto(msg.file_output_format),
+            default_timestamp_metadata=TimestampMetadata._from_proto(msg.default_timestamp_metadata),
             _workspace_rid=workspace_rid,
             _clients=clients,
         )
@@ -324,16 +336,39 @@ class ContainerizedExtractor(HasRid):
             next_page_token = response.next_page_token
 
 
+def _build_search_filter(tag: str | None, status: ContainerImageStatus | None) -> _registry_pb2.SearchFilter | None:
+    """Build a proto SearchFilter from SDK-native tag/status parameters."""
+    if tag is None and status is None:
+        return None
+    tag_filter = _registry_pb2.SearchFilter(tag=_registry_pb2.TagFilter(tag=tag)) if tag is not None else None
+    status_filter = (
+        _registry_pb2.SearchFilter(status=_registry_pb2.StatusFilter(status=status._to_proto()))  # type: ignore[arg-type]
+        if status is not None
+        else None
+    )
+    if tag_filter is not None and status_filter is not None:
+        and_filter = _registry_pb2.AndFilter(clauses=[tag_filter, status_filter])
+        combined = _registry_pb2.SearchFilter()
+        getattr(combined, "and").CopyFrom(and_filter)  # "and" is a Python keyword; use getattr
+        return combined
+    return tag_filter if tag_filter is not None else status_filter
+
+
 def _search_images(
-    clients: _Clients, *, filter: _registry_pb2.SearchFilter | None, workspace_rid: str | None
+    clients: _Clients,
+    *,
+    tag: str | None = None,
+    status: ContainerImageStatus | None = None,
+    workspace_rid: str | None = None,
 ) -> Sequence[ContainerImage]:
     ws = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
+    built_filter = _build_search_filter(tag, status)
     results: list[ContainerImage] = []
     next_page_token = ""
     while True:
         request = _registry_pb2.SearchImagesRequest(workspace_rid=ws, page_size=_DEFAULT_PAGE_SIZE)
-        if filter is not None:
-            request.filter.CopyFrom(filter)
+        if built_filter is not None:
+            request.filter.CopyFrom(built_filter)
         if next_page_token:
             request.next_page_token = next_page_token
         with translate_grpc_errors():

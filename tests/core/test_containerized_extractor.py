@@ -34,7 +34,20 @@ def test_search_extractors_follows_pagination_cursors() -> None:
 
 
 def _img(r: str) -> reg_pb2.ContainerImage:
-    return reg_pb2.ContainerImage(rid=r, tag="v1", extractor_rid="ri.ext", file_output_format=1)
+    from nominal.protos.types.time import timestamp_parsers_pb2 as time_pb2
+
+    return reg_pb2.ContainerImage(
+        rid=r,
+        tag="v1",
+        extractor_rid="ri.ext",
+        file_output_format=1,
+        default_timestamp_metadata=reg_pb2.TimestampMetadata(
+            series_name="ts",
+            timestamp_type=time_pb2.TimestampType(
+                absolute=time_pb2.AbsoluteTimestamp(iso8601=time_pb2.Iso8601Timestamp())
+            ),
+        ),
+    )
 
 
 def test_create_defaults_workspace_to_client_default() -> None:
@@ -58,7 +71,7 @@ def test_search_images_follows_pagination_cursors() -> None:
         reg_pb2.SearchImagesResponse(images=[_img("i2")], next_page_token=""),
     ]
 
-    results = _search_images(clients, filter=None, workspace_rid=None)
+    results = _search_images(clients, workspace_rid=None)
 
     assert [i.rid for i in results] == ["i1", "i2"]
     assert clients.registry.SearchImages.call_count == 2

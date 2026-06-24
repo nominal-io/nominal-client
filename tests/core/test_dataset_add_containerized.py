@@ -9,6 +9,7 @@ from nominal.core.containerized_extractor import (
     ContainerImageStatus,
     ContainerizedExtractor,
     FileExtractionInput,
+    TimestampMetadata,
 )
 from nominal.core.dataset import Dataset, DatasetBounds
 
@@ -48,6 +49,7 @@ def _image_with_required_input(clients: MagicMock) -> ContainerImage:
         inputs=(FileExtractionInput("Input", environment_variable="INPUT_FILE", required=True),),
         parameters=(),
         file_output_format=MagicMock(),
+        default_timestamp_metadata=MagicMock(spec=TimestampMetadata),
         _workspace_rid="ri.ws",
         _clients=clients,
     )
