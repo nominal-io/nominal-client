@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from nominal_api import api, scout_compute_api
+from nominal_api import scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.experimental.compute._buckets import (
@@ -285,24 +285,30 @@ def _counts_from_response(
     """
     counts = dict.fromkeys(starts, 0)
     step = int(bucket)
-    if response.bucketed_numeric is not None:
-        for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, numeric_bucket.count or 0)
-        return counts
-    if response.numeric is not None or response.numeric_point is not None:
-        for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, numeric_bucket.count or 0)
-        return counts
-    if response.bucketed_enum is not None:
-        for enum_bucket in _enum_buckets_from_compute_response(response):
-            total = sum(enum_bucket.frequencies.values())
-            _add_to_bucket(counts, starts, enum_bucket.timestamp - step, bucket, start, total)
-        return counts
-    if response.enum is not None:
-        for enum_bucket in _enum_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, enum_bucket.timestamp, bucket, start, sum(enum_bucket.frequencies.values()))
-        return counts
-    return None
+    # response.type is the conjure union's (camelCase) member discriminator. Decimated variants
+    # (bucketedNumeric / bucketedEnum) carry right-edge timestamps -> shift left one bucket; raw
+    # variants (numeric / numericPoint / enum) carry real point timestamps -> bin as-is. Any other
+    # variant is untyped for our purposes -> None, so the channel falls back to a presence probe.
+    match response.type:
+        case "bucketedNumeric":
+            for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+                point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
+                _add_to_bucket(counts, starts, point_ns - step, bucket, start, numeric_bucket.count or 0)
+        case "numeric" | "numericPoint":
+            for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+                point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
+                _add_to_bucket(counts, starts, point_ns, bucket, start, numeric_bucket.count or 0)
+        case "bucketedEnum":
+            for enum_bucket in _enum_buckets_from_compute_response(response):
+                total = sum(enum_bucket.frequencies.values())
+                _add_to_bucket(counts, starts, enum_bucket.timestamp - step, bucket, start, total)
+        case "enum":
+            for enum_bucket in _enum_buckets_from_compute_response(response):
+                total = sum(enum_bucket.frequencies.values())
+                _add_to_bucket(counts, starts, enum_bucket.timestamp, bucket, start, total)
+        case _:
+            return None
+    return counts
 
 
 def _numeric_counts(
@@ -322,11 +328,13 @@ def _numeric_counts(
         for timestamp, point in zip(
             response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets, strict=False
         ):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, point.count or 0)
+            point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
+            _add_to_bucket(counts, starts, point_ns - step, bucket, start, point.count or 0)
     elif response.numeric is not None:
         # Server returns raw points instead of buckets when the range holds few points; bin them as-is.
         for timestamp in response.numeric.timestamps:
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, 1)
+            point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
+            _add_to_bucket(counts, starts, point_ns, bucket, start, 1)
     else:
         logger.warning("Decimation of numeric channel %s returned neither buckets nor points", channel.name)
     return counts
@@ -355,8 +363,3 @@ def _add_to_bucket(
     index = (point_ns - int(start)) // int(bucket)
     if 0 <= index < len(starts):
         counts[starts[index]] += amount
-
-
-def _ts_to_nanos(timestamp: api.Timestamp) -> int:
-    # Compute responses carry api.Timestamp (seconds + nanos); reuse the SDK's converter.
-    return _SecondsNanos.from_api(timestamp).to_nanoseconds()

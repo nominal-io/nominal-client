@@ -239,3 +239,55 @@ def test_count_chunk_raises_when_results_shorter_than_chunk(monkeypatch: pytest.
 
     with pytest.raises(RuntimeError, match="cannot map results to channels"):
         detect_mod._count_chunk([ch1, ch2], 0, SEC, SEC, [0], tags=None)
+
+
+# --- _counts_from_response: match on the (camelCase) union discriminator -------------------
+# These pin the response.type labels the match relies on: a mislabeled case would route to the
+# `case _` -> None fallback (channel silently drops to a presence probe), failing these asserts.
+
+
+def _numeric_response(type_label: str, pairs: list[tuple[SimpleNamespace, int]], monkeypatch: Any) -> Any:
+    """A fake response of the given discriminator whose numeric buckets yield (timestamp, count)."""
+    monkeypatch.setattr(
+        detect_mod,
+        "_numeric_buckets_from_compute_response",
+        lambda response: [(ts, SimpleNamespace(count=count)) for ts, count in pairs],
+    )
+    return SimpleNamespace(type=type_label)
+
+
+def _enum_response(type_label: str, buckets: list[SimpleNamespace], monkeypatch: Any) -> Any:
+    """A fake response of the given discriminator whose enum buckets are returned as-is."""
+    monkeypatch.setattr(detect_mod, "_enum_buckets_from_compute_response", lambda response: buckets)
+    return SimpleNamespace(type=type_label)
+
+
+def test_counts_from_response_bucketed_numeric_shifts_left(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Decimated: right-edge ts=SEC belongs to bucket [0, SEC) -> shift left one bucket.
+    response = _numeric_response("bucketedNumeric", [(_ts(SEC), 10)], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 10, SEC: 0, 2 * SEC: 0}
+
+
+@pytest.mark.parametrize("type_label", ["numeric", "numericPoint"])
+def test_counts_from_response_raw_numeric_bins_as_is(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Raw points carry real timestamps -> bin as-is (no shift); both numeric and numericPoint route here.
+    response = _numeric_response(type_label, [(_ts(SEC), 1)], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 1, 2 * SEC: 0}
+
+
+def test_counts_from_response_bucketed_enum_shifts_left(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Decimated enum: right-edge ts=SEC -> shift left; the bucket count is the sum of frequencies.
+    bucket = SimpleNamespace(timestamp=SEC, frequencies={"a": 3, "b": 2})
+    response = _enum_response("bucketedEnum", [bucket], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 5, SEC: 0, 2 * SEC: 0}
+
+
+def test_counts_from_response_raw_enum_bins_as_is(monkeypatch: pytest.MonkeyPatch) -> None:
+    bucket = SimpleNamespace(timestamp=SEC, frequencies={"a": 3, "b": 2})
+    response = _enum_response("enum", [bucket], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 5, 2 * SEC: 0}
+
+
+def test_counts_from_response_unknown_type_returns_none() -> None:
+    # An untyped-for-our-purposes variant -> None, so the channel falls back to a presence probe.
+    assert detect_mod._counts_from_response(SimpleNamespace(type="log"), [0, SEC], SEC, 0) is None
