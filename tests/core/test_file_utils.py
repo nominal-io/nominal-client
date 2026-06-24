@@ -228,24 +228,82 @@ class TestResolveDestinationFileStem:
         assert "/" not in _resolve_destination_file_stem(raw)
 
 
-class TestFileNameNoPercentEncodingOnUpload:
-    """The file_name passed through the upload pipeline must not produce %XX blob names.
+class TestUploadMultipartIoFilenameEncoding:
+    """upload_multipart_io must produce filenames safe for Azure SAS uploads.
 
-    quote_plus in multipart.py is called on the file_name to produce the safe_filename
-    sent to the Nominal API, which stores it literally as the Azure blob name.  Any %XX
-    sequence in the safe_filename gets stored as literal characters in the blob name,
-    causing Azure SAS verification to fail with 403 because Azure URL-decodes the path
-    before computing the canonical string:
+    Nominal's backend stores the filename literally as the Azure blob name. Any %XX
+    sequence in the filename gets stored as literal characters, causing Azure SAS
+    verification to fail with 403 because Azure URL-decodes the PUT path before
+    computing its canonical string:
 
-        blob name: ..._DSC_Seq%28PT-reduced%29  (literal %28/%29)
-        SAS canonical:  .../DSC_Seq%28PT-reduced%29
-        PUT path decodes %28 -> (, %29 -> )
-        PUT canonical:  .../DSC_Seq(PT-reduced)   <- MISMATCH -> 403
+        blob name literal:   ..._DSC_Seq%28PT-reduced%29
+        SAS canonical:       .../DSC_Seq%28PT-reduced%29
+        PUT path decodes:    %28 -> (,  %29 -> )
+        PUT canonical:       .../DSC_Seq(PT-reduced)   <- MISMATCH -> 403
+
+    The fix replaces only characters illegal in cloud object names (/ and \\)
+    and passes everything else through literally, avoiding %XX entirely.
     """
 
+    def _capture_filename(self, name: str) -> str:
+        """Run upload_multipart_io with a fake put_multipart_upload and return the filename it receives."""
+        from io import BytesIO
+        from unittest.mock import patch as mock_patch
+
+        from nominal.core._utils.multipart import upload_multipart_io
+        from nominal.core.filetype import FileTypes
+
+        captured: dict[str, str] = {}
+
+        def fake_put(auth_header, workspace_rid, f, filename, *args, **kwargs):
+            captured["filename"] = filename
+            return "s3://fake/path"
+
+        with mock_patch("nominal.core._utils.multipart.put_multipart_upload", side_effect=fake_put):
+            upload_multipart_io(
+                auth_header="Bearer test",
+                workspace_rid=None,
+                f=BytesIO(b"data"),
+                name=name,
+                file_type=FileTypes.CSV,
+                upload_client=MagicMock(),
+            )
+
+        return captured["filename"]
+
+    def test_no_percent_sequences_for_parens(self) -> None:
+        """( and ) must not become %28/%29 — regression for the Azure 403 bug."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("DSC_Seq - Nominal Format(PT-reduced)"))
+
+    def test_no_percent_sequences_for_brackets(self) -> None:
+        """[ and ] must not become %5B/%5D."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("data[1]"))
+
+    def test_no_percent_sequences_for_special_chars(self) -> None:
+        """Common filename chars like !, #, ' must not be percent-encoded."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("run #3 - final!"))
+
+    def test_spaces_preserved(self) -> None:
+        """Spaces must be passed through literally, not converted to + or %20."""
+        filename = self._capture_filename("my data file")
+        assert " " in filename
+        assert "+" not in filename
+
+    def test_slash_replaced_with_underscore(self) -> None:
+        """/ would create unexpected directory structure in blob storage."""
+        assert "/" not in self._capture_filename("folder/file")
+
+    def test_backslash_replaced_with_underscore(self) -> None:
+        r"""\ would create unexpected directory structure on some backends."""
+        assert "\\" not in self._capture_filename("folder\\file")
+
+    def test_plain_alphanumeric_unchanged(self) -> None:
+        """Simple names must be completely unaffected."""
+        assert self._capture_filename("telemetry") == "telemetry.csv"
+
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_file_name_to_add_from_io_has_no_percent_sequences(self, mock_get: MagicMock) -> None:
-        """file_utils produces a clean file_name (no %XX) to pass into the SDK."""
+    def test_migration_pipeline_produces_no_percent_sequences(self, mock_get: MagicMock) -> None:
+        """End-to-end: migration file with %20-encoded S3 key produces a clean upload filename."""
         source_file = _make_source_file(
             s3_key="2026-06-02T16%3A25%3A51Z_DSC_Seq%20-%20Nominal%20Format(PT-reduced).csv",
             timestamp_channel="timestamp",
@@ -260,45 +318,5 @@ class TestFileNameNoPercentEncodingOnUpload:
 
         file_name = destination_dataset.add_from_io.call_args.kwargs["file_name"]
         assert not re.search(r"%[0-9A-Fa-f]{2}", file_name), (
-            f"file_name {file_name!r} has percent-encoded sequences; "
-            "quote_plus in multipart.py will double-encode them -> Azure SAS 403"
-        )
-
-    def test_upload_multipart_io_filename_has_no_percent_sequences(self) -> None:
-        """upload_multipart_io must not produce %XX in the filename sent to the Nominal API.
-
-        quote_plus encodes ( and ) as %28 and %29.  Nominal's backend stores the filename
-        literally as the Azure blob name, so %28/%29 become literal characters.  Azure
-        then URL-decodes the PUT path to compute the SAS canonical string, producing a
-        mismatch -> 403.  Fix: add safe='~()' to quote_plus in multipart.py:257.
-        """
-        from io import BytesIO
-        from unittest.mock import patch as mock_patch
-
-        from nominal.core._utils.multipart import upload_multipart_io
-        from nominal.core.filetype import FileTypes
-
-        captured: dict[str, str] = {}
-
-        def fake_put(auth_header, workspace_rid, f, filename, *args, **kwargs):
-            captured["filename"] = filename
-            return "s3://fake/path"
-
-        stem = "DSC_Seq - Nominal Format(PT-reduced)"
-
-        with mock_patch("nominal.core._utils.multipart.put_multipart_upload", side_effect=fake_put):
-            upload_multipart_io(
-                auth_header="Bearer test",
-                workspace_rid=None,
-                f=BytesIO(b"data"),
-                name=stem,
-                file_type=FileTypes.CSV,
-                upload_client=MagicMock(),
-            )
-
-        filename = captured["filename"]
-        assert not re.search(r"%[0-9A-Fa-f]{2}", filename), (
-            f"filename {filename!r} contains %XX sequences; Nominal backend stores this "
-            "literally in the Azure blob name, causing SAS 403 errors. "
-            "Fix: add safe='~()' to quote_plus in multipart.py:257"
+            f"file_name {file_name!r} has percent-encoded sequences that will cause Azure SAS 403 errors"
         )
