@@ -239,7 +239,8 @@ class ClientsBunch:
 
         Raises:
             NominalConfigError: If `workspace_rid` is None and no default workspace can be resolved.
-            NominalPermissionDeniedError: If an explicit workspace RID is unavailable to the user.
+            NominalNotFoundError: If an explicit workspace RID does not exist or is not accessible to the user (the
+                backend does not distinguish the two).
         """
         if workspace_rid is None:
             # `_default_workspace` caches the single workspace object this client resolves as "default", whether that

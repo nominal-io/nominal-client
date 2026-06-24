@@ -307,7 +307,8 @@ class NominalClient:
         Raises:
             NominalConfigError: Raises a NominalConfigError if no workspace provided and no default workspace can
                 be resolved.
-            NominalPermissionDeniedError: Requested workspace is unavailable to the user.
+            NominalNotFoundError: The requested workspace does not exist or is not accessible to the user (the
+                backend does not distinguish the two).
         """
         return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 

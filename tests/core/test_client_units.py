@@ -14,9 +14,12 @@ from nominal.protos.units.v1 import units_pb2
 def test_available_units_flattens_units_by_property() -> None:
     """get_all_units flattens the units-by-property map into a single flat list of units."""
     stub = MagicMock()
-    resp = units_pb2.GetAllUnitsResponse()
-    resp.units_by_property["electric"].value.extend(
-        [units_pb2.Unit(name="coulomb", symbol="C"), units_pb2.Unit(name="ampere", symbol="A")]
+    resp = units_pb2.GetAllUnitsResponse(
+        units_by_property={
+            "electric": units_pb2.GetAllUnitsResponse.GetUnitsResponseUnitsByPropertyWrapper(
+                value=[units_pb2.Unit(name="coulomb", symbol="C"), units_pb2.Unit(name="ampere", symbol="A")]
+            )
+        }
     )
     stub.GetAllUnits.return_value = resp
 
@@ -26,8 +29,8 @@ def test_available_units_flattens_units_by_property() -> None:
 def test_error_on_invalid_units_raises_for_unresolved_symbol() -> None:
     """A unit symbol the service does not resolve raises a ValueError naming the offending symbol."""
     stub = MagicMock()
-    resp = units_pb2.GetBatchUnitsResponse()
-    resp.responses["C"].CopyFrom(units_pb2.Unit(name="coulomb", symbol="C"))  # only "C" resolves
+    # only "C" resolves
+    resp = units_pb2.GetBatchUnitsResponse(responses={"C": units_pb2.Unit(name="coulomb", symbol="C")})
     stub.GetBatchUnits.return_value = resp
 
     with pytest.raises(ValueError, match="not-a-unit"):
@@ -37,8 +40,7 @@ def test_error_on_invalid_units_raises_for_unresolved_symbol() -> None:
 def test_error_on_invalid_units_passes_when_all_resolve() -> None:
     """No error is raised when every provided unit symbol resolves."""
     stub = MagicMock()
-    resp = units_pb2.GetBatchUnitsResponse()
-    resp.responses["C"].CopyFrom(units_pb2.Unit(name="coulomb", symbol="C"))
+    resp = units_pb2.GetBatchUnitsResponse(responses={"C": units_pb2.Unit(name="coulomb", symbol="C")})
     stub.GetBatchUnits.return_value = resp
 
     _error_on_invalid_units({"ch1": "C"}, stub)  # no raise
@@ -47,8 +49,7 @@ def test_error_on_invalid_units_passes_when_all_resolve() -> None:
 def test_error_on_invalid_units_none_is_not_invalid() -> None:
     """A channel mapped to None (clear unit) is not treated as an invalid unit symbol."""
     stub = MagicMock()
-    resp = units_pb2.GetBatchUnitsResponse()
-    resp.responses["C"].CopyFrom(units_pb2.Unit(name="coulomb", symbol="C"))
+    resp = units_pb2.GetBatchUnitsResponse(responses={"C": units_pb2.Unit(name="coulomb", symbol="C")})
     stub.GetBatchUnits.return_value = resp
 
     _error_on_invalid_units({"ch1": None, "ch2": "C"}, stub)  # no raise

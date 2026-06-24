@@ -52,7 +52,8 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
 
 
 def _ws(rid: str) -> workspaces_pb2.Workspace:
-    return workspaces_pb2.Workspace(rid=rid, id=rid.rsplit(".", 1)[-1], org="test-org")
+    # `id` is the workspace's name (chosen at creation), unrelated to the rid; the tests only read `.rid`.
+    return workspaces_pb2.Workspace(rid=rid, id="test-workspace", org="test-org")
 
 
 class _FakeSession:
