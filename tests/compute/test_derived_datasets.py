@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -41,6 +42,23 @@ def test_bridge_decodes_dataset_transform() -> None:
     bridged = to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5)))
     assert isinstance(bridged, scout_compute_api.Dataset)
     assert bridged.type == "timeShift"
+
+
+def test_bridge_raises_clear_error_without_nominal_compute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the optional ``nominal-compute`` package is missing, the bridge fails with an actionable message."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _fail_nominal_compute(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "nominal_compute":
+            raise ModuleNotFoundError("No module named 'nominal_compute'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fail_nominal_compute)
+    fake_dataset: Any = MagicMock()
+    with pytest.raises(ModuleNotFoundError, match="nominal-compute"):
+        to_conjure_dataset(fake_dataset)
 
 
 # --- lifecycle functions ---

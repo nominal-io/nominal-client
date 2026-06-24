@@ -47,8 +47,6 @@ dependencies = [
     # list only the exact platforms supported
     # TODO(drake): support more architectures and clean up dependency markers.
     "nominal-streaming==0.8.2; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l' or platform_machine=='aarch64' or platform_machine=='arm64')))",
-    # nominal-compute ships platform-specific wheels for the same platform set as nominal-streaming.
-    "nominal-compute==0.1280.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l' or platform_machine=='aarch64' or platform_machine=='arm64')))",
 ]
 
 
@@ -180,6 +178,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "nominal_video"
+ignore_missing_imports = true
+
+# nominal-compute is an optional dependency (see nominal.experimental.compute.derived_datasets); it is not
+# installed in CI, so let mypy treat its imports as untyped rather than failing on the missing stub.
+[[tool.mypy.overrides]]
+module = "nominal_compute"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
