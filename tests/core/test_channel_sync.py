@@ -159,7 +159,6 @@ class FakeHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         """Write each file and invoke the hooks immediately, mimicking the pipelined exporter."""
@@ -249,7 +248,6 @@ class HalvingFakeHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         self.calls.append((start, end))
@@ -359,7 +357,6 @@ class _PrefixRecordingHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         """Record file_prefix, write a single file named from it, and fire on_file_complete."""

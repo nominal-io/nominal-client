@@ -582,9 +582,6 @@ def _export_and_stream(
             file_prefix=f"sync_{range_start}_{range_end}_g{group_idx:04d}",
             show_progress=False,
             on_file_complete=_on_file_complete,
-            # Reuse files a prior attempt/run already downloaded (size-matched) instead of failing to
-            # re-create them; the retry then re-streams the existing file rather than colliding.
-            reuse_complete=True,
             skip_rate_estimation=skip_rate_estimation,
         )
     return points
