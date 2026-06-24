@@ -204,8 +204,11 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 
 import dateutil.parser
+from google.protobuf.timestamp_pb2 import Timestamp as _ProtoTimestamp
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self
+
+from nominal.protos.types.time import timestamp_parsers_pb2 as _time_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -412,6 +415,38 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _typed_timestamp_type_to_proto(typed: TypedTimestampType) -> _time_pb2.TimestampType:
+    """Convert an SDK TypedTimestampType to the proto nominal.types.time.TimestampType.
+
+    Mirrors `_ConjureTimestampType._to_conjure_ingest_api`. NOTE: the proto `time_unit` is a free
+    string; we send the upper-cased unit name (matching the conjure TimeUnit enum). Verify against a
+    live server during integration.
+    """
+    if isinstance(typed, Iso8601):
+        return _time_pb2.TimestampType(absolute=_time_pb2.AbsoluteTimestamp(iso8601=_time_pb2.Iso8601Timestamp()))
+    if isinstance(typed, Epoch):
+        return _time_pb2.TimestampType(
+            absolute=_time_pb2.AbsoluteTimestamp(
+                epoch_of_time_unit=_time_pb2.EpochTimestamp(time_unit=typed.unit.upper())
+            )
+        )
+    if isinstance(typed, Relative):
+        sn = _SecondsNanos.from_flexible(typed.start)
+        return _time_pb2.TimestampType(
+            relative=_time_pb2.RelativeTimestamp(
+                time_unit=typed.unit.upper(), offset=_ProtoTimestamp(seconds=sn.seconds, nanos=sn.nanos)
+            )
+        )
+    if isinstance(typed, Custom):
+        custom = _time_pb2.CustomTimestamp(format=typed.format)
+        if typed.default_year is not None:
+            custom.default_year = typed.default_year
+        if typed.default_day_of_year is not None:
+            custom.default_day_of_year = typed.default_day_of_year
+        return _time_pb2.TimestampType(absolute=_time_pb2.AbsoluteTimestamp(custom_format=custom))
+    raise TypeError(f"Unsupported timestamp type: {type(typed).__name__}")
 
 
 def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.TimestampType) -> TypedTimestampType:
