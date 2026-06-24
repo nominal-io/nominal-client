@@ -70,6 +70,7 @@ def copy_file_to_dataset(
 
 
 def _resolve_destination_file_stem(file_name: str) -> str:
-    file_stem = Path(urllib.parse.unquote(file_name)).stem
+    decoded = urllib.parse.unquote(file_name).replace("/", "_").replace("\\", "_")
+    file_stem = Path(decoded).stem
     _, separator, suffix = file_stem.partition("Z_")
     return suffix if separator else file_stem

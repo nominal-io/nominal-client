@@ -221,6 +221,12 @@ class TestResolveDestinationFileStem:
         raw = "telemetry.csv"
         assert _resolve_destination_file_stem(raw) == "telemetry"
 
+    def test_encoded_slash_does_not_break_stem(self) -> None:
+        # %2F decoded to / would cause Path.stem to misinterpret the value as a
+        # directory path, producing the wrong upload name.
+        raw = "2026-06-02T16%3A25%3A51Z_folder%2Ftelemetry.csv"
+        assert "/" not in _resolve_destination_file_stem(raw)
+
 
 class TestFileNameNoPercentEncodingOnUpload:
     """The file_name passed through the upload pipeline must not produce %XX blob names.
