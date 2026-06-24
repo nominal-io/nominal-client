@@ -27,7 +27,7 @@ def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
     )
 
 
-# --- bridge: nominal_compute -> scout_compute_api (skipped if no wheel for this platform) ---
+# --- bridge: nominal_compute -> scout_compute_api ---
 
 
 def test_bridge_decodes_saved_dataset() -> None:
