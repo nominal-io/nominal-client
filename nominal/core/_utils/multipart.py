@@ -254,7 +254,7 @@ def upload_multipart_io(
     Note: see put_multipart_upload for more details
 
     """
-    urlsafe_name = urllib.parse.quote_plus(name)
+    urlsafe_name = urllib.parse.quote_plus(name, safe="~()")
     safe_filename = f"{urlsafe_name}{file_type.extension}"
     return put_multipart_upload(
         auth_header,
