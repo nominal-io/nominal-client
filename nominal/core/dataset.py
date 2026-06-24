@@ -20,7 +20,7 @@ from nominal.core._utils.multipart import path_upload_name, upload_multipart_fil
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
-from nominal.core.containerized_extractors import ContainerizedExtractor
+from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
@@ -560,18 +560,15 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
-            extractor = ContainerizedExtractor._from_conjure(
-                self._clients,
-                self._clients.containerized_extractors.get_containerized_extractor(
-                    self._clients.auth_header, extractor
-                ),
+            extractor = ContainerizedExtractor._get(self._clients, extractor)  # type: ignore[arg-type]
+        if extractor.active_container_image_rid is None:
+            raise ValueError(
+                f"Extractor '{extractor.name}' has no active container image; register and activate one first."
             )
-        # Ensure all required inputs are present
-        registered_inputs = set()
-        for extractor_input in extractor.inputs:
-            registered_inputs.add(extractor_input.environment_variable)
-            if extractor_input.required and extractor_input.environment_variable not in sources:
-                raise ValueError(f"Required input '{extractor_input.environment_variable}' not present in sources!")
+        active_image = extractor.get_image(extractor.active_container_image_rid)
+        for image_input in active_image.inputs:
+            if image_input.required and image_input.environment_variable not in sources:
+                raise ValueError(f"Required input '{image_input.environment_variable}' not present in sources!")
 
         # Upload all inputs to s3 before ingestion
         s3_inputs = {}
