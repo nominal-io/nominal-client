@@ -169,7 +169,6 @@ class ClientsBunch:
     series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
-    containerized_extractors: ingest_api.ContainerizedExtractorService
     registry: registry_pb2_grpc.RegistryServiceStub
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
@@ -326,7 +325,6 @@ class ClientsBunch:
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
-            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             secrets=client_factory(secrets_api.SecretService),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),

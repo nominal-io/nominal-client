@@ -32,6 +32,8 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
@@ -86,7 +88,11 @@ class DataSource(HasRid):
         @property
         def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
-        def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
+        def containerized_extractor(
+            self,
+        ) -> containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub: ...
+        @property
+        def registry(self) -> registry_pb2_grpc.RegistryServiceStub: ...
         @property
         def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
         @property

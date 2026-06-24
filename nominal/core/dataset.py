@@ -560,7 +560,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
-            extractor = ContainerizedExtractor._get(self._clients, extractor)  # type: ignore[arg-type]
+            extractor = ContainerizedExtractor._get(self._clients, extractor)
         if extractor.active_container_image_rid is None:
             raise ValueError(
                 f"Extractor '{extractor.name}' has no active container image; register and activate one first."

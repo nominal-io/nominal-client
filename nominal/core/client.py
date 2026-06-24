@@ -15,7 +15,6 @@ from nominal_api import (
     api,
     attachments_api,
     authentication_api,
-    ingest_api,
     scout_asset_api,
     scout_catalog,
     scout_checks_api,
@@ -29,7 +28,6 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import ts
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
@@ -62,7 +60,6 @@ from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
     create_search_checklists_query,
-    create_search_containerized_extractors_query,
     create_search_datasets_query,
     create_search_runs_query,
     create_search_secrets_query,
@@ -75,12 +72,10 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
-from nominal.core.containerized_extractors import (
+from nominal.core.containerized_extractor import (
+    ContainerImage,
     ContainerizedExtractor,
-    DockerImageSource,
-    FileExtractionInput,
-    FileExtractionParameter,
-    FileOutputFormat,
+    _search_images,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
 from nominal.core.dataset import (
@@ -110,12 +105,12 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -1442,83 +1437,29 @@ class NominalClient:
             archive_status=archive_status,
         )
 
-    def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
-        return ContainerizedExtractor._from_conjure(
-            self._clients,
-            self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
-        )
-
     def create_containerized_extractor(
-        self,
-        name: str,
-        *,
-        description: str | None = None,
-        docker_image: DockerImageSource,
-        inputs: Sequence[FileExtractionInput] = (),
-        parameters: Sequence[FileExtractionParameter] = (),
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
-        timestamp_column: str,
-        timestamp_type: ts._AnyTimestampType,
-        file_output_format: FileOutputFormat | None = None,
+        self, name: str, *, description: str | None = None, workspace_rid: str | None = None
     ) -> ContainerizedExtractor:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
+        """Create a (hosted) containerized extractor. Register and activate an image before ingesting."""
+        return ContainerizedExtractor._create(self._clients, name, description=description, workspace_rid=workspace_rid)
 
-        req = ingest_api.RegisterContainerizedExtractorRequest(
-            name=name,
-            description=description,
-            image=docker_image._to_conjure(),
-            inputs=[file_extraction_input._to_conjure() for file_extraction_input in inputs],
-            parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in parameters],
-            properties=dict(properties or {}),
-            labels=list(labels),
-            workspace=workspace_rid,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column,
-                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-            ),
-            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
-        )
-        resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
-        return self.get_containerized_extractor(resp.extractor_rid)
+    def get_containerized_extractor(self, rid: str, *, workspace_rid: str | None = None) -> ContainerizedExtractor:
+        """Fetch a containerized extractor by rid."""
+        return ContainerizedExtractor._get(self._clients, rid, workspace_rid=workspace_rid)
 
     def search_containerized_extractors(
-        self,
-        *,
-        search_text: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        self, *, include_archived: bool = False, file_extension: str | None = None, workspace_rid: str | None = None
     ) -> Sequence[ContainerizedExtractor]:
-        """Search for containerized extractors meeting the specified filters.
-        Filters are ANDed together, e.g., `(extractor.label == label) AND (extractor.workspace == workspace)`
-
-        Args:
-            search_text: Fuzzy-searches for a string in the extractor's metadata.
-            labels: A list of labels that must ALL be present on an extractor to be included.
-            properties: A mapping of key-value pairs that must ALL be present on an extractor te be included.
-            workspace: Filters search to given workspace.
-
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
-
-
-        Returns:
-            All extractors which match all of the provided coditions
-        """
-        query = create_search_containerized_extractors_query(
-            search_text=search_text,
-            labels=labels,
-            properties=properties,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        """Search containerized extractors, following pagination internally."""
+        return ContainerizedExtractor._search(
+            self._clients, include_archived=include_archived, file_extension=file_extension, workspace_rid=workspace_rid
         )
-        resp = self._clients.containerized_extractors.search_containerized_extractors(
-            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
-        )
-        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
+
+    def search_container_images(
+        self, *, filter: registry_pb2.SearchFilter | None = None, workspace_rid: str | None = None
+    ) -> Sequence[ContainerImage]:
+        """Search container images across extractors, following pagination internally."""
+        return _search_images(self._clients, filter=filter, workspace_rid=workspace_rid)
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

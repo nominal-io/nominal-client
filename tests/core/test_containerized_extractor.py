@@ -37,6 +37,19 @@ def _img(r: str) -> reg_pb2.ContainerImage:
     return reg_pb2.ContainerImage(rid=r, tag="v1", extractor_rid="ri.ext", file_output_format=1)
 
 
+def test_create_defaults_workspace_to_client_default() -> None:
+    """When workspace_rid is omitted, the request uses the client's resolved default workspace."""
+    clients = _clients()
+    clients.containerized_extractor.CreateContainerizedExtractor.return_value = (
+        ext_pb2.CreateContainerizedExtractorResponse(extractor=_ext("a"))
+    )
+
+    ContainerizedExtractor._create(clients, "a", description=None, workspace_rid=None)
+
+    request = clients.containerized_extractor.CreateContainerizedExtractor.call_args.args[0]
+    assert request.workspace_rid == "ri.workspace.default"
+
+
 def test_search_images_follows_pagination_cursors() -> None:
     """Image search accumulates across pages and stops on an empty next_page_token."""
     clients = _clients()
