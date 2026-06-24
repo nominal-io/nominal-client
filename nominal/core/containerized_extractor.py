@@ -21,6 +21,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
+from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2 as _extractor_pb2
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc as _extractor_grpc
 from nominal.protos.registry.v2 import registry_pb2 as _registry_pb2
@@ -31,33 +32,33 @@ _DEFAULT_PAGE_SIZE = 100
 
 
 class FileOutputFormat(Enum):
-    PARQUET = "PARQUET"
-    CSV = "CSV"
-    PARQUET_TAR = "PARQUET_TAR"
-    AVRO_STREAM = "AVRO_STREAM"
-    JSON_L = "JSON_L"
-    MANIFEST = "MANIFEST"
+    PARQUET = _registry_pb2.FILE_OUTPUT_FORMAT_PARQUET
+    CSV = _registry_pb2.FILE_OUTPUT_FORMAT_CSV
+    PARQUET_TAR = _registry_pb2.FILE_OUTPUT_FORMAT_PARQUET_TAR
+    AVRO_STREAM = _registry_pb2.FILE_OUTPUT_FORMAT_AVRO_STREAM
+    JSON_L = _registry_pb2.FILE_OUTPUT_FORMAT_JSON_L
+    MANIFEST = _registry_pb2.FILE_OUTPUT_FORMAT_MANIFEST
 
     def _to_proto(self) -> int:
-        return _registry_pb2.FileOutputFormat.Value(f"FILE_OUTPUT_FORMAT_{self.value}")
+        return self.value
 
     @classmethod
     def _from_proto(cls, value: int) -> FileOutputFormat:
-        return cls(_registry_pb2.FileOutputFormat.Name(value).removeprefix("FILE_OUTPUT_FORMAT_"))
+        return cls(value)
 
 
 class ContainerImageStatus(Enum):
-    UNSPECIFIED = "UNSPECIFIED"
-    PENDING = "PENDING"
-    READY = "READY"
-    FAILED = "FAILED"
+    UNSPECIFIED = _registry_pb2.CONTAINER_IMAGE_STATUS_UNSPECIFIED
+    PENDING = _registry_pb2.CONTAINER_IMAGE_STATUS_PENDING
+    READY = _registry_pb2.CONTAINER_IMAGE_STATUS_READY
+    FAILED = _registry_pb2.CONTAINER_IMAGE_STATUS_FAILED
 
     def _to_proto(self) -> int:
-        return _registry_pb2.ContainerImageStatus.Value(f"CONTAINER_IMAGE_STATUS_{self.value}")
+        return self.value
 
     @classmethod
     def _from_proto(cls, value: int) -> ContainerImageStatus:
-        return cls(_registry_pb2.ContainerImageStatus.Name(value).removeprefix("CONTAINER_IMAGE_STATUS_"))
+        return cls(value)
 
 
 @dataclass(frozen=True)
@@ -318,40 +319,41 @@ class ContainerizedExtractor(HasRid):
         cls, clients: _Clients, *, include_archived: bool, file_extension: str | None, workspace_rid: str | None
     ) -> Sequence[Self]:
         ws = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
-        results: list[Self] = []
-        next_page_token = ""
-        while True:
-            request = _extractor_pb2.SearchContainerizedExtractorsRequest(
+
+        def request_factory(token: str) -> _extractor_pb2.SearchContainerizedExtractorsRequest:
+            req = _extractor_pb2.SearchContainerizedExtractorsRequest(
                 workspace_rid=ws, include_archived=include_archived, page_size=_DEFAULT_PAGE_SIZE
             )
             if file_extension is not None:
-                request.file_extension = file_extension
-            if next_page_token:
-                request.next_page_token = next_page_token
-            with translate_grpc_errors():
-                response = clients.containerized_extractor.SearchContainerizedExtractors(request)
-            results.extend(cls._from_proto(clients, e) for e in response.extractors)
-            if not response.next_page_token:
-                return results
-            next_page_token = response.next_page_token
+                req.file_extension = file_extension
+            if token:
+                req.next_page_token = token
+            return req
+
+        stub = clients.containerized_extractor.SearchContainerizedExtractors
+        return [
+            cls._from_proto(clients, e)
+            for resp in paginate_grpc(stub, request_factory=request_factory)
+            for e in resp.extractors
+        ]
 
 
 def _build_search_filter(tag: str | None, status: ContainerImageStatus | None) -> _registry_pb2.SearchFilter | None:
     """Build a proto SearchFilter from SDK-native tag/status parameters."""
-    if tag is None and status is None:
+    filters = []
+    if tag is not None:
+        filters.append(_registry_pb2.SearchFilter(tag=_registry_pb2.TagFilter(tag=tag)))
+    if status is not None:
+        filters.append(
+            _registry_pb2.SearchFilter(status=_registry_pb2.StatusFilter(status=status._to_proto()))  # type: ignore[arg-type]
+        )
+    if not filters:
         return None
-    tag_filter = _registry_pb2.SearchFilter(tag=_registry_pb2.TagFilter(tag=tag)) if tag is not None else None
-    status_filter = (
-        _registry_pb2.SearchFilter(status=_registry_pb2.StatusFilter(status=status._to_proto()))  # type: ignore[arg-type]
-        if status is not None
-        else None
-    )
-    if tag_filter is not None and status_filter is not None:
-        and_filter = _registry_pb2.AndFilter(clauses=[tag_filter, status_filter])
-        combined = _registry_pb2.SearchFilter()
-        getattr(combined, "and").CopyFrom(and_filter)  # "and" is a Python keyword; use getattr
-        return combined
-    return tag_filter if tag_filter is not None else status_filter
+    if len(filters) == 1:
+        return filters[0]
+    combined = _registry_pb2.SearchFilter()
+    getattr(combined, "and").CopyFrom(_registry_pb2.AndFilter(clauses=filters))  # "and" is a Python keyword
+    return combined
 
 
 def _search_images(
@@ -363,17 +365,17 @@ def _search_images(
 ) -> Sequence[ContainerImage]:
     ws = workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid()
     built_filter = _build_search_filter(tag, status)
-    results: list[ContainerImage] = []
-    next_page_token = ""
-    while True:
-        request = _registry_pb2.SearchImagesRequest(workspace_rid=ws, page_size=_DEFAULT_PAGE_SIZE)
+
+    def request_factory(token: str) -> _registry_pb2.SearchImagesRequest:
+        req = _registry_pb2.SearchImagesRequest(workspace_rid=ws, page_size=_DEFAULT_PAGE_SIZE)
         if built_filter is not None:
-            request.filter.CopyFrom(built_filter)
-        if next_page_token:
-            request.next_page_token = next_page_token
-        with translate_grpc_errors():
-            response = clients.registry.SearchImages(request)
-        results.extend(ContainerImage._from_proto(clients, ws, img) for img in response.images)
-        if not response.next_page_token:
-            return results
-        next_page_token = response.next_page_token
+            req.filter.CopyFrom(built_filter)
+        if token:
+            req.next_page_token = token
+        return req
+
+    return [
+        ContainerImage._from_proto(clients, ws, img)
+        for resp in paginate_grpc(clients.registry.SearchImages, request_factory=request_factory)
+        for img in resp.images
+    ]

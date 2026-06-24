@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
@@ -20,6 +20,7 @@ from nominal_api import (
     secrets_api,
 )
 
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 
 DEFAULT_PAGE_SIZE = 100
@@ -383,3 +384,27 @@ def paginate_rpc(
         next_page_token = token_factory(response)
         if next_page_token is None:
             break
+
+
+_GrpcRequestT = TypeVar("_GrpcRequestT")
+
+
+def paginate_grpc(
+    rpc: Callable[[_GrpcRequestT], Any],
+    *,
+    request_factory: Callable[[str], _GrpcRequestT],
+) -> Iterable[Any]:
+    """Yield successive responses from a v2 gRPC search RPC, following next_page_token cursors.
+
+    ``rpc`` is called as ``rpc(request)`` (auth rides the channel); ``request_factory(token)`` builds the
+    request for a given page token (``""`` for the first page). Stops when a response has an empty
+    ``next_page_token``.
+    """
+    token = ""
+    while True:
+        with translate_grpc_errors():
+            response = rpc(request_factory(token))
+        yield response
+        token = response.next_page_token
+        if not token:
+            return
