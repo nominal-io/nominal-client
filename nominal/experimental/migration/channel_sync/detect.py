@@ -45,7 +45,7 @@ DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
 DEFAULT_DETECT_WORKERS = 8
 
 
-def iter_bucket_starts(
+def _iter_bucket_starts(
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
     bucket: IntegralNanosecondsUTC,
@@ -136,7 +136,7 @@ def count_channels(
     channel. Channels are assumed to have unique names and to share a single client (e.g. all from
     one dataset).
     """
-    starts = iter_bucket_starts(start, end, bucket)
+    starts = _iter_bucket_starts(start, end, bucket)
     batchable = [c for c in channels if c.data_type in _BATCHABLE_TYPES]
     fallback = [c for c in channels if c.data_type not in _BATCHABLE_TYPES]
 
@@ -184,7 +184,7 @@ def count_channels(
     return results
 
 
-def count_per_bucket(
+def _count_per_bucket(
     channel: Channel,
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
@@ -197,7 +197,7 @@ def count_per_bucket(
     else. All buckets are zero-filled, so a missing channel reads as all-zero rather than empty. Kept
     for single-channel use; :func:`count_channels` is the batched path used for whole-dataset scans.
     """
-    starts = iter_bucket_starts(start, end, bucket)
+    starts = _iter_bucket_starts(start, end, bucket)
     if channel.data_type in _NUMERIC_TYPES:
         return ChannelBucketCounts(channel.name, _numeric_counts(channel, start, end, bucket, starts, tags), True)
     return ChannelBucketCounts(channel.name, _presence_counts(channel, start, end, starts, tags), False)

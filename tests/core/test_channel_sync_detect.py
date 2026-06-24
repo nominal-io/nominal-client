@@ -14,9 +14,9 @@ from nominal.core.channel import ChannelDataType
 from nominal.experimental.migration.channel_sync import detect as detect_mod
 from nominal.experimental.migration.channel_sync.detect import (
     ChannelBucketCounts,
+    _count_per_bucket,
+    _iter_bucket_starts,
     count_channels,
-    count_per_bucket,
-    iter_bucket_starts,
     merge_bucket_ranges,
     shortfall_buckets,
 )
@@ -37,15 +37,15 @@ def _numeric_channel(response: SimpleNamespace) -> MagicMock:
     return channel
 
 
-# --- iter_bucket_starts -------------------------------------------------------------------
+# --- _iter_bucket_starts -------------------------------------------------------------------
 
 
 def test_iter_bucket_starts_even_division() -> None:
-    assert iter_bucket_starts(0, 3 * SEC, SEC) == [0, SEC, 2 * SEC]
+    assert _iter_bucket_starts(0, 3 * SEC, SEC) == [0, SEC, 2 * SEC]
 
 
 def test_iter_bucket_starts_partial_final_bucket_included() -> None:
-    assert iter_bucket_starts(0, 5 * SEC // 2, SEC) == [0, SEC, 2 * SEC]
+    assert _iter_bucket_starts(0, 5 * SEC // 2, SEC) == [0, SEC, 2 * SEC]
 
 
 @pytest.mark.parametrize(
@@ -54,7 +54,7 @@ def test_iter_bucket_starts_partial_final_bucket_included() -> None:
 )
 def test_iter_bucket_starts_rejects_bad_ranges(start: int, end: int, bucket: int) -> None:
     with pytest.raises(ValueError):
-        iter_bucket_starts(start, end, bucket)
+        _iter_bucket_starts(start, end, bucket)
 
 
 # --- merge_bucket_ranges ------------------------------------------------------------------
@@ -98,7 +98,7 @@ def test_shortfall_buckets_no_shortfall_when_dest_exceeds_src() -> None:
     assert shortfall_buckets(src, dest) == []
 
 
-# --- count_per_bucket ---------------------------------------------------------------------
+# --- _count_per_bucket ---------------------------------------------------------------------
 
 
 def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
@@ -112,7 +112,7 @@ def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
         ),
         numeric=None,
     )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
+    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
     assert result.precise is True
     assert result.counts == {0: 10, SEC: 0, 2 * SEC: 3}
 
@@ -128,7 +128,7 @@ def test_count_per_bucket_numeric_first_bucket_not_shifted_forward() -> None:
         ),
         numeric=None,
     )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
+    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
     assert result.counts == {0: 0, SEC: 0, 2 * SEC: 42}
 
 
@@ -137,7 +137,7 @@ def test_count_per_bucket_numeric_raw_fallback_bins_points() -> None:
         bucketed_numeric=None,
         numeric=SimpleNamespace(timestamps=[_ts(0), _ts(SEC // 4), _ts(2 * SEC + 1)]),
     )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
+    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
     assert result.counts == {0: 2, SEC: 0, 2 * SEC: 1}
 
 
@@ -146,7 +146,7 @@ def test_count_per_bucket_string_present_maps_to_one_per_bucket() -> None:
     channel.name = "state"
     channel.data_type = ChannelDataType.STRING
     channel.get_available_tags.return_value = {"source": {"daq"}}
-    result = count_per_bucket(channel, 0, 3 * SEC, SEC, tags={"source": "daq"})
+    result = _count_per_bucket(channel, 0, 3 * SEC, SEC, tags={"source": "daq"})
     assert result.precise is False
     assert result.counts == {0: 1, SEC: 1, 2 * SEC: 1}
     channel.get_available_tags.assert_called_once_with(0, 3 * SEC, initial_tags={"source": "daq"})
@@ -157,7 +157,7 @@ def test_count_per_bucket_string_absent_maps_to_zero() -> None:
     channel.name = "state"
     channel.data_type = ChannelDataType.STRING
     channel.get_available_tags.return_value = {}
-    result = count_per_bucket(channel, 0, 2 * SEC, SEC, tags={"source": "daq"})
+    result = _count_per_bucket(channel, 0, 2 * SEC, SEC, tags={"source": "daq"})
     assert result.counts == {0: 0, SEC: 0}
 
 
