@@ -213,3 +213,29 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
     assert sorted(chunk_sizes) == [51, 100]
     # on_advance sums to every input channel exactly once (errored counted only in the presence pass).
     assert advanced == 152
+
+
+# --- _count_chunk: result/request length mismatch -----------------------------------------
+
+
+def test_count_chunk_raises_when_results_shorter_than_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The API contract is one result per requested channel. A short result list must fail loud rather
+    # than letting zip silently drop the trailing channels (excluding them from the sync with no signal).
+    clients = SimpleNamespace(
+        auth_header="auth",
+        compute=SimpleNamespace(
+            # One well-formed (errored) result for two requested channels. Without the length check,
+            # zip(strict=False) would quietly drop the second channel and return normally; the check
+            # makes the mismatch raise instead.
+            batch_compute_with_units=lambda auth, request: SimpleNamespace(
+                results=[SimpleNamespace(compute_result=None)]
+            ),
+        ),
+    )
+    ch1 = SimpleNamespace(name="c1", _clients=clients)
+    ch2 = SimpleNamespace(name="c2", _clients=clients)
+    # Bypass real conjure request construction; only the result-count check is under test.
+    monkeypatch.setattr(detect_mod, "_bucket_request", lambda *a, **k: object())
+
+    with pytest.raises(RuntimeError, match="cannot map results to channels"):
+        detect_mod._count_chunk([ch1, ch2], 0, SEC, SEC, [0], tags=None)

@@ -218,9 +218,19 @@ def _count_chunk(
     )
     response = clients.compute.batch_compute_with_units(clients.auth_header, request)
 
+    # The API contract is one result per requested channel. A length mismatch would otherwise let
+    # zip(strict=False) silently drop the trailing channels: they would land in neither counts nor
+    # errored, never enter source_counts, and be excluded from the whole sync with no warning. Fail
+    # loud instead -- this propagates out of count_channels (no try/except there) and aborts the run.
+    if len(response.results) != len(chunk):
+        raise RuntimeError(
+            f"batch_compute_with_units returned {len(response.results)} result(s) for "
+            f"{len(chunk)} requested channel(s); cannot map results to channels"
+        )
+
     counts: dict[str, ChannelBucketCounts] = {}
     errored: list[Channel] = []
-    for channel, result in zip(chunk, response.results, strict=False):
+    for channel, result in zip(chunk, response.results):  # lengths verified equal above
         compute_result = result.compute_result
         if compute_result is None or compute_result.success is None:
             errored.append(channel)
