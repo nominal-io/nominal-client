@@ -2,13 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from nominal.core.nominal_hosted_extractor import (
-    ContainerImage,
-    FileExtractionInput,
-    FileOutputFormat,
-    NominalHostedExtractor,
-    TimestampMetadata,
-)
+from nominal.core.nominal_hosted_extractor import ContainerImage, NominalHostedExtractor
 from nominal.protos.ingest.v2 import containerized_extractor_pb2 as _extractor_pb2
 from nominal.protos.registry.v2 import registry_pb2 as _registry_pb2
 from nominal.protos.types.time import timestamp_parsers_pb2
@@ -64,8 +58,8 @@ def _image_proto(**overrides: Any) -> _registry_pb2.ContainerImage:
     return _registry_pb2.ContainerImage(**fields)
 
 
-def _iso_metadata() -> TimestampMetadata:
-    return TimestampMetadata(
+def _iso_metadata() -> _registry_pb2.TimestampMetadata:
+    return _registry_pb2.TimestampMetadata(
         series_name="ts",
         timestamp_type=timestamp_parsers_pb2.TimestampType(
             absolute=timestamp_parsers_pb2.AbsoluteTimestamp(iso8601=timestamp_parsers_pb2.Iso8601Timestamp())
@@ -171,8 +165,8 @@ def test_register_image_builds_full_request() -> None:
     image = extractor.register_image(
         tag="v1",
         object_path="s3://bucket/image.tar",
-        inputs=[FileExtractionInput(environment_variable="INPUT_FILE", name="Input file", required=True)],
-        file_output_format=FileOutputFormat.FILE_OUTPUT_FORMAT_PARQUET,
+        inputs=[_registry_pb2.FileExtractionInput(environment_variable="INPUT_FILE", name="Input file", required=True)],
+        file_output_format=_registry_pb2.FileOutputFormat.FILE_OUTPUT_FORMAT_PARQUET,
         default_timestamp_metadata=_iso_metadata(),
     )
 
@@ -184,7 +178,7 @@ def test_register_image_builds_full_request() -> None:
     assert request.tag == "v1"
     assert request.object_path == "s3://bucket/image.tar"
     assert [i.environment_variable for i in request.inputs] == ["INPUT_FILE"]
-    assert request.file_output_format == FileOutputFormat.FILE_OUTPUT_FORMAT_PARQUET
+    assert request.file_output_format == _registry_pb2.FileOutputFormat.FILE_OUTPUT_FORMAT_PARQUET
     assert request.default_timestamp_metadata.series_name == "ts"
 
 

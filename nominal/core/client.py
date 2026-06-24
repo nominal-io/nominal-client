@@ -95,7 +95,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.nominal_hosted_extractor import ContainerImage, NominalHostedExtractor, SearchFilter
+from nominal.core.nominal_hosted_extractor import ContainerImage, NominalHostedExtractor
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -105,6 +105,7 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.registry.v2 import registry_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -1539,7 +1540,7 @@ class NominalClient:
     def search_container_images(
         self,
         *,
-        filter: SearchFilter | None = None,
+        filter: registry_pb2.SearchFilter | None = None,
         workspace_rid: str | None = None,
     ) -> Sequence[ContainerImage]:
         """Search container images in a workspace, optionally filtered, following pagination."""

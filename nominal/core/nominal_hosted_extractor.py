@@ -13,10 +13,9 @@ wired through the v2 gRPC services -- ``nominal.ingest.v2.ContainerizedExtractor
 (``nominal_hosted_extractors`` and ``registry``); auth, retry, and deadlines are applied by the
 channel interceptors, so call sites just invoke the stub methods.
 
-The extractor *schema* leaf types (:data:`FileExtractionInput`, :data:`FileExtractionParameter`,
-:data:`FileOutputFormat`, :data:`TimestampMetadata`, :data:`ContainerImageStatus`) are the
-generated protobuf messages from the ``registry.v2`` package, re-exported here so callers can
-import them from one place.
+The extractor schema and query types (``FileExtractionInput``, ``FileOutputFormat``,
+``TimestampMetadata``, ``SearchFilter``, ...) are the generated protobuf messages; construct them
+from ``nominal.protos.registry.v2.registry_pb2`` and pass them to these methods.
 """
 
 from __future__ import annotations
@@ -33,14 +32,6 @@ from nominal.protos.ingest.v2 import containerized_extractor_pb2 as extractor_pb
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc as extractor_grpc
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.registry.v2 import registry_pb2_grpc as registry_grpc
-
-# Re-export the registry.v2 schema/query types callers need so they can be imported from one place.
-FileExtractionInput = registry_pb2.FileExtractionInput
-FileExtractionParameter = registry_pb2.FileExtractionParameter
-FileOutputFormat = registry_pb2.FileOutputFormat
-TimestampMetadata = registry_pb2.TimestampMetadata
-ContainerImageStatus = registry_pb2.ContainerImageStatus
-SearchFilter = registry_pb2.SearchFilter
 
 _DEFAULT_PAGE_SIZE = 100
 
@@ -63,7 +54,7 @@ class ContainerImage(HasRid):
 
     rid: str
     tag: str
-    status: ContainerImageStatus
+    status: registry_pb2.ContainerImageStatus
     extractor_rid: str
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
@@ -89,7 +80,7 @@ class ContainerImage(HasRid):
         cls,
         clients: _Clients,
         *,
-        filter: SearchFilter | None = None,
+        filter: registry_pb2.SearchFilter | None = None,
         workspace_rid: str | None = None,
         page_size: int = _DEFAULT_PAGE_SIZE,
     ) -> Iterable[Self]:
@@ -170,10 +161,10 @@ class NominalHostedExtractor(HasRid):
         *,
         tag: str,
         object_path: str,
-        inputs: Sequence[FileExtractionInput],
-        file_output_format: FileOutputFormat,
-        default_timestamp_metadata: TimestampMetadata,
-        parameters: Sequence[FileExtractionParameter] = (),
+        inputs: Sequence[registry_pb2.FileExtractionInput],
+        file_output_format: registry_pb2.FileOutputFormat,
+        default_timestamp_metadata: registry_pb2.TimestampMetadata,
+        parameters: Sequence[registry_pb2.FileExtractionParameter] = (),
     ) -> ContainerImage:
         """Register a previously uploaded image tarball and start its push into the registry.
 
