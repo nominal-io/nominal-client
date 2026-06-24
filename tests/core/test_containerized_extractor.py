@@ -62,3 +62,4 @@ def test_search_images_follows_pagination_cursors() -> None:
 
     assert [i.rid for i in results] == ["i1", "i2"]
     assert clients.registry.SearchImages.call_count == 2
+    assert clients.registry.SearchImages.call_args_list[1].args[0].next_page_token == "n"
