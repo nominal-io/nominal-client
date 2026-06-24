@@ -335,6 +335,68 @@ def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, mo
     assert recorder.advanced == 4  # per-file slices: 2 channels x 2 distinct buckets covered
 
 
+class _PrefixRecordingHandler:
+    """Records the file_prefix of each export_to_files call and writes one file named from it.
+
+    Naming the on-disk file after file_prefix surfaces a collision two ways at once: a duplicated
+    prefix shows up in ``prefixes`` and the second write silently overwrites the first file.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the recorded-prefix buffer."""
+        self.prefixes: list[str] = []
+
+    def export_to_files(
+        self,
+        channels: Any,
+        start: int,
+        end: int,
+        out_dir: str,
+        *,
+        tags: Any = None,
+        timestamp_type: Any = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        on_file_planned: Any = None,
+        on_file_complete: Any = None,
+        reuse_complete: bool = False,
+        skip_rate_estimation: bool = False,
+    ) -> list[Path]:
+        """Record file_prefix, write a single file named from it, and fire on_file_complete."""
+        self.prefixes.append(file_prefix)
+        path = Path(out_dir) / f"{file_prefix}.csv.gz"
+        _write_csv_gz(path, f"timestamp,{channels[0].name}\n{start},1\n")
+        if on_file_complete is not None:
+            on_file_complete(path)
+        return [path]
+
+
+def test_non_precise_channels_sharing_range_export_to_distinct_files(tmp_path: Path) -> None:
+    """Regression (sync.py:526): two non-precise channels with an identical missing range must export
+    to distinct file names so neither overwrites the other.
+
+    Both channels take the per-channel recursive-halving fallback (``non_precise``), and both are short
+    over exactly the same range. The file name must therefore carry a per-channel discriminator
+    (``g{channel_idx:04d}``); without it both exports collide on a single ``sync_<start>_<end>`` file and
+    one channel's data is silently lost.
+    """
+    hour = 3600 * SEC
+    handler = _PrefixRecordingHandler()
+    source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
+    missing = {"c1": [(0, hour)], "c2": [(0, hour)]}  # identical missing range
+    non_precise = {"c1", "c2"}  # both routed to the per-channel fallback path
+    dest = SimpleNamespace(get_write_stream=lambda batch_size: FakeStream())
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)  # output_dir set -> files are kept
+
+    sync_mod._stream_missing(handler, dest, missing, source_by_name, non_precise, options)
+
+    # Each channel exported once, with a distinct prefix -> no collision.
+    assert len(handler.prefixes) == 2
+    assert len(set(handler.prefixes)) == 2, f"file_prefix collision: {handler.prefixes}"
+    # Both files persisted to distinct paths on disk (neither overwrote the other).
+    assert len(list(tmp_path.glob("*.csv.gz"))) == 2
+
+
 def test_progress_bar_renders_nothing_when_total_is_zero() -> None:
     # Nothing to count (e.g. detecting against a freshly empty destination) -> no bar, not a phantom 1.
     with sync_mod._progress_bar(show=True, total=0, description="Counting destination channels") as advance:
