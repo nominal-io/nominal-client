@@ -41,6 +41,8 @@ from nominal.core._utils.networking import (
 )
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
@@ -167,6 +169,8 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
+    nominal_hosted_extractors: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    registry: registry_pb2_grpc.RegistryServiceStub
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -309,6 +313,8 @@ class ClientsBunch:
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
+            nominal_hosted_extractors=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
         )
 
 

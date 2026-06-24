@@ -95,6 +95,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.nominal_hosted_extractor import ContainerImage, NominalHostedExtractor, SearchFilter
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -1495,6 +1496,52 @@ class NominalClient:
             self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
         )
         return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
+
+    def create_nominal_hosted_extractor(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        workspace_rid: str | None = None,
+    ) -> NominalHostedExtractor:
+        """Create a Nominal Hosted (v2) containerized extractor.
+
+        Nominal Hosted extractors run a container image stored in Nominal's internal registry.
+        Register an image against the returned extractor and activate it before it can ingest.
+
+        Example:
+            extractor = client.create_nominal_hosted_extractor("ulog-parser")
+            image = extractor.register_image(tag="v1", object_path=uploaded_path, ...)
+        """
+        return NominalHostedExtractor._create(self._clients, name, description=description, workspace_rid=workspace_rid)
+
+    def get_nominal_hosted_extractor(self, rid: str, *, workspace_rid: str | None = None) -> NominalHostedExtractor:
+        """Fetch a single Nominal Hosted extractor, including its active container image rid when set."""
+        return NominalHostedExtractor._get(self._clients, rid, workspace_rid=workspace_rid)
+
+    def search_nominal_hosted_extractors(
+        self,
+        *,
+        include_archived: bool = False,
+        file_extension: str | None = None,
+        workspace_rid: str | None = None,
+    ) -> Sequence[NominalHostedExtractor]:
+        """Search Nominal Hosted extractors in a workspace, following pagination."""
+        return NominalHostedExtractor._search(
+            self._clients,
+            include_archived=include_archived,
+            file_extension=file_extension,
+            workspace_rid=workspace_rid,
+        )
+
+    def search_container_images(
+        self,
+        *,
+        filter: SearchFilter | None = None,
+        workspace_rid: str | None = None,
+    ) -> Sequence[ContainerImage]:
+        """Search container images in a workspace, optionally filtered, following pagination."""
+        return ContainerImage._search(self._clients, filter=filter, workspace_rid=workspace_rid)
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""
