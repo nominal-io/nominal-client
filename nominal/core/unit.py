@@ -83,6 +83,10 @@ def _error_on_invalid_units(unit_map: UnitMapping, unit_service: units_pb2_grpc.
     requested = [unit_symbol for unit_symbol in set(channels_to_units.values()) if unit_symbol is not None]
     with translate_grpc_errors():
         resolved = unit_service.GetBatchUnits(units_pb2.GetBatchUnitsRequest(units=requested))
+    # GetBatchUnits omits unrecognized symbols from `responses` entirely (documented in units.proto and
+    # enforced server-side by filtering on the resolved Optional), so key-presence is the resolved set. This
+    # differs from single-unit GetUnit, which returns a present-but-empty Unit for an unknown symbol — hence
+    # get_unit's HasField check but plain key-presence here.
     valid_units = set(resolved.responses.keys())
 
     # None means "clear this channel's unit" and is intentionally excluded from invalid-unit detection.
