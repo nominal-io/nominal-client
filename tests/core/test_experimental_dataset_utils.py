@@ -82,17 +82,11 @@ def test_get_dataset_owner_returns_the_user_for_the_resolved_owner(mock_dataset:
     )
 
 
-class _FakeRpcError(grpc.RpcError):
-    def code(self) -> grpc.StatusCode:
-        return grpc.StatusCode.PERMISSION_DENIED
-
-    def details(self) -> str:
-        return "denied"
-
-
-def test_get_dataset_owner_rid_translates_grpc_errors(mock_dataset: Dataset) -> None:
+def test_get_dataset_owner_rid_translates_grpc_errors(mock_dataset: Dataset, fake_rpc_error) -> None:
     """A grpc.RpcError from the roles stub surfaces as a NominalError subclass, not raw grpc."""
-    mock_dataset._clients.roles.GetResourceRoles.side_effect = _FakeRpcError()  # type: ignore[attr-defined]
+    mock_dataset._clients.roles.GetResourceRoles.side_effect = fake_rpc_error(  # type: ignore[attr-defined]
+        grpc.StatusCode.PERMISSION_DENIED
+    )
 
     with pytest.raises(NominalPermissionDeniedError):
         get_dataset_owner_rid(mock_dataset)
