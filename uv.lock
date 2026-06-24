@@ -821,6 +821,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+compute = [
+    { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
+]
 mis = [
     { name = "openpyxl" },
 ]
@@ -859,6 +862,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.1282.0" },
     { name = "nominal-api-protos", specifier = "==0.1282.0" },
+    { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1282.0" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.8.2" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
     { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
@@ -874,7 +878,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4,<5" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
-provides-extras = ["mis", "tdms", "video"]
+provides-extras = ["mis", "tdms", "compute", "video"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -920,6 +924,19 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/09/d8accc32036bb5c8f97be2c441a2c60b443561fbbc7fee2ea1772ff53678/nominal_api_protos-0.1282.0-py3-none-any.whl", hash = "sha256:15f28364c0c5a6b74c0083d5cfdcb7e4877c4c3662e2e3f8a8d87172e5b5974d", size = 358502, upload-time = "2026-06-22T15:25:16.644Z" },
+]
+
+[[package]]
+name = "nominal-compute"
+version = "0.1282.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/88/3a3390b84eb41184fbdd412eb7053b83cb3fe1ed22d099bbb8587179ab50/nominal_compute-0.1282.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:a9a4089c397f0336751afcdc170b4a1356a0be7a0a1adc5e63cce29ac5b0e4eb", size = 820570, upload-time = "2026-06-22T15:28:09.707Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/ef/31c9d8edeb8e784b254ec5dc9ff1a886cd9672cf07bf4b2f89c5aae8d963/nominal_compute-0.1282.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:dc6ae0cf0a15dc18bbb2ccb55a64e82f055abc6b76396f2448ecd985c77bacc2", size = 886230, upload-time = "2026-06-22T15:28:11.188Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/dd/d57af01ba8fccb5b1397d54553caa44eece63fdf02c86f63652b2b8621ca/nominal_compute-0.1282.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:eb745f4ca3338957ed57a57bfffbbd223a9b2d8da95e6d3088c1cf5843c380c7", size = 930255, upload-time = "2026-06-22T15:28:13.656Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/42/6c77a0fad0dd1dc37cbb04883ad70f5bed79682a9ec5a2d069598268df2b/nominal_compute-0.1282.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:d769295c597bfa8d404f3d9d72707a65ba6f8fa36ad3bedd960eca81e2a6958b", size = 1061461, upload-time = "2026-06-22T15:28:14.753Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/e4/b3260ab249d4acdf5db2173690c9544e0c85d8c4f60f2711b1e5b8922fce/nominal_compute-0.1282.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:d8b4a04eaf9b4881755a9e365793f6fd18adc2b60f6f2bff6a83d109893a729e", size = 1111677, upload-time = "2026-06-22T15:28:17.02Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/19/204092997bbc1765f933541826bac878b31d0a0adb57f9fd4e3e4a5d2de6/nominal_compute-0.1282.0-cp310-abi3-win_amd64.whl", hash = "sha256:69502c191e395e6ff3809cff55c3b3fc85dfd558632aaf10f21863558d1f0703", size = 700700, upload-time = "2026-06-22T15:28:18.235Z" },
 ]
 
 [[package]]
