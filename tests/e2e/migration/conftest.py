@@ -24,6 +24,7 @@ underlying pytest ``request`` fixture.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Callable
 from uuid import uuid4
@@ -37,6 +38,19 @@ from nominal.experimental.migration.migrator.context import MigrationContext
 from tests.e2e import POLL_INTERVAL
 
 RegisterCleanup = Callable[[Callable[[], None]], None]
+
+# --- channel-sync e2e shared constants ---------------------------------------------------------
+# The two-tag source fixture below carries the same channels under two ``asset_id`` tag values.
+# csv_data  (18:00-18:09, temperature 20-29) is tagged asset_id=A.
+# csv_data2 (18:10-18:19, temperature 30-39) is tagged asset_id=B.
+SYNC_TAG_KEY = "asset_id"
+SYNC_TAG_A = "A"
+SYNC_TAG_B = "B"
+# Sync window spanning BOTH files' data. Because the window covers A's and B's sub-ranges, a
+# tag-filtered sync can only exclude the other tag via the tag filter (not the time window), and a
+# cross-tag leak surfaces as extra points with the wrong tag's distinct values.
+SYNC_WINDOW_START = int(datetime(2024, 9, 5, 18, 0, tzinfo=timezone.utc).timestamp()) * 1_000_000_000
+SYNC_WINDOW_END = int(datetime(2024, 9, 5, 18, 20, tzinfo=timezone.utc).timestamp()) * 1_000_000_000
 
 
 def pytest_addoption(parser):
@@ -135,4 +149,38 @@ def ingested_source_dataset(
     ds = source_client.create_dataset(f"migration-e2e-source-{uuid4().hex[:8]}")
     register_cleanup(ds.archive)
     ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    return ds
+
+
+@pytest.fixture
+def source_dataset_two_tags(
+    source_client: NominalClient,
+    csv_data: bytes,
+    csv_data2: bytes,
+    register_cleanup: RegisterCleanup,
+) -> Dataset:
+    """A source dataset carrying the same channels under two ``asset_id`` tag values.
+
+    ``add_from_io(..., tags=...)`` applies a tag uniformly to every point in a file, so ingesting the
+    two CSVs with distinct tag values yields the same channels (temperature, humidity,
+    relative_minutes) under ``asset_id=A`` and ``asset_id=B``. The tag values cover disjoint
+    sub-ranges of the same window with distinct values (see the constants above), which makes a
+    tag-filter leak visible while keeping the window the only thing that *doesn't* do the filtering.
+    """
+    ds = source_client.create_dataset(f"channel-sync-e2e-source-{uuid4().hex[:8]}")
+    register_cleanup(ds.archive)
+    ds.add_from_io(
+        BytesIO(csv_data), "timestamp", "iso_8601", tags={SYNC_TAG_KEY: SYNC_TAG_A}
+    ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    ds.add_from_io(
+        BytesIO(csv_data2), "timestamp", "iso_8601", tags={SYNC_TAG_KEY: SYNC_TAG_B}
+    ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    return ds
+
+
+@pytest.fixture
+def dest_dataset(dest_client: NominalClient, register_cleanup: RegisterCleanup) -> Dataset:
+    """An empty dataset on the destination client; the write stream auto-creates series on first write."""
+    ds = dest_client.create_dataset(f"channel-sync-e2e-dest-{uuid4().hex[:8]}")
+    register_cleanup(ds.archive)
     return ds
