@@ -52,6 +52,52 @@ SYNC_TAG_B = "B"
 SYNC_WINDOW_START = int(datetime(2024, 9, 5, 18, 0, tzinfo=timezone.utc).timestamp()) * 1_000_000_000
 SYNC_WINDOW_END = int(datetime(2024, 9, 5, 18, 20, tzinfo=timezone.utc).timestamp()) * 1_000_000_000
 
+# --- channel-sync e2e: adversarial channel-type stress data ------------------------------------
+# A generated dataset with the channel types that are annoying to migrate, so the hard export/stream
+# code paths run end-to-end (not just the numeric happy path). Generated rather than a literal so the
+# high-cardinality column is genuinely high-cardinality.
+STRESS_ENUM_VALUES = ("nominal", "warning", "fault")
+# Row count: high enough that the unique-per-row STRING column overflows the backend's enum-category
+# limit (Compute:TooManyCategories) within a single bucket, forcing that channel onto the non-precise
+# recursive-halving export fallback. The default 1-hour detection bucket keeps every row in one bucket
+# (the window below is ~33 min) so the categories accumulate there. Bump this if a run shows the
+# high-cardinality channel was still detected precise.
+STRESS_ROWS = 2000
+_STRESS_START = datetime(2024, 9, 5, 18, 0, tzinfo=timezone.utc)
+STRESS_WINDOW_START = int(_STRESS_START.timestamp()) * 1_000_000_000
+# One second per row; the window is half-open and ends one second past the last row.
+STRESS_WINDOW_END = STRESS_WINDOW_START + STRESS_ROWS * 1_000_000_000
+
+
+def make_stress_csv(rows: int = STRESS_ROWS) -> bytes:
+    """Build a CSV exercising each migration-hard channel type, one row per second from 18:00.
+
+    Columns:
+    - ``hi_card_str``: a unique value per row (high-cardinality STRING -> TooManyCategories ->
+      non-precise presence probe + per-channel recursive-halving export fallback).
+    - ``enum_str``: a small repeating label set (low-cardinality enum STRING -> precise bucketed-enum
+      counting; numeric-looking labels stay strings on re-read).
+    - ``int_ch``: whole numbers (INT -> exercises the Float64->int recast so values land as INT).
+    - ``dbl_ch``: integral-looking floats like ``42.0`` (DOUBLE -> exercises the Float64 guard so a
+      double is not re-inferred/created as INT in the destination).
+    """
+    from datetime import timedelta
+
+    lines = ["timestamp,hi_card_str,enum_str,int_ch,dbl_ch"]
+    for i in range(rows):
+        ts = (_STRESS_START + timedelta(seconds=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lines.append(f"{ts},id_{i},{STRESS_ENUM_VALUES[i % 3]},{i % 100},{float(i % 50)}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+# Expected destination channel types after a correct round-trip.
+STRESS_CHANNEL_TYPES = {
+    "hi_card_str": "STRING",
+    "enum_str": "STRING",
+    "int_ch": "INT",
+    "dbl_ch": "DOUBLE",
+}
+
 
 def pytest_addoption(parser):
     """Register source and destination environment CLI options."""
@@ -183,4 +229,19 @@ def dest_dataset(dest_client: NominalClient, register_cleanup: RegisterCleanup) 
     """An empty dataset on the destination client; the write stream auto-creates series on first write."""
     ds = dest_client.create_dataset(f"channel-sync-e2e-dest-{uuid4().hex[:8]}")
     register_cleanup(ds.archive)
+    return ds
+
+
+@pytest.fixture
+def source_dataset_stress(source_client: NominalClient, register_cleanup: RegisterCleanup) -> Dataset:
+    """A source dataset of the migration-hard channel types (see :func:`make_stress_csv`).
+
+    Untagged: this fixture exercises the channel-type code paths, while ``source_dataset_two_tags``
+    covers the tag-filter dimension. Sync over ``[STRESS_WINDOW_START, STRESS_WINDOW_END)``.
+    """
+    ds = source_client.create_dataset(f"channel-sync-e2e-stress-{uuid4().hex[:8]}")
+    register_cleanup(ds.archive)
+    ds.add_from_io(BytesIO(make_stress_csv()), "timestamp", "iso_8601").poll_until_ingestion_completed(
+        interval=POLL_INTERVAL
+    )
     return ds

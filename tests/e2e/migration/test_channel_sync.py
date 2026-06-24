@@ -43,6 +43,11 @@ from nominal.experimental.migration.channel_sync import (
 from nominal.thirdparty.pandas import channel_to_series
 from tests.e2e import POLL_INTERVAL
 from tests.e2e.migration.conftest import (
+    STRESS_CHANNEL_TYPES,
+    STRESS_ENUM_VALUES,
+    STRESS_ROWS,
+    STRESS_WINDOW_END,
+    STRESS_WINDOW_START,
     SYNC_TAG_A,
     SYNC_TAG_B,
     SYNC_TAG_KEY,
@@ -92,7 +97,7 @@ def _read_until(
     channel: Channel,
     start: int,
     end: int,
-    tags: Mapping[str, str],
+    tags: Mapping[str, str] | None,
     min_count: int,
 ) -> list[Any]:
     """Read a channel's values for ``tags`` over the window, polling until at least ``min_count`` land.
@@ -130,6 +135,11 @@ def _assert_round_trip(
     actual = _read_until(dest_channel, SYNC_WINDOW_START, SYNC_WINDOW_END, tags, expected_count)
     assert len(actual) == expected_count, f"dest {name} has {len(actual)} points, expected {expected_count}"
     assert actual == expected, f"dest {name} values do not match source for tags={dict(tags)}"
+
+
+def _stress_dest_values(dest_dataset: Dataset, name: str) -> list[Any]:
+    """Read an untagged destination channel over the stress window, polling until all rows land."""
+    return _read_until(_dest_channel(dest_dataset, name), STRESS_WINDOW_START, STRESS_WINDOW_END, None, STRESS_ROWS)
 
 
 def _available_tag_values(dest_dataset: Dataset, name: str) -> set[str]:
@@ -314,3 +324,47 @@ def test_multi_tag_filters_copy_both_into_subdirs(
         assert _available_tag_values(dest_dataset, name) == {SYNC_TAG_A, SYNC_TAG_B}
         _assert_round_trip(source_dataset_two_tags, dest_dataset, name, {SYNC_TAG_KEY: SYNC_TAG_A}, A_POINT_COUNT)
         _assert_round_trip(source_dataset_two_tags, dest_dataset, name, {SYNC_TAG_KEY: SYNC_TAG_B}, B_POINT_COUNT)
+
+
+def test_adversarial_channel_types_round_trip(
+    source_dataset_stress: Dataset,
+    source_client: NominalClient,
+    dest_dataset: Dataset,
+):
+    """The migration-hard channel types each round-trip with values and types preserved.
+
+    Exercises the non-numeric / non-precise code paths end-to-end: a high-cardinality STRING channel
+    overflows the enum-category limit and takes the recursive-halving export fallback, a low-card enum
+    STRING re-reads as strings, an INT channel lands as INT (not float), and an integral-looking DOUBLE
+    stays DOUBLE (not re-inferred as INT). ``ChannelSyncReport`` does not expose which channels took the
+    non-precise fallback, so this asserts the *outcome* — every value and the channel type survive —
+    rather than the path taken.
+    """
+    report = sync_missing_channel_data(
+        source_dataset_stress,
+        source_client,
+        dest_dataset,
+        STRESS_WINDOW_START,
+        STRESS_WINDOW_END,
+        _options(),
+    )
+
+    assert report.points_streamed > 0
+    assert report.still_short == []
+
+    # Every channel type landed with the right destination type and the full point count.
+    for name, expected_type in STRESS_CHANNEL_TYPES.items():
+        dest_channel = _dest_channel(dest_dataset, name)
+        assert dest_channel.data_type is not None, f"{name} has no destination data type"
+        assert dest_channel.data_type.value == expected_type, (
+            f"{name} landed as {dest_channel.data_type.value}, expected {expected_type}"
+        )
+        src_series = channel_to_series(source_dataset_stress.get_channel(name), STRESS_WINDOW_START, STRESS_WINDOW_END)
+        dest_values = sorted(_read_until(dest_channel, STRESS_WINDOW_START, STRESS_WINDOW_END, None, STRESS_ROWS))
+        assert len(dest_values) == STRESS_ROWS, f"{name} landed {len(dest_values)} points, expected {STRESS_ROWS}"
+        assert dest_values == sorted(src_series.to_list()), f"{name} values do not round-trip"
+
+    # The high-cardinality STRING (the headline non-precise case) kept every unique label.
+    assert len(set(_stress_dest_values(dest_dataset, "hi_card_str"))) == STRESS_ROWS
+    # The low-cardinality enum kept exactly its label set (values stay strings, not coerced to numbers).
+    assert set(_stress_dest_values(dest_dataset, "enum_str")) == set(STRESS_ENUM_VALUES)
