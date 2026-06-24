@@ -247,6 +247,8 @@ def test_from_config_wires_roles_via_the_grpc_factory(monkeypatch):
     assert clients.comments is roles_stub
     assert clients.units is roles_stub
     assert clients.workspace is roles_stub
+    assert clients.containerized_extractor is roles_stub
+    assert clients.registry is roles_stub
     assert grpc_factory.call_args.kwargs["auth_header"] == "Bearer token"
     assert grpc_factory.call_args.kwargs["api_base_url"] == "https://api.nominal.test"
     assert grpc_factory.call_args.kwargs["header_provider"] is None
