@@ -72,6 +72,13 @@ def merge_bucket_ranges(bucket_starts: list[int], bucket: IntegralNanosecondsUTC
 
     Adjacent buckets (where one bucket's start plus ``bucket`` equals the next start) coalesce into
     a single range so the export issues one request per contiguous span instead of one per bucket.
+
+    Args:
+        bucket_starts: Bucket-start timestamps (ns) to merge; duplicates and order are tolerated.
+        bucket: Bucket width (nanoseconds), used to detect adjacency.
+
+    Returns:
+        The coalesced ``(start, end)`` ranges, sorted ascending.
     """
     ordered = sorted(set(bucket_starts))
     ranges: list[tuple[int, int]] = []
@@ -103,6 +110,13 @@ def shortfall_buckets(source: ChannelBucketCounts, destination: ChannelBucketCou
     """Return the bucket-starts (sorted) where the destination has fewer points than the source.
 
     "Any shortfall" rule: a bucket is a sync target when ``src_count > dest_count``.
+
+    Args:
+        source: Per-bucket counts on the source side.
+        destination: Per-bucket counts on the destination side (missing buckets count as zero).
+
+    Returns:
+        The sorted bucket-starts (ns) that are short on the destination.
     """
     return sorted(
         bucket_start
@@ -129,12 +143,21 @@ def count_channels(
     ``channels_per_request`` with chunks issued across ``workers`` threads. Any channel whose batch
     result errored falls back to a whole-window presence probe.
 
-    ``on_advance`` (when given) is called with the number of channels resolved each step, summing to
-    ``len(channels)`` over the call -- a progress hook for the caller's detection bar.
+    Args:
+        channels: The channels to count. Assumed to have unique names and share a single client
+            (e.g. all from one dataset).
+        start: Start of the window, inclusive (nanoseconds UTC).
+        end: End of the window, exclusive (nanoseconds UTC).
+        bucket: Bucket width (nanoseconds) the window is subdivided into.
+        tags: Optional datascope tag filter applied to every channel's count.
+        channels_per_request: Channels summarized per batched compute request.
+        workers: Threads issuing batched requests concurrently.
+        request_delay: Seconds to sleep between consecutive batch submissions (rate-limiting).
+        on_advance: Optional progress hook called with the number of channels resolved each step
+            (summing to ``len(channels)`` over the call) -- drives the caller's detection bar.
 
-    Returns a mapping of channel name to zero-filled :class:`ChannelBucketCounts` for every input
-    channel. Channels are assumed to have unique names and to share a single client (e.g. all from
-    one dataset).
+    Returns:
+        A mapping of channel name to its :class:`ChannelBucketCounts`, for every input channel.
     """
     starts = _iter_bucket_starts(start, end, bucket)
     batchable = [c for c in channels if c.data_type in _BATCHABLE_TYPES]

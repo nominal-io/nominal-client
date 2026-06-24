@@ -64,7 +64,16 @@ def _build_client(cfg: Mapping[str, Any], label: str) -> NominalClient:
 
 
 def sync_from_config(cfg: Mapping[str, Any]) -> None:
-    """Run sync_missing_channel_data() driven by the parsed `sync` config block."""
+    """Run a channel-data sync driven by the parsed ``sync`` config block.
+
+    Builds the source and destination clients, resolves the datasets and window, and invokes
+    :func:`sync_missing_channel_data` (or :func:`sync_missing_channel_data_for_tag_filters` when the
+    config supplies tag filters), logging a report per pass.
+
+    Args:
+        cfg: The parsed ``sync`` config mapping (``source``/``destination`` connection blocks, the
+            dataset RIDs, window, ``phase``, optional ``tags``/``tag_filters``, and tuning options).
+    """
     source_cfg = cfg["source"]
     destination_cfg = cfg["destination"]
 
@@ -210,6 +219,14 @@ def _configure_logging(cfg: Mapping[str, Any], cli_log_file: str | None) -> None
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: load the YAML config and run :func:`sync_from_config`.
+
+    Args:
+        argv: Command-line arguments (defaults to ``sys.argv[1:]`` when ``None``).
+
+    Returns:
+        A process exit code (``0`` on success).
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=pathlib.Path, help="Path to the sync YAML config")
     parser.add_argument(
