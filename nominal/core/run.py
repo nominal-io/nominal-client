@@ -135,6 +135,9 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
 
         Returns:
             The created `Comment`.
+
+        Raises:
+            NominalError: If the comments service request fails.
         """
         request = comments_pb2.CreateCommentRequest(
             parent=comments_pb2.CommentParent(

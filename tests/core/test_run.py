@@ -69,5 +69,3 @@ def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
 
     assert result == []
     mock_clients.event.search_events.assert_not_called()
-
-

@@ -93,7 +93,13 @@ from nominal.core.dataset import (
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
+from nominal.core.exceptions import (
+    NominalConfigError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalMethodRemovedError,
+    NominalNotFoundError,
+)
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
@@ -306,7 +312,11 @@ class NominalClient:
         return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 
     def list_workspaces(self) -> Sequence[Workspace]:
-        """Return all workspaces visible to the current user"""
+        """Return all workspaces visible to the current user.
+
+        Raises:
+            NominalError: If the workspace service request fails.
+        """
         with translate_grpc_errors():
             response = self._clients.workspace.GetWorkspaces(workspaces_pb2.GetWorkspacesRequest())
         return [Workspace._from_proto(workspace) for workspace in response.workspaces]
@@ -1043,13 +1053,27 @@ class NominalClient:
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
+        Raises:
+            NominalError: If the units service request fails for a reason other than an
+                unrecognized symbol.
+
         """
-        with translate_grpc_errors():
-            response = self._clients.units.GetUnit(units_pb2.GetUnitRequest(unit=unit_symbol))
+        try:
+            with translate_grpc_errors():
+                response = self._clients.units.GetUnit(units_pb2.GetUnitRequest(unit=unit_symbol))
+        except (NominalNotFoundError, NominalInvalidArgumentError):
+            # An unrecognized or malformed symbol is the documented "no such unit symbol matches" -> None.
+            # Handle it whether the backend signals it via a NOT_FOUND/INVALID_ARGUMENT status (translated to
+            # these NominalError subclasses) or via a present-but-empty response (the HasField check below).
+            return None
         return Unit._from_proto(response.unit) if response.HasField("unit") else None
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
-        """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
+        """Get the list of units that are commensurable (convertible to/from) the given unit symbol.
+
+        Raises:
+            NominalError: If the units service request fails.
+        """
         with translate_grpc_errors():
             response = self._clients.units.GetCommensurableUnits(
                 units_pb2.GetCommensurableUnitsRequest(unit=unit_symbol)

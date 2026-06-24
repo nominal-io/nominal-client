@@ -13,9 +13,7 @@ def _client() -> NominalClient:
 
 def test_list_workspaces_converts_each_proto_workspace() -> None:
     client = _client()
-    resp = workspaces_pb2.GetWorkspacesResponse(
-        workspaces=[workspaces_pb2.Workspace(rid="ri.ws.1", id="a", org="o")]
-    )
+    resp = workspaces_pb2.GetWorkspacesResponse(workspaces=[workspaces_pb2.Workspace(rid="ri.ws.1", id="a", org="o")])
     client._clients.workspace.GetWorkspaces.return_value = resp  # type: ignore[attr-defined]
 
     assert client.list_workspaces() == [Workspace(rid="ri.ws.1", id="a", org="o")]

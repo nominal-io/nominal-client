@@ -45,9 +45,7 @@ def _stub_comment() -> comments_pb2.Comment:
 
 
 def test_add_comment_sends_run_parented_request(mock_run, mock_clients):
-    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(
-        comment=_stub_comment()
-    )
+    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(comment=_stub_comment())
 
     mock_run.add_comment("hello")
 
@@ -60,9 +58,7 @@ def test_add_comment_sends_run_parented_request(mock_run, mock_clients):
 
 
 def test_add_comment_returns_comment_dataclass(mock_run, mock_clients):
-    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(
-        comment=_stub_comment()
-    )
+    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(comment=_stub_comment())
 
     comment = mock_run.add_comment("hello")
 
