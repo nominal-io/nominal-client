@@ -17,8 +17,11 @@ Resumability is implicit: detection is idempotent, so re-running simply re-syncs
 short. There is no state file.
 
 Caveats:
-* **Single tag-filter.** Each channel is treated as one series under the optional ``tags`` filter;
-  channels carrying extra tag dimensions are not enumerated per-combination.
+* **Underconstrained channels.** A channel is underconstrained when a tag filter matches multiple
+  series (e.g. ``{stand: "1"}`` matches both ``{stand: "1", ts: "1"}`` and ``{stand: "1", ts: "2"}``).
+  Pass ``expand_underconstrained=True`` to :func:`sync_missing_channel_data_for_tag_filters` to
+  automatically detect these channels and split them into per-combination passes so each series is
+  synced with its fully-constraining tag set.
 * **Bucket-granularity append.** A bucket that is *partially* present in the destination is
   re-streamed in full, which appends duplicate points for the portion already present. The common
   case -- an empty bucket (``dest_count == 0``) -- never duplicates. Streaming is append-only.
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import gzip
+import itertools
 import logging
 import tempfile
 import time
@@ -38,8 +42,10 @@ from typing import Literal
 
 import polars as pl
 
+from nominal._utils.iterator_tools import batched
+from nominal.core._utils.api_tools import build_compute_tag_filter
 from nominal.core._stream.write_stream import DataStream
-from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.channel import Channel, ChannelDataType, _batch_check_channels_have_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.experimental.migration.channel_sync.detect import (
@@ -60,7 +66,7 @@ from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
     _get_exported_timestamp_channel,
 )
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +123,10 @@ class ChannelSyncOptions:
     and exports the missing ranges to ``output_dir`` without streaming (files are kept). ``"stream"``
     skips detection/export and streams every CSV already in ``output_dir`` into the destination. The
     single-stage phases run once with no settle/retry loop, and compose across separate invocations."""
+    channel_allowlist: frozenset[str] | None = None
+    """If set, only channels whose names are in this set are processed. All others are skipped before
+    detection and download. Used internally by :func:`sync_missing_channel_data_for_tag_filters` with
+    ``expand_underconstrained=True`` to route each channel to exactly one fully-constraining filter pass."""
 
 
 @dataclass(frozen=True)
@@ -251,6 +261,8 @@ def sync_missing_channel_data(
     assert source_client is not None
 
     all_channels = list(source_dataset.search_channels())
+    if options.channel_allowlist is not None:
+        all_channels = [ch for ch in all_channels if ch.name in options.channel_allowlist]
     report.channels_examined = len(all_channels)
     source_channels = [ch for ch in all_channels if ch.data_type in _EXPORTABLE_DATA_TYPES]
     report.channels_skipped_unsupported = len(all_channels) - len(source_channels)
@@ -793,6 +805,135 @@ def _stream_file(
 
 _TAGS_METADATA_FILE = "sync_tags.json"
 
+_UNDERCONSTRAINED_PROBE_BATCH = 200
+
+
+def _build_underconstrained_expansion(
+    channels: Sequence[Channel],
+    tag_filter: Mapping[str, str],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+) -> list[tuple[dict[str, str], frozenset[str] | None]]:
+    """Expand one tag filter into per-combination passes if any channels are underconstrained.
+
+    Uses batchGetSeriesCount to efficiently identify channels where ``series_count > 1`` (the given
+    filter matches multiple series), then calls ``get_available_tags()`` on each to find discriminating
+    tag keys and their values, and builds the cartesian product of those values.
+
+    Returns a list of ``(tags_dict, channel_allowlist_or_None)`` pairs:
+
+    * If no channels are underconstrained: returns ``[(dict(tag_filter), None)]`` unchanged.
+    * Otherwise: one pair for fully-constrained channels (original filter, restricted allowlist) plus
+      one pair per combination for underconstrained channels (each with the channels that have data
+      for that specific combination).
+
+    Every channel appears in exactly one returned pass, routed to the most-constrained tag set.
+    """
+    if not channels:
+        return [(dict(tag_filter), None)]
+
+    clients = channels[0]._clients
+    api_start = _SecondsNanos.from_flexible(start).to_api()
+    api_end = _SecondsNanos.from_flexible(end).to_api()
+    api_tag_filters = build_compute_tag_filter(dict(tag_filter))
+
+    underconstrained_names: set[str] = set()
+    channels_with_data_names: set[str] = set()
+
+    for batch in batched(channels, _UNDERCONSTRAINED_PROBE_BATCH):
+        batch_list = list(batch)
+        try:
+            with_data, underconstrained = _batch_check_channels_have_data(
+                clients,
+                batch_list,
+                api_tag_filters,
+                api_start,
+                api_end,
+            )
+            for ch in with_data:
+                channels_with_data_names.add(ch.name)
+            underconstrained_names.update(underconstrained)
+        except Exception:
+            logger.warning(
+                "Underconstrained probe failed for a batch of %d channel(s); treating as fully constrained",
+                len(batch_list),
+            )
+            for ch in batch_list:
+                channels_with_data_names.add(ch.name)
+
+    if not underconstrained_names:
+        logger.debug("No underconstrained channels for filter %s", dict(tag_filter))
+        return [(dict(tag_filter), None)]
+
+    logger.info(
+        "Found %d underconstrained channel(s) under filter %s; computing per-combination passes",
+        len(underconstrained_names),
+        dict(tag_filter),
+    )
+
+    fully_constrained: set[str] = channels_with_data_names - underconstrained_names
+    by_name = {ch.name: ch for ch in channels}
+    combo_to_channels: dict[tuple[tuple[str, str], ...], set[str]] = {}
+    internal_tag_only: list[str] = []
+
+    for ch_name in sorted(underconstrained_names):
+        ch = by_name.get(ch_name)
+        if ch is None:
+            continue
+        try:
+            available = ch.get_available_tags(start_time=start, end_time=end, initial_tags=dict(tag_filter))
+        except Exception:
+            logger.warning("get_available_tags failed for channel %r; routing through original filter", ch_name)
+            fully_constrained.add(ch_name)
+            continue
+
+        # Exclude Nominal-internal tags (prefixed with "_nominal_") — these are system metadata
+        # (e.g. _nominal_ingest_rid tracks which streaming session wrote each point) and are not
+        # meaningful user dimensions. A channel underconstrained only by internal tags is treated
+        # as fully constrained for migration purposes: different sessions cover non-overlapping
+        # time ranges, so the export API merges them correctly into one result.
+        discriminating = {k: sorted(v) for k, v in available.items() if len(v) > 1 and not k.startswith("_nominal_")}
+        if not discriminating:
+            internal_tag_only.append(ch_name)
+            fully_constrained.add(ch_name)
+            continue
+
+        keys = sorted(discriminating.keys())
+        for combo_values in itertools.product(*(discriminating[k] for k in keys)):
+            full_tags = {**dict(tag_filter), **dict(zip(keys, combo_values))}
+            combo_key = tuple(sorted(full_tags.items()))
+            combo_to_channels.setdefault(combo_key, set()).add(ch_name)
+
+    if internal_tag_only:
+        sample = ", ".join(internal_tag_only[:10]) + ("..." if len(internal_tag_only) > 10 else "")
+        logger.info(
+            "%d channel(s) underconstrained only by internal (_nominal_*) tags under filter %s "
+            "(multiple ingest sessions, non-overlapping — merging via original filter): %s",
+            len(internal_tag_only),
+            dict(tag_filter),
+            sample,
+        )
+
+    # If every underconstrained channel fell back (e.g. only _nominal_* tags discriminate),
+    # no real expansion is needed — return the original filter with no channel restriction.
+    if not combo_to_channels:
+        return [(dict(tag_filter), None)]
+
+    passes: list[tuple[dict[str, str], frozenset[str] | None]] = []
+
+    if fully_constrained:
+        passes.append((dict(tag_filter), frozenset(fully_constrained)))
+    else:
+        logger.info("All channels under filter %s are underconstrained; skipping original filter pass", dict(tag_filter))
+
+    for combo_key, ch_names in sorted(combo_to_channels.items()):
+        combo_tags = dict(combo_key)
+        sample = ", ".join(sorted(ch_names)[:5]) + ("..." if len(ch_names) > 5 else "")
+        logger.info("  Expansion pass %s → %d channel(s): %s", combo_tags, len(ch_names), sample)
+        passes.append((combo_tags, frozenset(ch_names)))
+
+    return passes
+
 
 def sync_missing_channel_data_for_tag_filters(
     source_dataset: Dataset | None,
@@ -802,6 +943,7 @@ def sync_missing_channel_data_for_tag_filters(
     end: IntegralNanosecondsUTC,
     tag_filters: Sequence[Mapping[str, str]] | None = None,
     base_options: ChannelSyncOptions | None = None,
+    expand_underconstrained: bool = False,
 ) -> list[ChannelSyncReport]:
     """Run :func:`sync_missing_channel_data` once per tag filter, returning one report per filter.
 
@@ -814,6 +956,13 @@ def sync_missing_channel_data_for_tag_filters(
 
     For ``phase="stream"``, ``tag_filters`` may be omitted: the function auto-discovers subdirectories
     under ``base_options.output_dir`` that contain a ``sync_tags.json`` written by a prior download.
+
+    When ``expand_underconstrained=True`` (and ``phase`` is not ``"stream"``), each tag filter is
+    probed against the source dataset before syncing. Channels where the filter matches multiple
+    series (underconstrained) are automatically split into per-combination passes using the
+    discriminating tag keys returned by ``get_available_tags()``. Fully-constrained channels stay in
+    the original filter pass. This ensures every series is synced with its complete tag set, so the
+    destination faithfully mirrors the source structure.
     """
     import json
 
@@ -829,11 +978,24 @@ def sync_missing_channel_data_for_tag_filters(
             )
             return []
 
+    # Build (tags_dict, channel_allowlist) pairs. With expand_underconstrained, underconstrained
+    # channels are split into per-combination passes so each series gets its full tag set. Without
+    # it, every filter is passed as-is with no channel restriction.
+    if expand_underconstrained and base_options.phase != "stream" and source_dataset is not None:
+        all_source_channels = [
+            ch for ch in source_dataset.search_channels() if ch.data_type in _EXPORTABLE_DATA_TYPES
+        ]
+        filter_passes: list[tuple[dict[str, str], frozenset[str] | None]] = []
+        for tf in tag_filters:
+            filter_passes.extend(_build_underconstrained_expansion(all_source_channels, tf, start, end))
+    else:
+        filter_passes = [(dict(tf), None) for tf in tag_filters]
+
     reports = []
-    for tags in tag_filters:
+    for tags, allowlist in filter_passes:
         tag_label = "_".join(f"{k}_{v}" for k, v in tags.items())
         output_dir = base_options.output_dir / tag_label if base_options.output_dir is not None else None
-        options = replace(base_options, tags=tags, output_dir=output_dir)
+        options = replace(base_options, tags=tags, output_dir=output_dir, channel_allowlist=allowlist)
         logger.info("=== Syncing tag filter: %s ===", tag_label)
 
         if base_options.phase == "download" and output_dir is not None:

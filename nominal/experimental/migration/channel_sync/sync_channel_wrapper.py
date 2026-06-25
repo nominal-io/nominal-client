@@ -104,44 +104,20 @@ def sync_from_config(cfg: Mapping[str, Any]) -> None:
     end_ns = _iso_to_nanos(cfg["end"])
 
     tag_filters = cfg.get("tag_filters") or None
+    expand_underconstrained = bool(cfg.get("expand_underconstrained_tags", False))
     if tag_filters or phase == "stream":
-        if tag_filters and phase != "stream":
-            from dataclasses import replace
-            for tag_filter in tag_filters:
-                # Mirror the per-tag subdirectory that sync_missing_channel_data_for_tag_filters creates
-                if base_options.output_dir is not None:
-                    tag_subdir = "_".join(f"{k}_{v}" for k, v in tag_filter.items())
-                    tag_output_dir = base_options.output_dir / tag_subdir
-                else:
-                    tag_output_dir = None
-                if phase == "download" and tag_output_dir is not None:
-                    import json as _json
-                    tag_output_dir.mkdir(parents=True, exist_ok=True)
-                    (tag_output_dir / "sync_tags.json").write_text(_json.dumps(dict(tag_filter)))
-                options = replace(base_options, tags=tag_filter, output_dir=tag_output_dir)
-                report = sync_missing_channel_data(
-                    source_dataset,
-                    source_client,
-                    destination_dataset,
-                    start=start_ns,
-                    end=end_ns,
-                    options=options,
-                )
-                _log_report(report)
-                if tag_output_dir is not None and phase == "download":
-                    _log_channel_examples(tag_output_dir, tag_filter)
-        else:
-            reports = sync_missing_channel_data_for_tag_filters(
-                source_dataset,
-                source_client,
-                destination_dataset,
-                start=start_ns,
-                end=end_ns,
-                tag_filters=tag_filters,  # None for stream = auto-discover from output_dir
-                base_options=base_options,
-            )
-            for report in reports:
-                _log_report(report)
+        reports = sync_missing_channel_data_for_tag_filters(
+            source_dataset,
+            source_client,
+            destination_dataset,
+            start=start_ns,
+            end=end_ns,
+            tag_filters=tag_filters,  # None for stream = auto-discover from output_dir
+            base_options=base_options,
+            expand_underconstrained=expand_underconstrained,
+        )
+        for report in reports:
+            _log_report(report)
     else:
         from dataclasses import replace
         options = replace(base_options, tags=cfg.get("tags") or None)
