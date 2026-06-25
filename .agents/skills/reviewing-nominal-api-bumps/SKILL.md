@@ -79,11 +79,14 @@ prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` t
 
 ## The tools (run individually if needed)
 
-- `extract_surface.py {conjure|proto} <unpacked-wheel-root>` → normalized, sorted surface (one line per
-  bean/union/enum/service/message/rpc). Diff-friendly; types kept fully qualified so `List→Dict` is visible.
-- `diff_surface.py <old.txt> <new.txt> --label "..." [--repo <root>]` → the markdown report. Classifies
+`bump_scan.py` calls these in-process; run them standalone only for a custom flow.
+
+- `extract_surface.py {conjure|proto} <unpacked-wheel-root>` → the structured surface as **JSON Lines**
+  (one element per line, sorted by key). Line-diffable and greppable; types kept fully qualified so
+  `List→Dict` is visible. Importable as `extract(transport, root) -> list[Element]`.
+- `diff_surface.py <old.jsonl> <new.jsonl> --label "..." [--repo <root>]` → the markdown report. Classifies
   field-level deltas (removed field / new required field / type change / optional↔required) and renders
-  the three severity tables.
+  the three severity tables. Importable as `build_report(old, new, label, repo) -> str`.
 
 ## Common mistakes
 

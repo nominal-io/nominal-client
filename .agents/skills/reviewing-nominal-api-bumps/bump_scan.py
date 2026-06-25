@@ -21,15 +21,10 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-HERE = Path(__file__).parent
+from diff_surface import build_report
+from extract_surface import extract, use_utf8_stdout
+
 PKG = {"conjure": "nominal-api", "proto": "nominal-api-protos"}
-
-
-def run(cmd: list[str]) -> str:
-    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-    if res.returncode:
-        sys.exit(f"command failed: {' '.join(cmd)}\n{res.stderr}")
-    return res.stdout
 
 
 def pinned_version(pkg: str, pyproject: Path) -> str | None:
@@ -40,22 +35,23 @@ def pinned_version(pkg: str, pyproject: Path) -> str | None:
 
 
 def latest_version(pkg: str) -> str | None:
-    out = run([sys.executable, "-m", "pip", "index", "versions", pkg])
-    m = re.search(r"Available versions:\s*([0-9][^\s,]*)", out)
+    res = subprocess.run([sys.executable, "-m", "pip", "index", "versions", pkg],
+                         capture_output=True, text=True, encoding="utf-8", check=False)
+    m = re.search(r"Available versions:\s*([0-9][^\s,]*)", res.stdout)
     return m.group(1) if m else None
 
 
 def fetch_and_unpack(pkg: str, ver: str, dest: Path) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
-    run([sys.executable, "-m", "pip", "download", f"{pkg}=={ver}", "--no-deps", "-d", str(dest)])
-    whl = next(dest.glob("*.whl"))
+    subprocess.run([sys.executable, "-m", "pip", "download", f"{pkg}=={ver}", "--no-deps", "-d", str(dest)],
+                   check=True, capture_output=True, text=True, encoding="utf-8")
     root = dest / "unpacked"
-    with zipfile.ZipFile(whl) as z:
+    with zipfile.ZipFile(next(dest.glob("*.whl"))) as z:
         z.extractall(root)
     return root
 
 
-def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproject: Path, outdir: Path) -> Path:
+def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproject: Path, outdir: Path) -> None:
     pkg = PKG[transport]
     old = old or pinned_version(pkg, pyproject)
     new = new or latest_version(pkg)
@@ -63,32 +59,22 @@ def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproj
         sys.exit(f"could not resolve versions for {pkg} (old={old}, new={new}); pass --old/--new")
     if old == new:
         print(f"# {pkg}: pinned version {old} is already the latest — nothing to compare.")
-        return outdir / f"migration-report-{transport}-noop.md"
+        return
 
     work = Path(tempfile.mkdtemp(prefix=f"bump-{transport}-"))
-    old_root = fetch_and_unpack(pkg, old, work / "old")
-    new_root = fetch_and_unpack(pkg, new, work / "new")
-    (work / "old.txt").write_text(run([sys.executable, str(HERE / "extract_surface.py"), transport, str(old_root)]), encoding="utf-8")
-    (work / "new.txt").write_text(run([sys.executable, str(HERE / "extract_surface.py"), transport, str(new_root)]), encoding="utf-8")
-
-    cmd = [sys.executable, str(HERE / "diff_surface.py"), str(work / "old.txt"), str(work / "new.txt"), "--label", f"{pkg} {old} -> {new}"]
-    if repo:
-        cmd += ["--repo", repo]
-    report = run(cmd)
+    old_surface = extract(transport, fetch_and_unpack(pkg, old, work / "old"))
+    new_surface = extract(transport, fetch_and_unpack(pkg, new, work / "new"))
+    report = build_report(old_surface, new_surface, label=f"{pkg} {old} -> {new}", repo=repo)
 
     outdir.mkdir(parents=True, exist_ok=True)
     out = outdir / f"migration-report-{transport}-{old}-to-{new}.md"
     out.write_text(report, encoding="utf-8")
-    print(report)
-    print(f"\n[report written to {out}]\n")
-    return out
+    sys.stdout.write(report)
+    sys.stdout.write(f"\n[report written to {out}]\n")
 
 
 def main() -> None:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")  # reports contain ✅/⚠️/→ on any platform
-    except Exception:
-        pass
+    use_utf8_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument("transport", choices=["conjure", "proto", "both"])
     ap.add_argument("--old", default=None, help="old version (default: pin in pyproject.toml)")

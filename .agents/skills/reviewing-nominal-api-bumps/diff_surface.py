@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Diff two API-surface files (from extract_surface.py) and render a migration report.
+r"""Diff two structured API surfaces (from extract_surface) and render a migration report.
 
-Keys every element by `[kind] dotted.name`, then classifies each delta:
+`build_report(old, new, label, repo)` is the entry point bump_scan calls in-process.
+The CLI reads two JSONL surfaces (from `extract_surface.py`) and prints the report:
 
+  diff_surface.py <old.jsonl> <new.jsonl> --label "nominal-api 0.1282.0 -> 0.1286.0" \\
+      [--repo <client-root>] [--internal-substr Internal]
+
+Each element is matched by key, then classified:
   REMOVED element ............................. BREAKING
   CHANGED element:
     removed field / type change / optional->required ... BREAKING
@@ -12,151 +17,133 @@ Keys every element by `[kind] dotted.name`, then classifies each delta:
     enum: members added (existing enum) ................ behavioral
   ADDED element ............................... additive
 
-With `--repo <root>` it scans <root>/nominal and <root>/tests for references to each
-element (by its leaf name) so the report shows where in the client a change lands —
-0 refs on a breaking change means the bump is safe; 0 refs on an additive means it's
-not wired up yet.
-
-Usage:
-  diff_surface.py <old.txt> <new.txt> --label "nominal-api 0.1282.0 -> 0.1286.0" \\
-      [--repo <client-root>] [--internal-substr Internal]
+With `--repo`, scans <root>/nominal and <root>/tests for references by leaf name so a
+breaking change with 0 call sites reads as a safe bump, and an unreferenced additive
+reads as an unwired capability.
 """
 from __future__ import annotations
 
 import argparse
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-KEY_RE = re.compile(r"(\[\w+\] [\w.]+)")
+from extract_surface import Element, Field, from_jsonl, use_utf8_stdout
+
+
+@dataclass
+class Row:
+    """One element's place in the report: the element plus its rendered change text."""
+    element: Element
+    change: str
+
+
+@dataclass
+class Diff:
+    old_count: int
+    new_count: int
+    added: int
+    removed: int
+    changed: int
+    buckets: dict[str, list[Row]]   # "breaking" | "additive" | "behavioral" -> rows
 
 
 def short(t: str) -> str:
     """Strip quotes and conjure/proto module prefixes for display."""
-    t = t.replace("'", "")
-    return re.sub(r"\b[a-z][a-zA-Z0-9_]*_(?=[A-Z])", "", t)
+    return re.sub(r"\b[a-z][a-zA-Z0-9_]*_(?=[A-Z])", "", t.replace("'", ""))
 
 
-def load(path: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        m = KEY_RE.match(line)
-        out[m.group(1) if m else line] = line
-    return out
+# ---- change classification (structured in, severity + display string out) ----
+def _fieldmap(e: Element) -> dict[str, Field]:
+    return {f.name: f for f in e.fields}
 
 
-def split_top(inner: str) -> list[str]:
-    parts, buf, depth = [], "", 0
-    for ch in inner:
-        if ch in "[{(":
-            depth += 1
-        elif ch in "]})":
-            depth -= 1
-        if ch == "," and depth <= 0:
-            parts.append(buf)
-            buf = ""
-        else:
-            buf += ch
-    if buf.strip():
-        parts.append(buf)
-    return parts
+def is_changed(a: Element, b: Element) -> bool:
+    if a.kind != b.kind:
+        return True
+    if a.kind == "enum":
+        return sorted(a.members) != sorted(b.members)
+    if a.kind in ("bean", "union", "message"):
+        return [(f.name, f.type, f.optional) for f in a.fields] != [(f.name, f.type, f.optional) for f in b.fields]
+    if a.kind == "service":
+        return (a.params, a.returns) != (b.params, b.returns)
+    return False  # rpc carries no payload
 
 
-def fields(sig: str) -> dict[str, tuple[str, bool]]:
-    """name -> (type, optional) from a bean/union/message signature."""
-    candidates = [sig.find(c) for c in "({" if sig.find(c) >= 0]
-    open_idx = min(candidates) if candidates else -1
-    if open_idx < 0:
-        return {}
-    inner = sig[open_idx + 1 : sig.rfind(")") if sig[open_idx] == "(" else sig.rfind("}")]
-    out: dict[str, tuple[str, bool]] = {}
-    for p in split_top(inner):
-        p = p.strip()
-        if ":" not in p:
-            continue
-        name, rest = p.split(":", 1)
-        optional = "= ..." in rest
-        typ = rest.replace("= ...", "").strip()
-        out[name.strip()] = (typ, optional)
-    return out
+def _endpoint_sig(e: Element) -> str:
+    sig = "(" + ", ".join(e.params) + ")" + (f" -> {e.returns}" if e.returns else "")
+    return short(sig)
 
 
-def enum_members(sig: str) -> set[str]:
-    inner = sig[sig.find("{") + 1 : sig.rfind("}")]
-    return {m.strip() for m in inner.split(",") if m.strip()}
-
-
-def kind_of(key: str) -> str:
-    return key[1 : key.index("]")]
-
-
-def leaf(key: str) -> str:
-    return key.split("]", 1)[1].strip().split(".")[-1]
-
-
-def display(key: str) -> str:
-    return key.split("]", 1)[1].strip()
-
-
-# ---- classify a single CHANGED element -> (severity, change_str) ------------
-def classify_change(key: str, old: str, new: str) -> tuple[str, str]:
-    kind = kind_of(key)
-    if kind == "enum":
-        om, nm = enum_members(old), enum_members(new)
+def classify_change(old: Element, new: Element) -> tuple[str, str]:
+    """Return (severity, change-cell text) for a changed element."""
+    if old.kind == "enum":
+        om, nm = set(old.members), set(new.members)
         added, removed = sorted(nm - om), sorted(om - nm)
         if removed:
             return "breaking", f"− {{{', '.join(removed)}}}" + (f"; + {{{', '.join(added)}}}" if added else "")
         return "behavioral", f"+ {{{', '.join(added)}}}"
-    if kind in ("bean", "union", "message"):
-        of, nf = fields(old), fields(new)
+    if old.kind in ("bean", "union", "message"):
+        of, nf = _fieldmap(old), _fieldmap(new)
         deltas, sev = [], "additive"
-        for f in sorted(set(nf) - set(of)):
-            typ, opt = nf[f]
-            deltas.append(f"+ {f}:{short(typ)}" + ("" if opt else " (req)"))
-            if not opt:
+        for name in sorted(set(nf) - set(of)):
+            f = nf[name]
+            deltas.append(f"+ {name}:{short(f.type)}" + ("" if f.optional else " (req)"))
+            if not f.optional:
                 sev = "breaking"
-        for f in sorted(set(of) - set(nf)):
-            deltas.append(f"− {f}:{short(of[f][0])}")
+        for name in sorted(set(of) - set(nf)):
+            deltas.append(f"− {name}:{short(of[name].type)}")
             sev = "breaking"
-        for f in sorted(set(of) & set(nf)):
-            ot, oo = of[f]
-            nt, no = nf[f]
-            if ot != nt:
-                deltas.append(f"~ {f}: {short(ot)}→{short(nt)}")
+        for name in sorted(set(of) & set(nf)):
+            o, n = of[name], nf[name]
+            if o.type != n.type:
+                deltas.append(f"~ {name}: {short(o.type)}→{short(n.type)}")
                 sev = "breaking"
-            elif oo != no:
-                if oo and not no:
-                    deltas.append(f"~ {f}: now required")
+            elif o.optional != n.optional:
+                to_required = o.optional and not n.optional
+                deltas.append(f"~ {name}: now required" if to_required else f"~ {name}: now optional")
+                if to_required:
                     sev = "breaking"
-                else:
-                    deltas.append(f"~ {f}: now optional")
         return sev, "; ".join(deltas) or "(signature changed)"
-    # service endpoint signature change
-    return "breaking", f"sig: {display_sig(old)} → {display_sig(new)}"
+    return "breaking", f"sig: {_endpoint_sig(old)} → {_endpoint_sig(new)}"  # service
 
 
-def display_sig(line: str) -> str:
-    i = line.find("(")
-    return short(line[i:]) if i >= 0 else line
-
-
-def added_summary(key: str, line: str) -> str:
-    kind = kind_of(key)
-    if kind in ("bean", "union", "message"):
-        return "new: (" + ", ".join(fields(line)) + ")"
-    if kind == "enum":
-        return "new enum: {" + ", ".join(sorted(enum_members(line))) + "}"
-    if kind == "service":
-        return "new endpoint " + display_sig(line)
+def added_summary(e: Element) -> str:
+    if e.kind in ("bean", "union", "message"):
+        return "new: (" + ", ".join(f.name for f in e.fields) + ")"
+    if e.kind == "enum":
+        return "new enum: {" + ", ".join(sorted(e.members)) + "}"
+    if e.kind == "service":
+        return "new endpoint " + _endpoint_sig(e)
     return "new"
 
 
+def diff(old: list[Element], new: list[Element]) -> Diff:
+    """Match elements by key and sort each into a severity bucket. No rendering, no I/O."""
+    old_by = {e.key: e for e in old}
+    new_by = {e.key: e for e in new}
+    added_keys, removed_keys, common = set(new_by) - set(old_by), set(old_by) - set(new_by), set(old_by) & set(new_by)
+    buckets: dict[str, list[Row]] = {"breaking": [], "additive": [], "behavioral": []}
+    for k in sorted(removed_keys):
+        buckets["breaking"].append(Row(old_by[k], "**removed**"))
+    changed = 0
+    for k in sorted(common):
+        if is_changed(old_by[k], new_by[k]):
+            changed += 1
+            severity, change = classify_change(old_by[k], new_by[k])
+            buckets[severity].append(Row(new_by[k], change))
+    for k in sorted(added_keys):
+        buckets["additive"].append(Row(new_by[k], added_summary(new_by[k])))
+    return Diff(len(old_by), len(new_by), len(added_keys), len(removed_keys), changed, buckets)
+
+
 # ---- repo reference scan ----------------------------------------------------
-def scan_refs(names: set[str], repo: Path) -> dict[str, list[str]]:
-    roots = [repo / "nominal", repo / "tests"]
-    roots = [r for r in roots if r.exists()] or [repo]
+def scan_refs(names: set[str], repo: Path) -> dict[str, list[str]] | None:
+    roots = [r for r in (repo / "nominal", repo / "tests") if r.exists()]
+    if not roots:
+        print(f"warning: no nominal/ or tests/ under {repo}; skipping client ref scan", file=sys.stderr)
+        return None
     pats = {n: re.compile(rf"\b{re.escape(n)}\b") for n in names}
     hits: dict[str, list[str]] = {n: [] for n in names}
     for root in roots:
@@ -172,7 +159,7 @@ def scan_refs(names: set[str], repo: Path) -> dict[str, list[str]]:
     return hits
 
 
-def refs_cell(name: str, hits: dict[str, list[str]] | None) -> str:
+def _refs_cell(name: str, hits: dict[str, list[str]] | None) -> str:
     if hits is None:
         return "—"
     files = hits.get(name, [])
@@ -182,21 +169,54 @@ def refs_cell(name: str, hits: dict[str, list[str]] | None) -> str:
     return f"**{len(files)}** ({shown}{', …' if len(files) > 3 else ''})"
 
 
-def table(rows: list[tuple[str, str, str, str]]) -> str:
+# ---- rendering --------------------------------------------------------------
+def _table(rows: list[Row], hits: dict[str, list[str]] | None, internal_substr: str) -> str:
     if not rows:
         return "_none_\n"
+    rows = sorted(rows, key=lambda r: (internal_substr in r.element.key, r.element.display))
     out = ["| Element | Kind | Change | Client refs |", "|---|---|---|---|"]
-    for el, kind, change, refs in rows:
-        change = change.replace("|", "\\|")
-        out.append(f"| `{el}` | {kind} | {change} | {refs} |")
+    for r in rows:
+        cell = r.change.replace("|", "\\|")  # escape pipes so they don't break the table
+        out.append(f"| `{r.element.display}` | {r.element.kind} | {cell} | {_refs_cell(r.element.leaf, hits)} |")
     return "\n".join(out) + "\n"
 
 
+def build_report(old: list[Element], new: list[Element], label: str, repo: str | None = None,
+                 internal_substr: str = "Internal") -> str:
+    d = diff(old, new)
+    every_row = [r for rows in d.buckets.values() for r in rows]
+    hits = scan_refs({r.element.leaf for r in every_row}, Path(repo)) if repo else None
+    n_break_refd = sum(1 for r in d.buckets["breaking"] if hits and hits.get(r.element.leaf))
+
+    lines: list[str] = []
+    lines.append(f"# Migration report — {label}\n")
+    lines.append(
+        f"Surface: {d.old_count} → {d.new_count} elements · "
+        f"**{d.added} added · {d.removed} removed · {d.changed} changed**"
+        + (f" · client scan: `{repo}`" if repo else "") + "\n"
+    )
+    if hits is not None:
+        lines.append(
+            (f"⚠️ **{n_break_refd} breaking change(s) touch the client — action required.**"
+             if n_break_refd else
+             "✅ **No breaking change references the client — the bump is safe.**") + "\n"
+        )
+    for heading, name in (("⚠️ Breaking", "breaking"), ("➕ Additive", "additive"), ("ℹ️ Behavioral", "behavioral")):
+        prefix = "" if name == "breaking" else "\n"
+        lines.append(f"{prefix}## {heading} ({len(d.buckets[name])})\n")
+        lines.append(_table(d.buckets[name], hits, internal_substr))
+    if internal_substr:
+        lines.append(f"\n_Rows containing `{internal_substr}` (internal services) are sorted last._")
+    if hits is not None:
+        lines.append(
+            "\n_Client refs are textual matches of the element's leaf name in `nominal/` + `tests/`. "
+            "Verify import context for common names (e.g. `File`, `Error`, `State`) — they over-match._"
+        )
+    return "".join(s + "\n" for s in lines)
+
+
 def main() -> None:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")  # report is UTF-8 (arrows, ✅/⚠️) on any platform
-    except Exception:
-        pass
+    use_utf8_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument("old")
     ap.add_argument("new")
@@ -204,65 +224,9 @@ def main() -> None:
     ap.add_argument("--repo", default=None)
     ap.add_argument("--internal-substr", default="Internal")
     args = ap.parse_args()
-
-    old, new = load(args.old), load(args.new)
-    ok, nk = set(old), set(new)
-    added_keys = sorted(nk - ok)
-    removed_keys = sorted(ok - nk)
-    changed_keys = sorted(k for k in ok & nk if old[k] != new[k])
-
-    breaking: list[tuple] = []   # (el, kind, change, leafname, internal)
-    additive: list[tuple] = []
-    behavioral: list[tuple] = []
-
-    for k in removed_keys:
-        breaking.append((display(k), kind_of(k), "**removed**", leaf(k), args.internal_substr in k))
-    for k in changed_keys:
-        sev, change = classify_change(k, old[k], new[k])
-        row = (display(k), kind_of(k), change, leaf(k), args.internal_substr in k)
-        {"breaking": breaking, "additive": additive, "behavioral": behavioral}[sev].append(row)
-    for k in added_keys:
-        additive.append((display(k), kind_of(k), added_summary(k, new[k]), leaf(k), args.internal_substr in k))
-
-    # reference scan
-    hits = None
-    if args.repo:
-        names = {r[3] for r in breaking + additive + behavioral}
-        hits = scan_refs(names, Path(args.repo))
-
-    def rows(recs, sort_internal_last=True):
-        recs = sorted(recs, key=lambda r: (r[4] if sort_internal_last else False, r[0]))
-        return [(el, kind, change, refs_cell(name, hits)) for el, kind, change, name, _ in recs]
-
-    n_break_refd = sum(1 for r in breaking if hits and hits.get(r[3])) if hits else 0
-    print(f"# Migration report — {args.label}\n")
-    print(
-        f"Surface: {len(ok)} → {len(nk)} elements · "
-        f"**{len(added_keys)} added · {len(removed_keys)} removed · {len(changed_keys)} changed**"
-        + (f" · client scan: `{args.repo}`" if args.repo else "")
-        + "\n"
-    )
-    if hits is not None:
-        verdict = (
-            f"⚠️ **{n_break_refd} breaking change(s) touch the client — action required.**"
-            if n_break_refd
-            else "✅ **No breaking change references the client — the bump is safe.**"
-        )
-        print(verdict + "\n")
-
-    print(f"## ⚠️ Breaking ({len(breaking)})\n")
-    print(table(rows(breaking)))
-    print(f"\n## ➕ Additive ({len(additive)})\n")
-    print(table(rows(additive)))
-    print(f"\n## ℹ️ Behavioral ({len(behavioral)})\n")
-    print(table(rows(behavioral)))
-    if args.internal_substr:
-        print(f"\n_Rows containing `{args.internal_substr}` (internal services) are sorted last._")
-    if hits is not None:
-        print(
-            "\n_Client refs are textual matches of the element's leaf name in `nominal/` + `tests/`. "
-            "Verify import context for common names (e.g. `File`, `Error`, `State`) — they over-match._"
-        )
+    old = from_jsonl(Path(args.old).read_text(encoding="utf-8"))
+    new = from_jsonl(Path(args.new).read_text(encoding="utf-8"))
+    sys.stdout.write(build_report(old, new, args.label, args.repo, args.internal_substr))
 
 
 if __name__ == "__main__":
