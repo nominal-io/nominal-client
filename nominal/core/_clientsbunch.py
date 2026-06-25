@@ -174,10 +174,10 @@ class ClientsBunch:
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
         """Fetch a single workspace by its RID via the gRPC workspace service.
 
-        Centralizes the one place the untyped gRPC stub's response is narrowed to the proto `Workspace` type.
+        Centralizes the single call site for fetching a workspace by RID (the RPC plus gRPC error translation).
         """
         with translate_grpc_errors():
-            return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
+            return self.workspace.GetWorkspace(
                 workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
             ).workspace
 
@@ -195,7 +195,7 @@ class ClientsBunch:
         with translate_grpc_errors():
             response = self.workspace.GetDefaultWorkspace(workspaces_pb2.GetDefaultWorkspaceRequest())
         if response.HasField("workspace"):
-            return response.workspace  # type: ignore[no-any-return]
+            return response.workspace
 
         raise NominalConfigError(
             "Could not retrieve default workspace! "

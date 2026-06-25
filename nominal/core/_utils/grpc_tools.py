@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, TypeVar
 from urllib.parse import urlparse
 
-import grpc  # type: ignore[import-untyped]
+import grpc
 from conjure_python_client import ServiceConfiguration
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
@@ -133,7 +133,7 @@ def _service_config_json(service_config: ServiceConfiguration) -> str:
 # immutable, attribute-compatible copy of the call details; grpc.ClientCallDetails itself is abstract.
 class _ClientCallDetails(
     namedtuple("_ClientCallDetails", ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression")),
-    grpc.ClientCallDetails,  # type: ignore[misc]  # grpc stubs type base classes as Any
+    grpc.ClientCallDetails,
 ):
     pass
 
@@ -156,10 +156,10 @@ def _replace_call_details(details: grpc.ClientCallDetails, **changes: Any) -> _C
 
 
 class _ClientCallDetailsInterceptor(
-    grpc.UnaryUnaryClientInterceptor,  # type: ignore[misc]  # grpc stubs type base classes as Any
-    grpc.UnaryStreamClientInterceptor,  # type: ignore[misc]
-    grpc.StreamUnaryClientInterceptor,  # type: ignore[misc]
-    grpc.StreamStreamClientInterceptor,  # type: ignore[misc]
+    grpc.UnaryUnaryClientInterceptor,
+    grpc.UnaryStreamClientInterceptor,
+    grpc.StreamUnaryClientInterceptor,
+    grpc.StreamStreamClientInterceptor,
 ):
     """Base for interceptors that rewrite the outgoing `ClientCallDetails`.
 
@@ -291,7 +291,8 @@ def create_grpc_stub_factory(
     )
 
     def factory(stub_class: type[TStub]) -> TStub:
-        return stub_class(channel)  # type: ignore[call-arg]  # grpc stub constructors are untyped
+        # stub_class is a generic ``type[TStub]``; mypy can't see the channel-accepting stub constructor.
+        return stub_class(channel)  # type: ignore[call-arg]
 
     return factory
 
