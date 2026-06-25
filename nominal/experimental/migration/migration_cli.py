@@ -8,7 +8,7 @@ from typing import Any, Literal, Sequence
 
 import click
 import yaml
-from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbooksRequest
+from nominal_api.scout_sandbox_api import SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, NominalClient, Workbook
@@ -421,18 +421,6 @@ def _validate_demo_workbook_metadata(source_client: NominalClient, migration_res
     return True
 
 
-def _create_sandbox_workspace_service(target_client: NominalClient) -> SandboxWorkspaceService:
-    """Create a SandboxWorkspaceService by reusing the connection details from the target client."""
-    existing_service = target_client._clients.workspace
-    return SandboxWorkspaceService(
-        requests_session=existing_service._requests_session,
-        uris=existing_service._uris,
-        _connect_timeout=existing_service._connect_timeout,
-        _read_timeout=existing_service._read_timeout,
-        _verify=existing_service._verify,
-    )
-
-
 def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner) -> None:
     """After migration, append newly created workbook RIDs to the sandbox demo workbooks list."""
     new_workbook_rids = list(runner.migration_state.rid_mapping.get(ResourceType.WORKBOOK.value, {}).values())
@@ -442,7 +430,7 @@ def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner
 
     workspace_rid = target_client.get_workspace().rid
     auth_header = target_client._clients.auth_header
-    sandbox_service = _create_sandbox_workspace_service(target_client)
+    sandbox_service = target_client._clients.sandbox_workspace
 
     existing_response = sandbox_service.get_demo_workbooks(auth_header, workspace_rid)
     existing_rids = existing_response.notebook_rids

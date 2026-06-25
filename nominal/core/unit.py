@@ -6,12 +6,14 @@ from typing import Mapping, Sequence, TypeAlias
 
 from nominal_api import (
     api,
-    scout,
     scout_run_api,
     scout_units_api,
     timeseries_logicalseries_api,
 )
 from typing_extensions import Self
+
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.units.v1 import units_pb2, units_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,11 @@ class Unit:
         name = "" if api_unit.name is None else api_unit.name
         return cls(name=name, symbol=api_unit.symbol)
 
+    @classmethod
+    def _from_proto(cls, unit: units_pb2.Unit) -> Self:
+        """Construct a Unit from a units-service proto Unit."""
+        return cls(name=unit.name, symbol=unit.symbol)
+
 
 UnitLike: TypeAlias = Unit | str | None
 UnitMapping: TypeAlias = Mapping[str, UnitLike]
@@ -53,10 +60,11 @@ def _unit_symbol_from_unit_like(unit: UnitLike) -> str | None:
         return unit
 
 
-def _available_units(auth_header: str, client: scout.UnitsService) -> Sequence[Unit]:
+def _available_units(client: units_pb2_grpc.UnitsServiceStub) -> Sequence[Unit]:
     """Retrieve the list of all allowable units within Nominal"""
-    response = client.get_all_units(auth_header)
-    return [Unit._from_conjure(unit) for units in response.units_by_property.values() for unit in units]
+    with translate_grpc_errors():
+        response = client.GetAllUnits(units_pb2.GetAllUnitsRequest())
+    return [Unit._from_proto(unit) for wrapper in response.units_by_property.values() for unit in wrapper.value]
 
 
 def _build_unit_update(unit: UnitLike) -> timeseries_logicalseries_api.UnitUpdate:
@@ -68,18 +76,22 @@ def _build_unit_update(unit: UnitLike) -> timeseries_logicalseries_api.UnitUpdat
         return timeseries_logicalseries_api.UnitUpdate(unit=unit)
 
 
-def _error_on_invalid_units(unit_map: UnitMapping, unit_service: scout.UnitsService, auth_header: str) -> None:
+def _error_on_invalid_units(unit_map: UnitMapping, unit_service: units_pb2_grpc.UnitsServiceStub) -> None:
     # Normalize unit map to refer to channel names and unit symbols
     channels_to_units = {channel: _unit_symbol_from_unit_like(unit) for channel, unit in unit_map.items()}
 
-    resolved_units = unit_service.get_batch_units(
-        auth_header, [unit_symbol for unit_symbol in set(channels_to_units.values()) if unit_symbol is not None]
-    )
+    requested = [unit_symbol for unit_symbol in set(channels_to_units.values()) if unit_symbol is not None]
+    with translate_grpc_errors():
+        resolved = unit_service.GetBatchUnits(units_pb2.GetBatchUnitsRequest(units=requested))
+    # GetBatchUnits omits unrecognized symbols from `responses` entirely (documented in units.proto and
+    # enforced server-side by filtering on the resolved Optional), so key-presence is the resolved set. This
+    # differs from single-unit GetUnit, which returns a present-but-empty Unit for an unknown symbol — hence
+    # get_unit's HasField check but plain key-presence here.
+    valid_units = set(resolved.responses.keys())
 
-    # Get set of all provided invalid units
-    invalid_units = set(channels_to_units.values()) - set(resolved_units.keys())
+    # None means "clear this channel's unit" and is intentionally excluded from invalid-unit detection.
+    invalid_units = set(channels_to_units.values()) - valid_units - {None}
 
-    # error on invalid units
     for channel, unit_symbol in channels_to_units.items():
         if unit_symbol in invalid_units:
             raise ValueError(

@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    comments_api,
     event,
     scout,
     scout_asset_api,
@@ -26,6 +25,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
@@ -35,6 +35,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def comments(self) -> comments_api.CommentsService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def event(self) -> event.EventService: ...
         @property
@@ -134,19 +135,23 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
 
         Returns:
             The created `Comment`.
+
+        Raises:
+            NominalError: If the comments service request fails.
         """
-        request = comments_api.CreateCommentRequest(
-            parent=comments_api.CommentParent(
-                resource=comments_api.CommentParentResource(
-                    resource_type=comments_api.ResourceType.RUN,
+        request = comments_pb2.CreateCommentRequest(
+            parent=comments_pb2.CommentParent(
+                resource=comments_pb2.CommentParentResource(
+                    resource_type=comments_pb2.ResourceType.RUN,
                     resource_rid=self.rid,
                 )
             ),
             content=content,
             attachments=[],
         )
-        api_comment = self._clients.comments.create_comment(self._clients.auth_header, request)
-        return Comment._from_conjure(api_comment)
+        with translate_grpc_errors():
+            response = self._clients.comments.CreateComment(request)
+        return Comment._from_proto(response.comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()
