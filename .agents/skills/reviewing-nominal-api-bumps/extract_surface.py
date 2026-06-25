@@ -113,16 +113,25 @@ def _base_attrs(cls: ast.ClassDef) -> set[str]:
 
 
 def _init_fields(cls: ast.ClassDef) -> list[Field]:
-    """Fields from the __init__ signature (excludes self); optional = has a default."""
+    """Fields from the __init__ signature (excludes self), positional and keyword-only.
+
+    Newer mypy-protobuf stubs declare proto fields as keyword-only (`def __init__(self, *, ...)`),
+    so both arg lists are read; a field is optional when it has a default.
+    """
     for item in cls.body:
         if isinstance(item, ast.FunctionDef) and item.name == "__init__":
-            args = item.args
-            has_default = {len(args.args) - len(args.defaults) + i for i in range(len(args.defaults))}
-            return [
-                Field(a.arg, _ann(a.annotation), i in has_default)
-                for i, a in enumerate(args.args)
-                if a.arg != "self"
+            a = item.args
+            pos_defaulted = {len(a.args) - len(a.defaults) + i for i in range(len(a.defaults))}
+            fields = [
+                Field(arg.arg, _ann(arg.annotation), i in pos_defaulted)
+                for i, arg in enumerate(a.args)
+                if arg.arg != "self"
             ]
+            fields += [
+                Field(arg.arg, _ann(arg.annotation), default is not None)
+                for arg, default in zip(a.kwonlyargs, a.kw_defaults)
+            ]
+            return fields
     return []
 
 
@@ -176,21 +185,40 @@ def _is_enum(cls: ast.ClassDef) -> bool:
     return any(k.arg == "metaclass" for k in cls.keywords)
 
 
+def _enum_member_names(cls: ast.ClassDef) -> list[str]:
+    return [
+        it.target.id
+        for it in cls.body
+        if isinstance(it, ast.AnnAssign) and isinstance(it.target, ast.Name)
+        and it.target.id.isupper() and it.target.id != "DESCRIPTOR"
+    ]
+
+
+def _proto_enum_members(cls: ast.ClassDef, classes: dict[str, ast.ClassDef]) -> list[str]:
+    """Members across both stub styles: declared in-class (older) or held by a
+    `_XxxEnumTypeWrapper` metaclass (newer mypy-protobuf).
+    """
+    found = _enum_member_names(cls)
+    if found:
+        return sorted(found)
+    meta = next((k.value for k in cls.keywords if k.arg == "metaclass"), None)
+    wname = meta.id if isinstance(meta, ast.Name) else meta.attr if isinstance(meta, ast.Attribute) else None
+    wrapper = classes.get(wname) if wname else None
+    return sorted(_enum_member_names(wrapper)) if wrapper else []
+
+
 def _extract_proto(root: Path) -> list[Element]:
     protos_root = root / "nominal" / "protos"
     els: list[Element] = []
     for pyi in sorted(protos_root.rglob("*_pb2.pyi")):
         module = _proto_module(pyi, protos_root)
-        for node in ast.parse(pyi.read_text(encoding="utf-8")).body:
-            if not isinstance(node, ast.ClassDef):
-                continue
+        tree = ast.parse(pyi.read_text(encoding="utf-8"))
+        classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef) or node.name.startswith("_"):
+                continue  # skip private helper classes (e.g. _XxxEnumTypeWrapper)
             if _is_enum(node):
-                members = sorted(
-                    it.target.id
-                    for it in node.body
-                    if isinstance(it, ast.AnnAssign) and isinstance(it.target, ast.Name)
-                )
-                els.append(Element("enum", module, node.name, members=members))
+                els.append(Element("enum", module, node.name, members=_proto_enum_members(node, classes)))
             elif _is_message(node):
                 els.append(Element("message", module, node.name, fields=_init_fields(node)))
     for grpc in sorted(protos_root.rglob("*_pb2_grpc.py")):

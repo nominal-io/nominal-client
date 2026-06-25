@@ -82,6 +82,12 @@ prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` t
 - Rows whose key contains `Internal` are internal/server-side services, sorted last; they rarely appear
   in the public client.
 - `Visitor` classes are skipped — a change to a union shows up on the union row itself.
+- **Proto stub-generator boundaries.** A proto diff that straddles a mypy-protobuf generator change
+  (e.g. `nominal-api-protos 0.1286 → 0.1287`, which moved to keyword-only `__init__` and a different
+  annotation vocabulary) shows widespread `Change` churn from type-string differences alone
+  (`_Optional[str]` vs `_builtins.str`) even where the proto field is unchanged. Added/removed elements,
+  enum members, and field names stay accurate; treat the bulk of type-only deltas at such a boundary as
+  noise. Diffs within one generator era are clean.
 
 ## The tools (run individually if needed)
 
