@@ -5,17 +5,18 @@ Resolves versions, installs both versions of the bindings into temp dirs (via uv
 extracts each API surface, diffs them, scans the client for references, and writes a
 markdown report.
 
-  python bump_scan.py conjure --repo .                  # pinned (pyproject) -> latest on PyPI
-  python bump_scan.py proto   --repo . --old 0.1282.0 --new 0.1286.0
-  python bump_scan.py both    --repo . --out ./reports  # both transports
+  uv run --no-project python bump_scan.py conjure --repo .          # pinned (pyproject) -> latest on PyPI
+  uv run --no-project python bump_scan.py proto   --repo . --old 0.1282.0 --new 0.1286.0
+  uv run --no-project python bump_scan.py both    --repo . --out ./reports
 
 transport: conjure (nominal-api) · proto (nominal-api-protos) · both
 Versions default to: old = pin in <repo>/pyproject.toml, new = latest on PyPI.
 
-Run with plain `python` (stdlib-only), NOT `uv run` — `uv run` would sync the project `.venv`.
-Bindings are fetched via `uv pip install --target` into a temp dir with the interpreter pinned,
-so the developer's `.venv` is never read or modified; the version lookup uses the stdlib PyPI
-JSON API. Only `uv` itself must be on PATH.
+Run via `uv run --no-project python …`: `--no-project` makes uv ignore the project, so the developer's
+`.venv` is never synced or modified (plain `uv run` would sync it to the lockfile first). Bindings are
+fetched with `uv pip install --target` into a temp dir with the interpreter pinned and run outside the
+project, so `.venv` is untouched regardless; the version lookup uses the stdlib PyPI JSON API. Bare
+`python …` works too (the scripts are stdlib-only); only `uv` itself need be on PATH.
 """
 from __future__ import annotations
 

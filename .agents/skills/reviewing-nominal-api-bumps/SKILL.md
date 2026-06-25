@@ -38,23 +38,23 @@ Not for: editing the client to perform the migration (this skill only reports), 
 SKILL=.agents/skills/reviewing-nominal-api-bumps
 
 # One-shot: pinned-in-pyproject -> latest on PyPI, scanning this repo
-python $SKILL/bump_scan.py conjure --repo .
-python $SKILL/bump_scan.py proto   --repo .
-python $SKILL/bump_scan.py both    --repo . --out ./reports
+uv run --no-project python $SKILL/bump_scan.py conjure --repo .
+uv run --no-project python $SKILL/bump_scan.py proto   --repo .
+uv run --no-project python $SKILL/bump_scan.py both    --repo . --out ./reports
 
 # Explicit versions
-python $SKILL/bump_scan.py conjure --repo . --old 0.1282.0 --new 0.1286.0
+uv run --no-project python $SKILL/bump_scan.py conjure --repo . --old 0.1282.0 --new 0.1286.0
 ```
 
 `bump_scan.py` resolves versions (old = pin in `pyproject.toml`, new = latest on PyPI), downloads and
 unpacks both wheels, extracts each surface, diffs them, scans `nominal/` + `tests/` for references,
 prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` to `--out` (default `.`).
 
-> **How to run:** invoke with plain `python` (any 3.9+; the scripts are stdlib-only). **Do not use
-> `uv run`** — it would sync your project `.venv`. Bindings are fetched with `uv pip install --target`
-> into a temp dir with the interpreter pinned and run outside the project, so your `.venv` is **never
-> read, synced, or modified**. Only `uv` itself need be on PATH. (Use `uv run --no-sync python …` if you
-> specifically want the project interpreter without a sync.)
+> **How to run:** use `uv run --no-project python …`. `--no-project` makes uv ignore the project, so your
+> `.venv` is **never read, synced, or modified** — whereas plain `uv run` would sync it to the lockfile
+> first. Bindings are fetched with `uv pip install --target` into a temp dir with the interpreter pinned
+> and run outside the project, so `.venv` is untouched regardless. Bare `python …` works too (stdlib-only),
+> and `uv run --no-sync python …` reuses the project interpreter without a sync. Only `uv` need be on PATH.
 
 ## Workflow
 
