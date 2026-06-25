@@ -914,11 +914,17 @@ def test_dry_run_creates_nothing(
     assert state.get_mapped_rid(ResourceType.DATASET, source_ds.rid) == source_ds.rid
     assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) == source_run.rid
 
+    # ASSET_DATA_SCOPE uses a composite key ("{asset_rid}:{scope_name}") → dataset_rid, not a
+    # simple rid → rid mapping, so it must be checked separately.
+    scope_key = f"{source_asset.rid}:primary"
+    assert state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) == source_ds.rid
+
     for resource_type_str, mappings in state.rid_mapping.items():
+        if resource_type_str == ResourceType.ASSET_DATA_SCOPE.value:
+            continue
         for source_rid, mapped_rid in mappings.items():
             assert source_rid == mapped_rid, (
-                f"Dry-run produced a real destination mapping for {resource_type_str}: "
-                f"{source_rid} → {mapped_rid}"
+                f"Dry-run produced a real destination mapping for {resource_type_str}: {source_rid} → {mapped_rid}"
             )
 
 
