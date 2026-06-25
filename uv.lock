@@ -890,7 +890,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.2,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0,<6" },
     { name = "ruff", specifier = "==0.12.1" },
-    { name = "types-grpcio", specifier = ">=1.0" },
+    { name = "types-grpcio", specifier = ">=1.0.0.20260614,<2" },
     { name = "types-protobuf", specifier = ">=4.24.0.20240311,<5" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20250822" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20240808,<7" },

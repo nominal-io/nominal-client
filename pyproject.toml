@@ -74,7 +74,7 @@ dev = [
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
     "ruff==0.12.1",
-    "types-grpcio>=1.0",
+    "types-grpcio>=1.0.0.20260614,<2",
     "types-protobuf>=4.24.0.20240311,<5",
     "types-python-dateutil>=2.9.0.20250822",
     "types-pyyaml>=6.0.12.20240808,<7",
