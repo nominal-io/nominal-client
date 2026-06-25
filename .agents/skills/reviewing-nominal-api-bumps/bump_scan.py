@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """One-shot migration scan for a nominal bindings bump.
 
-Resolves versions, downloads + unpacks both wheels, extracts each API surface,
-diffs them, scans the client for references, and writes a markdown report.
+Resolves versions, installs both versions of the bindings into temp dirs (via uv),
+extracts each API surface, diffs them, scans the client for references, and writes a
+markdown report.
 
   python bump_scan.py conjure --repo .                  # pinned (pyproject) -> latest on PyPI
   python bump_scan.py proto   --repo . --old 0.1282.0 --new 0.1286.0
@@ -10,21 +11,28 @@ diffs them, scans the client for references, and writes a markdown report.
 
 transport: conjure (nominal-api) · proto (nominal-api-protos) · both
 Versions default to: old = pin in <repo>/pyproject.toml, new = latest on PyPI.
+
+Run with plain `python` (stdlib-only), NOT `uv run` — `uv run` would sync the project `.venv`.
+Bindings are fetched via `uv pip install --target` into a temp dir with the interpreter pinned,
+so the developer's `.venv` is never read or modified; the version lookup uses the stdlib PyPI
+JSON API. Only `uv` itself must be on PATH.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 import tempfile
-import zipfile
+import urllib.request
 from pathlib import Path
 
 from diff_surface import build_report
 from extract_surface import extract, use_utf8_stdout
 
 PKG = {"conjure": "nominal-api", "proto": "nominal-api-protos"}
+PYPI_JSON = "https://pypi.org/pypi/{pkg}/json"
 
 
 def pinned_version(pkg: str, pyproject: Path) -> str | None:
@@ -34,21 +42,32 @@ def pinned_version(pkg: str, pyproject: Path) -> str | None:
     return m.group(1) if m else None
 
 
+def ensure_uv() -> None:
+    if subprocess.run(["uv", "--version"], capture_output=True, text=True, check=False).returncode != 0:
+        sys.exit("`uv` is required to fetch the bindings but was not found on PATH (see https://docs.astral.sh/uv/).")
+
+
 def latest_version(pkg: str) -> str | None:
-    res = subprocess.run([sys.executable, "-m", "pip", "index", "versions", pkg],
-                         capture_output=True, text=True, encoding="utf-8", check=False)
-    m = re.search(r"Available versions:\s*([0-9][^\s,]*)", res.stdout)
-    return m.group(1) if m else None
+    try:
+        with urllib.request.urlopen(PYPI_JSON.format(pkg=pkg), timeout=30) as resp:
+            return json.load(resp)["info"]["version"]
+    except Exception:
+        return None
 
 
-def fetch_and_unpack(pkg: str, ver: str, dest: Path) -> Path:
+def install_surface(pkg: str, ver: str, dest: Path) -> Path:
+    """Install the package unpacked into dest; returns the dir holding the package tree.
+
+    Isolated from the developer's project environment: `--target` installs into the temp dir,
+    `--python` pins the running interpreter, and the subprocess runs from dest (no project
+    context), so the repo's `.venv` is never read, synced, or modified.
+    """
     dest.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, "-m", "pip", "download", f"{pkg}=={ver}", "--no-deps", "-d", str(dest)],
-                   check=True, capture_output=True, text=True, encoding="utf-8")
-    root = dest / "unpacked"
-    with zipfile.ZipFile(next(dest.glob("*.whl"))) as z:
-        z.extractall(root)
-    return root
+    subprocess.run(
+        ["uv", "pip", "install", "--target", str(dest), "--no-deps", "--python", sys.executable, f"{pkg}=={ver}"],
+        check=True, capture_output=True, text=True, cwd=str(dest),
+    )
+    return dest
 
 
 def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproject: Path, outdir: Path) -> None:
@@ -61,10 +80,11 @@ def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproj
         print(f"# {pkg}: pinned version {old} is already the latest — nothing to compare.")
         return
 
-    work = Path(tempfile.mkdtemp(prefix=f"bump-{transport}-"))
-    old_surface = extract(transport, fetch_and_unpack(pkg, old, work / "old"))
-    new_surface = extract(transport, fetch_and_unpack(pkg, new, work / "new"))
-    report = build_report(old_surface, new_surface, label=f"{pkg} {old} -> {new}", repo=repo)
+    with tempfile.TemporaryDirectory(prefix=f"bump-{transport}-") as tmp:  # installs are large; clean up after
+        work = Path(tmp)
+        old_surface = extract(transport, install_surface(pkg, old, work / "old"))
+        new_surface = extract(transport, install_surface(pkg, new, work / "new"))
+        report = build_report(old_surface, new_surface, label=f"{pkg} {old} -> {new}", repo=repo)
 
     outdir.mkdir(parents=True, exist_ok=True)
     out = outdir / f"migration-report-{transport}-{old}-to-{new}.md"
@@ -75,6 +95,7 @@ def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproj
 
 def main() -> None:
     use_utf8_stdout()
+    ensure_uv()
     ap = argparse.ArgumentParser()
     ap.add_argument("transport", choices=["conjure", "proto", "both"])
     ap.add_argument("--old", default=None, help="old version (default: pin in pyproject.toml)")

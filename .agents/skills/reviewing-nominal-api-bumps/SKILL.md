@@ -50,6 +50,12 @@ python $SKILL/bump_scan.py conjure --repo . --old 0.1282.0 --new 0.1286.0
 unpacks both wheels, extracts each surface, diffs them, scans `nominal/` + `tests/` for references,
 prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` to `--out` (default `.`).
 
+> **How to run:** invoke with plain `python` (any 3.9+; the scripts are stdlib-only). **Do not use
+> `uv run`** — it would sync your project `.venv`. Bindings are fetched with `uv pip install --target`
+> into a temp dir with the interpreter pinned and run outside the project, so your `.venv` is **never
+> read, synced, or modified**. Only `uv` itself need be on PATH. (Use `uv run --no-sync python …` if you
+> specifically want the project interpreter without a sync.)
+
 ## Workflow
 
 1. **Run the scan.** Use `bump_scan.py <transport> --repo <client-root>`. Default `--out` is the cwd;
@@ -93,7 +99,7 @@ prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` t
 - **Trusting a ref count for a generic name.** `Error`/`File`/`State` over-match. Open the file.
 - **Treating an additive optional field as breaking.** New `Optional[...]` fields and new endpoints
   never break existing callers — they live in the Additive table for a reason.
-- **Forgetting `pip index versions` is needed for the default `new`.** If offline or it fails, pass
-  `--new` explicitly.
-- **Running `proto` against the conjure wheel (or vice-versa).** The transport selects both the PyPI
+- **Default `new` needs network.** It's resolved from the PyPI JSON API; if offline or it fails, pass
+  `--new` explicitly. `uv` must be on PATH to fetch the bindings.
+- **Running `proto` against the conjure package (or vice-versa).** The transport selects both the PyPI
   package and the extractor; don't mix them.
