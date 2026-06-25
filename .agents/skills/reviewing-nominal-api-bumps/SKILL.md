@@ -1,0 +1,129 @@
+---
+name: reviewing-nominal-api-bumps
+description: Use when bumping nominal-api or nominal-api-protos (a "transport" version bump / dependency upgrade) and you need to know what changed in the generated bindings and what in nominal-client must change. Covers conjure (nominal-api) and proto (nominal-api-protos). Triggers on questions like "what changed between version X and Y", "is this bump safe", "breaking changes", migration impact.
+visibility: public
+category: dependency-migration
+tags:
+  - nominal-api
+  - protos
+  - conjure
+  - migration
+  - breaking-changes
+  - dependency-bump
+---
+
+# Reviewing nominal API version bumps
+
+Compare two published versions of the generated Nominal bindings and report what changed
+and what it costs `nominal-client` to migrate. Works for both transports:
+
+- **conjure** → `nominal-api` (the Conjure HTTP bindings; one big `nominal_api/_impl.py`)
+- **proto** → `nominal-api-protos` (gRPC/protobuf; `nominal/protos/**/*_pb2.pyi` + `*_pb2_grpc.py`)
+
+The output classifies every delta as **⚠️ Breaking**, **➕ Additive**, or **ℹ️ Behavioral**, and —
+critically — scans the client so a breaking change with **0 references** is flagged as a safe bump,
+while an additive with 0 references is flagged as a new capability that isn't wired up yet.
+
+The default deliverable is a self-contained **HTML report served on localhost** (`http://localhost:<port>/…`);
+the same content is also written as markdown.
+
+## When to use
+
+- Bumping the `nominal-api` / `nominal-api-protos` pin in `pyproject.toml`.
+- Answering "what changed between 0.1282.0 and 0.1286.0?" or "is this bump safe to take?"
+- Deciding what migration work a dependency upgrade implies before doing it.
+
+Not for: editing the client to perform the migration (this skill only reports), or non-Nominal deps.
+
+## Quick reference
+
+```bash
+SKILL=.agents/skills/reviewing-nominal-api-bumps
+
+# One-shot: pinned-in-pyproject -> latest on PyPI, scanning this repo
+uv run --no-project python $SKILL/bump_scan.py conjure --repo .
+uv run --no-project python $SKILL/bump_scan.py proto   --repo .
+uv run --no-project python $SKILL/bump_scan.py both    --repo . --out ./reports
+
+# Explicit versions
+uv run --no-project python $SKILL/bump_scan.py conjure --repo . --old 0.1282.0 --new 0.1286.0
+
+# Serve the built HTML on localhost (run in the background; prints http://localhost:<port>/…)
+uv run --no-project python $SKILL/serve_report.py ./reports --file bump-report-0.1282.0-to-0.1286.0.html
+```
+
+`bump_scan.py` resolves versions (old = pin in `pyproject.toml`, new = latest on PyPI), installs both
+versions, extracts each surface, diffs them, and scans `nominal/` + `tests/` for references. It writes
+to `--out` (default `.`):
+- **`bump-report-<old>-to-<new>.html`** — a self-contained styled report (combined across transports for
+  `both`); the **default deliverable**, served on localhost by `serve_report.py`.
+- `migration-report-<transport>-<old>-to-<new>.md` — the same content as markdown (greppable; the inline
+  summary), and printed to stdout.
+
+Then serve it: `python serve_report.py <out> --file <name>` binds `127.0.0.1` on a free port and prints
+`http://localhost:<port>/…`. `bump_scan.py` prints the exact serve command to run.
+
+> **How to run:** use `uv run --no-project python …`. `--no-project` makes uv ignore the project, so your
+> `.venv` is **never read, synced, or modified** — whereas plain `uv run` would sync it to the lockfile
+> first. Bindings are fetched with `uv pip install --target` into a temp dir with the interpreter pinned
+> and run outside the project, so `.venv` is untouched regardless. Bare `python …` works too (stdlib-only),
+> and `uv run --no-sync python …` reuses the project interpreter without a sync. Only `uv` need be on PATH.
+
+## Workflow
+
+1. **Run the scan.** Use `bump_scan.py <transport> --repo <client-root> --out <dir>`. Prefer a scratch/temp
+   `--out` dir so reports don't dirty the repo. For a full bump, run `both` (one combined HTML page).
+2. **Serve it.** Launch `serve_report.py <out> --file <name>` **in the background** (it runs until killed)
+   and give the user the printed `http://localhost:<port>/…` URL — this is the default way to view the
+   report. `bump_scan.py` prints the exact command. (The HTML is self-contained, so `file://` works too.)
+3. **Read the verdict line.** `✅ No breaking change references the client` ⇒ the pin bump is safe on
+   its own. `⚠️ N breaking change(s) touch the client` ⇒ open the Breaking table and address each.
+4. **Work the Breaking table.** For each row with non-zero **Client refs**, open the listed
+   `file:` paths and update call sites for the exact change in the `Change` column
+   (e.g. `~ inputs: List→Dict[str,…]`, `− fill_strategy + alignment_configuration (req)`).
+5. **Skim Additive for opportunities.** Additive rows with non-zero refs mean the client already
+   touches that type and could adopt the new optional field/endpoint. Rows with 0 refs are net-new
+   capabilities — adopt only if there's a reason.
+6. **Behavioral** rows are enum members added to *existing* enums — revisit any exhaustive
+   `match`/`if` over that enum in the client.
+7. **Relay** the localhost URL + the verdict + the Breaking table inline.
+
+## Interpreting the report
+
+- **Client refs** are textual matches of the element's **leaf name** in `nominal/` + `tests/`. They are
+  *candidates*, not proof: common names (`File`, `Error`, `State`) over-match unrelated code — verify the
+  import context before trusting a count. A field-level change (e.g. a removed field) is scanned by the
+  enclosing type's name, so also `grep` the field name when triaging.
+- Rows whose key contains `Internal` are internal/server-side services, sorted last; they rarely appear
+  in the public client.
+- `Visitor` classes are skipped — a change to a union shows up on the union row itself.
+- **Proto stub-generator boundaries.** A proto diff that straddles a mypy-protobuf generator change
+  (e.g. `nominal-api-protos 0.1286 → 0.1287`, which moved to keyword-only `__init__` and a different
+  annotation vocabulary) shows widespread `Change` churn from type-string differences alone
+  (`_Optional[str]` vs `_builtins.str`) even where the proto field is unchanged. Added/removed elements,
+  enum members, and field names stay accurate; treat the bulk of type-only deltas at such a boundary as
+  noise. Diffs within one generator era are clean.
+
+## The tools (run individually if needed)
+
+`bump_scan.py` calls these in-process; run them standalone only for a custom flow.
+
+- `extract_surface.py {conjure|proto} <unpacked-wheel-root>` → the structured surface as **JSON Lines**
+  (one element per line, sorted by key). Line-diffable and greppable; types kept fully qualified so
+  `List→Dict` is visible. Importable as `extract(transport, root) -> list[Element]`.
+- `diff_surface.py <old.jsonl> <new.jsonl> --label "..." [--repo <root>]` → the markdown report. Classifies
+  field-level deltas (removed field / new required field / type change / optional↔required) and renders
+  the three severity tables. Importable as `diff_and_scan(old, new, repo)`, `render_markdown(...)`,
+  `build_report(...)`.
+- `render_html.py` → `render_page(reports)` builds the combined self-contained HTML page from the diffed
+  data (styling in `report.css`). `serve_report.py <dir>` serves it on localhost.
+
+## Common mistakes
+
+- **Trusting a ref count for a generic name.** `Error`/`File`/`State` over-match. Open the file.
+- **Treating an additive optional field as breaking.** New `Optional[...]` fields and new endpoints
+  never break existing callers — they live in the Additive table for a reason.
+- **Default `new` needs network.** It's resolved from the PyPI JSON API; if offline or it fails, pass
+  `--new` explicitly. `uv` must be on PATH to fetch the bindings.
+- **Running `proto` against the conjure package (or vice-versa).** The transport selects both the PyPI
+  package and the extractor; don't mix them.
