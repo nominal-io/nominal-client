@@ -874,6 +874,54 @@ def test_migrate_multi_asset_scenario(
     assert source_multi_asset_wb.rid not in state.pending_multi_asset_workbooks
 
 
+def test_dry_run_creates_nothing(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Dry-run mode traverses all source resources but writes nothing to the destination.
+
+    Verifies:
+    - The state file is not written to disk.
+    - Every in-memory RID mapping is a self-mapping (source_rid → source_rid), confirming
+      that no real destination resources were created and that child resources were visited.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+
+    state_file = tmp_path / "dry_run_state.json"
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        migration_state_path=state_file,
+        dry_run=True,
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    # State file must not be written in dry-run mode.
+    assert not state_file.exists(), "Dry-run must not write a state file"
+
+    # All in-memory mappings must be self-mappings (source → source placeholder).
+    # This also confirms child resources were visited (otherwise they'd be absent from state).
+    assert state.get_mapped_rid(ResourceType.ASSET, source_asset.rid) == source_asset.rid
+    assert state.get_mapped_rid(ResourceType.DATASET, source_ds.rid) == source_ds.rid
+    assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) == source_run.rid
+
+    for resource_type_str, mappings in state.rid_mapping.items():
+        for source_rid, mapped_rid in mappings.items():
+            assert source_rid == mapped_rid, (
+                f"Dry-run produced a real destination mapping for {resource_type_str}: "
+                f"{source_rid} → {mapped_rid}"
+            )
+
+
 def test_migrate_with_impersonation(
     source_client: NominalClient,
     dest_client: NominalClient,

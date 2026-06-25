@@ -537,7 +537,7 @@ def copy(
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
-    if set_to_demo_workbook:
+    if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
 
 
