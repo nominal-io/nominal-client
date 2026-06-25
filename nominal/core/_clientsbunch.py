@@ -33,7 +33,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
-from nominal.core._utils.grpc_tools import create_grpc_stub_factory, translate_grpc_errors
+from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
@@ -47,6 +47,7 @@ from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 TService = TypeVar("TService", bound=Service)
+TStub = TypeVar("TStub")
 
 
 @dataclass(frozen=True)
@@ -174,10 +175,10 @@ class ClientsBunch:
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
         """Fetch a single workspace by its RID via the gRPC workspace service.
 
-        Centralizes the one place the untyped gRPC stub's response is narrowed to the proto `Workspace` type.
+        Centralizes the single call site for fetching a workspace by RID (the RPC plus gRPC error translation).
         """
         with translate_grpc_errors():
-            return self.workspace.GetWorkspace(  # type: ignore[no-any-return]
+            return self.workspace.GetWorkspace(
                 workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
             ).workspace
 
@@ -195,7 +196,7 @@ class ClientsBunch:
         with translate_grpc_errors():
             response = self.workspace.GetDefaultWorkspace(workspaces_pb2.GetDefaultWorkspaceRequest())
         if response.HasField("workspace"):
-            return response.workspace  # type: ignore[no-any-return]
+            return response.workspace
 
         raise NominalConfigError(
             "Could not retrieve default workspace! "
@@ -277,13 +278,16 @@ class ClientsBunch:
                 header_provider=header_provider,
             )(service_class)
 
-        grpc_factory = create_grpc_stub_factory(
+        grpc_channel = create_grpc_channel(
             api_base_url=base_url,
             service_config=cfg,
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
         )
+
+        def grpc_factory(stub_class: GRPCStub[TStub]) -> TStub:
+            return stub_class(grpc_channel)
 
         return cls(
             auth_header=f"Bearer {token}",

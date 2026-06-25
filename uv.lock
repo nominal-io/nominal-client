@@ -844,6 +844,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-grpcio" },
     { name = "types-protobuf" },
     { name = "types-python-dateutil" },
     { name = "types-pyyaml" },
@@ -857,8 +858,8 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "exceptiongroup", specifier = ">=1.3.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1282.0" },
-    { name = "nominal-api-protos", specifier = "==0.1282.0" },
+    { name = "nominal-api", specifier = "==0.1287.0" },
+    { name = "nominal-api-protos", specifier = "==0.1287.0" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.8.2" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
     { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
@@ -889,6 +890,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.2,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0,<6" },
     { name = "ruff", specifier = "==0.12.1" },
+    { name = "types-grpcio", specifier = ">=1.0.0.20260614,<2" },
     { name = "types-protobuf", specifier = ">=4.24.0.20240311,<5" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20250822" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20240808,<7" },
@@ -898,19 +900,19 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1282.0"
+version = "0.1287.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/da/19694b96e54a3e9a2b52ed2eb524861b9e1740191e6d4a5178e3b4250a2a/nominal_api-0.1282.0-py3-none-any.whl", hash = "sha256:e3129d27b65575852ab01ec70365637c5a28e7ce22174e85aea7202c77154296", size = 890659, upload-time = "2026-06-22T15:25:14.687Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/d7/eb9f769494dfd8efc46bc7a312751aaa6a79417ed5f567cbd962c2c7d9c3/nominal_api-0.1287.0-py3-none-any.whl", hash = "sha256:91669a125dd06b36ada3d22eb2747dcad6e42166ac4125ef6c14f3f38efcc78b", size = 896466, upload-time = "2026-06-25T15:19:00.909Z" },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1282.0"
+version = "0.1287.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -919,7 +921,7 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/09/d8accc32036bb5c8f97be2c441a2c60b443561fbbc7fee2ea1772ff53678/nominal_api_protos-0.1282.0-py3-none-any.whl", hash = "sha256:15f28364c0c5a6b74c0083d5cfdcb7e4877c4c3662e2e3f8a8d87172e5b5974d", size = 358502, upload-time = "2026-06-22T15:25:16.644Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/22/e9997fe6288ec2ca69d3e84e9ac7fa92f6cbc22c335884d17248df80eb44/nominal_api_protos-0.1287.0-py3-none-any.whl", hash = "sha256:cddd02c727f4f32699099e3e7629aed65b19304e034f176931744b6eef410870", size = 476743, upload-time = "2026-06-25T15:19:02.308Z" },
 ]
 
 [[package]]
@@ -1599,6 +1601,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.73Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.46Z" },
+]
+
+[[package]]
+name = "types-grpcio"
+version = "1.0.0.20260614"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/1c/e299150827a2224fe9ddb59e9f789f0eb8e72e0befc23fd47195024311fa/types_grpcio-1.0.0.20260614.tar.gz", hash = "sha256:e86d1aabb7e7eedae487c3ac10e010a13d5db1fd350e766562053af557366aab", size = 15063, upload-time = "2026-06-14T06:23:33.591Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/f5/a8b8ca4d891bc4e835ef758a8fb50c7539c7f45bc0e42fae2b847cbc59b7/types_grpcio-1.0.0.20260614-py3-none-any.whl", hash = "sha256:050472cb4ef329ae8fe20278c62bc0da5b961aad3dd889cc35f6e0c70d368dae", size = 15629, upload-time = "2026-06-14T06:23:32.616Z" },
 ]
 
 [[package]]

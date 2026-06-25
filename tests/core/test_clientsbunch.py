@@ -15,7 +15,10 @@ from nominal.core._clientsbunch import (
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
-from nominal.protos.workspaces.v1 import workspaces_pb2
+from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
+from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
@@ -228,12 +231,14 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_stub.GetDefaultWorkspace.assert_not_called()
 
 
-def test_from_config_wires_roles_via_the_grpc_factory(monkeypatch):
-    """from_config builds `roles`, `comments`, `units`, and `workspace` through the gRPC stub factory."""
+def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch):
+    """from_config builds `units`, `comments`, `workspace`, and `roles` as generated gRPC stubs, each bound
+    to a single shared channel.
+    """
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
-    roles_stub = object()
-    grpc_factory = MagicMock(return_value=MagicMock(return_value=roles_stub))
-    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_stub_factory", grpc_factory)
+    channel = MagicMock(name="grpc-channel")
+    create_grpc_channel = MagicMock(return_value=channel)
+    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_channel", create_grpc_channel)
 
     clients = ClientsBunch.from_config(
         ServiceConfiguration(uris=["https://api.nominal.test"]),
@@ -243,20 +248,22 @@ def test_from_config_wires_roles_via_the_grpc_factory(monkeypatch):
         None,
     )
 
-    assert clients.roles is roles_stub
-    assert clients.comments is roles_stub
-    assert clients.units is roles_stub
-    assert clients.workspace is roles_stub
-    assert grpc_factory.call_args.kwargs["auth_header"] == "Bearer token"
-    assert grpc_factory.call_args.kwargs["api_base_url"] == "https://api.nominal.test"
-    assert grpc_factory.call_args.kwargs["header_provider"] is None
+    assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
+    assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
+    assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
+    assert isinstance(clients.roles, roles_pb2_grpc.RoleServiceStub)
+    # Exactly one channel, built from the right transport params and shared by every gRPC stub.
+    create_grpc_channel.assert_called_once()
+    assert create_grpc_channel.call_args.kwargs["auth_header"] == "Bearer token"
+    assert create_grpc_channel.call_args.kwargs["api_base_url"] == "https://api.nominal.test"
+    assert create_grpc_channel.call_args.kwargs["header_provider"] is None
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     """as_user returns a new client that injects the on-behalf-of header on both the HTTP and gRPC paths."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
-    grpc_factory = MagicMock(return_value=MagicMock(return_value=MagicMock(name="roles")))
-    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_stub_factory", grpc_factory)
+    create_grpc_channel = MagicMock(return_value=MagicMock(name="grpc-channel"))
+    monkeypatch.setattr("nominal.core._clientsbunch.create_grpc_channel", create_grpc_channel)
 
     client = NominalClient(
         _clients=ClientsBunch.from_config(
@@ -279,8 +286,8 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
-    # The impersonation header_provider must also reach the gRPC stub factory; the most
-    # recent factory call is the impersonated client's.
-    header_provider = grpc_factory.call_args.kwargs["header_provider"]
+    # The impersonation header_provider must also reach the gRPC channel; the most
+    # recent channel build is the impersonated client's.
+    header_provider = create_grpc_channel.call_args.kwargs["header_provider"]
     assert header_provider is not None
     assert header_provider.headers()[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
