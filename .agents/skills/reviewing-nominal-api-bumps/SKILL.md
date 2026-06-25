@@ -24,6 +24,9 @@ The output classifies every delta as **⚠️ Breaking**, **➕ Additive**, or *
 critically — scans the client so a breaking change with **0 references** is flagged as a safe bump,
 while an additive with 0 references is flagged as a new capability that isn't wired up yet.
 
+The default deliverable is a self-contained **HTML report served on localhost** (`http://localhost:<port>/…`);
+the same content is also written as markdown.
+
 ## When to use
 
 - Bumping the `nominal-api` / `nominal-api-protos` pin in `pyproject.toml`.
@@ -44,11 +47,21 @@ uv run --no-project python $SKILL/bump_scan.py both    --repo . --out ./reports
 
 # Explicit versions
 uv run --no-project python $SKILL/bump_scan.py conjure --repo . --old 0.1282.0 --new 0.1286.0
+
+# Serve the built HTML on localhost (run in the background; prints http://localhost:<port>/…)
+uv run --no-project python $SKILL/serve_report.py ./reports --file bump-report-0.1282.0-to-0.1286.0.html
 ```
 
-`bump_scan.py` resolves versions (old = pin in `pyproject.toml`, new = latest on PyPI), downloads and
-unpacks both wheels, extracts each surface, diffs them, scans `nominal/` + `tests/` for references,
-prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` to `--out` (default `.`).
+`bump_scan.py` resolves versions (old = pin in `pyproject.toml`, new = latest on PyPI), installs both
+versions, extracts each surface, diffs them, and scans `nominal/` + `tests/` for references. It writes
+to `--out` (default `.`):
+- **`bump-report-<old>-to-<new>.html`** — a self-contained styled report (combined across transports for
+  `both`); the **default deliverable**, served on localhost by `serve_report.py`.
+- `migration-report-<transport>-<old>-to-<new>.md` — the same content as markdown (greppable; the inline
+  summary), and printed to stdout.
+
+Then serve it: `python serve_report.py <out> --file <name>` binds `127.0.0.1` on a free port and prints
+`http://localhost:<port>/…`. `bump_scan.py` prints the exact serve command to run.
 
 > **How to run:** use `uv run --no-project python …`. `--no-project` makes uv ignore the project, so your
 > `.venv` is **never read, synced, or modified** — whereas plain `uv run` would sync it to the lockfile
@@ -58,20 +71,22 @@ prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` t
 
 ## Workflow
 
-1. **Run the scan.** Use `bump_scan.py <transport> --repo <client-root>`. Default `--out` is the cwd;
-   prefer writing the report to a scratch/temp dir so it doesn't dirty the repo. For a full bump,
-   run `both`.
-2. **Read the verdict line.** `✅ No breaking change references the client` ⇒ the pin bump is safe on
+1. **Run the scan.** Use `bump_scan.py <transport> --repo <client-root> --out <dir>`. Prefer a scratch/temp
+   `--out` dir so reports don't dirty the repo. For a full bump, run `both` (one combined HTML page).
+2. **Serve it.** Launch `serve_report.py <out> --file <name>` **in the background** (it runs until killed)
+   and give the user the printed `http://localhost:<port>/…` URL — this is the default way to view the
+   report. `bump_scan.py` prints the exact command. (The HTML is self-contained, so `file://` works too.)
+3. **Read the verdict line.** `✅ No breaking change references the client` ⇒ the pin bump is safe on
    its own. `⚠️ N breaking change(s) touch the client` ⇒ open the Breaking table and address each.
-3. **Work the Breaking table.** For each row with non-zero **Client refs**, open the listed
+4. **Work the Breaking table.** For each row with non-zero **Client refs**, open the listed
    `file:` paths and update call sites for the exact change in the `Change` column
    (e.g. `~ inputs: List→Dict[str,…]`, `− fill_strategy + alignment_configuration (req)`).
-4. **Skim Additive for opportunities.** Additive rows with non-zero refs mean the client already
+5. **Skim Additive for opportunities.** Additive rows with non-zero refs mean the client already
    touches that type and could adopt the new optional field/endpoint. Rows with 0 refs are net-new
    capabilities — adopt only if there's a reason.
-5. **Behavioral** rows are enum members added to *existing* enums — revisit any exhaustive
+6. **Behavioral** rows are enum members added to *existing* enums — revisit any exhaustive
    `match`/`if` over that enum in the client.
-6. **Relay** the verdict + the Breaking table inline, and link the written report path.
+7. **Relay** the localhost URL + the verdict + the Breaking table inline.
 
 ## Interpreting the report
 
@@ -98,7 +113,10 @@ prints the report, and writes `migration-report-<transport>-<old>-to-<new>.md` t
   `List→Dict` is visible. Importable as `extract(transport, root) -> list[Element]`.
 - `diff_surface.py <old.jsonl> <new.jsonl> --label "..." [--repo <root>]` → the markdown report. Classifies
   field-level deltas (removed field / new required field / type change / optional↔required) and renders
-  the three severity tables. Importable as `build_report(old, new, label, repo) -> str`.
+  the three severity tables. Importable as `diff_and_scan(old, new, repo)`, `render_markdown(...)`,
+  `build_report(...)`.
+- `render_html.py` → `render_page(reports)` builds the combined self-contained HTML page from the diffed
+  data (styling in `report.css`). `serve_report.py <dir>` serves it on localhost.
 
 ## Common mistakes
 

@@ -181,13 +181,25 @@ def _table(rows: list[Row], hits: dict[str, list[str]] | None, internal_substr: 
     return "\n".join(out) + "\n"
 
 
-def build_report(old: list[Element], new: list[Element], label: str, repo: str | None = None,
-                 internal_substr: str = "Internal") -> str:
+def diff_and_scan(old: list[Element], new: list[Element], repo: str | None) -> tuple[Diff, dict[str, list[str]] | None]:
+    """Diff the surfaces and, if a repo is given, scan it for references — the shared
+    front half of both the markdown and HTML reports.
+    """
     d = diff(old, new)
-    every_row = [r for rows in d.buckets.values() for r in rows]
-    hits = scan_refs({r.element.leaf for r in every_row}, Path(repo)) if repo else None
-    n_break_refd = sum(1 for r in d.buckets["breaking"] if hits and hits.get(r.element.leaf))
+    hits = None
+    if repo:
+        names = {r.element.leaf for rows in d.buckets.values() for r in rows}
+        hits = scan_refs(names, Path(repo))
+    return d, hits
 
+
+def breaking_refd(d: Diff, hits: dict[str, list[str]] | None) -> int:
+    return sum(1 for r in d.buckets["breaking"] if hits and hits.get(r.element.leaf))
+
+
+def render_markdown(d: Diff, hits: dict[str, list[str]] | None, label: str, repo: str | None,
+                    internal_substr: str = "Internal") -> str:
+    n_break_refd = breaking_refd(d, hits)
     lines: list[str] = []
     lines.append(f"# Migration report — {label}\n")
     lines.append(
@@ -213,6 +225,12 @@ def build_report(old: list[Element], new: list[Element], label: str, repo: str |
             "Verify import context for common names (e.g. `File`, `Error`, `State`) — they over-match._"
         )
     return "".join(s + "\n" for s in lines)
+
+
+def build_report(old: list[Element], new: list[Element], label: str, repo: str | None = None,
+                 internal_substr: str = "Internal") -> str:
+    d, hits = diff_and_scan(old, new, repo)
+    return render_markdown(d, hits, label, repo, internal_substr)
 
 
 def main() -> None:

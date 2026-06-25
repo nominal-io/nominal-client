@@ -29,8 +29,9 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from diff_surface import build_report
+from diff_surface import diff_and_scan, render_markdown
 from extract_surface import extract, use_utf8_stdout
+from render_html import render_page
 
 PKG = {"conjure": "nominal-api", "proto": "nominal-api-protos"}
 PYPI_JSON = "https://pypi.org/pypi/{pkg}/json"
@@ -71,7 +72,8 @@ def install_surface(pkg: str, ver: str, dest: Path) -> Path:
     return dest
 
 
-def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproject: Path, outdir: Path) -> None:
+def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproject: Path) -> dict | None:
+    """Resolve versions, install both, diff + scan. Returns a report dict, or None if up to date."""
     pkg = PKG[transport]
     old = old or pinned_version(pkg, pyproject)
     new = new or latest_version(pkg)
@@ -79,19 +81,14 @@ def scan_one(transport: str, old: str | None, new: str | None, repo: str, pyproj
         sys.exit(f"could not resolve versions for {pkg} (old={old}, new={new}); pass --old/--new")
     if old == new:
         print(f"# {pkg}: pinned version {old} is already the latest — nothing to compare.")
-        return
+        return None
 
     with tempfile.TemporaryDirectory(prefix=f"bump-{transport}-") as tmp:  # installs are large; clean up after
         work = Path(tmp)
         old_surface = extract(transport, install_surface(pkg, old, work / "old"))
         new_surface = extract(transport, install_surface(pkg, new, work / "new"))
-        report = build_report(old_surface, new_surface, label=f"{pkg} {old} -> {new}", repo=repo)
-
-    outdir.mkdir(parents=True, exist_ok=True)
-    out = outdir / f"migration-report-{transport}-{old}-to-{new}.md"
-    out.write_text(report, encoding="utf-8")
-    sys.stdout.write(report)
-    sys.stdout.write(f"\n[report written to {out}]\n")
+        d, hits = diff_and_scan(old_surface, new_surface, repo)
+    return {"pkg": pkg, "transport": transport, "old": old, "new": new, "repo": repo, "diff": d, "hits": hits}
 
 
 def main() -> None:
@@ -108,8 +105,24 @@ def main() -> None:
 
     pyproject = Path(args.pyproject) if args.pyproject else Path(args.repo) / "pyproject.toml"
     transports = ["conjure", "proto"] if args.transport == "both" else [args.transport]
-    for t in transports:
-        scan_one(t, args.old, args.new, args.repo, pyproject, Path(args.out))
+    reports = [r for t in transports if (r := scan_one(t, args.old, args.new, args.repo, pyproject))]
+    if not reports:
+        return
+
+    outdir = Path(args.out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    # Markdown per transport — greppable, git-friendly, and the inline summary.
+    for r in reports:
+        md = render_markdown(r["diff"], r["hits"], f"{r['pkg']} {r['old']} -> {r['new']}", r["repo"])
+        (outdir / f"migration-report-{r['transport']}-{r['old']}-to-{r['new']}.md").write_text(md, encoding="utf-8")
+        sys.stdout.write(md + "\n")
+    # Combined self-contained HTML — the default deliverable, served by serve_report.py.
+    o, n = reports[0]["old"], reports[0]["new"]
+    html_path = outdir / f"bump-report-{o}-to-{n}.html"
+    html_path.write_text(render_page(reports), encoding="utf-8")
+    serve = Path(__file__).parent / "serve_report.py"
+    sys.stdout.write(f"\n[html report: {html_path}]\n")
+    sys.stdout.write(f'[serve on localhost: python "{serve}" "{outdir}" --file {html_path.name}]\n')
 
 
 if __name__ == "__main__":
