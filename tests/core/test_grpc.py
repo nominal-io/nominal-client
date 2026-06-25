@@ -16,7 +16,6 @@ from nominal.core._utils.grpc_tools import (
     _service_config_json,
     api_base_url_to_grpc_target,
     create_grpc_channel,
-    create_grpc_stub_factory,
     translate_grpc_errors,
 )
 from nominal.core._utils.networking import StaticHeaderProvider
@@ -187,26 +186,6 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
     assert options["grpc.max_receive_message_length"] == 2**31 - 1
     assert intercept_channel.call_args.args[0] == "raw-channel"
     assert len(intercept_channel.call_args.args[1:]) == 2
-
-
-def test_create_grpc_stub_factory_binds_stubs_to_one_shared_channel(monkeypatch) -> None:
-    """create_grpc_stub_factory builds the channel once and binds every stub to that same channel."""
-    _patch_channel(monkeypatch)
-    stub_class = MagicMock()
-
-    factory = create_grpc_stub_factory(
-        api_base_url="https://api.gov.nominal.io/api",
-        service_config=_config(),
-        user_agent="test-agent",
-        auth_header="Bearer tok",
-        header_provider=None,
-    )
-    factory(stub_class)
-    factory(stub_class)
-
-    first_channel = stub_class.call_args_list[0].args[0]
-    assert first_channel == "intercepted-channel"
-    assert first_channel is stub_class.call_args_list[1].args[0]
 
 
 @pytest.mark.parametrize(

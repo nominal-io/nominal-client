@@ -1,8 +1,8 @@
 """gRPC transport plumbing for the Nominal client.
 
-This module is the gRPC analogue of the conjure stub factory in `_utils.networking`: it builds a single,
-shared, fully-configured `grpc.Channel` and returns a `create_grpc_stub_factory(StubClass) -> stub`
-closure, so each backend gRPC service is exposed as a generated stub bound to that one channel.
+This module is the gRPC analogue of the conjure transport in `_utils.networking`: it builds a single,
+shared, fully-configured `grpc.Channel` (`create_grpc_channel`) that each backend gRPC service binds its
+generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
@@ -22,7 +22,7 @@ from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Iterator, Protocol, TypeVar
 from urllib.parse import urlparse
 
 import grpc
@@ -37,7 +37,19 @@ from nominal.core.exceptions import (
     NominalPermissionDeniedError,
 )
 
-TStub = TypeVar("TStub")
+TStub_co = TypeVar("TStub_co", covariant=True)
+
+
+class GRPCStub(Protocol[TStub_co]):
+    """A generated gRPC stub class, viewed as a callable that binds itself to a channel.
+
+    Generated ``*_pb2_grpc`` stub classes are constructed as ``StubClass(channel)``. Annotating a stub
+    class as ``GRPCStub[StubClass]`` rather than ``type[StubClass]`` lets mypy see that channel-accepting
+    constructor, so callers can build stubs without a ``# type: ignore[call-arg]``.
+    """
+
+    def __call__(self, channel: grpc.Channel) -> TStub_co: ...
+
 
 # gRPC channel-arg ints are int32; 2**31 - 1 (~2 GiB) lifts the 4 MB default receive cap without overflowing.
 _MAX_MESSAGE_LENGTH = 2**31 - 1
@@ -267,34 +279,6 @@ def create_grpc_channel(
         _AuthMetadataInterceptor(auth_header, header_provider),
         _DefaultDeadlineInterceptor(service_config.read_timeout),
     )
-
-
-def create_grpc_stub_factory(
-    *,
-    api_base_url: str,
-    service_config: ServiceConfiguration,
-    user_agent: str,
-    auth_header: str,
-    header_provider: HeaderProvider | None,
-) -> Callable[[type[TStub]], TStub]:
-    """Build the shared channel once and return ``factory(StubClass) -> StubClass(channel)``.
-
-    The gRPC analogue of `create_conjure_client_factory`: one shared channel, many stubs. Callers
-    (`ClientsBunch`) bind each backend service's generated stub to the returned factory.
-    """
-    channel = create_grpc_channel(
-        api_base_url=api_base_url,
-        service_config=service_config,
-        user_agent=user_agent,
-        auth_header=auth_header,
-        header_provider=header_provider,
-    )
-
-    def factory(stub_class: type[TStub]) -> TStub:
-        # stub_class is a generic ``type[TStub]``; mypy can't see the channel-accepting stub constructor.
-        return stub_class(channel)  # type: ignore[call-arg]
-
-    return factory
 
 
 _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
