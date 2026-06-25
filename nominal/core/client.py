@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
-import conjure_python_client
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -43,6 +42,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
@@ -93,7 +93,13 @@ from nominal.core.dataset import (
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
+from nominal.core.exceptions import (
+    NominalConfigError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalMethodRemovedError,
+    NominalNotFoundError,
+)
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
@@ -104,6 +110,8 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.units.v1 import units_pb2
+from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -142,8 +150,11 @@ class NominalClient:
 
         Args:
             profile: profile name in the Nominal config.
-            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
-                certifi's trust store is used.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
@@ -179,8 +190,11 @@ class NominalClient:
             base_url: The URL of the Nominal API platform.
             workspace_rid: Optional workspace RID to pin the client to for operations that require a single
                 workspace. If not provided, those operations lazily resolve a default workspace when required.
-            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
-                certifi's trust store is used.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
@@ -219,8 +233,11 @@ class NominalClient:
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
         token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-            certifi's trust store is used.
+        trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+            transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+            store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+            client works on corporate networks with no extra configuration. On macOS, point this at
+            your corporate CA PEM if you are behind a TLS-inspecting proxy.
         connect_timeout: Timeout for any single request to the Nominal API.
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
@@ -258,7 +275,8 @@ class NominalClient:
             case Workspace(rid=search_rid):
                 return search_rid
             case str() as search_rid:
-                # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+                # NOTE: raises a NominalError (e.g. NominalPermissionDeniedError) if the given rid is not visible
+                # to the user (or doesn't exist period)
                 return self._clients.resolve_workspace(search_rid).rid
             case WorkspaceSearchType.ALL:
                 return None
@@ -289,17 +307,20 @@ class NominalClient:
         Raises:
             NominalConfigError: Raises a NominalConfigError if no workspace provided and no default workspace can
                 be resolved.
-            conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
+            NominalNotFoundError: The requested workspace does not exist or is not accessible to the user (the
+                backend does not distinguish the two).
         """
-        raw_workspace = self._clients.resolve_workspace(workspace_rid)
-        return Workspace._from_conjure(raw_workspace)
+        return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 
     def list_workspaces(self) -> Sequence[Workspace]:
-        """Return all workspaces visible to the current user"""
-        return [
-            Workspace._from_conjure(raw_workspace)
-            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
-        ]
+        """Return all workspaces visible to the current user.
+
+        Raises:
+            NominalError: If the workspace service request fails.
+        """
+        with translate_grpc_errors():
+            response = self._clients.workspace.GetWorkspaces(workspaces_pb2.GetWorkspacesRequest())
+        return [Workspace._from_proto(workspace) for workspace in response.workspaces]
 
     def get_user(self, user_rid: str | None = None) -> User:
         """Retrieve the specified user.
@@ -1018,7 +1039,7 @@ class NominalClient:
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
-        return _available_units(self._clients.auth_header, self._clients.units)
+        return _available_units(self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
         """Get details of the given unit symbol, or none if the symbol is not recognized by Nominal.
@@ -1033,20 +1054,32 @@ class NominalClient:
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
+        Raises:
+            NominalError: If the units service request fails for a reason other than an
+                unrecognized symbol.
+
         """
         try:
-            api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
-            return None if api_unit is None else Unit._from_conjure(api_unit)
-        except conjure_python_client.ConjureHTTPError as ex:
-            logger.debug("Error getting unit '%s': '%s'", unit_symbol, ex)
+            with translate_grpc_errors():
+                response = self._clients.units.GetUnit(units_pb2.GetUnitRequest(unit=unit_symbol))
+        except (NominalNotFoundError, NominalInvalidArgumentError):
+            # An unrecognized or malformed symbol is the documented "no such unit symbol matches" -> None.
+            # Handle it whether the backend signals it via a NOT_FOUND/INVALID_ARGUMENT status (translated to
+            # these NominalError subclasses) or via a present-but-empty response (the HasField check below).
             return None
+        return Unit._from_proto(response.unit) if response.HasField("unit") else None
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
-        """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
-        return [
-            Unit._from_conjure(unit)
-            for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
-        ]
+        """Get the list of units that are commensurable (convertible to/from) the given unit symbol.
+
+        Raises:
+            NominalError: If the units service request fails.
+        """
+        with translate_grpc_errors():
+            response = self._clients.units.GetCommensurableUnits(
+                units_pb2.GetCommensurableUnitsRequest(unit=unit_symbol)
+            )
+        return [Unit._from_proto(unit) for unit in response.units]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""

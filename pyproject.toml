@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.146.0"
+version = "1.148.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -27,7 +27,8 @@ requires-python = ">=3.10,<4"
 dependencies = [
     "conjure-python-client>=3.1.0,<4",
     "exceptiongroup>=1.3.0",
-    "nominal-api==0.1259.1",
+    "nominal-api==0.1282.0",
+    "nominal-api-protos==0.1282.0",
     "truststore>=0.10.4",
     "typing-extensions>=4,<5",
     "pandas>=2.0.0",
@@ -86,7 +87,6 @@ nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
-protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nominal-tdms>=1.143.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 video = [

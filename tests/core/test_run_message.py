@@ -3,10 +3,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import comments_api
 
 from nominal.core.comment import Comment
 from nominal.core.run import Run
+from nominal.protos.comments.v1 import comments_pb2
 
 RUN_RID = "ri.scout.test.run.abc"
 
@@ -34,42 +34,31 @@ def mock_run(mock_clients):
     )
 
 
-def _stub_comment() -> comments_api.Comment:
-    return comments_api.Comment(
+def _stub_comment() -> comments_pb2.Comment:
+    c = comments_pb2.Comment(
         rid="ri.scout.test.comment.123",
-        parent=comments_api.CommentParent(
-            resource=comments_api.CommentParentResource(
-                resource_type=comments_api.ResourceType.RUN,
-                resource_rid=RUN_RID,
-            )
-        ),
         author_rid="ri.users.user.42",
-        created_at="2026-05-07T12:00:00Z",
         content="hello",
-        attachments=[],
-        reactions=[],
     )
+    c.created_at.FromNanoseconds(1_778_155_200_000_000_000)
+    return c
 
 
 def test_add_comment_sends_run_parented_request(mock_run, mock_clients):
-    mock_clients.comments.create_comment.return_value = _stub_comment()
+    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(comment=_stub_comment())
 
     mock_run.add_comment("hello")
 
-    mock_clients.comments.create_comment.assert_called_once()
-    auth_header, request = mock_clients.comments.create_comment.call_args.args
-    assert auth_header == mock_clients.auth_header
-    assert isinstance(request, comments_api.CreateCommentRequest)
+    mock_clients.comments.CreateComment.assert_called_once()
+    (request,) = mock_clients.comments.CreateComment.call_args.args
+    assert isinstance(request, comments_pb2.CreateCommentRequest)
     assert request.content == "hello"
-    assert request.attachments == []
-    parent_resource = request.parent.resource
-    assert parent_resource is not None
-    assert parent_resource.resource_type == comments_api.ResourceType.RUN
-    assert parent_resource.resource_rid == RUN_RID
+    assert request.parent.resource.resource_type == comments_pb2.ResourceType.RUN
+    assert request.parent.resource.resource_rid == RUN_RID
 
 
 def test_add_comment_returns_comment_dataclass(mock_run, mock_clients):
-    mock_clients.comments.create_comment.return_value = _stub_comment()
+    mock_clients.comments.CreateComment.return_value = comments_pb2.CreateCommentResponse(comment=_stub_comment())
 
     comment = mock_run.add_comment("hello")
 

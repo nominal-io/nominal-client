@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    comments_api,
     event,
     scout,
     scout_asset_api,
@@ -16,7 +15,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
-from nominal.core._event_types import EventType
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -26,15 +25,17 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
-from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.connection import Connection, _get_connection, _get_connections
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, _create_event
+from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def comments(self) -> comments_api.CommentsService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def event(self) -> event.EventService: ...
         @property
@@ -134,19 +135,23 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
 
         Returns:
             The created `Comment`.
+
+        Raises:
+            NominalError: If the comments service request fails.
         """
-        request = comments_api.CreateCommentRequest(
-            parent=comments_api.CommentParent(
-                resource=comments_api.CommentParentResource(
-                    resource_type=comments_api.ResourceType.RUN,
+        request = comments_pb2.CreateCommentRequest(
+            parent=comments_pb2.CommentParent(
+                resource=comments_pb2.CommentParentResource(
+                    resource_type=comments_pb2.ResourceType.RUN,
                     resource_rid=self.rid,
                 )
             ),
             content=content,
             attachments=[],
         )
-        api_comment = self._clients.comments.create_comment(self._clients.auth_header, request)
-        return Comment._from_conjure(api_comment)
+        with translate_grpc_errors():
+            response = self._clients.comments.CreateComment(request)
+        return Comment._from_proto(response.comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()
@@ -242,6 +247,66 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             assets=self.assets,
             properties=properties,
             labels=labels,
+        )
+
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by_rid: str | None = None,
+        workbook_rid: str | None = None,
+        data_review_rid: str | None = None,
+        assignee_rid: str | None = None,
+        event_type: EventType | None = None,
+        origin_types: Iterable[SearchEventOriginType] | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    ) -> Sequence[Event]:
+        """Search for events associated with any of the assets of this run.
+
+        The run's assets are matched as a union: an event is included if it is associated with at
+        least one of the run's assets. The remaining filters are ANDed together with that asset
+        filter and with each other.
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by_rid: Rid of the author that must be present on an event to be included.
+            workbook_rid: Search for events on the given workbook.
+            data_review_rid: Search for events from the given data review.
+            assignee_rid: Search for events with the given assignee.
+            event_type: Search for events of the given type.
+            origin_types: Search for events created by any of the given origin types.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
+
+        Returns:
+            Events associated with any of this run's assets that match all of the provided filters.
+            Returns an empty sequence if the run has no associated assets.
+        """
+        if not self.assets:
+            return []
+        return _search_events(
+            self._clients,
+            search_text=search_text,
+            after=after,
+            before=before,
+            asset_rids=list(self.assets),
+            asset_match=AssetMatch.ANY,
+            labels=labels,
+            properties=properties,
+            created_by_rid=created_by_rid,
+            workbook_rid=workbook_rid,
+            data_review_rid=data_review_rid,
+            assignee_rid=assignee_rid,
+            event_type=event_type,
+            origin_types=origin_types,
+            archive_status=archive_status,
         )
 
     def add_dataset(
@@ -388,6 +453,66 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
+
+    def get_dataset(self, ref_name: str) -> Dataset:
+        """Get a dataset for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Dataset associated with the ref name.
+
+        Raises:
+            ValueError: If no dataset reference exists with the provided name.
+        """
+        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        dataset_rid = dataset_rids_by_ref_name.get(ref_name)
+        if dataset_rid is None:
+            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
+
+        return Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+        )
+
+    def get_connection(self, ref_name: str) -> Connection:
+        """Get a connection for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Connection associated with the ref name.
+
+        Raises:
+            ValueError: If no connection reference exists with the provided name.
+        """
+        connection_rids_by_ref_name = self._list_datasource_rids("connection")
+        connection_rid = connection_rids_by_ref_name.get(ref_name)
+        if connection_rid is None:
+            raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
+
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+
+    def get_video(self, ref_name: str) -> Video:
+        """Get a video for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Video associated with the ref name.
+
+        Raises:
+            ValueError: If no video reference exists with the provided name.
+        """
+        video_rids_by_ref_name = self._list_datasource_rids("video")
+        video_rid = video_rids_by_ref_name.get(ref_name)
+        if video_rid is None:
+            raise ValueError(f"No video with ref name '{ref_name}' found for this run")
+
+        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()

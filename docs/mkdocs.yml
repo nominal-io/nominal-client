@@ -35,6 +35,8 @@ nav:
         - Compute: reference/experimental/compute.md
         - Logging: reference/experimental/logging.md
         - Video Processing: reference/experimental/video_processing.md
+  - Guides:
+      - Networking & TLS: networking-tls.md
   - Development:
       - Contributing: contributing.md
   - Documentation: https://docs.nominal.io/core/sdk/python-client/quickstart

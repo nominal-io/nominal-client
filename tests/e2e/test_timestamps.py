@@ -7,17 +7,22 @@ Each test:
   3. Waits for ingestion to complete, then confirms the dataset metadata (name, description)
      and ingested time bounds round-trip correctly.
 
+Bounds are asserted in nanoseconds-since-epoch. Tolerances default to zero and are only
+applied where the encoding path can't round-trip to ns precision; the parametrize table
+on `test_bounds_round_trip` (and the per-case comments alongside each row) explain each
+non-zero tolerance.
+
 Timestamp formats under test:
   - ISO 8601 strings  ("iso_8601")
-  - Epoch seconds     ("epoch_seconds")
-  - Epoch milliseconds ("epoch_milliseconds")
+  - Epoch units       ("epoch_days", "epoch_hours", "epoch_minutes", "epoch_seconds",
+                       "epoch_milliseconds", "epoch_microseconds", "epoch_nanoseconds")
   - Relative offset   (Relative("microseconds", epoch))
   - Custom formats    (ctime-style, IRIG day-of-year with default_year, HH:MM:SS with default date)
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Callable
 
@@ -30,6 +35,28 @@ from nominal.ts import Custom, Relative, _SecondsNanos
 from tests.e2e import POLL_INTERVAL
 
 Formatter = Callable[[int, datetime], str]
+
+# Float64 ULP at year-2024 timestamp magnitudes (~1.7e18 ns) is ~256 ns. Used for tests
+# whose encoding crosses through float64 — either client-side (the float-encoded epoch
+# formatters: days, hours, minutes, seconds) or server-side (epoch_nanoseconds, which
+# the backend appears to parse through a float despite the integer-encoded input).
+NS_PER_US = 1_000
+
+# Backend silently truncates fractional epoch_milliseconds input to integer ms on
+# ingest, contradicting the `Epoch` docstring's promise that "the timestamp can be
+# integral or floating point". Tolerance reflects the actual ms-precision storage floor.
+NS_PER_MS = 1_000_000
+
+
+def _ns(dt: datetime) -> int:
+    """Datetime → nanoseconds-since-epoch (exact for the µs-precision datetimes used here)."""
+    return _SecondsNanos.from_datetime(dt).to_nanoseconds()
+
+
+def _format_ctime_with_micros(temp: int, ts: datetime) -> str:
+    """Format as ctime with microseconds spliced in before the year (e.g. 'Mon Sep 30 16:37:36.891349 2024')."""
+    base = ts.ctime()
+    return f"{temp},{base[:-5]}.{ts.microsecond:06d}{base[-5:]}"
 
 
 @pytest.fixture(scope="module")
@@ -52,32 +79,24 @@ def _create_csv_data(data: list[tuple[int, datetime]], formatter: Formatter) -> 
     return ("temperature,timestamp\n" + "\n".join(formatter(temp, ts) for temp, ts in data)).encode()
 
 
-def _truncate_to_ms(dt: datetime) -> datetime:
-    """Truncate a datetime to millisecond precision (drop sub-millisecond microseconds)."""
-    return dt.replace(microsecond=(dt.microsecond // 1000) * 1000)
-
-
 def _assert_bounds(
     dataset_file: DatasetFile,
     dataset: Dataset,
-    expected_start: datetime,
-    expected_end: datetime,
+    expected_start_ns: int,
+    expected_end_ns: int,
     tolerance_ns: int = 0,
 ) -> None:
-    """Assert ingested bounds at both the DatasetFile and Dataset levels.
+    """Assert ingested bounds at both the DatasetFile and Dataset levels match the given ns values.
 
     Args:
-        dataset_file: The ingested file whose bounds to check (returned by poll_until_ingestion_completed).
+        dataset_file: The ingested file whose bounds to check.
         dataset: The parent dataset; refreshed in-place before its bounds are checked.
-        expected_start: Expected lower bound of the ingested time range.
-        expected_end: Expected upper bound of the ingested time range.
-        tolerance_ns: Allowed absolute error in nanoseconds. Use 0 for exact match.
-                      Set to ~1000 for epoch_seconds where float64 precision causes
-                      sub-microsecond rounding errors.
+        expected_start_ns: Expected lower bound, in nanoseconds-since-epoch.
+        expected_end_ns: Expected upper bound, in nanoseconds-since-epoch.
+        tolerance_ns: Allowed absolute error in nanoseconds. Defaults to 0 (exact match).
+                      Set to the format's intrinsic precision floor for formats whose
+                      encoding can't round-trip to nanosecond precision.
     """
-    expected_start_ns = _SecondsNanos.from_datetime(expected_start).to_nanoseconds()
-    expected_end_ns = _SecondsNanos.from_datetime(expected_end).to_nanoseconds()
-
     assert dataset_file.bounds is not None
     assert dataset_file.bounds.start == pytest.approx(expected_start_ns, abs=tolerance_ns, rel=0)
     assert dataset_file.bounds.end == pytest.approx(expected_end_ns, abs=tolerance_ns, rel=0)
@@ -94,10 +113,10 @@ def _upload_and_assert(
     desc: str,
     csv_bytes: bytes,
     timestamp_type,
-    expected_start: datetime,
-    expected_end: datetime,
+    expected_start_ns: int,
+    expected_end_ns: int,
     tolerance_ns: int = 0,
-) -> Dataset:
+) -> None:
     """Create a dataset, upload csv_bytes, wait for ingestion, and assert metadata and bounds.
 
     The dataset is always archived in a finally block so resources are cleaned up even if
@@ -110,8 +129,8 @@ def _upload_and_assert(
         csv_bytes: Raw CSV bytes to upload via add_from_io.
         timestamp_type: Any value accepted by `add_from_io` (string literal, typed constant, or
                         Relative/Custom instance).
-        expected_start: Expected ingested start timestamp.
-        expected_end: Expected ingested end timestamp.
+        expected_start_ns: Expected ingested start timestamp, in nanoseconds-since-epoch.
+        expected_end_ns: Expected ingested end timestamp, in nanoseconds-since-epoch.
         tolerance_ns: Passed through to `_assert_bounds`; see that function for details.
     """
     ds = client.create_dataset(name, description=desc)
@@ -121,63 +140,119 @@ def _upload_and_assert(
         )
         assert ds.name == name
         assert ds.description == desc
-        _assert_bounds(dataset_file, ds, expected_start, expected_end, tolerance_ns=tolerance_ns)
-        return ds
+        _assert_bounds(dataset_file, ds, expected_start_ns, expected_end_ns, tolerance_ns=tolerance_ns)
     finally:
         ds.archive()
 
 
-def test_iso_8601(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """ISO 8601 timestamps ingest correctly with sub-millisecond precision preserved."""
+@pytest.mark.parametrize(
+    ("formatter", "timestamp_type", "tolerance_ns"),
+    [
+        # iso_8601 — round-trips exactly at µs precision.
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.isoformat()}",
+            "iso_8601",
+            0,
+            id="iso_8601",
+        ),
+        # epoch_days/hours/minutes/seconds — backend parses float-encoded epoch input via
+        # float64 and stores the rounded value. At year-2024 timestamps (~1.7e18 ns) float64
+        # ULP is ~256 ns; NS_PER_US is the next clean ceiling that absorbs that drift.
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.timestamp() / 86_400}",
+            "epoch_days",
+            NS_PER_US,
+            id="epoch_days",
+        ),
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.timestamp() / 3_600}",
+            "epoch_hours",
+            NS_PER_US,
+            id="epoch_hours",
+        ),
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.timestamp() / 60}",
+            "epoch_minutes",
+            NS_PER_US,
+            id="epoch_minutes",
+        ),
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.timestamp()}",
+            "epoch_seconds",
+            NS_PER_US,
+            id="epoch_seconds",
+        ),
+        # epoch_milliseconds — backend silently truncates sub-ms fractional input to integer
+        # ms (contradicting Epoch's "integral or floating point" docstring). NS_PER_MS bounds
+        # the loss; observed drift in this fixture reaches 826 µs.
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.timestamp() * 1000}",
+            "epoch_milliseconds",
+            NS_PER_MS,
+            id="epoch_milliseconds",
+        ),
+        # epoch_microseconds — integer µs string (~1.7e15) sits below float64's 2^53
+        # integer-exact ceiling, so the backend's float funnel doesn't destroy precision;
+        # round-trips exactly with integer input.
+        pytest.param(
+            lambda temp, ts: f"{temp},{int(ts.timestamp()) * 1_000_000 + ts.microsecond}",
+            "epoch_microseconds",
+            0,
+            id="epoch_microseconds",
+        ),
+        # epoch_nanoseconds — even integer-encoded input is parsed via float64 by the backend
+        # and quantized to a ~256 ns grid at year-2024 timestamps; NS_PER_US absorbs the drift.
+        pytest.param(
+            lambda temp, ts: f"{temp},{int(ts.timestamp()) * 1_000_000_000 + ts.microsecond * 1_000}",
+            "epoch_nanoseconds",
+            NS_PER_US,
+            id="epoch_nanoseconds",
+        ),
+        # Custom(ctime-style) — full date + time string with µs; round-trips exactly.
+        pytest.param(
+            _format_ctime_with_micros,
+            Custom(r"EEE MMM dd HH:mm:ss.SSSSSS yyyy"),
+            0,
+            id="custom_ctime",
+        ),
+        # Custom(IRIG day-of-year) — %j:HH:MM:SS.SSSSSS with default_year; round-trips exactly.
+        pytest.param(
+            lambda temp, ts: f"{temp},{ts.strftime(r'%j:%H:%M:%S.%f')}",
+            Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024),
+            0,
+            id="custom_irig",
+        ),
+    ],
+)
+def test_bounds_round_trip(
+    request,
+    client: NominalClient,
+    temperature_data: list[tuple[int, datetime]],
+    formatter: Formatter,
+    timestamp_type,
+    tolerance_ns: int,
+):
+    """Upload `temperature_data` through `formatter`/`timestamp_type` and verify the ingested
+    bounds match the µs-exact expected ns within `tolerance_ns`. See the parametrize table
+    for per-case justifications; see the module docstring for the tolerance convention.
+    """
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
-    csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.isoformat()}")
+    csv_bytes = _create_csv_data(temperature_data, formatter)
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "iso_8601",
-        temperature_data[0][1],
-        temperature_data[-1][1],
-    )
-
-
-def test_epoch_seconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """Epoch-seconds timestamps ingest correctly; float64 CSV values have sub-microsecond rounding."""
-    name = f"dataset-{request.node.name}"
-    desc = f"timestamp test {request.node.name}"
-    csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.timestamp()}")
-    _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "epoch_seconds",
-        temperature_data[0][1],
-        temperature_data[-1][1],
-        tolerance_ns=1_000,
-    )
-
-
-def test_epoch_milliseconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """Epoch-milliseconds timestamps ingest correctly; sub-millisecond precision is truncated."""
-    name = f"dataset-{request.node.name}"
-    desc = f"timestamp test {request.node.name}"
-    csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.timestamp() * 1000}")
-    _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        "epoch_milliseconds",
-        _truncate_to_ms(temperature_data[0][1]),
-        _truncate_to_ms(temperature_data[-1][1]),
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=timestamp_type,
+        expected_start_ns=_ns(temperature_data[0][1]),
+        expected_end_ns=_ns(temperature_data[-1][1]),
+        tolerance_ns=tolerance_ns,
     )
 
 
 def test_relative_microseconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """Relative(microseconds, epoch) translates integer offsets into absolute timestamps and ingests successfully."""
+    """Relative(microseconds, epoch) translates integer µs offsets to absolute timestamps."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
     start = temperature_data[0][1]
@@ -192,53 +267,15 @@ def test_relative_microseconds(request, client: NominalClient, temperature_data:
         return f"{temp},{_micros(ts)}"
 
     csv_bytes = _create_csv_data(temperature_data, fmt)
-    # expected bounds are start + the integer µs values for the first and last samples
-    expected_start = start + timedelta(microseconds=_micros(temperature_data[0][1]))
-    expected_end = start + timedelta(microseconds=_micros(temperature_data[-1][1]))
-    _upload_and_assert(client, name, desc, csv_bytes, Relative("microseconds", start), expected_start, expected_end)
-
-
-def test_custom_ctime(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """A Custom format matching ctime output (e.g. "Mon Sep 30 16:37:36.891349 2024") ingests successfully."""
-    name = f"dataset-{request.node.name}"
-    desc = f"timestamp test {request.node.name}"
-
-    def fmt(temp: int, ts: datetime) -> str:
-        # ctime() returns "Mon Sep 30 16:37:36 2024"; splice in microseconds before the year
-        ctime = ts.ctime()
-        ctime = ctime[:-5] + f".{ts.microsecond:06d}" + ctime[-5:]
-        return f"{temp},{ctime}"
-
-    csv_bytes = _create_csv_data(temperature_data, fmt)
+    start_ns = _ns(start)
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"EEE MMM dd HH:mm:ss.SSSSSS yyyy"),
-        temperature_data[0][1],
-        temperature_data[-1][1],
-    )
-
-
-def test_custom_irig(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """A Custom format using IRIG day-of-year notation (e.g. "274:16:37:36.891349") ingests successfully."""
-    name = f"dataset-{request.node.name}"
-    desc = f"timestamp test {request.node.name}"
-
-    def fmt(temp: int, ts: datetime) -> str:
-        # %j = zero-padded day of year (001–366)
-        return f"{temp},{ts.strftime(r'%j:%H:%M:%S.%f')}"
-
-    csv_bytes = _create_csv_data(temperature_data, fmt)
-    _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024),
-        temperature_data[0][1],
-        temperature_data[-1][1],
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Relative(unit="microseconds", start=start),
+        expected_start_ns=start_ns + _micros(temperature_data[0][1]) * 1_000,
+        expected_end_ns=start_ns + _micros(temperature_data[-1][1]) * 1_000,
     )
 
 
@@ -261,11 +298,11 @@ def test_custom_day_of_year(request, client: NominalClient, temperature_data: li
         2024, 1, 1, last_ts.hour, last_ts.minute, last_ts.second, last_ts.microsecond, tzinfo=timezone.utc
     )
     _upload_and_assert(
-        client,
-        name,
-        desc,
-        csv_bytes,
-        Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1),
-        expected_start,
-        expected_end,
+        client=client,
+        name=name,
+        desc=desc,
+        csv_bytes=csv_bytes,
+        timestamp_type=Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1),
+        expected_start_ns=_ns(expected_start),
+        expected_end_ns=_ns(expected_end),
     )

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.148.0](https://github.com/nominal-io/nominal-client/compare/v1.147.0...v1.148.0) (2026-06-23)
+
+
+### Features
+
+* add Run.search_events method ([#834](https://github.com/nominal-io/nominal-client/issues/834)) ([abdd391](https://github.com/nominal-io/nominal-client/commit/abdd391e4002ef4b25a477460bff0f1eace4dba7))
+* **grpc:** expose Role Service via a shared-channel ClientsBunch gRPC pattern ([#809](https://github.com/nominal-io/nominal-client/issues/809)) ([f3f1572](https://github.com/nominal-io/nominal-client/commit/f3f15726b03c43b16fa7bde0adf9c4a4e6f9cc99))
+
+
+### Bug Fixes
+
+* handle new ingest status enum members ([#838](https://github.com/nominal-io/nominal-client/issues/838)) ([1ddbd94](https://github.com/nominal-io/nominal-client/commit/1ddbd9408907a353e4db9d91f07d80e46c8c377e))
+
+## [1.147.0](https://github.com/nominal-io/nominal-client/compare/v1.146.0...v1.147.0) (2026-06-18)
+
+
+### Features
+
+* adding/updating dataset/video/connection getters for run.py and asset.py ([#830](https://github.com/nominal-io/nominal-client/issues/830)) ([b47b728](https://github.com/nominal-io/nominal-client/commit/b47b72803aadfcadd57eccf2cc5385aa9cb22d7d))
+
+
+### Bug Fixes
+
+* **migration:** handle camelCase keys in legacy migration state files ([#823](https://github.com/nominal-io/nominal-client/issues/823)) ([96cd804](https://github.com/nominal-io/nominal-client/commit/96cd804a1798d4807959d88eca992268f3d33ce5))
+
 ## [1.146.0](https://github.com/nominal-io/nominal-client/compare/v1.145.1...v1.146.0) (2026-06-16)
 
 

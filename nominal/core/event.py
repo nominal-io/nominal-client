@@ -13,7 +13,7 @@ from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
-from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_events_query
+from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -161,6 +161,7 @@ def _search_events(
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
     asset_rids: Iterable[str] | None = None,
+    asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
     created_by_rid: str | None = None,
@@ -174,6 +175,7 @@ def _search_events(
 ) -> Sequence[Event]:
     query = create_search_events_query(
         asset_rids=asset_rids,
+        asset_match=asset_match,
         search_text=search_text,
         after=after,
         before=before,
