@@ -493,3 +493,140 @@ def test_stream_file_measures_without_streaming_when_stream_is_none(tmp_path: Pa
     points, slices = sync_mod._stream_file(None, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
     assert points == 2
     assert slices == 2
+
+
+# --- _build_underconstrained_expansion -----------------------------------------------------------
+
+
+def _fake_channel(name: str, get_available_tags_result: dict[str, set[str]] | None = None) -> Any:
+    """Build a minimal channel stand-in for underconstrained expansion tests."""
+
+    def _get_available_tags(*, start_time: Any = None, end_time: Any = None, initial_tags: Any = None) -> dict[str, set[str]]:
+        return get_available_tags_result or {}
+
+    return SimpleNamespace(
+        name=name,
+        data_type=ChannelDataType.DOUBLE,
+        _clients=object(),
+        get_available_tags=_get_available_tags,
+    )
+
+
+def test_build_underconstrained_expansion_returns_original_when_none_underconstrained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ch_a = _fake_channel("a")
+    ch_b = _fake_channel("b")
+
+    # Batch check reports both channels present, neither underconstrained.
+    monkeypatch.setattr(sync_mod, "_batch_check_channels_have_data", lambda *a, **k: ([ch_a, ch_b], []))
+
+    passes = sync_mod._build_underconstrained_expansion([ch_a, ch_b], {"stand": "1"}, 0, SEC)
+
+    assert passes == [({"stand": "1"}, None)]
+
+
+def test_build_underconstrained_expansion_splits_underconstrained_channel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ch_a: fully constrained by {stand: "1"}.
+    # ch_b: underconstrained — has an extra discriminating tag "ts" with values 1 and 2.
+    ch_a = _fake_channel("a")
+    ch_b = _fake_channel("b", get_available_tags_result={"stand": {"1"}, "ts": {"1", "2"}})
+
+    def fake_batch_check(clients: Any, batch: Any, *a: Any, **k: Any) -> tuple[list[Any], list[str]]:
+        all_channels = list(batch)
+        underconstrained = [ch.name for ch in all_channels if ch.name == "b"]
+        return all_channels, underconstrained
+
+    monkeypatch.setattr(sync_mod, "_batch_check_channels_have_data", fake_batch_check)
+
+    passes = sync_mod._build_underconstrained_expansion([ch_a, ch_b], {"stand": "1"}, 0, SEC)
+
+    # Should produce 3 passes:
+    #   1. {stand: "1"}        — allowlist={a}   (fully constrained)
+    #   2. {stand: "1", ts: "1"} — allowlist={b} (expansion combo)
+    #   3. {stand: "1", ts: "2"} — allowlist={b} (expansion combo)
+    assert len(passes) == 3
+    tags_list = [p[0] for p in passes]
+    allowlist_list = [p[1] for p in passes]
+
+    assert {"stand": "1"} in tags_list
+    assert {"stand": "1", "ts": "1"} in tags_list
+    assert {"stand": "1", "ts": "2"} in tags_list
+
+    original_idx = tags_list.index({"stand": "1"})
+    assert allowlist_list[original_idx] == frozenset({"a"})
+
+    ts1_idx = tags_list.index({"stand": "1", "ts": "1"})
+    assert allowlist_list[ts1_idx] == frozenset({"b"})
+
+    ts2_idx = tags_list.index({"stand": "1", "ts": "2"})
+    assert allowlist_list[ts2_idx] == frozenset({"b"})
+
+
+def test_build_underconstrained_expansion_ignores_nominal_internal_tags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ch_b is flagged as underconstrained, but get_available_tags shows the only multi-valued
+    # key is _nominal_ingest_rid (an internal system tag). It should fall back to the original filter.
+    ch_a = _fake_channel("a")
+    ch_b = _fake_channel(
+        "b",
+        get_available_tags_result={"stand": {"1"}, "_nominal_ingest_rid": {"session-1", "session-2"}},
+    )
+
+    def fake_batch_check(clients: Any, batch: Any, *a: Any, **k: Any) -> tuple[list[Any], list[str]]:
+        all_ch = list(batch)
+        underconstrained = [ch.name for ch in all_ch if ch.name == "b"]
+        return all_ch, underconstrained
+
+    monkeypatch.setattr(sync_mod, "_batch_check_channels_have_data", fake_batch_check)
+
+    passes = sync_mod._build_underconstrained_expansion([ch_a, ch_b], {"stand": "1"}, 0, SEC)
+
+    # Both channels should end up in the original filter pass with no expansion.
+    assert passes == [({"stand": "1"}, None)]
+
+
+def test_build_underconstrained_expansion_all_underconstrained_omits_original_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Only channel b exists and it's underconstrained — no original-filter pass should be emitted.
+    ch_b = _fake_channel("b", get_available_tags_result={"stand": {"1"}, "ts": {"1", "2"}})
+
+    monkeypatch.setattr(sync_mod, "_batch_check_channels_have_data", lambda *a, **k: ([ch_b], ["b"]))
+
+    passes = sync_mod._build_underconstrained_expansion([ch_b], {"stand": "1"}, 0, SEC)
+
+    tags_list = [p[0] for p in passes]
+    assert {"stand": "1"} not in tags_list  # original omitted
+    assert {"stand": "1", "ts": "1"} in tags_list
+    assert {"stand": "1", "ts": "2"} in tags_list
+
+
+# --- channel_allowlist in sync_missing_channel_data -------------------------------------------
+
+
+def test_channel_allowlist_restricts_channels_processed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Dataset has channels a, b, c.  allowlist={a} should cause only a to be examined.
+    source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("a"), _channel("b"), _channel("c")])
+    dest = SimpleNamespace(rid="dst")
+
+    examined: list[str] = []
+
+    def fake_count(channels: Any, *a: Any, **k: Any) -> dict[str, Any]:
+        examined.extend(ch.name for ch in channels)
+        return {}
+
+    monkeypatch.setattr(sync_mod, "count_channels", fake_count)
+    monkeypatch.setattr(sync_mod, "_detect_missing", lambda *a, **k: {})
+
+    from nominal.experimental.migration.channel_sync import ChannelSyncOptions, sync_missing_channel_data
+
+    report = sync_missing_channel_data(
+        source, object(), dest, 0, SEC, ChannelSyncOptions(channel_allowlist=frozenset({"a"}))
+    )
+
+    assert report.channels_examined == 1
+    assert examined == ["a"]
