@@ -51,6 +51,7 @@ from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
     search_datasets_paginated,
+    search_ingest_jobs_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
@@ -64,6 +65,7 @@ from nominal.core._utils.query_tools import (
     create_search_checklists_query,
     create_search_containerized_extractors_query,
     create_search_datasets_query,
+    create_search_ingest_jobs_query,
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
@@ -101,6 +103,7 @@ from nominal.core.exceptions import (
     NominalNotFoundError,
 )
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -1298,6 +1301,60 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
         return list(self._iter_search_assets(query, archive_status))
+
+    def get_ingestion_job(self, rid: str) -> IngestionJob:
+        """Retrieve an ingest job by its RID."""
+        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, rid)
+        return IngestionJob._from_conjure(self._clients, job)
+
+    def _iter_search_ingestion_jobs(self, filter: ingest_api.IngestJobSearchFilter) -> Iterable[IngestionJob]:
+        for job in search_ingest_jobs_paginated(self._clients.ingest_jobs, self._clients.auth_header, filter):
+            yield IngestionJob._from_conjure(self._clients, job)
+
+    def search_ingestion_jobs(
+        self,
+        *,
+        datasets: Sequence[Dataset | str] | None = None,
+        created_by: Sequence[User | str] | None = None,
+        statuses: Sequence[IngestionJobStatus] | None = None,
+        search_text: str | None = None,
+        start_time_after: str | datetime | IntegralNanosecondsUTC | None = None,
+        start_time_before: str | datetime | IntegralNanosecondsUTC | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+    ) -> Sequence[IngestionJob]:
+        """Search ingest jobs. Filters are ANDed together.
+
+        Results are limited to datasets the caller can read; jobs without a persisted dataset are
+        never returned by search.
+
+        Args:
+            datasets: Only jobs targeting any of these datasets (or their RIDs).
+            created_by: Only jobs created by any of these users or user RIDs.
+            statuses: Only jobs in any of these statuses.
+            search_text: Case-insensitive substring match against origin file paths.
+            start_time_after: Only jobs that started at or after this time (inclusive).
+            start_time_before: Only jobs that started before this time (exclusive).
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
+
+        Returns:
+            All ingest jobs matching all of the provided conditions, most recent first.
+        """
+        filter = create_search_ingest_jobs_query(
+            datasets=datasets,
+            created_by=created_by,
+            statuses=statuses,
+            search_text=search_text,
+            start_time_after=start_time_after,
+            start_time_before=start_time_before,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
+        return list(self._iter_search_ingestion_jobs(filter))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.

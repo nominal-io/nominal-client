@@ -5,6 +5,7 @@ from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
 from nominal_api import (
     authentication_api,
     event,
+    ingest_api,
     scout,
     scout_asset_api,
     scout_assets,
@@ -113,6 +114,26 @@ def search_assets_paginated(
 
     for response in paginate_rpc(client.search_assets, auth_header, request_factory=factory):
         yield from response.results
+
+
+def search_ingest_jobs_paginated(
+    client: ingest_api.IngestJobService,
+    auth_header: str,
+    filter: ingest_api.IngestJobSearchFilter,
+) -> Iterable[ingest_api.IngestJob]:
+    def factory(page_token: str | None) -> ingest_api.SearchIngestJobsRequest:
+        return ingest_api.SearchIngestJobsRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            filter=filter,
+            sort=ingest_api.IngestJobSortOptions(
+                is_descending=True,
+                sort_key=ingest_api.IngestJobSortKey.CREATED_AT,
+            ),
+            next_page_token=page_token,
+        )
+
+    for response in paginate_rpc(client.search_ingest_jobs, auth_header, request_factory=factory):
+        yield from response.ingest_jobs
 
 
 def search_data_reviews_paginated(
