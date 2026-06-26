@@ -689,7 +689,12 @@ def test_migrate_standalone_checklist(
 ):
     """Standalone checklists are cloned to the destination client without any run or execution."""
     source_checklist = _create_checklist_with_content(
-        source_client, title=f"migration-e2e-standalone-checklist-{uuid4()}", is_published=True
+        source_client,
+        title=f"migration-e2e-standalone-checklist-{uuid4()}",
+        description="standalone checklist description",
+        labels=["migration-e2e"],
+        properties={"checklist-prop": "checklist-val"},
+        is_published=True,
     )
     register_cleanup(source_checklist.archive)
 
@@ -706,6 +711,9 @@ def test_migrate_standalone_checklist(
     dest_checklist = dest_client.get_checklist(dest_checklist_rid)
     register_cleanup(dest_checklist.archive)
     assert dest_checklist.name == source_checklist.name
+    assert dest_checklist.description == source_checklist.description
+    assert set(dest_checklist.labels) == set(source_checklist.labels)
+    assert dest_checklist.properties == source_checklist.properties
 
 
 def test_migration_idempotency(

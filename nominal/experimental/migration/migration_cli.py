@@ -11,7 +11,7 @@ import yaml
 from nominal_api.scout_sandbox_api import SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import ArchiveStatusFilter, Asset, NominalClient, Workbook
+from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -171,7 +171,7 @@ def _load_standalone_templates(source_client: NominalClient, template_rids: Any)
     return templates
 
 
-def _load_standalone_checklists(source_client: NominalClient, checklist_rids: Any) -> list[Any]:
+def _load_standalone_checklists(source_client: NominalClient, checklist_rids: Any) -> list[Checklist]:
     if checklist_rids is None:
         return []
 
@@ -180,9 +180,10 @@ def _load_standalone_checklists(source_client: NominalClient, checklist_rids: An
 
     checklists = []
     for c in checklist_rids:
-        checklist_resource = source_client.get_checklist(c)
-        if not checklist_resource:
-            raise click.UsageError(f"Checklist with RID '{c}' not found in source client.")
+        try:
+            checklist_resource = source_client.get_checklist(c)
+        except Exception as exc:
+            raise click.UsageError(f"Checklist with RID '{c}' not found in source client.") from exc
         checklists.append(checklist_resource)
     return checklists
 
