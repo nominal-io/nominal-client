@@ -11,16 +11,25 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from google.protobuf.timestamp_pb2 import Timestamp
+from typing_extensions import Self
 
+from nominal.core import Dataset, NominalClient
 from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._types import PathLike
+from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.grpc_tools import create_grpc_channel
 from nominal.core._utils.multipart import upload_multipart_file
-from nominal.core.filetype import FileType
+from nominal.core.filetype import FileType, FileTypes
 from nominal.protos.ingest.v2 import (
     common_pb2,
+    file_ingest_pb2,
     ingest_service_pb2,
+    ingest_service_pb2_grpc,
+    log_ingest_pb2,
+    mcap_ingest_pb2,
 )
 from nominal.protos.types.time import timestamp_parsers_pb2 as tp
 from nominal.ts import (
@@ -99,3 +108,159 @@ def _upload_all(
 
     with ThreadPoolExecutor(max_workers=min(8, len(items))) as executor:
         return list(executor.map(_upload, items))
+
+
+class IngestionJobBuilder:
+    """Accumulate files and submit them as a single (MULTI) ingest job.
+
+    EXPERIMENTAL / UNSTABLE — see the module docstring. Targets an existing dataset; the v2
+    endpoint does not create datasets. Build with `add_*` (fluent), then `submit()`.
+    """
+
+    def __init__(
+        self,
+        client: NominalClient,
+        dataset: str | Dataset,
+        *,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        self._client = client
+        self._dataset_rid = rid_from_instance_or_string(dataset)
+        self._items: list[_PendingItem] = []
+        self._tags: dict[str, str] = dict(tags or {})
+        self._stub: ingest_service_pb2_grpc.IngestServiceStub | None = None
+
+    def _ingest_stub(self) -> ingest_service_pb2_grpc.IngestServiceStub:
+        if self._stub is None:
+            c = self._client._clients
+            channel = create_grpc_channel(
+                api_base_url=c._api_base_url,
+                service_config=c._service_config,
+                user_agent=c._user_agent,
+                auth_header=c.auth_header,
+                header_provider=c.header_provider,
+            )
+            self._stub = ingest_service_pb2_grpc.IngestServiceStub(channel)
+        return self._stub
+
+    def add_tags(self, tags: Mapping[str, str]) -> Self:
+        """Add request-level tags applied to every item in the job."""
+        self._tags.update(tags)
+        return self
+
+    def add_tabular(
+        self,
+        path: PathLike,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        *,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a CSV or Parquet file (csv/parquet/parquet-archive extensions)."""
+        file_path = Path(path)
+        file_type = FileType.from_tabular(file_path)
+        ts_proto = _timestamp_type_to_proto(timestamp_type)
+        cols = dict(tag_columns or {})
+        item_tags = dict(tags or {})
+
+        def build(source: common_pb2.IngestSource) -> ingest_service_pb2.IngestItem:
+            timestamp_metadata = common_pb2.TimestampMetadata(column=timestamp_column, type=ts_proto)
+            wide = file_ingest_pb2.WideFormat(tag_columns=cols)
+            if file_type.is_parquet():
+                ingest = file_ingest_pb2.FileIngestOptions(
+                    timestamp_metadata=timestamp_metadata,
+                    parquet=file_ingest_pb2.ParquetIngestOptions(
+                        format=file_ingest_pb2.ParquetFormat(wide=wide),
+                        is_archive=file_type.is_parquet_archive(),
+                    ),
+                )
+            else:
+                ingest = file_ingest_pb2.FileIngestOptions(
+                    timestamp_metadata=timestamp_metadata,
+                    csv=file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide)),
+                )
+            return ingest_service_pb2.IngestItem(
+                file=file_ingest_pb2.FileIngestItem(source=source, ingest=ingest), tags=item_tags
+            )
+
+        self._items.append(_PendingItem(file_path, file_type, build))
+        return self
+
+    def add_mcap(
+        self,
+        path: PathLike,
+        *,
+        include_topics: Sequence[str] | None = None,
+        exclude_topics: Sequence[str] | None = None,
+        ignore_invalid_topics: bool | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register an MCAP file. `include_topics` and `exclude_topics` are mutually exclusive."""
+        if include_topics is not None and exclude_topics is not None:
+            raise ValueError("pass at most one of include_topics or exclude_topics")
+        file_path = Path(path)
+        include = list(include_topics) if include_topics is not None else None
+        exclude = list(exclude_topics) if exclude_topics is not None else None
+        item_tags = dict(tags or {})
+
+        def build(source: common_pb2.IngestSource) -> ingest_service_pb2.IngestItem:
+            item = mcap_ingest_pb2.McapIngestItem(source=source)
+            if include is not None:
+                item.channels.include_topics.topics.extend(include)
+            elif exclude is not None:
+                item.channels.exclude_topics.topics.extend(exclude)
+            if ignore_invalid_topics is not None:
+                item.ignore_invalid_topics = ignore_invalid_topics
+            return ingest_service_pb2.IngestItem(mcap=item, tags=item_tags)
+
+        self._items.append(_PendingItem(file_path, FileTypes.MCAP, build))
+        return self
+
+    def add_journal_json(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a journald-style .jsonl / .jsonl.gz log file."""
+        file_path = Path(path)
+        file_type = FileType.from_path_journal_json(file_path)
+        item_tags = dict(tags or {})
+
+        def build(source: common_pb2.IngestSource) -> ingest_service_pb2.IngestItem:
+            item = log_ingest_pb2.LogIngestItem(source=source)
+            if channel is not None:
+                item.channel = channel
+            return ingest_service_pb2.IngestItem(log=item, tags=item_tags)
+
+        self._items.append(_PendingItem(file_path, file_type, build))
+        return self
+
+    def add_avro_stream(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
+        """Register an Avro stream (.avro) file."""
+        file_path = Path(path)
+        item_tags = dict(tags or {})
+
+        def build(source: common_pb2.IngestSource) -> ingest_service_pb2.IngestItem:
+            ingest = file_ingest_pb2.FileIngestOptions(avro=file_ingest_pb2.AvroIngestOptions())
+            return ingest_service_pb2.IngestItem(
+                file=file_ingest_pb2.FileIngestItem(source=source, ingest=ingest), tags=item_tags
+            )
+
+        self._items.append(_PendingItem(file_path, FileTypes.AVRO_STREAM, build))
+        return self
+
+    def add_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
+        """Register an ArduPilot Dataflash (.bin) file."""
+        file_path = Path(path)
+        item_tags = dict(tags or {})
+
+        def build(source: common_pb2.IngestSource) -> ingest_service_pb2.IngestItem:
+            return ingest_service_pb2.IngestItem(
+                dataflash=mcap_ingest_pb2.DataflashIngestItem(source=source), tags=item_tags
+            )
+
+        self._items.append(_PendingItem(file_path, FileTypes.DATAFLASH, build))
+        return self
