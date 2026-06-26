@@ -107,6 +107,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         if content is None:
             raise ValueError(f"Missing content for workbook {source.rid}")
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create workbook '%s' (source: %s)", raw_notebook.metadata.title, source.rid)
+            self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, source.rid)
+            return source
+
         new_layout, new_content = clone_conjure_objects_with_rid_overrides(
             (raw_notebook.layout, content), rid_overrides=rid_overrides
         )

@@ -44,6 +44,7 @@ class MigrationRunner:
         asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
         migration_state_path: Path | str | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Create a migration runner state.
 
@@ -56,6 +57,7 @@ class MigrationRunner:
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
                 destination client for each source resource. Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
+            dry_run (bool): If True, read source resources but skip all destination writes and state saves.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
@@ -64,6 +66,7 @@ class MigrationRunner:
         )
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
+        self.dry_run = dry_run
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
@@ -92,6 +95,7 @@ class MigrationRunner:
                 migration_state=self.migration_state,
                 destination_client_resolver=self.destination_client_resolver,
                 source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
+                dry_run=self.dry_run,
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
@@ -125,5 +129,8 @@ class MigrationRunner:
         logger.info("Completed migration")
 
     def save_state(self) -> None:
+        if self.dry_run:
+            logger.info("[DRY RUN] Skipping migration state write to %s", self.migration_state_path)
+            return
         self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
         self.migration_state_path.write_text(self.migration_state.to_json(), encoding="utf-8")

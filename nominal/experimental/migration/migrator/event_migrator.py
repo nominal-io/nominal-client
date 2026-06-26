@@ -44,6 +44,11 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
         if existing_event is not None:
             return existing_event
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create event '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         destination_client = self.destination_client_for(source)
         new_event = destination_client.create_event(
             name=options.new_name if options.new_name is not None else source.name,

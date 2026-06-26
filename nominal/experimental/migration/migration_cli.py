@@ -475,11 +475,19 @@ def migrate_cmd() -> None:
     type=click.IntRange(min=1),
     help="Maximum number of top-level asset/template migrations to run concurrently.",
 )
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Log what would be created without writing anything to the destination tenant or state file.",
+)
 def copy(
     clients: tuple[NominalClient, NominalClient],
     config_path: Path,
     migration_state_path: Path | None,
     max_workers: int,
+    dry_run: bool,
 ) -> None:
     source_client, target_client = clients
     logger.info("Loading migration config from: %s", config_path)
@@ -515,6 +523,9 @@ def copy(
     if destination_client_resolver is not None:
         logger.info("Destination impersonation is enabled for this migration config.")
 
+    if dry_run:
+        logger.info("DRY RUN mode enabled — no resources will be created on the destination tenant")
+
     runner = MigrationRunner(
         migration_resources=migration_resources,
         dataset_config=dataset_config,
@@ -522,10 +533,11 @@ def copy(
         destination_client=target_client,
         destination_client_resolver=destination_client_resolver,
         migration_state_path=migration_state_path,
+        dry_run=dry_run,
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
-    if set_to_demo_workbook:
+    if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
 
 

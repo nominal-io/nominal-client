@@ -80,6 +80,11 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         )
         workspace_rid = destination_client.get_workspace(destination_client._clients.workspace_rid).rid
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create checklist '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_checklist = _create_checklist_with_content(
             client=destination_client,
             commit_message=commit_message,

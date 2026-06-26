@@ -22,5 +22,9 @@ class DatasetFileMigrator:
             logger.debug("Skipping dataset file (id: %s): already in migration state", source_file.id)
             return
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would copy dataset file %s to destination", source_file.id)
+            return
+
         new_file = copy_file_to_dataset(source_file, destination_dataset)
         self.ctx.migration_state.record_mapping(ResourceType.DATASET_FILE, source_file.id, new_file.id)

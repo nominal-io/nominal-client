@@ -393,3 +393,64 @@ class TestAssetMigratorWorkbookRouting:
         assert wb_multi_run in state.pending_multi_run_workbooks
         assert state.pending_multi_run_workbooks[wb_multi_run] == [r1, r2]
         assert len(state.pending_multi_run_workbooks) == 1  # not duplicated
+
+
+# ---------------------------------------------------------------------------
+# Dry-run behavior
+# ---------------------------------------------------------------------------
+
+
+def _make_dry_run_context(source_asset_rids: frozenset[str] = frozenset()) -> MigrationContext:
+    mock_client = MagicMock()
+    mock_client._clients.workspace_rid = "ws-rid"
+    mock_workspace = MagicMock()
+    mock_workspace.rid = "ws-rid"
+    mock_client.get_workspace.return_value = mock_workspace
+    return MigrationContext(
+        destination_client=mock_client,
+        migration_state=MigrationState(),
+        source_asset_rids=source_asset_rids,
+        dry_run=True,
+    )
+
+
+_NO_CHILD_OPTIONS = AssetCopyOptions(
+    dataset_config=None,
+    include_attachments=False,
+    include_events=False,
+    include_runs=False,
+    include_video=False,
+    include_checklists=False,
+    include_workbooks=False,
+)
+
+
+class TestAssetMigratorDryRun:
+    def test_dry_run_preserves_real_prior_mapping(self) -> None:
+        """_copy_from_impl must not overwrite a real prior asset mapping with a placeholder in dry_run."""
+        src_rid = _asset_rid(1)
+        dest_rid = _asset_rid(100)
+        ctx = _make_dry_run_context()
+        ctx.migration_state.record_mapping(ResourceType.ASSET, src_rid, dest_rid)
+
+        migrator = AssetMigrator(ctx)
+        migrator.copy_from(_make_source_asset(rid=src_rid), _NO_CHILD_OPTIONS)
+
+        assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, src_rid) == dest_rid
+
+    def test_dry_run_does_not_call_create_asset(self) -> None:
+        """In dry_run, destination_client.create_asset must never be called."""
+        ctx = _make_dry_run_context()
+        migrator = AssetMigrator(ctx)
+        migrator.copy_from(_make_source_asset(), _NO_CHILD_OPTIONS)
+        ctx.destination_client.create_asset.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_dry_run_logs_would_create_for_new_asset(self, caplog: pytest.LogCaptureFixture) -> None:
+        """New assets in dry_run should produce a '[DRY RUN] Would create asset' log line."""
+        import logging
+
+        ctx = _make_dry_run_context()
+        migrator = AssetMigrator(ctx)
+        with caplog.at_level(logging.INFO):
+            migrator.copy_from(_make_source_asset(name="MyNewAsset"), _NO_CHILD_OPTIONS)
+        assert any("[DRY RUN] Would create asset" in r.message for r in caplog.records)

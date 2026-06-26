@@ -51,6 +51,14 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             return None
 
         logger = logging.getLogger(type(self).__module__)
+        if self.ctx.dry_run:
+            if mapped_rid == source.rid:
+                # Placeholder recorded during this dry_run pass — falls through to "would create".
+                return None
+            # Real prior mapping — trust the state, skip the destination fetch entirely.
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return source
+
         logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
         return self._get_existing_destination_resource(self.destination_client_for(source), mapped_rid)
 
@@ -62,11 +70,14 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         destination_client = self.destination_client_for(source)
 
         logger = logging.getLogger(type(self).__module__)
-        log_extras = {
-            "destination_client_workspace": destination_client.get_workspace(
-                destination_client._clients.workspace_rid
-            ).rid
-        }
+        if not self.ctx.dry_run:
+            log_extras: dict[str, str] = {
+                "destination_client_workspace": destination_client.get_workspace(
+                    destination_client._clients.workspace_rid
+                ).rid
+            }
+        else:
+            log_extras = {}
 
         if self.use_singleflight():
             return self.ctx.run_singleflight(
@@ -134,7 +145,8 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             source_rid,
             extra=log_extras,
         )
-        already_mapped = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid) is not None
+        prior_mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid)
+        already_mapped = prior_mapped_rid is not None
         result = self._copy_from_impl(source, resolved_options)
         result_rid = result.rid
         logger.debug(
@@ -148,5 +160,8 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         # creating the resource (so a crash mid-migration doesn't cause duplicates on resume).
         # This call is always idempotent - it writes the same old->new mapping that _copy_from_impl
         # already wrote, so there is no risk of overwriting with a different value.
+        # In dry_run, skip if result is a stand-in placeholder that would overwrite a real prior mapping.
+        if self.ctx.dry_run and result_rid == source_rid and prior_mapped_rid not in (None, source_rid):
+            return result
         self.record_mapping(self.resource_type, source_rid, result_rid)
         return result

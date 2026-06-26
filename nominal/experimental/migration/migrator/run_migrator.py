@@ -56,6 +56,11 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             attachment_migrator = AttachmentMigrator(self.ctx)
             attachments = [attachment_migrator.copy_from(a) for a in source.list_attachments()]
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create run '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
@@ -83,6 +88,9 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             rid_from_instance_or_string(a) for a in new_assets if rid_from_instance_or_string(a) not in existing_rids
         ]
         if not missing_rids:
+            return run
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would add %d asset(s) to existing run %s", len(missing_rids), run.rid)
             return run
         logger.debug("Adding %d missing asset(s) to existing run %s", len(missing_rids), run.rid)
         return run.update(assets=[*existing_rids, *missing_rids])
