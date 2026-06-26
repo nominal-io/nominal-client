@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.149.0](https://github.com/nominal-io/nominal-client/compare/v1.148.0...v1.149.0) (2026-06-26)
+
+
+### Features
+
+* **core:** add IngestionJob resource for tracking ingest jobs ([#845](https://github.com/nominal-io/nominal-client/issues/845)) ([4c062cd](https://github.com/nominal-io/nominal-client/commit/4c062cd9f71b873424a71dfec19fa00add4175c3))
+* **grpc:** migrate comments, units, and workspace services to gRPC ([#839](https://github.com/nominal-io/nominal-client/issues/839)) ([a5a6e92](https://github.com/nominal-io/nominal-client/commit/a5a6e92ecba608c8cbef992745c6c0aed09fc261))
+* **migration:** add --dry-run flag to nom migrate copy ([#824](https://github.com/nominal-io/nominal-client/issues/824)) ([38b4b58](https://github.com/nominal-io/nominal-client/commit/38b4b586fd8c16b2131f4a011bcd0d09658bdea5))
+
 ## [1.148.0](https://github.com/nominal-io/nominal-client/compare/v1.147.0...v1.148.0) (2026-06-23)
 
 
