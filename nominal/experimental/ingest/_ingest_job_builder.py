@@ -16,11 +16,11 @@ from typing import Callable, Mapping, Sequence
 from google.protobuf.timestamp_pb2 import Timestamp
 from typing_extensions import Self
 
-from nominal.core import Dataset, NominalClient
+from nominal.core import Dataset, IngestionJob, NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core._utils.grpc_tools import create_grpc_channel
+from nominal.core._utils.grpc_tools import create_grpc_channel, translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileType, FileTypes
 from nominal.protos.ingest.v2 import (
@@ -264,3 +264,28 @@ class IngestionJobBuilder:
 
         self._items.append(_PendingItem(file_path, FileTypes.DATAFLASH, build))
         return self
+
+    def submit(self) -> IngestionJob:
+        """Upload all registered files and trigger one ingest job; returns it for tracking.
+
+        Uploads run in parallel and the call is atomic: if any upload fails, no ingest is
+        triggered. Returns immediately with the job in flight; await it with
+        `job.wait_until_complete()`. Raises ValueError if no files were added.
+        """
+        if not self._items:
+            raise ValueError("cannot submit an ingest job with no files; add at least one file first")
+        clients = self._client._clients
+        workspace_rid = clients.resolve_default_workspace_rid()
+
+        sources = _upload_all(self._items, workspace_rid, clients)
+        items = [pending.build_item(source) for pending, source in zip(self._items, sources)]
+        request = ingest_service_pb2.IngestRequest(
+            dataset_rid=self._dataset_rid,
+            items=items,
+            tags=self._tags,
+        )
+        with translate_grpc_errors():
+            response = self._ingest_stub().Ingest(request)
+
+        job = clients.ingest_jobs.get_ingest_job(clients.auth_header, response.ingest_job_rid)
+        return IngestionJob._from_conjure(clients, job)
