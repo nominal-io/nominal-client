@@ -63,6 +63,17 @@ migration:
   #   - "ri.scout.gov-staging.notebook-template.aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
   # -------------------------------------------------------------------------
+  # Standalone checklists (optional)
+  # Checklists listed here are cloned to the destination independently of any
+  # asset or run — only the checklist definition is copied (no execution).
+  # Their channel references resolve at execution time against whatever run
+  # they are later run against, so the run must expose matching data-source
+  # ref names and channel names (and tags, if any) for checks to resolve.
+  # -------------------------------------------------------------------------
+  # standalone_checklist_rids:
+  #   - "ri.scout.gov-staging.checklist.bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+  # -------------------------------------------------------------------------
   # Impersonation (optional)
   # When enabled, resources are created on the destination under the mapped
   # destination user rather than the service account running the migration.

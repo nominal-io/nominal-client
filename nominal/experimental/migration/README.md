@@ -75,6 +75,8 @@ migration:
     - asset_rid: ri.scout.main.asset.<uuid>
   standalone_workbook_template_rids:
     - ri.scout.main.template.<uuid>
+  standalone_checklist_rids:     # optional: clone checklist definitions, no asset/run required
+    - ri.scout.main.checklist.<uuid>
   impersonation:                 # optional: create resources as mapped destination users
     enabled: true
     unmapped_source_user_behavior: service_user
@@ -85,6 +87,7 @@ migration:
 How it works:
 1. For each source asset RID in `source_asset_rids`, the script will copy the asset and all linked resources — runs, workbooks, datasets, events, videos, and checklists — into the destination tenant.
 2. For each workbook template RID in `standalone_workbook_template_rids`, the script will copy the workbook template into the destination tenant.
+3. For each checklist RID in `standalone_checklist_rids`, the script will clone the checklist definition into the destination tenant. No run or execution is involved — the checklist's channel references resolve at execution time against whatever run it is later run against (the run must expose matching data-source ref names and channel names, plus tags if any).
 
 Misc. configs:
 1. `include_dataset_files` — if `true`, copies all dataset files attached to a dataset into the destination. Typically `true` for demo hydration and `false` for tenant migration (which relies on a separate Clickhouse backup).

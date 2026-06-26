@@ -681,6 +681,33 @@ def test_migrate_standalone_template(
     assert dest_template.properties == source_template.properties
 
 
+def test_migrate_standalone_checklist(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Standalone checklists are cloned to the destination client without any run or execution."""
+    source_checklist = _create_checklist_with_content(
+        source_client, title=f"migration-e2e-standalone-checklist-{uuid4()}", is_published=True
+    )
+    register_cleanup(source_checklist.archive)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[],
+        source_standalone_checklists=[source_checklist],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner.run_migration()
+
+    dest_checklist_rid = runner.migration_state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    assert dest_checklist.name == source_checklist.name
+
+
 def test_migration_idempotency(
     source_client: NominalClient,
     dest_client: NominalClient,

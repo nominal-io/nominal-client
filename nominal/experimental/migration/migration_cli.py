@@ -171,6 +171,22 @@ def _load_standalone_templates(source_client: NominalClient, template_rids: Any)
     return templates
 
 
+def _load_standalone_checklists(source_client: NominalClient, checklist_rids: Any) -> list[Any]:
+    if checklist_rids is None:
+        return []
+
+    if not isinstance(checklist_rids, list) or not all(isinstance(c, str) and c.strip() for c in checklist_rids):
+        raise click.UsageError("'migration.standalone_checklist_rids' must be a list of strings.")
+
+    checklists = []
+    for c in checklist_rids:
+        checklist_resource = source_client.get_checklist(c)
+        if not checklist_resource:
+            raise click.UsageError(f"Checklist with RID '{c}' not found in source client.")
+        checklists.append(checklist_resource)
+    return checklists
+
+
 def load_impersonation_config(raw: Any) -> ImpersonationConfig | None:
     if raw is None:
         return None
@@ -369,6 +385,10 @@ def _load_migration_config(
         source_client,
         m.get("standalone_workbook_template_rids"),
     )
+    standalone_checklists = _load_standalone_checklists(
+        source_client,
+        m.get("standalone_checklist_rids"),
+    )
     impersonation_config = load_impersonation_config(m.get("impersonation"))
 
     dataset_config = MigrationDatasetConfig(
@@ -381,6 +401,7 @@ def _load_migration_config(
         MigrationResources(
             source_assets=asset_resources_by_rid,
             source_standalone_templates=standalone_workbook_templates,
+            source_standalone_checklists=standalone_checklists,
         ),
         dataset_config,
         asset_inclusion_config,
@@ -514,10 +535,12 @@ def copy(
             return
 
     logger.info(
-        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d)",
+        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d, "
+        "source_standalone_checklists=%d)",
         name,
         len(migration_resources.source_assets),
         len(migration_resources.source_standalone_templates),
+        len(migration_resources.source_standalone_checklists),
     )
     destination_client_resolver = build_destination_client_resolver(target_client, impersonation_config)
     if destination_client_resolver is not None:
@@ -643,6 +666,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             "set_to_demo_workbook": False,
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
             "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
+            "standalone_checklist_rids": [],
         }
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
