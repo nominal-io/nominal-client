@@ -149,6 +149,7 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
+    ingest_jobs: ingest_api.IngestJobService
     run: scout.RunService
     units: units_pb2_grpc.UnitsServiceStub
     upload: upload_api.UploadService
@@ -307,6 +308,7 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
+            ingest_jobs=client_factory(ingest_api.IngestJobService),
             run=client_factory(scout.RunService),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
             upload=client_factory(upload_api.UploadService),

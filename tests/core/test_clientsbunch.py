@@ -291,3 +291,9 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     header_provider = create_grpc_channel.call_args.kwargs["header_provider"]
     assert header_provider is not None
     assert header_provider.headers()[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
+
+
+def test_clients_bunch_exposes_ingest_jobs_service():
+    """ClientsBunch declares an `ingest_jobs` field so resources can reach the job-query API."""
+    names = {field.name for field in fields(ClientsBunch)}
+    assert "ingest_jobs" in names
