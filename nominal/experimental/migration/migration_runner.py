@@ -11,6 +11,7 @@ from nominal.experimental.migration.config.migration_data_config import AssetInc
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
+from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
@@ -99,6 +100,7 @@ class MigrationRunner:
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
+            checklist_migrator = ChecklistMigrator(migration_context)
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
                 asset_migrator.copy_from(
@@ -117,6 +119,12 @@ class MigrationRunner:
 
             for source_template in self.migration_resources.source_standalone_templates:
                 template_migrator.clone(source_template)
+
+            for source_checklist in self.migration_resources.source_standalone_checklists:
+                # ChecklistMigrator.clone() raises NotImplementedError; use copy_from() to clone the
+                # checklist definition. No run/execution is involved — series resolve at execution time
+                # against whatever run the checklist is later run against.
+                checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
 
             source_clients_by_asset_rid: dict[str, ClientsBunch] = {
                 asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
