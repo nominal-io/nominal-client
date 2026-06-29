@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.150.0](https://github.com/nominal-io/nominal-client/compare/v1.149.0...v1.150.0) (2026-06-29)
+
+
+### Features
+
+* **migration:** support migrating standalone checklists ([#846](https://github.com/nominal-io/nominal-client/issues/846)) ([c94fde4](https://github.com/nominal-io/nominal-client/commit/c94fde4c622d7e2ffdf33f7a2573586ebe87e5e5))
+
 ## [1.149.0](https://github.com/nominal-io/nominal-client/compare/v1.148.0...v1.149.0) (2026-06-26)
 
 
