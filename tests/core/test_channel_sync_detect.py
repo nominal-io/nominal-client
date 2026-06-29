@@ -101,15 +101,16 @@ def test_shortfall_buckets_no_shortfall_when_dest_exceeds_src() -> None:
 # --- _count_per_bucket ---------------------------------------------------------------------
 
 
-def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
-    # Decimation stamps each bucket with its RIGHT edge: bucket [0,SEC)->SEC, [SEC,2SEC)->2SEC,
-    # [2SEC,3SEC)->3SEC. Binning must shift left by one bucket so counts land in the right bucket
-    # (and the first data bucket isn't dropped / shifted forward).
+def _numeric_bucket(first_point_ns: int, count: int) -> SimpleNamespace:
+    """A decimated NumericBucket stand-in carrying a first_point at the given ns and a count."""
+    return SimpleNamespace(count=count, first_point=SimpleNamespace(timestamp=_ts(first_point_ns)))
+
+
+def test_count_per_bucket_numeric_bins_buckets_by_first_point() -> None:
+    # Each decimated bucket is binned by its first_point (a real sample inside the bucket), not the
+    # bucket's right-edge timestamp. Empty buckets are not emitted, so SEC stays 0.
     response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(
-            timestamps=[_ts(SEC), _ts(2 * SEC), _ts(3 * SEC)],
-            buckets=[SimpleNamespace(count=10), SimpleNamespace(count=0), SimpleNamespace(count=3)],
-        ),
+        bucketed_numeric=SimpleNamespace(buckets=[_numeric_bucket(0, 10), _numeric_bucket(2 * SEC, 3)]),
         numeric=None,
     )
     result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
@@ -117,15 +118,11 @@ def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
     assert result.counts == {0: 10, SEC: 0, 2 * SEC: 3}
 
 
-def test_count_per_bucket_numeric_first_bucket_not_shifted_forward() -> None:
-    # Regression: data only in the LAST bucket [2SEC,3SEC) returns right-edge ts=3SEC. Before the fix
-    # this binned to 3SEC (out of range) and the bucket read 0 -- the off-by-one that dropped a
-    # channel's first data bucket and left destination gaps. It must bin to 2SEC.
+def test_count_per_bucket_numeric_last_bucket_binned_by_first_point() -> None:
+    # Data only in the last bucket: its first_point at 2SEC bins the count to the 2SEC bucket (not
+    # dropped). Guards against the old right-edge shift that pushed a single bucket out of range.
     response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(
-            timestamps=[_ts(3 * SEC)],
-            buckets=[SimpleNamespace(count=42)],
-        ),
+        bucketed_numeric=SimpleNamespace(buckets=[_numeric_bucket(2 * SEC, 42)]),
         numeric=None,
     )
     result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
@@ -246,12 +243,19 @@ def test_count_chunk_raises_when_results_shorter_than_chunk(monkeypatch: pytest.
 # `case _` -> None fallback (channel silently drops to a presence probe), failing these asserts.
 
 
-def _numeric_response(type_label: str, pairs: list[tuple[SimpleNamespace, int]], monkeypatch: Any) -> Any:
-    """A fake response of the given discriminator whose numeric buckets yield (timestamp, count)."""
+def _numeric_response(type_label: str, first_points: list[tuple[SimpleNamespace, int]], monkeypatch: Any) -> Any:
+    """A fake response whose numeric buckets carry a first_point at the given ts with the given count.
+
+    The yielded (right-edge) bucket timestamp is deliberately bogus (_ts(0)) so the tests prove binning
+    uses first_point, not the bucket's own timestamp.
+    """
     monkeypatch.setattr(
         detect_mod,
         "_numeric_buckets_from_compute_response",
-        lambda response: [(ts, SimpleNamespace(count=count)) for ts, count in pairs],
+        lambda response: [
+            (_ts(0), SimpleNamespace(count=count, first_point=SimpleNamespace(timestamp=fp_ts)))
+            for fp_ts, count in first_points
+        ],
     )
     return SimpleNamespace(type=type_label)
 
@@ -262,32 +266,45 @@ def _enum_response(type_label: str, buckets: list[SimpleNamespace], monkeypatch:
     return SimpleNamespace(type=type_label)
 
 
-def test_counts_from_response_bucketed_numeric_shifts_left(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Decimated: right-edge ts=SEC belongs to bucket [0, SEC) -> shift left one bucket.
-    response = _numeric_response("bucketedNumeric", [(_ts(SEC), 10)], monkeypatch)
-    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 10, SEC: 0, 2 * SEC: 0}
+@pytest.mark.parametrize("type_label", ["bucketedNumeric", "numeric", "numericPoint"])
+def test_counts_from_response_numeric_bins_by_first_point(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # All numeric variants bin by the bucket's first_point (here SEC), ignoring the bucket's own
+    # (right-edge) timestamp. count=7 lands in the SEC bucket regardless of variant.
+    response = _numeric_response(type_label, [(_ts(SEC), 7)], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 7, 2 * SEC: 0}
 
 
-@pytest.mark.parametrize("type_label", ["numeric", "numericPoint"])
-def test_counts_from_response_raw_numeric_bins_as_is(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Raw points carry real timestamps -> bin as-is (no shift); both numeric and numericPoint route here.
-    response = _numeric_response(type_label, [(_ts(SEC), 1)], monkeypatch)
-    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 1, 2 * SEC: 0}
-
-
-def test_counts_from_response_bucketed_enum_shifts_left(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Decimated enum: right-edge ts=SEC -> shift left; the bucket count is the sum of frequencies.
-    bucket = SimpleNamespace(timestamp=SEC, frequencies={"a": 3, "b": 2})
-    response = _enum_response("bucketedEnum", [bucket], monkeypatch)
-    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 5, SEC: 0, 2 * SEC: 0}
-
-
-def test_counts_from_response_raw_enum_bins_as_is(monkeypatch: pytest.MonkeyPatch) -> None:
-    bucket = SimpleNamespace(timestamp=SEC, frequencies={"a": 3, "b": 2})
-    response = _enum_response("enum", [bucket], monkeypatch)
+@pytest.mark.parametrize("type_label", ["bucketedEnum", "enum"])
+def test_counts_from_response_enum_bins_by_first_point(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Enum variants bin by first_point.timestamp (already nanoseconds); the count is the frequency sum.
+    bucket = SimpleNamespace(frequencies={"a": 3, "b": 2}, first_point=SimpleNamespace(timestamp=SEC))
+    response = _enum_response(type_label, [bucket], monkeypatch)
     assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 5, 2 * SEC: 0}
 
 
 def test_counts_from_response_unknown_type_returns_none() -> None:
     # An untyped-for-our-purposes variant -> None, so the channel falls back to a presence probe.
     assert detect_mod._counts_from_response(SimpleNamespace(type="log"), [0, SEC], SEC, 0) is None
+
+
+def test_counts_from_response_single_bucket_binned_by_first_point_not_right_edge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a single decimated bucket must be binned by its first_point, not (right_edge - bucket).
+
+    Reproduces the prod->staging "nothing to sync" failure. With DecimateWithBuckets and buckets=1 the
+    backend uses resolution = window+1ns grid-aligned to the epoch, so the single bucket's exclusive
+    right-edge timestamp lands ~at start (a few ns/us after it), NOT at start+bucket. The real data
+    (its first_point) is at start. Binning by ``right_edge - bucket`` underflows below start and drops
+    the whole count; binning by first_point keeps it.
+    """
+    right_edge = _ts(1000)  # ~1us after start -- the backend's near-start right edge for buckets=1
+    first_point = SimpleNamespace(timestamp=_ts(0))  # the real first sample, at start
+    numeric_bucket = SimpleNamespace(count=10, first_point=first_point)
+    monkeypatch.setattr(
+        detect_mod, "_numeric_buckets_from_compute_response", lambda response: [(right_edge, numeric_bucket)]
+    )
+    response = SimpleNamespace(type="bucketedNumeric")
+
+    # The 10 points must land in bucket 0 (where the data is), not be dropped to {0: 0}.
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 10, SEC: 0, 2 * SEC: 0}

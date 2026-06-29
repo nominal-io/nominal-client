@@ -299,36 +299,33 @@ def _counts_from_response(
     bucket: IntegralNanosecondsUTC,
     start: IntegralNanosecondsUTC,
 ) -> dict[int, int] | None:
-    """Bin a single channel's bucketed compute response into per-bucket counts, or None if untyped.
+    """Bin a single channel's compute response into per-bucket counts, or None if untyped.
 
-    Decimated responses (``bucketed_numeric`` / ``bucketed_enum``) carry each bucket's **right-edge**
-    timestamp, so they are shifted left by one ``bucket`` before binning -- otherwise every count lands
-    one bucket too late and a channel's first data bucket reads 0 (it would then never be flagged
-    missing or synced). Undecimated/raw responses carry real point timestamps and bin as-is.
+    Each bucket is binned by its ``first_point`` -- a real sample inside the bucket, always within
+    ``[start, end)``. This is deliberate: a decimated bucket's own timestamp is the bucket's
+    **exclusive right edge** of a ``window/N``-wide bucket that the backend grid-aligns to the epoch
+    (and at ``buckets=1`` uses ``resolution = window + 1ns``), so it is *not* ``start + (i+1)*bucket``
+    and cannot be shifted back by one ``bucket`` reliably -- doing so underflows below ``start`` for a
+    single bucket and drops the count entirely. Binning by the real first-point timestamp is
+    independent of the backend's bucket width and grid, so it is correct for raw and decimated
+    responses alike (and for the single-bucket case). Any other variant is untyped for our purposes ->
+    None, so the channel falls back to a presence probe.
     """
     counts = dict.fromkeys(starts, 0)
-    step = int(bucket)
-    # response.type is the conjure union's (camelCase) member discriminator. Decimated variants
-    # (bucketedNumeric / bucketedEnum) carry right-edge timestamps -> shift left one bucket; raw
-    # variants (numeric / numericPoint / enum) carry real point timestamps -> bin as-is. Any other
-    # variant is untyped for our purposes -> None, so the channel falls back to a presence probe.
+    # response.type is the conjure union's (camelCase) member discriminator.
     match response.type:
-        case "bucketedNumeric":
-            for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-                point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
-                _add_to_bucket(counts, starts, point_ns - step, bucket, start, numeric_bucket.count or 0)
-        case "numeric" | "numericPoint":
-            for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-                point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
+        case "bucketedNumeric" | "numeric" | "numericPoint":
+            for _timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+                first_point = numeric_bucket.first_point
+                if first_point is None:
+                    continue
+                point_ns = _SecondsNanos.from_api(first_point.timestamp).to_nanoseconds()
                 _add_to_bucket(counts, starts, point_ns, bucket, start, numeric_bucket.count or 0)
-        case "bucketedEnum":
+        case "bucketedEnum" | "enum":
             for enum_bucket in _enum_buckets_from_compute_response(response):
                 total = sum(enum_bucket.frequencies.values())
-                _add_to_bucket(counts, starts, enum_bucket.timestamp - step, bucket, start, total)
-        case "enum":
-            for enum_bucket in _enum_buckets_from_compute_response(response):
-                total = sum(enum_bucket.frequencies.values())
-                _add_to_bucket(counts, starts, enum_bucket.timestamp, bucket, start, total)
+                # EnumBucket.first_point.timestamp is already nanoseconds (EnumPoint._from_conjure).
+                _add_to_bucket(counts, starts, enum_bucket.first_point.timestamp, bucket, start, total)
         case _:
             return None
     return counts
@@ -343,16 +340,16 @@ def _numeric_counts(
     tags: Mapping[str, str] | None,
 ) -> dict[int, int]:
     counts = dict.fromkeys(starts, 0)
-    step = int(bucket)
     response = channel._decimate_request(start, end, tags=tags, resolution=int(bucket))
 
     if response.bucketed_numeric is not None:
-        # Decimation timestamps are bucket right edges; shift left one bucket to bin correctly.
-        for timestamp, point in zip(
-            response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets, strict=False
-        ):
-            point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
-            _add_to_bucket(counts, starts, point_ns - step, bucket, start, point.count or 0)
+        # Bin each bucket by its first_point (a real sample inside the bucket), not the bucket's
+        # right-edge timestamp -- see _counts_from_response for why the right edge can't be shifted.
+        for point in response.bucketed_numeric.buckets:
+            if point.first_point is None:
+                continue
+            point_ns = _SecondsNanos.from_api(point.first_point.timestamp).to_nanoseconds()
+            _add_to_bucket(counts, starts, point_ns, bucket, start, point.count or 0)
     elif response.numeric is not None:
         # Server returns raw points instead of buckets when the range holds few points; bin them as-is.
         for timestamp in response.numeric.timestamps:
