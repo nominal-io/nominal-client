@@ -420,8 +420,9 @@ class IngestionJobBuilder:
         """Upload all registered files and trigger one ingest job; returns it for tracking.
 
         Uploads run in parallel and the call is atomic: if any upload fails, no ingest is
-        triggered. Returns immediately with the job in flight; await it with
-        `job.wait_until_complete()`. Raises ValueError if no files were added.
+        triggered. Returns immediately with the job in flight; track it by polling
+        `job.refresh().status`, or block on its produced files with
+        `list(job.as_files_ingested())`. Raises ValueError if no files were added.
         """
         if not self._items:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
