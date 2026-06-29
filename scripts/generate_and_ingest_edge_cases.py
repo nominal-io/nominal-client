@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -81,7 +84,7 @@ def _floats_nan(n: int, name: str) -> pl.Series:
 
 
 def _ints(n: int, name: str, dtype: type[pl.DataType] | pl.DataType = pl.Int64) -> pl.Series:
-    return pl.Series(name, np.arange(n, dtype=np.int64), dtype=dtype)
+    return pl.Series(name, np.arange(n, dtype=np.int64)).cast(dtype, strict=False)
 
 
 def _bools_null(n: int, name: str) -> pl.Series:
@@ -171,3 +174,144 @@ def _array_prefixed(name: str) -> str:
 
 def _struct_prefixed(name: str) -> str:
     return f"_nominal_struct_{name}"
+
+
+@dataclass(frozen=True)
+class FileSpec:
+    name: str
+    fmt: str  # "csv" | "parquet"
+    n_rows: int
+    timestamp_type: _AnyTimestampType
+    build_values: Callable[[int], pl.DataFrame]
+    tag_columns: Mapping[str, str] | None = None
+    tags: Mapping[str, str] | None = None
+
+
+def _basic_values(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_floats_nan(n, "value"), _ints(n, "count"), _strings_null(n, "label")])
+
+
+def generate(spec: FileSpec, out_dir: Path) -> Path:
+    """Write the spec's file (timestamp column prepended) and return its path."""
+    df = spec.build_values(spec.n_rows)
+    df = df.insert_column(0, _timestamp_column(spec.timestamp_type, spec.n_rows))
+    path = out_dir / f"{spec.name}.{spec.fmt}"
+    if spec.fmt == "csv":
+        df.write_csv(path)
+    elif spec.fmt == "parquet":
+        df.write_parquet(path)
+    else:
+        raise ValueError(f"unknown format {spec.fmt!r} for spec {spec.name!r}")
+    return path
+
+
+def _values_messy(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_messy_strings(n, "text"), _extreme_floats(n, "extreme"), _ints(n, "count")])
+
+
+def _values_nan_null(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_floats_nan(n, "f"), _all_null(n, "all_null"), _strings_null(n, "s")])
+
+
+def _values_wide(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_floats_nan(n, f"ch_{i:03d}") for i in range(200)])
+
+
+def _values_scalars(n: int) -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            _ints(n, "i8", pl.Int8),
+            _ints(n, "i16", pl.Int16),
+            _ints(n, "i32", pl.Int32),
+            _ints(n, "i64", pl.Int64),
+            _ints(n, "u32", pl.UInt32),
+            _ints(n, "u64", pl.UInt64),
+            _floats_nan(n, "f64").cast(pl.Float32).alias("f32"),
+            _floats_nan(n, "f64"),
+            _bools_null(n, "flag"),
+            _strings_null(n, "label"),
+            _categorical(n, "cat"),
+            _all_null(n, "empty"),
+        ]
+    )
+
+
+def _values_arrays_native(n: int) -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            _list_floats(n, "arr_f64"),
+            _list_int(n, "arr_i32", pl.Int32),
+            _list_strings(n, "arr_str"),
+        ]
+    )
+
+
+def _values_arrays_prefixed(n: int) -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            _list_floats(n, _array_prefixed("arr_f64")),
+            _list_int(n, _array_prefixed("arr_i32"), pl.Int32),
+            _list_strings(n, _array_prefixed("arr_str")),
+        ]
+    )
+
+
+def _values_structs_native(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_struct(n, "obj"), _nested_struct(n, "nested")])
+
+
+def _values_structs_prefixed(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_json_struct_strings(n, _struct_prefixed("obj_json"))])
+
+
+def _values_unsupported(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_list_int(n, "arr_i64", pl.Int64), _list_of_struct(n, "arr_struct")])
+
+
+def _values_with_complex(n: int) -> pl.DataFrame:
+    return pl.DataFrame([_floats_nan(n, "value"), _list_floats(n, "arr"), _struct(n, "obj")])
+
+
+_TS_TYPES: list[tuple[str, _AnyTimestampType]] = [
+    ("iso_8601", "iso_8601"),
+    ("epoch_nanoseconds", "epoch_nanoseconds"),
+    ("epoch_microseconds", "epoch_microseconds"),
+    ("epoch_milliseconds", "epoch_milliseconds"),
+    ("epoch_seconds", "epoch_seconds"),
+    ("epoch_minutes", "epoch_minutes"),
+    ("epoch_hours", "epoch_hours"),
+    ("epoch_days", "epoch_days"),
+    ("relative_unix_epoch", Relative(unit="seconds", start=_UNIX_EPOCH)),
+    ("relative_prev_day", Relative(unit="seconds", start=_BASE - dt.timedelta(days=1))),
+    ("relative_file_start", Relative(unit="seconds", start=_BASE)),
+    ("custom", Custom(format="yyyy-MM-dd HH:mm:ss")),
+    ("custom_default_year", Custom(format="DDD HH:mm:ss", default_year=2024)),
+]
+
+SPECS: list[FileSpec] = [
+    # Timestamp coverage (CSV, 1k rows, one per type).
+    *[FileSpec(f"ts_{label}", "csv", 1_000, ts, _basic_values) for label, ts in _TS_TYPES],
+    # CSV edge cases.
+    FileSpec("csv_messy", "csv", 1_000, "epoch_nanoseconds", _values_messy),
+    FileSpec("csv_nan_null", "csv", 1_000, "epoch_nanoseconds", _values_nan_null),
+    FileSpec("csv_wide", "csv", 1_000, "epoch_nanoseconds", _values_wide),
+    # CSV sizes.
+    FileSpec("size_10", "csv", 10, "epoch_nanoseconds", _basic_values),
+    FileSpec("size_1k", "csv", 1_000, "epoch_nanoseconds", _basic_values),
+    FileSpec("size_100k", "csv", 100_000, "epoch_nanoseconds", _basic_values),
+    FileSpec("size_1M", "csv", 1_000_000, "epoch_nanoseconds", _basic_values),
+    # Parquet scalar types.
+    FileSpec("pq_scalars", "parquet", 1_000, "epoch_nanoseconds", _values_scalars),
+    # Parquet array channels (native + prefixed).
+    FileSpec("pq_arrays_native", "parquet", 1_000, "epoch_nanoseconds", _values_arrays_native),
+    FileSpec("pq_arrays_prefixed", "parquet", 1_000, "epoch_nanoseconds", _values_arrays_prefixed),
+    # Parquet struct channels (native + prefixed).
+    FileSpec("pq_structs_native", "parquet", 1_000, "epoch_nanoseconds", _values_structs_native),
+    FileSpec("pq_structs_prefixed", "parquet", 1_000, "epoch_nanoseconds", _values_structs_prefixed),
+    # Parquet deliberate expected-fail edges.
+    FileSpec("pq_unsupported", "parquet", 1_000, "epoch_nanoseconds", _values_unsupported),
+    # Parquet sizes / timestamp variants.
+    FileSpec("pq_size_10", "parquet", 10, "iso_8601", _basic_values),
+    FileSpec("pq_size_1M", "parquet", 1_000_000, "epoch_nanoseconds", _basic_values),
+    FileSpec("pq_timestamps_iso", "parquet", 1_000, "iso_8601", _values_with_complex),
+]
