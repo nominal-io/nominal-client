@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,7 +13,6 @@ from nominal.core.channel import ChannelDataType
 from nominal.experimental.migration.channel_sync import detect as detect_mod
 from nominal.experimental.migration.channel_sync.detect import (
     ChannelBucketCounts,
-    _count_per_bucket,
     _iter_bucket_starts,
     count_channels,
     merge_bucket_ranges,
@@ -27,14 +25,6 @@ SEC = 1_000_000_000  # one second in nanoseconds
 def _ts(nanos_total: int) -> SimpleNamespace:
     seconds, nanos = divmod(nanos_total, SEC)
     return SimpleNamespace(seconds=seconds, nanos=nanos)
-
-
-def _numeric_channel(response: SimpleNamespace) -> MagicMock:
-    channel = MagicMock()
-    channel.name = "rpm"
-    channel.data_type = ChannelDataType.DOUBLE
-    channel._decimate_request.return_value = response
-    return channel
 
 
 # --- _iter_bucket_starts -------------------------------------------------------------------
@@ -96,66 +86,6 @@ def test_shortfall_buckets_no_shortfall_when_dest_exceeds_src() -> None:
     src = ChannelBucketCounts("c", {0: 1}, precise=True)
     dest = ChannelBucketCounts("c", {0: 5}, precise=True)
     assert shortfall_buckets(src, dest) == []
-
-
-# --- _count_per_bucket ---------------------------------------------------------------------
-
-
-def _numeric_bucket(first_point_ns: int, count: int) -> SimpleNamespace:
-    """A decimated NumericBucket stand-in carrying a first_point at the given ns and a count."""
-    return SimpleNamespace(count=count, first_point=SimpleNamespace(timestamp=_ts(first_point_ns)))
-
-
-def test_count_per_bucket_numeric_bins_buckets_by_first_point() -> None:
-    # Each decimated bucket is binned by its first_point (a real sample inside the bucket), not the
-    # bucket's right-edge timestamp. Empty buckets are not emitted, so SEC stays 0.
-    response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(buckets=[_numeric_bucket(0, 10), _numeric_bucket(2 * SEC, 3)]),
-        numeric=None,
-    )
-    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
-    assert result.precise is True
-    assert result.counts == {0: 10, SEC: 0, 2 * SEC: 3}
-
-
-def test_count_per_bucket_numeric_last_bucket_binned_by_first_point() -> None:
-    # Data only in the last bucket: its first_point at 2SEC bins the count to the 2SEC bucket (not
-    # dropped). Guards against the old right-edge shift that pushed a single bucket out of range.
-    response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(buckets=[_numeric_bucket(2 * SEC, 42)]),
-        numeric=None,
-    )
-    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
-    assert result.counts == {0: 0, SEC: 0, 2 * SEC: 42}
-
-
-def test_count_per_bucket_numeric_raw_fallback_bins_points() -> None:
-    response = SimpleNamespace(
-        bucketed_numeric=None,
-        numeric=SimpleNamespace(timestamps=[_ts(0), _ts(SEC // 4), _ts(2 * SEC + 1)]),
-    )
-    result = _count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
-    assert result.counts == {0: 2, SEC: 0, 2 * SEC: 1}
-
-
-def test_count_per_bucket_string_present_maps_to_one_per_bucket() -> None:
-    channel = MagicMock()
-    channel.name = "state"
-    channel.data_type = ChannelDataType.STRING
-    channel.get_available_tags.return_value = {"source": {"daq"}}
-    result = _count_per_bucket(channel, 0, 3 * SEC, SEC, tags={"source": "daq"})
-    assert result.precise is False
-    assert result.counts == {0: 1, SEC: 1, 2 * SEC: 1}
-    channel.get_available_tags.assert_called_once_with(0, 3 * SEC, initial_tags={"source": "daq"})
-
-
-def test_count_per_bucket_string_absent_maps_to_zero() -> None:
-    channel = MagicMock()
-    channel.name = "state"
-    channel.data_type = ChannelDataType.STRING
-    channel.get_available_tags.return_value = {}
-    result = _count_per_bucket(channel, 0, 2 * SEC, SEC, tags={"source": "daq"})
-    assert result.counts == {0: 0, SEC: 0}
 
 
 # --- count_channels: batching, fallback routing, threading --------------------------------

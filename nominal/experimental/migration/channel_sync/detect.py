@@ -39,7 +39,6 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
-_NUMERIC_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT})
 _BATCHABLE_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING})
 DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
 DEFAULT_DETECT_WORKERS = 8
@@ -207,25 +206,6 @@ def count_channels(
     return results
 
 
-def _count_per_bucket(
-    channel: Channel,
-    start: IntegralNanosecondsUTC,
-    end: IntegralNanosecondsUTC,
-    bucket: IntegralNanosecondsUTC,
-    tags: Mapping[str, str] | None = None,
-) -> ChannelBucketCounts:
-    """Count data per bucket for a single ``channel`` over ``[start, end)`` filtered by ``tags``.
-
-    Exact per-bucket counts for numeric channels via decimation, whole-window presence for everything
-    else. All buckets are zero-filled, so a missing channel reads as all-zero rather than empty. Kept
-    for single-channel use; :func:`count_channels` is the batched path used for whole-dataset scans.
-    """
-    starts = _iter_bucket_starts(start, end, bucket)
-    if channel.data_type in _NUMERIC_TYPES:
-        return ChannelBucketCounts(channel.name, _numeric_counts(channel, start, end, bucket, starts, tags), True)
-    return ChannelBucketCounts(channel.name, _presence_counts(channel, start, end, starts, tags), False)
-
-
 def _count_chunk(
     chunk: Sequence[Channel],
     start: IntegralNanosecondsUTC,
@@ -328,35 +308,6 @@ def _counts_from_response(
                 _add_to_bucket(counts, starts, enum_bucket.first_point.timestamp, bucket, start, total)
         case _:
             return None
-    return counts
-
-
-def _numeric_counts(
-    channel: Channel,
-    start: IntegralNanosecondsUTC,
-    end: IntegralNanosecondsUTC,
-    bucket: IntegralNanosecondsUTC,
-    starts: list[int],
-    tags: Mapping[str, str] | None,
-) -> dict[int, int]:
-    counts = dict.fromkeys(starts, 0)
-    response = channel._decimate_request(start, end, tags=tags, resolution=int(bucket))
-
-    if response.bucketed_numeric is not None:
-        # Bin each bucket by its first_point (a real sample inside the bucket), not the bucket's
-        # right-edge timestamp -- see _counts_from_response for why the right edge can't be shifted.
-        for point in response.bucketed_numeric.buckets:
-            if point.first_point is None:
-                continue
-            point_ns = _SecondsNanos.from_api(point.first_point.timestamp).to_nanoseconds()
-            _add_to_bucket(counts, starts, point_ns, bucket, start, point.count or 0)
-    elif response.numeric is not None:
-        # Server returns raw points instead of buckets when the range holds few points; bin them as-is.
-        for timestamp in response.numeric.timestamps:
-            point_ns = _SecondsNanos.from_api(timestamp).to_nanoseconds()
-            _add_to_bucket(counts, starts, point_ns, bucket, start, 1)
-    else:
-        logger.warning("Decimation of numeric channel %s returned neither buckets nor points", channel.name)
     return counts
 
 
