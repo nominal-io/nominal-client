@@ -4,6 +4,10 @@ EXPERIMENTAL / UNSTABLE. This is backed by the in-development v2 gRPC IngestServ
 Its caller-facing request contract changed as recently as 2026-06-25 (scout #15558,
 "require log/avro field locators from caller") and may break without notice. It targets
 an existing dataset (the v2 endpoint does not create datasets). Use at your own risk.
+
+Several item kinds (avro, journal-json, video, point-cloud, containerized) are wired for
+completeness against the proto even though the server may reject them today; build with
+the matching ``add_*`` method, then ``submit()``.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from typing import Mapping, Sequence
 from google.protobuf.timestamp_pb2 import Timestamp
 from typing_extensions import Self
 
-from nominal.core import Dataset, IngestionJob, NominalClient
+from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
@@ -25,11 +29,14 @@ from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileType, FileTypes
 from nominal.protos.ingest.v2 import (
     common_pb2,
+    containerized_ingest_pb2,
     file_ingest_pb2,
     ingest_service_pb2,
     ingest_service_pb2_grpc,
     log_ingest_pb2,
     mcap_ingest_pb2,
+    point_cloud_ingest_pb2,
+    video_ingest_pb2,
 )
 from nominal.protos.types.time import timestamp_parsers_pb2 as tp
 from nominal.ts import (
@@ -39,6 +46,7 @@ from nominal.ts import (
     Relative,
     TypedTimestampType,
     _AnyTimestampType,
+    _InferrableTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
@@ -76,54 +84,85 @@ def _timestamp_type_to_proto(typed: TypedTimestampType) -> tp.TimestampType:
     raise TypeError(f"unsupported timestamp type: {typed!r}")
 
 
-@dataclass(frozen=True)
-class _PendingItem:
-    """A registered file: where it is, how to upload it, and the wire item awaiting its source.
+def _to_proto_timestamp(value: _InferrableTimestampType) -> Timestamp:
+    """Convert a flexible client timestamp to a `google.protobuf.Timestamp`."""
+    sn = _SecondsNanos.from_flexible(value)
+    return Timestamp(seconds=sn.seconds, nanos=sn.nanos)
 
-    `item` is fully built at registration time except for its `source`, which is injected after
-    upload (the only value not known until then).
+
+def _timestamp_metadata(column: str, timestamp_type: _AnyTimestampType) -> common_pb2.TimestampMetadata:
+    return common_pb2.TimestampMetadata(
+        column=column, type=_timestamp_type_to_proto(_to_typed_timestamp_type(timestamp_type))
+    )
+
+
+def _file_ingest_options(
+    *,
+    timestamp_metadata: common_pb2.TimestampMetadata | None = None,
+    units: Mapping[str, str] | None = None,
+    channel_prefix: str | None = None,
+    channel_name_overrides: Mapping[str, str] | None = None,
+) -> file_ingest_pb2.FileIngestOptions:
+    """Build the `FileIngestOptions` fields shared by tabular and avro items (sans the format arm)."""
+    options = file_ingest_pb2.FileIngestOptions()
+    if timestamp_metadata is not None:
+        options.timestamp_metadata.CopyFrom(timestamp_metadata)
+    if units:
+        options.units.update(units)
+    if channel_prefix is not None:
+        options.channel_prefix = channel_prefix
+    if channel_name_overrides:
+        options.channel_name_overrides.update(channel_name_overrides)
+    return options
+
+
+@dataclass(frozen=True)
+class _Upload:
+    """A file to upload and the (empty) `IngestSource` sub-message its uploaded result fills.
+
+    `target` is a live reference into the built `IngestItem`, so `target.CopyFrom(source)` after
+    upload populates the item in place. It must be captured from the final item, not an intermediate.
     """
 
     path: Path
     file_type: FileType
+    target: common_pb2.IngestSource
+
+
+@dataclass(frozen=True)
+class _PendingItem:
+    """A built ingest item and the uploads whose sources it is still waiting on (1 for most kinds)."""
+
     item: ingest_service_pb2.IngestItem
+    uploads: tuple[_Upload, ...]
 
 
 def _upload_all(
-    items: Sequence[_PendingItem],
+    uploads: Sequence[_Upload],
     workspace_rid: str | None,
     clients: ClientsBunch,
 ) -> list[common_pb2.IngestSource]:
-    """Upload every pending file in parallel and return an `IngestSource` per item, in input order.
+    """Upload every file in parallel and return an `IngestSource` per upload, in input order.
 
     Reassembling with `executor.map` preserves order and re-raises the first upload error when the
     results are materialized, so a failure aborts before any ingest is triggered (atomic).
     """
+    if not uploads:
+        return []
 
-    def _upload(item: _PendingItem) -> common_pb2.IngestSource:
+    def _upload(upload: _Upload) -> common_pb2.IngestSource:
         s3_path = upload_multipart_file(
             clients.auth_header,
             workspace_rid,
-            item.path,
+            upload.path,
             clients.upload,
-            file_type=item.file_type,
+            file_type=upload.file_type,
             header_provider=clients.header_provider,
         )
         return common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=s3_path))
 
-    with ThreadPoolExecutor(max_workers=min(8, len(items))) as executor:
-        return list(executor.map(_upload, items))
-
-
-def _inject_source(item: ingest_service_pb2.IngestItem, source: common_pb2.IngestSource) -> None:
-    """Populate `source` on the item's single set oneof arm.
-
-    Every item kind this builder produces (file/mcap/log/dataflash) carries a `source` field, so the
-    one set arm always has somewhere to put it.
-    """
-    arm = item.WhichOneof("item")
-    assert arm is not None, "every ingest item built by this module sets exactly one oneof arm"
-    getattr(item, arm).source.CopyFrom(source)
+    with ThreadPoolExecutor(max_workers=min(8, len(uploads))) as executor:
+        return list(executor.map(_upload, uploads))
 
 
 class IngestionJobBuilder:
@@ -171,31 +210,46 @@ class IngestionJobBuilder:
         timestamp_type: _AnyTimestampType,
         *,
         tag_columns: Mapping[str, str] | None = None,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register a CSV or Parquet file (csv/parquet/parquet-archive extensions)."""
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)
-        timestamp_metadata = common_pb2.TimestampMetadata(
-            column=timestamp_column,
-            type=_timestamp_type_to_proto(_to_typed_timestamp_type(timestamp_type)),
+        options = _file_ingest_options(
+            timestamp_metadata=_timestamp_metadata(timestamp_column, timestamp_type),
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
         )
-        wide = file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})
         if file_type.is_parquet():
-            options = file_ingest_pb2.FileIngestOptions(
-                timestamp_metadata=timestamp_metadata,
-                parquet=file_ingest_pb2.ParquetIngestOptions(
-                    format=file_ingest_pb2.ParquetFormat(wide=wide),
-                    is_archive=file_type.is_parquet_archive(),
-                ),
-            )
+            options.parquet.format.wide.tag_columns.update(tag_columns or {})
+            options.parquet.is_archive = file_type.is_parquet_archive()
         else:
-            options = file_ingest_pb2.FileIngestOptions(
-                timestamp_metadata=timestamp_metadata,
-                csv=file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide)),
-            )
+            options.csv.format.wide.tag_columns.update(tag_columns or {})
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
-        self._items.append(_PendingItem(file_path, file_type, item))
+        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.file.source),)))
+        return self
+
+    def add_avro_stream(
+        self,
+        path: PathLike,
+        *,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register an Avro stream (.avro) file."""
+        file_path = Path(path)
+        options = _file_ingest_options(
+            units=units, channel_prefix=channel_prefix, channel_name_overrides=channel_name_overrides
+        )
+        options.avro.SetInParent()
+        item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
+        self._items.append(_PendingItem(item, (_Upload(file_path, FileTypes.AVRO_STREAM, item.file.source),)))
         return self
 
     def add_mcap(
@@ -219,7 +273,7 @@ class IngestionJobBuilder:
         if ignore_invalid_topics is not None:
             mcap.ignore_invalid_topics = ignore_invalid_topics
         item = ingest_service_pb2.IngestItem(mcap=mcap, tags=tags or {})
-        self._items.append(_PendingItem(file_path, FileTypes.MCAP, item))
+        self._items.append(_PendingItem(item, (_Upload(file_path, FileTypes.MCAP, item.mcap.source),)))
         return self
 
     def add_journal_json(
@@ -227,31 +281,139 @@ class IngestionJobBuilder:
         path: PathLike,
         *,
         channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register a journald-style .jsonl / .jsonl.gz log file."""
+        if (timestamp_column is None) != (timestamp_type is None):
+            raise ValueError("pass both timestamp_column and timestamp_type, or neither")
         file_path = Path(path)
         file_type = FileType.from_path_journal_json(file_path)
         log = log_ingest_pb2.LogIngestItem()
         if channel is not None:
             log.channel = channel
+        if timestamp_column is not None and timestamp_type is not None:
+            log.timestamp_metadata.CopyFrom(_timestamp_metadata(timestamp_column, timestamp_type))
         item = ingest_service_pb2.IngestItem(log=log, tags=tags or {})
-        self._items.append(_PendingItem(file_path, file_type, item))
-        return self
-
-    def add_avro_stream(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
-        """Register an Avro stream (.avro) file."""
-        file_path = Path(path)
-        options = file_ingest_pb2.FileIngestOptions(avro=file_ingest_pb2.AvroIngestOptions())
-        item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
-        self._items.append(_PendingItem(file_path, FileTypes.AVRO_STREAM, item))
+        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.log.source),)))
         return self
 
     def add_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
         """Register an ArduPilot Dataflash (.bin) file."""
         file_path = Path(path)
         item = ingest_service_pb2.IngestItem(dataflash=mcap_ingest_pb2.DataflashIngestItem(), tags=tags or {})
-        self._items.append(_PendingItem(file_path, FileTypes.DATAFLASH, item))
+        self._items.append(_PendingItem(item, (_Upload(file_path, FileTypes.DATAFLASH, item.dataflash.source),)))
+        return self
+
+    def add_point_cloud(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        sensor_properties: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a point-cloud file (e.g. .pcd / .las)."""
+        file_path = Path(path)
+        options = point_cloud_ingest_pb2.PointCloudIngestOptions()
+        if channel is not None:
+            options.channel = channel
+        if sensor_properties:
+            options.sensor_metadata.properties.update(sensor_properties)
+        item = ingest_service_pb2.IngestItem(
+            point_cloud=point_cloud_ingest_pb2.PointCloudIngestItem(ingest=options), tags=tags or {}
+        )
+        self._items.append(
+            _PendingItem(item, (_Upload(file_path, FileType.from_path(file_path), item.point_cloud.source),))
+        )
+        return self
+
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        starting_timestamp: _InferrableTimestampType | None = None,
+        frame_rate: int | None = None,
+        ending_timestamp: _InferrableTimestampType | None = None,
+        scale_factor: int | None = None,
+        manifest_paths: Sequence[PathLike] | None = None,
+        overwrite_segments: bool | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a video file.
+
+        Timestamps come from either the no-manifest mode (`starting_timestamp` plus at most one of
+        `frame_rate` / `ending_timestamp` / `scale_factor`) or the manifest-files mode
+        (`manifest_paths`, each uploaded alongside the video). The two modes are mutually exclusive.
+        """
+        scale_args = [frame_rate, ending_timestamp, scale_factor]
+        if starting_timestamp is not None and manifest_paths is not None:
+            raise ValueError("pass at most one of starting_timestamp or manifest_paths")
+        if sum(arg is not None for arg in scale_args) > 1:
+            raise ValueError("pass at most one of frame_rate, ending_timestamp, scale_factor")
+        if manifest_paths is not None and (not manifest_paths or any(arg is not None for arg in scale_args)):
+            raise ValueError("manifest_paths must be non-empty and excludes the scale options")
+
+        file_path = Path(path)
+        options = video_ingest_pb2.VideoIngestOptions()
+        if channel is not None:
+            options.channel = channel
+        if overwrite_segments is not None:
+            options.overwrite_segments = overwrite_segments
+        if manifest_paths is None:
+            no_manifest = options.timestamp_manifest.no_manifest
+            if starting_timestamp is not None:
+                no_manifest.starting_timestamp.CopyFrom(_to_proto_timestamp(starting_timestamp))
+            if frame_rate is not None:
+                no_manifest.scale_parameter.true_frame_rate = frame_rate
+            elif ending_timestamp is not None:
+                no_manifest.scale_parameter.ending_timestamp.CopyFrom(_to_proto_timestamp(ending_timestamp))
+            elif scale_factor is not None:
+                no_manifest.scale_parameter.scale_factor = scale_factor
+
+        item = ingest_service_pb2.IngestItem(video=video_ingest_pb2.VideoIngestItem(ingest=options), tags=tags or {})
+        uploads = [_Upload(file_path, FileType.from_video(file_path), item.video.source)]
+        if manifest_paths is not None:
+            manifest_files = item.video.ingest.timestamp_manifest.timestamp_manifest_files
+            for manifest_path in manifest_paths:
+                manifest = Path(manifest_path)
+                uploads.append(_Upload(manifest, FileType.from_path(manifest), manifest_files.sources.add()))
+        self._items.append(_PendingItem(item, tuple(uploads)))
+        return self
+
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        *,
+        arguments: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a containerized-extractor run over one or more named source files.
+
+        `sources` maps each registered extractor input name to a local file (each uploaded).
+        """
+        if (timestamp_column is None) != (timestamp_type is None):
+            raise ValueError("pass both timestamp_column and timestamp_type, or neither")
+        if not sources:
+            raise ValueError("add_containerized requires at least one source")
+        containerized = containerized_ingest_pb2.ContainerizedIngestItem(
+            extractor_rid=rid_from_instance_or_string(extractor)
+        )
+        if arguments:
+            containerized.arguments.update(arguments)
+        if timestamp_column is not None and timestamp_type is not None:
+            containerized.timestamp_metadata.CopyFrom(_timestamp_metadata(timestamp_column, timestamp_type))
+        item = ingest_service_pb2.IngestItem(containerized=containerized, tags=tags or {})
+        uploads = tuple(
+            _Upload(Path(source), FileType.from_path(Path(source)), item.containerized.sources[name])
+            for name, source in sources.items()
+        )
+        self._items.append(_PendingItem(item, uploads))
         return self
 
     def submit(self) -> IngestionJob:
@@ -266,9 +428,10 @@ class IngestionJobBuilder:
         clients = self._client._clients
         workspace_rid = clients.resolve_default_workspace_rid()
 
-        sources = _upload_all(self._items, workspace_rid, clients)
-        for pending, source in zip(self._items, sources):
-            _inject_source(pending.item, source)
+        uploads = [upload for pending in self._items for upload in pending.uploads]
+        sources = _upload_all(uploads, workspace_rid, clients)
+        for upload, source in zip(uploads, sources):
+            upload.target.CopyFrom(source)
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
             items=[pending.item for pending in self._items],
