@@ -24,14 +24,14 @@ _CUSTOM_STRFTIME = {
     "DDD HH:mm:ss": "%j %H:%M:%S",
 }
 
-# epoch_<unit> -> seconds-per-unit divisor (the column value is epoch_seconds / divisor).
-_EPOCH_DIVISOR = {
+# epoch_<unit> -> multiplier so the column value is epoch_seconds * multiplier.
+_EPOCH_MULTIPLIER = {
     "epoch_seconds": 1.0,
-    "epoch_milliseconds": 1e-3,
-    "epoch_microseconds": 1e-6,
-    "epoch_minutes": 60.0,
-    "epoch_hours": 3600.0,
-    "epoch_days": 86400.0,
+    "epoch_milliseconds": 1000.0,
+    "epoch_microseconds": 1e6,
+    "epoch_minutes": 1.0 / 60.0,
+    "epoch_hours": 1.0 / 3600.0,
+    "epoch_days": 1.0 / 86400.0,
 }
 
 
@@ -54,7 +54,9 @@ def _timestamp_column(ts_type: _AnyTimestampType, n: int) -> pl.Series:
         offsets = _epoch_seconds(n) - _start_seconds(ts_type.start)
         return pl.Series(TIMESTAMP_COLUMN, offsets, dtype=pl.Float64)
     if isinstance(ts_type, Custom):
-        fmt = _CUSTOM_STRFTIME[ts_type.format]
+        fmt = _CUSTOM_STRFTIME.get(ts_type.format)
+        if fmt is None:
+            raise ValueError(f"no strftime mapping for Custom.format {ts_type.format!r}; add it to _CUSTOM_STRFTIME")
         return pl.Series(TIMESTAMP_COLUMN, [t.strftime(fmt) for t in _instants(n)], dtype=pl.Utf8)
     if ts_type == "iso_8601":
         vals = [t.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" for t in _instants(n)]
@@ -63,6 +65,6 @@ def _timestamp_column(ts_type: _AnyTimestampType, n: int) -> pl.Series:
         base_ns = int(_BASE.timestamp() * 1e9)
         ns = base_ns + np.arange(n, dtype=np.int64) * 1_000_000_000
         return pl.Series(TIMESTAMP_COLUMN, ns, dtype=pl.Int64)
-    if isinstance(ts_type, str) and ts_type in _EPOCH_DIVISOR:
-        return pl.Series(TIMESTAMP_COLUMN, _epoch_seconds(n) / _EPOCH_DIVISOR[ts_type], dtype=pl.Float64)
+    if isinstance(ts_type, str) and ts_type in _EPOCH_MULTIPLIER:
+        return pl.Series(TIMESTAMP_COLUMN, _epoch_seconds(n) * _EPOCH_MULTIPLIER[ts_type], dtype=pl.Float64)
     raise ValueError(f"unsupported timestamp type for generation: {ts_type!r}")
