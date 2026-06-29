@@ -7,7 +7,9 @@ backend, or with --profile <name> to create a dataset and kick off a single inge
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
+import json
 import logging
 import tempfile
 import time
@@ -185,12 +187,12 @@ def _list_of_struct(n: int, name: str) -> pl.Series:
 
 
 def _json_struct_strings(n: int, name: str) -> pl.Series:
-    import json
-
     rows = [json.dumps({"x": i, "label": f"p{i}"}) for i in range(n)]
     return pl.Series(name, rows, dtype=pl.Utf8)
 
 
+# Array columns need a distinct 32-hex uuid in the prefix so ClickHouse doesn't merge them into one Nested;
+# struct columns just need the _nominal_struct_ marker.
 def _array_prefixed(name: str) -> str:
     return f"_nominal_array_{uuid.uuid4().hex}.{name}"
 
@@ -386,6 +388,8 @@ _TERMINAL_JOB_STATUS = {
 
 def report(job: IngestionJob, *, fail_on_ingest_error: bool) -> int:
     """Poll the job + its files to terminal (without raising), print a status table, return exit code."""
+    # UNKNOWN is treated as terminal so an unmodeled server status can't hang the wait;
+    # the per-file poll below still re-checks each file.
     while job.status not in _TERMINAL_JOB_STATUS:
         time.sleep(1)
         job = job.refresh()
@@ -428,8 +432,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.dry_run and not args.profile:
         parser.error("--profile is required unless --dry-run is given")
-
-    import contextlib
 
     with contextlib.ExitStack() as stack:
         if args.output_dir:
