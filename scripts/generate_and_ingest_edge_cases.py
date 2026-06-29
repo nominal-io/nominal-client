@@ -83,8 +83,22 @@ def _floats_nan(n: int, name: str) -> pl.Series:
     return pl.Series(name, vals, dtype=pl.Float64)
 
 
+# Narrow integer dtypes whose range is smaller than the row counts we generate; values are
+# taken modulo the dtype's cardinality so columns stay dense and in-range (not null-filled).
+_INT_MODULUS: dict[type[pl.DataType] | pl.DataType, int] = {
+    pl.Int8: 128,
+    pl.UInt8: 256,
+    pl.Int16: 32768,
+    pl.UInt16: 65536,
+}
+
+
 def _ints(n: int, name: str, dtype: type[pl.DataType] | pl.DataType = pl.Int64) -> pl.Series:
-    return pl.Series(name, np.arange(n, dtype=np.int64)).cast(dtype, strict=False)
+    arr = np.arange(n, dtype=np.int64)
+    modulus = _INT_MODULUS.get(dtype)
+    if modulus is not None:
+        arr = arr % modulus
+    return pl.Series(name, arr, dtype=dtype)
 
 
 def _bools_null(n: int, name: str) -> pl.Series:
