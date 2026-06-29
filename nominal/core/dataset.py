@@ -20,7 +20,7 @@ from nominal.core._utils.multipart import path_upload_name, upload_multipart_fil
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
-from nominal.core.containerized_extractor import ContainerizedExtractor
+from nominal.core.containerized_extractor import ContainerImageStatus, ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
@@ -539,8 +539,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
                 NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Tag of the Docker container which hosts the extractor.
-                NOTE: if not provided, the default registered docker tag will be used.
+            tag: Optional registered container image tag to run.
+                NOTE: if not provided, the extractor's active container image will be used.
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the dataset that contains the timestamp data.
@@ -561,11 +561,20 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
         if isinstance(extractor, str):
             extractor = ContainerizedExtractor._get(self._clients, extractor)
-        if extractor.active_container_image_rid is None:
+        if tag is not None:
+            active_image = extractor.get_image_by_tag(tag)
+            if active_image is None:
+                raise ValueError(f"Extractor '{extractor.name}' has no container image with tag '{tag}'.")
+        elif extractor.active_container_image_rid is None:
             raise ValueError(
                 f"Extractor '{extractor.name}' has no active container image; register and activate one first."
             )
-        active_image = extractor.get_image(extractor.active_container_image_rid)
+        else:
+            active_image = extractor.get_image(extractor.active_container_image_rid)
+        if active_image.status is not ContainerImageStatus.READY:
+            raise ValueError(
+                f"Extractor '{extractor.name}' selected container image '{active_image.rid}' is not READY."
+            )
         for image_input in active_image.inputs:
             if image_input.required and image_input.environment_variable not in sources:
                 raise ValueError(f"Required input '{image_input.environment_variable}' not present in sources!")
@@ -685,13 +694,13 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
         Args:
             start: Inclusive lower bound of the search window. Files whose time range ends at or
-                after this timestamp are returned — including files that started before `start`
+                after this timestamp are returned - including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+                NOTE: Truncated to whole seconds - sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
-                before this timestamp are returned — including files that end after `end` but
+                before this timestamp are returned - including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+                NOTE: Truncated to whole seconds - sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:
@@ -763,7 +772,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
 
 class _DatasetWrapper(abc.ABC):
-    """A lightweight façade over `nominal.core.Dataset` that routes ingest calls through a *data scope*.
+    """A lightweight facade over `nominal.core.Dataset` that routes ingest calls through a *data scope*.
 
     `_DatasetWrapper` resolves `data_scope_name` to a backing `nominal.core.Dataset` and then delegates to the
     corresponding `Dataset` method.
