@@ -14,7 +14,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
@@ -64,7 +64,7 @@ def _rebind_video_datasources(
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
+class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Template]):
     rid: str
     title: str
     description: str

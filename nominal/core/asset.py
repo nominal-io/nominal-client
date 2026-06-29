@@ -23,7 +23,7 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableMixin,
+    RefreshableConjureMixin,
     ScopeTypeSpecifier,
     create_links,
     filter_scope_rids,
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
+class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Asset]):
     rid: str
     name: str
     description: str | None

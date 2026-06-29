@@ -41,6 +41,8 @@ from nominal.core._utils.networking import (
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
@@ -168,7 +170,8 @@ class ClientsBunch:
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
-    containerized_extractors: ingest_api.ContainerizedExtractorService
+    containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    registry: registry_pb2_grpc.RegistryServiceStub
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
     sandbox_workspace: scout_sandbox_api.SandboxWorkspaceService
@@ -327,7 +330,8 @@ class ClientsBunch:
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
-            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
+            containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             secrets=client_factory(secrets_api.SecretService),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             sandbox_workspace=client_factory(scout_sandbox_api.SandboxWorkspaceService),

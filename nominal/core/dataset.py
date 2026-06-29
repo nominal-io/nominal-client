@@ -15,16 +15,17 @@ from typing_extensions import Self, deprecated
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableMixin
+from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
-from nominal.core.containerized_extractors import ContainerizedExtractor
+from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -40,7 +41,7 @@ DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
-class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
+class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
     properties: Mapping[str, str]
@@ -505,42 +506,41 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     @overload
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
-    ) -> DatasetFile:
+    ) -> IngestionJob:
         """Add data from proprietary data formats using a pre-registered custom extractor.
+
+        A containerized extraction runs asynchronously and may emit multiple output files, so this returns
+        the tracking `IngestionJob` immediately rather than a single file. Use `job.as_files_ingested()` or
+        `job.dataset_files()` to pull the produced files, `job.status` to poll, and `job.cancel()` to cancel.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
-                NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Tag of the Docker container which hosts the extractor.
-                NOTE: if not provided, the default registered docker tag will be used.
+                NOTE: these must match the registered inputs of the active container image exactly
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the dataset that contains the timestamp data.
@@ -549,6 +549,9 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             timestamp_type: the type of timestamp data in the dataset.
                 NOTE: this is applied uniformly to all output files
                 NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
+
+        Returns:
+            An `IngestionJob` handle for the asynchronous containerized ingest.
         """
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
@@ -560,18 +563,14 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
-            extractor = ContainerizedExtractor._from_conjure(
-                self._clients,
-                self._clients.containerized_extractors.get_containerized_extractor(
-                    self._clients.auth_header, extractor
-                ),
+            extractor = _get_containerized_extractor(self._clients, extractor)
+        if extractor.active_image is None:
+            raise ValueError(
+                f"Extractor '{extractor.name}' has no active container image; register and activate one first."
             )
-        # Ensure all required inputs are present
-        registered_inputs = set()
-        for extractor_input in extractor.inputs:
-            registered_inputs.add(extractor_input.environment_variable)
-            if extractor_input.required and extractor_input.environment_variable not in sources:
-                raise ValueError(f"Required input '{extractor_input.environment_variable}' not present in sources!")
+        for image_input in extractor.active_image.inputs:
+            if image_input.required and image_input.environment_variable not in sources:
+                raise ValueError(f"Required input '{image_input.environment_variable}' not present in sources!")
 
         # Upload all inputs to s3 before ingestion
         s3_inputs = {}
@@ -588,7 +587,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
 
-        logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
+        logger.info("Triggering custom extractor %s with %s", extractor.name, s3_inputs)
         resp = self._clients.ingest.ingest(
             self._clients.auth_header,
             trigger_ingest=ingest_api.IngestRequest(
@@ -603,7 +602,6 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                         target=ingest_api.DatasetIngestTarget(
                             existing=ingest_api.ExistingDatasetIngestDestination(self.rid)
                         ),
-                        tag=tag,
                         additional_file_tags={**(tags or {})},
                         timestamp_metadata=timestamp_metadata,
                     )
@@ -611,7 +609,12 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ),
         )
 
-        return self._handle_ingest_response(resp)
+        # A containerized extraction is asynchronous and multi-file, so the response carries an ingest job
+        # handle (not a single dataset file). Return the job; callers pull outputs via `IngestionJob`.
+        if resp.ingest_job_rid is None:
+            raise NominalIngestError("Containerized ingest did not return an ingest job to track.")
+        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, resp.ingest_job_rid)
+        return IngestionJob._from_conjure(self._clients, job)
 
     def archive(self) -> None:
         """Archive this dataset.
@@ -952,9 +955,9 @@ class _DatasetWrapper(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     @overload
     def add_containerized(
         self,
@@ -962,22 +965,22 @@ class _DatasetWrapper(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     def add_containerized(
         self,
         data_scope_name: str,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
-    ) -> DatasetFile:
+    ) -> IngestionJob:
         """Add data from proprietary formats using a pre-registered custom extractor.
 
         This method behaves like `nominal.core.Dataset.add_containerized`, except that the data scope's required
@@ -994,14 +997,14 @@ class _DatasetWrapper(abc.ABC):
             return dataset.add_containerized(
                 extractor,
                 sources,
-                tag=tag,
+                arguments=arguments,
                 tags=_unify_tags(scope_tags, tags),
             )
         elif timestamp_column is not None and timestamp_type is not None:
             return dataset.add_containerized(
                 extractor,
                 sources,
-                tag=tag,
+                arguments=arguments,
                 tags=_unify_tags(scope_tags, tags),
                 timestamp_column=timestamp_column,
                 timestamp_type=timestamp_type,

@@ -39,3 +39,13 @@ def test_time_conversions(t: ts._SecondsNanos):
     assert t.seconds == int(dateutil.parser.parse(t.to_iso8601()).timestamp())
     assert t.seconds == t.from_flexible(dateutil.parser.parse(t.to_iso8601())).seconds
     assert t.seconds == t.from_flexible(t.to_iso8601()).seconds
+
+
+@pytest.mark.parametrize(("value", "expected"), [("SECONDS", "seconds"), ("Nanoseconds", "nanoseconds")])
+def test_str_to_literal_time_unit_normalizes_known_units(value: str, expected: str) -> None:
+    assert ts._str_to_literal_time_unit(value) == expected
+
+
+def test_str_to_literal_time_unit_rejects_unknown_units() -> None:
+    with pytest.raises(ValueError, match="Unknown time unit"):
+        ts._str_to_literal_time_unit("WEEKS")

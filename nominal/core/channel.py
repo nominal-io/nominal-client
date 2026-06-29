@@ -22,7 +22,7 @@ from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import RefreshableMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.api_tools import RefreshableConjureMixin, build_compute_tag_filter, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
@@ -69,7 +69,7 @@ class ChannelDataType(enum.Enum):
 
 
 @dataclass
-class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
+class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMetadata]):
     """Metadata for working with channels."""
 
     name: str

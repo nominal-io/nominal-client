@@ -222,30 +222,6 @@ def create_search_users_query(
     return authentication_api.SearchUsersQuery(and_=queries)
 
 
-def create_search_containerized_extractors_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    workspace_rid: str | None = None,
-) -> ingest_api.SearchContainerizedExtractorsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
-
-    if workspace_rid is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=workspace_rid))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
-
-    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
-
-
 def create_search_assets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,

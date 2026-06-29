@@ -9,7 +9,7 @@ from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, sc
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
 from nominal.core.exceptions import NominalMethodRemovedError
@@ -84,7 +84,7 @@ class WorkbookType(Enum):
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
+class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
     rid: str
     title: str
     description: str

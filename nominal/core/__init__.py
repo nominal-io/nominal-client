@@ -11,14 +11,14 @@ from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection
-from nominal.core.containerized_extractors import (
+from nominal.core.containerized_extractor import (
+    ContainerImage,
+    ContainerImageStatus,
     ContainerizedExtractor,
-    DockerImageSource,
     FileExtractionInput,
     FileExtractionParameter,
-    TagDetails,
+    FileOutputFormat,
     TimestampMetadata,
-    UserPassAuth,
 )
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
@@ -50,6 +50,8 @@ __all__ = [
     "Checklist",
     "CheckViolation",
     "Connection",
+    "ContainerImage",
+    "ContainerImageStatus",
     "ContainerizedExtractor",
     "DataReview",
     "DataReviewBuilder",
@@ -57,11 +59,11 @@ __all__ = [
     "DatasetFile",
     "DataSource",
     "DataStream",
-    "DockerImageSource",
     "Event",
     "EventType",
     "FileExtractionInput",
     "FileExtractionParameter",
+    "FileOutputFormat",
     "FileType",
     "FileTypes",
     "HeaderProvider",
@@ -78,12 +80,10 @@ __all__ = [
     "Run",
     "SearchEventOriginType",
     "Secret",
-    "TagDetails",
     "TimestampMetadata",
     "Unit",
     "UnitLike",
     "User",
-    "UserPassAuth",
     "Video",
     "VideoFile",
     "wait_for_files_to_ingest",
