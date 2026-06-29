@@ -6,7 +6,10 @@ backend, or with --profile <name> to create a dataset and kick off a single inge
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
+import logging
+import tempfile
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -15,7 +18,11 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from nominal.core import Dataset, IngestionJob, NominalClient
+from nominal.experimental.ingest import IngestionJobBuilder
 from nominal.ts import Custom, Relative, _AnyTimestampType
+
+logger = logging.getLogger("edge_case_ingest")
 
 TIMESTAMP_COLUMN = "timestamp"
 _BASE = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
@@ -329,3 +336,88 @@ SPECS: list[FileSpec] = [
     FileSpec("pq_size_1M", "parquet", 1_000_000, "epoch_nanoseconds", _basic_values),
     FileSpec("pq_timestamps_iso", "parquet", 1_000, "iso_8601", _values_with_complex),
 ]
+
+
+def build_job(
+    client: NominalClient,
+    dataset: Dataset,
+    specs: list[FileSpec],
+    out_dir: Path,
+) -> tuple[IngestionJobBuilder, list[str]]:
+    """Generate each spec's file and register it on a builder. Returns (builder, skipped names)."""
+    builder = IngestionJobBuilder(client, dataset)
+    skipped: list[str] = []
+    for spec in specs:
+        try:
+            path = generate(spec, out_dir)
+            builder.add_tabular(
+                path,
+                TIMESTAMP_COLUMN,
+                spec.timestamp_type,
+                tag_columns=spec.tag_columns,
+                tags=spec.tags,
+            )
+        except Exception as exc:  # one bad generator should not sink the run
+            logger.warning("Skipping spec %s: %s", spec.name, exc)
+            skipped.append(spec.name)
+    return builder, skipped
+
+
+def _dry_run(specs: list[FileSpec], out_dir: Path) -> int:
+    for spec in specs:
+        try:
+            path = generate(spec, out_dir)
+            size_kb = path.stat().st_size / 1024
+            logger.info("generated %-26s %-7s rows=%-8d %.1f KiB", spec.name, spec.fmt, spec.n_rows, size_kb)
+        except Exception as exc:
+            logger.warning("FAILED to generate %s: %s", spec.name, exc)
+    return 0
+
+
+def report(job: IngestionJob, *, fail_on_ingest_error: bool) -> int:
+    raise NotImplementedError  # implemented in Task 5
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Generate and ingest edge-case CSV/Parquet files.")
+    parser.add_argument("--profile", help="Nominal config profile (required unless --dry-run).")
+    parser.add_argument("--dataset-name", default=None, help="Target dataset name (default: timestamped).")
+    parser.add_argument("--output-dir", default=None, help="Where to write files (default: a temp dir).")
+    parser.add_argument("--keep-files", action="store_true", help="Do not delete generated files on exit.")
+    parser.add_argument("--fail-on-ingest-error", action="store_true", help="Exit non-zero if any file fails ingest.")
+    parser.add_argument("--dry-run", action="store_true", help="Generate + inspect files; no client, no submit.")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if not args.dry_run and not args.profile:
+        parser.error("--profile is required unless --dry-run is given")
+
+    import contextlib
+
+    with contextlib.ExitStack() as stack:
+        if args.output_dir:
+            out_dir = Path(args.output_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            out_dir = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            if args.keep_files:
+                logger.warning("--keep-files ignored without --output-dir (temp dir is removed)")
+
+        if args.dry_run:
+            return _dry_run(SPECS, out_dir)
+
+        client = NominalClient.from_profile(args.profile)
+        name = args.dataset_name or f"edge-case-ingest-{dt.datetime.now(dt.timezone.utc):%Y%m%dT%H%M%SZ}"
+        dataset = client.create_dataset(name)
+        logger.info("Created dataset %s (%s)", name, dataset.rid)
+
+        builder, skipped = build_job(client, dataset, SPECS, out_dir)
+        if skipped:
+            logger.warning("Skipped %d spec(s) during generation: %s", len(skipped), ", ".join(skipped))
+        job = builder.submit()
+        logger.info("Submitted ingest job %s", job.rid)
+        return report(job, fail_on_ingest_error=args.fail_on_ingest_error)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
