@@ -10,6 +10,7 @@ import argparse
 import datetime as dt
 import logging
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from nominal.core import Dataset, IngestionJob, NominalClient
+from nominal.core import Dataset, IngestionJob, IngestionJobStatus, NominalClient
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.experimental.ingest import IngestionJobBuilder
 from nominal.ts import Custom, Relative, _AnyTimestampType
@@ -375,8 +376,20 @@ def _dry_run(specs: list[FileSpec], out_dir: Path) -> int:
     return 0
 
 
+_TERMINAL_JOB_STATUS = {
+    IngestionJobStatus.COMPLETED,
+    IngestionJobStatus.FAILED,
+    IngestionJobStatus.CANCELLED,
+    IngestionJobStatus.UNKNOWN,
+}
+
+
 def report(job: IngestionJob, *, fail_on_ingest_error: bool) -> int:
     """Poll the job + its files to terminal (without raising), print a status table, return exit code."""
+    while job.status not in _TERMINAL_JOB_STATUS:
+        time.sleep(1)
+        job = job.refresh()
+
     job = job.refresh()
 
     files = job.dataset_files()
