@@ -310,7 +310,15 @@ class IngestStatus(Enum):
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
         if status.success is not None:
             return cls.SUCCESS
-        elif status.in_progress is not None:
+        # queued / parsing / ingesting are transient "still working" states the backend reports before
+        # success; treat them like in_progress so callers (e.g. poll_until_ingestion_completed) keep
+        # waiting rather than crashing on an unrecognized status.
+        elif (
+            status.in_progress is not None
+            or status.queued is not None
+            or status.parsing is not None
+            or status.ingesting is not None
+        ):
             return cls.IN_PROGRESS
         elif status.error is not None:
             return cls.FAILED
