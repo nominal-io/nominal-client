@@ -19,6 +19,7 @@ import numpy as np
 import polars as pl
 
 from nominal.core import Dataset, IngestionJob, NominalClient
+from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.experimental.ingest import IngestionJobBuilder
 from nominal.ts import Custom, Relative, _AnyTimestampType
 
@@ -375,7 +376,30 @@ def _dry_run(specs: list[FileSpec], out_dir: Path) -> int:
 
 
 def report(job: IngestionJob, *, fail_on_ingest_error: bool) -> int:
-    raise NotImplementedError  # implemented in Task 5
+    """Poll the job + its files to terminal (without raising), print a status table, return exit code."""
+    job = job.refresh()
+
+    files = job.dataset_files()
+    failed = 0
+    logger.info("")
+    logger.info("Per-file ingest status (%d files):", len(files))
+    for f in files:
+        try:
+            f.poll_until_ingestion_completed()
+        except (NominalIngestError, NominalIngestFailed):
+            pass
+        f = f.refresh()
+        status = f.ingest_status.name
+        ok = status == "SUCCESS"
+        if not ok:
+            failed += 1
+        mark = "OK " if ok else "ERR"
+        detail = "" if ok else f"  ({f._ingest_error_message or 'see app'})"
+        logger.info("  [%s] %-30s %s%s", mark, f.name, status, detail)
+
+    logger.info("")
+    logger.info("Job %s: %d file(s), %d failed. %s", job.status.name, len(files), failed, job.nominal_url)
+    return 1 if (failed and fail_on_ingest_error) else 0
 
 
 def main(argv: list[str] | None = None) -> int:
