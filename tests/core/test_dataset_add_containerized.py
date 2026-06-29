@@ -38,7 +38,7 @@ def _extractor(clients: MagicMock, *, active_image_rid: str | None) -> Container
     )
 
 
-def _image_with_required_input(clients: MagicMock) -> ContainerImage:
+def _image_with_required_input(clients: MagicMock, *, environment_variable: str = "INPUT_FILE") -> ContainerImage:
     return ContainerImage(
         rid="ri.img.1",
         tag="v1",
@@ -46,7 +46,7 @@ def _image_with_required_input(clients: MagicMock) -> ContainerImage:
         size_bytes=1,
         created_at=0,
         extractor_rid="ri.ext.1",
-        inputs=(FileExtractionInput("Input", environment_variable="INPUT_FILE", required=True),),
+        inputs=(FileExtractionInput("Input", environment_variable=environment_variable, required=True),),
         parameters=(),
         file_output_format=MagicMock(),
         default_timestamp_metadata=MagicMock(spec=TimestampMetadata),
@@ -75,3 +75,30 @@ def test_add_containerized_raises_when_no_active_image() -> None:
 
     with pytest.raises(ValueError, match="no active container image"):
         dataset.add_containerized(extractor, sources={"INPUT_FILE": "./data.bin"})
+
+
+def test_add_containerized_validates_tag_image_inputs() -> None:
+    """When tag is provided, preflight validates the selected tag image instead of the active image."""
+    clients = MagicMock()
+    dataset = _dataset(clients)
+    extractor = _extractor(clients, active_image_rid=None)
+    tag_image = _image_with_required_input(clients, environment_variable="TAG_INPUT")
+    extractor_get_image_by_tag = MagicMock(return_value=tag_image)
+    object.__setattr__(extractor, "get_image_by_tag", extractor_get_image_by_tag)  # frozen dataclass
+
+    with pytest.raises(ValueError, match="TAG_INPUT"):
+        dataset.add_containerized(extractor, sources={"INPUT_FILE": "./data.bin"}, tag="release")
+
+    extractor_get_image_by_tag.assert_called_once_with("release")
+
+
+def test_add_containerized_raises_when_tag_image_missing() -> None:
+    """A tag override must resolve to a registered image before input upload."""
+    clients = MagicMock()
+    dataset = _dataset(clients)
+    extractor = _extractor(clients, active_image_rid=None)
+    extractor_get_image_by_tag = MagicMock(return_value=None)
+    object.__setattr__(extractor, "get_image_by_tag", extractor_get_image_by_tag)  # frozen dataclass
+
+    with pytest.raises(ValueError, match="no container image with tag"):
+        dataset.add_containerized(extractor, sources={"INPUT_FILE": "./data.bin"}, tag="release")
