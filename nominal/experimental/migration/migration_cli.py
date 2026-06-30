@@ -113,8 +113,12 @@ def _load_asset_resources(
         raise click.UsageError("Provide only one of 'migration.source_asset_rids' or 'migration.source_assets'.")
 
     if source_assets is None:
-        if not isinstance(asset_rids, list) or not asset_rids:
-            raise click.UsageError("'migration.source_asset_rids' must be a non-empty list.")
+        # An absent or empty source_asset_rids means no assets to migrate; skip straight to
+        # standalone_workbook_template_rids rather than failing.
+        if asset_rids is None or asset_rids == []:
+            return {}
+        if not isinstance(asset_rids, list):
+            raise click.UsageError("'migration.source_asset_rids' must be a list.")
         return _load_asset_resources_from_list(source_client, asset_rids)
 
     if not isinstance(source_assets, dict) or not source_assets:
