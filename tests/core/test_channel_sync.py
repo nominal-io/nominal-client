@@ -523,7 +523,7 @@ def test_build_underconstrained_expansion_returns_original_when_none_underconstr
 
     passes = sync_mod._build_underconstrained_expansion([ch_a, ch_b], {"stand": "1"}, 0, SEC)
 
-    assert passes == [({"stand": "1"}, None)]
+    assert passes == [({"stand": "1"}, None, None)]
 
 
 def test_build_underconstrained_expansion_splits_underconstrained_channel(
@@ -565,11 +565,15 @@ def test_build_underconstrained_expansion_splits_underconstrained_channel(
     assert allowlist_list[ts2_idx] == frozenset({"b"})
 
 
-def test_build_underconstrained_expansion_ignores_nominal_internal_tags(
+def test_build_underconstrained_expansion_nominal_only_uses_canonical_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # ch_b is flagged as underconstrained, but get_available_tags shows the only multi-valued
-    # key is _nominal_ingest_rid (an internal system tag). It should fall back to the original filter.
+    # ch_a: fully constrained by {stand: "1"}.
+    # ch_b: underconstrained only by _nominal_ingest_rid — multiple ingest sessions.
+    # Expected: both ch_a and ch_b are merged into a single canonical-filter pass.
+    # Per-RID expansion is intentionally skipped: it misses data from sessions whose RIDs
+    # were truncated by get_available_tags (value-count limit) or that predate auto-tagging.
+    # The canonical filter captures all data regardless of tagging era.
     ch_a = _fake_channel("a")
     ch_b = _fake_channel(
         "b",
@@ -585,8 +589,16 @@ def test_build_underconstrained_expansion_ignores_nominal_internal_tags(
 
     passes = sync_mod._build_underconstrained_expansion([ch_a, ch_b], {"stand": "1"}, 0, SEC)
 
-    # Both channels should end up in the original filter pass with no expansion.
-    assert passes == [({"stand": "1"}, None)]
+    # 1 pass: canonical filter for both ch_a and ch_b (ch_b routes through canonical, not per-RID).
+    assert len(passes) == 1
+    export_tags, allowlist, dir_tags = passes[0]
+    assert export_tags == {"stand": "1"}
+    assert allowlist == frozenset({"a", "b"})
+    assert dir_tags is None
+
+    # No per-RID expansion passes.
+    rid_passes = [p for p in passes if "_nominal_ingest_rid" in p[0]]
+    assert len(rid_passes) == 0
 
 
 def test_build_underconstrained_expansion_all_underconstrained_omits_original_pass(
@@ -605,7 +617,78 @@ def test_build_underconstrained_expansion_all_underconstrained_omits_original_pa
     assert {"stand": "1", "ts": "2"} in tags_list
 
 
+def test_build_underconstrained_expansion_user_visible_disabled_routes_to_original(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # expand_user_visible=False: user-visible underconstrained channels fall back to the original
+    # filter instead of being split, while _nominal_*-only channels still get per-RID passes.
+    ch_a = _fake_channel("a")
+    ch_b = _fake_channel("b", get_available_tags_result={"stand": {"1"}, "ts": {"1", "2"}})
+    ch_c = _fake_channel(
+        "c",
+        get_available_tags_result={"stand": {"1"}, "_nominal_ingest_rid": {"rid-1", "rid-2"}},
+    )
+
+    def fake_batch_check(clients: Any, batch: Any, *a: Any, **k: Any) -> tuple[list[Any], list[str]]:
+        all_ch = list(batch)
+        underconstrained = [ch.name for ch in all_ch if ch.name in ("b", "c")]
+        return all_ch, underconstrained
+
+    monkeypatch.setattr(sync_mod, "_batch_check_channels_have_data", fake_batch_check)
+
+    passes = sync_mod._build_underconstrained_expansion(
+        [ch_a, ch_b, ch_c], {"stand": "1"}, 0, SEC, expand_user_visible=False
+    )
+
+    tags_list = [p[0] for p in passes]
+    allowlist_list = [p[1] for p in passes]
+    dir_tags_list = [p[2] for p in passes]
+
+    # All three channels route through the canonical filter pass.
+    # ch_c was previously expanded per-RID, but canonical is now used to capture data
+    # from sessions truncated by get_available_tags or predating auto-tagging.
+    assert len(passes) == 1
+    assert tags_list[0] == {"stand": "1"}
+    assert allowlist_list[0] == frozenset({"a", "b", "c"})
+    assert dir_tags_list[0] is None
+
+    # No per-RID expansion passes.
+    rid_passes = [p for p in passes if "_nominal_ingest_rid" in p[0]]
+    assert len(rid_passes) == 0
+
+
 # --- channel_allowlist in sync_missing_channel_data -------------------------------------------
+
+
+def test_detect_missing_strips_nominal_tags_for_destination(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Source is counted with the full filter including _nominal_ingest_rid.
+    # Destination must be counted with only canonical tags — _nominal_* tags are internal to
+    # source ingest sessions and will never appear on data written by the sync tool.
+    from nominal.experimental.migration.channel_sync.sync import _detect_missing, ChannelBucketCounts
+
+    ch = _channel("temp")
+    dest = SimpleNamespace(
+        rid="dst",
+        search_channels=lambda: [ch],
+    )
+
+    captured_dest_tags: list[Any] = []
+
+    def fake_count(channels: Any, start: Any, end: Any, bucket: Any, tags: Any, **k: Any) -> dict[str, Any]:
+        if channels and channels[0].name == "temp":
+            captured_dest_tags.append(tags)
+        return {"temp": ChannelBucketCounts("temp", {0: 5}, True)}
+
+    monkeypatch.setattr(sync_mod, "count_channels", fake_count)
+
+    source_counts = {"temp": ChannelBucketCounts("temp", {0: 5}, True)}
+    options = ChannelSyncOptions(tags={"stand": "1", "_nominal_ingest_rid": "ri.ingest.main.streaming-session.abc123"})
+    _detect_missing(source_counts, dest, 0, SEC, options)
+
+    assert len(captured_dest_tags) == 1
+    dest_tags = captured_dest_tags[0]
+    assert "_nominal_ingest_rid" not in (dest_tags or {})
+    assert (dest_tags or {}).get("stand") == "1"
 
 
 def test_channel_allowlist_restricts_channels_processed(monkeypatch: pytest.MonkeyPatch) -> None:

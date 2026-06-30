@@ -81,6 +81,8 @@ def sync_from_config(cfg: Mapping[str, Any]) -> None:
         destination_dataset = None
 
     output_dir = cfg.get("output_dir")
+    raw_allowlist = cfg.get("channel_allowlist")
+    channel_allowlist: frozenset[str] | None = frozenset(raw_allowlist) if raw_allowlist else None
     defaults = ChannelSyncOptions()
     base_options = ChannelSyncOptions(
         bucket=int(float(cfg.get("bucket_seconds", 3600)) * 1_000_000_000),
@@ -98,6 +100,7 @@ def sync_from_config(cfg: Mapping[str, Any]) -> None:
         show_progress=bool(cfg.get("show_progress", defaults.show_progress)),
         output_dir=pathlib.Path(output_dir) if output_dir else None,
         phase=phase,
+        channel_allowlist=channel_allowlist,
     )
 
     start_ns = _iso_to_nanos(cfg["start"])
