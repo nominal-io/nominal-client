@@ -146,3 +146,20 @@ def test_enum_from_proto_falls_back_to_unspecified_on_unknown_value() -> None:
     """A value a newer server might return (unknown to this SDK) decodes to UNSPECIFIED, not a crash."""
     assert FileOutputFormat._from_proto(999) is FileOutputFormat.UNSPECIFIED
     assert ContainerImageStatus._from_proto(999) is ContainerImageStatus.UNSPECIFIED
+
+
+def test_search_images_can_filter_by_extractor_rid() -> None:
+    """Extractor scoping filters registry search results client-side."""
+    clients = _clients()
+    img_other = _img("i1")
+    img_other.extractor_rid = "ri.ext.1"
+    img_match = _img("i2")
+    img_match.extractor_rid = "ri.ext.2"
+    clients.registry.SearchImages.return_value = registry_pb2.SearchImagesResponse(
+        images=[img_other, img_match],
+        next_page_token="",
+    )
+
+    results = _search_container_images(clients, extractor_rid="ri.ext.2", workspace_rid=None)
+
+    assert [i.rid for i in results] == ["i2"]

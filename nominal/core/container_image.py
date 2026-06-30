@@ -315,6 +315,24 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
                     assert_never(self.status)
             time.sleep(interval.total_seconds())
 
+    def wait_until_ready(self, *, timeout_seconds: float = 300, poll_interval_seconds: float = 2) -> Self:
+        """Poll this image until it reaches READY, or fail when it reaches FAILED."""
+        if timeout_seconds < 0:
+            raise ValueError("timeout_seconds must be non-negative")
+        if poll_interval_seconds <= 0:
+            raise ValueError("poll_interval_seconds must be positive")
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            if self.status is ContainerImageStatus.READY:
+                return self
+            if self.status is ContainerImageStatus.FAILED:
+                raise RuntimeError(f"Container image '{self.rid}' failed registration")
+            now = time.monotonic()
+            if now >= deadline:
+                raise TimeoutError(f"Timed out waiting for container image '{self.rid}' to become READY")
+            time.sleep(min(poll_interval_seconds, deadline - now))
+            self.refresh()
+
     @classmethod
     def _from_proto(cls, clients: _Clients, workspace_rid: str, msg: registry_pb2.ContainerImage) -> Self:
         return cls(
@@ -349,12 +367,15 @@ def _iter_search_container_images(
     *,
     tag: str | None = None,
     status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
     workspace_rid: str | None = None,
 ) -> Iterable[ContainerImage]:
     ws = clients.resolve_workspace(workspace_rid).rid
     search_filter = create_search_container_images_query(tag=tag, status=status)
     for img in search_container_images_paginated(clients.registry, ws, search_filter):
-        yield ContainerImage._from_proto(clients, ws, img)
+        image = ContainerImage._from_proto(clients, ws, img)
+        if extractor_rid is None or image.extractor_rid == extractor_rid:
+            yield image
 
 
 def _search_container_images(
@@ -362,6 +383,11 @@ def _search_container_images(
     *,
     tag: str | None = None,
     status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
     workspace_rid: str | None = None,
 ) -> Sequence[ContainerImage]:
-    return list(_iter_search_container_images(clients, tag=tag, status=status, workspace_rid=workspace_rid))
+    return list(
+        _iter_search_container_images(
+            clients, tag=tag, status=status, extractor_rid=extractor_rid, workspace_rid=workspace_rid
+        )
+    )
