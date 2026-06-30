@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
+import grpc
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -125,6 +126,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 MAX_ASSETS_SHOWN = 10
+
+
+def _is_grpc_already_exists_error(exc: Exception) -> bool:
+    return (
+        isinstance(exc, NominalError)
+        and isinstance(exc.__cause__, grpc.RpcError)
+        and (exc.__cause__.code() is grpc.StatusCode.ALREADY_EXISTS)
+    )
 
 
 class WorkspaceSearchType(enum.Enum):
@@ -1507,6 +1516,39 @@ class NominalClient:
             self._clients, name, description=description, workspace_rid=workspace_rid
         )
 
+    def upsert_containerized_extractor(
+        self, name: str, *, description: str | None = None, workspace_rid: str | None = None
+    ) -> ContainerizedExtractor:
+        """Create or update a containerized extractor identified by exact name in one workspace."""
+
+        def exact_matches() -> list[ContainerizedExtractor]:
+            return [
+                extractor
+                for extractor in self.search_containerized_extractors(include_archived=True, workspace=workspace_rid)
+                if extractor.name == name
+            ]
+
+        matches = exact_matches()
+        if len(matches) > 1:
+            raise ValueError(f"Multiple containerized extractors found with name '{name}'")
+        if not matches:
+            try:
+                return self.create_containerized_extractor(name, description=description, workspace_rid=workspace_rid)
+            except Exception as exc:
+                if not _is_grpc_already_exists_error(exc):
+                    raise
+                matches = exact_matches()
+                if len(matches) == 1:
+                    return matches[0]
+                raise
+
+        extractor = matches[0]
+        new_is_archived = False if extractor.is_archived else None
+        new_description = description if description is not None and extractor.description != description else None
+        if new_is_archived is not None or new_description is not None:
+            extractor.update(description=new_description, is_archived=new_is_archived)
+        return extractor
+
     def get_containerized_extractor(self, rid: str, *, workspace_rid: str | None = None) -> ContainerizedExtractor:
         """Fetch a containerized extractor by rid."""
         return _get_containerized_extractor(self._clients, rid, workspace_rid=workspace_rid)
@@ -1533,11 +1575,14 @@ class NominalClient:
         *,
         tag: str | None = None,
         status: ContainerImageStatus | None = None,
+        extractor_rid: str | None = None,
         workspace: str | Workspace | None = None,
     ) -> Sequence[ContainerImage]:
         """Search container images in a single workspace (the client default if unset)."""
         workspace_rid = None if workspace is None else rid_from_instance_or_string(workspace)
-        return _search_images(self._clients, tag=tag, status=status, workspace_rid=workspace_rid)
+        return _search_images(
+            self._clients, tag=tag, status=status, extractor_rid=extractor_rid, workspace_rid=workspace_rid
+        )
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""
