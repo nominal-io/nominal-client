@@ -224,11 +224,19 @@ class IngestionJobBuilder:
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
         )
+        wide = file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})
+        # Set the csv/parquet `ingest` oneof via CopyFrom so the oneof case is always present, even
+        # when there are no tag columns (mutating an empty map would leave the oneof unset, which the
+        # backend rejects with "exactly one field is required in oneof").
         if file_type.is_parquet():
-            options.parquet.format.wide.tag_columns.update(tag_columns or {})
-            options.parquet.is_archive = file_type.is_parquet_archive()
+            options.parquet.CopyFrom(
+                file_ingest_pb2.ParquetIngestOptions(
+                    format=file_ingest_pb2.ParquetFormat(wide=wide),
+                    is_archive=file_type.is_parquet_archive(),
+                )
+            )
         else:
-            options.csv.format.wide.tag_columns.update(tag_columns or {})
+            options.csv.CopyFrom(file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide)))
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
         self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.file.source),)))
         return self
