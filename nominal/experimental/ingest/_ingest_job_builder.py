@@ -96,6 +96,16 @@ def _timestamp_metadata(column: str, timestamp_type: _AnyTimestampType) -> commo
     )
 
 
+# The canonical avro stream schema fixes the timestamp to an epoch-nanosecond `timestamps` field
+# (scout DataIngestFileRequestMapper.canonicalAvroStreamTimestampMetadata). The v2 API requires
+# timestamp_metadata on every file item, so avro items always send this definition.
+_AVRO_STREAM_TIMESTAMPS_FIELD = "timestamps"
+
+
+def _canonical_avro_timestamp_metadata() -> common_pb2.TimestampMetadata:
+    return _timestamp_metadata(_AVRO_STREAM_TIMESTAMPS_FIELD, Epoch(unit="nanoseconds"))
+
+
 def _file_ingest_options(
     *,
     timestamp_metadata: common_pb2.TimestampMetadata | None = None,
@@ -250,10 +260,13 @@ class IngestionJobBuilder:
         channel_name_overrides: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
-        """Register an Avro stream (.avro) file."""
+        """Register an Avro stream (.avro) file conforming to the canonical io.nominal.ingest.AvroStream schema."""
         file_path = Path(path)
         options = _file_ingest_options(
-            units=units, channel_prefix=channel_prefix, channel_name_overrides=channel_name_overrides
+            timestamp_metadata=_canonical_avro_timestamp_metadata(),
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
         )
         options.avro.SetInParent()
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
