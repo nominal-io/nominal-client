@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.150.1](https://github.com/nominal-io/nominal-client/compare/v1.150.0...v1.150.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **migration:** allow empty/absent source_asset_rids ([#853](https://github.com/nominal-io/nominal-client/issues/853)) ([5b38827](https://github.com/nominal-io/nominal-client/commit/5b38827dce2420bd450e41a428a9560726008944))
+
 ## [1.150.0](https://github.com/nominal-io/nominal-client/compare/v1.149.0...v1.150.0) (2026-06-29)
 
 
