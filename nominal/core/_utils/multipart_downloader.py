@@ -548,8 +548,9 @@ class MultipartFileDownloader:
         if not parent.exists():
             raise FileNotFoundError(f"Output directory does not exist: {parent}")
 
-        if path.exists():
-            raise FileExistsError(f"Destination already exists: {path}")
+        # An existing destination is intentionally overwritten: _plan_and_preallocate unlinks and
+        # re-preallocates it. Re-downloading to the same path is expected -- e.g. a channel-sync
+        # retry or a repeated download into a kept output_dir -- so this must not raise.
 
     def _preallocate(self, path: pathlib.Path, total_size_bytes: int) -> None:
         logger.info("Preallocating %s to %f MB", path, total_size_bytes / 1e6)
