@@ -22,7 +22,11 @@ class FileType(NamedTuple):
         #       and lowercase to handle files with mixed capitalization on extensions
         ext_str = "".join(path.suffixes).lower()
 
-        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
+        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes.
+        # When multiple registered extensions match (e.g. both ".zip" and ".parquet.zip" match
+        # "foo.parquet.zip"), prefer the longest/most-specific match so classification does not
+        # depend on the declaration order of FileTypes members.
+        best_match: FileType | None = None
         for file_type in FileTypes.__dict__.values():
             if not isinstance(file_type, cls):
                 # Skip any member variables which are not actually FileTypes
@@ -33,9 +37,13 @@ class FileType(NamedTuple):
                 continue
 
             # If the file ends with the given file extension, regardless of other suffixes it may have
-            # preceeding, then return the file type.
+            # preceeding, then it's a candidate; keep the longest matching extension.
             if ext_str.endswith(file_type.extension):
-                return file_type
+                if best_match is None or len(file_type.extension) > len(best_match.extension):
+                    best_match = file_type
+
+        if best_match is not None:
+            return best_match
 
         # Infer mimetype from filepath
         mimetype, _encoding = mimetypes.guess_type(path)
