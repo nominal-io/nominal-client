@@ -43,8 +43,8 @@ from typing import Literal
 import polars as pl
 
 from nominal._utils.iterator_tools import batched
-from nominal.core._utils.api_tools import build_compute_tag_filter
 from nominal.core._stream.write_stream import DataStream
+from nominal.core._utils.api_tools import build_compute_tag_filter
 from nominal.core.channel import Channel, ChannelDataType, _batch_check_channels_have_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -815,7 +815,7 @@ _TAGS_METADATA_FILE = "sync_tags.json"
 _UNDERCONSTRAINED_PROBE_BATCH = 200
 
 
-def _build_underconstrained_expansion(
+def _build_underconstrained_expansion(  # noqa: PLR0912, PLR0915 - cohesive channel classifier; splitting would obscure it
     channels: Sequence[Channel],
     tag_filter: Mapping[str, str],
     start: IntegralNanosecondsUTC,
@@ -896,11 +896,11 @@ def _build_underconstrained_expansion(
     internal_tag_only: list[str] = []
 
     for ch_name in sorted(underconstrained_names):
-        ch = by_name.get(ch_name)
-        if ch is None:
+        channel = by_name.get(ch_name)
+        if channel is None:
             continue
         try:
-            available = ch.get_available_tags(start_time=start, end_time=end, initial_tags=dict(tag_filter))
+            available = channel.get_available_tags(start_time=start, end_time=end, initial_tags=dict(tag_filter))
         except Exception:
             logger.warning("get_available_tags failed for channel %r; routing through original filter", ch_name)
             fully_constrained.add(ch_name)
@@ -957,7 +957,9 @@ def _build_underconstrained_expansion(
     if fully_constrained:
         passes.append((dict(tag_filter), frozenset(fully_constrained), None))
     else:
-        logger.info("All channels under filter %s are underconstrained; skipping original filter pass", dict(tag_filter))
+        logger.info(
+            "All channels under filter %s are underconstrained; skipping original filter pass", dict(tag_filter)
+        )
 
     for combo_key, ch_names in sorted(combo_to_channels.items()):
         combo_tags = dict(combo_key)
