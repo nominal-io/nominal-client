@@ -19,13 +19,16 @@ parameters from the environment, collects the files you write via
 otherwise, and turning any failure into a non-zero exit so the ingest job fails cleanly.
 
 Nominal describes the extractor's registered contract to the container through ``_NOMINAL_*``
-environment variables -- the registered output format (``_NOMINAL_OUTPUT_FORMAT``) and the
-mounted inputs (``_NOMINAL_INPUTS``). The decorator reads these so it neither has to inspect the
-filesystem nor be told the mode: manifest-vs-single-file is taken from the registered format. You
-may still pass ``@extractor(manifest=...)`` to assert the mode you expect -- if it disagrees with
-the registered format the decorator fails loudly rather than emitting output the uploader will
-reject. When the variables are absent (an older backend, or a local run) the decorator falls back
-to the declared flag and to listing the input mount.
+environment variables -- the registered output format (``_NOMINAL_OUTPUT_FORMAT``), the mounted
+inputs (``_NOMINAL_INPUTS``), and the declared parameters (``_NOMINAL_PARAMETERS``). The decorator
+reads these so it neither has to inspect the filesystem nor be told the mode: manifest-vs-single-file
+is taken from the registered format, and :meth:`ExtractorContext.input`/:meth:`ExtractorContext.param`
+resolve by either the registered display name or the environment variable. You may still pass
+``@extractor(manifest=...)`` to assert the mode you expect -- if it disagrees with the registered
+format the decorator fails loudly rather than emitting output the uploader will reject. When the
+variables are absent (an older backend, or a local run) the decorator falls back to the declared
+flag, to listing the input mount, and to treating parameters as optional unless ``required=True`` is
+passed explicitly.
 
 It depends only on the standard library, so it stays lightweight inside a minimal extractor
 image. Registering the built image with Nominal is a separate step (see the Nominal Hosted
@@ -51,9 +54,10 @@ _MANIFEST_FILENAME = "manifest.json"
 # Lets tests (and non-default mounts) point input discovery somewhere other than /input.
 _INPUT_DIR_ENV = "NOMINAL_EXTRACTOR_INPUT_DIR"
 # Contract metadata Nominal injects describing the registered extractor (scout
-# ContainerizedExtractorV1ActivitiesImpl). Both optional: absent on older backends and local runs.
+# ContainerizedExtractorV1ActivitiesImpl). All optional: absent on older backends and local runs.
 _OUTPUT_FORMAT_ENV = "_NOMINAL_OUTPUT_FORMAT"  # registered FileOutputFormat name, e.g. "MANIFEST", "PARQUET"
 _INPUTS_ENV = "_NOMINAL_INPUTS"  # JSON: [{"name","environmentVariable","path","required"}]
+_PARAMETERS_ENV = "_NOMINAL_PARAMETERS"  # JSON: [{"name","environmentVariable","required"}]
 _MANIFEST_FORMAT = "MANIFEST"  # the _NOMINAL_OUTPUT_FORMAT value that means manifest mode
 
 _T = TypeVar("_T")
@@ -61,7 +65,13 @@ _UNSET = object()
 
 
 class ExtractorError(Exception):
-    """Raised when the extractor contract is violated (missing input, wrong output count, ...)."""
+    """Raised when the extractor contract is violated (missing input, wrong output count, ...).
+
+    Deliberately does not extend ``nominal.core.exceptions.NominalError``: importing anything under
+    ``nominal.core`` executes ``nominal/core/__init__.py``, which imports ``NominalClient`` and pulls
+    in ``nominal_api``/``conjure_python_client`` -- exactly the dependency graph this module avoids to
+    stay light inside a minimal extractor image.
+    """
 
 
 class IngestType(str, enum.Enum):
@@ -91,6 +101,9 @@ class TimestampMetadata:
     different formats use different timestamp fields. Only numeric epoch timestamps are
     expressible here -- outputs needing ISO 8601 / custom-format timestamps should omit it and
     rely on the job-level metadata.
+
+    Distinct from ``nominal.core.containerized_extractors.TimestampMetadata``, which describes a
+    registration-time (job-level) timestamp field rather than a per-manifest-output override.
     """
 
     series_name: str
@@ -122,6 +135,39 @@ def _parse_input_specs(env: Mapping[str, str]) -> list[_InputSpec] | None:
             name=entry.get("name", entry["environmentVariable"]),
             path=entry["path"],
             required=bool(entry.get("required", False)),
+        )
+        for entry in entries
+    ]
+
+
+@dataclass(frozen=True)
+class _ParameterSpec:
+    """A declared parameter as described by ``_NOMINAL_PARAMETERS`` (registered name + required flag).
+
+    The parameter's value is not carried here -- it is exposed separately under ``environment_variable``.
+    """
+
+    environment_variable: str
+    name: str
+    required: bool
+
+
+def _parse_parameter_specs(env: Mapping[str, str]) -> list[_ParameterSpec] | None:
+    """Parse ``_NOMINAL_PARAMETERS`` into specs, or ``None`` when Nominal didn't inject it."""
+    raw = env.get(_PARAMETERS_ENV)
+    if not raw:
+        return None
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError as ex:
+        raise ExtractorError(f"{_PARAMETERS_ENV} is not valid JSON: {raw!r}") from ex
+    return [
+        _ParameterSpec(
+            environment_variable=entry["environmentVariable"],
+            name=entry.get("name", entry["environmentVariable"]),
+            # Unset means required on the platform (see scout's ExtractionContractDefaults.isRequired),
+            # but scout always resolves this before serializing here; True is just a defensive fallback.
+            required=bool(entry.get("required", True)),
         )
         for entry in entries
     ]
@@ -163,14 +209,16 @@ class ExtractorContext:
     _env: Mapping[str, str] = field(repr=False)
     _input_dir: Path = field(repr=False)
     _input_specs: list[_InputSpec] | None = field(default=None, repr=False)
+    _param_specs: list[_ParameterSpec] | None = field(default=None, repr=False)
     _outputs: list[_Output] = field(default_factory=list, repr=False)
 
     @property
     def inputs(self) -> list[Path]:
         """All input files Nominal mounted for this run.
 
-        Taken from the registered ``_NOMINAL_INPUTS`` metadata when present (in registration
-        order); otherwise discovered by listing the input mount, sorted by name.
+        Taken from the registered ``_NOMINAL_INPUTS`` metadata when present -- in the order Nominal
+        serializes them (sorted by environment variable name, not necessarily registration order);
+        otherwise discovered by listing the input mount, sorted by name.
         """
         if self._input_specs is not None:
             return [Path(spec.path) for spec in self._input_specs]
@@ -209,18 +257,34 @@ class ExtractorContext:
         type: Type[_T] = str,  # type: ignore[assignment]
         *,
         default: Any = _UNSET,
-        required: bool = False,
+        required: bool | None = None,
     ) -> Any:
         """Read a parameter from the environment, coerced to ``type``.
 
-        Returns ``default`` (or ``None``) when unset, unless ``required`` is set.
+        ``name`` -- the parameter's registered display name or its environment variable -- is
+        resolved against ``_NOMINAL_PARAMETERS`` when Nominal injected it; otherwise it is treated
+        directly as the environment variable. Returns ``default`` (or ``None``) when unset, unless
+        the parameter is required: pass ``required=True``/``False`` to say so explicitly, or omit it
+        to take the registered contract's required flag (unset parameters are required by default,
+        matching the platform); with no registered contract, an omitted ``required`` defaults to
+        ``False``.
         """
-        raw = self._env.get(name)
+        env_var, registered_required = self._resolve_param(name)
+        raw = self._env.get(env_var)
         if raw is None:
-            if required:
+            effective_required = registered_required if required is None else required
+            if effective_required:
                 raise ExtractorError(f"required parameter {name!r} is not set")
             return None if default is _UNSET else default
         return _coerce(type, raw, name)
+
+    def _resolve_param(self, name: str) -> tuple[str, bool]:
+        """Resolve a parameter name to its environment variable and registered required flag."""
+        if self._param_specs is not None:
+            for spec in self._param_specs:
+                if name in (spec.environment_variable, spec.name):
+                    return spec.environment_variable, spec.required
+        return name, False
 
     def add_output(
         self,
@@ -247,8 +311,8 @@ class ExtractorContext:
             raise ExtractorError(f"output file does not exist: {resolved}")
         try:
             relative = resolved.resolve().relative_to(self.output_dir.resolve())
-        except ValueError:
-            raise ExtractorError(f"output file {resolved} is not inside the output directory {self.output_dir}")
+        except ValueError as ex:
+            raise ExtractorError(f"output file {resolved} is not inside the output directory {self.output_dir}") from ex
         self._outputs.append(
             _Output(
                 relative_path=str(relative),
@@ -311,7 +375,8 @@ class Extractor:
             self._fn(ctx)
             self._finalize(ctx)
             return ctx
-        except BaseException:
+        except BaseException:  # deliberately broad: any failure (incl. SystemExit/KeyboardInterrupt
+            # from user code) must fail the ingest job cleanly, not just Exception subclasses.
             if exit:
                 traceback.print_exc()
                 sys.exit(1)
@@ -328,6 +393,7 @@ class Extractor:
             _env=env,
             _input_dir=Path(input_dir),
             _input_specs=_parse_input_specs(env),
+            _param_specs=_parse_parameter_specs(env),
         )
 
     def _resolve_manifest_mode(self, env: Mapping[str, str]) -> bool:
@@ -350,6 +416,7 @@ class Extractor:
         return self.manifest
 
     def _finalize(self, ctx: ExtractorContext) -> None:
+        self._check_for_undeclared_output_files(ctx)
         if ctx.manifest_mode:
             if not ctx._outputs:
                 raise ExtractorError("manifest extractor produced no outputs; call ctx.add_output() for each file")
@@ -359,6 +426,24 @@ class Extractor:
                 f"single-file extractor must produce exactly one output, got {len(ctx._outputs)}; "
                 "register the image with the MANIFEST output format (or declare @extractor(manifest=True)) "
                 "to emit multiple files"
+            )
+
+    @staticmethod
+    def _check_for_undeclared_output_files(ctx: ExtractorContext) -> None:
+        """Reject files sitting in ``output_dir`` that were never passed to ``add_output()``.
+
+        Counting only declared outputs isn't enough to catch a stray file: an author who writes two
+        files in single-file mode but only declares one would pass that count check while still
+        leaving two files on disk, reproducing the downstream ``MultipleFilesFound`` failure this
+        module exists to catch earlier.
+        """
+        declared = {output.relative_path for output in ctx._outputs}
+        actual = {str(path.relative_to(ctx.output_dir)) for path in ctx.output_dir.rglob("*") if path.is_file()}
+        undeclared = sorted(actual - declared)
+        if undeclared:
+            raise ExtractorError(
+                f"output directory contains file(s) not passed to ctx.add_output(): {undeclared}; declare "
+                "every file you want ingested, or remove stray files from the output directory"
             )
 
 

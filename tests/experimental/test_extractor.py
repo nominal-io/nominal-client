@@ -273,7 +273,7 @@ def test_inputs_enumerated_from_nominal_inputs_metadata(dirs: tuple[Path, Path])
 
     @extractor
     def reads_inputs(ctx: ExtractorContext) -> None:
-        # Enumerated from metadata in registration order, without listing the filesystem.
+        # Enumerated from metadata (in the order Nominal serializes it), without listing the filesystem.
         assert ctx.inputs == [Path("/input/telemetry.parquet"), Path("/input/events.parquet")]
         # Resolvable by environment variable or by registered display name.
         assert ctx.input("EVENTS") == Path("/input/events.parquet")
@@ -286,6 +286,66 @@ def test_inputs_enumerated_from_nominal_inputs_metadata(dirs: tuple[Path, Path])
         env=_env(input_dir, output_dir, _NOMINAL_OUTPUT_FORMAT="PARQUET", _NOMINAL_INPUTS=nominal_inputs),
         exit=False,
     )
+
+
+def test_param_resolved_by_registered_display_name(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+    nominal_parameters = json.dumps([{"name": "Chunk Size", "environmentVariable": "PARTS", "required": False}])
+
+    @extractor
+    def read_by_display_name(ctx: ExtractorContext) -> None:
+        assert ctx.param("Chunk Size", int) == 3
+        assert ctx.param("PARTS", int) == 3
+        out = ctx.output_dir / "out.bin"
+        out.write_text("x")
+        ctx.add_output(out)
+
+    read_by_display_name.run(
+        env=_env(input_dir, output_dir, PARTS="3", _NOMINAL_PARAMETERS=nominal_parameters), exit=False
+    )
+
+
+def test_required_param_defaults_from_registered_contract(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+    nominal_parameters = json.dumps([{"name": "Mode", "environmentVariable": "MODE", "required": True}])
+
+    @extractor
+    def needs_param(ctx: ExtractorContext) -> None:  # pragma: no cover - must fail before the body runs
+        ctx.param("MODE")
+
+    with pytest.raises(ExtractorError, match="required parameter 'MODE'"):
+        needs_param.run(env=_env(input_dir, output_dir, _NOMINAL_PARAMETERS=nominal_parameters), exit=False)
+
+
+def test_explicit_required_overrides_registered_contract(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+    nominal_parameters = json.dumps([{"name": "Mode", "environmentVariable": "MODE", "required": True}])
+    captured: dict[str, object] = {}
+
+    @extractor
+    def skips_param(ctx: ExtractorContext) -> None:
+        captured["mode"] = ctx.param("MODE", required=False)
+        out = ctx.output_dir / "out.bin"
+        out.write_text("x")
+        ctx.add_output(out)
+
+    skips_param.run(env=_env(input_dir, output_dir, _NOMINAL_PARAMETERS=nominal_parameters), exit=False)
+
+    assert captured == {"mode": None}
+
+
+def test_finalize_rejects_undeclared_output_files(dirs: tuple[Path, Path]) -> None:
+    input_dir, output_dir = dirs
+
+    @extractor
+    def forgets_to_declare(ctx: ExtractorContext) -> None:
+        declared = ctx.output_dir / "declared.bin"
+        declared.write_text("x")
+        (ctx.output_dir / "stray.bin").write_text("x")
+        ctx.add_output(declared)
+
+    with pytest.raises(ExtractorError, match="not passed to ctx.add_output"):
+        forgets_to_declare.run(env=_env(input_dir, output_dir), exit=False)
 
 
 def test_run_exits_nonzero_on_failure(dirs: tuple[Path, Path]) -> None:
