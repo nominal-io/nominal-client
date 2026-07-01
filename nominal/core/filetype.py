@@ -128,6 +128,7 @@ class FileTypes:
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
     DATAFLASH: FileType = FileType(".bin", "application/octet-stream")
     JSON: FileType = FileType(".json", "application/json")
+    M2TS: FileType = FileType(".m2ts", "video/mp2t")
     MKV: FileType = FileType(".mkv", "video/x-matroska")
     MP4: FileType = FileType(".mp4", "video/mp4")
     MCAP: FileType = FileType(".mcap", "application/octet-stream")
@@ -146,4 +147,4 @@ class FileTypes:
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
     _PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
     _JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
-    _VIDEO_TYPES = (AVI, MKV, MP4, TS)
+    _VIDEO_TYPES = (AVI, M2TS, MKV, MP4, TS)
