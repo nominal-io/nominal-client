@@ -1,16 +1,34 @@
+from __future__ import annotations
+
 import collections
 import concurrent.futures
 import dataclasses
 import datetime
 import logging
-from typing import Iterator, Mapping, Sequence
+import pathlib
+import random
+import threading
+import time
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Sequence
 
+import requests
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+from nominal.core._utils.multipart_downloader import (
+    DownloadItem,
+    MultipartFileDownloader,
+    PresignedURL,
+    PresignedURLProvider,
+)
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.datasource import DataSource
@@ -53,7 +71,137 @@ _EXPORTABLE_DATA_TYPES: frozenset[ChannelDataType] = frozenset(
 DEFAULT_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 _INTERNAL_TS_COL = "__nmnl_ts__"  # internal join key, chosen to avoid collision with channel names
 
+# Presigned (write-to-disk) export tuning. Presigned links are long-lived: a generous TTL means each
+# link is fetched once and not proactively re-signed mid-download. Re-signing is not free -- each link
+# is a *fresh* server-side export that can produce a different S3 object/ETag -- so we size the TTL so
+# it effectively never happens (the downloader still re-signs once on a 403).
+DEFAULT_URL_TTL_SECS = 3600.0
+DEFAULT_URL_SKEW_SECS = 60.0
+
+# Each presigned link is a server-side export *compute query*; transient failures (5xx / 429, most
+# commonly Compute:ConcurrentQueriesExceeded backpressure) are retried with jittered exponential
+# backoff that grows to ~30s -- patient enough to ride out shared-limit contention.
+DEFAULT_MAX_LINK_RETRIES = 8
+_MAX_LINK_RETRY_BACKOFF_SECS = 30.0
+
+# The downloader plans (generates links + waits for S3 materialization) for many files concurrently.
+# Since each link is a server-side compute query, bound how many generate at once -- independently of
+# `num_workers` -- to stay under the backend's concurrent-query limit. Byte downloads stay fully
+# parallel regardless; kept well below the download concurrency on purpose.
+DEFAULT_MAX_CONCURRENT_LINKS = 4
+
+# Large exports are materialized to S3 asynchronously: the link is returned with the final
+# `file_size_bytes` before the object is fully written, and its served size grows until complete. We
+# poll until served size reaches `file_size_bytes` before downloading so we never capture a partial
+# (header-only) file.
+DEFAULT_READINESS_TIMEOUT_SECS = 600.0
+
 logger = logging.getLogger(__name__)
+
+
+class ExportNotReadyError(RuntimeError):
+    """Raised when an export's S3 object is not fully materialized before the readiness timeout."""
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    """True for errors worth retrying: HTTP 5xx/429 (incl. ConjureHTTPError) or network-level errors."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    return isinstance(exc, requests.RequestException)
+
+
+@dataclasses.dataclass
+class _PlanningProfile:
+    """Thread-safe accumulator for per-file planning timings, to diagnose where planning time goes.
+
+    The presigned planning phase has three distinct, serial-per-file costs that the parallel planner
+    runs concurrently across files: waiting for a link-generation slot (`semaphore`), the link
+    generation backend call itself (`link`), and polling S3 until the object is materialized
+    (`materialize`). Recording them separately lets `log_summary` attribute slow planning to the
+    right cause rather than lumping it into one number.
+    """
+
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    _semaphore: list[float] = dataclasses.field(default_factory=list)
+    _link: list[float] = dataclasses.field(default_factory=list)
+    _materialize: list[float] = dataclasses.field(default_factory=list)
+
+    def record(self, *, semaphore_s: float, link_s: float, materialize_s: float) -> None:
+        with self._lock:
+            self._semaphore.append(semaphore_s)
+            self._link.append(link_s)
+            self._materialize.append(materialize_s)
+
+    def log_summary(self) -> None:
+        """Log an INFO-level breakdown of total/avg/max time spent in each planning phase."""
+        with self._lock:
+            count = len(self._link)
+            if not count:
+                return
+
+            def stats(samples: list[float]) -> tuple[float, float, float]:
+                return sum(samples), sum(samples) / len(samples), max(samples)
+
+            sem_total, sem_avg, sem_max = stats(self._semaphore)
+            link_total, link_avg, link_max = stats(self._link)
+            mat_total, mat_avg, mat_max = stats(self._materialize)
+
+        logger.info(
+            "Planning profile over %d file(s) [wall-clock is lower due to parallelism]: "
+            "link-gen total=%.1fs avg=%.2fs max=%.2fs | "
+            "materialize-wait total=%.1fs avg=%.2fs max=%.2fs | "
+            "semaphore-wait total=%.1fs avg=%.2fs max=%.2fs",
+            count,
+            link_total,
+            link_avg,
+            link_max,
+            mat_total,
+            mat_avg,
+            mat_max,
+            sem_total,
+            sem_avg,
+            sem_max,
+        )
+
+
+@contextmanager
+def _progress_bars(
+    total: int, show: bool, console: Console | None = None
+) -> Iterator[tuple[Callable[[], None], Callable[[], None]]]:
+    """Yield ``(advance_prepare, advance_download)`` callables for the pipelined export.
+
+    When ``show`` is set, both advance tasks on a single Rich progress display: one tracks files
+    whose presigned link is ready (planning/pre-allocation) and one tracks completed downloads, each
+    with an elapsed timer and an estimated time remaining. When not shown, both are no-ops. Pass the
+    ``console`` shared with a Rich logging handler so log lines render cleanly above the live bars;
+    otherwise route logs to a file so they don't corrupt the display.
+    """
+    if not show:
+        noop: Callable[[], None] = lambda: None  # noqa: E731 - trivial no-op
+        yield noop, noop
+        return
+
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        TextColumn,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+    )
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),  # estimated time remaining
+        console=console,
+    ) as progress:
+        prepare = progress.add_task("Preparing links", total=total)
+        download = progress.add_task("Downloading", total=total)
+        yield (lambda: progress.advance(prepare, 1), lambda: progress.advance(download, 1))
 
 
 def _extract_bucket_counts(
@@ -616,14 +764,29 @@ class PolarsExportHandler:
         points_per_dataframe: int = DEFAULT_POINTS_PER_DATAFRAME,
         channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
         num_workers: int = DEFAULT_NUM_WORKERS,
+        max_concurrent_links: int = DEFAULT_MAX_CONCURRENT_LINKS,
     ):
-        """Initialize export handler"""
+        """Initialize export handler.
+
+        Args:
+            client: Nominal client used for all API calls.
+            points_per_request: Target maximum number of points fetched in a single export request.
+            points_per_dataframe: Target maximum number of points per output DataFrame / file; drives
+                how the time range is subdivided into batches.
+            channels_per_request: Maximum number of channels packed into a single request.
+            num_workers: Number of parallel worker threads used for requests and downloads.
+            max_concurrent_links: Maximum presigned export links generated concurrently during the
+                (multi-threaded) planning phase of `export_to_files`. Each link is a server-side
+                compute query, so this is bounded below `num_workers` to stay under the backend's
+                concurrent-query limit; byte downloads remain fully parallel regardless.
+        """
         self._client = client
         self._points_per_request = points_per_request
         self._points_per_dataframe = points_per_dataframe
         self._channels_per_request = channels_per_request
 
         self._num_workers = num_workers
+        self._max_concurrent_links = max_concurrent_links
 
     def _compute_channel_rates(
         self,
@@ -671,13 +834,36 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
+        skip_rate_estimation: bool = False,
     ) -> Mapping[_TimeRange, Sequence[_ExportJob]]:
         """Compute the mapping of export time slices to the sequence of export jobs to produce data for that range.
 
         `channels` is expected to be already filtered to exportable data types by the caller.
+
+        When ``skip_rate_estimation`` is set, the rate-based planning is bypassed entirely: each channel
+        becomes a single job over the whole ``time_range`` (one request per channel, no grouping, no
+        time-batching, no channel dropped). The caller controls request size via ``time_range`` -- used
+        for channels whose rate can't be estimated (e.g. high-cardinality enums that error with
+        ``Compute:TooManyCategories``), where the caller halves the range and retries on failure.
         """
         if buckets is not None and resolution is not None:
             raise ValueError("Cannot provide `buckets` and `resolution`")
+
+        if skip_rate_estimation:
+            unsized_jobs: list[_ExportJob] = [
+                _ExportJob(
+                    datasource_rid=channel.data_source,
+                    channel_names=[channel.name],
+                    channel_types={channel.name: channel.data_type},
+                    time_slice=time_range,
+                    tags=dict(tags or {}),
+                    buckets=buckets,
+                    resolution=resolution,
+                    timestamp_type=timestamp_type,
+                )
+                for channel in channels
+            ]
+            return {time_range: unsized_jobs}
 
         supported_channels, points_per_second = self._compute_channel_rates(channels, time_range, tags)
         batch_duration_ns = _compute_batch_duration(
@@ -897,3 +1083,357 @@ class PolarsExportHandler:
                             logger.warning("Dataframe empty after merging...")
                         else:
                             yield merged_df.rename({_INTERNAL_TS_COL: time_column})
+
+    def export_to_files(
+        self,
+        channels: Sequence[Channel],
+        start: IntegralNanosecondsUTC,
+        end: IntegralNanosecondsUTC,
+        output_dir: str | pathlib.Path,
+        *,
+        tags: Mapping[str, str] | None = None,
+        batch_duration: datetime.timedelta | None = None,
+        timestamp_type: _AnyExportableTimestampType = "epoch_seconds",
+        buckets: int | None = None,
+        resolution: IntegralNanosecondsDuration | None = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        console: Console | None = None,
+        on_file_planned: Callable[[pathlib.Path], None] | None = None,
+        on_file_complete: Callable[[pathlib.Path], None] | None = None,
+        reuse_complete: bool = False,
+        skip_rate_estimation: bool = False,
+    ) -> list[pathlib.Path]:
+        """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
+
+        Unlike :meth:`export`, which streams CSV through the Nominal API server and merges everything
+        into in-memory DataFrames, this asks the export service for an S3 **presigned link** per request
+        (``generate_export_channel_data_presigned_link``) and downloads each file **straight to disk**
+        using parallel ranged GETs. This lifts the API-proxy size ceiling and is much faster for large
+        exports.
+
+        Link generation (server-side compute + S3 materialization) is **pipelined** with downloads via
+        a single :class:`MultipartFileDownloader`: each file starts downloading the instant its own link
+        is ready, while other links are still being generated, and all byte downloads share one pool so
+        the number of download threads stays constant. Concurrent link generation is bounded by
+        ``max_concurrent_links`` to stay under the backend's concurrent-query limit.
+
+        It reuses the exact same planning phase as :meth:`export`: each planned export request maps to
+        one file, so an export of more than ``channels_per_request`` channels (or across multiple
+        datasources) produces several column-partitioned ``.csv.gz`` files covering the same
+        timestamps. The files are not merged -- each is a standalone gzipped CSV.
+
+        LOG / UNKNOWN channels are filtered out with a warning; only DOUBLE, INT, and STRING channels
+        flow through the export pipeline.
+
+        Args:
+            channels: Channels to export.
+            start: Start of the export range (nanoseconds UTC).
+            end: End of the export range (nanoseconds UTC).
+            output_dir: Directory to write files into. Created if it does not exist.
+            tags: Key-value pairs used to filter channel data server-side.
+            batch_duration: Explicit per-batch time window. If omitted, one is computed from total
+                channel rate and ``points_per_dataframe``.
+            timestamp_type: Output timestamp representation (``epoch_seconds``, ``iso8601``, etc.).
+            buckets: Decimate each channel to at most this many buckets per request. Mutually exclusive
+                with ``resolution``.
+            resolution: Decimate each channel to samples at this interval (nanoseconds). Mutually
+                exclusive with ``buckets``.
+            file_prefix: Prefix for written file names.
+            show_progress: When True, render a Rich progress display with two bars -- files whose
+                presigned link is ready, and completed downloads -- each with elapsed time and an
+                estimated time remaining. Route logs to a file (not stdout) so they don't corrupt the
+                live display; pass ``console`` to share a console with a Rich logging handler instead.
+            console: Optional Rich console to render the progress display on.
+            on_file_planned: Optional callback invoked with each file's path once its presigned link
+                is ready and the file is pre-allocated (before its bytes download). Fires serially
+                from the download-driving thread, like ``on_file_complete``.
+            on_file_complete: Optional callback invoked with each file's path the instant that file
+                finishes downloading -- before this method returns -- so callers can begin processing
+                files as they land rather than waiting for the whole batch. It is called serially from
+                the single download-driving thread (never concurrently), so it needs no locking; keep
+                it reasonably quick, since a slow callback pauses harvesting of other completed
+                downloads (the byte-download workers keep running regardless).
+            reuse_complete: When set, an output file that already exists with a byte size matching the
+                planned export size is reused as-is instead of re-downloading (useful when re-running
+                over a populated output_dir); a differently-sized leftover is overwritten.
+            skip_rate_estimation: When set, bypass rate-based planning and emit one export request per
+                channel over the whole range (no grouping, no time-batching, no channel dropped). Use
+                for channels whose rate can't be estimated (e.g. high-cardinality enums); the caller
+                controls request size via the range (and may halve it and retry on failure).
+
+        Returns:
+            The list of written file paths, sorted.
+
+        Raises:
+            ExportNotReadyError: If an export's S3 object is not fully materialized before the
+                readiness timeout.
+            RuntimeError: If any file fails to download.
+        """
+        output_dir = pathlib.Path(output_dir)
+        if not channels:
+            logger.warning("No channels requested for export-- returning")
+            return []
+        if None not in (buckets, resolution):
+            raise ValueError("Cannot export data decimated with both buckets and resolution")
+
+        # Exclude channels with unsupported data types
+        supported_channels = [ch for ch in channels if ch.data_type in _EXPORTABLE_DATA_TYPES]
+        unsupported = len(channels) - len(supported_channels)
+        if unsupported:
+            logger.warning("Could not determine datatypes of %d channels -- ignoring for export", unsupported)
+
+        batch_duration = self._clamp_batch_duration_for_resolution(batch_duration, resolution)
+
+        # Plan first (the only blocking step); rate estimation is internally multi-threaded. The
+        # existing planner already maps each export request to exactly one file.
+        export_jobs = self._compute_export_jobs(
+            supported_channels,
+            _TimeRange(start, end),
+            timestamp_type,
+            tags or {},
+            buckets,
+            resolution,
+            batch_duration,
+            skip_rate_estimation=skip_rate_estimation,
+        )
+        # One semaphore shared across all providers bounds how many presigned links (server-side
+        # compute queries) generate concurrently while the downloader plans files in parallel, keeping
+        # us under the backend's concurrent-query limit. Byte downloads stay fully parallel.
+        link_semaphore = threading.BoundedSemaphore(self._max_concurrent_links)
+        # Records per-file planning timings (semaphore wait / link gen / materialization) so we can
+        # report where the planning phase spends its time -- summarized at INFO once downloads finish.
+        profile = _PlanningProfile()
+        items = self._build_download_items(export_jobs, output_dir, file_prefix, link_semaphore, profile)
+        if not items:
+            logger.warning("No export jobs computed-- returning")
+            return []
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Exporting %d channels into %d file(s) under %s", len(supported_channels), len(items), output_dir)
+        with (
+            LogTiming(f"Downloaded {len(items)} export file(s)"),
+            _progress_bars(len(items), show_progress, console) as (advance_prepare, advance_download),
+            # A single downloader for the whole export: byte downloads share one pool (constant
+            # download-thread count) while link generation is pipelined on the downloader's separate
+            # planning pool, so files download as soon as their link is ready.
+            MultipartFileDownloader.create(
+                max_workers=self._num_workers,
+                # No header_provider: the links are genuinely pre-signed (auth is in the URL), so the
+                # readiness probe and the downloads are both header-less and consistent.
+            ) as downloader,
+        ):
+
+            def _on_download_planned(path: pathlib.Path) -> None:
+                advance_prepare()
+                if on_file_planned is not None:
+                    on_file_planned(path)
+
+            def _on_download_complete(path: pathlib.Path) -> None:
+                advance_download()
+                if on_file_complete is not None:
+                    on_file_complete(path)
+
+            results = downloader.download_files_pipelined(
+                items,
+                on_file_planned=_on_download_planned,
+                on_file_complete=_on_download_complete,
+                reuse_complete=reuse_complete,
+            )
+        profile.log_summary()
+
+        if results.failed:
+            for dest, ex in results.failed.items():
+                logger.error("Failed to export %s", dest, exc_info=ex)
+            # Surface the distinct underlying causes in the error itself (not just a count), so the
+            # failure is diagnosable without digging through the per-file tracebacks above.
+            causes = sorted({f"{type(ex).__name__}: {ex}" for ex in results.failed.values()})
+            raise RuntimeError(
+                f"Failed to export {len(results.failed)} of {len(items)} file(s); cause(s): "
+                + "; ".join(causes[:3])
+                + (f" (+{len(causes) - 3} more)" if len(causes) > 3 else "")
+            )
+
+        return sorted(results.succeeded)
+
+    def _clamp_batch_duration_for_resolution(
+        self, batch_duration: datetime.timedelta | None, resolution: IntegralNanosecondsDuration | None
+    ) -> datetime.timedelta | None:
+        """Clamp ``batch_duration`` so decimated exports stay within the backend bucket limit."""
+        if resolution is None:
+            return batch_duration
+
+        # If the batch duration is larger than this and data is downsampled with the given resolution,
+        # the export would exceed the backend bucket limit and fail.
+        computed = datetime.timedelta(seconds=(resolution * MAX_NUM_BUCKETS) / 1e9)
+        if batch_duration is None:
+            logger.info(
+                "Manually setting batch_duration to %fs (resolution=%dns)", computed.total_seconds(), resolution
+            )
+            return computed
+        elif computed < batch_duration:
+            logger.warning(
+                "Configured batch_duration of %fs would result in failing exports with resolution=%dns. "
+                "Setting batch_duration to %fs instead.",
+                batch_duration.total_seconds(),
+                resolution,
+                computed.total_seconds(),
+            )
+            return computed
+        return batch_duration
+
+    def _build_download_items(
+        self,
+        export_jobs: Mapping[_TimeRange, Sequence[_ExportJob]],
+        output_dir: pathlib.Path,
+        file_prefix: str,
+        link_semaphore: threading.BoundedSemaphore,
+        profile: _PlanningProfile,
+    ) -> list[DownloadItem]:
+        """Build one :class:`DownloadItem` per export job -- a 1:1 file:job (and thus file:dataframe) map."""
+        # Resolve each datasource once (cached) since many jobs share a datasource.
+        datasource_rids = {job.datasource_rid for jobs in export_jobs.values() for job in jobs}
+        datasources = {rid: self._client.get_datasource(rid) for rid in datasource_rids}
+
+        items: list[DownloadItem] = []
+        for slice_idx, time_slice in enumerate(sorted(export_jobs.keys())):
+            for job_idx, job in enumerate(export_jobs[time_slice]):
+                destination = output_dir / self._file_name(file_prefix, job, slice_idx, job_idx)
+                provider = self._presigned_url_provider(job, datasources[job.datasource_rid], link_semaphore, profile)
+                items.append(DownloadItem(provider=provider, destination=destination, part_size=DEFAULT_CHUNK_SIZE))
+        return items
+
+    @staticmethod
+    def _file_name(file_prefix: str, job: _ExportJob, slice_idx: int, job_idx: int) -> str:
+        datasource_short = job.datasource_rid.split(".")[-1]
+        return f"{file_prefix}_{datasource_short}_s{slice_idx:04d}_g{job_idx:03d}.csv.gz"
+
+    def _presigned_url_provider(
+        self,
+        job: _ExportJob,
+        datasource: DataSource,
+        link_semaphore: threading.BoundedSemaphore,
+        profile: _PlanningProfile,
+    ) -> PresignedURLProvider:
+        # Build the export request lazily on first fetch (it issues a get_channels call), then memoize
+        # so re-signing on expiry doesn't rebuild it.
+        cached_request: scout_dataexport_api.ExportDataRequest | None = None
+
+        def fetch() -> PresignedURL:
+            nonlocal cached_request
+            if cached_request is None:
+                cached_request = job.export_request(datasource)
+            # Hold a slot across the (retrying) link generation so concurrent compute queries stay
+            # bounded; release it before the S3 readiness wait, which isn't a query. Time each phase
+            # separately so slow planning can be attributed to queueing, link gen, or the S3 wait.
+            acquire_start = time.monotonic()
+            with link_semaphore:
+                semaphore_s = time.monotonic() - acquire_start
+                link_start = time.monotonic()
+                response = self._generate_presigned_link(cached_request)
+                link_s = time.monotonic() - link_start
+            url = response.presigned_url.url
+            # Large exports are written to S3 asynchronously; wait until the object is fully
+            # materialized so the downloader never captures a partial (header-only) file. The same
+            # probe yields the size (authoritative from file_size_bytes) and ETag, which we pass to
+            # the downloader so it can skip its own size/ETag probe -- one fewer round-trip per file.
+            materialize_start = time.monotonic()
+            etag = self._wait_until_materialized(url, response.file_size_bytes)
+            materialize_s = time.monotonic() - materialize_start
+
+            profile.record(semaphore_s=semaphore_s, link_s=link_s, materialize_s=materialize_s)
+            logger.debug(
+                "Planned %d-channel %.2f MB export: link-gen %.2fs, materialize %.2fs, semaphore-wait %.2fs",
+                len(job.channel_names),
+                response.file_size_bytes / 1e6,
+                link_s,
+                materialize_s,
+                semaphore_s,
+            )
+            return PresignedURL(url=url, total_size=response.file_size_bytes, etag=etag)
+
+        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=DEFAULT_URL_TTL_SECS, skew_secs=DEFAULT_URL_SKEW_SECS)
+
+    def _generate_presigned_link(
+        self, request: scout_dataexport_api.ExportDataRequest
+    ) -> scout_dataexport_api.GeneratePresignedLinkResponse:
+        """Generate a presigned export link, retrying transient (5xx / 429 / network) failures.
+
+        Each link is a separate server-side compute query, so a transient backend error on one file
+        shouldn't fail the whole export; non-transient errors (e.g. 4xx) are raised immediately. The
+        dominant transient here is ``Compute:ConcurrentQueriesExceeded`` -- pure backpressure -- so we
+        retry with exponential backoff plus full jitter to de-correlate concurrent workers.
+        """
+        delay = 0.5
+        for attempt in range(DEFAULT_MAX_LINK_RETRIES):
+            try:
+                return self._client._clients.dataexport.generate_export_channel_data_presigned_link(
+                    self._client._clients.auth_header, request
+                )
+            except Exception as exc:
+                if attempt == DEFAULT_MAX_LINK_RETRIES - 1 or not _is_transient_error(exc):
+                    raise
+                # Full jitter (sleep in [0, delay]) spreads concurrent retriers across the window.
+                sleep_secs = random.uniform(0, delay)
+                logger.warning(
+                    "Presigned link generation failed (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1,
+                    DEFAULT_MAX_LINK_RETRIES,
+                    sleep_secs,
+                    exc,
+                )
+                time.sleep(sleep_secs)
+                delay = min(delay * 2, _MAX_LINK_RETRY_BACKOFF_SECS)
+        raise AssertionError("unreachable")  # loop either returns or raises
+
+    def _wait_until_materialized(self, url: str, expected_size: int) -> str | None:
+        """Block until the object served at ``url`` reaches ``expected_size`` bytes; return its ETag.
+
+        The presigned export endpoint returns the authoritative final ``file_size_bytes`` before the
+        S3 object is fully written; its served size grows until complete. Polling avoids downloading a
+        partially-written file. Empty exports (tiny ``expected_size``) satisfy this immediately.
+
+        The same probe also yields the object's ETag, which is returned so the caller can hand it to
+        the downloader (no separate size/ETag probe needed).
+
+        Raises:
+            ExportNotReadyError: if the object never reaches ``expected_size`` before the readiness
+                timeout -- failing loudly here beats proceeding into ranged GETs past EOF, which S3
+                answers with an opaque 416.
+        """
+        deadline = time.monotonic() + DEFAULT_READINESS_TIMEOUT_SECS
+        delay = 0.5
+        while True:
+            served, etag = self._served_size(url)
+            if served is not None and served >= expected_size:
+                return etag
+            if time.monotonic() >= deadline:
+                raise ExportNotReadyError(
+                    f"Export object not fully materialized after {DEFAULT_READINESS_TIMEOUT_SECS:.0f}s "
+                    f"(served={served}, expected={expected_size} bytes): {url}"
+                )
+            time.sleep(delay)
+            delay = min(delay * 2, 5.0)
+
+    @staticmethod
+    def _served_size(url: str) -> tuple[int | None, str | None]:
+        """Return ``(served_size, etag)`` S3 currently reports for ``url`` via a ranged probe.
+
+        ``served_size`` is the full object size (``None`` if it couldn't be determined). The probe
+        streams (and closes) the 1-byte body so we never buffer a response body just to read headers.
+        """
+        try:
+            resp = requests.get(url, headers={"Range": "bytes=0-0"}, timeout=30.0, stream=True)
+        except requests.RequestException:
+            return None, None
+        try:
+            if resp.status_code not in (200, 206):
+                return None, None
+            etag = resp.headers.get("ETag")
+            content_range = resp.headers.get("Content-Range")
+            if content_range:
+                return int(content_range.split("/")[-1]), etag
+            content_length = resp.headers.get("Content-Length")
+            return (int(content_length) if content_length is not None else None), etag
+        finally:
+            resp.close()

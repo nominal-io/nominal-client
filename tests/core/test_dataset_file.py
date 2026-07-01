@@ -5,6 +5,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import api
 
 from nominal.core.dataset_file import (
     DatasetFile,
@@ -16,6 +17,22 @@ from nominal.core.dataset_file import (
     wait_for_files_to_ingest,
 )
 from nominal.core.exceptions import NominalIngestError
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"success": api.SuccessResult()}, IngestStatus.SUCCESS),
+        ({"in_progress": api.InProgressResult()}, IngestStatus.IN_PROGRESS),
+        # Transient backend states all map to IN_PROGRESS so polling keeps waiting.
+        ({"queued": api.Queued()}, IngestStatus.IN_PROGRESS),
+        ({"parsing": api.Parsing()}, IngestStatus.IN_PROGRESS),
+        ({"ingesting": api.Ingesting()}, IngestStatus.IN_PROGRESS),
+        ({"deleted": api.Deleted()}, IngestStatus.DELETED),
+    ],
+)
+def test_ingest_status_from_conjure(kwargs: dict, expected: IngestStatus) -> None:
+    assert IngestStatus._from_conjure(api.IngestStatusV2(**kwargs)) is expected
 
 
 def _make_file(file_id: str, statuses: list[IngestStatus]) -> DatasetFile:

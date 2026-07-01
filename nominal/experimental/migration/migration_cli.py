@@ -13,6 +13,7 @@ from nominal_api.scout_sandbox_api import SetDemoWorkbooksRequest
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.experimental import as_user
+from nominal.experimental.migration.channel_sync import ChannelSyncOptions, sync_missing_channel_data
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
@@ -567,6 +568,158 @@ def copy(
 
     if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
+
+
+def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
+    """Parse repeated ``--tag key=value`` options into a dict."""
+    tags: dict[str, str] = {}
+    for item in tag:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            raise click.BadParameter(f"--tag must be key=value, got {item!r}")
+        tags[key] = value
+    return tags
+
+
+@migrate_cmd.command(
+    name="sync-channels",
+    help="Backfill the channel data a destination dataset is missing, from a source dataset.",
+)
+@migration_client_options
+@global_options
+@click.option(
+    "--source-dataset-rid",
+    default=None,
+    help="RID of the source dataset to copy data from. Required unless --phase stream.",
+)
+@click.option("--destination-dataset-rid", required=True, help="RID of the destination dataset to fill.")
+@click.option(
+    "--start", default=None, help="Window start (ISO-8601, or epoch nanoseconds). Required unless --phase stream."
+)
+@click.option(
+    "--end", default=None, help="Window end (ISO-8601, or epoch nanoseconds). Required unless --phase stream."
+)
+@click.option(
+    "--bucket-seconds",
+    default=3600.0,
+    show_default=True,
+    type=click.FloatRange(min=0, min_open=True),
+    help="Detection bucket width in seconds.",
+)
+@click.option(
+    "--tag",
+    multiple=True,
+    help="Datascope tag filter as key=value (repeatable). Applied to detection, export, and upload.",
+)
+@click.option(
+    "--max-retries",
+    default=2,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help="Times to re-stream a still-short range after the first attempt.",
+)
+@click.option(
+    "--settle-seconds",
+    default=30.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help="Wait for asynchronous ingestion to settle before re-detecting.",
+)
+@click.option(
+    "--detect-workers",
+    default=8,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Threads issuing batched detection (count) requests concurrently.",
+)
+@click.option(
+    "--detect-channels-per-request",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Channels summarized per batched detection request.",
+)
+@click.option(
+    "--output-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory for exported CSVs. A temporary directory is used (and cleaned up) when omitted. "
+    "Required for --phase download and --phase stream.",
+)
+@click.option(
+    "--phase",
+    default="all",
+    show_default=True,
+    type=click.Choice(["all", "plan", "download", "stream"]),
+    help="Which stage(s) to run: 'all' detects+downloads+streams (with retries); 'plan' only detects "
+    "and reports what would sync; 'download' exports the missing ranges to --output-dir without "
+    "streaming; 'stream' streams the CSVs already in --output-dir into the destination.",
+)
+def sync_channels(
+    clients: tuple[NominalClient, NominalClient],
+    source_dataset_rid: str | None,
+    destination_dataset_rid: str,
+    start: str | None,
+    end: str | None,
+    bucket_seconds: float,
+    tag: tuple[str, ...],
+    max_retries: int,
+    settle_seconds: float,
+    detect_workers: int,
+    detect_channels_per_request: int,
+    output_dir: Path | None,
+    phase: str,
+) -> None:
+    # Imported lazily so timestamp parsing stays out of the module import path.
+    from nominal.ts import _SecondsNanos
+
+    if phase in ("download", "stream") and output_dir is None:
+        raise click.UsageError(f"--phase {phase} requires --output-dir (files must be persisted/read from disk)")
+    if phase != "stream":
+        if source_dataset_rid is None:
+            raise click.UsageError("--source-dataset-rid is required unless --phase stream")
+        if start is None:
+            raise click.UsageError("--start is required unless --phase stream")
+        if end is None:
+            raise click.UsageError("--end is required unless --phase stream")
+
+    source_client, destination_client = clients
+    source_dataset = source_client.get_dataset(source_dataset_rid) if source_dataset_rid else None
+    destination_dataset = destination_client.get_dataset(destination_dataset_rid)
+
+    start_ns = _SecondsNanos.from_flexible(start).to_nanoseconds() if start else 0
+    end_ns = _SecondsNanos.from_flexible(end).to_nanoseconds() if end else 0
+    tags = _parse_tags(tag)
+    options = ChannelSyncOptions(
+        bucket=int(bucket_seconds * 1_000_000_000),
+        tags=tags or None,
+        max_retries=max_retries,
+        settle_seconds=settle_seconds,
+        detect_workers=detect_workers,
+        detect_channels_per_request=detect_channels_per_request,
+        output_dir=output_dir,
+        phase=phase,  # type: ignore[arg-type]  # click.Choice constrains to the Literal members
+    )
+
+    report = sync_missing_channel_data(source_dataset, source_client, destination_dataset, start_ns, end_ns, options)
+
+    logger.info(
+        "Sync complete: examined=%d skipped_unsupported=%d missing=%d synced=%d points_streamed=%d still_short=%d",
+        report.channels_examined,
+        report.channels_skipped_unsupported,
+        report.channels_missing,
+        report.channels_synced,
+        report.points_streamed,
+        len(report.still_short),
+    )
+    for entry in report.still_short:
+        logger.warning(
+            "Still short: channel=%r tags=%s range=[%d, %d)",
+            entry.channel,
+            entry.tags,
+            entry.time_range[0],
+            entry.time_range[1],
+        )
 
 
 def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[str]]:

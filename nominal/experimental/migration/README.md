@@ -126,3 +126,37 @@ nom migrate copy \
   --max-workers 4 \
   -vv
 ```
+
+## Syncing missing channel data (`nom migrate sync-channels`)
+
+`sync-channels` backfills the channel **data** an existing destination dataset is missing relative
+to a source dataset, over a time window. For every source channel it compares per-bucket data
+counts in the source vs. the destination (a channel absent in the destination, or present but empty
+over the window, both read as "missing"), exports only the short time-ranges from the source via the
+fast presigned export path, and streams the points into the destination (auto-creating series as
+needed).
+
+It then waits for ingestion to settle, re-checks, and re-streams anything still short
+(`--max-retries`). Detection is idempotent, so a re-run simply syncs whatever is still missing — no
+state file is kept. Anything that cannot be filled is logged with its channel, tags, and time-slice.
+
+> **Notes:** only `DOUBLE`/`INT`/`STRING` channels are synced. Each channel is treated as a single
+> series under the optional `--tag` filter (extra tag dimensions are not enumerated). Streaming is
+> append-only, so a *partially* present bucket is re-streamed in full; the common empty-bucket case
+> never duplicates.
+
+Example:
+
+```sh
+nom migrate sync-channels \
+  --source-profile SOURCE \
+  --destination-profile DEST \
+  --source-dataset-rid ri.catalog.main.dataset.<uuid> \
+  --destination-dataset-rid ri.catalog.main.dataset.<uuid> \
+  --start 2024-01-01T00:00:00Z \
+  --end 2024-01-02T00:00:00Z \
+  --bucket-seconds 3600 \
+  --tag site=daq \
+  --max-retries 2 \
+  -vv
+```
