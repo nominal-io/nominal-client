@@ -8,10 +8,10 @@ downloader, so this suite is also the end-to-end coverage for that utility.
 
 The selection mechanism under test is the datascope **tag filter**: a tagged sync must copy exactly
 the matching series and leave the others untouched. The two-tag source fixture
-(``source_dataset_two_tags``) carries the same channels under ``asset_id=A`` (18:00-18:09) and
-``asset_id=B`` (18:10-18:19); the sync window spans both, so the *tag filter* — not the time window —
-is the only thing that can exclude the other tag, and a leak shows up as the wrong tag's distinct
-values landing in the destination.
+(``source_dataset_two_tags``) carries the same channels under ``asset_id=A`` and ``asset_id=B`` over
+partially overlapping time ranges (see the layout in ``conftest.py``); the sync window spans both, so
+the *tag filter* — not the time window — is the only thing that can exclude the other tag, and a leak
+shows up as the wrong tag's distinct values landing in the destination.
 
 Eventual consistency
 --------------------
@@ -32,6 +32,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Mapping
 
+import pandas as pd
+from conjure_python_client import ConjureHTTPError
+
 from nominal.core import NominalClient
 from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset
@@ -43,6 +46,8 @@ from nominal.experimental.migration.channel_sync import (
 from nominal.thirdparty.pandas import channel_to_series
 from tests.e2e import POLL_INTERVAL
 from tests.e2e.migration.conftest import (
+    FILE_POINT_COUNT,
+    HALF_POINT_COUNT,
     STRESS_CHANNEL_TYPES,
     STRESS_ENUM_VALUES,
     STRESS_ROWS,
@@ -55,17 +60,16 @@ from tests.e2e.migration.conftest import (
     SYNC_WINDOW_START,
 )
 
-# The channels carried by csv_data / csv_data2 (the timestamp column is not a channel).
+# The channels carried by the source CSVs (the timestamp column is not a channel).
 SYNC_CHANNELS = ("temperature", "humidity", "relative_minutes")
-# csv_data has 10 rows, so each channel has 10 points under tag A (and 10 under tag B from csv_data2).
-A_POINT_COUNT = 10
-B_POINT_COUNT = 10
-ONE_MINUTE_NS = 60_000_000_000
+# Each tag carries FILE_POINT_COUNT points per channel (sync_csv_a under A, sync_csv_b under B).
+A_POINT_COUNT = FILE_POINT_COUNT
+B_POINT_COUNT = FILE_POINT_COUNT
 
 # Give asynchronous streaming ingestion time to settle inside the sync before it re-detects.
-SETTLE_SECONDS = 10.0
+SETTLE_SECONDS = 20.0
 # Bounded retry for post-sync verification reads (data can lag the sync's own settle briefly).
-_READ_RETRY_ATTEMPTS = 15
+_READ_RETRY_ATTEMPTS = 30
 _READ_RETRY_DELAY = 2.0
 
 
@@ -93,6 +97,33 @@ def _dest_channel(dest_dataset: Dataset, name: str) -> Channel:
     raise AssertionError(f"channel {name!r} never appeared on the destination dataset: {last_exc}")
 
 
+def _read_all_series(channel: Channel, start: int, end: int, tags: Mapping[str, str] | None) -> "pd.Series[Any]":
+    """Read a channel over ``[start, end)`` as an index-sorted Series, working around the export
+    category cap.
+
+    A single export of a high-cardinality STRING channel fails with ``Compute:TooManyCategories`` once
+    a window holds more distinct labels than the backend's per-request cap (``maxCategories``). When
+    that happens we recursively halve the window and concatenate — the same recursive-halving the sync
+    itself uses — so the verification read stays correct regardless of the cap's value. Sub-window
+    boundaries are de-duplicated by timestamp in case the export range is inclusive.
+    """
+    try:
+        return channel_to_series(channel, start, end, tags=tags).sort_index()
+    except ConjureHTTPError as exc:
+        if "TooManyCategories" not in str(exc) or end - start <= 1:
+            raise
+        mid = start + (end - start) // 2
+        combined = pd.concat(
+            [_read_all_series(channel, start, mid, tags), _read_all_series(channel, mid, end, tags)]
+        )
+        return combined[~combined.index.duplicated(keep="first")].sort_index()
+
+
+def _read_all_values(channel: Channel, start: int, end: int, tags: Mapping[str, str] | None = None) -> list[Any]:
+    """Index-sorted values of a channel over ``[start, end)`` (cap-safe; see :func:`_read_all_series`)."""
+    return _read_all_series(channel, start, end, tags).to_list()
+
+
 def _read_until(
     channel: Channel,
     start: int,
@@ -107,8 +138,7 @@ def _read_until(
     """
     values: list[Any] = []
     for _ in range(_READ_RETRY_ATTEMPTS):
-        series = channel_to_series(channel, start, end, tags=tags).sort_index()
-        values = series.to_list()
+        values = _read_all_values(channel, start, end, tags)
         if len(values) >= min_count:
             return values
         time.sleep(_READ_RETRY_DELAY)
@@ -117,8 +147,7 @@ def _read_until(
 
 def _source_values(source_dataset: Dataset, name: str, tags: Mapping[str, str]) -> list[Any]:
     """Index-sorted values of a source channel for ``tags`` over the full sync window."""
-    series = channel_to_series(source_dataset.get_channel(name), SYNC_WINDOW_START, SYNC_WINDOW_END, tags=tags)
-    return series.sort_index().to_list()
+    return _read_all_values(source_dataset.get_channel(name), SYNC_WINDOW_START, SYNC_WINDOW_END, tags)
 
 
 def _assert_round_trip(
@@ -161,10 +190,10 @@ def test_tag_filter_copies_only_matching_series(
 ):
     """A tag-filtered sync copies exactly the matching tagged series and nothing else.
 
-    Syncs ``asset_id=A`` over the window spanning both A (18:00-18:09) and B (18:10-18:19). Because
-    the window covers B's data too, only the tag filter can exclude B — so finding solely A's values
-    in the destination (and only ``asset_id=A`` on the destination channels) confirms the filter, not
-    the time window, did the selecting.
+    Syncs ``asset_id=A`` over the window spanning both A's and B's (overlapping) ranges. Because the
+    window covers B's data too, only the tag filter can exclude B — so finding solely A's values in the
+    destination (and only ``asset_id=A`` on the destination channels) confirms the filter, not the time
+    window, did the selecting.
     """
     report = sync_missing_channel_data(
         source_dataset_two_tags,
@@ -259,16 +288,17 @@ def test_partial_shortfall_fills_only_missing_buckets(
     source_dataset_two_tags: Dataset,
     source_client: NominalClient,
     dest_dataset: Dataset,
-    csv_data: bytes,
+    sync_csv_a: bytes,
 ):
     """A partially-present destination has only its missing buckets filled (resumability).
 
-    Pre-ingests the first five minutes of tag A into the destination, then syncs tag A at one-minute
-    bucket granularity. Only the five missing buckets must stream (``points_streamed`` counts just the
-    gap, not the whole window), and the destination ends with the full ten points per channel.
+    Pre-ingests tag A's first three (of six) detection buckets into the destination, then syncs tag A
+    at the default one-hour bucket granularity. Only the three missing buckets must stream
+    (``points_streamed`` counts just the gap, not the whole window), and the destination ends with the
+    full per-channel point count.
     """
-    # First five A rows (18:00-18:04): header + 5 data rows.
-    partial_csv = b"\n".join(csv_data.split(b"\n")[:6]) + b"\n"
+    # Tag A's first three buckets: header + HALF_POINT_COUNT data rows (an exact bucket boundary).
+    partial_csv = b"\n".join(sync_csv_a.split(b"\n")[: HALF_POINT_COUNT + 1]) + b"\n"
     dest_dataset.add_from_io(
         BytesIO(partial_csv), "timestamp", "iso_8601", tags={SYNC_TAG_KEY: SYNC_TAG_A}
     ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
@@ -279,11 +309,11 @@ def test_partial_shortfall_fills_only_missing_buckets(
         dest_dataset,
         SYNC_WINDOW_START,
         SYNC_WINDOW_END,
-        _options(tags={SYNC_TAG_KEY: SYNC_TAG_A}, bucket=ONE_MINUTE_NS),
+        _options(tags={SYNC_TAG_KEY: SYNC_TAG_A}),
     )
 
-    # Five missing one-minute buckets (18:05-18:09) across each channel — only the gap is re-streamed.
-    missing_per_channel = 5
+    # Only the missing half (A's last three buckets) is re-streamed, across each channel.
+    missing_per_channel = FILE_POINT_COUNT - HALF_POINT_COUNT
     assert report.points_streamed == missing_per_channel * len(SYNC_CHANNELS)
     assert report.still_short == []
     for name in SYNC_CHANNELS:
@@ -359,10 +389,10 @@ def test_adversarial_channel_types_round_trip(
         assert dest_channel.data_type.value == expected_type, (
             f"{name} landed as {dest_channel.data_type.value}, expected {expected_type}"
         )
-        src_series = channel_to_series(source_dataset_stress.get_channel(name), STRESS_WINDOW_START, STRESS_WINDOW_END)
+        src_values = _read_all_values(source_dataset_stress.get_channel(name), STRESS_WINDOW_START, STRESS_WINDOW_END)
         dest_values = sorted(_read_until(dest_channel, STRESS_WINDOW_START, STRESS_WINDOW_END, None, STRESS_ROWS))
         assert len(dest_values) == STRESS_ROWS, f"{name} landed {len(dest_values)} points, expected {STRESS_ROWS}"
-        assert dest_values == sorted(src_series.to_list()), f"{name} values do not round-trip"
+        assert dest_values == sorted(src_values), f"{name} values do not round-trip"
 
     # The high-cardinality STRING (the headline non-precise case) kept every unique label.
     assert len(set(_stress_dest_values(dest_dataset, "hi_card_str"))) == STRESS_ROWS
