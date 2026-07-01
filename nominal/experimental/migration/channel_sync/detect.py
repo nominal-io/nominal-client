@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from nominal_api import api, scout_compute_api
+from nominal_api import scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.experimental.compute._buckets import (
@@ -39,13 +39,12 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
-_NUMERIC_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT})
 _BATCHABLE_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING})
 DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
 DEFAULT_DETECT_WORKERS = 8
 
 
-def iter_bucket_starts(
+def _iter_bucket_starts(
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
     bucket: IntegralNanosecondsUTC,
@@ -72,6 +71,13 @@ def merge_bucket_ranges(bucket_starts: list[int], bucket: IntegralNanosecondsUTC
 
     Adjacent buckets (where one bucket's start plus ``bucket`` equals the next start) coalesce into
     a single range so the export issues one request per contiguous span instead of one per bucket.
+
+    Args:
+        bucket_starts: Bucket-start timestamps (ns) to merge; duplicates and order are tolerated.
+        bucket: Bucket width (nanoseconds), used to detect adjacency.
+
+    Returns:
+        The coalesced ``(start, end)`` ranges, sorted ascending.
     """
     ordered = sorted(set(bucket_starts))
     ranges: list[tuple[int, int]] = []
@@ -103,6 +109,13 @@ def shortfall_buckets(source: ChannelBucketCounts, destination: ChannelBucketCou
     """Return the bucket-starts (sorted) where the destination has fewer points than the source.
 
     "Any shortfall" rule: a bucket is a sync target when ``src_count > dest_count``.
+
+    Args:
+        source: Per-bucket counts on the source side.
+        destination: Per-bucket counts on the destination side (missing buckets count as zero).
+
+    Returns:
+        The sorted bucket-starts (ns) that are short on the destination.
     """
     return sorted(
         bucket_start
@@ -129,14 +142,23 @@ def count_channels(
     ``channels_per_request`` with chunks issued across ``workers`` threads. Any channel whose batch
     result errored falls back to a whole-window presence probe.
 
-    ``on_advance`` (when given) is called with the number of channels resolved each step, summing to
-    ``len(channels)`` over the call -- a progress hook for the caller's detection bar.
+    Args:
+        channels: The channels to count. Assumed to have unique names and share a single client
+            (e.g. all from one dataset).
+        start: Start of the window, inclusive (nanoseconds UTC).
+        end: End of the window, exclusive (nanoseconds UTC).
+        bucket: Bucket width (nanoseconds) the window is subdivided into.
+        tags: Optional datascope tag filter applied to every channel's count.
+        channels_per_request: Channels summarized per batched compute request.
+        workers: Threads issuing batched requests concurrently.
+        request_delay: Seconds to sleep between consecutive batch submissions (rate-limiting).
+        on_advance: Optional progress hook called with the number of channels resolved each step
+            (summing to ``len(channels)`` over the call) -- drives the caller's detection bar.
 
-    Returns a mapping of channel name to zero-filled :class:`ChannelBucketCounts` for every input
-    channel. Channels are assumed to have unique names and to share a single client (e.g. all from
-    one dataset).
+    Returns:
+        A mapping of channel name to its :class:`ChannelBucketCounts`, for every input channel.
     """
-    starts = iter_bucket_starts(start, end, bucket)
+    starts = _iter_bucket_starts(start, end, bucket)
     batchable = [c for c in channels if c.data_type in _BATCHABLE_TYPES]
     fallback = [c for c in channels if c.data_type not in _BATCHABLE_TYPES]
 
@@ -184,25 +206,6 @@ def count_channels(
     return results
 
 
-def count_per_bucket(
-    channel: Channel,
-    start: IntegralNanosecondsUTC,
-    end: IntegralNanosecondsUTC,
-    bucket: IntegralNanosecondsUTC,
-    tags: Mapping[str, str] | None = None,
-) -> ChannelBucketCounts:
-    """Count data per bucket for a single ``channel`` over ``[start, end)`` filtered by ``tags``.
-
-    Exact per-bucket counts for numeric channels via decimation, whole-window presence for everything
-    else. All buckets are zero-filled, so a missing channel reads as all-zero rather than empty. Kept
-    for single-channel use; :func:`count_channels` is the batched path used for whole-dataset scans.
-    """
-    starts = iter_bucket_starts(start, end, bucket)
-    if channel.data_type in _NUMERIC_TYPES:
-        return ChannelBucketCounts(channel.name, _numeric_counts(channel, start, end, bucket, starts, tags), True)
-    return ChannelBucketCounts(channel.name, _presence_counts(channel, start, end, starts, tags), False)
-
-
 def _count_chunk(
     chunk: Sequence[Channel],
     start: IntegralNanosecondsUTC,
@@ -218,9 +221,19 @@ def _count_chunk(
     )
     response = clients.compute.batch_compute_with_units(clients.auth_header, request)
 
+    # The API contract is one result per requested channel. A length mismatch would otherwise let
+    # zip(strict=False) silently drop the trailing channels: they would land in neither counts nor
+    # errored, never enter source_counts, and be excluded from the whole sync with no warning. Fail
+    # loud instead -- this propagates out of count_channels (no try/except there) and aborts the run.
+    if len(response.results) != len(chunk):
+        raise RuntimeError(
+            f"batch_compute_with_units returned {len(response.results)} result(s) for "
+            f"{len(chunk)} requested channel(s); cannot map results to channels"
+        )
+
     counts: dict[str, ChannelBucketCounts] = {}
     errored: list[Channel] = []
-    for channel, result in zip(chunk, response.results, strict=False):
+    for channel, result in zip(chunk, response.results):  # lengths verified equal above
         compute_result = result.compute_result
         if compute_result is None or compute_result.success is None:
             errored.append(channel)
@@ -266,59 +279,35 @@ def _counts_from_response(
     bucket: IntegralNanosecondsUTC,
     start: IntegralNanosecondsUTC,
 ) -> dict[int, int] | None:
-    """Bin a single channel's bucketed compute response into per-bucket counts, or None if untyped.
+    """Bin a single channel's compute response into per-bucket counts, or None if untyped.
 
-    Decimated responses (``bucketed_numeric`` / ``bucketed_enum``) carry each bucket's **right-edge**
-    timestamp, so they are shifted left by one ``bucket`` before binning -- otherwise every count lands
-    one bucket too late and a channel's first data bucket reads 0 (it would then never be flagged
-    missing or synced). Undecimated/raw responses carry real point timestamps and bin as-is.
+    Each bucket is binned by its ``first_point`` -- a real sample inside the bucket, always within
+    ``[start, end)``. This is deliberate: a decimated bucket's own timestamp is the bucket's
+    **exclusive right edge** of a ``window/N``-wide bucket that the backend grid-aligns to the epoch
+    (and at ``buckets=1`` uses ``resolution = window + 1ns``), so it is *not* ``start + (i+1)*bucket``
+    and cannot be shifted back by one ``bucket`` reliably -- doing so underflows below ``start`` for a
+    single bucket and drops the count entirely. Binning by the real first-point timestamp is
+    independent of the backend's bucket width and grid, so it is correct for raw and decimated
+    responses alike (and for the single-bucket case). Any other variant is untyped for our purposes ->
+    None, so the channel falls back to a presence probe.
     """
     counts = dict.fromkeys(starts, 0)
-    step = int(bucket)
-    if response.bucketed_numeric is not None:
-        for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, numeric_bucket.count or 0)
-        return counts
-    if response.numeric is not None or response.numeric_point is not None:
-        for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, numeric_bucket.count or 0)
-        return counts
-    if response.bucketed_enum is not None:
-        for enum_bucket in _enum_buckets_from_compute_response(response):
-            total = sum(enum_bucket.frequencies.values())
-            _add_to_bucket(counts, starts, enum_bucket.timestamp - step, bucket, start, total)
-        return counts
-    if response.enum is not None:
-        for enum_bucket in _enum_buckets_from_compute_response(response):
-            _add_to_bucket(counts, starts, enum_bucket.timestamp, bucket, start, sum(enum_bucket.frequencies.values()))
-        return counts
-    return None
-
-
-def _numeric_counts(
-    channel: Channel,
-    start: IntegralNanosecondsUTC,
-    end: IntegralNanosecondsUTC,
-    bucket: IntegralNanosecondsUTC,
-    starts: list[int],
-    tags: Mapping[str, str] | None,
-) -> dict[int, int]:
-    counts = dict.fromkeys(starts, 0)
-    step = int(bucket)
-    response = channel._decimate_request(start, end, tags=tags, resolution=int(bucket))
-
-    if response.bucketed_numeric is not None:
-        # Decimation timestamps are bucket right edges; shift left one bucket to bin correctly.
-        for timestamp, point in zip(
-            response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets, strict=False
-        ):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, point.count or 0)
-    elif response.numeric is not None:
-        # Server returns raw points instead of buckets when the range holds few points; bin them as-is.
-        for timestamp in response.numeric.timestamps:
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, 1)
-    else:
-        logger.warning("Decimation of numeric channel %s returned neither buckets nor points", channel.name)
+    # response.type is the conjure union's (camelCase) member discriminator.
+    match response.type:
+        case "bucketedNumeric" | "numeric" | "numericPoint":
+            for _timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+                first_point = numeric_bucket.first_point
+                if first_point is None:
+                    continue
+                point_ns = _SecondsNanos.from_api(first_point.timestamp).to_nanoseconds()
+                _add_to_bucket(counts, starts, point_ns, bucket, start, numeric_bucket.count or 0)
+        case "bucketedEnum" | "enum":
+            for enum_bucket in _enum_buckets_from_compute_response(response):
+                total = sum(enum_bucket.frequencies.values())
+                # EnumBucket.first_point.timestamp is already nanoseconds (EnumPoint._from_conjure).
+                _add_to_bucket(counts, starts, enum_bucket.first_point.timestamp, bucket, start, total)
+        case _:
+            return None
     return counts
 
 
@@ -345,8 +334,3 @@ def _add_to_bucket(
     index = (point_ns - int(start)) // int(bucket)
     if 0 <= index < len(starts):
         counts[starts[index]] += amount
-
-
-def _ts_to_nanos(timestamp: api.Timestamp) -> int:
-    # Compute responses carry api.Timestamp (seconds + nanos); reuse the SDK's converter.
-    return _SecondsNanos.from_api(timestamp).to_nanoseconds()

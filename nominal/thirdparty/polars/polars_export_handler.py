@@ -1101,7 +1101,6 @@ class PolarsExportHandler:
         console: Console | None = None,
         on_file_planned: Callable[[pathlib.Path], None] | None = None,
         on_file_complete: Callable[[pathlib.Path], None] | None = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[pathlib.Path]:
         """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
@@ -1154,9 +1153,6 @@ class PolarsExportHandler:
                 the single download-driving thread (never concurrently), so it needs no locking; keep
                 it reasonably quick, since a slow callback pauses harvesting of other completed
                 downloads (the byte-download workers keep running regardless).
-            reuse_complete: When set, an output file that already exists with a byte size matching the
-                planned export size is reused as-is instead of re-downloading (useful when re-running
-                over a populated output_dir); a differently-sized leftover is overwritten.
             skip_rate_estimation: When set, bypass rate-based planning and emit one export request per
                 channel over the whole range (no grouping, no time-batching, no channel dropped). Use
                 for channels whose rate can't be estimated (e.g. high-cardinality enums); the caller
@@ -1238,7 +1234,6 @@ class PolarsExportHandler:
                 items,
                 on_file_planned=_on_download_planned,
                 on_file_complete=_on_download_complete,
-                reuse_complete=reuse_complete,
             )
         profile.log_summary()
 

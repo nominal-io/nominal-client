@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,9 +13,8 @@ from nominal.core.channel import ChannelDataType
 from nominal.experimental.migration.channel_sync import detect as detect_mod
 from nominal.experimental.migration.channel_sync.detect import (
     ChannelBucketCounts,
+    _iter_bucket_starts,
     count_channels,
-    count_per_bucket,
-    iter_bucket_starts,
     merge_bucket_ranges,
     shortfall_buckets,
 )
@@ -29,23 +27,15 @@ def _ts(nanos_total: int) -> SimpleNamespace:
     return SimpleNamespace(seconds=seconds, nanos=nanos)
 
 
-def _numeric_channel(response: SimpleNamespace) -> MagicMock:
-    channel = MagicMock()
-    channel.name = "rpm"
-    channel.data_type = ChannelDataType.DOUBLE
-    channel._decimate_request.return_value = response
-    return channel
-
-
-# --- iter_bucket_starts -------------------------------------------------------------------
+# --- _iter_bucket_starts -------------------------------------------------------------------
 
 
 def test_iter_bucket_starts_even_division() -> None:
-    assert iter_bucket_starts(0, 3 * SEC, SEC) == [0, SEC, 2 * SEC]
+    assert _iter_bucket_starts(0, 3 * SEC, SEC) == [0, SEC, 2 * SEC]
 
 
 def test_iter_bucket_starts_partial_final_bucket_included() -> None:
-    assert iter_bucket_starts(0, 5 * SEC // 2, SEC) == [0, SEC, 2 * SEC]
+    assert _iter_bucket_starts(0, 5 * SEC // 2, SEC) == [0, SEC, 2 * SEC]
 
 
 @pytest.mark.parametrize(
@@ -54,7 +44,7 @@ def test_iter_bucket_starts_partial_final_bucket_included() -> None:
 )
 def test_iter_bucket_starts_rejects_bad_ranges(start: int, end: int, bucket: int) -> None:
     with pytest.raises(ValueError):
-        iter_bucket_starts(start, end, bucket)
+        _iter_bucket_starts(start, end, bucket)
 
 
 # --- merge_bucket_ranges ------------------------------------------------------------------
@@ -96,69 +86,6 @@ def test_shortfall_buckets_no_shortfall_when_dest_exceeds_src() -> None:
     src = ChannelBucketCounts("c", {0: 1}, precise=True)
     dest = ChannelBucketCounts("c", {0: 5}, precise=True)
     assert shortfall_buckets(src, dest) == []
-
-
-# --- count_per_bucket ---------------------------------------------------------------------
-
-
-def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
-    # Decimation stamps each bucket with its RIGHT edge: bucket [0,SEC)->SEC, [SEC,2SEC)->2SEC,
-    # [2SEC,3SEC)->3SEC. Binning must shift left by one bucket so counts land in the right bucket
-    # (and the first data bucket isn't dropped / shifted forward).
-    response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(
-            timestamps=[_ts(SEC), _ts(2 * SEC), _ts(3 * SEC)],
-            buckets=[SimpleNamespace(count=10), SimpleNamespace(count=0), SimpleNamespace(count=3)],
-        ),
-        numeric=None,
-    )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
-    assert result.precise is True
-    assert result.counts == {0: 10, SEC: 0, 2 * SEC: 3}
-
-
-def test_count_per_bucket_numeric_first_bucket_not_shifted_forward() -> None:
-    # Regression: data only in the LAST bucket [2SEC,3SEC) returns right-edge ts=3SEC. Before the fix
-    # this binned to 3SEC (out of range) and the bucket read 0 -- the off-by-one that dropped a
-    # channel's first data bucket and left destination gaps. It must bin to 2SEC.
-    response = SimpleNamespace(
-        bucketed_numeric=SimpleNamespace(
-            timestamps=[_ts(3 * SEC)],
-            buckets=[SimpleNamespace(count=42)],
-        ),
-        numeric=None,
-    )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
-    assert result.counts == {0: 0, SEC: 0, 2 * SEC: 42}
-
-
-def test_count_per_bucket_numeric_raw_fallback_bins_points() -> None:
-    response = SimpleNamespace(
-        bucketed_numeric=None,
-        numeric=SimpleNamespace(timestamps=[_ts(0), _ts(SEC // 4), _ts(2 * SEC + 1)]),
-    )
-    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
-    assert result.counts == {0: 2, SEC: 0, 2 * SEC: 1}
-
-
-def test_count_per_bucket_string_present_maps_to_one_per_bucket() -> None:
-    channel = MagicMock()
-    channel.name = "state"
-    channel.data_type = ChannelDataType.STRING
-    channel.get_available_tags.return_value = {"source": {"daq"}}
-    result = count_per_bucket(channel, 0, 3 * SEC, SEC, tags={"source": "daq"})
-    assert result.precise is False
-    assert result.counts == {0: 1, SEC: 1, 2 * SEC: 1}
-    channel.get_available_tags.assert_called_once_with(0, 3 * SEC, initial_tags={"source": "daq"})
-
-
-def test_count_per_bucket_string_absent_maps_to_zero() -> None:
-    channel = MagicMock()
-    channel.name = "state"
-    channel.data_type = ChannelDataType.STRING
-    channel.get_available_tags.return_value = {}
-    result = count_per_bucket(channel, 0, 2 * SEC, SEC, tags={"source": "daq"})
-    assert result.counts == {0: 0, SEC: 0}
 
 
 # --- count_channels: batching, fallback routing, threading --------------------------------
@@ -213,3 +140,101 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
     assert sorted(chunk_sizes) == [51, 100]
     # on_advance sums to every input channel exactly once (errored counted only in the presence pass).
     assert advanced == 152
+
+
+# --- _count_chunk: result/request length mismatch -----------------------------------------
+
+
+def test_count_chunk_raises_when_results_shorter_than_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The API contract is one result per requested channel. A short result list must fail loud rather
+    # than letting zip silently drop the trailing channels (excluding them from the sync with no signal).
+    clients = SimpleNamespace(
+        auth_header="auth",
+        compute=SimpleNamespace(
+            # One well-formed (errored) result for two requested channels. Without the length check,
+            # zip(strict=False) would quietly drop the second channel and return normally; the check
+            # makes the mismatch raise instead.
+            batch_compute_with_units=lambda auth, request: SimpleNamespace(
+                results=[SimpleNamespace(compute_result=None)]
+            ),
+        ),
+    )
+    ch1 = SimpleNamespace(name="c1", _clients=clients)
+    ch2 = SimpleNamespace(name="c2", _clients=clients)
+    # Bypass real conjure request construction; only the result-count check is under test.
+    monkeypatch.setattr(detect_mod, "_bucket_request", lambda *a, **k: object())
+
+    with pytest.raises(RuntimeError, match="cannot map results to channels"):
+        detect_mod._count_chunk([ch1, ch2], 0, SEC, SEC, [0], tags=None)
+
+
+# --- _counts_from_response: match on the (camelCase) union discriminator -------------------
+# These pin the response.type labels the match relies on: a mislabeled case would route to the
+# `case _` -> None fallback (channel silently drops to a presence probe), failing these asserts.
+
+
+def _numeric_response(type_label: str, first_points: list[tuple[SimpleNamespace, int]], monkeypatch: Any) -> Any:
+    """A fake response whose numeric buckets carry a first_point at the given ts with the given count.
+
+    The yielded (right-edge) bucket timestamp is deliberately bogus (_ts(0)) so the tests prove binning
+    uses first_point, not the bucket's own timestamp.
+    """
+    monkeypatch.setattr(
+        detect_mod,
+        "_numeric_buckets_from_compute_response",
+        lambda response: [
+            (_ts(0), SimpleNamespace(count=count, first_point=SimpleNamespace(timestamp=fp_ts)))
+            for fp_ts, count in first_points
+        ],
+    )
+    return SimpleNamespace(type=type_label)
+
+
+def _enum_response(type_label: str, buckets: list[SimpleNamespace], monkeypatch: Any) -> Any:
+    """A fake response of the given discriminator whose enum buckets are returned as-is."""
+    monkeypatch.setattr(detect_mod, "_enum_buckets_from_compute_response", lambda response: buckets)
+    return SimpleNamespace(type=type_label)
+
+
+@pytest.mark.parametrize("type_label", ["bucketedNumeric", "numeric", "numericPoint"])
+def test_counts_from_response_numeric_bins_by_first_point(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # All numeric variants bin by the bucket's first_point (here SEC), ignoring the bucket's own
+    # (right-edge) timestamp. count=7 lands in the SEC bucket regardless of variant.
+    response = _numeric_response(type_label, [(_ts(SEC), 7)], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 7, 2 * SEC: 0}
+
+
+@pytest.mark.parametrize("type_label", ["bucketedEnum", "enum"])
+def test_counts_from_response_enum_bins_by_first_point(type_label: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Enum variants bin by first_point.timestamp (already nanoseconds); the count is the frequency sum.
+    bucket = SimpleNamespace(frequencies={"a": 3, "b": 2}, first_point=SimpleNamespace(timestamp=SEC))
+    response = _enum_response(type_label, [bucket], monkeypatch)
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 0, SEC: 5, 2 * SEC: 0}
+
+
+def test_counts_from_response_unknown_type_returns_none() -> None:
+    # An untyped-for-our-purposes variant -> None, so the channel falls back to a presence probe.
+    assert detect_mod._counts_from_response(SimpleNamespace(type="log"), [0, SEC], SEC, 0) is None
+
+
+def test_counts_from_response_single_bucket_binned_by_first_point_not_right_edge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a single decimated bucket must be binned by its first_point, not (right_edge - bucket).
+
+    Reproduces the prod->staging "nothing to sync" failure. With DecimateWithBuckets and buckets=1 the
+    backend uses resolution = window+1ns grid-aligned to the epoch, so the single bucket's exclusive
+    right-edge timestamp lands ~at start (a few ns/us after it), NOT at start+bucket. The real data
+    (its first_point) is at start. Binning by ``right_edge - bucket`` underflows below start and drops
+    the whole count; binning by first_point keeps it.
+    """
+    right_edge = _ts(1000)  # ~1us after start -- the backend's near-start right edge for buckets=1
+    first_point = SimpleNamespace(timestamp=_ts(0))  # the real first sample, at start
+    numeric_bucket = SimpleNamespace(count=10, first_point=first_point)
+    monkeypatch.setattr(
+        detect_mod, "_numeric_buckets_from_compute_response", lambda response: [(right_edge, numeric_bucket)]
+    )
+    response = SimpleNamespace(type="bucketedNumeric")
+
+    # The 10 points must land in bucket 0 (where the data is), not be dropped to {0: 0}.
+    assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 10, SEC: 0, 2 * SEC: 0}

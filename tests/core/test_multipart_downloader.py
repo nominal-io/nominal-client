@@ -127,6 +127,31 @@ def test_download_file_raises_on_execution_failure(tmp_path: Path, downloader: M
     assert not item.destination.exists()
 
 
+def test_download_overwrites_existing_destination(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """An existing destination is overwritten, not rejected.
+
+    Re-downloading to the same path (e.g. a channel-sync retry or a repeated download into a kept
+    output_dir) must not raise FileExistsError: _plan_and_preallocate unlinks the stale file and
+    re-preallocates it to the planned size.
+    """
+    dest = tmp_path / "exists.bin"
+    dest.write_bytes(b"stale-leftover-content-from-a-prior-download")  # 44 bytes
+
+    item = DownloadItem(provider=_provider(), destination=dest, part_size=4)
+    with (
+        patch.object(
+            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
+        ),
+        patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {}),
+    ):
+        results = downloader.download_files([item])
+
+    assert list(results.succeeded) == [dest]
+    assert results.failed == {}
+    # The stale 44-byte file was cleared and re-preallocated to the planned 4 bytes (overwritten).
+    assert dest.stat().st_size == 4
+
+
 def test_download_files_execution_failure_excluded_from_succeeded(
     tmp_path: Path, downloader: MultipartFileDownloader
 ) -> None:

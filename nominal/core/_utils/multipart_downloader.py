@@ -104,8 +104,6 @@ class _PlannedDownload:
     item: DownloadItem
     total_size: int
     etag: str | None
-    already_complete: bool = False
-    """True when a prior, equally-sized download was found on disk and should be reused as-is."""
 
     def ranges(self) -> Iterable[_DataChunkBounds]:
         parts = max(1, math.ceil(self.total_size / self.item.part_size))
@@ -268,7 +266,6 @@ class MultipartFileDownloader:
         *,
         on_file_planned: Callable[[pathlib.Path], None] | None = None,
         on_file_complete: Callable[[pathlib.Path], None] | None = None,
-        reuse_complete: bool = False,
     ) -> DownloadResults:
         """Download many files, pipelining link-generation with downloads.
 
@@ -287,10 +284,6 @@ class MultipartFileDownloader:
             on_file_complete: Optional callback invoked with each destination as soon as that file
                 finishes downloading successfully. Both callbacks run on the calling thread (not a
                 worker), so they are serialized and safe to drive a progress display.
-            reuse_complete: When set, a destination that already exists with a byte size matching the
-                planned size is reused as-is (no re-download) and reported as succeeded; a
-                differently-sized leftover is removed and re-downloaded. ``on_file_complete`` still
-                fires for reused files so callers can re-process them.
 
         Returns:
             A :class:`DownloadResults` partitioning destinations into succeeded and failed. Files that
@@ -314,12 +307,12 @@ class MultipartFileDownloader:
             plan_futs: dict[Future[Any], DownloadItem] = {}
             for it in items:
                 try:
-                    self._check_destination(it.destination, allow_existing=reuse_complete)
+                    self._check_destination(it.destination)
                 except Exception as ex:
                     failures[it.destination] = ex
                     logger.error("Invalid destination %s", it.destination, exc_info=ex)
                     continue
-                plan_futs[plan_pool.submit(self._plan_and_preallocate, it, plan_session, reuse_complete)] = it
+                plan_futs[plan_pool.submit(self._plan_and_preallocate, it, plan_session)] = it
 
             # Reactively drive a growing set of futures: planning futures resolve into per-file part
             # futures (submitted to the download pool), which we add back into the pending set.
@@ -375,13 +368,6 @@ class MultipartFileDownloader:
 
         if on_file_planned is not None:
             on_file_planned(item.destination)
-
-        if plan.already_complete:
-            # Reused an existing, equally-sized file -- nothing to download; it's done.
-            succeeded.append(item.destination)
-            if on_file_complete is not None:
-                on_file_complete(item.destination)
-            return
 
         chunk_bounds = list(plan.ranges())
         remaining_parts[item.destination] = len(chunk_bounds)
@@ -537,7 +523,7 @@ class MultipartFileDownloader:
         )
 
     def _plan_and_preallocate(
-        self, item: DownloadItem, session: requests.Session | None = None, reuse_complete: bool = False
+        self, item: DownloadItem, session: requests.Session | None = None
     ) -> _PlannedDownload:
         """Fetch the presigned link, probe size/etag if needed, and preallocate the destination file.
 
@@ -545,18 +531,8 @@ class MultipartFileDownloader:
         into the provider's fetch happen concurrently across files rather than one at a time. ``session``
         is the session used for any size probe (the pipelined path passes its dedicated planning
         session; otherwise the shared download session is used).
-
-        When ``reuse_complete`` is set and the destination already exists with a byte size matching the
-        planned size, the existing file is reused as-is (no re-download) -- failed downloads have their
-        artifacts cleaned up, so a same-sized file on disk is a previously-completed one. A
-        differently-sized (stale/partial) file is removed and re-downloaded.
         """
         plan = self._plan_item(item, session)
-        if reuse_complete and item.destination.exists() and item.destination.stat().st_size == plan.total_size:
-            logger.info(
-                "Reusing already-downloaded %s (%d bytes match planned size)", item.destination, plan.total_size
-            )
-            return dataclasses.replace(plan, already_complete=True)
         if item.destination.exists():
             # Stale or wrong-sized leftover -- remove it so preallocation/download starts clean.
             item.destination.unlink()
@@ -565,15 +541,16 @@ class MultipartFileDownloader:
 
     # ---- IO helpers ----
 
-    def _check_destination(self, path: pathlib.Path, allow_existing: bool = False) -> None:
+    def _check_destination(self, path: pathlib.Path) -> None:
         logger.info("Preparing file destination %s", path)
 
         parent = path.parent
         if not parent.exists():
             raise FileNotFoundError(f"Output directory does not exist: {parent}")
 
-        if path.exists() and not allow_existing:
-            raise FileExistsError(f"Destination already exists: {path}")
+        # An existing destination is intentionally overwritten: _plan_and_preallocate unlinks and
+        # re-preallocates it. Re-downloading to the same path is expected -- e.g. a channel-sync
+        # retry or a repeated download into a kept output_dir -- so this must not raise.
 
     def _preallocate(self, path: pathlib.Path, total_size_bytes: int) -> None:
         logger.info("Preallocating %s to %f MB", path, total_size_bytes / 1e6)
