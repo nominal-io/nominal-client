@@ -8,7 +8,7 @@ from typing import Iterable, Protocol, Sequence
 from nominal_api import ingest_api
 from typing_extensions import Self
 
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.dataset_file import as_files_ingested as _as_files_ingested
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -112,7 +112,7 @@ def _optional_iso_to_nanos(value: str | None) -> IntegralNanosecondsUTC | None:
 
 
 @dataclass(frozen=True)
-class IngestionJob(HasRid, RefreshableMixin[ingest_api.IngestJob]):
+class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
     """A trackable record of one ingestion request moving through the async pipeline."""
 
     rid: str

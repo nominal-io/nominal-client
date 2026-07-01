@@ -27,23 +27,53 @@ class HasRid(Protocol):
 
 
 class RefreshableMixin(Generic[T], abc.ABC):
+    """In-place refresh for a frozen dataclass backed by a server object of type ``T``.
+
+    Most resources subclass via :class:`RefreshableConjureMixin` (conjure resources) or
+    :class:`RefreshableGrpcMixin` (gRPC/proto resources), which bind the rebuild to the transport's
+    canonical ``_from_conjure`` / ``_from_proto`` constructor. A resource whose constructor needs more
+    than ``(clients, api_obj)`` (e.g. a proto that omits its workspace) subclasses this base directly
+    and implements ``_refresh_to_self`` itself.
+    """
+
     _clients: Any
     __dataclass_fields__: dict[str, Any]
+
+    @abc.abstractmethod
+    def _get_latest_api(self) -> T: ...
+
+    @abc.abstractmethod
+    def _refresh_to_self(self, api_obj: T) -> Self:
+        """Build a fresh instance from a server object; bound to the transport constructor by subclasses."""
+
+    def _refresh_from_api(self, api_obj: T) -> Self:
+        update_dataclass(self, self._refresh_to_self(api_obj), fields=self.__dataclass_fields__)
+        return self
+
+    def refresh(self) -> Self:
+        return self._refresh_from_api(self._get_latest_api())
+
+
+class RefreshableConjureMixin(RefreshableMixin[T]):
+    """A :class:`RefreshableMixin` whose server object is a conjure type built via ``_from_conjure``."""
 
     @classmethod
     @abc.abstractmethod
     def _from_conjure(cls, clients: Any, _: T) -> Self: ...
 
+    def _refresh_to_self(self, api_obj: T) -> Self:
+        return type(self)._from_conjure(self._clients, api_obj)
+
+
+class RefreshableGrpcMixin(RefreshableMixin[T]):
+    """A :class:`RefreshableMixin` whose server object is a proto message built via ``_from_proto``."""
+
+    @classmethod
     @abc.abstractmethod
-    def _get_latest_api(self) -> T: ...
+    def _from_proto(cls, clients: Any, _: T) -> Self: ...
 
-    def _refresh_from_api(self, api_obj: T) -> Self:
-        updated_obj = type(self)._from_conjure(self._clients, api_obj)
-        update_dataclass(self, updated_obj, fields=self.__dataclass_fields__)
-        return self
-
-    def refresh(self) -> Self:
-        return self._refresh_from_api(self._get_latest_api())
+    def _refresh_to_self(self, api_obj: T) -> Self:
+        return type(self)._from_proto(self._clients, api_obj)
 
 
 def rid_from_instance_or_string(value: HasRid | str) -> str:

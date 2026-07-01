@@ -7,12 +7,12 @@ from nominal_api import secrets_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Secret(HasRid, RefreshableMixin[secrets_api.Secret]):
+class Secret(HasRid, RefreshableConjureMixin[secrets_api.Secret]):
     rid: str
     name: str
     description: str

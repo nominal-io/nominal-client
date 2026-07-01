@@ -10,7 +10,7 @@ from nominal_api import scout_catalog, scout_video, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
+class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
     rid: str
     name: str
     description: str | None

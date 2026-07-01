@@ -15,7 +15,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableMixin
+from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
@@ -40,7 +40,7 @@ DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
-class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
+class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
     properties: Mapping[str, str]

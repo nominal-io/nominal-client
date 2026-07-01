@@ -20,7 +20,7 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableMixin,
+    RefreshableConjureMixin,
     create_links,
     filter_scopes,
     rid_from_instance_or_string,
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
