@@ -58,6 +58,10 @@ class NominalNotFoundError(NominalError):
     """The requested resource does not exist."""
 
 
+class NominalAlreadyExistsError(NominalError):
+    """The resource being created already exists (e.g. a container image tag already registered)."""
+
+
 class NominalInvalidArgumentError(NominalError):
     """The server rejected the request as malformed or invalid."""
 

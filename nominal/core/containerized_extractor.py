@@ -156,8 +156,9 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
         Registering attaches the image to this extractor in Nominal's registry, but does not change
-        which image the extractor runs: the new image starts PENDING (being pushed server-side) and
-        must be activated with `set_active_image` once READY. This extractor instance is unmodified.
+        which image the extractor runs: the new image must be activated with `set_active_image`.
+        This extractor instance is unmodified. Tags are immutable — registering an already-registered
+        tag raises `NominalAlreadyExistsError`.
 
         Args:
             tarball: Path to a `docker save` tarball of the extractor image.
@@ -177,12 +178,15 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             parameters: Scalar parameters passed to the extractor.
 
         Returns:
-            The newly registered image, in `ContainerImageStatus.PENDING`. Wait for it with
-            `ContainerImage.poll_until_ready` (or `set_active_image(..., poll_until_ready=True)`),
-            then activate it before ingesting.
+            The newly registered image. Current backends push the image to the registry within this
+            call and return it READY; if a backend processes asynchronously (a non-READY image),
+            `set_active_image` polls it to readiness before activating (or use
+            `ContainerImage.poll_until_ready` directly).
 
         Raises:
             ValueError: If `output_format` is not currently ingestible via containerized extraction.
+            NominalAlreadyExistsError: If an image with this tag is already registered for this
+                extractor.
         """
         if output_format not in REGISTERABLE_OUTPUT_FORMATS:
             supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
