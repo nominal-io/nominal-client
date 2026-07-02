@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -11,7 +12,7 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
-from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
+from nominal.experimental.migration.utils.file_utils import _resolve_destination_file_stem, copy_file_to_dataset
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -192,3 +193,130 @@ class TestCopyFileToDataset:
 
         with pytest.raises(ValueError, match="Unsupported file handle type"):
             copy_file_to_dataset(source_file, destination_dataset)
+
+
+class TestResolveDestinationFileStem:
+    """_resolve_destination_file_stem must URL-decode filenames extracted from S3 keys.
+
+    Source S3 keys may contain percent-encoded characters (e.g. %20 for spaces).
+    If these are not decoded before upload, quote_plus in multipart.py double-encodes
+    them (%20 -> %2520), causing Azure SAS signature verification to fail with 403
+    because Azure URL-decodes the blob path before computing its canonical string.
+    """
+
+    def test_decodes_percent_encoded_spaces(self) -> None:
+        raw = "2026-06-02T16%3A25%3A51Z_DSC_Seq%20-%20Nominal%20Format.csv"
+        assert _resolve_destination_file_stem(raw) == "DSC_Seq - Nominal Format"
+
+    def test_decodes_percent_encoded_spaces_with_parens(self) -> None:
+        # Regression: filename from the Azure tenant that triggered the 403 bug.
+        raw = "2026-06-02T16%3A25%3A51Z_DSC_Seq%20-%20Nominal%20Format(PT-reduced).csv"
+        assert _resolve_destination_file_stem(raw) == "DSC_Seq - Nominal Format(PT-reduced)"
+
+    def test_plain_filename_unchanged(self) -> None:
+        raw = "2026-06-02T16:25:51Z_telemetry.csv"
+        assert _resolve_destination_file_stem(raw) == "telemetry"
+
+    def test_no_timestamp_prefix(self) -> None:
+        raw = "telemetry.csv"
+        assert _resolve_destination_file_stem(raw) == "telemetry"
+
+    def test_encoded_slash_does_not_break_stem(self) -> None:
+        # %2F decoded to / would cause Path.stem to misinterpret the value as a
+        # directory path, producing the wrong upload name.
+        raw = "2026-06-02T16%3A25%3A51Z_folder%2Ftelemetry.csv"
+        assert "/" not in _resolve_destination_file_stem(raw)
+
+
+class TestUploadMultipartIoFilenameEncoding:
+    """upload_multipart_io must produce filenames safe for Azure SAS uploads.
+
+    Nominal's backend stores the filename literally as the Azure blob name. Any %XX
+    sequence in the filename gets stored as literal characters, causing Azure SAS
+    verification to fail with 403 because Azure URL-decodes the PUT path before
+    computing its canonical string:
+
+        blob name literal:   ..._DSC_Seq%28PT-reduced%29
+        SAS canonical:       .../DSC_Seq%28PT-reduced%29
+        PUT path decodes:    %28 -> (,  %29 -> )
+        PUT canonical:       .../DSC_Seq(PT-reduced)   <- MISMATCH -> 403
+
+    The fix replaces only characters illegal in cloud object names (/ and \\)
+    and passes everything else through literally, avoiding %XX entirely.
+    """
+
+    def _capture_filename(self, name: str) -> str:
+        """Run upload_multipart_io with a fake put_multipart_upload and return the filename it receives."""
+        from io import BytesIO
+        from unittest.mock import patch as mock_patch
+
+        from nominal.core._utils.multipart import upload_multipart_io
+        from nominal.core.filetype import FileTypes
+
+        captured: dict[str, str] = {}
+
+        def fake_put(auth_header, workspace_rid, f, filename, *args, **kwargs):
+            captured["filename"] = filename
+            return "s3://fake/path"
+
+        with mock_patch("nominal.core._utils.multipart.put_multipart_upload", side_effect=fake_put):
+            upload_multipart_io(
+                auth_header="Bearer test",
+                workspace_rid=None,
+                f=BytesIO(b"data"),
+                name=name,
+                file_type=FileTypes.CSV,
+                upload_client=MagicMock(),
+            )
+
+        return captured["filename"]
+
+    def test_no_percent_sequences_for_parens(self) -> None:
+        """( and ) must not become %28/%29 — regression for the Azure 403 bug."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("DSC_Seq - Nominal Format(PT-reduced)"))
+
+    def test_no_percent_sequences_for_brackets(self) -> None:
+        """[ and ] must not become %5B/%5D."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("data[1]"))
+
+    def test_no_percent_sequences_for_special_chars(self) -> None:
+        """Common filename chars like !, #, ' must not be percent-encoded."""
+        assert not re.search(r"%[0-9A-Fa-f]{2}", self._capture_filename("run #3 - final!"))
+
+    def test_spaces_preserved(self) -> None:
+        """Spaces must be passed through literally, not converted to + or %20."""
+        filename = self._capture_filename("my data file")
+        assert " " in filename
+        assert "+" not in filename
+
+    def test_slash_replaced_with_underscore(self) -> None:
+        """/ would create unexpected directory structure in blob storage."""
+        assert "/" not in self._capture_filename("folder/file")
+
+    def test_backslash_replaced_with_underscore(self) -> None:
+        r"""\ would create unexpected directory structure on some backends."""
+        assert "\\" not in self._capture_filename("folder\\file")
+
+    def test_plain_alphanumeric_unchanged(self) -> None:
+        """Simple names must be completely unaffected."""
+        assert self._capture_filename("telemetry") == "telemetry.csv"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_migration_pipeline_produces_no_percent_sequences(self, mock_get: MagicMock) -> None:
+        """End-to-end: migration file with %20-encoded S3 key produces a clean upload filename."""
+        source_file = _make_source_file(
+            s3_key="2026-06-02T16%3A25%3A51Z_DSC_Seq%20-%20Nominal%20Format(PT-reduced).csv",
+            timestamp_channel="timestamp",
+            timestamp_type="iso_8601",
+        )
+        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
+
+        destination_dataset = MagicMock()
+        destination_dataset.add_from_io.return_value = MagicMock()
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        file_name = destination_dataset.add_from_io.call_args.kwargs["file_name"]
+        assert not re.search(r"%[0-9A-Fa-f]{2}", file_name), (
+            f"file_name {file_name!r} has percent-encoded sequences that will cause Azure SAS 403 errors"
+        )
