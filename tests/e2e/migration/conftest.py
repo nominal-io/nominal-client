@@ -113,9 +113,13 @@ def make_stress_csv(rows: int = STRESS_ROWS) -> bytes:
       non-precise presence probe + per-channel recursive-halving export fallback).
     - ``enum_str``: a small repeating label set (low-cardinality enum STRING -> precise bucketed-enum
       counting; numeric-looking labels stay strings on re-read).
-    - ``int_ch``: whole numbers (INT -> exercises the Float64->int recast so values land as INT).
-    - ``dbl_ch``: integral-looking floats like ``42.0`` (DOUBLE -> exercises the Float64 guard so a
-      double is not re-inferred/created as INT in the destination).
+    - ``int_ch``: integer-*formatted* numbers like ``5`` (no decimal). CSV ingest infers these as
+      DOUBLE (Nominal has no INT inference from CSV), and the round-trip must keep them DOUBLE: this
+      exercises the Float64 guard so an integer-formatted column is not re-inferred/created as INT in
+      the destination. (A genuine INT *source* channel needs streaming ingestion, not CSV; the
+      INT->Float64->int recast itself is covered by the _stream_file unit tests.)
+    - ``dbl_ch``: integral-*valued* floats like ``42.0`` (also DOUBLE) -- the same guard from the
+      decimal-formatted side.
     """
     from datetime import timedelta
 
@@ -126,11 +130,12 @@ def make_stress_csv(rows: int = STRESS_ROWS) -> bytes:
     return ("\n".join(lines) + "\n").encode()
 
 
-# Expected destination channel types after a correct round-trip.
+# Expected destination channel types after a correct round-trip. int_ch is integer-FORMATTED but,
+# like every CSV-ingested numeric column, lands as DOUBLE -- the round-trip must preserve that.
 STRESS_CHANNEL_TYPES = {
     "hi_card_str": "STRING",
     "enum_str": "STRING",
-    "int_ch": "INT",
+    "int_ch": "DOUBLE",
     "dbl_ch": "DOUBLE",
 }
 

@@ -66,6 +66,11 @@ SYNC_CHANNELS = ("temperature", "humidity", "relative_minutes")
 A_POINT_COUNT = FILE_POINT_COUNT
 B_POINT_COUNT = FILE_POINT_COUNT
 
+# Sub-window used to verify the high-cardinality STRING. The stress data is one row per second, so a
+# one-minute window is ~60 distinct labels -- far under the backend export limits, unlike a full-window
+# read of all STRESS_ROWS labels (which hits Compute:TooManyCategories / ServerOverloaded).
+_HI_CARD_PROBE_NS = 60 * 1_000_000_000
+
 # Give asynchronous streaming ingestion time to settle inside the sync before it re-detects.
 SETTLE_SECONDS = 20.0
 # Bounded retry for post-sync verification reads (data can lag the sync's own settle briefly).
@@ -365,9 +370,11 @@ def test_adversarial_channel_types_round_trip(
 
     Exercises the non-numeric / non-precise code paths end-to-end: a high-cardinality STRING channel
     overflows the enum-category limit and takes the recursive-halving export fallback, a low-card enum
-    STRING re-reads as strings, an INT channel lands as INT (not float), and an integral-looking DOUBLE
-    stays DOUBLE (not re-inferred as INT). ``ChannelSyncReport`` does not expose which channels took the
-    non-precise fallback, so this asserts the *outcome* — every value and the channel type survive —
+    STRING re-reads as strings, and integer-formatted (``int_ch``) and decimal-formatted (``dbl_ch``)
+    numeric columns both stay DOUBLE -- the Float64 guard must not re-infer the integer-formatted one
+    as INT in the destination. (CSV ingest produces no genuine INT channel, so the INT->int recast is
+    unit-tested rather than here.) ``ChannelSyncReport`` does not expose which channels took the
+    non-precise fallback, so this asserts the *outcome* -- every value and the channel type survive --
     rather than the path taken.
     """
     report = sync_missing_channel_data(
@@ -382,19 +389,37 @@ def test_adversarial_channel_types_round_trip(
     assert report.points_streamed > 0
     assert report.still_short == []
 
-    # Every channel type landed with the right destination type and the full point count.
+    # Types are preserved for every channel.
     for name, expected_type in STRESS_CHANNEL_TYPES.items():
         dest_channel = _dest_channel(dest_dataset, name)
         assert dest_channel.data_type is not None, f"{name} has no destination data type"
         assert dest_channel.data_type.value == expected_type, (
             f"{name} landed as {dest_channel.data_type.value}, expected {expected_type}"
         )
+
+    # Full-window value round-trip for the channels a full read can return: the numeric channels and
+    # the low-cardinality enum. The high-cardinality STRING is verified over a small sub-window below --
+    # a full-window read of all STRESS_ROWS distinct labels is expensive enough to hit the backend
+    # export limits (Compute:TooManyCategories / ServerOverloaded), which is exactly why that channel
+    # takes the non-precise path.
+    for name in ("enum_str", "int_ch", "dbl_ch"):
         src_values = _read_all_values(source_dataset_stress.get_channel(name), STRESS_WINDOW_START, STRESS_WINDOW_END)
+        dest_channel = _dest_channel(dest_dataset, name)
         dest_values = sorted(_read_until(dest_channel, STRESS_WINDOW_START, STRESS_WINDOW_END, None, STRESS_ROWS))
         assert len(dest_values) == STRESS_ROWS, f"{name} landed {len(dest_values)} points, expected {STRESS_ROWS}"
         assert dest_values == sorted(src_values), f"{name} values do not round-trip"
 
-    # The high-cardinality STRING (the headline non-precise case) kept every unique label.
-    assert len(set(_stress_dest_values(dest_dataset, "hi_card_str"))) == STRESS_ROWS
-    # The low-cardinality enum kept exactly its label set (values stay strings, not coerced to numbers).
+    # enum_str kept exactly its label set (values stay strings, not coerced to numbers).
     assert set(_stress_dest_values(dest_dataset, "enum_str")) == set(STRESS_ENUM_VALUES)
+
+    # High-cardinality STRING: verify a small sub-window (far under the export limits) round-trips with
+    # one unique value per row. Confirms the non-precise / recursive-halving export path moved the data;
+    # the full window is not reliably readable via channel_to_series, and the sync's own success
+    # (points_streamed > 0, still_short == []) already covers the full set landing.
+    probe_end = STRESS_WINDOW_START + _HI_CARD_PROBE_NS
+    src_hi_channel = source_dataset_stress.get_channel("hi_card_str")
+    src_hi = _read_all_series(src_hi_channel, STRESS_WINDOW_START, probe_end, None).to_list()
+    assert len(src_hi) > 0, "high-cardinality probe window read no source data"
+    dest_hi = _read_until(_dest_channel(dest_dataset, "hi_card_str"), STRESS_WINDOW_START, probe_end, None, len(src_hi))
+    assert sorted(dest_hi) == sorted(src_hi), "hi_card_str values do not round-trip over the probe window"
+    assert len(set(dest_hi)) == len(src_hi), "hi_card_str should have one unique value per row"
