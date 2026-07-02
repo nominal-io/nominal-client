@@ -229,7 +229,7 @@ def create_search_container_images_query(
     status: ContainerImageStatus | None = None,
     extractor_rid: str | None = None,
 ) -> registry_pb2.SearchFilter | None:
-    """Build a v2 registry SearchFilter from SDK-native tag/status parameters."""
+    """Build a v2 registry SearchFilter for searching for nominal-hosted container images."""
     filters = []
     if tag is not None:
         filters.append(registry_pb2.SearchFilter(tag=registry_pb2.TagFilter(tag=tag)))
