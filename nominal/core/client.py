@@ -1576,6 +1576,7 @@ class NominalClient:
         Args:
             tag: If provided, only include images registered with this tag.
             status: If provided, only include images with this status.
+            extractor: If provided, only include images filtered to this containerized extractor
             workspace: Workspace to search within (the client's default workspace if not provided).
 
         Returns:
