@@ -204,8 +204,11 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 
 import dateutil.parser
+from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
-from typing_extensions import Self
+from typing_extensions import Self, assert_never
+
+from nominal.protos.types.time import timestamp_parsers_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +248,14 @@ class _ConjureTimestampType(abc.ABC):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         pass
 
+    @abc.abstractmethod
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        """Convert to the proto nominal.types.time.TimestampType.
+
+        The proto's `time_unit` fields are strings aliased server-side to the conjure `api.TimeUnit`
+        enum, so implementations encode units via `_time_unit_to_conjure(...).value`.
+        """
+
     @classmethod
     def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> TypedTimestampType:
         if conjure_type.absolute is not None:
@@ -275,11 +286,15 @@ class _ConjureTimestampType(abc.ABC):
             raise ValueError(f"Unknown timestamp type: {conjure_type.type}")
 
 
+def _str_to_literal_time_unit(value: str) -> _LiteralTimeUnit:
+    lowered = value.lower()
+    if lowered in get_args(_LiteralTimeUnit):
+        return cast(_LiteralTimeUnit, lowered)
+    raise ValueError(f"Unknown time unit: {value!r}")
+
+
 def _api_time_unit_to_literal_time_unit(time_unit: api.TimeUnit) -> _LiteralTimeUnit:
-    if time_unit.value.lower() in get_args(_LiteralTimeUnit):
-        return cast(_LiteralTimeUnit, time_unit.value.lower())
-    else:
-        raise ValueError(f"Unknown api time unit: {time_unit}")
+    return _str_to_literal_time_unit(time_unit.value)
 
 
 @dataclass(frozen=True)
@@ -290,6 +305,11 @@ class Iso8601(_ConjureTimestampType):
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        return timestamp_parsers_pb2.TimestampType(
+            absolute=timestamp_parsers_pb2.AbsoluteTimestamp(iso8601=timestamp_parsers_pb2.Iso8601Timestamp())
+        )
 
 
 @dataclass(frozen=True)
@@ -303,6 +323,12 @@ class Epoch(_ConjureTimestampType):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        epoch = timestamp_parsers_pb2.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit).value)
+        return timestamp_parsers_pb2.TimestampType(
+            absolute=timestamp_parsers_pb2.AbsoluteTimestamp(epoch_of_time_unit=epoch)
+        )
 
     @classmethod
     def _from_time_unit(cls, time_unit: api.TimeUnit) -> Self:
@@ -332,6 +358,14 @@ class Relative(_ConjureTimestampType):
         )
         return ingest_api.TimestampType(relative=relative)
 
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        sn = _SecondsNanos.from_flexible(self.start)
+        relative = timestamp_parsers_pb2.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(self.unit).value,
+            offset=timestamp_pb2.Timestamp(seconds=sn.seconds, nanos=sn.nanos),
+        )
+        return timestamp_parsers_pb2.TimestampType(relative=relative)
+
 
 @dataclass(frozen=True)
 class Custom(_ConjureTimestampType):
@@ -355,6 +389,14 @@ class Custom(_ConjureTimestampType):
             default_day_of_year=self.default_day_of_year,
         )
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        fmt = timestamp_parsers_pb2.CustomTimestamp(
+            format=self.format,
+            default_year=self.default_year,
+            default_day_of_year=self.default_day_of_year,
+        )
+        return timestamp_parsers_pb2.TimestampType(absolute=timestamp_parsers_pb2.AbsoluteTimestamp(custom_format=fmt))
 
 
 # constants for pedagogy, documentation, default arguments, etc.
@@ -412,6 +454,51 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _proto_timestamp_type_to_typed_timestamp_type(proto: timestamp_parsers_pb2.TimestampType) -> TypedTimestampType:
+    """Convert a proto nominal.types.time.TimestampType to an SDK TypedTimestampType.
+
+    The reverse of `_ConjureTimestampType._to_proto`: the proto `time_unit` strings carry conjure
+    `api.TimeUnit` names, which `_str_to_literal_time_unit` validates and normalizes back to the
+    SDK literal (raising on an unrecognized unit).
+
+    `WhichOneof` returns a mypy-protobuf `Literal`, so the `assert_never` fallbacks make these
+    matches exhaustive at type-check time: a typo'd case or a newly added oneof member fails mypy.
+    """
+    which = proto.WhichOneof("option")
+    match which:
+        case "absolute":
+            absolute = proto.absolute
+            which_absolute = absolute.WhichOneof("option")
+            match which_absolute:
+                case "iso8601":
+                    return Iso8601()
+                case "epoch_of_time_unit":
+                    return Epoch(unit=_str_to_literal_time_unit(absolute.epoch_of_time_unit.time_unit))
+                case "custom_format":
+                    custom = absolute.custom_format
+                    return Custom(
+                        format=custom.format,
+                        default_year=custom.default_year if custom.HasField("default_year") else None,
+                        default_day_of_year=(
+                            custom.default_day_of_year if custom.HasField("default_day_of_year") else None
+                        ),
+                    )
+                case None:
+                    raise ValueError("Absolute timestamp type has no option set")
+                case _:
+                    assert_never(which_absolute)
+        case "relative":
+            relative = proto.relative
+            return Relative(
+                unit=_str_to_literal_time_unit(relative.time_unit),
+                start=relative.offset.ToNanoseconds(),
+            )
+        case None:
+            raise ValueError("Timestamp type has no option set")
+        case _:
+            assert_never(which)
 
 
 def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.TimestampType) -> TypedTimestampType:

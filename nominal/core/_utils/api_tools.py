@@ -27,13 +27,13 @@ class HasRid(Protocol):
 
 
 class RefreshableMixin(Generic[T], abc.ABC):
-    """In-place refresh for a frozen dataclass backed by a server object of type ``T``.
+    """In-place refresh for a frozen dataclass backed by a server object of type `T`.
 
-    Most resources subclass via :class:`RefreshableConjureMixin` (conjure resources) or
-    :class:`RefreshableGrpcMixin` (gRPC/proto resources), which bind the rebuild to the transport's
-    canonical ``_from_conjure`` / ``_from_proto`` constructor. A resource whose constructor needs more
-    than ``(clients, api_obj)`` (e.g. a proto that omits its workspace) subclasses this base directly
-    and implements ``_refresh_to_self`` itself.
+    Most resources subclass via `RefreshableConjureMixin` (conjure resources) or `RefreshableGrpcMixin`
+    (gRPC/proto resources), which bind the rebuild to the transport's canonical `_from_conjure` /
+    `_from_proto` constructor. A resource whose constructor needs more than `(clients, api_obj)`
+    (e.g. a proto that omits its workspace) subclasses this base directly and implements
+    `_refresh_to_self` itself.
     """
 
     _clients: Any
@@ -55,7 +55,7 @@ class RefreshableMixin(Generic[T], abc.ABC):
 
 
 class RefreshableConjureMixin(RefreshableMixin[T]):
-    """A :class:`RefreshableMixin` whose server object is a conjure type built via ``_from_conjure``."""
+    """A `RefreshableMixin` whose server object is a conjure type built via `_from_conjure`."""
 
     @classmethod
     @abc.abstractmethod
@@ -66,7 +66,7 @@ class RefreshableConjureMixin(RefreshableMixin[T]):
 
 
 class RefreshableGrpcMixin(RefreshableMixin[T]):
-    """A :class:`RefreshableMixin` whose server object is a proto message built via ``_from_proto``."""
+    """A `RefreshableMixin` whose server object is a proto message built via `_from_proto`."""
 
     @classmethod
     @abc.abstractmethod
