@@ -98,11 +98,11 @@ def test_set_active_image_raises_when_image_not_ready() -> None:
     clients.containerized_extractor.UpdateContainerizedExtractor.assert_not_called()
 
 
-@pytest.mark.parametrize("output_format", [FileOutputFormat.JSON_L, FileOutputFormat.PARQUET_TAR])
-def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
+@pytest.mark.parametrize("output_format", [FileOutputFormat.PARQUET_TAR, FileOutputFormat.UNSPECIFIED])
+def test_register_image_rejects_retired_output_formats_before_uploading(
     output_format: FileOutputFormat,
 ) -> None:
-    """Formats the backend can't ingest fail up-front, before the tarball upload starts."""
+    """Formats being retired (or unset) fail up-front, before the tarball upload starts."""
     clients = _clients()
     extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
 

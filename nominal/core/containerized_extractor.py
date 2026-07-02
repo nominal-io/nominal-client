@@ -172,8 +172,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 registration even when every ingest overrides it. See
                 `ContainerImage.default_timestamp_metadata` for the full resolution order.
             output_format: File format the extractor writes. Must be one of
-                `REGISTERABLE_OUTPUT_FORMATS` — the backend cannot currently ingest the others, so
-                registering an image with one would produce an extractor whose ingests always fail.
+                `REGISTERABLE_OUTPUT_FORMATS` — PARQUET_TAR is being retired with the migration to
+                v2 containerized ingest, so new registrations with it are rejected.
             parameters: Scalar parameters passed to the extractor.
 
         Returns:
@@ -187,9 +187,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         if output_format not in REGISTERABLE_OUTPUT_FORMATS:
             supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
             raise ValueError(
-                f"Output format {output_format.name} is not currently supported for containerized "
-                f"extraction ingest; an image registered with it could never ingest data successfully. "
-                f"Supported formats: {supported}."
+                f"Output format {output_format.name} is not registerable: it is being retired with "
+                f"the migration to v2 containerized ingest. Supported formats: {supported}."
             )
         s3_path = upload_multipart_file(
             self._clients.auth_header,
