@@ -349,10 +349,15 @@ def _iter_search_container_images(
     *,
     tag: str | None = None,
     status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
     workspace_rid: str | None = None,
 ) -> Iterable[ContainerImage]:
     ws = clients.resolve_workspace(workspace_rid).rid
-    search_filter = create_search_container_images_query(tag=tag, status=status)
+    search_filter = create_search_container_images_query(
+        tag=tag,
+        status=status,
+        extractor_rid=extractor_rid,
+    )
     for img in search_container_images_paginated(clients.registry, ws, search_filter):
         yield ContainerImage._from_proto(clients, ws, img)
 
@@ -362,6 +367,15 @@ def _search_container_images(
     *,
     tag: str | None = None,
     status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
     workspace_rid: str | None = None,
 ) -> Sequence[ContainerImage]:
-    return list(_iter_search_container_images(clients, tag=tag, status=status, workspace_rid=workspace_rid))
+    return list(
+        _iter_search_container_images(
+            clients=clients,
+            tag=tag,
+            status=status,
+            extractor_rid=extractor_rid,
+            workspace_rid=workspace_rid,
+        )
+    )

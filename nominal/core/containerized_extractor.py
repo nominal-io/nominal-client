@@ -28,6 +28,7 @@ from nominal.core.container_image import (
     FileExtractionParameter,
     FileOutputFormat,
     TimestampMetadata,
+    _search_container_images,
 )
 from nominal.core.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
@@ -214,6 +215,28 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         with translate_grpc_errors():
             response = self._clients.registry.CreateImage(request)
         return ContainerImage._from_proto(self._clients, self._workspace_rid, response.image)
+
+    def search_container_images(
+        self, *, tag: str | None = None, status: ContainerImageStatus | None = None
+    ) -> Sequence[ContainerImage]:
+        """Search for container images associated with this extractor
+
+        Filters are ANDed together, e.g. `(image.tag == tag) and (image.status == status)`.
+
+        Args:
+            tag: If provided, only include images registered with this tag
+            status: If provided, only include images with this status
+
+        Returns:
+            All container images matching all of the provided filters.
+        """
+        return _search_container_images(
+            self._clients,
+            tag=tag,
+            status=status,
+            extractor_rid=self.rid,
+            workspace_rid=self._workspace_rid,
+        )
 
     @classmethod
     def _from_proto(cls, clients: _Clients, msg: containerized_extractor_pb2.ContainerizedExtractor) -> Self:

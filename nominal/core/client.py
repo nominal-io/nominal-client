@@ -1566,6 +1566,7 @@ class NominalClient:
         *,
         tag: str | None = None,
         status: ContainerImageStatus | None = None,
+        extractor: ContainerizedExtractor | str | None = None,
         workspace: str | Workspace | None = None,
     ) -> Sequence[ContainerImage]:
         """Search for container images meeting the specified filters.
@@ -1581,7 +1582,14 @@ class NominalClient:
             All container images matching all of the provided filters.
         """
         workspace_rid = None if workspace is None else rid_from_instance_or_string(workspace)
-        return _search_container_images(self._clients, tag=tag, status=status, workspace_rid=workspace_rid)
+        extractor_rid = None if extractor is None else rid_from_instance_or_string(extractor)
+        return _search_container_images(
+            self._clients,
+            tag=tag,
+            status=status,
+            extractor_rid=extractor_rid,
+            workspace_rid=workspace_rid,
+        )
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

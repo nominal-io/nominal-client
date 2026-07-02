@@ -227,6 +227,7 @@ def create_search_users_query(
 def create_search_container_images_query(
     tag: str | None = None,
     status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
 ) -> registry_pb2.SearchFilter | None:
     """Build a v2 registry SearchFilter from SDK-native tag/status parameters."""
     filters = []
@@ -234,6 +235,8 @@ def create_search_container_images_query(
         filters.append(registry_pb2.SearchFilter(tag=registry_pb2.TagFilter(tag=tag)))
     if status is not None:
         filters.append(registry_pb2.SearchFilter(status=registry_pb2.StatusFilter(status=status._to_proto())))
+    if extractor_rid is not None:
+        filters.append(registry_pb2.SearchFilter(extractor=registry_pb2.ExtractorFilter(extractor_rid=extractor_rid)))
 
     if len(filters) == 0:
         return None
