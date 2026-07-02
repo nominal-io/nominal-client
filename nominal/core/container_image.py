@@ -35,9 +35,8 @@ class FileOutputFormat(Enum):
     CSV = "CSV"
     AVRO_STREAM = "AVRO_STREAM"
     PARQUET_TAR = "PARQUET_TAR"
-    """Not currently ingestible via containerized extraction; `register_image` rejects it."""
+    """Being retired with the migration to v2 containerized ingest; `register_image` rejects it."""
     JSON_L = "JSON_L"
-    """Not currently ingestible via containerized extraction; `register_image` rejects it."""
     UNSPECIFIED = "UNSPECIFIED"
     """Unset, or a format a newer server sent that this SDK doesn't know. Not registerable."""
 
@@ -87,14 +86,16 @@ REGISTERABLE_OUTPUT_FORMATS = frozenset(
         FileOutputFormat.PARQUET,
         FileOutputFormat.CSV,
         FileOutputFormat.AVRO_STREAM,
+        FileOutputFormat.JSON_L,
         FileOutputFormat.MANIFEST,
     }
 )
-"""Output formats the backend can currently ingest via containerized extraction.
+"""Output formats `register_image` accepts.
 
-Registration accepts other formats server-side, but their ingest jobs would always fail
-(the containerized transform path has no reader for them), so `register_image` rejects them
-up-front. Update when the backend gains readers for the remaining formats.
+PARQUET_TAR is excluded deliberately: it is being retired with the migration to the v2 containerized
+ingest path (which has no reader for it), so rather than allow new extractors that would stop working
+mid-migration, registration rejects it up-front. UNSPECIFIED is not a real format. Remove this guard
+if the retirement plan changes.
 """
 
 
