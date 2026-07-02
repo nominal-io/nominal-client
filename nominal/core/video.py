@@ -15,7 +15,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
+class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     rid: str
     name: str
     description: str | None

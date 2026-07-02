@@ -89,6 +89,10 @@ class NominalComputeError(NominalError):
     """An error occurred during a compute request."""
 
 
+class NominalContainerImageError(NominalError):
+    """A containerized extractor's container image is in a failed or unusable state."""
+
+
 class NominalVideoStreamError(NominalError):
     """An error occurred during live video streaming."""
 

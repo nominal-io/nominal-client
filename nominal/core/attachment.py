@@ -11,12 +11,12 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
+class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str

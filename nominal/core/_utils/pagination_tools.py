@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
@@ -21,7 +21,10 @@ from nominal_api import (
     secrets_api,
 )
 
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -328,6 +331,44 @@ def search_workbook_templates_paginated(
         yield from response.results
 
 
+def search_containerized_extractors_paginated(
+    extractor_service: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub,
+    workspace_rid: str,
+    include_archived: bool = False,
+    file_extension: str | None = None,
+) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
+    # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
+    # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.
+    def factory(page_token: str | None) -> containerized_extractor_pb2.SearchContainerizedExtractorsRequest:
+        return containerized_extractor_pb2.SearchContainerizedExtractorsRequest(
+            workspace_rid=workspace_rid,
+            include_archived=include_archived,
+            file_extension=file_extension,
+            page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_grpc(extractor_service.SearchContainerizedExtractors, request_factory=factory):
+        yield from response.extractors
+
+
+def search_container_images_paginated(
+    registry_service: registry_pb2_grpc.RegistryServiceStub,
+    workspace_rid: str,
+    search_filter: registry_pb2.SearchFilter | None,
+) -> Iterable[registry_pb2.ContainerImage]:
+    def factory(page_token: str | None) -> registry_pb2.SearchImagesRequest:
+        return registry_pb2.SearchImagesRequest(
+            filter=search_filter,
+            workspace_rid=workspace_rid,
+            page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_grpc(registry_service.SearchImages, request_factory=factory):
+        yield from response.images
+
+
 #########################
 # Paging infrastructure #
 #########################
@@ -404,3 +445,27 @@ def paginate_rpc(
         next_page_token = token_factory(response)
         if next_page_token is None:
             break
+
+
+_GrpcRequestT = TypeVar("_GrpcRequestT")
+
+
+def paginate_grpc(
+    rpc: Callable[[_GrpcRequestT], Any],
+    *,
+    request_factory: Callable[[str | None], _GrpcRequestT],
+) -> Iterable[Any]:
+    """Yield successive responses from a v2 gRPC search RPC, following next_page_token cursors.
+
+    The gRPC sibling of `paginate_rpc`: `request_factory(token)` builds a fresh request for each page
+    (`None` for the first page), and `rpc` is called as `rpc(request)` (auth rides the channel).
+    Stops when a response has an empty `next_page_token` (proto3's encoding of "no more pages").
+    """
+    token: str | None = None
+    while True:
+        with translate_grpc_errors():
+            response = rpc(request_factory(token))
+        yield response
+        token = response.next_page_token or None
+        if token is None:
+            return
