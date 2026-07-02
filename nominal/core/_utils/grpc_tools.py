@@ -1,8 +1,8 @@
 """gRPC transport plumbing for the Nominal client.
 
-This module is the gRPC analogue of the conjure stub factory in `_utils.networking`: it builds a single,
-shared, fully-configured `grpc.Channel` and returns a `create_grpc_stub_factory(StubClass) -> stub`
-closure, so each backend gRPC service is exposed as a generated stub bound to that one channel.
+This module is the gRPC analogue of the conjure transport in `_utils.networking`: it builds a single,
+shared, fully-configured `grpc.Channel` (`create_grpc_channel`) that each backend gRPC service binds its
+generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
@@ -19,17 +19,37 @@ import ssl
 import sys
 from abc import abstractmethod
 from collections import namedtuple
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Iterator, Protocol, TypeVar
 from urllib.parse import urlparse
 
-import grpc  # type: ignore[import-untyped]
+import grpc
 from conjure_python_client import ServiceConfiguration
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
+from nominal.core.exceptions import (
+    NominalAuthenticationError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalNotFoundError,
+    NominalPermissionDeniedError,
+)
 
-TStub = TypeVar("TStub")
+TStub_co = TypeVar("TStub_co", covariant=True)
+
+
+class GRPCStub(Protocol[TStub_co]):
+    """A generated gRPC stub class, viewed as a callable that binds itself to a channel.
+
+    Generated ``*_pb2_grpc`` stub classes are constructed as ``StubClass(channel)``. Annotating a stub
+    class as ``GRPCStub[StubClass]`` rather than ``type[StubClass]`` lets mypy see that channel-accepting
+    constructor, so callers can build stubs without a ``# type: ignore[call-arg]``.
+    """
+
+    def __call__(self, channel: grpc.Channel) -> TStub_co: ...
+
 
 # gRPC channel-arg ints are int32; 2**31 - 1 (~2 GiB) lifts the 4 MB default receive cap without overflowing.
 _MAX_MESSAGE_LENGTH = 2**31 - 1
@@ -125,7 +145,7 @@ def _service_config_json(service_config: ServiceConfiguration) -> str:
 # immutable, attribute-compatible copy of the call details; grpc.ClientCallDetails itself is abstract.
 class _ClientCallDetails(
     namedtuple("_ClientCallDetails", ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression")),
-    grpc.ClientCallDetails,  # type: ignore[misc]  # grpc stubs type base classes as Any
+    grpc.ClientCallDetails,
 ):
     pass
 
@@ -148,10 +168,10 @@ def _replace_call_details(details: grpc.ClientCallDetails, **changes: Any) -> _C
 
 
 class _ClientCallDetailsInterceptor(
-    grpc.UnaryUnaryClientInterceptor,  # type: ignore[misc]  # grpc stubs type base classes as Any
-    grpc.UnaryStreamClientInterceptor,  # type: ignore[misc]
-    grpc.StreamUnaryClientInterceptor,  # type: ignore[misc]
-    grpc.StreamStreamClientInterceptor,  # type: ignore[misc]
+    grpc.UnaryUnaryClientInterceptor,
+    grpc.UnaryStreamClientInterceptor,
+    grpc.StreamUnaryClientInterceptor,
+    grpc.StreamStreamClientInterceptor,
 ):
     """Base for interceptors that rewrite the outgoing `ClientCallDetails`.
 
@@ -261,28 +281,26 @@ def create_grpc_channel(
     )
 
 
-def create_grpc_stub_factory(
-    *,
-    api_base_url: str,
-    service_config: ServiceConfiguration,
-    user_agent: str,
-    auth_header: str,
-    header_provider: HeaderProvider | None,
-) -> Callable[[type[TStub]], TStub]:
-    """Build the shared channel once and return ``factory(StubClass) -> StubClass(channel)``.
+_GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
+    grpc.StatusCode.PERMISSION_DENIED: NominalPermissionDeniedError,
+    grpc.StatusCode.UNAUTHENTICATED: NominalAuthenticationError,
+    grpc.StatusCode.NOT_FOUND: NominalNotFoundError,
+    grpc.StatusCode.INVALID_ARGUMENT: NominalInvalidArgumentError,
+}
 
-    The gRPC analogue of `create_conjure_client_factory`: one shared channel, many stubs. Callers
-    (`ClientsBunch`) bind each backend service's generated stub to the returned factory.
+
+@contextmanager
+def translate_grpc_errors() -> Iterator[None]:
+    """Re-raise any ``grpc.RpcError`` raised in the block as a ``NominalError``.
+
+    Maps the common status codes to dedicated ``NominalError`` subclasses and falls back to the base
+    ``NominalError`` otherwise, preserving the gRPC status code/details in the message and chaining the
+    original error. Wrap gRPC calls with this so callers never see ``grpc.RpcError``. A call site needing
+    status-specific behavior may either catch the mapped subclass around this block, or ``except
+    grpc.RpcError`` itself inside the block (its handler runs first).
     """
-    channel = create_grpc_channel(
-        api_base_url=api_base_url,
-        service_config=service_config,
-        user_agent=user_agent,
-        auth_header=auth_header,
-        header_provider=header_provider,
-    )
-
-    def factory(stub_class: type[TStub]) -> TStub:
-        return stub_class(channel)  # type: ignore[call-arg]  # grpc stub constructors are untyped
-
-    return factory
+    try:
+        yield
+    except grpc.RpcError as e:
+        exc_type = _GRPC_STATUS_TO_EXCEPTION.get(e.code(), NominalError)
+        raise exc_type(f"{e.code()}: {e.details()}") from e

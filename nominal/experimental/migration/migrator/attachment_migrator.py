@@ -44,6 +44,11 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         if existing_attachment is not None:
             return existing_attachment
 
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create attachment '%s' (source: %s)", source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         destination_client = self.destination_client_for(source)
         source_clients = cast(ClientsBunch, source._clients)
         raw = source_clients.attachment.get(source_clients.auth_header, source.rid)

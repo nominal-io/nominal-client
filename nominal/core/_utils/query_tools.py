@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Iterable, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence, cast
 
 from nominal_api import (
     api,
@@ -21,7 +21,15 @@ from nominal_api import (
 )
 
 from nominal._utils.deprecation_tools import _NotProvided
+from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.protos.registry.v2 import registry_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    from nominal.core.container_image import ContainerImageStatus
+    from nominal.core.dataset import Dataset
+    from nominal.core.ingestion_job import IngestionJobStatus
+    from nominal.core.user import User
 
 
 class AssetMatch(Enum):
@@ -216,28 +224,26 @@ def create_search_users_query(
     return authentication_api.SearchUsersQuery(and_=queries)
 
 
-def create_search_containerized_extractors_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    workspace_rid: str | None = None,
-) -> ingest_api.SearchContainerizedExtractorsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
+def create_search_container_images_query(
+    tag: str | None = None,
+    status: ContainerImageStatus | None = None,
+) -> registry_pb2.SearchFilter | None:
+    """Build a v2 registry SearchFilter from SDK-native tag/status parameters."""
+    filters = []
+    if tag is not None:
+        filters.append(registry_pb2.SearchFilter(tag=registry_pb2.TagFilter(tag=tag)))
+    if status is not None:
+        filters.append(registry_pb2.SearchFilter(status=registry_pb2.StatusFilter(status=status._to_proto())))
 
-    if workspace_rid is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=workspace_rid))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
-
-    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
+    if len(filters) == 0:
+        return None
+    elif len(filters) == 1:
+        return filters[0]
+    else:
+        # `and` is a Python keyword, so mypy-protobuf can't expose it as a typed kwarg or attribute; pass it
+        # through a **mapping (which also avoids getattr/setattr on the generated message).
+        and_clause: dict[str, Any] = {"and": registry_pb2.AndFilter(clauses=filters)}
+        return registry_pb2.SearchFilter(**and_clause)
 
 
 def create_search_assets_query(
@@ -262,6 +268,51 @@ def create_search_assets_query(
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def create_search_ingest_jobs_query(
+    *,
+    datasets: Sequence[Dataset | str] | None = None,
+    created_by: Sequence[User | str] | None = None,
+    statuses: Sequence[IngestionJobStatus] | None = None,
+    search_text: str | None = None,
+    start_time_after: str | datetime | IntegralNanosecondsUTC | None = None,
+    start_time_before: str | datetime | IntegralNanosecondsUTC | None = None,
+    workspace_rid: str | None = None,
+) -> ingest_api.IngestJobSearchFilter:
+    queries: list[ingest_api.IngestJobSearchFilter] = []
+    if datasets:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(dataset_rids=[rid_from_instance_or_string(d) for d in datasets])
+        )
+    if created_by:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(
+                created_by_rids=[rid_from_instance_or_string(actor) for actor in created_by]
+            )
+        )
+    if statuses:
+        queries.append(ingest_api.IngestJobSearchFilter(statuses=[status._to_conjure() for status in statuses]))
+    if search_text is not None:
+        queries.append(ingest_api.IngestJobSearchFilter(search_text=search_text))
+    if start_time_after is not None or start_time_before is not None:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(
+                start_time_range=ingest_api.IngestJobStartTimeRange(
+                    start_time_after=(
+                        None if start_time_after is None else _SecondsNanos.from_flexible(start_time_after).to_iso8601()
+                    ),
+                    start_time_before=(
+                        None
+                        if start_time_before is None
+                        else _SecondsNanos.from_flexible(start_time_before).to_iso8601()
+                    ),
+                )
+            )
+        )
+    if workspace_rid is not None:
+        queries.append(ingest_api.IngestJobSearchFilter(workspace=workspace_rid))
+    return ingest_api.IngestJobSearchFilter(and_=queries)
 
 
 def create_search_checklists_query(

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
-import conjure_python_client
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -30,7 +29,6 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import ts
 from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
@@ -43,6 +41,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
@@ -51,6 +50,7 @@ from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
     search_datasets_paginated,
+    search_ingest_jobs_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
@@ -62,8 +62,8 @@ from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
     create_search_checklists_query,
-    create_search_containerized_extractors_query,
     create_search_datasets_query,
+    create_search_ingest_jobs_query,
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
@@ -75,12 +75,17 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
-from nominal.core.containerized_extractors import (
+from nominal.core.container_image import (
+    ContainerImage,
+    ContainerImageStatus,
+    _get_container_image,
+    _search_container_images,
+)
+from nominal.core.containerized_extractor import (
     ContainerizedExtractor,
-    DockerImageSource,
-    FileExtractionInput,
-    FileExtractionParameter,
-    FileOutputFormat,
+    _create_containerized_extractor,
+    _get_containerized_extractor,
+    _search_containerized_extractors,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
 from nominal.core.dataset import (
@@ -93,8 +98,15 @@ from nominal.core.dataset import (
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
+from nominal.core.exceptions import (
+    NominalConfigError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalMethodRemovedError,
+    NominalNotFoundError,
+)
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -104,10 +116,11 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.units.v1 import units_pb2
+from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -267,7 +280,8 @@ class NominalClient:
             case Workspace(rid=search_rid):
                 return search_rid
             case str() as search_rid:
-                # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+                # NOTE: raises a NominalError (e.g. NominalPermissionDeniedError) if the given rid is not visible
+                # to the user (or doesn't exist period)
                 return self._clients.resolve_workspace(search_rid).rid
             case WorkspaceSearchType.ALL:
                 return None
@@ -298,17 +312,20 @@ class NominalClient:
         Raises:
             NominalConfigError: Raises a NominalConfigError if no workspace provided and no default workspace can
                 be resolved.
-            conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
+            NominalNotFoundError: The requested workspace does not exist or is not accessible to the user (the
+                backend does not distinguish the two).
         """
-        raw_workspace = self._clients.resolve_workspace(workspace_rid)
-        return Workspace._from_conjure(raw_workspace)
+        return Workspace._from_proto(self._clients.resolve_workspace(workspace_rid))
 
     def list_workspaces(self) -> Sequence[Workspace]:
-        """Return all workspaces visible to the current user"""
-        return [
-            Workspace._from_conjure(raw_workspace)
-            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
-        ]
+        """Return all workspaces visible to the current user.
+
+        Raises:
+            NominalError: If the workspace service request fails.
+        """
+        with translate_grpc_errors():
+            response = self._clients.workspace.GetWorkspaces(workspaces_pb2.GetWorkspacesRequest())
+        return [Workspace._from_proto(workspace) for workspace in response.workspaces]
 
     def get_user(self, user_rid: str | None = None) -> User:
         """Retrieve the specified user.
@@ -1027,7 +1044,7 @@ class NominalClient:
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
-        return _available_units(self._clients.auth_header, self._clients.units)
+        return _available_units(self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
         """Get details of the given unit symbol, or none if the symbol is not recognized by Nominal.
@@ -1042,20 +1059,32 @@ class NominalClient:
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
+        Raises:
+            NominalError: If the units service request fails for a reason other than an
+                unrecognized symbol.
+
         """
         try:
-            api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
-            return None if api_unit is None else Unit._from_conjure(api_unit)
-        except conjure_python_client.ConjureHTTPError as ex:
-            logger.debug("Error getting unit '%s': '%s'", unit_symbol, ex)
+            with translate_grpc_errors():
+                response = self._clients.units.GetUnit(units_pb2.GetUnitRequest(unit=unit_symbol))
+        except (NominalNotFoundError, NominalInvalidArgumentError):
+            # An unrecognized or malformed symbol is the documented "no such unit symbol matches" -> None.
+            # Handle it whether the backend signals it via a NOT_FOUND/INVALID_ARGUMENT status (translated to
+            # these NominalError subclasses) or via a present-but-empty response (the HasField check below).
             return None
+        return Unit._from_proto(response.unit) if response.HasField("unit") else None
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
-        """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
-        return [
-            Unit._from_conjure(unit)
-            for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
-        ]
+        """Get the list of units that are commensurable (convertible to/from) the given unit symbol.
+
+        Raises:
+            NominalError: If the units service request fails.
+        """
+        with translate_grpc_errors():
+            response = self._clients.units.GetCommensurableUnits(
+                units_pb2.GetCommensurableUnitsRequest(unit=unit_symbol)
+            )
+        return [Unit._from_proto(unit) for unit in response.units]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""
@@ -1275,6 +1304,60 @@ class NominalClient:
         )
         return list(self._iter_search_assets(query, archive_status))
 
+    def get_ingestion_job(self, rid: str) -> IngestionJob:
+        """Retrieve an ingest job by its RID."""
+        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, rid)
+        return IngestionJob._from_conjure(self._clients, job)
+
+    def _iter_search_ingestion_jobs(self, filter: ingest_api.IngestJobSearchFilter) -> Iterable[IngestionJob]:
+        for job in search_ingest_jobs_paginated(self._clients.ingest_jobs, self._clients.auth_header, filter):
+            yield IngestionJob._from_conjure(self._clients, job)
+
+    def search_ingestion_jobs(
+        self,
+        *,
+        datasets: Sequence[Dataset | str] | None = None,
+        created_by: Sequence[User | str] | None = None,
+        statuses: Sequence[IngestionJobStatus] | None = None,
+        search_text: str | None = None,
+        start_time_after: str | datetime | IntegralNanosecondsUTC | None = None,
+        start_time_before: str | datetime | IntegralNanosecondsUTC | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+    ) -> Sequence[IngestionJob]:
+        """Search ingest jobs. Filters are ANDed together.
+
+        Results are limited to datasets the caller can read; jobs without a persisted dataset are
+        never returned by search.
+
+        Args:
+            datasets: Only jobs targeting any of these datasets (or their RIDs).
+            created_by: Only jobs created by any of these users or user RIDs.
+            statuses: Only jobs in any of these statuses.
+            search_text: Case-insensitive substring match against origin file paths.
+            start_time_after: Only jobs that started at or after this time (inclusive).
+            start_time_before: Only jobs that started before this time (exclusive).
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
+
+        Returns:
+            All ingest jobs matching all of the provided conditions, most recent first.
+        """
+        filter = create_search_ingest_jobs_query(
+            datasets=datasets,
+            created_by=created_by,
+            statuses=statuses,
+            search_text=search_text,
+            start_time_after=start_time_after,
+            start_time_before=start_time_before,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
+        return list(self._iter_search_ingestion_jobs(filter))
+
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
 
@@ -1418,83 +1501,87 @@ class NominalClient:
             archive_status=archive_status,
         )
 
+    def create_containerized_extractor(self, name: str, *, description: str | None = None) -> ContainerizedExtractor:
+        """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
+
+        A newly created extractor has no container image: register one with
+        `ContainerizedExtractor.register_image` and activate it before ingesting.
+
+        Args:
+            name: Name of the extractor.
+            description: Human-readable description of the extractor.
+
+        Returns:
+            The newly created extractor.
+        """
+        return _create_containerized_extractor(self._clients, name, description=description)
+
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
-        return ContainerizedExtractor._from_conjure(
-            self._clients,
-            self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
-        )
+        """Get a containerized extractor by its RID.
 
-    def create_containerized_extractor(
-        self,
-        name: str,
-        *,
-        description: str | None = None,
-        docker_image: DockerImageSource,
-        inputs: Sequence[FileExtractionInput] = (),
-        parameters: Sequence[FileExtractionParameter] = (),
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
-        timestamp_column: str,
-        timestamp_type: ts._AnyTimestampType,
-        file_output_format: FileOutputFormat | None = None,
-    ) -> ContainerizedExtractor:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
+        Args:
+            rid: RID of the containerized extractor to retrieve.
 
-        req = ingest_api.RegisterContainerizedExtractorRequest(
-            name=name,
-            description=description,
-            image=docker_image._to_conjure(),
-            inputs=[file_extraction_input._to_conjure() for file_extraction_input in inputs],
-            parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in parameters],
-            properties=dict(properties or {}),
-            labels=list(labels),
-            workspace=workspace_rid,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column,
-                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-            ),
-            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
-        )
-        resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
-        return self.get_containerized_extractor(resp.extractor_rid)
+        Returns:
+            The requested extractor, including its active container image (if any).
+        """
+        return _get_containerized_extractor(self._clients, rid)
 
     def search_containerized_extractors(
         self,
         *,
-        search_text: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        include_archived: bool = False,
+        file_extension: str | None = None,
+        workspace: str | Workspace | None = None,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
-        Filters are ANDed together, e.g., `(extractor.label == label) AND (extractor.workspace == workspace)`
 
         Args:
-            search_text: Fuzzy-searches for a string in the extractor's metadata.
-            labels: A list of labels that must ALL be present on an extractor to be included.
-            properties: A mapping of key-value pairs that must ALL be present on an extractor te be included.
-            workspace: Filters search to given workspace.
-
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
-
+            include_archived: If true, include archived extractors in the results.
+            file_extension: If provided, only include extractors whose active image declares an input
+                accepting files with this suffix (e.g. "csv" — no leading dot).
+            workspace: Workspace to search within (the client's default workspace if not provided).
 
         Returns:
-            All extractors which match all of the provided coditions
+            All extractors matching all of the provided filters.
         """
-        query = create_search_containerized_extractors_query(
-            search_text=search_text,
-            labels=labels,
-            properties=properties,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        workspace_rid = None if workspace is None else rid_from_instance_or_string(workspace)
+        return _search_containerized_extractors(
+            self._clients, include_archived=include_archived, file_extension=file_extension, workspace_rid=workspace_rid
         )
-        resp = self._clients.containerized_extractors.search_containerized_extractors(
-            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
-        )
-        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
+
+    def get_container_image(self, rid: str) -> ContainerImage:
+        """Get a container image by its RID.
+
+        Args:
+            rid: RID of the container image to retrieve.
+
+        Returns:
+            The requested image, e.g. to poll its `status` after registration.
+        """
+        return _get_container_image(self._clients, rid)
+
+    def search_container_images(
+        self,
+        *,
+        tag: str | None = None,
+        status: ContainerImageStatus | None = None,
+        workspace: str | Workspace | None = None,
+    ) -> Sequence[ContainerImage]:
+        """Search for container images meeting the specified filters.
+
+        Filters are ANDed together, e.g. `(image.tag == tag) AND (image.status == status)`.
+
+        Args:
+            tag: If provided, only include images registered with this tag.
+            status: If provided, only include images with this status.
+            workspace: Workspace to search within (the client's default workspace if not provided).
+
+        Returns:
+            All container images matching all of the provided filters.
+        """
+        workspace_rid = None if workspace is None else rid_from_instance_or_string(workspace)
+        return _search_container_images(self._clients, tag=tag, status=status, workspace_rid=workspace_rid)
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

@@ -8,10 +8,10 @@ from typing import Any, Literal, Sequence
 
 import click
 import yaml
-from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbooksRequest
+from nominal_api.scout_sandbox_api import SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import ArchiveStatusFilter, Asset, NominalClient, Workbook
+from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -113,8 +113,12 @@ def _load_asset_resources(
         raise click.UsageError("Provide only one of 'migration.source_asset_rids' or 'migration.source_assets'.")
 
     if source_assets is None:
-        if not isinstance(asset_rids, list) or not asset_rids:
-            raise click.UsageError("'migration.source_asset_rids' must be a non-empty list.")
+        # An absent or empty source_asset_rids means no assets to migrate; skip straight to
+        # standalone_workbook_template_rids rather than failing.
+        if asset_rids is None or asset_rids == []:
+            return {}
+        if not isinstance(asset_rids, list):
+            raise click.UsageError("'migration.source_asset_rids' must be a list.")
         return _load_asset_resources_from_list(source_client, asset_rids)
 
     if not isinstance(source_assets, dict) or not source_assets:
@@ -169,6 +173,23 @@ def _load_standalone_templates(source_client: NominalClient, template_rids: Any)
             raise click.UsageError(f"Workbook Template with RID '{t}' not found in source client.")
         templates.append(template_resource)
     return templates
+
+
+def _load_standalone_checklists(source_client: NominalClient, checklist_rids: Any) -> list[Checklist]:
+    if checklist_rids is None:
+        return []
+
+    if not isinstance(checklist_rids, list) or not all(isinstance(c, str) and c.strip() for c in checklist_rids):
+        raise click.UsageError("'migration.standalone_checklist_rids' must be a list of strings.")
+
+    checklists = []
+    for c in checklist_rids:
+        try:
+            checklist_resource = source_client.get_checklist(c)
+        except Exception as exc:
+            raise click.UsageError(f"Checklist with RID '{c}' not found in source client.") from exc
+        checklists.append(checklist_resource)
+    return checklists
 
 
 def load_impersonation_config(raw: Any) -> ImpersonationConfig | None:
@@ -369,6 +390,10 @@ def _load_migration_config(
         source_client,
         m.get("standalone_workbook_template_rids"),
     )
+    standalone_checklists = _load_standalone_checklists(
+        source_client,
+        m.get("standalone_checklist_rids"),
+    )
     impersonation_config = load_impersonation_config(m.get("impersonation"))
 
     dataset_config = MigrationDatasetConfig(
@@ -381,6 +406,7 @@ def _load_migration_config(
         MigrationResources(
             source_assets=asset_resources_by_rid,
             source_standalone_templates=standalone_workbook_templates,
+            source_standalone_checklists=standalone_checklists,
         ),
         dataset_config,
         asset_inclusion_config,
@@ -421,18 +447,6 @@ def _validate_demo_workbook_metadata(source_client: NominalClient, migration_res
     return True
 
 
-def _create_sandbox_workspace_service(target_client: NominalClient) -> SandboxWorkspaceService:
-    """Create a SandboxWorkspaceService by reusing the connection details from the target client."""
-    existing_service = target_client._clients.workspace
-    return SandboxWorkspaceService(
-        requests_session=existing_service._requests_session,
-        uris=existing_service._uris,
-        _connect_timeout=existing_service._connect_timeout,
-        _read_timeout=existing_service._read_timeout,
-        _verify=existing_service._verify,
-    )
-
-
 def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner) -> None:
     """After migration, append newly created workbook RIDs to the sandbox demo workbooks list."""
     new_workbook_rids = list(runner.migration_state.rid_mapping.get(ResourceType.WORKBOOK.value, {}).values())
@@ -442,7 +456,7 @@ def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner
 
     workspace_rid = target_client.get_workspace().rid
     auth_header = target_client._clients.auth_header
-    sandbox_service = _create_sandbox_workspace_service(target_client)
+    sandbox_service = target_client._clients.sandbox_workspace
 
     existing_response = sandbox_service.get_demo_workbooks(auth_header, workspace_rid)
     existing_rids = existing_response.notebook_rids
@@ -487,11 +501,19 @@ def migrate_cmd() -> None:
     type=click.IntRange(min=1),
     help="Maximum number of top-level asset/template migrations to run concurrently.",
 )
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Log what would be created without writing anything to the destination tenant or state file.",
+)
 def copy(
     clients: tuple[NominalClient, NominalClient],
     config_path: Path,
     migration_state_path: Path | None,
     max_workers: int,
+    dry_run: bool,
 ) -> None:
     source_client, target_client = clients
     logger.info("Loading migration config from: %s", config_path)
@@ -518,14 +540,19 @@ def copy(
             return
 
     logger.info(
-        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d)",
+        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d, "
+        "source_standalone_checklists=%d)",
         name,
         len(migration_resources.source_assets),
         len(migration_resources.source_standalone_templates),
+        len(migration_resources.source_standalone_checklists),
     )
     destination_client_resolver = build_destination_client_resolver(target_client, impersonation_config)
     if destination_client_resolver is not None:
         logger.info("Destination impersonation is enabled for this migration config.")
+
+    if dry_run:
+        logger.info("DRY RUN mode enabled — no resources will be created on the destination tenant")
 
     runner = MigrationRunner(
         migration_resources=migration_resources,
@@ -534,10 +561,11 @@ def copy(
         destination_client=target_client,
         destination_client_resolver=destination_client_resolver,
         migration_state_path=migration_state_path,
+        dry_run=dry_run,
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
-    if set_to_demo_workbook:
+    if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
 
 
@@ -643,6 +671,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             "set_to_demo_workbook": False,
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
             "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
+            "standalone_checklist_rids": [],
         }
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)

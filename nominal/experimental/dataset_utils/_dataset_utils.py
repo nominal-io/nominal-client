@@ -3,6 +3,7 @@ from collections.abc import Mapping, Sequence
 from nominal_api import scout_catalog
 
 from nominal.core import Dataset, NominalClient, User
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
@@ -65,7 +66,8 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
     Raises:
         ValueError: No owner assignment could be resolved for the dataset.
     """
-    response = dataset._clients.roles.GetResourceRoles(roles_pb2.GetResourceRolesRequest(resource=dataset.rid))
+    with translate_grpc_errors():
+        response = dataset._clients.roles.GetResourceRoles(roles_pb2.GetResourceRolesRequest(resource=dataset.rid))
     for assignment in response.role_assignments:
         if assignment.role == roles_pb2.ROLE_OWNER and assignment.user_rid:
             return str(assignment.user_rid)

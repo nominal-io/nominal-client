@@ -54,6 +54,12 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
 
         destination_client = self.destination_client_for(source)
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
+
+        if self.ctx.dry_run:
+            logger.info("[DRY RUN] Would create workbook template '%s' (source: %s)", source.title, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
             raw_source_template,
             options,

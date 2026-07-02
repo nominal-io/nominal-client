@@ -16,7 +16,7 @@ from typing_extensions import Self
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableMixin
+from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -40,7 +40,7 @@ def filename_from_uri(uri: str) -> str:
 
 
 @dataclass(frozen=True)
-class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
+class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
     id: str
     dataset_rid: str
     name: str

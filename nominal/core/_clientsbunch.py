@@ -9,7 +9,6 @@ from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
-    comments_api,
     event,
     ingest_api,
     scout,
@@ -22,9 +21,9 @@ from nominal_api import (
     scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
+    scout_sandbox_api,
     scout_video,
     secrets_api,
-    security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
@@ -34,17 +33,23 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
-from nominal.core._utils.grpc_tools import create_grpc_stub_factory
+from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
+from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 TService = TypeVar("TService", bound=Service)
+TStub = TypeVar("TStub")
 
 
 @dataclass(frozen=True)
@@ -130,7 +135,7 @@ class ClientsBunch:
     _token: str = field(repr=False)
     _service_config: ServiceConfiguration = field(repr=False)
 
-    _default_workspace: LazyField[security_api_workspace.Workspace] = field(
+    _default_workspace: LazyField[workspaces_pb2.Workspace] = field(
         default_factory=LazyField,
         init=False,
         repr=False,
@@ -146,8 +151,9 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
+    ingest_jobs: ingest_api.IngestJobService
     run: scout.RunService
-    units: scout.UnitsService
+    units: units_pb2_grpc.UnitsServiceStub
     upload: upload_api.UploadService
     video: scout_video.VideoService
     video_file: scout_video.VideoFileService
@@ -160,15 +166,27 @@ class ClientsBunch:
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
     event: event.EventService
-    comments: comments_api.CommentsService
+    comments: comments_pb2_grpc.CommentsServiceStub
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     series_metadata: timeseries_metadata.SeriesMetadataService
-    workspace: security_api_workspace.WorkspaceService
-    containerized_extractors: ingest_api.ContainerizedExtractorService
+    workspace: workspaces_pb2_grpc.WorkspaceServiceStub
+    containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    registry: registry_pb2_grpc.RegistryServiceStub
     secrets: secrets_api.SecretService
     roles: roles_pb2_grpc.RoleServiceStub
+    sandbox_workspace: scout_sandbox_api.SandboxWorkspaceService
 
-    def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
+    def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
+        """Fetch a single workspace by its RID via the gRPC workspace service.
+
+        Centralizes the single call site for fetching a workspace by RID (the RPC plus gRPC error translation).
+        """
+        with translate_grpc_errors():
+            return self.workspace.GetWorkspace(
+                workspaces_pb2.GetWorkspaceRequest(workspace_rid=workspace_rid)
+            ).workspace
+
+    def _fetch_default_workspace(self) -> workspaces_pb2.Workspace:
         """Fetch the workspace object this client should treat as its default.
 
         Pinned clients resolve their configured workspace RID as the default. Unpinned clients fall back to the
@@ -176,12 +194,13 @@ class ClientsBunch:
         """
         # User has explicitly configured a default workspace in the config profile -> retrieve that workspace
         if self.workspace_rid is not None:
-            return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
+            return self._get_workspace_by_rid(self.workspace_rid)
 
         # User has not explicitly configured a default workspace in the config profile -> get tenant-wide default
-        raw_workspace = self.workspace.get_default_workspace(self.auth_header)
-        if raw_workspace is not None:
-            return raw_workspace
+        with translate_grpc_errors():
+            response = self.workspace.GetDefaultWorkspace(workspaces_pb2.GetDefaultWorkspaceRequest())
+        if response.HasField("workspace"):
+            return response.workspace
 
         raise NominalConfigError(
             "Could not retrieve default workspace! "
@@ -208,7 +227,7 @@ class ClientsBunch:
         """
         return self._default_workspace.get_or_init(self._fetch_default_workspace).rid
 
-    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace:
+    def resolve_workspace(self, workspace_rid: str | None = None) -> workspaces_pb2.Workspace:
         """Resolve an optionally provided workspace rid to the correct RID to use in requests.
 
         Args:
@@ -225,7 +244,8 @@ class ClientsBunch:
 
         Raises:
             NominalConfigError: If `workspace_rid` is None and no default workspace can be resolved.
-            conjure_python_client.ConjureHTTPError: If an explicit workspace RID is unavailable to the user.
+            NominalNotFoundError: If an explicit workspace RID does not exist or is not accessible to the user (the
+                backend does not distinguish the two).
         """
         if workspace_rid is None:
             # `_default_workspace` caches the single workspace object this client resolves as "default", whether that
@@ -240,7 +260,7 @@ class ClientsBunch:
                 return raw_workspace
 
         # Retrieve the workspace by rid
-        return self.workspace.get_workspace(self.auth_header, workspace_rid)
+        return self._get_workspace_by_rid(workspace_rid)
 
     @classmethod
     def from_config(
@@ -262,13 +282,16 @@ class ClientsBunch:
                 header_provider=header_provider,
             )(service_class)
 
-        grpc_factory = create_grpc_stub_factory(
+        grpc_channel = create_grpc_channel(
             api_base_url=base_url,
             service_config=cfg,
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
         )
+
+        def grpc_factory(stub_class: GRPCStub[TStub]) -> TStub:
+            return stub_class(grpc_channel)
 
         return cls(
             auth_header=f"Bearer {token}",
@@ -279,6 +302,7 @@ class ClientsBunch:
             _user_agent=agent,
             _token=token,
             _service_config=cfg,
+            # Conjure Service Stubs
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -288,8 +312,9 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
+            ingest_jobs=client_factory(ingest_api.IngestJobService),
             run=client_factory(scout.RunService),
-            units=client_factory(scout.UnitsService),
+            units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
@@ -302,12 +327,15 @@ class ClientsBunch:
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
-            comments=client_factory(comments_api.CommentsService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
-            workspace=client_factory(security_api_workspace.WorkspaceService),
-            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            sandbox_workspace=client_factory(scout_sandbox_api.SandboxWorkspaceService),
+            # GRPC Service Stubs
+            comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
+            workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
+            containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
         )
 
@@ -321,7 +349,7 @@ class HasScoutParams(Protocol):
     def app_base_url(self) -> str: ...
     @property
     def header_provider(self) -> HeaderProvider | None: ...
-    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
+    def resolve_workspace(self, workspace_rid: str | None = None) -> workspaces_pb2.Workspace: ...
     def resolve_default_workspace_rid(self) -> str: ...
 
 

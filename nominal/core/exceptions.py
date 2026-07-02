@@ -46,6 +46,22 @@ class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
 
 
+class NominalPermissionDeniedError(NominalError):
+    """The caller is authenticated but not authorized for the requested resource."""
+
+
+class NominalAuthenticationError(NominalError):
+    """The request was not authenticated (missing, expired, or invalid credentials)."""
+
+
+class NominalNotFoundError(NominalError):
+    """The requested resource does not exist."""
+
+
+class NominalInvalidArgumentError(NominalError):
+    """The server rejected the request as malformed or invalid."""
+
+
 class HeaderConflictError(NominalError):
     """A header provider attempted to override an explicit request header."""
 
@@ -71,6 +87,10 @@ class NominalMethodRemovedError(NominalError):
 
 class NominalComputeError(NominalError):
     """An error occurred during a compute request."""
+
+
+class NominalContainerImageError(NominalError):
+    """A containerized extractor's container image is in a failed or unusable state."""
 
 
 class NominalVideoStreamError(NominalError):

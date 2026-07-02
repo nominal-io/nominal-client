@@ -2,9 +2,24 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 
 from nominal.core.channel import Channel, ChannelDataType
+
+
+class _FakeRpcError(grpc.RpcError):
+    """A grpc.RpcError with a controllable status code and details, for exercising gRPC error translation."""
+
+    def __init__(self, code: grpc.StatusCode, details: str = "fake rpc error") -> None:
+        self._code = code
+        self._details = details
+
+    def code(self) -> grpc.StatusCode:
+        return self._code
+
+    def details(self) -> str:
+        return self._details
 
 
 @pytest.fixture
@@ -49,3 +64,9 @@ def make_series_count_response():
         return response
 
     return _make
+
+
+@pytest.fixture
+def fake_rpc_error():
+    """Factory fixture for grpc.RpcError instances with a chosen status code (and optional details)."""
+    return _FakeRpcError

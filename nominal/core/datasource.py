@@ -10,7 +10,6 @@ from nominal_api import (
     authentication_api,
     datasource_api,
     ingest_api,
-    scout,
     scout_catalog,
     scout_compute_api,
     scout_dataexport_api,
@@ -33,6 +32,9 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
     _to_export_timestamp_format,
@@ -70,9 +72,11 @@ class DataSource(HasRid):
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
-        def units(self) -> scout.UnitsService: ...
+        def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def ingest_jobs(self) -> ingest_api.IngestJobService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
         @property
@@ -86,7 +90,11 @@ class DataSource(HasRid):
         @property
         def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
-        def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
+        def containerized_extractor(
+            self,
+        ) -> containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub: ...
+        @property
+        def registry(self) -> registry_pb2_grpc.RegistryServiceStub: ...
         @property
         def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
         @property
@@ -265,6 +273,7 @@ class DataSource(HasRid):
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
+            NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
         channel_names = set(channel.name for channel in self.get_channels())
@@ -283,7 +292,7 @@ class DataSource(HasRid):
             return
 
         if not allow_display_only_units:
-            _error_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
+            _error_on_invalid_units(channels_to_units, self._clients.units)
 
         # For each channel / unit combination, create an update request
         update_requests = [

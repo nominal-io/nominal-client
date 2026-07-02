@@ -681,6 +681,41 @@ def test_migrate_standalone_template(
     assert dest_template.properties == source_template.properties
 
 
+def test_migrate_standalone_checklist(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Standalone checklists are cloned to the destination client without any run or execution."""
+    source_checklist = _create_checklist_with_content(
+        source_client,
+        title=f"migration-e2e-standalone-checklist-{uuid4()}",
+        description="standalone checklist description",
+        labels=["migration-e2e"],
+        properties={"checklist-prop": "checklist-val"},
+        is_published=True,
+    )
+    register_cleanup(source_checklist.archive)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[],
+        source_standalone_checklists=[source_checklist],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner.run_migration()
+
+    dest_checklist_rid = runner.migration_state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    assert dest_checklist.name == source_checklist.name
+    assert dest_checklist.description == source_checklist.description
+    assert set(dest_checklist.labels) == set(source_checklist.labels)
+    assert dest_checklist.properties == source_checklist.properties
+
+
 def test_migration_idempotency(
     source_client: NominalClient,
     dest_client: NominalClient,
@@ -872,6 +907,60 @@ def test_migrate_multi_asset_scenario(
     register_cleanup(dest_wb.archive)
     _assert_workbook_migrated_multi_asset(source_multi_asset_wb, dest_wb, [dest_asset_a, dest_asset_b])
     assert source_multi_asset_wb.rid not in state.pending_multi_asset_workbooks
+
+
+def test_dry_run_creates_nothing(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Dry-run mode traverses all source resources but writes nothing to the destination.
+
+    Verifies:
+    - The state file is not written to disk.
+    - Every in-memory RID mapping is a self-mapping (source_rid → source_rid), confirming
+      that no real destination resources were created and that child resources were visited.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+
+    state_file = tmp_path / "dry_run_state.json"
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        migration_state_path=state_file,
+        dry_run=True,
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    # State file must not be written in dry-run mode.
+    assert not state_file.exists(), "Dry-run must not write a state file"
+
+    # All in-memory mappings must be self-mappings (source → source placeholder).
+    # This also confirms child resources were visited (otherwise they'd be absent from state).
+    assert state.get_mapped_rid(ResourceType.ASSET, source_asset.rid) == source_asset.rid
+    assert state.get_mapped_rid(ResourceType.DATASET, source_ds.rid) == source_ds.rid
+    assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) == source_run.rid
+
+    # ASSET_DATA_SCOPE uses a composite key ("{asset_rid}:{scope_name}") → dataset_rid, not a
+    # simple rid → rid mapping, so it must be checked separately.
+    scope_key = f"{source_asset.rid}:primary"
+    assert state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) == source_ds.rid
+
+    for resource_type_str, mappings in state.rid_mapping.items():
+        if resource_type_str == ResourceType.ASSET_DATA_SCOPE.value:
+            continue
+        for source_rid, mapped_rid in mappings.items():
+            assert source_rid == mapped_rid, (
+                f"Dry-run produced a real destination mapping for {resource_type_str}: {source_rid} → {mapped_rid}"
+            )
 
 
 def test_migrate_with_impersonation(

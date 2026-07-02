@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    comments_api,
     event,
     scout,
     scout_asset_api,
@@ -24,7 +23,7 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableMixin,
+    RefreshableConjureMixin,
     ScopeTypeSpecifier,
     create_links,
     filter_scope_rids,
@@ -40,6 +39,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
+class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Asset]):
     rid: str
     name: str
     description: str | None
@@ -72,7 +72,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def comments(self) -> comments_api.CommentsService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
         @property
