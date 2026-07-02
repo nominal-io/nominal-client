@@ -21,6 +21,7 @@ from nominal.core._utils.grpc_tools import (
 from nominal.core._utils.networking import StaticHeaderProvider
 from nominal.core.exceptions import (
     HeaderConflictError,
+    NominalAlreadyExistsError,
     NominalAuthenticationError,
     NominalError,
     NominalInvalidArgumentError,
@@ -194,6 +195,7 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
         (grpc.StatusCode.PERMISSION_DENIED, NominalPermissionDeniedError),
         (grpc.StatusCode.UNAUTHENTICATED, NominalAuthenticationError),
         (grpc.StatusCode.NOT_FOUND, NominalNotFoundError),
+        (grpc.StatusCode.ALREADY_EXISTS, NominalAlreadyExistsError),
         (grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
     ],
 )

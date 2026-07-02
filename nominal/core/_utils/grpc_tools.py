@@ -30,6 +30,7 @@ from conjure_python_client import ServiceConfiguration
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
 from nominal.core.exceptions import (
+    NominalAlreadyExistsError,
     NominalAuthenticationError,
     NominalError,
     NominalInvalidArgumentError,
@@ -285,6 +286,7 @@ _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
     grpc.StatusCode.PERMISSION_DENIED: NominalPermissionDeniedError,
     grpc.StatusCode.UNAUTHENTICATED: NominalAuthenticationError,
     grpc.StatusCode.NOT_FOUND: NominalNotFoundError,
+    grpc.StatusCode.ALREADY_EXISTS: NominalAlreadyExistsError,
     grpc.StatusCode.INVALID_ARGUMENT: NominalInvalidArgumentError,
 }
 
