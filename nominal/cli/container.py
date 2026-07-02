@@ -186,6 +186,11 @@ _OUTPUT_FORMAT_CHOICES = tuple(sorted(fmt.name.lower() for fmt in REGISTERABLE_O
     help="file format the extractor writes  [default: parquet]",
 )
 @click.option("--wait/--no-wait", default=True, show_default=True, help="wait until the image is READY")
+@click.option(
+    "--activate",
+    is_flag=True,
+    help="activate the image on the extractor after registering (polls it to readiness first)",
+)
 @client_options
 @global_options
 def register_image(
@@ -197,18 +202,18 @@ def register_image(
     timestamp_type: str | None,
     output_format: str | None,
     wait: bool,
+    activate: bool,
     client: NominalClient,
 ) -> None:
     r"""Upload a `docker save` tarball and register it as a container image for an extractor.
 
     Prints the resulting container image RID on stdout (status messages go to stderr), suitable
-    for capturing in CI:
+    for capturing in CI. Registering does not change which image the extractor runs: activate the
+    image with `set-active-image` (release-gated pipelines), or pass --activate to register and
+    deploy in one step (continuous-deploy pipelines):
 
-        IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
-            -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json)
-        nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
-
-    The registered image starts PENDING and must be activated with `set-active-image` once READY.
+        nom container extractor register-image -r "$EXTRACTOR_RID" \
+            -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json --activate
     """
     parsed = _parse_config(_load_config(config_file))
     tag = tag if tag is not None else parsed.tag
@@ -233,8 +238,11 @@ def register_image(
         default_timestamp_column=timestamp_column,
         default_timestamp_type=cast(ts._AnyTimestampType, timestamp_type),
         output_format=format_enum if format_enum is not None else FileOutputFormat.PARQUET,
+        activate=activate,
     )
-    if wait:
+    if activate:
+        click.secho(f"Activated image {image.rid} ({image.tag}) on {extractor.name}", fg="green", err=True)
+    elif wait:
         click.secho(f"Waiting for image {image.rid} ({image.tag}) to become READY...", fg="cyan", err=True)
         image.poll_until_ready()
     click.echo(image.rid)
