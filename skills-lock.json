@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "skills": {
+    "reviewing-nominal-api-bumps": {
+      "canonicalPath": ".agents/skills/reviewing-nominal-api-bumps/SKILL.md",
+      "derivedPaths": [
+        ".claude/skills/reviewing-nominal-api-bumps"
+      ],
+      "hash": "1b6ab615b650c5ad7969d4fe6000a33cf56678b5a1d489d77df16bbf40a214af",
+      "lastSynced": "2026-07-06T04:47:22.094Z"
+    },
+    "thermo-nuclear-code-quality-review": {
+      "canonicalPath": ".agents/skills/thermo-nuclear-code-quality-review/SKILL.md",
+      "derivedPaths": [
+        ".claude/skills/thermo-nuclear-code-quality-review"
+      ],
+      "hash": "5606cd3d1f51657f79f575d5b828209314e39d54b98c6cbca9e44d352d8cbe09",
+      "lastSynced": "2026-07-06T04:47:22.094Z"
+    }
+  }
+}
