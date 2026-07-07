@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from nominal_api import scout_compute_api
 
+from nominal.experimental.compute._compute_bridge import to_conjure_dataset
 from nominal.experimental.compute.derived_datasets import (
     commit_derived_definition,
     create_derived_dataset,
     get_derived_definition,
 )
-from nominal.experimental.compute.derived_datasets._compute_bridge import to_conjure_dataset
 
 
 @pytest.fixture
