@@ -12,6 +12,7 @@ from nominal.experimental.checklist_utils.checklist_utils import (
     _to_create_checklist_entries,
     _to_unresolved_checklist_variables,
 )
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -81,7 +82,7 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         workspace_rid = destination_client.get_workspace(destination_client._clients.workspace_rid).rid
 
         if self.ctx.dry_run:
-            logger.info("[DRY RUN] Would create checklist '%s' (source: %s)", source.name, source.rid)
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
             return source
 

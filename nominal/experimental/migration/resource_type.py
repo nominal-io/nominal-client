@@ -19,3 +19,8 @@ class ResourceType(Enum):
     ASSET_DATA_SCOPE = "ASSET_DATA_SCOPE"
     DATASET_CHANNEL = "DATASET_CHANNEL"
     DATASET_BOUNDS = "DATASET_BOUNDS"
+
+
+def resource_label(resource_type: ResourceType) -> str:
+    """Human-readable label for a resource type, as used in log messages (e.g. "workbook template")."""
+    return resource_type.value.lower().replace("_", " ")

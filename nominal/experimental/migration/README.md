@@ -60,6 +60,25 @@ Optional flags:
   - Previous state files are automatically versioned (e.g. `migration_state.json` → `migration_state_v2.json`) so no history is lost.
 - `--max-workers <n>` — number of assets/templates to migrate concurrently (default: 1). Start with 2–4
   workers and adjust based on performance and API rate limits.
+- `--dry-run` — log what would be created without writing anything to the destination tenant or state file.
+
+**`nom migrate summary`** — summarize a migration as a markdown table. Fully offline: no profiles or
+tokens required. Provide exactly one source:
+
+```sh
+# Offline size check from one or more config files (repeat the flag per file)
+nom migrate summary --from-config my_migration.yml
+
+# Tally what a dry run would create from a captured log
+# (the "[DRY RUN] Would create ..." lines are INFO-level, so run copy with -v or -vv)
+nom migrate copy ... --dry-run -vv 2>&1 | tee dry_run.log
+nom migrate summary --from-log dry_run.log
+
+# Count what a real migration created, from its state file
+nom migrate summary --from-state migration_state.json
+```
+
+Pass `--output <path>` to also append the markdown to a file (e.g. `$GITHUB_STEP_SUMMARY` in CI).
 
 ## Understanding the config YAML
 

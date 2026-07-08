@@ -12,6 +12,7 @@ from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
@@ -108,7 +109,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             return existing_asset
 
         if self.ctx.dry_run:
-            logger.info("[DRY RUN] Would create asset '%s' (source: %s)", source_asset.name, source_asset.rid)
+            logger.info(would_create_message(self.resource_type), source_asset.name, source_asset.rid)
             self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, source_asset.rid)
             return source_asset
 
@@ -166,7 +167,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
                 if self.ctx.dry_run:
                     logger.info(
-                        "[DRY RUN] Would add dataset '%s' to asset '%s' scope '%s'",
+                        f"{DRY_RUN_PREFIX} Would add dataset '%s' to asset '%s' scope '%s'",
                         new_dataset.name,
                         destination_asset.name,
                         source_data_scope_name,
@@ -209,7 +210,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:
                 if self.ctx.dry_run:
                     logger.info(
-                        "[DRY RUN] Would execute checklist '%s' against run %s",
+                        f"{DRY_RUN_PREFIX} Would execute checklist '%s' against run %s",
                         destination_checklist.name,
                         destination_run_rid,
                     )
@@ -232,7 +233,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         if new_attachments:
             if self.ctx.dry_run:
                 logger.info(
-                    "[DRY RUN] Would add %d attachment(s) to asset '%s'", len(new_attachments), destination_asset.name
+                    f"{DRY_RUN_PREFIX} Would add %d attachment(s) to asset '%s'",
+                    len(new_attachments),
+                    destination_asset.name,
                 )
             else:
                 destination_asset.add_attachments(new_attachments)
@@ -250,7 +253,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
                 if self.ctx.dry_run:
                     logger.info(
-                        "[DRY RUN] Would add video '%s' to asset '%s' scope '%s'",
+                        f"{DRY_RUN_PREFIX} Would add video '%s' to asset '%s' scope '%s'",
                         new_video_dataset.name,
                         new_asset.name,
                         data_scope,

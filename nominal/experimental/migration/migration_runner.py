@@ -9,6 +9,7 @@ from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
@@ -138,7 +139,7 @@ class MigrationRunner:
 
     def save_state(self) -> None:
         if self.dry_run:
-            logger.info("[DRY RUN] Skipping migration state write to %s", self.migration_state_path)
+            logger.info(f"{DRY_RUN_PREFIX} Skipping migration state write to %s", self.migration_state_path)
             return
         self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
         self.migration_state_path.write_text(self.migration_state.to_json(), encoding="utf-8")
