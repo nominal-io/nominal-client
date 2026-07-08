@@ -15,6 +15,7 @@ from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.workbook import Workbook
 from nominal.experimental.id_utils.id_utils import UUID_RE
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
@@ -108,7 +109,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             raise ValueError(f"Missing content for workbook {source.rid}")
 
         if self.ctx.dry_run:
-            logger.info("[DRY RUN] Would create workbook '%s' (source: %s)", raw_notebook.metadata.title, source.rid)
+            logger.info(would_create_message(ResourceType.WORKBOOK), raw_notebook.metadata.title, source.rid)
             self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, source.rid)
             return source
 

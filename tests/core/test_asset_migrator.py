@@ -10,6 +10,7 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -451,6 +452,8 @@ class TestAssetMigratorDryRun:
 
         ctx = _make_dry_run_context()
         migrator = AssetMigrator(ctx)
+        source_asset = _make_source_asset(name="MyNewAsset")
         with caplog.at_level(logging.INFO):
-            migrator.copy_from(_make_source_asset(name="MyNewAsset"), _NO_CHILD_OPTIONS)
-        assert any("[DRY RUN] Would create asset" in r.message for r in caplog.records)
+            migrator.copy_from(source_asset, _NO_CHILD_OPTIONS)
+        expected = would_create_message(ResourceType.ASSET) % (source_asset.name, source_asset.rid)
+        assert any(expected in r.getMessage() for r in caplog.records)

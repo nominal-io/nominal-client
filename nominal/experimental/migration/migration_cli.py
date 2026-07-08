@@ -17,6 +17,7 @@ from nominal.experimental.migration.config.migration_data_config import AssetInc
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
 from nominal.experimental.migration.migration_runner import MigrationRunner
+from nominal.experimental.migration.migration_summary import build_summary, load_migration_block
 from nominal.experimental.migration.migrator.context import DestinationClientResolver
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
@@ -71,17 +72,6 @@ def _parse_asset_entry(
         templates.append(template_resource)
 
     return AssetResources(asset=asset_resource, source_workbook_templates=templates)
-
-
-def _load_migration_block(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict) or "migration" not in raw:
-        raise click.UsageError("Config must be a mapping with a top-level 'migration' key.")
-
-    m = raw["migration"]
-    if not isinstance(m, dict):
-        raise click.UsageError("'migration' must be a mapping.")
-
-    return m
 
 
 def _require_non_empty_string(value: Any, label: str) -> str:
@@ -360,7 +350,7 @@ def _load_migration_config(
     with config_path.open("r", encoding="utf-8") as f:
         raw: Any = yaml.safe_load(f)
 
-    m = _load_migration_block(raw)
+    m = load_migration_block(raw)
 
     name = _require_non_empty_string(m.get("name"), "migration.name")
     include_dataset_files = _require_bool(m.get("include_dataset_files"), "migration.include_dataset_files")
@@ -678,3 +668,47 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     with output_path.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     logger.info("Wrote migration config to %s", output_path)
+
+
+@migrate_cmd.command(
+    name="summary",
+    help="Summarize a migration as a markdown table. Fully offline: no profiles or tokens required.",
+)
+@global_options
+@click.option(
+    "--from-config",
+    "config_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Migration config YAML for an offline size check. Repeat the flag to summarize several configs.",
+)
+@click.option(
+    "--from-log",
+    "log_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Captured 'nom migrate copy --dry-run' log to tally would-create lines from.",
+)
+@click.option(
+    "--from-state",
+    "state_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Migration-state JSON to count created resources from.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="File to append the markdown summary to, e.g. $GITHUB_STEP_SUMMARY.",
+)
+def summary(
+    config_paths: tuple[Path, ...],
+    log_path: Path | None,
+    state_path: Path | None,
+    output_path: Path | None,
+) -> None:
+    """Emit a markdown summary of a migration from a config, dry-run log, or state file."""
+    rendered = build_summary(config_paths, log_path, state_path)
+    click.echo(rendered)
+    if output_path is not None:
+        with output_path.open("a", encoding="utf-8") as f:
+            f.write(rendered + "\n")

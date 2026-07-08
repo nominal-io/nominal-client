@@ -4,6 +4,7 @@ import logging
 
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
@@ -23,7 +24,7 @@ class VideoFileMigrator:
             return
 
         if self.ctx.dry_run:
-            logger.info("[DRY RUN] Would copy video file %s to destination", source_file.rid)
+            logger.info(f"{DRY_RUN_PREFIX} Would copy video file %s to destination", source_file.rid)
             return
 
         new_file = copy_video_file_to_video_dataset(source_file, destination_video)
