@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.152.1](https://github.com/nominal-io/nominal-client/compare/v1.152.0...v1.152.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **migration:** persist migration state incrementally and flush it on SIGINT/SIGTERM ([#873](https://github.com/nominal-io/nominal-client/issues/873)) ([e46a95d](https://github.com/nominal-io/nominal-client/commit/e46a95dbd72775adf17c95d69795859ae384cc7a))
+
 ## [1.152.0](https://github.com/nominal-io/nominal-client/compare/v1.151.0...v1.152.0) (2026-07-08)
 
 
