@@ -12,9 +12,14 @@ class ThreadSafeMigrationState(MigrationState):
     """Thread-safe wrapper around MigrationState for parallel migrations."""
 
     def __init__(self, rid_mapping: dict[str, dict[str, str]] | None = None) -> None:
-        """Initialize the shared migration state with an internal lock."""
+        """Initialize the shared migration state with an internal lock.
+
+        The lock is reentrant: the SIGINT/SIGTERM flush handler runs on the main thread and
+        calls save_state -> to_json, which must not deadlock if the signal interrupted the
+        main thread while it already held the lock inside an incremental save.
+        """
         super().__init__(rid_mapping=rid_mapping if rid_mapping is not None else {})
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         with self._lock:
