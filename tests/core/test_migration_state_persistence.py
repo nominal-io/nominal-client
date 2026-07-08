@@ -5,6 +5,8 @@ from __future__ import annotations
 import concurrent.futures
 import signal
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -110,6 +112,42 @@ class TestSignalFlush:
         with _flush_state_on_termination(runner):
             pass
         assert not (tmp_path / "state.json").exists()
+
+
+class TestInterruptReachesFinalSave:
+    def test_interrupt_saves_state_without_waiting_for_in_flight_tasks(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On KeyboardInterrupt the final save must happen immediately, not block behind
+        an in-flight copy until the process is hard-killed.
+        """
+        from nominal.experimental.migration import parallel_migration_runner
+
+        runner = _make_runner(tmp_path)
+        release_worker = threading.Event()
+
+        def fake_run_concurrent(
+            executor: concurrent.futures.ThreadPoolExecutor,
+            tasks: object,
+            on_task_complete: object = None,
+        ) -> None:
+            executor.submit(release_worker.wait)
+            runner.migration_state.record_mapping(ResourceType.ASSET, "old", "new")
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(parallel_migration_runner, "run_concurrent", fake_run_concurrent)
+        try:
+            start = time.monotonic()
+            with pytest.raises(KeyboardInterrupt):
+                parallel_migration_runner.run_parallel_migration(runner, max_workers=1)
+            elapsed = time.monotonic() - start
+            assert elapsed < 5, "unwind must not block on the in-flight (Event-gated) task"
+            state_file = tmp_path / "state.json"
+            assert state_file.exists()
+            restored = MigrationState.from_json(state_file.read_text(encoding="utf-8"))
+            assert restored.get_mapped_rid(ResourceType.ASSET, "old") == "new"
+        finally:
+            release_worker.set()
 
 
 class TestThreadSafeToJson:

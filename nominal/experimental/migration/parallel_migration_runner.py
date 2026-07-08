@@ -91,7 +91,14 @@ def _flush_state_on_termination(runner: MigrationRunner) -> Iterator[None]:
 
 
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
-    """Run resource migration with a shared thread pool."""
+    """Run resource migration with a shared thread pool.
+
+    Migration state is persisted after every settled task, flushed by a SIGINT/SIGTERM
+    handler, and saved one final time in a `finally` that is reachable even while copies
+    are still in flight: on interruption the executor is shut down without waiting
+    (queued tasks cancelled), so the last save happens immediately instead of blocking
+    behind in-flight work until the process is hard-killed.
+    """
     max_workers = validate_max_workers(max_workers)
     runner.migration_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
 
@@ -152,12 +159,19 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         len(template_tasks),
         len(checklist_tasks),
     )
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     try:
         with _flush_state_on_termination(runner):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # State is saved after every settled task so a killed run resumes from the
-                # last completed resource instead of losing everything.
-                run_concurrent(executor, tasks, on_task_complete=runner.save_state)
+            # State is saved after every settled task so a killed run resumes from the
+            # last completed resource instead of losing everything.
+            run_concurrent(executor, tasks, on_task_complete=runner.save_state)
+        executor.shutdown(wait=True)
+    except BaseException:
+        # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight
+        # copies — cancel queued tasks, leave running ones behind, and reach the final
+        # save below immediately (the process may be hard-killed seconds later).
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
     finally:
         runner.save_state()
 
