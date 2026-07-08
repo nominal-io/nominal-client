@@ -23,6 +23,7 @@ import yaml
 
 from nominal.experimental.migration.dry_run import dry_run_create_pattern
 from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.resource_type import format_resource_label
 
 
 def load_migration_block(raw: Any) -> dict[str, Any]:
@@ -59,10 +60,14 @@ def summarize_config(path: Path) -> tuple[str, dict[str, int]]:
 
     source_asset_rids = migration.get("source_asset_rids")
     source_assets = migration.get("source_assets")
-    # Mirror _load_asset_resources: `nom migrate copy` rejects configs with both forms, so the
-    # size check must not silently pick one and report misleading counts.
+    # Mirror _load_asset_resources: whatever `nom migrate copy` rejects, the size check must
+    # reject too rather than silently reporting misleading counts.
     if source_asset_rids is not None and source_assets is not None:
         raise click.UsageError("Provide only one of 'migration.source_asset_rids' or 'migration.source_assets'.")
+    if source_asset_rids is not None and not isinstance(source_asset_rids, list):
+        raise click.UsageError("'migration.source_asset_rids' must be a list.")
+    if source_assets is not None and (not isinstance(source_assets, dict) or not source_assets):
+        raise click.UsageError("'migration.source_assets' must be a non-empty mapping.")
     template_total = 0
     if isinstance(source_asset_rids, list):
         counts["assets"] = len(source_asset_rids)
@@ -108,7 +113,7 @@ def summarize_state(path: Path) -> tuple[str, dict[str, int]]:
     """Count old->new RID mappings per resource type from a migration-state JSON file."""
     state = MigrationState.from_json(path.read_text(encoding="utf-8"))
     counts = {
-        resource_type.lower().replace("_", " "): len(mapping)
+        format_resource_label(resource_type): len(mapping)
         for resource_type, mapping in state.rid_mapping.items()
         if isinstance(mapping, dict)
     }

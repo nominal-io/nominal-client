@@ -21,12 +21,18 @@ from nominal.experimental.migration.migration_summary import (
     summarize_log,
     summarize_state,
 )
-from nominal.experimental.migration.resource_type import ResourceType, resource_label
+from nominal.experimental.migration.resource_type import ResourceType, format_resource_label, resource_label
 
 
 def test_dry_run_prefix_is_stable() -> None:
     """External consumers grep run logs for this marker — changing it is a breaking change."""
     assert DRY_RUN_PREFIX == "[DRY RUN]"
+
+
+def test_resource_label_delegates_to_string_formatter() -> None:
+    """Log labels and state-summary labels must come from the same formatter."""
+    for rt in ResourceType:
+        assert resource_label(rt) == format_resource_label(rt.value)
 
 
 class TestRenderSummaryTable:
@@ -104,6 +110,22 @@ migration:
 """,
         )
         with pytest.raises(click.UsageError):
+            summarize_config(path)
+
+    def test_non_list_source_asset_rids_raises(self, tmp_path: Path) -> None:
+        """`nom migrate copy` raises for a non-list source_asset_rids; the summary must not report 0."""
+        path = self._write(tmp_path, "migration:\n  name: bad\n  source_asset_rids: oops\n")
+        with pytest.raises(click.UsageError, match="must be a list"):
+            summarize_config(path)
+
+    def test_non_mapping_source_assets_raises(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, "migration:\n  name: bad\n  source_assets: [ri.a.1]\n")
+        with pytest.raises(click.UsageError, match="non-empty mapping"):
+            summarize_config(path)
+
+    def test_empty_source_assets_raises(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, "migration:\n  name: bad\n  source_assets: {}\n")
+        with pytest.raises(click.UsageError, match="non-empty mapping"):
             summarize_config(path)
 
     def test_missing_migration_key_raises(self, tmp_path: Path) -> None:
