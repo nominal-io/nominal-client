@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-from typing import Callable
+import signal
+import threading
+import time
+from contextlib import contextmanager
+from types import FrameType
+from typing import Callable, Iterator
 
 from nominal.core.checklist import Checklist
 from nominal.experimental.migration.config.migration_resources import AssetResources
@@ -47,10 +52,91 @@ def _make_checklist_fn(checklist: Checklist, checklist_migrator: ChecklistMigrat
     return fn
 
 
+class _DebouncedSave:
+    """Rate-limit state saves triggered by per-mapping persist hooks.
+
+    Serializing the state is O(state size), and file-heavy assets record a mapping per
+    dataset file — saving on every mapping would be quadratic over a large migration.
+    Debouncing bounds the SIGKILL data-loss window to ``min_interval_seconds`` of mappings;
+    all other exits still save unconditionally (per-task callback, signal flush, finally).
+    """
+
+    def __init__(
+        self,
+        save: Callable[[], None],
+        min_interval_seconds: float = 1.0,
+        time_fn: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._save = save
+        self._min_interval_seconds = min_interval_seconds
+        self._time_fn = time_fn
+        self._lock = threading.Lock()
+        self._last_save = float("-inf")
+
+    def __call__(self) -> None:
+        with self._lock:
+            now = self._time_fn()
+            if now - self._last_save < self._min_interval_seconds:
+                return
+            self._last_save = now
+        self._save()
+
+
+@contextmanager
+def _flush_state_on_termination(runner: MigrationRunner) -> Iterator[None]:
+    """Save migration state immediately on SIGINT/SIGTERM before the process dies.
+
+    CI cancellation (e.g. GitHub Actions) sends SIGINT and hard-kills the process a few
+    seconds later — too short for in-flight copies to finish and reach a normal save. The
+    handler persists whatever has been recorded so far, then restores the original handler
+    and re-raises the signal so exit semantics are unchanged. No-op outside the main thread
+    (signal handlers can only be installed there).
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    originals: dict[int, object] = {}
+
+    def _handler(signum: int, frame: FrameType | None) -> None:
+        logger.warning(
+            "Received signal %d — saving migration state to %s before exiting", signum, runner.migration_state_path
+        )
+        runner.save_state()
+        signal.signal(signum, originals[signum])  # type: ignore[arg-type]
+        signal.raise_signal(signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            originals[sig] = signal.signal(sig, _handler)
+        except (ValueError, OSError):  # pragma: no cover - non-main thread / unsupported platform
+            pass
+    try:
+        yield
+    finally:
+        for sig_num, original in originals.items():
+            try:
+                signal.signal(sig_num, original)  # type: ignore[arg-type]
+            except (ValueError, OSError):  # pragma: no cover
+                pass
+
+
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
-    """Run resource migration with a shared thread pool."""
+    """Run resource migration with a shared thread pool.
+
+    Migration state is persisted after every settled task, flushed by a SIGINT/SIGTERM
+    handler, and saved one final time in a `finally` that is reachable even while copies
+    are still in flight: on interruption the executor is shut down without waiting
+    (queued tasks cancelled), so the last save happens immediately instead of blocking
+    behind in-flight work until the process is hard-killed.
+    """
     max_workers = validate_max_workers(max_workers)
-    runner.migration_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    thread_safe_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    # Persist child-resource mappings (runs, dataset files, workbooks, ...) as they are
+    # recorded mid-asset — per-task saves alone would lose everything inside a long-running
+    # asset on a hard kill. Debounced; dry runs skip the write inside save_state itself.
+    thread_safe_state.set_persist_hook(_DebouncedSave(runner.save_state))
+    runner.migration_state = thread_safe_state
 
     ctx = MigrationContext(
         destination_client=runner.destination_client,
@@ -109,9 +195,19 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         len(template_tasks),
         len(checklist_tasks),
     )
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            run_concurrent(executor, tasks)
+        with _flush_state_on_termination(runner):
+            # State is saved after every settled task so a killed run resumes from the
+            # last completed resource instead of losing everything.
+            run_concurrent(executor, tasks, on_task_complete=runner.save_state)
+        executor.shutdown(wait=True)
+    except BaseException:
+        # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight
+        # copies — cancel queued tasks, leave running ones behind, and reach the final
+        # save below immediately (the process may be hard-killed seconds later).
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
     finally:
         runner.save_state()
 
