@@ -91,6 +91,21 @@ migration:
         _, counts = summarize_config(path)
         assert counts == {"assets": 0}
 
+    def test_both_asset_forms_raises(self, tmp_path: Path) -> None:
+        """`nom migrate copy` rejects configs with both forms; the summary must too."""
+        path = self._write(
+            tmp_path,
+            """
+migration:
+  name: both-forms
+  source_asset_rids: []
+  source_assets:
+    ri.a.1: {}
+""",
+        )
+        with pytest.raises(click.UsageError):
+            summarize_config(path)
+
     def test_missing_migration_key_raises(self, tmp_path: Path) -> None:
         path = self._write(tmp_path, "not_migration: {}\n")
         with pytest.raises(click.UsageError):

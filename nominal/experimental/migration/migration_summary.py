@@ -59,6 +59,10 @@ def summarize_config(path: Path) -> tuple[str, dict[str, int]]:
 
     source_asset_rids = migration.get("source_asset_rids")
     source_assets = migration.get("source_assets")
+    # Mirror _load_asset_resources: `nom migrate copy` rejects configs with both forms, so the
+    # size check must not silently pick one and report misleading counts.
+    if source_asset_rids is not None and source_assets is not None:
+        raise click.UsageError("Provide only one of 'migration.source_asset_rids' or 'migration.source_assets'.")
     template_total = 0
     if isinstance(source_asset_rids, list):
         counts["assets"] = len(source_asset_rids)
