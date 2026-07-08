@@ -122,7 +122,8 @@ class TestThreadSafeToJson:
 
     def test_to_json_is_reentrant_on_same_thread(self) -> None:
         """The signal flush handler may fire while the main thread already holds the lock
-        (mid incremental save); serialization must not deadlock in that case."""
+        (mid incremental save); serialization must not deadlock in that case.
+        """
         safe = ThreadSafeMigrationState()
         safe.record_mapping(ResourceType.ASSET, "a", "b")
         with safe._lock:
