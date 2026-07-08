@@ -6,6 +6,7 @@ import concurrent.futures
 import logging
 import signal
 import threading
+import time
 from contextlib import contextmanager
 from types import FrameType
 from typing import Callable, Iterator
@@ -49,6 +50,36 @@ def _make_checklist_fn(checklist: Checklist, checklist_migrator: ChecklistMigrat
         checklist_migrator.copy_from(checklist, ChecklistCopyOptions())
 
     return fn
+
+
+class _DebouncedSave:
+    """Rate-limit state saves triggered by per-mapping persist hooks.
+
+    Serializing the state is O(state size), and file-heavy assets record a mapping per
+    dataset file — saving on every mapping would be quadratic over a large migration.
+    Debouncing bounds the SIGKILL data-loss window to ``min_interval_seconds`` of mappings;
+    all other exits still save unconditionally (per-task callback, signal flush, finally).
+    """
+
+    def __init__(
+        self,
+        save: Callable[[], None],
+        min_interval_seconds: float = 1.0,
+        time_fn: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._save = save
+        self._min_interval_seconds = min_interval_seconds
+        self._time_fn = time_fn
+        self._lock = threading.Lock()
+        self._last_save = float("-inf")
+
+    def __call__(self) -> None:
+        with self._lock:
+            now = self._time_fn()
+            if now - self._last_save < self._min_interval_seconds:
+                return
+            self._last_save = now
+        self._save()
 
 
 @contextmanager
@@ -100,7 +131,12 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     behind in-flight work until the process is hard-killed.
     """
     max_workers = validate_max_workers(max_workers)
-    runner.migration_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    thread_safe_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    # Persist child-resource mappings (runs, dataset files, workbooks, ...) as they are
+    # recorded mid-asset — per-task saves alone would lose everything inside a long-running
+    # asset on a hard kill. Debounced; dry runs skip the write inside save_state itself.
+    thread_safe_state.set_persist_hook(_DebouncedSave(runner.save_state))
+    runner.migration_state = thread_safe_state
 
     ctx = MigrationContext(
         destination_client=runner.destination_client,

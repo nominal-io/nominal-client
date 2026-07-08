@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import re
@@ -19,6 +20,11 @@ from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMi
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 
 logger = logging.getLogger(__name__)
+
+# Uniquifies temp file names: saves can overlap (worker-thread persist hooks, and the
+# signal handler re-entering save_state on the main thread), and a shared temp name would
+# let one save consume another's file out from under its os.replace.
+_TMP_COUNTER = itertools.count()
 
 
 def _next_state_path(path: Path) -> Path:
@@ -148,6 +154,8 @@ class MigrationRunner:
         self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
         # Write-then-rename so a process killed mid-write can never leave a truncated state file
         # behind — state is saved incrementally and a corrupt file would break resume.
-        tmp_path = self.migration_state_path.with_name(f"{self.migration_state_path.name}.tmp")
+        tmp_path = self.migration_state_path.with_name(
+            f"{self.migration_state_path.name}.{os.getpid()}.{next(_TMP_COUNTER)}.tmp"
+        )
         tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
         os.replace(tmp_path, self.migration_state_path)

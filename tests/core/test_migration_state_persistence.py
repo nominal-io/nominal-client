@@ -20,7 +20,7 @@ from nominal.experimental.migration.config.migration_resources import MigrationR
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.parallel_migration_executor import MigrationTask, run_concurrent
-from nominal.experimental.migration.parallel_migration_runner import _flush_state_on_termination
+from nominal.experimental.migration.parallel_migration_runner import _DebouncedSave, _flush_state_on_termination
 from nominal.experimental.migration.parallel_migration_state import ThreadSafeMigrationState
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -60,12 +60,16 @@ class TestRunConcurrentCallback:
         assert calls == ["save"] * 2
 
     def test_callback_optional(self) -> None:
+        """Omitting on_task_complete must not change task execution."""
+        ran: list[str] = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            run_concurrent(executor, [MigrationTask(rid="r", label="asset", fn=lambda: None)])
+            run_concurrent(executor, [MigrationTask(rid="r", label="asset", fn=lambda: ran.append("r"))])
+        assert ran == ["r"]
 
 
 class TestSaveStateAtomicity:
     def test_save_writes_valid_resumable_json_and_no_tmp_residue(self, tmp_path: Path) -> None:
+        """The atomic write must leave a loadable state file and clean up its temp file."""
         runner = _make_runner(tmp_path)
         runner.migration_state.record_mapping(ResourceType.ASSET, "old", "new")
         runner.save_state()
@@ -99,6 +103,7 @@ class TestSignalFlush:
         assert restored.get_mapped_rid(ResourceType.ASSET, "old") == "new"
 
     def test_handlers_restored_after_context(self, tmp_path: Path) -> None:
+        """Leaving the flush context must restore whatever handlers were installed before it."""
         runner = _make_runner(tmp_path)
         before_int = signal.getsignal(signal.SIGINT)
         before_term = signal.getsignal(signal.SIGTERM)
@@ -108,6 +113,7 @@ class TestSignalFlush:
         assert signal.getsignal(signal.SIGTERM) is before_term
 
     def test_no_save_when_no_signal(self, tmp_path: Path) -> None:
+        """The flush context itself must not write state — only a signal triggers it."""
         runner = _make_runner(tmp_path)
         with _flush_state_on_termination(runner):
             pass
@@ -150,8 +156,66 @@ class TestInterruptReachesFinalSave:
             release_worker.set()
 
 
+class TestPersistHook:
+    def test_every_mutation_triggers_the_hook(self) -> None:
+        """Child-resource mappings recorded mid-asset must reach the hook, not just task ends."""
+        saves: list[str] = []
+        state = ThreadSafeMigrationState()
+        state.set_persist_hook(lambda: saves.append("save"))
+        state.record_mapping(ResourceType.DATASET_FILE, "old", "new")
+        state.record_pending_multi_asset_workbook("wb", ["a1"])
+        state.clear_pending_multi_asset_workbook("wb")
+        state.record_pending_multi_run_workbook("wb", ["r1"])
+        state.clear_pending_multi_run_workbook("wb")
+        state.record_skip(ResourceType.WORKBOOK, "wb2", "out of scope")
+        assert len(saves) == 6
+
+    def test_reads_do_not_trigger_the_hook(self) -> None:
+        """Only mutations persist — lookups happen constantly and must stay write-free."""
+        saves: list[str] = []
+        state = ThreadSafeMigrationState()
+        state.set_persist_hook(lambda: saves.append("save"))
+        state.get_mapped_rid(ResourceType.ASSET, "missing")
+        state.to_json()
+        assert saves == []
+
+    def test_hook_may_serialize_state(self, tmp_path: Path) -> None:
+        """The hook calls save_state -> to_json, which re-takes the state lock — must not deadlock."""
+        runner = _make_runner(tmp_path)
+        state = ThreadSafeMigrationState()
+        runner.migration_state = state
+        state.set_persist_hook(runner.save_state)
+        state.record_mapping(ResourceType.RUN, "old", "new")
+        restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert restored.get_mapped_rid(ResourceType.RUN, "old") == "new"
+
+
+class TestDebouncedSave:
+    def test_rapid_calls_collapse(self) -> None:
+        """Per-mapping saves are O(state size); rapid mutations must not each hit the disk."""
+        saves: list[str] = []
+        clock = [0.0]
+        debounced = _DebouncedSave(lambda: saves.append("save"), min_interval_seconds=1.0, time_fn=lambda: clock[0])
+        debounced()
+        debounced()
+        clock[0] = 0.5
+        debounced()
+        assert len(saves) == 1
+
+    def test_saves_again_after_interval(self) -> None:
+        """Once the interval elapses the next mutation must persist promptly."""
+        saves: list[str] = []
+        clock = [0.0]
+        debounced = _DebouncedSave(lambda: saves.append("save"), min_interval_seconds=1.0, time_fn=lambda: clock[0])
+        debounced()
+        clock[0] = 1.5
+        debounced()
+        assert len(saves) == 2
+
+
 class TestThreadSafeToJson:
     def test_to_json_matches_plain_state(self) -> None:
+        """Taking the lock during serialization must not change the serialized output."""
         plain = MigrationState()
         safe = ThreadSafeMigrationState()
         for state in (plain, safe):
