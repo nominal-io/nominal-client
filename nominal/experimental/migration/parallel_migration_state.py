@@ -43,3 +43,9 @@ class ThreadSafeMigrationState(MigrationState):
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         with self._lock:
             super().record_skip(resource_type, source_rid, reason)
+
+    def to_json(self) -> str:
+        # Serialization walks every nested dict, so it must hold the same lock as the
+        # mutators — state is now saved incrementally while worker threads are still writing.
+        with self._lock:
+            return super().to_json()

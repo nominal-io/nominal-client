@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import cast
@@ -117,15 +118,18 @@ class MigrationRunner:
                         workbook_rids_allowlist=asset_resources.source_workbook_rids,
                     ),
                 )
+                self.save_state()
 
             for source_template in self.migration_resources.source_standalone_templates:
                 template_migrator.clone(source_template)
+                self.save_state()
 
             for source_checklist in self.migration_resources.source_standalone_checklists:
                 # ChecklistMigrator.clone() raises NotImplementedError; use copy_from() to clone the
                 # checklist definition. No run/execution is involved — series resolve at execution time
                 # against whatever run the checklist is later run against.
                 checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
+                self.save_state()
 
             source_clients_by_asset_rid: dict[str, ClientsBunch] = {
                 asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
@@ -142,4 +146,8 @@ class MigrationRunner:
             logger.info(f"{DRY_RUN_PREFIX} Skipping migration state write to %s", self.migration_state_path)
             return
         self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.migration_state_path.write_text(self.migration_state.to_json(), encoding="utf-8")
+        # Write-then-rename so a process killed mid-write can never leave a truncated state file
+        # behind — state is saved incrementally and a corrupt file would break resume.
+        tmp_path = self.migration_state_path.with_name(f"{self.migration_state_path.name}.tmp")
+        tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
+        os.replace(tmp_path, self.migration_state_path)

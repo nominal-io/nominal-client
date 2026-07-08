@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-from typing import Callable
+import signal
+import threading
+from contextlib import contextmanager
+from types import FrameType
+from typing import Callable, Iterator
 
 from nominal.core.checklist import Checklist
 from nominal.experimental.migration.config.migration_resources import AssetResources
@@ -45,6 +49,45 @@ def _make_checklist_fn(checklist: Checklist, checklist_migrator: ChecklistMigrat
         checklist_migrator.copy_from(checklist, ChecklistCopyOptions())
 
     return fn
+
+
+@contextmanager
+def _flush_state_on_termination(runner: MigrationRunner) -> Iterator[None]:
+    """Save migration state immediately on SIGINT/SIGTERM before the process dies.
+
+    CI cancellation (e.g. GitHub Actions) sends SIGINT and hard-kills the process a few
+    seconds later — too short for in-flight copies to finish and reach a normal save. The
+    handler persists whatever has been recorded so far, then restores the original handler
+    and re-raises the signal so exit semantics are unchanged. No-op outside the main thread
+    (signal handlers can only be installed there).
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    originals: dict[int, object] = {}
+
+    def _handler(signum: int, frame: FrameType | None) -> None:
+        logger.warning(
+            "Received signal %d — saving migration state to %s before exiting", signum, runner.migration_state_path
+        )
+        runner.save_state()
+        signal.signal(signum, originals[signum])  # type: ignore[arg-type]
+        signal.raise_signal(signum)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            originals[sig] = signal.signal(sig, _handler)
+        except (ValueError, OSError):  # pragma: no cover - non-main thread / unsupported platform
+            pass
+    try:
+        yield
+    finally:
+        for sig_num, original in originals.items():
+            try:
+                signal.signal(sig_num, original)  # type: ignore[arg-type]
+            except (ValueError, OSError):  # pragma: no cover
+                pass
 
 
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
@@ -110,8 +153,11 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         len(checklist_tasks),
     )
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            run_concurrent(executor, tasks)
+        with _flush_state_on_termination(runner):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # State is saved after every settled task so a killed run resumes from the
+                # last completed resource instead of losing everything.
+                run_concurrent(executor, tasks, on_task_complete=runner.save_state)
     finally:
         runner.save_state()
 
