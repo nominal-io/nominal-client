@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.152.0](https://github.com/nominal-io/nominal-client/compare/v1.151.0...v1.152.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** container extractor and image commands ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **cli:** containerized extractor and container registry commands ([#862](https://github.com/nominal-io/nominal-client/issues/862)) ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **migration:** offline `nom migrate summary` command + shared dry-run log constants ([#872](https://github.com/nominal-io/nominal-client/issues/872)) ([1519162](https://github.com/nominal-io/nominal-client/commit/1519162925367ac0400b305c0d89c7e706fd70ca))
+* raise NominalAlreadyExistsError for ALREADY_EXISTS gRPC failures ([#865](https://github.com/nominal-io/nominal-client/issues/865)) ([c274fcc](https://github.com/nominal-io/nominal-client/commit/c274fcc769ad7ecfada91b876624bbb7910a17cd))
+
 ## [1.151.0](https://github.com/nominal-io/nominal-client/compare/v1.150.1...v1.151.0) (2026-07-02)
 
 
