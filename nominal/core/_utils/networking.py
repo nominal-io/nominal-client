@@ -192,6 +192,22 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
 
+def create_retry_policy(service_config: ServiceConfiguration) -> RetryWithJitter:
+    """Build the SDK's standard HTTP retry policy.
+
+    Jittered backoff over the conjure/java-remoting quality-of-service statuses, so every HTTP
+    transport (conjure clients and the experimental gRPC transcoding shim) retries identically.
+    See https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
+    """
+    return RetryWithJitter(
+        total=service_config.max_num_retries,
+        connect=service_config.max_num_retries,  # allow connection-error retries
+        read=service_config.max_num_retries,  # allow read-error retries (e.g. RemoteDisconnected)
+        status_forcelist=[308, 429, 503],
+        backoff_factor=float(service_config.backoff_slot_size) / 1000,
+    )
+
+
 def create_conjure_service_client(
     service_class: Type[T],
     user_agent: str,
@@ -220,15 +236,7 @@ def create_conjure_service_client(
     Returns:
         Instantiated conjure client object to hit the API with
     """
-    # setup retry to match java remoting
-    # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
-    retry = RetryWithJitter(
-        total=service_config.max_num_retries,
-        connect=service_config.max_num_retries,  # Allow connection error retries
-        read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
-        status_forcelist=[308, 429, 503],
-        backoff_factor=float(service_config.backoff_slot_size) / 1000,
-    )
+    retry = create_retry_policy(service_config)
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
