@@ -164,6 +164,78 @@ class TestCopyFileToDataset:
         assert result is new_file
 
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_mcap_calls_add_mcap(self, mock_get: MagicMock) -> None:
+        """MCAP files are re-ingested via add_mcap, not add_from_io."""
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_drone.mcap",
+            timestamp_channel="__ingest_timestamp",
+            timestamp_type="epoch_seconds",
+        )
+        source_file.file_tags = {"vehicle": "drone-1"}
+        mock_get.return_value = _make_http_response(b"mcap-bytes")
+
+        destination_dataset = MagicMock()
+        new_file = MagicMock()
+        destination_dataset.add_mcap.return_value = new_file
+
+        result = copy_file_to_dataset(source_file, destination_dataset)
+
+        destination_dataset.add_mcap.assert_called_once()
+        destination_dataset.add_from_io.assert_not_called()
+        call_args = destination_dataset.add_mcap.call_args
+        assert call_args.args[0].name == "2026-01-01T00:00:00Z_drone.mcap"
+        assert call_args.kwargs["tags"] == {"vehicle": "drone-1"}
+        new_file.poll_until_ingestion_completed.assert_called_once()
+        assert result is new_file
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_dataflash_calls_add_ardupilot_dataflash(self, mock_get: MagicMock) -> None:
+        """ArduPilot Dataflash (.bin) files are re-ingested via add_ardupilot_dataflash."""
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_flight.bin",
+            timestamp_channel="timestamp",
+            timestamp_type="epoch_seconds",
+        )
+        mock_get.return_value = _make_http_response(b"dataflash-bytes")
+
+        destination_dataset = MagicMock()
+        new_file = MagicMock()
+        destination_dataset.add_ardupilot_dataflash.return_value = new_file
+
+        result = copy_file_to_dataset(source_file, destination_dataset)
+
+        destination_dataset.add_ardupilot_dataflash.assert_called_once()
+        destination_dataset.add_from_io.assert_not_called()
+        call_args = destination_dataset.add_ardupilot_dataflash.call_args
+        assert call_args.args[0].name == "2026-01-01T00:00:00Z_flight.bin"
+        new_file.poll_until_ingestion_completed.assert_called_once()
+        assert result is new_file
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_dataflash_temp_file_cleaned_up(self, mock_get: MagicMock) -> None:
+        """Temp file is deleted after the native ingest returns."""
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_flight.bin",
+            timestamp_channel=None,
+            timestamp_type=None,
+        )
+        mock_get.return_value = _make_http_response(b"dataflash-bytes")
+
+        captured_path: list[str] = []
+
+        def capture_path(path: object, **_kwargs: object) -> MagicMock:
+            captured_path.append(str(path))
+            return MagicMock()
+
+        destination_dataset = MagicMock()
+        destination_dataset.add_ardupilot_dataflash.side_effect = capture_path
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        assert captured_path, "add_ardupilot_dataflash was not called"
+        assert not os.path.exists(captured_path[0]), "Temp file was not cleaned up"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_missing_timestamp_metadata_raises(self, mock_get: MagicMock) -> None:
         """Non-journal files with no timestamp metadata raise ValueError."""
         source_file = _make_source_file(
