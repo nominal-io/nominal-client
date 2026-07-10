@@ -83,7 +83,7 @@ class FileType(NamedTuple):
         return self in FileTypes._MCAP_TYPES
 
     def is_ardupilot_dataflash(self) -> bool:
-        return self in FileTypes._ARDUPILOT_DATAFLASH_TYPES
+        return self in FileTypes._ARDUPILOT_TYPES
 
     @classmethod
     def from_path_dataset(cls, path: PathLike) -> FileType:
@@ -150,7 +150,7 @@ class FileTypes:
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
     ZIP: FileType = FileType(".zip", "application/zip")
 
-    _ARDUPILOT_DATAFLASH_TYPES = (DATAFLASH,)
+    _ARDUPILOT_TYPES = (DATAFLASH,)
     _CSV_TYPES = (CSV, CSV_GZ)
     _MCAP_TYPES = (MCAP,)
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
