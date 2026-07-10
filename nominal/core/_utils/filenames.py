@@ -17,6 +17,8 @@ new backend rejects more.
 
 from __future__ import annotations
 
+import unicodedata
+
 # Characters that break at least one verified object-store backend when used literally:
 #   /  \      path separators — truncate or nest the object key
 #   %         literal percent breaks Azure Blob SAS signing (403 AuthenticationFailed)
@@ -26,7 +28,9 @@ UNSAFE_UPLOAD_CHARS = frozenset("/\\?%{}'")
 
 
 def _is_unsafe(char: str) -> bool:
-    return char in UNSAFE_UPLOAD_CHARS or ord(char) < 0x20  # also reject control characters
+    # Reject the known-bad set plus any control character. Unicode category "Cc" covers C0
+    # (0x00-0x1F), DEL (0x7F), and C1 (0x80-0x9F) — broader than an `ord < 0x20` check.
+    return char in UNSAFE_UPLOAD_CHARS or unicodedata.category(char) == "Cc"
 
 
 def find_unsafe_chars(name: str) -> set[str]:

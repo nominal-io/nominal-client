@@ -45,9 +45,10 @@ def test_each_unsafe_char_is_rejected(char: str) -> None:
     assert char in find_unsafe_chars(name)
 
 
-def test_control_characters_are_unsafe() -> None:
-    name = "file\x00\tname"
-    assert find_unsafe_chars(name) == {"\x00", "\t"}
+@pytest.mark.parametrize("char", ["\x00", "\t", "\x1f", "\x7f", "\x85"])  # C0, tab, C0, DEL, C1
+def test_control_characters_are_unsafe(char: str) -> None:
+    name = f"file{char}name"
+    assert char in find_unsafe_chars(name)
     with pytest.raises(ValueError, match="unsafe for storage"):
         validate_upload_filename(name)
 
