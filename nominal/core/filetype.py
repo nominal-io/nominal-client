@@ -127,7 +127,6 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
-    ARDUPILOT_DATAFLASH: FileType = FileType(".bin", "application/octet-stream")
     AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
     BINARY: FileType = FileType("", "application/octet-stream")
@@ -151,7 +150,7 @@ class FileTypes:
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
     ZIP: FileType = FileType(".zip", "application/zip")
 
-    _ARDUPILOT_DATAFLASH_TYPES = (ARDUPILOT_DATAFLASH,)
+    _ARDUPILOT_DATAFLASH_TYPES = (DATAFLASH,)
     _CSV_TYPES = (CSV, CSV_GZ)
     _MCAP_TYPES = (MCAP,)
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
