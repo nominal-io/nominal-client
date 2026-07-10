@@ -9,7 +9,7 @@ from typing import BinaryIO, cast
 
 import requests
 
-from nominal.core import Dataset, DatasetFile, FileType, FileTypes
+from nominal.core import Dataset, DatasetFile, FileType
 
 logger = logging.getLogger(__name__)
 
@@ -34,24 +34,18 @@ def copy_file_to_dataset(
         file_stem = _resolve_destination_file_stem(file_name)
 
         if file_type.is_journal():
-            tmp_path = None
-            try:
-                with tempfile.NamedTemporaryFile(suffix=file_type.extension, delete=False) as tmp:
-                    tmp_path = Path(tmp.name)
-                    with response:
-                        shutil.copyfileobj(response.raw, tmp)
-                new_file = destination_dataset.add_journal_json(tmp_path)
-                new_file.poll_until_ingestion_completed()
-            finally:
-                if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
-        elif file_type == FileTypes.MCAP:
+            new_file = _ingest_from_temp_file(
+                response,
+                file_name,
+                destination_dataset.add_journal_json,
+            )
+        elif file_type.is_mcap():
             new_file = _ingest_from_temp_file(
                 response,
                 file_name,
                 lambda path: destination_dataset.add_mcap(path, tags=source_file.file_tags),
             )
-        elif file_type == FileTypes.DATAFLASH:
+        elif file_type.is_ardupilot_dataflash():
             new_file = _ingest_from_temp_file(
                 response,
                 file_name,
@@ -87,7 +81,7 @@ def _ingest_from_temp_file(
 ) -> DatasetFile:
     """Stream the response body to a temp file and ingest it via the given native ingest function.
 
-    Used for file types (e.g. MCAP, ArduPilot Dataflash) that must be re-ingested through their
+    Used for file types (journal, MCAP, ArduPilot Dataflash) that must be re-ingested through their
     dedicated ingest path rather than as raw CSV/parquet, so the destination reprocesses them the
     same way the source did. The original file name is preserved so the upload name is meaningful.
     """
