@@ -6,9 +6,11 @@ name: Check and test
 on:
   push:
     branches: ["main"]
+  # Run on every PR regardless of base branch — these checks are cheap and hermetic, so
+  # stacked PRs (targeting a feature branch rather than main) get unit/build/lint signal too.
+  # (Fork PRs still run; they need no secrets here.)
   pull_request:
     types: [opened, reopened, synchronize]
-    branches: ["main"]
 
 jobs:
   check-and-test:
