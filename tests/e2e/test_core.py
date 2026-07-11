@@ -467,9 +467,22 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
 @pytest.mark.parametrize(
     "stem",
     [
+        # The full set of special characters the client allows (see UNSAFE_UPLOAD_CHARS for the
+        # rejected ones). Each is uploaded for real against every backend in this job's matrix, so
+        # if any character that passes our client-side validation starts failing server-side — in
+        # scout or the cloud storage layer — this test goes red and we hear about it immediately.
         "paren(reduced)",  # the original Azure bug — was stored as paren%28reduced%29.csv
         "with space",
         "amp&ersand",
+        "plus+plus",
+        "hash#tag",
+        "bracket[1]",
+        "at@sign",
+        "equals=sign",
+        "comma,comma",
+        "semi;colon",
+        "tilde~caret^",
+        "dollar$sign",
         "unicode_résumé",
     ],
 )
