@@ -9,9 +9,10 @@ on S3 (double-encoding, e.g. ``%20`` -> ``%2520``) and broke Azure Blob uploads 
 (percent-encoded blob names fail SAS signing with a 403). We now send filenames literally and
 only reject/replace the characters that are genuinely unsafe.
 
-The set below was determined empirically by uploading probe files with each character to S3
-(gov staging) and Azure Blob (azure staging). GCS was not verified (its staging tier is behind
-Google IAP, pending an auth integration); treat this set as a floor and extend it if GCS or a
+The set below was determined empirically by uploading probe files with each character to all
+three object-store backends: S3 (gov staging), Azure Blob (azure staging), and GCS (gcp staging).
+It is the union of what breaks on any backend — Azure is strictest (rejects ``%``), GCS is most
+permissive (only ``/`` misbehaves) — so no single backend drives the whole set. Extend it if a
 new backend rejects more.
 """
 
@@ -23,7 +24,7 @@ import unicodedata
 #   /  \      path separators — truncate or nest the object key
 #   %         literal percent breaks Azure Blob SAS signing (403 AuthenticationFailed)
 #   ? { } '   rejected by the ingest service (S3: InvalidS3Path) or fail server-side ingestion (Azure)
-# NOTE: verified on S3 + Azure Blob; GCS unverified (see module docstring). Extend as needed.
+# NOTE: verified across S3, Azure Blob, and GCS staging (see module docstring). Extend as needed.
 UNSAFE_UPLOAD_CHARS = frozenset("/\\?%{}'")
 
 
