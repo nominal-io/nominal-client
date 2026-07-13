@@ -64,6 +64,8 @@ for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```
 
+To evaluate multiple expressions in a single request, use `batch_compute_buckets`.
+
 When retrieving channels using the expressions library, you may also reference channels directly on datasources or runs:
 
 ```python
@@ -83,4 +85,37 @@ However, it may still be useful to further filter data on tags that aren't speci
 channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name, additional_tags={"color": "green"})
 run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name, additional_tags={"color": "green"})
 datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_name, channel_name, tags={"platform": "electric-glider-mk1"})
+```
+
+## Compute-as-code
+
+In addition to the Python-internal DSL above, this library can execute expressions authored with the separate
+`nominal-compute` library, installed with the `compute` extra:
+
+```sh
+pip install 'nominal[compute]'
+```
+
+### Computing a series
+
+`compute_series` applies a `nominal_compute` expression to concrete channels and returns the computed values as a
+`pandas.Series` indexed by timestamp. References in the expression are bound to channels at execution time via
+`inputs`—nothing is persisted back to Nominal:
+
+### Derived datasets
+
+A derived dataset is a regular catalog dataset whose contents are computed from a `nominal_compute` graph instead of
+ingested files. Create one with `create_derived_dataset`, and manage its definition over time with
+`get_derived_definition` and `commit_derived_definition`:
+
+```py
+from nominal.experimental.compute import commit_derived_definition, create_derived_dataset, get_derived_definition
+
+spec = nc.Dataset.Saved(dataset.rid).time_shift(nc.Duration.Seconds(5))
+derived = create_derived_dataset(client, "my derived dataset", spec)
+
+# Later: replace the definition with a new commit, passing the current commit for optimistic concurrency.
+definition = get_derived_definition(client, derived)
+new_spec = nc.Dataset.Saved(dataset.rid).time_shift(nc.Duration.Seconds(10))
+commit_derived_definition(client, derived, new_spec, message="shift by 10s", latest_commit=definition.commit.id)
 ```

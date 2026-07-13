@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from nominal_api import scout_catalog
 
+from nominal.core import NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.experimental.compute._compute_bridge import to_conjure_dataset
 
