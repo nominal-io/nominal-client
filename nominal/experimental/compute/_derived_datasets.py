@@ -25,8 +25,8 @@ def create_derived_dataset(
 ) -> Dataset:
     """Create a derived dataset defined by a ``nominal_compute`` graph.
 
-    A derived dataset is a regular dataset whose contents are computed from a 
-    ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned 
+    A derived dataset is a regular dataset whose contents are computed from a
+    ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned
     as a core :class:`~nominal.core.dataset.Dataset`, exactly like a normal dataset.
 
     Args:
