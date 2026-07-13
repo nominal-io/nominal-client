@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.152.1](https://github.com/nominal-io/nominal-client/compare/v1.152.0...v1.152.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **migration:** persist migration state incrementally and flush it on SIGINT/SIGTERM ([#873](https://github.com/nominal-io/nominal-client/issues/873)) ([e46a95d](https://github.com/nominal-io/nominal-client/commit/e46a95dbd72775adf17c95d69795859ae384cc7a))
+
+## [1.152.0](https://github.com/nominal-io/nominal-client/compare/v1.151.0...v1.152.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** container extractor and image commands ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **cli:** containerized extractor and container registry commands ([#862](https://github.com/nominal-io/nominal-client/issues/862)) ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **migration:** offline `nom migrate summary` command + shared dry-run log constants ([#872](https://github.com/nominal-io/nominal-client/issues/872)) ([1519162](https://github.com/nominal-io/nominal-client/commit/1519162925367ac0400b305c0d89c7e706fd70ca))
+* raise NominalAlreadyExistsError for ALREADY_EXISTS gRPC failures ([#865](https://github.com/nominal-io/nominal-client/issues/865)) ([c274fcc](https://github.com/nominal-io/nominal-client/commit/c274fcc769ad7ecfada91b876624bbb7910a17cd))
+
+## [1.151.0](https://github.com/nominal-io/nominal-client/compare/v1.150.1...v1.151.0) (2026-07-02)
+
+
+### Features
+
+* added m2ts video format ([#858](https://github.com/nominal-io/nominal-client/issues/858)) ([925ab1b](https://github.com/nominal-io/nominal-client/commit/925ab1b73ce7c4129ef6c8a8dae473b446a24a07))
+* allow searching for container images by containerized extractor ([#861](https://github.com/nominal-io/nominal-client/issues/861)) ([839b782](https://github.com/nominal-io/nominal-client/commit/839b78243c32ca01dfe09fbc0c366dec64ae8b71))
+* v2 hosted containerized extractors + image upload/registration ([#842](https://github.com/nominal-io/nominal-client/issues/842)) ([e4e915b](https://github.com/nominal-io/nominal-client/commit/e4e915bd497b613e2052105007d2f92a642a0900))
+
+
+### Bug Fixes
+
+* prevent .zip files from being uploaded as .pyz files ([#856](https://github.com/nominal-io/nominal-client/issues/856)) ([a14a3ee](https://github.com/nominal-io/nominal-client/commit/a14a3eee361bfe8952c0e364d6bdebccf9a97dc8))
+
 ## [1.150.1](https://github.com/nominal-io/nominal-client/compare/v1.150.0...v1.150.1) (2026-06-30)
 
 

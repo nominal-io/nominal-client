@@ -3,11 +3,11 @@ from __future__ import annotations
 import collections
 import logging
 import pathlib
-from typing import Mapping, Sequence
+from typing import Sequence
 
 import click
-import tabulate
 
+from nominal.cli.util.format import emit_table, table_data_to_string
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core.client import NominalClient
 from nominal.ts import _LiteralAbsolute
@@ -132,22 +132,4 @@ def summarize(
             if show_rids:
                 data["dataset rid"].append(dataset.rid)
 
-    output_str = _dataset_data_to_string(data, format)
-
-    if output is None:
-        click.echo(output_str)
-    else:
-        click.secho(f"Writing dataset(s) metadata to {output}", fg="cyan")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(output_str)
-
-
-def _dataset_data_to_string(table_data: Mapping[str, list[str]], format: str) -> str:
-    import pandas as pd
-
-    if format == "csv":
-        return pd.DataFrame(table_data).to_csv(index=False)
-    elif format == "table":
-        return tabulate.tabulate(table_data, headers=list(table_data.keys()))
-    else:
-        raise ValueError(f"Expected format to be one of csv or table, received {format}")
+    emit_table(table_data_to_string(data, format), output, "dataset(s)")

@@ -1,3 +1,7 @@
+# IMPORTANT: never store tokens, API keys, base URLs, or workspace RIDs in this
+# config. Connection details come from `nom config profile` profiles (or masked
+# CI inputs); this file only describes WHAT to migrate.
+
 migration:
   # Human-readable name for this migration run. Appears in logs.
   name: "my-migration"

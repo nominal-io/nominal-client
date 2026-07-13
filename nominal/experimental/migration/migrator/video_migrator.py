@@ -6,6 +6,7 @@ from typing import Any, Sequence
 
 from nominal.core import NominalClient
 from nominal.core.video import Video
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
@@ -49,7 +50,7 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
             return existing_video
 
         if self.ctx.dry_run:
-            logger.info("[DRY RUN] Would create video '%s' (source: %s)", source.name, source.rid)
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
             return source
 

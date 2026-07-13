@@ -27,8 +27,17 @@ def validate_max_workers(max_workers: int) -> int:
 def run_concurrent(
     executor: concurrent.futures.ThreadPoolExecutor,
     tasks: list[MigrationTask],
+    on_task_complete: Callable[[], None] | None = None,
 ) -> None:
-    """Submit tasks concurrently and raise a RuntimeError listing all failures."""
+    """Submit tasks concurrently and raise a RuntimeError listing all failures.
+
+    Args:
+        executor: The thread pool to submit tasks to.
+        tasks: The migration tasks to run.
+        on_task_complete: Called after every task settles (success or failure) — used to
+            persist migration state incrementally so a killed process loses at most the
+            in-flight tasks.
+    """
     if not tasks:
         return
 
@@ -42,6 +51,8 @@ def run_concurrent(
         except Exception as exc:  # pragma: no cover - exercised by production callers
             logger.error("Failed to migrate %s (rid: %s)", task.label, task.rid, exc_info=exc)
             errors.append(exc)
+        if on_task_complete is not None:
+            on_task_complete()
     if errors:
         error_summary = "; ".join(str(e) for e in errors)
         raise RuntimeError(f"Parallel migration had {len(errors)} failure(s): {error_summary}")

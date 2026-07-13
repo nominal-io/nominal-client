@@ -8,7 +8,7 @@ from typing import Generic, TypeVar
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import HasRid
 from nominal.experimental.migration.migrator.context import MigrationContext
-from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.resource_type import ResourceType, resource_label
 
 Resource = TypeVar("Resource", bound=HasRid)
 CopyOptions = TypeVar("CopyOptions", bound="ResourceCopyOptions")
@@ -93,7 +93,7 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
 
     @property
     def resource_label(self) -> str:
-        return self.resource_type.value.lower().replace("_", " ")
+        return resource_label(self.resource_type)
 
     def use_singleflight(self) -> bool:
         """Whether concurrent callers should be deduped for a given source RID."""

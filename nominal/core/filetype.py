@@ -138,6 +138,7 @@ class FileTypes:
     PARQUET_TAR_GZ: FileType = FileType(".parquet.tar.gz", "application/x-tar")
     PARQUET_TAR: FileType = FileType(".parquet.tar", "application/x-tar")
     PARQUET_ZIP: FileType = FileType(".parquet.zip", "application/zip")
+    TAR: FileType = FileType(".tar", "application/x-tar")
     TS: FileType = FileType(".ts", "video/mp2t")
     JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")

@@ -3,7 +3,15 @@ import sys
 
 import click
 
-from nominal.cli import attachment, config, dataset, download, mis, run
+from nominal.cli import (
+    attachment,
+    config,
+    container,
+    dataset,
+    download,
+    mis,
+    run,
+)
 
 
 @click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})
@@ -14,6 +22,7 @@ def nom() -> None:
 
 nom.add_command(attachment.attachment_cmd)
 nom.add_command(config.config_cmd)
+nom.add_command(container.container_cmd)
 nom.add_command(dataset.dataset_cmd)
 nom.add_command(download.download_cmd)
 nom.add_command(mis.mis_cmd)
