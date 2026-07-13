@@ -23,12 +23,11 @@ def create_derived_dataset(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
 ) -> Dataset:
-    """Create a derived dataset defined by a ``nominal_compute`` graph rather than ingested files.
+    """Create a derived dataset defined by a ``nominal_compute`` graph.
 
-    A derived dataset is a regular catalog dataset whose contents are computed from a ``nominal_compute``
-    graph (``spec``) instead of ingested files. It is returned as a core
-    :class:`~nominal.core.dataset.Dataset`, exactly like a normal dataset; the derived-definition lifecycle
-    is managed via :func:`get_derived_definition` and :func:`commit_derived_definition`.
+    A derived dataset is a regular dataset whose contents are computed from a 
+    ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned 
+    as a core :class:`~nominal.core.dataset.Dataset`, exactly like a normal dataset.
 
     Args:
         client: The NominalClient to use for creating the derived dataset.

@@ -1,8 +1,7 @@
 """Apply a locally-authored ``nominal_compute`` expression to a run/dataset's channels and return the result.
 
 The expression's references (``nominal_compute.NumericSeries.Reference("a")``) are bound to concrete channels at
-execution time via the compute ``Context`` -- nothing is persisted back to Nominal. This is the mechanism for running
-pre-authored compute-as-code / Rust-UDF metric logic against arbitrary runs or datasets identified by RID.
+execution time via the compute ``Context`` (i.e.) nothing is persisted back to Nominal.
 """
 
 from __future__ import annotations
@@ -41,12 +40,11 @@ def compute_series(
         expr: The compute-as-code expression to evaluate (numeric or categorical), typically authored in
             ``nominal_compute`` and imported from your own repository.
         inputs: Maps each reference name used in ``expr`` to the :class:`~nominal.core.channel.Channel` it should
-            resolve to. Look these up from the run/dataset the caller wants to compute against, e.g.
-            ``{"a": dataset.get_channel("psm_dt_fx")}``.
+            resolve to. Look these up from the run/dataset the caller wants to compute against.
         start: Start of the time range to compute over. Defaults to the earliest supported timestamp.
         end: End of the time range to compute over. Defaults to the latest supported timestamp.
         name: Name for the returned series (also the CSV column name requested from the export service).
-        enable_gzip: If true, gzip the export from Nominal. Almost always faster and lower bandwidth.
+        enable_gzip: If true, gzip the export from Nominal.
 
     Returns:
         A ``pandas.Series`` of the computed values, indexed by timestamp. The index name is "timestamp" and the series
