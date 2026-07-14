@@ -1,1 +1,5 @@
-from nominal.experimental.impersonation import as_user as as_user
+from nominal.experimental.impersonation import as_user
+
+__all__ = [
+    "as_user",
+]

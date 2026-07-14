@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.153.0](https://github.com/nominal-io/nominal-client/compare/v1.152.1...v1.153.0) (2026-07-14)
+
+
+### Features
+
+* **experimental:** runtime decorators for authoring containerized extractors ([#867](https://github.com/nominal-io/nominal-client/issues/867)) ([f9bc44d](https://github.com/nominal-io/nominal-client/commit/f9bc44d60eea1b79da2f2df52c96442d18adfee0))
+* migrate sandbox workspace service to gRPC ([#868](https://github.com/nominal-io/nominal-client/issues/868)) ([1f0f2d0](https://github.com/nominal-io/nominal-client/commit/1f0f2d050b2fd3afaf5979901ed24044088268ce))
+* migrate secrets service to gRPC ([#870](https://github.com/nominal-io/nominal-client/issues/870)) ([8a4321e](https://github.com/nominal-io/nominal-client/commit/8a4321eefd100a6ba2c0c9be3b4ba2e3e4506108))
+
 ## [1.152.1](https://github.com/nominal-io/nominal-client/compare/v1.152.0...v1.152.1) (2026-07-08)
 
 

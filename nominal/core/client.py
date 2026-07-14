@@ -24,7 +24,6 @@ from nominal_api import (
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
-    secrets_api,
     storage_datasource_api,
 )
 from typing_extensions import Self, deprecated
@@ -116,6 +115,7 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
@@ -482,7 +482,7 @@ class NominalClient:
             labels: Labels for the secret
             properties: Properties for the secret
         """
-        secret_request = secrets_api.CreateSecretRequest(
+        secret_request = secrets_pb2.CreateSecretRequest(
             name=name,
             description=description or "",
             decrypted_value=decrypted_value,
@@ -490,21 +490,27 @@ class NominalClient:
             labels=list(labels),
             properties={} if properties is None else dict(properties),
         )
-        resp = self._clients.secrets.create(self._clients.auth_header, secret_request)
-        return Secret._from_conjure(self._clients, resp)
+        with translate_grpc_errors():
+            response = self._clients.secrets.Create(secret_request)
+        return Secret._from_proto(self._clients, response.secret)
 
     def get_secret(self, rid: str) -> Secret:
-        """Retrieve a secret by RID."""
-        resp = self._clients.secrets.get(self._clients.auth_header, rid)
-        return Secret._from_conjure(self._clients, resp)
+        """Retrieve a secret by RID.
+
+        Raises:
+            NominalNotFoundError: If no secret with the given RID exists or it is not accessible to the user.
+        """
+        with translate_grpc_errors():
+            response = self._clients.secrets.Get(secrets_pb2.GetRequest(rid=rid))
+        return Secret._from_proto(self._clients, response.secret)
 
     def _iter_search_secrets(
         self,
-        query: secrets_api.SearchSecretsQuery,
+        query: secrets_pb2.SearchSecretsQuery,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Iterable[Secret]:
-        for secret in search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query, archive_status):
-            yield Secret._from_conjure(self._clients, secret)
+        for secret in search_secrets_paginated(self._clients.secrets, query, archive_status):
+            yield Secret._from_proto(self._clients, secret)
 
     def search_secrets(
         self,

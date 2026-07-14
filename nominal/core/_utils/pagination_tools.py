@@ -18,13 +18,13 @@ from nominal_api import (
     scout_template_api,
     scout_video,
     scout_video_api,
-    secrets_api,
 )
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
+from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -245,21 +245,20 @@ def search_runs_by_asset_paginated(
 
 
 def search_secrets_paginated(
-    secrets: secrets_api.SecretService,
-    auth_header: str,
-    query: secrets_api.SearchSecretsQuery,
+    secrets: secrets_pb2_grpc.SecretServiceStub,
+    query: secrets_pb2.SearchSecretsQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[secrets_api.Secret]:
-    def factory(page_token: str | None) -> secrets_api.SearchSecretsRequest:
-        return secrets_api.SearchSecretsRequest(
+) -> Iterable[secrets_pb2.Secret]:
+    def factory(page_token: str | None) -> secrets_pb2.SearchSecretsRequest:
+        return secrets_pb2.SearchSecretsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=secrets_api.SortOptions(field=secrets_api.SortField.CREATED_AT, is_descending=True),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            sort=secrets_pb2.SortOptions(field=secrets_pb2.SortField.CREATED_AT, is_descending=True),
+            archived_statuses=archive_status.to_proto_archived_statuses(),
             token=page_token,
         )
 
-    for response in paginate_rpc(secrets.search, auth_header, request_factory=factory):
+    for response in paginate_grpc(secrets.Search, request_factory=factory):
         yield from response.results
 
 
