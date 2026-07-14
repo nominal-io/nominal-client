@@ -22,7 +22,6 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
-    secrets_api,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
@@ -43,6 +42,7 @@ from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
+from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
@@ -172,7 +172,7 @@ class ClientsBunch:
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
-    secrets: secrets_api.SecretService
+    secrets: secrets_pb2_grpc.SecretServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
 
@@ -329,12 +329,12 @@ class ClientsBunch:
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
-            secrets=client_factory(secrets_api.SecretService),
             # GRPC Service Stubs
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
+            secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
         )

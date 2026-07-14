@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
 
 from nominal_api import (
     api,
@@ -17,12 +17,13 @@ from nominal_api import (
     scout_run_api,
     scout_template_api,
     scout_video_api,
-    secrets_api,
 )
 
 from nominal._utils.deprecation_tools import _NotProvided
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.secrets.v1 import secrets_pb2
+from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -55,13 +56,26 @@ class ArchiveStatusFilter(Enum):
     ANY = "ANY"
 
     def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
-        """Convert to a list of ArchivedStatus values for use in search requests."""
+        """Convert to a list of conjure ArchivedStatus values for use in search requests.
+
+        TODO: delete once the remaining conjure search paths migrate to gRPC
+        (to_proto_archived_statuses is the successor).
+        """
         if self == ArchiveStatusFilter.ARCHIVED:
             return [api.ArchivedStatus.ARCHIVED]
         elif self == ArchiveStatusFilter.NOT_ARCHIVED:
             return [api.ArchivedStatus.NOT_ARCHIVED]
         else:  # ANY
             return [api.ArchivedStatus.ARCHIVED, api.ArchivedStatus.NOT_ARCHIVED]
+
+    def to_proto_archived_statuses(self) -> list[types_pb2.ArchivedStatus.ValueType]:
+        """Convert to a list of proto ArchivedStatus values for use in gRPC search requests."""
+        if self == ArchiveStatusFilter.ARCHIVED:
+            return [types_pb2.ArchivedStatus.ARCHIVED]
+        elif self == ArchiveStatusFilter.NOT_ARCHIVED:
+            return [types_pb2.ArchivedStatus.NOT_ARCHIVED]
+        else:  # ANY
+            return [types_pb2.ArchivedStatus.ARCHIVED, types_pb2.ArchivedStatus.NOT_ARCHIVED]
 
 
 def resolve_effective_archive_status(
@@ -176,19 +190,20 @@ def create_search_secrets_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
-) -> secrets_api.SearchSecretsQuery:
+) -> secrets_pb2.SearchSecretsQuery:
     queries = []
     if search_text is not None:
-        queries.append(secrets_api.SearchSecretsQuery(search_text=search_text))
+        queries.append(secrets_pb2.SearchSecretsQuery(search_text=search_text))
     if labels is not None:
         for label in labels:
-            queries.append(secrets_api.SearchSecretsQuery(label=label))
+            queries.append(secrets_pb2.SearchSecretsQuery(label=label))
     if properties is not None:
         for name, value in properties.items():
-            queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
+            queries.append(secrets_pb2.SearchSecretsQuery(property=types_pb2.Property(name=name, value=value)))
     if workspace_rid is not None:
-        queries.append(secrets_api.SearchSecretsQuery(workspace=workspace_rid))
-    return secrets_api.SearchSecretsQuery(and_=queries)
+        queries.append(secrets_pb2.SearchSecretsQuery(workspace=workspace_rid))
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return secrets_pb2.SearchSecretsQuery(**{"and": queries})  # type: ignore[arg-type]
 
 
 def create_search_videos_query(
@@ -243,10 +258,10 @@ def create_search_container_images_query(
     elif len(filters) == 1:
         return filters[0]
     else:
-        # `and` is a Python keyword, so mypy-protobuf can't expose it as a typed kwarg or attribute; pass it
-        # through a **mapping (which also avoids getattr/setattr on the generated message).
-        and_clause: dict[str, Any] = {"and": registry_pb2.AndFilter(clauses=filters)}
-        return registry_pb2.SearchFilter(**and_clause)
+        # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+        return registry_pb2.SearchFilter(
+            **{"and": registry_pb2.AndFilter(clauses=filters)}  # type: ignore[arg-type]
+        )
 
 
 def create_search_assets_query(
