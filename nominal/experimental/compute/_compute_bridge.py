@@ -23,3 +23,12 @@ def _decode(node: object, conjure_type: type[_T]) -> _T:
 def to_conjure_dataset(dataset: nominal_compute.Dataset) -> scout_compute_api.Dataset:
     """Decode a ``nominal_compute.Dataset`` into the ``scout_compute_api.Dataset`` the catalog API expects."""
     return _decode(dataset, scout_compute_api.Dataset)
+
+
+def to_conjure_series(
+    series: nominal_compute.NumericSeries | nominal_compute.CategoricalSeries,
+) -> scout_compute_api.Series:
+    """Decode a series expression into the ``scout_compute_api.Series`` union the compute API expects."""
+    if type(series).__name__ == "NumericSeries":
+        return scout_compute_api.Series(numeric=_decode(series, scout_compute_api.NumericSeries))
+    return scout_compute_api.Series(enum=_decode(series, scout_compute_api.EnumSeries))
