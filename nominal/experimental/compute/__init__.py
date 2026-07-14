@@ -4,14 +4,12 @@ from nominal.experimental.compute._derived_datasets import (
     create_derived_dataset,
     get_derived_definition,
 )
-from nominal.experimental.compute._series import compute_series
 
 __all__ = [
     "Bucket",
     "batch_compute_buckets",
     "commit_derived_definition",
     "compute_buckets",
-    "compute_series",
     "create_derived_dataset",
     "get_derived_definition",
 ]

@@ -96,12 +96,6 @@ In addition to the Python-internal DSL above, this library can execute expressio
 pip install 'nominal[compute]'
 ```
 
-### Computing a series
-
-`compute_series` applies a `nominal_compute` expression to concrete channels and returns the computed values as a
-`pandas.Series` indexed by timestamp. References in the expression are bound to channels at execution time via
-`inputs`—nothing is persisted back to Nominal:
-
 ### Derived datasets
 
 A derived dataset is a regular catalog dataset whose contents are computed from a `nominal_compute` graph instead of
