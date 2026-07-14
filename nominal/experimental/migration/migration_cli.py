@@ -448,8 +448,7 @@ def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner
     workspace_rid = target_client.get_workspace().rid
     sandbox_service = target_client._clients.sandbox_workspace
 
-    # TODO: collapse the get-merge-set below into the atomic AddDemoWorkbooks RPC (the server already
-    # implements it; deliberately deferred from #868 to keep the migration parity-only).
+    # TODO: collapse the get-merge-set below into the atomic AddDemoWorkbooks RPC (the server already implements it)
     with translate_grpc_errors():
         existing_response = sandbox_service.GetDemoWorkbooks(
             sandbox_workspace_pb2.GetDemoWorkbooksRequest(workspace_rid=workspace_rid)
