@@ -20,6 +20,7 @@ from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
+from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 
@@ -260,6 +261,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     )
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
+    assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
     # Exactly one channel, built from the right transport params and shared by every gRPC stub.
     create_grpc_channel.assert_called_once()
     assert create_grpc_channel.call_args.kwargs["auth_header"] == "Bearer token"
