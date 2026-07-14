@@ -8,10 +8,10 @@ from typing import Any, Literal, Sequence
 
 import click
 import yaml
-from nominal_api.scout_sandbox_api import SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -21,6 +21,7 @@ from nominal.experimental.migration.migration_summary import build_summary, load
 from nominal.experimental.migration.migrator.context import DestinationClientResolver
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.protos.sandbox.v1 import sandbox_workspace_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -445,17 +446,26 @@ def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner
         return
 
     workspace_rid = target_client.get_workspace().rid
-    auth_header = target_client._clients.auth_header
     sandbox_service = target_client._clients.sandbox_workspace
 
-    existing_response = sandbox_service.get_demo_workbooks(auth_header, workspace_rid)
-    existing_rids = existing_response.notebook_rids
+    # TODO: collapse the get-merge-set below into the atomic AddDemoWorkbooks RPC (the server already
+    # implements it; deliberately deferred from #868 to keep the migration parity-only).
+    with translate_grpc_errors():
+        existing_response = sandbox_service.GetDemoWorkbooks(
+            sandbox_workspace_pb2.GetDemoWorkbooksRequest(workspace_rid=workspace_rid)
+        )
 
-    combined_rids = list(dict.fromkeys(existing_rids + new_workbook_rids))
-    sandbox_service.set_demo_workbooks(auth_header, SetDemoWorkbooksRequest(notebook_rids=combined_rids), workspace_rid)
+    combined_rids = list(dict.fromkeys([*existing_response.notebook_rids, *new_workbook_rids]))
+    with translate_grpc_errors():
+        sandbox_service.SetDemoWorkbooks(
+            sandbox_workspace_pb2.SetDemoWorkbooksRequestWrapper(
+                workspace_rid=workspace_rid,
+                request=sandbox_workspace_pb2.SetDemoWorkbooksRequest(notebook_rids=combined_rids),
+            )
+        )
     logger.info(
         "Updated demo workbooks: %d existing + %d new = %d total",
-        len(existing_rids),
+        len(existing_response.notebook_rids),
         len(new_workbook_rids),
         len(combined_rids),
     )
