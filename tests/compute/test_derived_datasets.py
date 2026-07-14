@@ -10,7 +10,7 @@ from nominal.experimental.compute import (
     create_derived_dataset,
     get_derived_definition,
 )
-from nominal.experimental.compute._compute_bridge import to_conjure_dataset
+from nominal.experimental.compute._derived_datasets import _to_conjure_dataset
 
 
 @pytest.fixture
@@ -33,14 +33,14 @@ def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
 def test_bridge_decodes_saved_dataset() -> None:
     """A saved dataset bridges to the conjure saved-dataset type."""
     nc = pytest.importorskip("nominal_compute")
-    bridged = to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc"))
+    bridged = _to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc"))
     assert bridged == _conjure_saved("ri.catalog.ws.dataset.abc")
 
 
 def test_bridge_decodes_dataset_transform() -> None:
     """A dataset transform (time_shift) bridges to the matching conjure type."""
     nc = pytest.importorskip("nominal_compute")
-    bridged = to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5)))
+    bridged = _to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5)))
     assert isinstance(bridged, scout_compute_api.Dataset)
     assert bridged.type == "timeShift"
 

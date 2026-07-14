@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Mapping, Sequence
 
-from nominal_api import scout_catalog
+from conjure_python_client._serde.decoder import ConjureDecoder
+from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.dataset import Dataset
-from nominal.experimental.compute._compute_bridge import to_conjure_dataset
 
 if TYPE_CHECKING:
     import nominal_compute
+
+
+def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:
+    """Convert a ``nominal_compute.Dataset`` into the ``scout_compute_api.Dataset`` the catalog API expects."""
+    wire_json = spec.to_json()  # type: ignore[attr-defined]
+    dataset: scout_compute_api.Dataset = ConjureDecoder.do_decode(json.loads(wire_json), scout_compute_api.Dataset)
+    return dataset
 
 
 def create_derived_dataset(
@@ -51,7 +59,7 @@ def create_derived_dataset(
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=client._clients.resolve_default_workspace_rid(),
         marking_rids=[],
-        derived_definition=scout_catalog.CreateDerivedDefinition(spec=to_conjure_dataset(spec), message=message),
+        derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),
     )
     response = client._clients.catalog.create_dataset(client._clients.auth_header, request)
     return Dataset._from_conjure(client._clients, response)
@@ -100,7 +108,7 @@ def commit_derived_definition(
     """
     rid = rid_from_instance_or_string(dataset)
     request = scout_catalog.CommitDerivedDefinitionRequest(
-        spec=to_conjure_dataset(spec),
+        spec=_to_conjure_dataset(spec),
         message=message,
         latest_commit=latest_commit,
     )
