@@ -383,6 +383,33 @@ CI release identifier over a movable alias like `latest`. Re-registering an exis
 `NominalAlreadyExistsError`; inspect the existing image with
 `extractor.search_container_images(tag=...)` rather than retrying under a new suffix.
 
+### Reuse an existing image binary
+
+When only the tag or execution contract changes, use
+{py:meth}`~nominal.core.ContainerizedExtractor.register_image_from` to reuse the stored binary
+without uploading another tarball. The source must be READY and belong to the same extractor
+and workspace.
+
+```python
+from nominal.core import ContainerResources
+
+replacement = extractor.register_image_from(
+    image,
+    tag="0.3.1",
+    resources=ContainerResources(memory_gib=16),
+)
+extractor.set_active_image(replacement)
+```
+
+Omitted fields inherit from the source, including inputs, parameters, timestamp metadata,
+output format, exit-code mappings, and resources. Resource overrides replace the entire resource
+configuration: the example sets memory while CPU and disk use deployment defaults.
+Pass `ContainerResources()` to reset all resource overrides, or an empty sequence to clear
+parameters or exit-code mappings. Timestamp column and type must be overridden together.
+
+An image object supplies its local snapshot; a source RID fetches the contract from Nominal.
+The source stays unchanged, and registration does not activate the replacement.
+
 ### From the CLI
 
 The same flow is available from the command line, which is usually what you want in CI. The image's
