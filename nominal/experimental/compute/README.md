@@ -109,8 +109,15 @@ ingested files. Create one with `create_derived_dataset`, and manage its definit
 `get_derived_definition` and `commit_derived_definition`:
 
 ```py
+import nominal_compute as nc
+
+from nominal.core import NominalClient
 from nominal.experimental.compute import commit_derived_definition, create_derived_dataset, get_derived_definition
 
+client = NominalClient.from_profile("...")
+dataset = client.get_dataset("...")
+
+# Define the derived dataset as an existing dataset shifted forward by 5 seconds.
 spec = nc.Dataset.Saved(dataset.rid).time_shift(nc.Duration.Seconds(5))
 derived = create_derived_dataset(client, "my derived dataset", spec)
 

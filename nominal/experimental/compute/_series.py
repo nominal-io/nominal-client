@@ -6,21 +6,36 @@ execution time via the compute ``Context`` (i.e.) nothing is persisted back to N
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, BinaryIO, Mapping, cast
 
 import pandas as pd
+from conjure_python_client._serde.decoder import ConjureDecoder
 from nominal_api import scout_compute_api, scout_dataexport_api
 
 from nominal import ts
 from nominal.core import NominalClient
 from nominal.core.channel import Channel
-from nominal.experimental.compute._compute_bridge import to_conjure_series
 
 if TYPE_CHECKING:
     import nominal_compute
 
 _FlexibleTimestamp = str | datetime | ts.IntegralNanosecondsUTC
+
+
+def _to_conjure_series(
+    series: nominal_compute.NumericSeries | nominal_compute.CategoricalSeries,
+) -> scout_compute_api.Series:
+    """Convert a ``nominal_compute`` series expression into the ``scout_compute_api.Series`` the compute API expects."""
+    wire_json = series.to_json()  # type: ignore[union-attr]
+    if type(series).__name__ == "NumericSeries":
+        numeric: scout_compute_api.NumericSeries = ConjureDecoder.do_decode(
+            json.loads(wire_json), scout_compute_api.NumericSeries
+        )
+        return scout_compute_api.Series(numeric=numeric)
+    enum: scout_compute_api.EnumSeries = ConjureDecoder.do_decode(json.loads(wire_json), scout_compute_api.EnumSeries)
+    return scout_compute_api.Series(enum=enum)
 
 
 def compute_series(
@@ -51,7 +66,7 @@ def compute_series(
         name is ``name``.
     """
     request = _build_export_request(
-        compute_node=to_conjure_series(expr),
+        compute_node=_to_conjure_series(expr),
         column_name=name,
         inputs=inputs,
         start=start,

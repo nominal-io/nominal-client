@@ -8,7 +8,7 @@ from nominal_api import scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.experimental.compute import compute_series
-from nominal.experimental.compute._compute_bridge import to_conjure_series
+from nominal.experimental.compute._series import _to_conjure_series
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def _csv_response(text: str) -> io.BytesIO:
 def test_bridge_numeric_series() -> None:
     """A nominal_compute NumericSeries bridges into the numeric arm of the Series union."""
     nc = pytest.importorskip("nominal_compute")
-    series = to_conjure_series(nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m"))
+    series = _to_conjure_series(nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m"))
     assert isinstance(series, scout_compute_api.Series)
     assert series.numeric is not None
     assert series.enum is None
@@ -50,7 +50,7 @@ def test_bridge_numeric_series() -> None:
 def test_bridge_categorical_series() -> None:
     """A nominal_compute CategoricalSeries bridges into the enum arm of the Series union."""
     nc = pytest.importorskip("nominal_compute")
-    series = to_conjure_series(nc.CategoricalSeries.Reference("c"))
+    series = _to_conjure_series(nc.CategoricalSeries.Reference("c"))
     assert isinstance(series, scout_compute_api.Series)
     assert series.enum is not None
     assert series.numeric is None
