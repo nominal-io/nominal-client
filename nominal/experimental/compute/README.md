@@ -102,6 +102,32 @@ pip install 'nominal[compute]'
 `pandas.Series` indexed by timestamp. References in the expression are bound to channels at execution time via
 `inputs`—nothing is persisted back to Nominal:
 
+```py
+import nominal_compute as nc
+
+from nominal.core import NominalClient
+from nominal.experimental.compute import compute_series
+
+client = NominalClient.from_profile("...")
+dataset = client.get_dataset("...")
+
+# Author an expression over named references, then bind each reference to a concrete channel.
+expr = nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("b")
+series = compute_series(client, expr, inputs={"a": dataset.get_channel("a"), "b": dataset.get_channel("b")})
+```
+
+When a channel's name and data source map to more than one series (e.g. the same channel logged per-vehicle), pass
+`tags`—keyed by the same reference names as `inputs`—to select the series you want.
+
+```py
+series = compute_series(
+    client,
+    expr,
+    inputs={"a": dataset.get_channel("a"), "b": dataset.get_channel("b")},
+    tags={"a": {"vehicle": "1"}, "b": {"vehicle": "1"}},
+)
+```
+
 ### Derived datasets
 
 A derived dataset is a regular catalog dataset whose contents are computed from a `nominal_compute` graph instead of

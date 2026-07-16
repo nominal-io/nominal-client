@@ -45,6 +45,7 @@ def compute_series(
     start: _FlexibleTimestamp | None = None,
     end: _FlexibleTimestamp | None = None,
     *,
+    tags: Mapping[str, Mapping[str, str]] | None = None,
     name: str = "value",
     enable_gzip: bool = True,
 ) -> pd.Series[Any]:
@@ -58,6 +59,8 @@ def compute_series(
             resolve to. Look these up from the run/dataset the caller wants to compute against.
         start: Start of the time range to compute over. Defaults to the earliest supported timestamp.
         end: End of the time range to compute over. Defaults to the latest supported timestamp.
+        tags: Optional tag filters keyed by the same reference names as ``inputs``, used to narrow a channel to a
+            single tagged series when its name and data source alone match more than one.
         name: Name for the returned series (also the CSV column name requested from the export service).
         enable_gzip: If true, gzip the export from Nominal.
 
@@ -72,6 +75,7 @@ def compute_series(
         start=start,
         end=end,
         enable_gzip=enable_gzip,
+        tags=tags,
     )
     response = client._clients.dataexport.export_channel_data(client._clients.auth_header, request)
     df = pd.read_csv(
@@ -90,6 +94,7 @@ def _build_export_request(
     start: _FlexibleTimestamp | None,
     end: _FlexibleTimestamp | None,
     enable_gzip: bool,
+    tags: Mapping[str, Mapping[str, str]] | None,
 ) -> scout_dataexport_api.ExportDataRequest:
     start_ts = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
     end_ts = ts._MAX_TIMESTAMP.to_api() if end is None else ts._SecondsNanos.from_flexible(end).to_api()
@@ -106,7 +111,7 @@ def _build_export_request(
         ),
         start_time=start_ts,
         end_time=end_ts,
-        context=_build_context(inputs),
+        context=_build_context(inputs, tags),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(
             undecimated=scout_dataexport_api.UndecimatedResolution(),
@@ -115,12 +120,16 @@ def _build_export_request(
     )
 
 
-def _build_context(inputs: Mapping[str, Channel]) -> scout_compute_api.Context:
-    """Bind each reference name to its channel, so ``expr``'s ``Reference(name)`` nodes resolve to real data."""
+def _build_context(
+    inputs: Mapping[str, Channel],
+    tags: Mapping[str, Mapping[str, str]] | None = None,
+) -> scout_compute_api.Context:
+    """Bind each reference name to its channel (and any tags), so ``expr``'s ``Reference(name)`` nodes resolve."""
+    tags = tags or {}
     return scout_compute_api.Context(
         dataset_references={},
         variables={
-            ref_name: scout_compute_api.VariableValue(channel=channel._to_channel_series())
+            ref_name: scout_compute_api.VariableValue(channel=channel._to_channel_series(tags=tags.get(ref_name)))
             for ref_name, channel in inputs.items()
         },
         function_variables={},

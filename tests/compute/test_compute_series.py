@@ -93,6 +93,23 @@ def test_compute_series_builds_request_and_parses(client: MagicMock, mock_client
     assert variables["m"].channel.data_source.data_source_rid.literal == "ds-2"
 
 
+def test_compute_series_binds_tags(client: MagicMock, mock_clients: MagicMock) -> None:
+    """Tags narrow a reference to a tagged series; references omitted from tags bind with no tag filter."""
+    nc = pytest.importorskip("nominal_compute")
+    expr = nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m")
+    inputs = {"a": _channel(mock_clients, "chan_a"), "m": _channel(mock_clients, "chan_m")}
+    mock_clients.dataexport.export_channel_data.return_value = _csv_response(
+        "timestamp,value\n2026-01-01T00:00:00Z,1.0\n"
+    )
+
+    compute_series(client, expr, inputs, tags={"a": {"vehicle": "1", "run": "7"}}, enable_gzip=False)
+
+    variables = mock_clients.dataexport.export_channel_data.call_args[0][1].context.variables
+    tagged = variables["a"].channel.data_source.tags
+    assert {k: v.literal for k, v in tagged.items()} == {"vehicle": "1", "run": "7"}
+    assert variables["m"].channel.data_source.tags == {}
+
+
 def test_compute_series_defaults_full_range(client: MagicMock, mock_clients: MagicMock) -> None:
     """With no start/end, compute_series requests the full supported time range."""
     nc = pytest.importorskip("nominal_compute")
