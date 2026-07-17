@@ -315,7 +315,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 continue
             if not workbook.run_rids:
                 continue
-            if len(workbook.run_rids) == 1:
+            # A workbook scoped to a single run must still be deferred if that run is itself
+            # owned by more than one asset: copying it now would only carry a RID mapping for
+            # `source_asset`, leaving the run's other owning asset(s) unmapped. The RID-clone
+            # step used by the copy can't tell "unmapped resource RID" apart from "internal id
+            # that should get a fresh UUID", so it would silently regenerate a bogus RID for
+            # every reference to those other assets instead of waiting for a complete mapping.
+            if len(workbook.run_rids) == 1 and len(source_run.assets) <= 1:
                 workbook_migrator.copy_from(
                     workbook,
                     WorkbookCopyOptions(
