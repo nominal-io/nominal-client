@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable, Iterator, Sequence, cast
+from typing import Callable, Iterator, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,6 +21,16 @@ from nominal.core._utils.multipart_downloader import (
 def _provider(presigned: PresignedURL | None = None) -> PresignedURLProvider:
     presigned = presigned or PresignedURL(url="https://example.com/file")
     return PresignedURLProvider(fetch_fn=lambda: presigned, ttl_secs=60.0, skew_secs=0.0)
+
+
+def _plan(item: DownloadItem, total_size: int, etag: str | None = None) -> _PlannedDownload:
+    """Build a _PlannedDownload with a real staging temp path, mirroring _plan_item."""
+    return _PlannedDownload(
+        item=item,
+        total_size=total_size,
+        etag=etag,
+        tmp_path=MultipartFileDownloader._tmp_path_for(item.destination),
+    )
 
 
 @pytest.fixture
@@ -68,8 +78,8 @@ def test_presigned_url_provider_caches_until_invalidated() -> None:
 
 def test_planned_download_ranges_partial_final_chunk(tmp_path: Path) -> None:
     """A file size that is not a multiple of part_size produces a shorter final chunk."""
-    plan = _PlannedDownload(
-        item=DownloadItem(provider=_provider(), destination=tmp_path / "file.bin", part_size=5),
+    plan = _plan(
+        DownloadItem(provider=_provider(), destination=tmp_path / "file.bin", part_size=5),
         total_size=12,
         etag="etag",
     )
@@ -83,8 +93,8 @@ def test_planned_download_ranges_partial_final_chunk(tmp_path: Path) -> None:
 
 def test_planned_download_ranges_exact_multiple_fit(tmp_path: Path) -> None:
     """A file size that is an exact multiple of part_size produces no partial final chunk."""
-    plan = _PlannedDownload(
-        item=DownloadItem(provider=_provider(), destination=tmp_path / "file.bin", part_size=5),
+    plan = _plan(
+        DownloadItem(provider=_provider(), destination=tmp_path / "file.bin", part_size=5),
         total_size=10,
         etag="etag",
     )
@@ -96,88 +106,85 @@ def test_planned_download_ranges_exact_multiple_fit(tmp_path: Path) -> None:
 
 
 def test_download_file_returns_path_on_success(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
-    """download_file returns the destination path and the preallocated file exists on success."""
+    """download_file returns the destination path and the file is published on success."""
     item = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
 
     with (
-        patch.object(
-            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
-        ),
-        patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {}),
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=4)),
+        patch.object(downloader, "_fetch_range_bytes", lambda *a, **k: None),
     ):
         result = downloader.download_file(item)
 
     assert result == item.destination
     assert result.exists()
+    # The staging temp was renamed away, not left behind.
+    assert list(tmp_path.glob(".*.part")) == []
 
 
 def test_download_file_raises_on_execution_failure(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
-    """download_file raises the captured exception and cleans up the destination on failure."""
+    """download_file raises the captured exception and cleans up the temp on failure."""
     item = DownloadItem(provider=_provider(), destination=tmp_path / "failed.bin", part_size=4)
-    error = RuntimeError("download failed")
+
+    def _fetch(*a: object, **k: object) -> None:
+        raise RuntimeError("download failed")
 
     with (
-        patch.object(
-            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
-        ),
-        patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {item.destination: error}),
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=4)),
+        patch.object(downloader, "_fetch_range_bytes", _fetch),
         pytest.raises(RuntimeError, match="download failed"),
     ):
         downloader.download_file(item)
     assert not item.destination.exists()
+    assert list(tmp_path.glob(".*.part")) == []
 
 
 def test_download_overwrites_existing_destination(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
-    """An existing destination is overwritten, not rejected.
+    """An existing destination is overwritten (not rejected), atomically, on a successful re-download.
 
     Re-downloading to the same path (e.g. a channel-sync retry or a repeated download into a kept
-    output_dir) must not raise FileExistsError: _plan_and_preallocate unlinks the stale file and
-    re-preallocates it to the planned size.
+    output_dir) must not raise FileExistsError. The new bytes are staged in a temp and atomically
+    renamed onto the destination, replacing the stale content.
     """
     dest = tmp_path / "exists.bin"
     dest.write_bytes(b"stale-leftover-content-from-a-prior-download")  # 44 bytes
 
     item = DownloadItem(provider=_provider(), destination=dest, part_size=4)
     with (
-        patch.object(
-            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
-        ),
-        patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {}),
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=4)),
+        patch.object(downloader, "_fetch_range_bytes", lambda *a, **k: None),
     ):
         results = downloader.download_files([item])
 
     assert list(results.succeeded) == [dest]
     assert results.failed == {}
-    # The stale 44-byte file was cleared and re-preallocated to the planned 4 bytes (overwritten).
+    # The stale 44-byte file was replaced by the freshly-downloaded 4-byte file.
     assert dest.stat().st_size == 4
+    assert list(tmp_path.glob(".*.part")) == []
 
 
 def test_download_files_execution_failure_excluded_from_succeeded(
     tmp_path: Path, downloader: MultipartFileDownloader
 ) -> None:
-    """Execution failure is reported in failed, excluded from succeeded, and its file is cleaned up."""
+    """Execution failure is reported in failed, excluded from succeeded, and its temp is cleaned up."""
     succeeded_item = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
     failed_item = DownloadItem(provider=_provider(), destination=tmp_path / "failed.bin", part_size=4)
-    error = RuntimeError("download failed")
 
-    def _make_plan(item: DownloadItem, session: object = None) -> _PlannedDownload:
-        return _PlannedDownload(item=item, total_size=4, etag=None)
-
-    def _exec_downloads(plans: Sequence[_PlannedDownload], *, collect_errors: bool) -> dict[Path, Exception]:
-        assert collect_errors is True
-        assert [p.item.destination for p in plans] == [succeeded_item.destination, failed_item.destination]
-        return {failed_item.destination: error}
+    def _fetch(provider: object, start: int, end: int, etag: str | None, destination: Path) -> None:
+        # destination is the staging temp; identify the failed file by its embedded name.
+        if failed_item.destination.name in destination.name:
+            raise RuntimeError("download failed")
 
     with (
-        patch.object(downloader, "_plan_item", _make_plan),
-        patch.object(downloader, "_run_downloads", _exec_downloads),
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=4)),
+        patch.object(downloader, "_fetch_range_bytes", _fetch),
     ):
         results = downloader.download_files([succeeded_item, failed_item])
 
     assert list(results.succeeded) == [succeeded_item.destination]
-    assert results.failed == {failed_item.destination: error}
+    assert failed_item.destination in results.failed
     assert succeeded_item.destination.exists()
     assert not failed_item.destination.exists()
+    assert list(tmp_path.glob(".*.part")) == []
 
 
 def test_download_files_planning_failure_excluded_from_succeeded(
@@ -198,16 +205,102 @@ def test_download_files_planning_failure_excluded_from_succeeded(
     assert not item.destination.exists()
 
 
+# ---- atomic-write tests (temp + rename) ----
+
+
+def _writing_fetch(payload: bytes) -> Callable[..., None]:
+    """A _fetch_range_bytes stand-in that writes the given payload's byte range into the temp file."""
+
+    def _fetch(provider: object, start: int, end: int, etag: str | None, destination: Path) -> None:
+        MultipartFileDownloader._write_part(destination, start, payload[start : end + 1])
+
+    return _fetch
+
+
+def test_download_failure_preserves_preexisting_destination(
+    tmp_path: Path, downloader: MultipartFileDownloader
+) -> None:
+    """A failed re-download leaves a pre-existing (good) destination untouched, not deleted.
+
+    This is the failed-retry hazard the atomic write closes: previously the destination was unlinked
+    before preallocation, so a subsequent failure destroyed the prior good copy. Now bytes stage in a
+    temp, so a failure never touches the destination.
+    """
+    dest = tmp_path / "keep.bin"
+    good = b"prior-good-download-content"
+    dest.write_bytes(good)
+
+    item = DownloadItem(provider=_provider(), destination=dest, part_size=4)
+
+    def _fetch(*a: object, **k: object) -> None:
+        raise RuntimeError("re-download failed")
+
+    with (
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=16)),
+        patch.object(downloader, "_fetch_range_bytes", _fetch),
+    ):
+        results = downloader.download_files([item])
+
+    assert dest in results.failed
+    # The prior good copy is intact -- neither torn nor deleted.
+    assert dest.read_bytes() == good
+    assert list(tmp_path.glob(".*.part")) == []
+
+
+def test_download_success_replaces_destination_with_new_content(
+    tmp_path: Path, downloader: MultipartFileDownloader
+) -> None:
+    """A successful re-download atomically replaces the old destination content with the new bytes."""
+    dest = tmp_path / "replace.bin"
+    dest.write_bytes(b"old-content")
+    new = b"brand-new-download-bytes!!"  # 26 bytes
+
+    item = DownloadItem(provider=_provider(), destination=dest, part_size=4)
+    with (
+        patch.object(downloader, "_plan_item", lambda item, session=None: _plan(item, total_size=len(new))),
+        patch.object(downloader, "_fetch_range_bytes", _writing_fetch(new)),
+    ):
+        results = downloader.download_files([item])
+
+    assert list(results.succeeded) == [dest]
+    assert dest.read_bytes() == new
+    assert list(tmp_path.glob(".*.part")) == []
+
+
+def test_pipelined_failure_preserves_preexisting_destination(
+    tmp_path: Path, downloader: MultipartFileDownloader
+) -> None:
+    """The pipelined driver also leaves a pre-existing destination untouched when a re-download fails."""
+    dest = tmp_path / "keep.bin"
+    good = b"prior-good-download-content"
+    dest.write_bytes(good)
+
+    item = DownloadItem(provider=_provider(), destination=dest, part_size=4)
+
+    def _fetch(*a: object, **k: object) -> None:
+        raise RuntimeError("re-download failed")
+
+    with (
+        patch.object(downloader, "_plan_item", _plan_returning(16)),
+        patch.object(downloader, "_fetch_range_bytes", _fetch),
+    ):
+        results = downloader.download_files_pipelined([item])
+
+    assert dest in results.failed
+    assert dest.read_bytes() == good
+    assert list(tmp_path.glob(".*.part")) == []
+
+
 # ---- download_files_pipelined tests ----
 
 
 def _plan_returning(total_size: int) -> Callable[..., _PlannedDownload]:
     """A _plan_item stand-in that returns a fixed-size plan (ignoring the link/probe)."""
 
-    def _plan(item: DownloadItem, session: object = None) -> _PlannedDownload:
-        return _PlannedDownload(item=item, total_size=total_size, etag=None)
+    def _make(item: DownloadItem, session: object = None) -> _PlannedDownload:
+        return _plan(item, total_size=total_size)
 
-    return _plan
+    return _make
 
 
 def test_pipelined_fires_callbacks_once_per_file(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
@@ -236,7 +329,8 @@ def test_pipelined_part_failure_recorded_and_cleaned_up(tmp_path: Path, download
     bad = DownloadItem(provider=_provider(), destination=tmp_path / "bad.bin", part_size=4)
 
     def _fetch(provider: object, start: int, end: int, etag: str | None, destination: Path) -> None:
-        if destination == bad.destination:
+        # destination is the staging temp; identify the failing file by its embedded name.
+        if bad.destination.name in destination.name:
             raise RuntimeError("boom")
 
     with (
@@ -249,6 +343,7 @@ def test_pipelined_part_failure_recorded_and_cleaned_up(tmp_path: Path, download
     assert bad.destination in results.failed
     assert ok.destination.exists()
     assert not bad.destination.exists()
+    assert list(tmp_path.glob(".*.part")) == []
 
 
 def test_pipelined_planning_failure_recorded(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
