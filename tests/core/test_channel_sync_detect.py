@@ -114,12 +114,17 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
 
     presence_seen: list[str] = []
 
-    def fake_presence(ch: Any, start: int, end: int, starts: Any, tags: Any) -> dict[int, int]:
-        presence_seen.append(ch.name)
-        return {0: 0}
+    def fake_channels_with_data(chs: Any, start: int, end: int, tags: Any, on_advance: Any) -> set[str]:
+        # Mirror the real probe's on_advance contract (advanced by batch length) and report none
+        # present, so every presence channel bins to a uniform 0 (precise=False) count.
+        for ch in chs:
+            presence_seen.append(ch.name)
+        if on_advance is not None:
+            on_advance(len(list(chs)))
+        return set()
 
     monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
-    monkeypatch.setattr(detect_mod, "_presence_counts", fake_presence)
+    monkeypatch.setattr(detect_mod, "_channels_with_data", fake_channels_with_data)
 
     advanced = 0
 
@@ -166,6 +171,42 @@ def test_count_chunk_raises_when_results_shorter_than_chunk(monkeypatch: pytest.
 
     with pytest.raises(RuntimeError, match="cannot map results to channels"):
         detect_mod._count_chunk([ch1, ch2], 0, SEC, SEC, [0], tags=None)
+
+
+# --- _channels_with_data: tag-independent presence via batchGetSeriesCount ------------------
+# The presence probe keys off series_count, not tags -- these mock channels carry no tags at all,
+# so they prove the probe detects genuinely tag-free data (which e2e can't create).
+
+
+def test_channels_with_data_presence_by_series_count(
+    make_channel: Any, mock_clients: Any, make_series_count_response: Any
+) -> None:
+    # count>0 -> present; count 0 -> absent; None (external datasource, series_count absent) -> absent.
+    channels = [make_channel("c_pos"), make_channel("c_zero"), make_channel("c_ext"), make_channel("c_pos2")]
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([5, 0, None, 1])
+
+    advanced = 0
+
+    def on_advance(n: int) -> None:
+        nonlocal advanced
+        advanced += n
+
+    result = detect_mod._channels_with_data(channels, 0, SEC, None, on_advance)
+
+    assert result == {"c_pos", "c_pos2"}
+    assert advanced == 4
+
+
+def test_channels_with_data_batch_failure_is_conservatively_present(make_channel: Any, mock_clients: Any) -> None:
+    # A probe failure must never drop real data: treat the whole batch as present so it is (re)synced.
+    channels = [make_channel("a"), make_channel("b")]
+    mock_clients.datasource.batch_get_series_count.side_effect = RuntimeError("probe boom")
+
+    assert detect_mod._channels_with_data(channels, 0, SEC, None, None) == {"a", "b"}
+
+
+def test_channels_with_data_empty_returns_empty_set() -> None:
+    assert detect_mod._channels_with_data([], 0, SEC, None, None) == set()
 
 
 # --- _counts_from_response: match on the (camelCase) union discriminator -------------------

@@ -13,9 +13,11 @@ dataset with thousands of channels costs a few hundred requests rather than one 
 * **Numeric** (``DOUBLE`` / ``INT``) channels yield exact per-bucket counts from numeric decimation.
 * **String** (``STRING``) channels yield exact per-bucket counts from enum decimation (the per-bucket
   histogram frequencies sum to the count).
-* Any channel whose batched compute result errored falls back to a whole-window **presence** probe
-  via :meth:`Channel.get_available_tags` (1 if any data is present in the window, else 0, uniform
-  across buckets). Within a tag-filtered scope this is reliable, but it loses per-bucket granularity.
+* Any channel whose batched compute result errored (or is non-batchable) falls back to a whole-window
+  **presence** probe via ``batchGetSeriesCount`` (1 if ``series_count > 0`` in the window, else 0,
+  uniform across buckets). This is tag-independent -- it does not require the series to carry tags --
+  but it loses per-bucket granularity. Caveat: ``series_count`` is empty for non-Nominal/external
+  datasources, which read as no-data; acceptable for Nominal->Nominal migration.
 
 Adapted from the unmerged ``migration/backfill`` PR-stack (``backfill/detect.py``).
 """
@@ -30,7 +32,9 @@ from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
-from nominal.core.channel import Channel, ChannelDataType
+from nominal._utils.iterator_tools import batched
+from nominal.core._utils.api_tools import build_compute_tag_filter
+from nominal.core.channel import Channel, ChannelDataType, _batch_check_channels_have_data
 from nominal.experimental.compute._buckets import (
     _enum_buckets_from_compute_response,
     _numeric_buckets_from_compute_response,
@@ -42,6 +46,7 @@ logger = logging.getLogger(__name__)
 _BATCHABLE_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING})
 DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
 DEFAULT_DETECT_WORKERS = 8
+_PRESENCE_PROBE_BATCH = 200
 
 
 def _iter_bucket_starts(
@@ -195,13 +200,10 @@ def count_channels(
     presence_channels = fallback + errored
     if presence_channels:
         logger.info("Presence-probing %d channel(s) (non-batchable or errored)", len(presence_channels))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, len(presence_channels)))) as pool:
-            for channel, counts in pool.map(
-                lambda c: (c, _presence_counts(c, start, end, starts, tags)), presence_channels
-            ):
-                results[channel.name] = ChannelBucketCounts(channel.name, counts, precise=False)
-                if on_advance is not None:
-                    on_advance(1)
+        with_data = _channels_with_data(presence_channels, start, end, tags, on_advance)
+        for channel in presence_channels:
+            present = 1 if channel.name in with_data else 0
+            results[channel.name] = ChannelBucketCounts(channel.name, dict.fromkeys(starts, present), precise=False)
 
     return results
 
@@ -311,16 +313,57 @@ def _counts_from_response(
     return counts
 
 
-def _presence_counts(
-    channel: Channel,
+def _channels_with_data(
+    channels: Sequence[Channel],
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
-    starts: list[int],
     tags: Mapping[str, str] | None,
-) -> dict[int, int]:
-    available = channel.get_available_tags(start, end, initial_tags=tags)
-    present = 1 if available else 0
-    return dict.fromkeys(starts, present)
+    on_advance: Callable[[int], None] | None,
+) -> set[str]:
+    """Return the names of channels that have any data in ``[start, end)`` via ``batchGetSeriesCount``.
+
+    Tag-independent presence probe: a channel counts as present when ``series_count > 0``, regardless
+    of whether the series carries tags. Channels are probed in batches of ``_PRESENCE_PROBE_BATCH``.
+
+    Args:
+        channels: Channels to probe. Assumed to share a single client.
+        start: Start of the window, inclusive (nanoseconds UTC).
+        end: End of the window, exclusive (nanoseconds UTC).
+        tags: Optional datascope tag filter applied to every channel's probe.
+        on_advance: Optional progress hook, advanced by the batch length each step (summing to
+            ``len(channels)`` over the call).
+
+    Returns:
+        The set of channel names confirmed to have data in the window.
+    """
+    if not channels:
+        return set()
+
+    clients = channels[0]._clients
+    api_start = _SecondsNanos.from_nanoseconds(start).to_api()
+    api_end = _SecondsNanos.from_nanoseconds(end).to_api()
+    tag_filters = build_compute_tag_filter(tags)
+
+    with_data: set[str] = set()
+    for batch in batched(channels, _PRESENCE_PROBE_BATCH):
+        batch_list = list(batch)
+        try:
+            channels_with_data, _ = _batch_check_channels_have_data(
+                clients, batch_list, tag_filters, api_start, api_end
+            )
+            with_data.update(ch.name for ch in channels_with_data)
+        except Exception:
+            # Conservative: never drop real data on a probe failure -- treat the whole batch as
+            # present so its buckets are (re)synced rather than silently excluded (mirrors sync.py).
+            logger.warning(
+                "Presence probe failed for a batch of %d channel(s); treating them as present",
+                len(batch_list),
+            )
+            with_data.update(ch.name for ch in batch_list)
+        if on_advance is not None:
+            on_advance(len(batch_list))
+
+    return with_data
 
 
 def _add_to_bucket(
