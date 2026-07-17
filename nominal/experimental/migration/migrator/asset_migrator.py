@@ -321,7 +321,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             # step used by the copy can't tell "unmapped resource RID" apart from "internal id
             # that should get a fresh UUID", so it would silently regenerate a bogus RID for
             # every reference to those other assets instead of waiting for a complete mapping.
-            if len(workbook.run_rids) == 1 and len(source_run.assets) <= 1:
+            source_run_asset_rids = list(source_run.assets)
+            if len(workbook.run_rids) == 1 and len(source_run_asset_rids) <= 1:
                 workbook_migrator.copy_from(
                     workbook,
                     WorkbookCopyOptions(
@@ -330,23 +331,46 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     ),
                 )
             else:
-                self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids))
+                self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids), source_run_asset_rids)
 
     def _enqueue_multi_asset_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> None:
-        missing = [
+        if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):
+            return
+        logger.debug("Queuing multi-asset workbook %s for deferred migration", workbook.rid)
+        queued = self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(
+            workbook.rid, source_asset_rids
+        )
+        if not queued:
+            logger.debug("Not queuing multi-asset workbook %s: already skipped", workbook.rid)
+
+    def _enqueue_multi_run_workbook(
+        self, workbook: Workbook, source_run_rids: list[str], source_asset_rids: list[str]
+    ) -> None:
+        if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):
+            return
+        logger.debug("Queuing multi-run workbook %s for deferred migration", workbook.rid)
+        queued = self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(
+            workbook.rid, source_run_rids
+        )
+        if not queued:
+            logger.debug("Not queuing multi-run workbook %s: already skipped", workbook.rid)
+
+    def _should_enqueue_deferred_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> bool:
+        missing = self._find_assets_outside_migration_scope(source_asset_rids)
+        if missing:
+            reason = f"assets not in migration scope: {missing}"
+            logger.warning("Skipping deferred workbook %s: %s", workbook.rid, reason)
+            self.ctx.migration_state.record_workbook_skip_and_clear_pending(workbook.rid, reason)
+            return False
+        if self.ctx.migration_state.workbook_was_skipped(workbook.rid):
+            logger.debug("Not queuing deferred workbook %s: already skipped", workbook.rid)
+            return False
+        return True
+
+    def _find_assets_outside_migration_scope(self, source_asset_rids: Sequence[str]) -> list[str]:
+        return [
             rid
             for rid in source_asset_rids
             if rid not in self.ctx.source_asset_rids
             and self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET, rid) is None
         ]
-        if missing:
-            reason = f"assets not in migration scope: {missing}"
-            logger.warning("Skipping multi-asset workbook %s: %s", workbook.rid, reason)
-            self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, workbook.rid, reason)
-        else:
-            logger.debug("Queuing multi-asset workbook %s for deferred migration", workbook.rid)
-            self.ctx.migration_state.record_pending_multi_asset_workbook(workbook.rid, source_asset_rids)
-
-    def _enqueue_multi_run_workbook(self, workbook: Workbook, source_run_rids: list[str]) -> None:
-        logger.debug("Queuing multi-run workbook %s for deferred migration", workbook.rid)
-        self.ctx.migration_state.record_pending_multi_run_workbook(workbook.rid, source_run_rids)
