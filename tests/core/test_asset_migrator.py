@@ -329,6 +329,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.assets = [a1]
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_run_allowed, run_rids=[r1]),
             _stub_workbook(wb_run_blocked, run_rids=[r1]),
