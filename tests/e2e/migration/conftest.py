@@ -24,6 +24,7 @@ underlying pytest ``request`` fixture.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Callable
@@ -33,6 +34,7 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.core.log import LogPoint
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from tests.e2e import POLL_INTERVAL
@@ -87,6 +89,7 @@ def make_sync_csv(*, start: datetime, count: int, temp_base: int, humidity_base:
         ts = (start + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
         lines.append(f"{ts},{minutes},{temp_base + i % 10},{humidity_base - i % 10}")
     return ("\n".join(lines) + "\n").encode()
+
 
 # --- channel-sync e2e: adversarial channel-type stress data ------------------------------------
 # A generated dataset with the channel types that are annoying to migrate, so the hard export/stream
@@ -287,6 +290,54 @@ def dest_dataset(dest_client: NominalClient, register_cleanup: RegisterCleanup) 
     ds = dest_client.create_dataset(f"channel-sync-e2e-dest-{uuid4().hex[:8]}")
     register_cleanup(ds.archive)
     return ds
+
+
+# --- channel-sync e2e: LOG channel (skipped-as-unsupported) ------------------------------------
+# LOG is a non-exportable channel type: sync must skip it *before* detection (counted in
+# report.channels_skipped_unsupported) and it must never appear on the destination. The fixture also
+# carries supported numeric channels so the sync has something to move -- proving LOG is skipped
+# selectively, not because the whole run no-ops.
+LOG_CHANNEL_NAME = "event_log"
+LOG_NUMERIC_CHANNEL = "temperature"  # a supported channel from make_sync_csv
+LOG_ROW_COUNT = POINTS_PER_BUCKET  # one detection bucket's worth (12), spaced SPACING_MINUTES apart
+_LOG_START = datetime(2024, 9, 5, 18, 0, tzinfo=timezone.utc)
+LOG_WINDOW_START = int(_LOG_START.timestamp()) * 1_000_000_000
+LOG_WINDOW_END = LOG_WINDOW_START + BUCKET_NS  # a single 1-hour detection bucket
+# write_logs is synchronous to the storage-writer API but the log channel's logical-series
+# registration reaches search_channels asynchronously (unlike the CSV path, there is no
+# poll_until_ingestion_completed handle). Poll until the channel is enumerable before yielding.
+_LOG_VISIBLE_ATTEMPTS = 60
+_LOG_VISIBLE_DELAY = 2.0
+
+
+@pytest.fixture
+def source_dataset_with_log(source_client: NominalClient, register_cleanup: RegisterCleanup) -> Dataset:
+    """A source dataset with supported numeric channels plus one LOG channel.
+
+    Numeric channels are ingested from a CSV (so the sync has exportable data), and a LOG channel is
+    written via :meth:`Dataset.write_logs`. Sync over ``[LOG_WINDOW_START, LOG_WINDOW_END)`` must move
+    the numeric channels while skipping the LOG channel as unsupported.
+
+    The fixture waits until the LOG channel is visible via ``search_channels`` before yielding, so the
+    sync's channel enumeration actually sees it (its registration lags the synchronous write).
+    """
+    ds = source_client.create_dataset(f"channel-sync-e2e-log-{uuid4().hex[:8]}")
+    register_cleanup(ds.archive)
+    numeric_csv = make_sync_csv(start=_LOG_START, count=LOG_ROW_COUNT, temp_base=20, humidity_base=50)
+    ds.add_from_io(BytesIO(numeric_csv), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    logs = [
+        LogPoint.create(_LOG_START + timedelta(minutes=i * SPACING_MINUTES), f"event {i}", {"seq": str(i)})
+        for i in range(LOG_ROW_COUNT)
+    ]
+    ds.write_logs(logs, channel_name=LOG_CHANNEL_NAME)
+
+    for _ in range(_LOG_VISIBLE_ATTEMPTS):
+        if any(ch.name == LOG_CHANNEL_NAME for ch in ds.search_channels()):
+            return ds
+        time.sleep(_LOG_VISIBLE_DELAY)
+    raise AssertionError(
+        f"LOG channel {LOG_CHANNEL_NAME!r} never became visible via search_channels on the source dataset"
+    )
 
 
 @pytest.fixture

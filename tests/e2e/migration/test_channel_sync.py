@@ -48,6 +48,10 @@ from tests.e2e import POLL_INTERVAL
 from tests.e2e.migration.conftest import (
     FILE_POINT_COUNT,
     HALF_POINT_COUNT,
+    LOG_CHANNEL_NAME,
+    LOG_NUMERIC_CHANNEL,
+    LOG_WINDOW_END,
+    LOG_WINDOW_START,
     STRESS_CHANNEL_TYPES,
     STRESS_ENUM_VALUES,
     STRESS_ROWS,
@@ -118,9 +122,7 @@ def _read_all_series(channel: Channel, start: int, end: int, tags: Mapping[str, 
         if "TooManyCategories" not in str(exc) or end - start <= 1:
             raise
         mid = start + (end - start) // 2
-        combined = pd.concat(
-            [_read_all_series(channel, start, mid, tags), _read_all_series(channel, mid, end, tags)]
-        )
+        combined = pd.concat([_read_all_series(channel, start, mid, tags), _read_all_series(channel, mid, end, tags)])
         return combined[~combined.index.duplicated(keep="first")].sort_index()
 
 
@@ -456,3 +458,72 @@ def test_adversarial_channel_types_round_trip(
     dest_hi = _read_until(_dest_channel(dest_dataset, "hi_card_str"), STRESS_WINDOW_START, probe_end, None, len(src_hi))
     assert sorted(dest_hi) == sorted(src_hi), "hi_card_str values do not round-trip over the probe window"
     assert len(set(dest_hi)) == len(src_hi), "hi_card_str should have one unique value per row"
+
+
+def test_untagged_high_cardinality_channel_detected_present(
+    source_dataset_stress: Dataset,
+    source_client: NominalClient,
+    dest_dataset: Dataset,
+):
+    """An untagged high-cardinality STRING channel is detected present via the series-count probe.
+
+    ``hi_card_str`` overflows the enum-category limit during detection, so it cannot be counted
+    precisely and falls to the whole-window presence probe. That probe is now tag-independent
+    (``batchGetSeriesCount`` / ``series_count > 0``) rather than tag-derived, so it must flag the
+    channel present and sync it even though nothing constrains it by tags. This locks in that the
+    series-count probe detects untagged data (``tags=None``); the genuinely tag-free correctness --
+    which e2e cannot construct, since exportable data always carries internal ``_nominal_*`` tags --
+    is proven by the ``_channels_with_data`` unit tests.
+    """
+    report = sync_missing_channel_data(
+        source_dataset_stress,
+        source_client,
+        dest_dataset,
+        STRESS_WINDOW_START,
+        STRESS_WINDOW_END,
+        _options(),  # tags=None
+    )
+
+    # The presence probe found data for the non-precise channel: it synced and nothing is still short.
+    assert report.channels_synced > 0
+    assert report.still_short == []
+
+    # The untagged high-cardinality channel actually landed (verified over a cap-safe sub-window).
+    probe_end = STRESS_WINDOW_START + _HI_CARD_PROBE_NS
+    src_hi = _read_all_series(source_dataset_stress.get_channel("hi_card_str"), STRESS_WINDOW_START, probe_end, None)
+    assert src_hi.index.nunique() > 0, "high-cardinality probe window read no source data"
+    dest_hi = _read_until(
+        _dest_channel(dest_dataset, "hi_card_str"), STRESS_WINDOW_START, probe_end, None, src_hi.index.nunique()
+    )
+    assert sorted(dest_hi) == sorted(src_hi.to_list()), "untagged hi_card_str did not round-trip"
+
+
+def test_log_channel_skipped_and_absent_on_dest(
+    source_dataset_with_log: Dataset,
+    source_client: NominalClient,
+    dest_dataset: Dataset,
+):
+    """A LOG channel is skipped as unsupported: counted in the report, never written to the destination.
+
+    LOG is not an exportable channel type, so sync drops it *before* detection
+    (``report.channels_skipped_unsupported``) while still moving the supported numeric channels. The
+    LOG channel must never become visible on the destination dataset.
+    """
+    report = sync_missing_channel_data(
+        source_dataset_with_log,
+        source_client,
+        dest_dataset,
+        LOG_WINDOW_START,
+        LOG_WINDOW_END,
+        _options(),
+    )
+
+    # The LOG channel was skipped as unsupported, but supported channels still synced.
+    assert report.channels_skipped_unsupported >= 1
+    assert report.channels_synced > 0
+    assert report.still_short == []
+
+    dest_channel_names = {channel.name for channel in dest_dataset.search_channels()}
+    # A supported numeric channel round-tripped; the LOG channel never did.
+    assert LOG_NUMERIC_CHANNEL in dest_channel_names, "the supported numeric channel should have synced"
+    assert LOG_CHANNEL_NAME not in dest_channel_names, "the LOG channel must not appear on the destination"
