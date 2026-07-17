@@ -478,9 +478,7 @@ class TestAssetMigratorWorkbookRouting:
         assert a2 in state.skipped_resources[0].reason
 
     @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
-    def test_multi_run_workbook_with_out_of_scope_owning_asset_is_not_requeued(
-        self, mock_wm_cls: MagicMock
-    ) -> None:
+    def test_multi_run_workbook_with_out_of_scope_owning_asset_is_not_requeued(self, mock_wm_cls: MagicMock) -> None:
         """If any observed run owner is out of scope, later sightings must not re-queue the workbook."""
         a1, a2 = _asset_rid(1), _asset_rid(2)
         r1, r2 = _run_rid(1), _run_rid(2)
