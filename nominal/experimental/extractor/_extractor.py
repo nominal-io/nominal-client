@@ -18,8 +18,8 @@ pipeline applies, and this module provides one decorator per contract:
 - :func:`manifest_extractor` -- for images registered with the ``MANIFEST`` output format.
   The pipeline reads a ``manifest.json`` describing every output file; your function
   declares each file (with per-file ingest type, tag columns, channel prefix, and optional
-  epoch timestamp metadata) with :meth:`ManifestExtractorContext.add_output`, and
-  :meth:`Extractor.run` writes the manifest automatically.
+  epoch or relative timestamp metadata) with :meth:`ManifestExtractorContext.add_output`,
+  and :meth:`Extractor.run` writes the manifest automatically.
 
 Both decorators turn ``def fn(ctx) -> None`` into a container entrypoint: ``ctx`` resolves
 inputs and parameters from the environment, and :meth:`Extractor.run` finalizes the outputs
@@ -129,26 +129,36 @@ _MANIFEST_EPOCH_UNITS: dict[str, ingest_manifest.ManifestEpochTimeUnit] = {
 }
 
 
-def _manifest_epoch_time_unit(timestamp_type: ts._AnyTimestampType) -> ingest_manifest.ManifestEpochTimeUnit:
+def _manifest_timestamp_metadata(
+    series_name: str, timestamp_type: ts._AnyTimestampType
+) -> ingest_manifest.ManifestTimestampMetadata:
     """Validate a per-output timestamp type against the manifest contract and convert it.
 
-    Manifest outputs can only express numeric epoch timestamps in seconds through nanoseconds;
-    outputs needing richer types (ISO 8601, custom formats, relative offsets) must omit per-output
-    metadata and rely on the job-level timestamp metadata, which supports the full range.
+    Manifest outputs express numeric timestamps in seconds through nanoseconds, either absolute
+    (:class:`ts.Epoch`) or offsets from a starting time (:class:`ts.Relative`); outputs needing
+    richer types (ISO 8601, custom formats) must omit per-output metadata and rely on the
+    job-level timestamp metadata, which supports the full range.
     """
     typed = ts._to_typed_timestamp_type(timestamp_type)
-    if not isinstance(typed, ts.Epoch):
+    if not isinstance(typed, (ts.Epoch, ts.Relative)):
         raise ExtractorError(
-            f"per-output timestamp metadata only supports numeric epoch timestamps, not {typed!r}; "
+            f"per-output timestamp metadata only supports numeric epoch timestamps (ts.Epoch) and "
+            f"relative timestamps (ts.Relative), not {typed!r}; "
             "omit it and rely on the job-level timestamp metadata for richer timestamp types"
         )
     unit = _MANIFEST_EPOCH_UNITS.get(typed.unit)
     if unit is None:
         raise ExtractorError(
-            f"per-output timestamp metadata does not support epoch unit {typed.unit!r}; "
+            f"per-output timestamp metadata does not support time unit {typed.unit!r}; "
             f"supported units are {', '.join(_MANIFEST_EPOCH_UNITS)}"
         )
-    return unit
+    return ingest_manifest.ManifestTimestampMetadata(
+        series_name=series_name,
+        epoch_time_unit=unit,
+        relative_offset=ts._SecondsNanos.from_flexible(typed.start).to_iso8601()
+        if isinstance(typed, ts.Relative)
+        else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -472,7 +482,8 @@ class ManifestExtractorContext(ExtractorContext):
         Records the file (it must already exist under ``output_dir``); it does not write anything
         itself. ``timestamp_column``/``timestamp_type`` (provided together) override the job-level
         timestamp metadata for this output, so each file can carry its own timestamp field. Only
-        numeric epoch timestamp types (seconds through nanoseconds) are supported here; outputs
+        numeric timestamp types (seconds through nanoseconds) are supported here -- absolute
+        epochs (:class:`ts.Epoch`) or offsets from a starting time (:class:`ts.Relative`); outputs
         needing richer types should omit the pair and rely on the job-level metadata. For
         ``JSON_L`` outputs each line must still contain a ``MESSAGE`` field; that path is log
         ingest.
@@ -487,10 +498,7 @@ class ManifestExtractorContext(ExtractorContext):
             )
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
-            timestamp_metadata = ingest_manifest.ManifestTimestampMetadata(
-                series_name=timestamp_column,
-                epoch_time_unit=_manifest_epoch_time_unit(timestamp_type),
-            )
+            timestamp_metadata = _manifest_timestamp_metadata(timestamp_column, timestamp_type)
         logger.debug("declared output %s (%s)", relative, ingest_type.value)
         self._outputs.append(
             ingest_manifest.ManifestOutput(
@@ -670,10 +678,10 @@ def manifest_extractor(fn: Callable[[ManifestExtractorContext], None]) -> Extrac
     """Turn ``def fn(ctx: ManifestExtractorContext) -> None`` into a manifest extractor entrypoint.
 
     For images registered with the ``MANIFEST`` output format: declare each output file (and its
-    per-file ingest type, tag columns, channel prefix, and optional epoch timestamp metadata) with
-    :meth:`ManifestExtractorContext.add_output`; ``manifest.json`` is written automatically when
-    the function returns. If the image's registered format is not ``MANIFEST``, :meth:`Extractor.run`
-    fails at startup with a clear error.
+    per-file ingest type, tag columns, channel prefix, and optional epoch or relative timestamp
+    metadata) with :meth:`ManifestExtractorContext.add_output`; ``manifest.json`` is written
+    automatically when the function returns. If the image's registered format is not ``MANIFEST``,
+    :meth:`Extractor.run` fails at startup with a clear error.
 
     Example::
 
