@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import Mapping, Sequence
 
+import nominal_compute
 from conjure_python_client._serde.decoder import ConjureDecoder
 from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.dataset import Dataset
-
-if TYPE_CHECKING:
-    import nominal_compute
 
 
 def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:

@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, BinaryIO, Mapping, cast
+from typing import Any, BinaryIO, Mapping, cast
 
+import nominal_compute
 import pandas as pd
 from conjure_python_client._serde.decoder import ConjureDecoder
 from nominal_api import scout_compute_api, scout_dataexport_api
@@ -17,9 +18,6 @@ from nominal_api import scout_compute_api, scout_dataexport_api
 from nominal import ts
 from nominal.core import NominalClient
 from nominal.core.channel import Channel
-
-if TYPE_CHECKING:
-    import nominal_compute
 
 _FlexibleTimestamp = str | datetime | ts.IntegralNanosecondsUTC
 

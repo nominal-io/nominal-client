@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from nominal_api import scout_compute_api
 
-from nominal.experimental.compute import (
+from nominal.experimental.compute_as_code import (
     commit_derived_definition,
     create_derived_dataset,
     get_derived_definition,
 )
-from nominal.experimental.compute._derived_datasets import _to_conjure_dataset
+from nominal.experimental.compute_as_code._derived_datasets import _to_conjure_dataset
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_create_derived_dataset_sets_derived_definition(client: MagicMock) -> No
     client._clients.catalog.create_dataset = Mock()
 
     with patch(
-        "nominal.experimental.compute._derived_datasets.Dataset._from_conjure",
+        "nominal.experimental.compute_as_code._derived_datasets.Dataset._from_conjure",
         return_value=sentinel,
     ):
         result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})

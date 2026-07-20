@@ -7,8 +7,8 @@ import pytest
 from nominal_api import scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.experimental.compute import compute_series
-from nominal.experimental.compute._series import _to_conjure_series
+from nominal.experimental.compute_as_code import compute_series
+from nominal.experimental.compute_as_code._series import _to_conjure_series
 
 
 @pytest.fixture
