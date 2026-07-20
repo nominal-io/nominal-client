@@ -116,7 +116,7 @@ def test_manifest_includes_timestamp_metadata_when_set(dirs: tuple[Path, Path]) 
     emit.run(env=_env(input_dir, output_dir), exit=False)
 
     [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
-    assert entry["timestampMetadata"] == {"seriesName": "ts", "epochTimeUnit": "MICROSECONDS"}
+    assert entry["timestampMetadata"] == {"seriesName": "ts", "epochTimeUnit": "MICROSECONDS", "relativeOffset": None}
 
 
 def test_manifest_leaves_timestamp_metadata_null_when_unset(dirs: tuple[Path, Path]) -> None:
