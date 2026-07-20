@@ -4,7 +4,7 @@ import json
 from typing import Mapping, Sequence
 
 import nominal_compute
-from conjure_python_client._serde.decoder import ConjureDecoder
+from conjure_python_client import ConjureDecoder
 from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import NominalClient

@@ -1,7 +1,7 @@
 """Apply a locally-authored ``nominal_compute`` expression to a run/dataset's channels and return the result.
 
 The expression's references (``nominal_compute.NumericSeries.Reference("a")``) are bound to concrete channels at
-execution time via the compute ``Context`` (i.e.) nothing is persisted back to Nominal.
+execution time via the compute ``Context``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any, BinaryIO, Mapping, cast
 
 import nominal_compute
 import pandas as pd
-from conjure_python_client._serde.decoder import ConjureDecoder
+from conjure_python_client import ConjureDecoder
 from nominal_api import scout_compute_api, scout_dataexport_api
 
 from nominal import ts
@@ -27,7 +27,7 @@ def _to_conjure_series(
 ) -> scout_compute_api.Series:
     """Convert a ``nominal_compute`` series expression into the ``scout_compute_api.Series`` the compute API expects."""
     wire_json = series.to_json()  # type: ignore[union-attr]
-    if type(series).__name__ == "NumericSeries":
+    if isinstance(series, nominal_compute.NumericSeries):
         numeric: scout_compute_api.NumericSeries = ConjureDecoder.do_decode(
             json.loads(wire_json), scout_compute_api.NumericSeries
         )
@@ -57,8 +57,11 @@ def compute_series(
             resolve to. Look these up from the run/dataset the caller wants to compute against.
         start: Start of the time range to compute over. Defaults to the earliest supported timestamp.
         end: End of the time range to compute over. Defaults to the latest supported timestamp.
-        tags: Optional tag filters keyed by the same reference names as ``inputs``, used to narrow a channel to a
-            single tagged series when its name and data source alone match more than one.
+        tags: Optional tag filters, keyed by reference name (the same keys as ``inputs``) and then by tag key.
+            Use this when the channel bound to a reference carries more than one tagged series (e.g. the same
+            channel name logged once per vehicle): ``tags={"velocity": {"vehicle": "car_1"}}`` narrows the
+            channel bound to reference ``"velocity"`` down to the series tagged ``vehicle=car_1``. References
+            omitted from ``tags`` are bound without a tag filter.
         name: Name for the returned series (also the CSV column name requested from the export service).
         enable_gzip: If true, gzip the export from Nominal.
 

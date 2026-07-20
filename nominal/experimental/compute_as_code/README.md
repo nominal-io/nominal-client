@@ -51,8 +51,16 @@ client = NominalClient.from_profile("...")
 dataset = client.get_dataset("...")
 
 # Author an expression over named references, then bind each reference to a concrete channel.
-expr = nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("b")
-series = compute_series(client, expr, inputs={"a": dataset.get_channel("a"), "b": dataset.get_channel("b")})
+velocity_error = nc.NumericSeries.Reference("measured") - nc.NumericSeries.Reference("commanded")
+series = compute_series(
+    client,
+    velocity_error,
+    inputs={
+        "measured": dataset.get_channel("engine.velocity_measured"),
+        "commanded": dataset.get_channel("engine.velocity_commanded"),
+    },
+    name="velocity_error",
+)
 ```
 
 When a channel's name and data source map to more than one series (e.g. the same channel logged per-vehicle), pass
@@ -61,8 +69,12 @@ When a channel's name and data source map to more than one series (e.g. the same
 ```py
 series = compute_series(
     client,
-    expr,
-    inputs={"a": dataset.get_channel("a"), "b": dataset.get_channel("b")},
-    tags={"a": {"vehicle": "1"}, "b": {"vehicle": "1"}},
+    velocity_error,
+    inputs={
+        "measured": dataset.get_channel("engine.velocity_measured"),
+        "commanded": dataset.get_channel("engine.velocity_commanded"),
+    },
+    tags={"measured": {"vehicle": "car_1"}, "commanded": {"vehicle": "car_1"}},
+    name="velocity_error",
 )
 ```
