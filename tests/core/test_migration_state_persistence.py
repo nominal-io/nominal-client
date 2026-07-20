@@ -170,6 +170,19 @@ class TestPersistHook:
         state.record_skip(ResourceType.WORKBOOK, "wb2", "out of scope")
         assert len(saves) == 6
 
+    def test_compound_workbook_queue_mutations_trigger_the_hook(self) -> None:
+        """Atomic workbook queue/skip helpers must persist the same way as primitive mutators."""
+        saves: list[str] = []
+        state = ThreadSafeMigrationState()
+        state.set_persist_hook(lambda: saves.append("save"))
+
+        assert state.record_pending_multi_asset_workbook_unless_skipped("wb", ["a1"]) is True
+        assert state.record_pending_multi_run_workbook_unless_skipped("wb", ["r1"]) is True
+        assert state.record_workbook_skip_and_clear_pending("wb", "out of scope") is True
+        assert state.record_pending_multi_asset_workbook_unless_skipped("wb", ["a1"]) is False
+
+        assert saves == ["save", "save", "save"]
+
     def test_reads_do_not_trigger_the_hook(self) -> None:
         """Only mutations persist — lookups happen constantly and must stay write-free."""
         saves: list[str] = []

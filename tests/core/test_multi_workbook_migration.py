@@ -110,6 +110,30 @@ class TestMigrationStatePendingAndSkips:
         assert reasons[_wb_rid(1)] == "asset out of scope"
         assert reasons[_wb_rid(2)] == "run not in state"
 
+    def test_workbook_skip_is_terminal_for_pending_queues(self) -> None:
+        """A workbook skip clears stale pending entries and prevents later queue attempts."""
+        state = MigrationState()
+        wb = _wb_rid(1)
+        assets = [_asset_rid(1), _asset_rid(2)]
+        runs = [_run_rid(1), _run_rid(2)]
+
+        assert state.record_pending_multi_asset_workbook_unless_skipped(wb, assets) is True
+        assert state.record_pending_multi_run_workbook_unless_skipped(wb, runs) is True
+
+        assert state.record_workbook_skip_and_clear_pending(wb, "assets not in migration scope") is True
+        assert wb not in state.pending_multi_asset_workbooks
+        assert wb not in state.pending_multi_run_workbooks
+        assert state.workbook_was_skipped(wb) is True
+
+        assert state.record_pending_multi_asset_workbook_unless_skipped(wb, assets) is False
+        assert state.record_pending_multi_run_workbook_unless_skipped(wb, runs) is False
+        assert wb not in state.pending_multi_asset_workbooks
+        assert wb not in state.pending_multi_run_workbooks
+
+        assert state.record_workbook_skip_and_clear_pending(wb, "duplicate skip") is False
+        assert len(state.skipped_resources) == 1
+        assert state.skipped_resources[0].reason == "assets not in migration scope"
+
 
 # ---------------------------------------------------------------------------
 # WorkbookMigrator._copy_from_impl (via copy_from)

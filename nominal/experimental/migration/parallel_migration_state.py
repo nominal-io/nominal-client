@@ -62,6 +62,20 @@ class ThreadSafeMigrationState(MigrationState):
             super().record_pending_multi_run_workbook(workbook_rid, run_rids)
         self._persist()
 
+    def record_pending_multi_asset_workbook_unless_skipped(self, workbook_rid: str, asset_rids: list[str]) -> bool:
+        with self._lock:
+            recorded = super().record_pending_multi_asset_workbook_unless_skipped(workbook_rid, asset_rids)
+        if recorded:
+            self._persist()
+        return recorded
+
+    def record_pending_multi_run_workbook_unless_skipped(self, workbook_rid: str, run_rids: list[str]) -> bool:
+        with self._lock:
+            recorded = super().record_pending_multi_run_workbook_unless_skipped(workbook_rid, run_rids)
+        if recorded:
+            self._persist()
+        return recorded
+
     def clear_pending_multi_asset_workbook(self, workbook_rid: str) -> None:
         with self._lock:
             super().clear_pending_multi_asset_workbook(workbook_rid)
@@ -76,6 +90,17 @@ class ThreadSafeMigrationState(MigrationState):
         with self._lock:
             super().record_skip(resource_type, source_rid, reason)
         self._persist()
+
+    def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
+        with self._lock:
+            changed = super().record_workbook_skip_and_clear_pending(workbook_rid, reason)
+        if changed:
+            self._persist()
+        return changed
+
+    def workbook_was_skipped(self, workbook_rid: str) -> bool:
+        with self._lock:
+            return super().workbook_was_skipped(workbook_rid)
 
     def to_json(self) -> str:
         # Serialization walks every nested dict, so it must hold the same lock as the
