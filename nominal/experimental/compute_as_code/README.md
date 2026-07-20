@@ -39,7 +39,7 @@ commit_derived_definition(client, derived, new_spec, message="shift by 10s", lat
 
 `compute_series` applies a `nominal_compute` expression to concrete channels and returns the computed values as a
 `pandas.Series` indexed by timestamp. References in the expression are bound to channels at execution time via
-`inputs`—nothing is persisted back to Nominal:
+`inputs`. Example:
 
 ```py
 import nominal_compute as nc
@@ -64,7 +64,7 @@ series = compute_series(
 ```
 
 When a channel's name and data source map to more than one series (e.g. the same channel logged per-vehicle), pass
-`tags`—keyed by the same reference names as `inputs`—to select the series you want.
+`tags_by_reference` (keyed by the same reference names as `inputs`) to select the series you want.
 
 ```py
 series = compute_series(
@@ -74,7 +74,7 @@ series = compute_series(
         "measured": dataset.get_channel("engine.velocity_measured"),
         "commanded": dataset.get_channel("engine.velocity_commanded"),
     },
-    tags={"measured": {"vehicle": "car_1"}, "commanded": {"vehicle": "car_1"}},
+    tags_by_reference={"measured": {"vehicle": "car_1"}, "commanded": {"vehicle": "car_1"}},
     name="velocity_error",
 )
 ```

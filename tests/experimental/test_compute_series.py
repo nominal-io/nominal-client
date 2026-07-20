@@ -102,7 +102,7 @@ def test_compute_series_binds_tags(client: MagicMock, mock_clients: MagicMock) -
         "timestamp,value\n2026-01-01T00:00:00Z,1.0\n"
     )
 
-    compute_series(client, expr, inputs, tags={"a": {"vehicle": "1", "run": "7"}}, enable_gzip=False)
+    compute_series(client, expr, inputs, tags_by_reference={"a": {"vehicle": "1", "run": "7"}}, enable_gzip=False)
 
     variables = mock_clients.dataexport.export_channel_data.call_args[0][1].context.variables
     tagged = variables["a"].channel.data_source.tags

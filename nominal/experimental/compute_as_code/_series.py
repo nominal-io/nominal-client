@@ -43,7 +43,7 @@ def compute_series(
     start: _FlexibleTimestamp | None = None,
     end: _FlexibleTimestamp | None = None,
     *,
-    tags: Mapping[str, Mapping[str, str]] | None = None,
+    tags_by_reference: Mapping[str, Mapping[str, str]] | None = None,
     name: str = "value",
     enable_gzip: bool = True,
 ) -> pd.Series[Any]:
@@ -57,11 +57,11 @@ def compute_series(
             resolve to. Look these up from the run/dataset the caller wants to compute against.
         start: Start of the time range to compute over. Defaults to the earliest supported timestamp.
         end: End of the time range to compute over. Defaults to the latest supported timestamp.
-        tags: Optional tag filters, keyed by reference name (the same keys as ``inputs``) and then by tag key.
-            Use this when the channel bound to a reference carries more than one tagged series (e.g. the same
-            channel name logged once per vehicle): ``tags={"velocity": {"vehicle": "car_1"}}`` narrows the
-            channel bound to reference ``"velocity"`` down to the series tagged ``vehicle=car_1``. References
-            omitted from ``tags`` are bound without a tag filter.
+        tags_by_reference: Optional tag filters, keyed by reference name (the same keys as ``inputs``) and then
+            by tag key. Use this when the channel bound to a reference carries more than one tagged series.
+            For example, ``tags_by_reference={"velocity": {"vehicle": "car_1"}}`` narrows the channel bound to
+            reference ``"velocity"`` down to the series tagged ``vehicle=car_1``. References omitted from
+            ``tags_by_reference`` are bound without a tag filter.
         name: Name for the returned series (also the CSV column name requested from the export service).
         enable_gzip: If true, gzip the export from Nominal.
 
@@ -76,7 +76,7 @@ def compute_series(
         start=start,
         end=end,
         enable_gzip=enable_gzip,
-        tags=tags,
+        tags_by_reference=tags_by_reference,
     )
     response = client._clients.dataexport.export_channel_data(client._clients.auth_header, request)
     df = pd.read_csv(
@@ -95,7 +95,7 @@ def _build_export_request(
     start: _FlexibleTimestamp | None,
     end: _FlexibleTimestamp | None,
     enable_gzip: bool,
-    tags: Mapping[str, Mapping[str, str]] | None,
+    tags_by_reference: Mapping[str, Mapping[str, str]] | None,
 ) -> scout_dataexport_api.ExportDataRequest:
     start_ts = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
     end_ts = ts._MAX_TIMESTAMP.to_api() if end is None else ts._SecondsNanos.from_flexible(end).to_api()
@@ -112,7 +112,7 @@ def _build_export_request(
         ),
         start_time=start_ts,
         end_time=end_ts,
-        context=_build_context(inputs, tags),
+        context=_build_context(inputs, tags_by_reference),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(
             undecimated=scout_dataexport_api.UndecimatedResolution(),
@@ -123,10 +123,10 @@ def _build_export_request(
 
 def _build_context(
     inputs: Mapping[str, Channel],
-    tags: Mapping[str, Mapping[str, str]] | None = None,
+    tags_by_reference: Mapping[str, Mapping[str, str]] | None = None,
 ) -> scout_compute_api.Context:
     """Bind each reference name to its channel (and any tags), so ``expr``'s ``Reference(name)`` nodes resolve."""
-    tags = tags or {}
+    tags = tags_by_reference or {}
     return scout_compute_api.Context(
         dataset_references={},
         variables={
