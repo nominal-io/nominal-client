@@ -3,7 +3,6 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import pathlib
-import urllib.parse
 from functools import partial
 from queue import Queue
 from typing import BinaryIO, Iterable
@@ -11,6 +10,7 @@ from typing import BinaryIO, Iterable
 import requests
 from nominal_api import ingest_api, upload_api
 
+from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
 from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
@@ -149,7 +149,7 @@ def put_multipart_upload(
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         f: Binary IO to upload
-        filename: URL-safe filename to use when uploading to S3
+        filename: filename to use when uploading; sent literally as the object name
         mimetype: Type of data contained within binary stream
         upload_client: Conjure upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
@@ -241,8 +241,8 @@ def upload_multipart_io(
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         f: Binary IO to upload
-        name: Name of the file to create in S3
-            NOTE: does not need to be URL Safe
+        name: Name of the file to create in object storage. Sent literally (no URL-encoding);
+            validated against characters unsafe for storage (raises ValueError if any are present).
         file_type: Type of data being uploaded
         upload_client: Conjure upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
@@ -254,8 +254,8 @@ def upload_multipart_io(
     Note: see put_multipart_upload for more details
 
     """
-    urlsafe_name = urllib.parse.quote_plus(name)
-    safe_filename = f"{urlsafe_name}{file_type.extension}"
+    validate_upload_filename(name)
+    safe_filename = f"{name}{file_type.extension}"
     return put_multipart_upload(
         auth_header,
         workspace_rid,
