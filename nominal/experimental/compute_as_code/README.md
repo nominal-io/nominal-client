@@ -34,3 +34,47 @@ definition = get_derived_definition(client, derived)
 new_spec = nc.Dataset.Saved(dataset.rid).time_shift(nc.Duration.Seconds(10))
 commit_derived_definition(client, derived, new_spec, message="shift by 10s", latest_commit=definition.commit.id)
 ```
+
+## Computing a series
+
+`compute_series` applies a `nominal_compute` expression to concrete channels and returns the computed values as a
+`pandas.Series` indexed by timestamp. References in the expression are bound to channels at execution time via
+`inputs`. Example:
+
+```py
+import nominal_compute as nc
+
+from nominal.core import NominalClient
+from nominal.experimental.compute_as_code import compute_series
+
+client = NominalClient.from_profile("...")
+dataset = client.get_dataset("...")
+
+# Author an expression over named references, then bind each reference to a concrete channel.
+velocity_error = nc.NumericSeries.Reference("measured") - nc.NumericSeries.Reference("commanded")
+series = compute_series(
+    client,
+    velocity_error,
+    inputs={
+        "measured": dataset.get_channel("engine.velocity_measured"),
+        "commanded": dataset.get_channel("engine.velocity_commanded"),
+    },
+    name="velocity_error",
+)
+```
+
+When a channel's name and data source map to more than one series (e.g. the same channel logged per-vehicle), pass
+`tags_by_reference` (keyed by the same reference names as `inputs`) to select the series you want.
+
+```py
+series = compute_series(
+    client,
+    velocity_error,
+    inputs={
+        "measured": dataset.get_channel("engine.velocity_measured"),
+        "commanded": dataset.get_channel("engine.velocity_commanded"),
+    },
+    tags_by_reference={"measured": {"vehicle": "car_1"}, "commanded": {"vehicle": "car_1"}},
+    name="velocity_error",
+)
+```
