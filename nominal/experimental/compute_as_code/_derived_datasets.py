@@ -15,7 +15,7 @@ from nominal.core.dataset import Dataset
 def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:
     """Convert a ``nominal_compute.Dataset`` into the ``scout_compute_api.Dataset`` the catalog API expects."""
     wire_json = spec.to_json()  # type: ignore[attr-defined]
-    dataset: scout_compute_api.Dataset = ConjureDecoder.do_decode(json.loads(wire_json), scout_compute_api.Dataset)
+    dataset: scout_compute_api.Dataset = ConjureDecoder().decode(json.loads(wire_json), scout_compute_api.Dataset)
     return dataset
 
 
