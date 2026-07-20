@@ -64,8 +64,6 @@ for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```
 
-To evaluate multiple expressions in a single request, use `batch_compute_buckets`.
-
 When retrieving channels using the expressions library, you may also reference channels directly on datasources or runs:
 
 ```python
