@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,30 @@ def test_manifest_includes_timestamp_metadata_when_set(dirs: tuple[Path, Path]) 
 
     [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
     assert entry["timestampMetadata"] == {"seriesName": "ts", "epochTimeUnit": "MICROSECONDS", "relativeOffset": None}
+
+
+def test_manifest_includes_relative_timestamp_metadata_when_set(dirs: tuple[Path, Path]) -> None:
+    """A manifest entry carries a relativeOffset when the output declares a ts.Relative timestamp type."""
+    input_dir, output_dir = dirs
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "run.csv"
+        out.write_text("elapsed,x")
+        ctx.add_output(
+            out,
+            timestamp_column="elapsed",
+            timestamp_type=ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        )
+
+    emit.run(env=_env(input_dir, output_dir), exit=False)
+
+    [entry] = json.loads((output_dir / "manifest.json").read_text())["outputs"]
+    assert entry["timestampMetadata"] == {
+        "seriesName": "elapsed",
+        "epochTimeUnit": "MILLISECONDS",
+        "relativeOffset": "2026-01-01T00:00:00.000000000Z",
+    }
 
 
 def test_manifest_leaves_timestamp_metadata_null_when_unset(dirs: tuple[Path, Path]) -> None:
@@ -411,6 +436,24 @@ def test_per_output_timestamp_rejects_non_epoch_types(dirs: tuple[Path, Path]) -
         ctx.add_output(out, timestamp_column="ts", timestamp_type="iso_8601")
 
     with pytest.raises(ExtractorError, match="numeric epoch"):
+        emit.run(env=_env(input_dir, output_dir), exit=False)
+
+
+def test_per_output_timestamp_rejects_units_outside_manifest_contract(dirs: tuple[Path, Path]) -> None:
+    """Per-output timestamp metadata rejects time units the manifest contract cannot express."""
+    input_dir, output_dir = dirs
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "data.csv"
+        out.write_text("elapsed,x")
+        ctx.add_output(
+            out,
+            timestamp_column="elapsed",
+            timestamp_type=ts.Relative("hours", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        )
+
+    with pytest.raises(ExtractorError, match="does not support time unit 'hours'"):
         emit.run(env=_env(input_dir, output_dir), exit=False)
 
 
