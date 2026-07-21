@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Mapping, Protocol, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
@@ -141,6 +141,10 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
+    @deprecated(
+        "Adding a file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
+        "`Dataset.add_video` on a new or existing dataset instead."
+    )
     def add_file(
         self,
         path: PathLike,
@@ -215,6 +219,10 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
+    @deprecated(
+        "Adding a file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
+        "`Dataset.add_video_from_io` on a new or existing dataset instead."
+    )
     def add_from_io(
         self,
         video: BinaryIO,
@@ -296,6 +304,9 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     add_to_video_from_io = add_from_io
 
+    # Not yet deprecated: there is no video-channel replacement for MCAP-sourced video today. The v2 ingest
+    # proto's VideoTimestampManifest has no MCAP arm (server-side gap, not an SDK omission), so `Dataset.add_video`
+    # cannot represent this case yet. Revisit once that gap closes.
     def add_mcap(
         self,
         path: PathLike,

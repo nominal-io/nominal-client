@@ -846,6 +846,10 @@ class NominalClient:
 
         return dataset
 
+    @deprecated(
+        "Creating a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
+        "`Dataset.add_video`/`add_video_from_io` on a new or existing dataset (see `create_dataset`) instead."
+    )
     def create_video(
         self,
         name: str,

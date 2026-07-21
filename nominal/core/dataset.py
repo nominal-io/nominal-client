@@ -27,6 +27,7 @@ from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError,
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.ts import (
     IntegralNanosecondsUTC,
     _AnyTimestampType,
@@ -500,6 +501,186 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
+
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        channel: str,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile: ...
+
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        channel: str,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile: ...
+
+    def add_video(
+        self,
+        path: PathLike,
+        channel: str,
+        *,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile:
+        """Add a video file to this dataset as a video channel. Only one of start or frame_timestamps is allowed.
+
+        Args:
+            path: Path to the H264/H265-encoded video file to add to this dataset.
+            channel: Name of the video channel this file's frames belong to.
+            start: Starting timestamp of the video file in absolute UTC time.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, any segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created dataset file.
+        """
+        path = Path(path)
+        file_type = FileType.from_video(path)
+
+        with path.open("rb") as video_file:
+            if start is not None:
+                return self.add_video_from_io(
+                    video_file,
+                    channel,
+                    name=path_upload_name(path, file_type),
+                    start=start,
+                    tags=tags,
+                    file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            elif frame_timestamps is not None:
+                return self.add_video_from_io(
+                    video_file,
+                    channel,
+                    name=path_upload_name(path, file_type),
+                    frame_timestamps=frame_timestamps,
+                    tags=tags,
+                    file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            else:  # This should never be reached due to the validation in add_video_from_io
+                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        channel: str,
+        name: str | None = None,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile: ...
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        channel: str,
+        name: str | None = None,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        tags: Mapping[str, str] | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile: ...
+
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        channel: str,
+        name: str | None = None,
+        *,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        tags: Mapping[str, str] | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
+    ) -> DatasetFile:
+        """Add a video file to this dataset as a video channel, from a file-like object.
+
+        The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO, containing
+        H264 or H265-encoded video data.
+
+        Args:
+            video: File-like object containing video data encoded in H264 or H265.
+            channel: Name of the video channel this file's frames belong to.
+            name: Name of the file to use when uploading to S3. Defaults to the dataset's name.
+            start: Starting timestamp of the video file in absolute UTC time.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+            overwrite_overlapping: If True, any segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created dataset file.
+        """
+        if isinstance(video, TextIOBase):
+            raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+
+        if name is None:
+            name = self.name
+
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            start,
+            frame_timestamps,
+            header_provider=self._clients.header_provider,
+        )
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            video,
+            name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                video_v2=ingest_api.VideoOptsV2(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=target,
+                    timestamp_manifest=timestamp_manifest,
+                    channel=channel,
+                    tags=dict(tags) if tags is not None else {},
+                    over_write_segments=overwrite_overlapping or None,
+                )
+            )
+        )
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_ingest_response(resp)
 
     @overload
     def add_containerized(
