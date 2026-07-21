@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.154.0](https://github.com/nominal-io/nominal-client/compare/v1.153.0...v1.154.0) (2026-07-21)
+
+
+### Features
+
+* experimental derived datasets ([#832](https://github.com/nominal-io/nominal-client/issues/832)) ([e7f2756](https://github.com/nominal-io/nominal-client/commit/e7f2756e097b02ba397370dee16b6e579619b20f))
+* **experimental:** relative timestamps for manifest extractor outputs ([#889](https://github.com/nominal-io/nominal-client/issues/889)) ([9669cd9](https://github.com/nominal-io/nominal-client/commit/9669cd91a3215442701f6d50c6e6de0c4edff701))
+
+
+### Bug Fixes
+
+* **migration:** defer run-scoped workbooks whose run spans multiple assets ([#886](https://github.com/nominal-io/nominal-client/issues/886)) ([bf42496](https://github.com/nominal-io/nominal-client/commit/bf42496ce36a4db25916fd17f5fde55d2f4bf341))
+* **migration:** skip run workbooks with out-of-scope owners ([#887](https://github.com/nominal-io/nominal-client/issues/887)) ([aa5fadb](https://github.com/nominal-io/nominal-client/commit/aa5fadba6ad819b7457ec04f1883652a348bb737))
+* **upload:** send filenames literally instead of URL-encoding them ([#877](https://github.com/nominal-io/nominal-client/issues/877)) ([8d46a3b](https://github.com/nominal-io/nominal-client/commit/8d46a3bdd4bdcc1721965f2bf40ef61e707a3b5e))
+
 ## [1.153.0](https://github.com/nominal-io/nominal-client/compare/v1.152.1...v1.153.0) (2026-07-14)
 
 
