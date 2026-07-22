@@ -159,7 +159,6 @@ class FakeHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         """Write each file and invoke the hooks immediately, mimicking the pipelined exporter."""
@@ -249,7 +248,6 @@ class HalvingFakeHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         self.calls.append((start, end))
@@ -359,7 +357,6 @@ class _PrefixRecordingHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
-        reuse_complete: bool = False,
         skip_rate_estimation: bool = False,
     ) -> list[Path]:
         """Record file_prefix, write a single file named from it, and fire on_file_complete."""
@@ -563,7 +560,9 @@ def test_stream_file_measures_without_streaming_when_stream_is_none(tmp_path: Pa
 def _fake_channel(name: str, get_available_tags_result: dict[str, set[str]] | None = None) -> Any:
     """Build a minimal channel stand-in for underconstrained expansion tests."""
 
-    def _get_available_tags(*, start_time: Any = None, end_time: Any = None, initial_tags: Any = None) -> dict[str, set[str]]:
+    def _get_available_tags(
+        *, start_time: Any = None, end_time: Any = None, initial_tags: Any = None
+    ) -> dict[str, set[str]]:
         return get_available_tags_result or {}
 
     return SimpleNamespace(
@@ -726,7 +725,7 @@ def test_detect_missing_strips_nominal_tags_for_destination(monkeypatch: pytest.
     # Source is counted with the full filter including _nominal_ingest_rid.
     # Destination must be counted with only canonical tags — _nominal_* tags are internal to
     # source ingest sessions and will never appear on data written by the sync tool.
-    from nominal.experimental.migration.channel_sync.sync import _detect_missing, ChannelBucketCounts
+    from nominal.experimental.migration.channel_sync.sync import ChannelBucketCounts, _detect_missing
 
     ch = _channel("temp")
     dest = SimpleNamespace(
