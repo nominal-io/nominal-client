@@ -132,6 +132,7 @@ def sync_from_config(cfg: Mapping[str, Any]) -> None:
             _log_report(report)
     else:
         from dataclasses import replace
+
         options = replace(base_options, tags=cfg.get("tags") or None)
         report = sync_missing_channel_data(
             source_dataset,
@@ -149,6 +150,7 @@ def _log_channel_examples(output_dir: pathlib.Path, tag_filter: Mapping[str, Any
     if not output_dir.exists():
         return
     from collections import defaultdict
+
     range_channels: dict[tuple[int, int], set[str]] = defaultdict(set)
     for f in sorted(output_dir.glob("*.csv.gz")):
         parts = f.name.split("_")
@@ -165,6 +167,7 @@ def _log_channel_examples(output_dir: pathlib.Path, tag_filter: Mapping[str, Any
         range_channels[(file_start, file_end)].update(cols)
     if not range_channels:
         return
+
     def _fmt(ns: int) -> str:
         return datetime.datetime.utcfromtimestamp(ns / 1e9).strftime("%Y-%m-%d %H:%M UTC")
 

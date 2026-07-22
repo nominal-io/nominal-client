@@ -517,13 +517,27 @@ def _stream_missing(
         for group_idx, (signature, channels) in enumerate(groups.items()):
             for range_start, range_end in signature:
                 points += _export_and_stream_range(
-                    handler, stream, channels, range_start, range_end, type_by_name, options, advance,
+                    handler,
+                    stream,
+                    channels,
+                    range_start,
+                    range_end,
+                    type_by_name,
+                    options,
+                    advance,
                     group_idx=group_idx,
                 )
         for ch_idx, (channel, ranges) in enumerate(fallback):
             for range_start, range_end in ranges:
                 points += _export_and_stream_channel(
-                    handler, stream, channel, range_start, range_end, type_by_name, options, advance,
+                    handler,
+                    stream,
+                    channel,
+                    range_start,
+                    range_end,
+                    type_by_name,
+                    options,
+                    advance,
                     channel_idx=ch_idx,
                 )
     # Exiting the context flushes and closes the stream (wait=True).
@@ -610,7 +624,14 @@ def _export_and_stream_range(
     """
     try:
         return _export_and_stream(
-            handler, stream, channels, range_start, range_end, type_by_name, options, advance,
+            handler,
+            stream,
+            channels,
+            range_start,
+            range_end,
+            type_by_name,
+            options,
+            advance,
             group_idx=group_idx,
         )
     except Exception as exc:
@@ -680,9 +701,25 @@ def _export_and_stream_channel(
             mid,
         )
         return _export_and_stream_channel(
-            handler, stream, channel, range_start, mid, type_by_name, options, advance, channel_idx=channel_idx,
+            handler,
+            stream,
+            channel,
+            range_start,
+            mid,
+            type_by_name,
+            options,
+            advance,
+            channel_idx=channel_idx,
         ) + _export_and_stream_channel(
-            handler, stream, channel, mid, range_end, type_by_name, options, advance, channel_idx=channel_idx,
+            handler,
+            stream,
+            channel,
+            mid,
+            range_end,
+            type_by_name,
+            options,
+            advance,
+            channel_idx=channel_idx,
         )
 
 
@@ -1017,15 +1054,11 @@ def sync_missing_channel_data_for_tag_filters(
     # controls only whether user-visible discriminating tags are also expanded.
     filter_passes: list[tuple[dict[str, str], frozenset[str] | None, dict[str, str] | None]]
     if base_options.phase != "stream" and source_dataset is not None:
-        all_source_channels = [
-            ch for ch in source_dataset.search_channels() if ch.data_type in _EXPORTABLE_DATA_TYPES
-        ]
+        all_source_channels = [ch for ch in source_dataset.search_channels() if ch.data_type in _EXPORTABLE_DATA_TYPES]
         # Honour any user-specified channel_allowlist before probing for underconstrained channels
         # so the expansion only considers the channels the user cares about.
         if base_options.channel_allowlist is not None:
-            all_source_channels = [
-                ch for ch in all_source_channels if ch.name in base_options.channel_allowlist
-            ]
+            all_source_channels = [ch for ch in all_source_channels if ch.name in base_options.channel_allowlist]
         filter_passes = []
         for tf in tag_filters:
             filter_passes.extend(
