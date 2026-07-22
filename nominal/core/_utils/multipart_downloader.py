@@ -4,6 +4,7 @@ import dataclasses
 import logging
 import math
 import multiprocessing
+import os
 import pathlib
 import threading
 import time
@@ -11,6 +12,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Callable, Iterable, Mapping, Sequence, Type
+from uuid import uuid4
 
 import requests
 from typing_extensions import Self
@@ -99,13 +101,18 @@ class _DataChunkBounds:
 
 @dataclass(frozen=True)
 class _PlannedDownload:
-    """Internal dataclass for representing the state of a file to download"""
+    """Internal dataclass for representing the state of a file to download.
+
+    Bytes are written to ``tmp_path`` (a sibling of the destination) and atomically ``os.replace``-d
+    onto ``item.destination`` only once every part has completed. This keeps the destination as either
+    the old-complete file or the new-complete file -- never a torn, partially-written one -- and means
+    a failed (re-)download leaves any pre-existing destination untouched instead of destroying it.
+    """
 
     item: DownloadItem
     total_size: int
     etag: str | None
-    already_complete: bool = False
-    """True when a prior, equally-sized download was found on disk and should be reused as-is."""
+    tmp_path: pathlib.Path
 
     def ranges(self) -> Iterable[_DataChunkBounds]:
         parts = max(1, math.ceil(self.total_size / self.item.part_size))
@@ -252,14 +259,9 @@ class MultipartFileDownloader:
             len(exec_failures),
         )
 
-        # Delete any failed file downloads
-        if all_failures:
-            logger.warning("Clearing out artifacts from %d failed file downloads", len(all_failures))
-            for file in all_failures:
-                if file.exists():
-                    logger.info("Removing failed artifact %s", file)
-                    file.unlink()
-
+        # No destination cleanup needed here: _run_downloads stages bytes in a temp and either renames
+        # it onto the destination on success or drops the temp on failure, and a planning failure
+        # cleans up its own temp. A pre-existing destination is therefore never deleted by a failure.
         return DownloadResults(all_successes, all_failures)
 
     def download_files_pipelined(
@@ -268,7 +270,6 @@ class MultipartFileDownloader:
         *,
         on_file_planned: Callable[[pathlib.Path], None] | None = None,
         on_file_complete: Callable[[pathlib.Path], None] | None = None,
-        reuse_complete: bool = False,
     ) -> DownloadResults:
         """Download many files, pipelining link-generation with downloads.
 
@@ -287,10 +288,6 @@ class MultipartFileDownloader:
             on_file_complete: Optional callback invoked with each destination as soon as that file
                 finishes downloading successfully. Both callbacks run on the calling thread (not a
                 worker), so they are serialized and safe to drive a progress display.
-            reuse_complete: When set, a destination that already exists with a byte size matching the
-                planned size is reused as-is (no re-download) and reported as succeeded; a
-                differently-sized leftover is removed and re-downloaded. ``on_file_complete`` still
-                fires for reused files so callers can re-process them.
 
         Returns:
             A :class:`DownloadResults` partitioning destinations into succeeded and failed. Files that
@@ -314,17 +311,20 @@ class MultipartFileDownloader:
             plan_futs: dict[Future[Any], DownloadItem] = {}
             for it in items:
                 try:
-                    self._check_destination(it.destination, allow_existing=reuse_complete)
+                    self._check_destination(it.destination)
                 except Exception as ex:
                     failures[it.destination] = ex
                     logger.error("Invalid destination %s", it.destination, exc_info=ex)
                     continue
-                plan_futs[plan_pool.submit(self._plan_and_preallocate, it, plan_session, reuse_complete)] = it
+                plan_futs[plan_pool.submit(self._plan_and_preallocate, it, plan_session)] = it
 
             # Reactively drive a growing set of futures: planning futures resolve into per-file part
             # futures (submitted to the download pool), which we add back into the pending set.
             part_futs: dict[Future[Any], tuple[pathlib.Path, int]] = {}
             remaining_parts: dict[pathlib.Path, int] = {}
+            # destination -> staging temp, so part-completion can atomically rename temp onto dest and
+            # failure cleanup can target the temp (never the possibly-pre-existing destination).
+            tmp_by_dest: dict[pathlib.Path, pathlib.Path] = {}
             succeeded: list[pathlib.Path] = []
             pending: set[Future[Any]] = set(plan_futs)
 
@@ -337,6 +337,7 @@ class MultipartFileDownloader:
                             plan_futs,
                             part_futs,
                             remaining_parts,
+                            tmp_by_dest,
                             failures,
                             pending,
                             succeeded,
@@ -345,11 +346,11 @@ class MultipartFileDownloader:
                         )
                     else:
                         self._handle_part_complete(
-                            fut, part_futs, remaining_parts, failures, succeeded, on_file_complete
+                            fut, part_futs, remaining_parts, tmp_by_dest, failures, succeeded, on_file_complete
                         )
 
         logger.info("Successfully downloaded %d files (%d total, %d failed)", len(succeeded), len(items), len(failures))
-        self._cleanup_failed_artifacts(failures)
+        self._cleanup_failed_artifacts(failures, tmp_by_dest)
         return DownloadResults(succeeded, failures)
 
     def _handle_plan_complete(
@@ -358,6 +359,7 @@ class MultipartFileDownloader:
         plan_futs: dict[Future[Any], DownloadItem],
         part_futs: dict[Future[Any], tuple[pathlib.Path, int]],
         remaining_parts: dict[pathlib.Path, int],
+        tmp_by_dest: dict[pathlib.Path, pathlib.Path],
         failures: dict[pathlib.Path, Exception],
         pending: set[Future[Any]],
         succeeded: list[pathlib.Path],
@@ -376,13 +378,7 @@ class MultipartFileDownloader:
         if on_file_planned is not None:
             on_file_planned(item.destination)
 
-        if plan.already_complete:
-            # Reused an existing, equally-sized file -- nothing to download; it's done.
-            succeeded.append(item.destination)
-            if on_file_complete is not None:
-                on_file_complete(item.destination)
-            return
-
+        tmp_by_dest[item.destination] = plan.tmp_path
         chunk_bounds = list(plan.ranges())
         remaining_parts[item.destination] = len(chunk_bounds)
         for data_chunk in chunk_bounds:
@@ -392,7 +388,7 @@ class MultipartFileDownloader:
                 data_chunk.start_bytes,
                 data_chunk.end_bytes,
                 plan.etag,
-                item.destination,
+                plan.tmp_path,
             )
             part_futs[part_fut] = (item.destination, data_chunk.start_bytes)
             pending.add(part_fut)
@@ -402,11 +398,12 @@ class MultipartFileDownloader:
         fut: Future[Any],
         part_futs: dict[Future[Any], tuple[pathlib.Path, int]],
         remaining_parts: dict[pathlib.Path, int],
+        tmp_by_dest: dict[pathlib.Path, pathlib.Path],
         failures: dict[pathlib.Path, Exception],
         succeeded: list[pathlib.Path],
         on_file_complete: Callable[[pathlib.Path], None] | None,
     ) -> None:
-        """Resolve a completed part-download future, firing on_file_complete on the last part."""
+        """Resolve a completed part-download future, atomically publishing the file on the last part."""
         dest, start = part_futs.pop(fut)
         # A prior part for this destination already failed (and cancelled the rest); ignore.
         if dest in failures:
@@ -424,20 +421,31 @@ class MultipartFileDownloader:
 
         remaining_parts[dest] -= 1
         if remaining_parts[dest] == 0:
+            # All parts landed in the temp; atomically publish it as the destination. Only now does a
+            # pre-existing destination get replaced -- until this point it was left untouched.
+            os.replace(tmp_by_dest[dest], dest)
             succeeded.append(dest)
             logger.debug("Completed download for %s", dest)
             if on_file_complete is not None:
                 on_file_complete(dest)
 
-    def _cleanup_failed_artifacts(self, failures: Mapping[pathlib.Path, Exception]) -> None:
-        """Delete partially-written files for any failed downloads."""
+    def _cleanup_failed_artifacts(
+        self, failures: Mapping[pathlib.Path, Exception], tmp_by_dest: Mapping[pathlib.Path, pathlib.Path]
+    ) -> None:
+        """Delete the staging temp for any failed download, leaving the destination untouched.
+
+        Because bytes are written to a temp and only atomically renamed onto the destination on full
+        success, a failed download's partial artifact is its temp -- never the destination. A
+        pre-existing destination (e.g. a prior good copy being re-downloaded) is therefore preserved.
+        """
         if not failures:
             return
         logger.warning("Clearing out artifacts from %d failed file downloads", len(failures))
-        for file in failures:
-            if file.exists():
-                logger.info("Removing failed artifact %s", file)
-                file.unlink()
+        for dest in failures:
+            tmp = tmp_by_dest.get(dest)
+            if tmp is not None and tmp.exists():
+                logger.info("Removing failed artifact %s", tmp)
+                tmp.unlink()
 
     def _run_downloads(
         self, plans: Sequence[_PlannedDownload], *, collect_errors: bool
@@ -448,7 +456,9 @@ class MultipartFileDownloader:
         If `collect_errors` is False, any failure is raised immediately.
         If True, errors are captured and returned in a map of destination->Exception.
         """
-        # Build a map of futures to (destination, start)
+        # Build a map of futures to (destination, start). Parts are written to each plan's staging
+        # temp; the destination is only produced by an atomic rename once all its parts succeed.
+        tmp_by_dest = {plan.item.destination: plan.tmp_path for plan in plans}
         fut_map: dict[Future[None], tuple[pathlib.Path, int]] = {}
         for plan in plans:
             logger.info("Starting download for file %s (%.2f MB)", plan.item.destination, plan.total_size / 1e6)
@@ -459,7 +469,7 @@ class MultipartFileDownloader:
                     data_chunk.start_bytes,
                     data_chunk.end_bytes,
                     plan.etag,
-                    plan.item.destination,
+                    plan.tmp_path,
                 )
                 fut_map[fut] = (plan.item.destination, data_chunk.start_bytes)
 
@@ -479,7 +489,16 @@ class MultipartFileDownloader:
                 if collect_errors:
                     failed[dest] = ex
                 else:
+                    # Best-effort temp cleanup before propagating -- the destination is left untouched.
+                    tmp_by_dest[dest].unlink(missing_ok=True)
                     raise ex
+
+        # Publish successes atomically; drop the staging temp for any failure (destination preserved).
+        for dest, tmp in tmp_by_dest.items():
+            if dest in failed:
+                tmp.unlink(missing_ok=True)
+            else:
+                os.replace(tmp, dest)
 
         return failed
 
@@ -523,57 +542,62 @@ class MultipartFileDownloader:
 
         raise RuntimeError("Could not determine object size/ETag (presigned URL kept failing)")
 
+    @staticmethod
+    def _tmp_path_for(destination: pathlib.Path) -> pathlib.Path:
+        """A unique, hidden sibling of ``destination`` to stage bytes in before the atomic rename.
+
+        Same directory as the destination guarantees a same-filesystem ``os.replace`` (atomic); the
+        random suffix keeps concurrent downloads to the same destination from colliding on the temp.
+        """
+        return destination.parent / f".{destination.name}.{uuid4().hex}.part"
+
     def _plan_item(self, item: DownloadItem, session: requests.Session | None = None) -> _PlannedDownload:
         # If the provider already knows the object size (e.g. an export service returned it), skip
         # the size/ETag probe entirely -- one fewer round-trip per file, which adds up over many files.
+        tmp_path = self._tmp_path_for(item.destination)
         presigned = item.provider.get()
         if presigned.total_size is not None:
-            return _PlannedDownload(item=item, total_size=presigned.total_size, etag=presigned.etag)
+            return _PlannedDownload(item=item, total_size=presigned.total_size, etag=presigned.etag, tmp_path=tmp_path)
         total_size, etag = self._head_or_probe(item.provider, session)
         return _PlannedDownload(
             item=item,
             total_size=total_size,
             etag=etag,
+            tmp_path=tmp_path,
         )
 
-    def _plan_and_preallocate(
-        self, item: DownloadItem, session: requests.Session | None = None, reuse_complete: bool = False
-    ) -> _PlannedDownload:
-        """Fetch the presigned link, probe size/etag if needed, and preallocate the destination file.
+    def _plan_and_preallocate(self, item: DownloadItem, session: requests.Session | None = None) -> _PlannedDownload:
+        """Fetch the presigned link, probe size/etag if needed, and preallocate a staging temp file.
 
         Runs on a worker thread so link generation + the (possibly long) materialization wait baked
         into the provider's fetch happen concurrently across files rather than one at a time. ``session``
         is the session used for any size probe (the pipelined path passes its dedicated planning
         session; otherwise the shared download session is used).
 
-        When ``reuse_complete`` is set and the destination already exists with a byte size matching the
-        planned size, the existing file is reused as-is (no re-download) -- failed downloads have their
-        artifacts cleaned up, so a same-sized file on disk is a previously-completed one. A
-        differently-sized (stale/partial) file is removed and re-downloaded.
+        Bytes are preallocated into ``plan.tmp_path`` -- never the destination -- so a pre-existing
+        destination is left intact until the download completes and is atomically renamed into place.
         """
         plan = self._plan_item(item, session)
-        if reuse_complete and item.destination.exists() and item.destination.stat().st_size == plan.total_size:
-            logger.info(
-                "Reusing already-downloaded %s (%d bytes match planned size)", item.destination, plan.total_size
-            )
-            return dataclasses.replace(plan, already_complete=True)
-        if item.destination.exists():
-            # Stale or wrong-sized leftover -- remove it so preallocation/download starts clean.
-            item.destination.unlink()
-        self._preallocate(item.destination, plan.total_size)
+        try:
+            self._preallocate(plan.tmp_path, plan.total_size)
+        except Exception:
+            # Don't leak a partially-preallocated temp if preallocation itself fails.
+            plan.tmp_path.unlink(missing_ok=True)
+            raise
         return plan
 
     # ---- IO helpers ----
 
-    def _check_destination(self, path: pathlib.Path, allow_existing: bool = False) -> None:
+    def _check_destination(self, path: pathlib.Path) -> None:
         logger.info("Preparing file destination %s", path)
 
         parent = path.parent
         if not parent.exists():
             raise FileNotFoundError(f"Output directory does not exist: {parent}")
 
-        if path.exists() and not allow_existing:
-            raise FileExistsError(f"Destination already exists: {path}")
+        # An existing destination is intentionally overwritten: _plan_and_preallocate unlinks and
+        # re-preallocates it. Re-downloading to the same path is expected -- e.g. a channel-sync
+        # retry or a repeated download into a kept output_dir -- so this must not raise.
 
     def _preallocate(self, path: pathlib.Path, total_size_bytes: int) -> None:
         logger.info("Preallocating %s to %f MB", path, total_size_bytes / 1e6)

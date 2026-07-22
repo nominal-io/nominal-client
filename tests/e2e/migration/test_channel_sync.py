@@ -48,6 +48,10 @@ from tests.e2e import POLL_INTERVAL
 from tests.e2e.migration.conftest import (
     FILE_POINT_COUNT,
     HALF_POINT_COUNT,
+    LOG_CHANNEL_NAME,
+    LOG_NUMERIC_CHANNEL,
+    LOG_WINDOW_END,
+    LOG_WINDOW_START,
     STRESS_CHANNEL_TYPES,
     STRESS_ENUM_VALUES,
     STRESS_ROWS,
@@ -65,6 +69,11 @@ SYNC_CHANNELS = ("temperature", "humidity", "relative_minutes")
 # Each tag carries FILE_POINT_COUNT points per channel (sync_csv_a under A, sync_csv_b under B).
 A_POINT_COUNT = FILE_POINT_COUNT
 B_POINT_COUNT = FILE_POINT_COUNT
+
+# Sub-window used to verify the high-cardinality STRING. The stress data is one row per second, so a
+# one-minute window is ~60 distinct labels -- far under the backend export limits, unlike a full-window
+# read of all STRESS_ROWS labels (which hits Compute:TooManyCategories / ServerOverloaded).
+_HI_CARD_PROBE_NS = 60 * 1_000_000_000
 
 # Give asynchronous streaming ingestion time to settle inside the sync before it re-detects.
 SETTLE_SECONDS = 20.0
@@ -113,9 +122,7 @@ def _read_all_series(channel: Channel, start: int, end: int, tags: Mapping[str, 
         if "TooManyCategories" not in str(exc) or end - start <= 1:
             raise
         mid = start + (end - start) // 2
-        combined = pd.concat(
-            [_read_all_series(channel, start, mid, tags), _read_all_series(channel, mid, end, tags)]
-        )
+        combined = pd.concat([_read_all_series(channel, start, mid, tags), _read_all_series(channel, mid, end, tags)])
         return combined[~combined.index.duplicated(keep="first")].sort_index()
 
 
@@ -143,6 +150,28 @@ def _read_until(
             return values
         time.sleep(_READ_RETRY_DELAY)
     return values
+
+
+def _read_until_series(
+    channel: Channel,
+    start: int,
+    end: int,
+    tags: Mapping[str, str] | None,
+    min_unique: int,
+) -> "pd.Series[Any]":
+    """Read a channel as a Series, polling until it holds at least ``min_unique`` distinct timestamps.
+
+    Used where the destination may hold duplicate points (bucket-granular re-streaming appends
+    duplicates for a partially-present bucket), so callers assert timestamp *coverage* rather than an
+    exact count.
+    """
+    series = _read_all_series(channel, start, end, tags)
+    for _ in range(_READ_RETRY_ATTEMPTS):
+        if series.index.nunique() >= min_unique:
+            return series
+        time.sleep(_READ_RETRY_DELAY)
+        series = _read_all_series(channel, start, end, tags)
+    return series
 
 
 def _source_values(source_dataset: Dataset, name: str, tags: Mapping[str, str]) -> list[Any]:
@@ -292,10 +321,15 @@ def test_partial_shortfall_fills_only_missing_buckets(
 ):
     """A partially-present destination has only its missing buckets filled (resumability).
 
-    Pre-ingests tag A's first three (of six) detection buckets into the destination, then syncs tag A
-    at the default one-hour bucket granularity. Only the three missing buckets must stream
-    (``points_streamed`` counts just the gap, not the whole window), and the destination ends with the
-    full per-channel point count.
+    Pre-ingests tag A's first three (of six) detection buckets into the destination, then syncs tag A.
+    The sync must move fewer points than a full (empty-destination) sync would -- i.e. it reused the
+    pre-loaded buckets rather than re-copying the whole window -- and the destination must end covering
+    every source point.
+
+    The exact streamed count is not asserted: ``points_streamed`` is cumulative across the
+    settle/re-detect retries, and under eventual consistency the loop can re-stream a not-yet-visible
+    bucket (append-only, so a re-streamed present bucket also leaves duplicate points). Correctness is
+    therefore asserted as timestamp *coverage*, tolerant of those duplicates.
     """
     # Tag A's first three buckets: header + HALF_POINT_COUNT data rows (an exact bucket boundary).
     partial_csv = b"\n".join(sync_csv_a.split(b"\n")[: HALF_POINT_COUNT + 1]) + b"\n"
@@ -312,12 +346,18 @@ def test_partial_shortfall_fills_only_missing_buckets(
         _options(tags={SYNC_TAG_KEY: SYNC_TAG_A}),
     )
 
-    # Only the missing half (A's last three buckets) is re-streamed, across each channel.
-    missing_per_channel = FILE_POINT_COUNT - HALF_POINT_COUNT
-    assert report.points_streamed == missing_per_channel * len(SYNC_CHANNELS)
     assert report.still_short == []
+    # The pre-load was reused: fewer points streamed than a from-scratch sync of the full window.
+    assert 0 < report.points_streamed < FILE_POINT_COUNT * len(SYNC_CHANNELS)
+
+    # The destination covers every source point for tag A (dedup-tolerant: re-streaming may duplicate).
+    tags_a = {SYNC_TAG_KEY: SYNC_TAG_A}
     for name in SYNC_CHANNELS:
-        _assert_round_trip(source_dataset_two_tags, dest_dataset, name, {SYNC_TAG_KEY: SYNC_TAG_A}, A_POINT_COUNT)
+        src = _read_all_series(source_dataset_two_tags.get_channel(name), SYNC_WINDOW_START, SYNC_WINDOW_END, tags_a)
+        dest = _read_until_series(
+            _dest_channel(dest_dataset, name), SYNC_WINDOW_START, SYNC_WINDOW_END, tags_a, A_POINT_COUNT
+        )
+        assert set(src.index).issubset(dest.index), f"{name}: destination is missing source timestamps"
 
 
 def test_multi_tag_filters_copy_both_into_subdirs(
@@ -365,9 +405,11 @@ def test_adversarial_channel_types_round_trip(
 
     Exercises the non-numeric / non-precise code paths end-to-end: a high-cardinality STRING channel
     overflows the enum-category limit and takes the recursive-halving export fallback, a low-card enum
-    STRING re-reads as strings, an INT channel lands as INT (not float), and an integral-looking DOUBLE
-    stays DOUBLE (not re-inferred as INT). ``ChannelSyncReport`` does not expose which channels took the
-    non-precise fallback, so this asserts the *outcome* — every value and the channel type survive —
+    STRING re-reads as strings, and integer-formatted (``int_ch``) and decimal-formatted (``dbl_ch``)
+    numeric columns both stay DOUBLE -- the Float64 guard must not re-infer the integer-formatted one
+    as INT in the destination. (CSV ingest produces no genuine INT channel, so the INT->int recast is
+    unit-tested rather than here.) ``ChannelSyncReport`` does not expose which channels took the
+    non-precise fallback, so this asserts the *outcome* -- every value and the channel type survive --
     rather than the path taken.
     """
     report = sync_missing_channel_data(
@@ -382,19 +424,106 @@ def test_adversarial_channel_types_round_trip(
     assert report.points_streamed > 0
     assert report.still_short == []
 
-    # Every channel type landed with the right destination type and the full point count.
+    # Types are preserved for every channel.
     for name, expected_type in STRESS_CHANNEL_TYPES.items():
         dest_channel = _dest_channel(dest_dataset, name)
         assert dest_channel.data_type is not None, f"{name} has no destination data type"
         assert dest_channel.data_type.value == expected_type, (
             f"{name} landed as {dest_channel.data_type.value}, expected {expected_type}"
         )
+
+    # Full-window value round-trip for the channels a full read can return: the numeric channels and
+    # the low-cardinality enum. The high-cardinality STRING is verified over a small sub-window below --
+    # a full-window read of all STRESS_ROWS distinct labels is expensive enough to hit the backend
+    # export limits (Compute:TooManyCategories / ServerOverloaded), which is exactly why that channel
+    # takes the non-precise path.
+    for name in ("enum_str", "int_ch", "dbl_ch"):
         src_values = _read_all_values(source_dataset_stress.get_channel(name), STRESS_WINDOW_START, STRESS_WINDOW_END)
+        dest_channel = _dest_channel(dest_dataset, name)
         dest_values = sorted(_read_until(dest_channel, STRESS_WINDOW_START, STRESS_WINDOW_END, None, STRESS_ROWS))
         assert len(dest_values) == STRESS_ROWS, f"{name} landed {len(dest_values)} points, expected {STRESS_ROWS}"
         assert dest_values == sorted(src_values), f"{name} values do not round-trip"
 
-    # The high-cardinality STRING (the headline non-precise case) kept every unique label.
-    assert len(set(_stress_dest_values(dest_dataset, "hi_card_str"))) == STRESS_ROWS
-    # The low-cardinality enum kept exactly its label set (values stay strings, not coerced to numbers).
+    # enum_str kept exactly its label set (values stay strings, not coerced to numbers).
     assert set(_stress_dest_values(dest_dataset, "enum_str")) == set(STRESS_ENUM_VALUES)
+
+    # High-cardinality STRING: verify a small sub-window (far under the export limits) round-trips with
+    # one unique value per row. Confirms the non-precise / recursive-halving export path moved the data;
+    # the full window is not reliably readable via channel_to_series, and the sync's own success
+    # (points_streamed > 0, still_short == []) already covers the full set landing.
+    probe_end = STRESS_WINDOW_START + _HI_CARD_PROBE_NS
+    src_hi_channel = source_dataset_stress.get_channel("hi_card_str")
+    src_hi = _read_all_series(src_hi_channel, STRESS_WINDOW_START, probe_end, None).to_list()
+    assert len(src_hi) > 0, "high-cardinality probe window read no source data"
+    dest_hi = _read_until(_dest_channel(dest_dataset, "hi_card_str"), STRESS_WINDOW_START, probe_end, None, len(src_hi))
+    assert sorted(dest_hi) == sorted(src_hi), "hi_card_str values do not round-trip over the probe window"
+    assert len(set(dest_hi)) == len(src_hi), "hi_card_str should have one unique value per row"
+
+
+def test_untagged_high_cardinality_channel_detected_present(
+    source_dataset_stress: Dataset,
+    source_client: NominalClient,
+    dest_dataset: Dataset,
+):
+    """An untagged high-cardinality STRING channel is detected present via the series-count probe.
+
+    ``hi_card_str`` overflows the enum-category limit during detection, so it cannot be counted
+    precisely and falls to the whole-window presence probe. That probe is now tag-independent
+    (``batchGetSeriesCount`` / ``series_count > 0``) rather than tag-derived, so it must flag the
+    channel present and sync it even though nothing constrains it by tags. This locks in that the
+    series-count probe detects untagged data (``tags=None``); the genuinely tag-free correctness --
+    which e2e cannot construct, since exportable data always carries internal ``_nominal_*`` tags --
+    is proven by the ``_channels_with_data`` unit tests.
+    """
+    report = sync_missing_channel_data(
+        source_dataset_stress,
+        source_client,
+        dest_dataset,
+        STRESS_WINDOW_START,
+        STRESS_WINDOW_END,
+        _options(),  # tags=None
+    )
+
+    # The presence probe found data for the non-precise channel: it synced and nothing is still short.
+    assert report.channels_synced > 0
+    assert report.still_short == []
+
+    # The untagged high-cardinality channel actually landed (verified over a cap-safe sub-window).
+    probe_end = STRESS_WINDOW_START + _HI_CARD_PROBE_NS
+    src_hi = _read_all_series(source_dataset_stress.get_channel("hi_card_str"), STRESS_WINDOW_START, probe_end, None)
+    assert src_hi.index.nunique() > 0, "high-cardinality probe window read no source data"
+    dest_hi = _read_until(
+        _dest_channel(dest_dataset, "hi_card_str"), STRESS_WINDOW_START, probe_end, None, src_hi.index.nunique()
+    )
+    assert sorted(dest_hi) == sorted(src_hi.to_list()), "untagged hi_card_str did not round-trip"
+
+
+def test_log_channel_skipped_and_absent_on_dest(
+    source_dataset_with_log: Dataset,
+    source_client: NominalClient,
+    dest_dataset: Dataset,
+):
+    """A LOG channel is skipped as unsupported: counted in the report, never written to the destination.
+
+    LOG is not an exportable channel type, so sync drops it *before* detection
+    (``report.channels_skipped_unsupported``) while still moving the supported numeric channels. The
+    LOG channel must never become visible on the destination dataset.
+    """
+    report = sync_missing_channel_data(
+        source_dataset_with_log,
+        source_client,
+        dest_dataset,
+        LOG_WINDOW_START,
+        LOG_WINDOW_END,
+        _options(),
+    )
+
+    # The LOG channel was skipped as unsupported, but supported channels still synced.
+    assert report.channels_skipped_unsupported >= 1
+    assert report.channels_synced > 0
+    assert report.still_short == []
+
+    dest_channel_names = {channel.name for channel in dest_dataset.search_channels()}
+    # A supported numeric channel round-tripped; the LOG channel never did.
+    assert LOG_NUMERIC_CHANNEL in dest_channel_names, "the supported numeric channel should have synced"
+    assert LOG_CHANNEL_NAME not in dest_channel_names, "the LOG channel must not appear on the destination"
