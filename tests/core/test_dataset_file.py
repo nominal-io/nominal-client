@@ -24,10 +24,11 @@ from nominal.core.exceptions import NominalIngestError
     [
         ({"success": api.SuccessResult()}, IngestStatus.SUCCESS),
         ({"in_progress": api.InProgressResult()}, IngestStatus.IN_PROGRESS),
-        # Transient backend states all map to IN_PROGRESS so polling keeps waiting.
-        ({"queued": api.Queued()}, IngestStatus.IN_PROGRESS),
-        ({"parsing": api.Parsing()}, IngestStatus.IN_PROGRESS),
-        ({"ingesting": api.Ingesting()}, IngestStatus.IN_PROGRESS),
+        # Transient backend states map to their own status; poll_until_ingestion_completed groups
+        # them with IN_PROGRESS so polling keeps waiting.
+        ({"queued": api.Queued()}, IngestStatus.QUEUED),
+        ({"parsing": api.Parsing()}, IngestStatus.PARSING),
+        ({"ingesting": api.Ingesting()}, IngestStatus.INGESTING),
         ({"deleted": api.Deleted()}, IngestStatus.DELETED),
     ],
 )
