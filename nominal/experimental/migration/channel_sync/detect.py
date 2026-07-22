@@ -1,0 +1,379 @@
+"""Per-channel, per-bucket detection of data the destination is missing over a window.
+
+Detection answers one question for every channel in scope: *for each time bucket in the window,
+does the destination have at least as much data as the source?* A bucket where the destination
+falls short (``src_count > dest_count``, "any shortfall") is a sync target. A channel absent in the
+destination reads as all-zero counts, so it is handled identically to a channel that exists but is
+empty over the window.
+
+Counts are obtained server-side and **in batch**: :func:`count_channels` summarizes many channels
+in one ``batch_compute_with_units`` request (chunked, with chunks issued across a thread pool), so a
+dataset with thousands of channels costs a few hundred requests rather than one per channel.
+
+* **Numeric** (``DOUBLE`` / ``INT``) channels yield exact per-bucket counts from numeric decimation.
+* **String** (``STRING``) channels yield exact per-bucket counts from enum decimation (the per-bucket
+  histogram frequencies sum to the count).
+* Any channel whose batched compute result errored (or is non-batchable) falls back to a whole-window
+  **presence** probe via ``batchGetSeriesCount`` (1 if ``series_count > 0`` in the window, else 0,
+  uniform across buckets). This is tag-independent -- it does not require the series to carry tags --
+  but it loses per-bucket granularity. Caveat: ``series_count`` is empty for non-Nominal/external
+  datasources, which read as no-data; acceptable for Nominal->Nominal migration.
+
+Adapted from the unmerged ``migration/backfill`` PR-stack (``backfill/detect.py``).
+"""
+
+from __future__ import annotations
+
+import concurrent.futures
+import logging
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+
+from nominal_api import scout_compute_api
+
+from nominal._utils.iterator_tools import batched
+from nominal.core._utils.api_tools import build_compute_tag_filter
+from nominal.core.channel import Channel, ChannelDataType, _batch_check_channels_have_data
+from nominal.experimental.compute._buckets import (
+    _enum_buckets_from_compute_response,
+    _numeric_buckets_from_compute_response,
+)
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+logger = logging.getLogger(__name__)
+
+_BATCHABLE_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING})
+DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
+DEFAULT_DETECT_WORKERS = 8
+_PRESENCE_PROBE_BATCH = 200
+
+
+def _iter_bucket_starts(
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    bucket: IntegralNanosecondsUTC,
+) -> list[int]:
+    """Return the start (ns) of every bucket covering ``[start, end)``.
+
+    Buckets are ``bucket`` nanoseconds wide and tile forward from ``start``. The final bucket may
+    extend past ``end``; it is included as long as its start is strictly before ``end``.
+    """
+    if bucket <= 0:
+        raise ValueError(f"bucket must be positive, got {bucket}")
+    if end <= start:
+        raise ValueError(f"end ({end}) must be after start ({start})")
+    starts: list[int] = []
+    current = int(start)
+    while current < end:
+        starts.append(current)
+        current += int(bucket)
+    return starts
+
+
+def merge_bucket_ranges(bucket_starts: list[int], bucket: IntegralNanosecondsUTC) -> list[tuple[int, int]]:
+    """Merge contiguous bucket-starts into ``[start, end)`` ranges.
+
+    Adjacent buckets (where one bucket's start plus ``bucket`` equals the next start) coalesce into
+    a single range so the export issues one request per contiguous span instead of one per bucket.
+
+    Args:
+        bucket_starts: Bucket-start timestamps (ns) to merge; duplicates and order are tolerated.
+        bucket: Bucket width (nanoseconds), used to detect adjacency.
+
+    Returns:
+        The coalesced ``(start, end)`` ranges, sorted ascending.
+    """
+    ordered = sorted(set(bucket_starts))
+    ranges: list[tuple[int, int]] = []
+    for start in ordered:
+        end = start + int(bucket)
+        if ranges and start == ranges[-1][1]:
+            ranges[-1] = (ranges[-1][0], end)
+        else:
+            ranges.append((start, end))
+    return ranges
+
+
+@dataclass(frozen=True)
+class ChannelBucketCounts:
+    """Per-bucket data counts for a single channel.
+
+    ``counts`` maps each bucket-start (ns) to a count. For numeric/string channels this is an exact
+    point count; for the presence fallback it is 1 if the channel has any data in the window (else
+    0), uniform across buckets. ``precise`` distinguishes the two so callers can report the coarser
+    fallback granularity if desired.
+    """
+
+    channel: str
+    counts: Mapping[int, int]
+    precise: bool
+
+
+def shortfall_buckets(source: ChannelBucketCounts, destination: ChannelBucketCounts) -> list[int]:
+    """Return the bucket-starts (sorted) where the destination has fewer points than the source.
+
+    "Any shortfall" rule: a bucket is a sync target when ``src_count > dest_count``.
+
+    Args:
+        source: Per-bucket counts on the source side.
+        destination: Per-bucket counts on the destination side (missing buckets count as zero).
+
+    Returns:
+        The sorted bucket-starts (ns) that are short on the destination.
+    """
+    return sorted(
+        bucket_start
+        for bucket_start, src_count in source.counts.items()
+        if src_count > destination.counts.get(bucket_start, 0)
+    )
+
+
+def count_channels(
+    channels: Sequence[Channel],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    bucket: IntegralNanosecondsUTC,
+    tags: Mapping[str, str] | None = None,
+    *,
+    channels_per_request: int = DEFAULT_DETECT_CHANNELS_PER_REQUEST,
+    workers: int = DEFAULT_DETECT_WORKERS,
+    request_delay: float = 0.0,
+    on_advance: Callable[[int], None] | None = None,
+) -> dict[str, ChannelBucketCounts]:
+    """Count per-bucket data for many channels using batched, parallel server-side compute.
+
+    Numeric and string channels are summarized in ``batch_compute_with_units`` requests, chunked by
+    ``channels_per_request`` with chunks issued across ``workers`` threads. Any channel whose batch
+    result errored falls back to a whole-window presence probe.
+
+    Args:
+        channels: The channels to count. Assumed to have unique names and share a single client
+            (e.g. all from one dataset).
+        start: Start of the window, inclusive (nanoseconds UTC).
+        end: End of the window, exclusive (nanoseconds UTC).
+        bucket: Bucket width (nanoseconds) the window is subdivided into.
+        tags: Optional datascope tag filter applied to every channel's count.
+        channels_per_request: Channels summarized per batched compute request.
+        workers: Threads issuing batched requests concurrently.
+        request_delay: Seconds to sleep between consecutive batch submissions (rate-limiting).
+        on_advance: Optional progress hook called with the number of channels resolved each step
+            (summing to ``len(channels)`` over the call) -- drives the caller's detection bar.
+
+    Returns:
+        A mapping of channel name to its :class:`ChannelBucketCounts`, for every input channel.
+    """
+    starts = _iter_bucket_starts(start, end, bucket)
+    batchable = [c for c in channels if c.data_type in _BATCHABLE_TYPES]
+    fallback = [c for c in channels if c.data_type not in _BATCHABLE_TYPES]
+
+    results: dict[str, ChannelBucketCounts] = {}
+    errored: list[Channel] = []
+    chunks = [batchable[i : i + channels_per_request] for i in range(0, len(batchable), channels_per_request)]
+
+    if chunks:
+        logger.info(
+            "Counting %d channel(s) over %d bucket(s) in %d batched request(s) across %d worker(s)",
+            len(batchable),
+            len(starts),
+            len(chunks),
+            workers,
+        )
+        done = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, len(chunks)))) as pool:
+            futures = []
+            for i, chunk in enumerate(chunks):
+                if request_delay > 0 and i > 0:
+                    time.sleep(request_delay)
+                futures.append(pool.submit(_count_chunk, chunk, start, end, bucket, starts, tags))
+            for future in concurrent.futures.as_completed(futures):
+                chunk_counts, chunk_errored = future.result()
+                results.update(chunk_counts)
+                errored.extend(chunk_errored)
+                done += len(chunk_counts) + len(chunk_errored)
+                logger.info("Detection progress: %d/%d channels counted", done, len(batchable))
+                # Advance only by channels resolved in this batch; errored ones advance below in the
+                # presence pass, so the total over the whole call sums to len(channels).
+                if on_advance is not None:
+                    on_advance(len(chunk_counts))
+
+    presence_channels = fallback + errored
+    if presence_channels:
+        logger.info("Presence-probing %d channel(s) (non-batchable or errored)", len(presence_channels))
+        with_data = _channels_with_data(presence_channels, start, end, tags, on_advance)
+        for channel in presence_channels:
+            present = 1 if channel.name in with_data else 0
+            results[channel.name] = ChannelBucketCounts(channel.name, dict.fromkeys(starts, present), precise=False)
+
+    return results
+
+
+def _count_chunk(
+    chunk: Sequence[Channel],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    bucket: IntegralNanosecondsUTC,
+    starts: list[int],
+    tags: Mapping[str, str] | None,
+) -> tuple[dict[str, ChannelBucketCounts], list[Channel]]:
+    """Run one batched compute request for a chunk of channels; return counts and any that errored."""
+    clients = chunk[0]._clients
+    request = scout_compute_api.BatchComputeWithUnitsRequest(
+        requests=[_bucket_request(channel, tags, start, end, len(starts)) for channel in chunk]
+    )
+    response = clients.compute.batch_compute_with_units(clients.auth_header, request)
+
+    # The API contract is one result per requested channel. A length mismatch would otherwise let
+    # zip(strict=False) silently drop the trailing channels: they would land in neither counts nor
+    # errored, never enter source_counts, and be excluded from the whole sync with no warning. Fail
+    # loud instead -- this propagates out of count_channels (no try/except there) and aborts the run.
+    if len(response.results) != len(chunk):
+        raise RuntimeError(
+            f"batch_compute_with_units returned {len(response.results)} result(s) for "
+            f"{len(chunk)} requested channel(s); cannot map results to channels"
+        )
+
+    counts: dict[str, ChannelBucketCounts] = {}
+    errored: list[Channel] = []
+    for channel, result in zip(chunk, response.results):  # lengths verified equal above
+        compute_result = result.compute_result
+        if compute_result is None or compute_result.success is None:
+            errored.append(channel)
+            continue
+        binned = _counts_from_response(compute_result.success, starts, bucket, start)
+        if binned is None:
+            errored.append(channel)
+        else:
+            counts[channel.name] = ChannelBucketCounts(channel.name, binned, precise=True)
+    return counts, errored
+
+
+def _bucket_request(
+    channel: Channel,
+    tags: Mapping[str, str] | None,
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    buckets: int,
+) -> scout_compute_api.ComputeNodeRequest:
+    """Build a bucketed SummarizeSeries request for one channel (tag-filtered)."""
+    return scout_compute_api.ComputeNodeRequest(
+        context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
+        node=scout_compute_api.ComputableNode(
+            series=scout_compute_api.SummarizeSeries(
+                input=channel._to_compute_series(tags=tags),
+                numeric_aggregations={},
+                summarization_strategy=scout_compute_api.SummarizationStrategy(
+                    decimate=scout_compute_api.DecimateStrategy(
+                        buckets=scout_compute_api.DecimateWithBuckets(buckets=buckets)
+                    )
+                ),
+                buckets=buckets,
+            )
+        ),
+        start=_SecondsNanos.from_nanoseconds(start).to_api(),
+        end=_SecondsNanos.from_nanoseconds(end).to_api(),
+    )
+
+
+def _counts_from_response(
+    response: scout_compute_api.ComputeNodeResponse,
+    starts: list[int],
+    bucket: IntegralNanosecondsUTC,
+    start: IntegralNanosecondsUTC,
+) -> dict[int, int] | None:
+    """Bin a single channel's compute response into per-bucket counts, or None if untyped.
+
+    Each bucket is binned by its ``first_point`` -- a real sample inside the bucket, always within
+    ``[start, end)``. This is deliberate: a decimated bucket's own timestamp is the bucket's
+    **exclusive right edge** of a ``window/N``-wide bucket that the backend grid-aligns to the epoch
+    (and at ``buckets=1`` uses ``resolution = window + 1ns``), so it is *not* ``start + (i+1)*bucket``
+    and cannot be shifted back by one ``bucket`` reliably -- doing so underflows below ``start`` for a
+    single bucket and drops the count entirely. Binning by the real first-point timestamp is
+    independent of the backend's bucket width and grid, so it is correct for raw and decimated
+    responses alike (and for the single-bucket case). Any other variant is untyped for our purposes ->
+    None, so the channel falls back to a presence probe.
+    """
+    counts = dict.fromkeys(starts, 0)
+    # response.type is the conjure union's (camelCase) member discriminator.
+    match response.type:
+        case "bucketedNumeric" | "numeric" | "numericPoint":
+            for _timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+                first_point = numeric_bucket.first_point
+                if first_point is None:
+                    continue
+                point_ns = _SecondsNanos.from_api(first_point.timestamp).to_nanoseconds()
+                _add_to_bucket(counts, starts, point_ns, bucket, start, numeric_bucket.count or 0)
+        case "bucketedEnum" | "enum":
+            for enum_bucket in _enum_buckets_from_compute_response(response):
+                total = sum(enum_bucket.frequencies.values())
+                # EnumBucket.first_point.timestamp is already nanoseconds (EnumPoint._from_conjure).
+                _add_to_bucket(counts, starts, enum_bucket.first_point.timestamp, bucket, start, total)
+        case _:
+            return None
+    return counts
+
+
+def _channels_with_data(
+    channels: Sequence[Channel],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    tags: Mapping[str, str] | None,
+    on_advance: Callable[[int], None] | None,
+) -> set[str]:
+    """Return the names of channels that have any data in ``[start, end)`` via ``batchGetSeriesCount``.
+
+    Tag-independent presence probe: a channel counts as present when ``series_count > 0``, regardless
+    of whether the series carries tags. Channels are probed in batches of ``_PRESENCE_PROBE_BATCH``.
+
+    Args:
+        channels: Channels to probe. Assumed to share a single client.
+        start: Start of the window, inclusive (nanoseconds UTC).
+        end: End of the window, exclusive (nanoseconds UTC).
+        tags: Optional datascope tag filter applied to every channel's probe.
+        on_advance: Optional progress hook, advanced by the batch length each step (summing to
+            ``len(channels)`` over the call).
+
+    Returns:
+        The set of channel names confirmed to have data in the window.
+    """
+    if not channels:
+        return set()
+
+    clients = channels[0]._clients
+    api_start = _SecondsNanos.from_nanoseconds(start).to_api()
+    api_end = _SecondsNanos.from_nanoseconds(end).to_api()
+    tag_filters = build_compute_tag_filter(tags)
+
+    with_data: set[str] = set()
+    for batch in batched(channels, _PRESENCE_PROBE_BATCH):
+        batch_list = list(batch)
+        try:
+            channels_with_data, _ = _batch_check_channels_have_data(
+                clients, batch_list, tag_filters, api_start, api_end
+            )
+            with_data.update(ch.name for ch in channels_with_data)
+        except Exception:
+            # Conservative: never drop real data on a probe failure -- treat the whole batch as
+            # present so its buckets are (re)synced rather than silently excluded (mirrors sync.py).
+            logger.warning(
+                "Presence probe failed for a batch of %d channel(s); treating them as present",
+                len(batch_list),
+            )
+            with_data.update(ch.name for ch in batch_list)
+        if on_advance is not None:
+            on_advance(len(batch_list))
+
+    return with_data
+
+
+def _add_to_bucket(
+    counts: dict[int, int],
+    starts: list[int],
+    point_ns: int,
+    bucket: IntegralNanosecondsUTC,
+    start: IntegralNanosecondsUTC,
+    amount: int,
+) -> None:
+    index = (point_ns - int(start)) // int(bucket)
+    if 0 <= index < len(starts):
+        counts[starts[index]] += amount
