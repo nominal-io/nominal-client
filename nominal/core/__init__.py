@@ -33,6 +33,7 @@ from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
+from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.core.video_file import VideoFile
 from nominal.core.workbook import Workbook, WorkbookType
 from nominal.core.workbook_template import WorkbookTemplate
@@ -84,6 +85,7 @@ __all__ = [
     "UnitLike",
     "User",
     "Video",
+    "VideoDatasetFile",
     "VideoFile",
     "wait_for_files_to_ingest",
     "Workbook",
