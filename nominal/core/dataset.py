@@ -620,6 +620,73 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         return self._handle_video_ingest_response(response)
 
+    def add_mcap_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        topic: str,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from an MCAP file to this dataset as a channel.
+
+        Timestamps are obtained from the selected `topic`.
+        """
+        path = Path(path)
+        file_type = FileType(*FileTypes.MCAP)
+        with open(path, "rb") as mcap:
+            return self.add_mcap_video_from_io(
+                mcap,
+                path_upload_name(path, file_type),
+                channel=channel,
+                topic=topic,
+                file_type=file_type,
+                tags=tags,
+                overwrite_overlapping=overwrite_overlapping,
+            )
+
+    def add_mcap_video_from_io(
+        self,
+        mcap: BinaryIO,
+        name: str,
+        *,
+        channel: str,
+        topic: str,
+        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from a binary MCAP file-like object to this dataset as a channel."""
+        if isinstance(mcap, TextIOBase):
+            raise TypeError(f"mcap {mcap!r} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+        timestamp_manifest = build_video_timestamp_manifest(
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            mcap_topic=topic,
+            header_provider=self._clients.header_provider,
+        )
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            mcap,
+            name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
+        )
+        request = ingest_api.IngestRequest(
+            options=build_video_ingest_options(
+                self.rid, channel, tags, s3_path, timestamp_manifest, overwrite_overlapping
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_video_ingest_response(response)
+
     def add_ardupilot_dataflash(
         self,
         path: PathLike,

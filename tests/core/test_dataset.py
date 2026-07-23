@@ -195,3 +195,28 @@ def test_add_video_from_io_submits_video_v2_and_returns_handler_result():
     ds._clients.ingest.ingest.assert_called_once()
     ds._handle_video_ingest_response.assert_called_once_with(ds._clients.ingest.ingest.return_value)
     assert result is ds._handle_video_ingest_response.return_value
+
+
+def test_add_mcap_video_from_io_rejects_text_stream():
+    ds = MagicMock()
+    with pytest.raises(TypeError, match="binary mode"):
+        Dataset.add_mcap_video_from_io(ds, io.StringIO("x"), "v.mcap", channel="c", topic="/t")
+
+
+def test_add_mcap_video_from_io_builds_mcap_manifest_and_submits():
+    ds = MagicMock()
+    ds.rid = "ds-rid"
+    with (
+        patch("nominal.core.dataset.build_video_timestamp_manifest", return_value="MANIFEST") as build_manifest,
+        patch("nominal.core.dataset.build_video_ingest_options", return_value="OPTIONS") as build_opts,
+        patch("nominal.core.dataset.upload_multipart_io", return_value="s3://p"),
+    ):
+        result = Dataset.add_mcap_video_from_io(
+            ds, io.BytesIO(b"data"), "rec.mcap", channel="camera/front", topic="/camera/front/h264"
+        )
+
+    _, kwargs = build_manifest.call_args
+    assert kwargs["mcap_topic"] == "/camera/front/h264"
+    build_opts.assert_called_once_with("ds-rid", "camera/front", None, "s3://p", "MANIFEST", False)
+    ds._clients.ingest.ingest.assert_called_once()
+    assert result is ds._handle_video_ingest_response.return_value
