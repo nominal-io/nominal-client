@@ -25,6 +25,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -78,7 +79,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
-        return f"{self._clients.app_base_url}/runs/{self.run_number}"
+        return run_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_run_api.Run:
         return self._clients.run.get_run(self._clients.auth_header, self.rid)

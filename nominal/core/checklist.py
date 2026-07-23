@@ -17,6 +17,7 @@ from typing_extensions import Self
 from nominal.core import run as core_run
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
 from nominal.ts import _to_api_duration
@@ -165,9 +166,9 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this checklist in the Nominal app"""
-        return f"{self._clients.app_base_url}/checklists/{self.rid}"
+        return checklist_url(self._clients, self.rid)
 
     def preview_for_run_url(self, run: core_run.Run | str) -> str:
         """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
         run_rid = rid_from_instance_or_string(run)
-        return f"{self.nominal_url}?previewRunRid={run_rid}"
+        return checklist_preview_url(self._clients, self.rid, run_rid)

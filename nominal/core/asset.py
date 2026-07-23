@@ -30,6 +30,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -81,7 +82,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
-        return f"{self._clients.app_base_url}/assets/{self.rid}"
+        return asset_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_asset_api.Asset:
         response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])

@@ -9,6 +9,7 @@ from nominal_api import ingest_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import ingestion_job_url
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.dataset_file import as_files_ingested as _as_files_ingested
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -134,7 +135,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this ingest job in the Nominal app."""
-        return f"{self._clients.app_base_url}/ingestion/{self.rid}"
+        return ingestion_job_url(self._clients, self.rid)
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, job: ingest_api.IngestJob) -> Self:

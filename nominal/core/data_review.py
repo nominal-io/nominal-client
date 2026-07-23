@@ -21,6 +21,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event
@@ -130,14 +131,12 @@ class DataReview(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklistExecution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+        return data_review_url(self._clients, self.run_rid, self.rid)
 
     @property
     def events_url(self) -> str:
         """Returns a link to the page for events for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
+        return data_review_events_url(self._clients, self.run_rid, self.rid)
 
 
 @dataclass(frozen=True)
