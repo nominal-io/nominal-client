@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import pathlib
 from concurrent.futures import Future, ThreadPoolExecutor
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nominal.core._utils.multipart_uploader import MultipartUploader, _FileUpload, _PartBounds, _PlannedUpload
 from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
+from nominal.experimental.ingest._ingest_builder import _Upload, _upload_all
+from nominal.protos.ingest.v2 import file_ingest_pb2, ingest_service_pb2
 
 
 def _plan(total_size: int, part_size: int) -> _PlannedUpload:
@@ -248,3 +250,56 @@ def test_close_shuts_down_pool_and_closes_session(tmp_path) -> None:
     up.close()
     assert up._closed is True
     up._session.close.assert_called_once()
+
+
+def _make_upload(path: pathlib.Path) -> _Upload:
+    item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem())
+    return _Upload(path=path, file_type=FileTypes.CSV, target=item.file.source)
+
+
+class _FakeUploader:
+    """Stands in for MultipartUploader: enqueue_file returns an immediately-resolved future."""
+
+    def __init__(self, results: dict[str, object]) -> None:
+        self._results = results  # path name -> location str OR Exception
+
+    def enqueue_file(self, path, *, file_type=None, name=None, part_size=None):
+        fut: "Future[str]" = Future()
+        outcome = self._results[path.name]
+        if isinstance(outcome, Exception):
+            fut.set_exception(outcome)
+        else:
+            fut.set_result(outcome)
+        return fut
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+
+def test_upload_all_fills_targets(tmp_path) -> None:
+    a = tmp_path / "a.csv"
+    b = tmp_path / "b.csv"
+    a.write_bytes(b"a")
+    b.write_bytes(b"b")
+    uploads = [_make_upload(a), _make_upload(b)]
+    fake = _FakeUploader({"a.csv": "s3://bucket/a", "b.csv": "s3://bucket/b"})
+
+    with patch("nominal.experimental.ingest._ingest_builder.MultipartUploader.create", return_value=fake):
+        _upload_all(uploads, None, MagicMock())
+
+    assert uploads[0].target.s3.path == "s3://bucket/a"
+    assert uploads[1].target.s3.path == "s3://bucket/b"
+
+
+def test_upload_all_raises_on_failure(tmp_path) -> None:
+    a = tmp_path / "a.csv"
+    a.write_bytes(b"a")
+    uploads = [_make_upload(a)]
+    fake = _FakeUploader({"a.csv": RuntimeError("upload failed")})
+
+    with patch("nominal.experimental.ingest._ingest_builder.MultipartUploader.create", return_value=fake):
+        with pytest.raises(RuntimeError, match="upload failed"):
+            _upload_all(uploads, None, MagicMock())

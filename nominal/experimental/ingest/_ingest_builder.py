@@ -13,7 +13,7 @@ TODO(drake): add ``add_video`` / ``add_point_cloud`` once the backend accepts th
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence, overload
@@ -25,7 +25,7 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.multipart import upload_multipart_file
+from nominal.core._utils.multipart_uploader import MultipartUploader
 from nominal.core.filetype import FileType, FileTypes
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -81,28 +81,24 @@ def _upload_all(
     uploads: Sequence[_Upload],
     workspace_rid: str | None,
     clients: ClientsBunch,
-) -> list[common_pb2.IngestSource]:
-    """Upload every file in parallel and return an `IngestSource` per upload, in input order.
+) -> None:
+    """Upload every file in parallel, filling each upload's `target` in place.
 
-    Reassembling with `executor.map` preserves order and re-raises the first upload error when the
-    results are materialized, so a failure aborts before any ingest is triggered (atomic).
+    Atomic: the first upload failure raises before any ingest is triggered. Targets filled
+    before that point are irrelevant because nothing is sent and the builder is single-use.
     """
     if not uploads:
-        return []
-
-    def _upload(upload: _Upload) -> common_pb2.IngestSource:
-        s3_path = upload_multipart_file(
-            clients.auth_header,
-            workspace_rid,
-            upload.path,
-            clients.upload,
-            file_type=upload.file_type,
-            header_provider=clients.header_provider,
-        )
-        return common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=s3_path))
-
-    with ThreadPoolExecutor(max_workers=min(8, len(uploads))) as executor:
-        return list(executor.map(_upload, uploads))
+        return
+    with MultipartUploader.create(
+        upload_client=clients.upload,
+        auth_header=clients.auth_header,
+        workspace_rid=workspace_rid,
+        header_provider=clients.header_provider,
+    ) as up:
+        futures = {up.enqueue_file(u.path, file_type=u.file_type): u for u in uploads}
+        for fut in as_completed(futures):
+            upload = futures[fut]
+            upload.target.CopyFrom(common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=fut.result())))
 
 
 class IngestBuilder:
@@ -525,9 +521,7 @@ class IngestBuilder:
         workspace_rid = clients.resolve_default_workspace_rid()
 
         uploads = [upload for pending in self._items for upload in pending.uploads]
-        sources = _upload_all(uploads, workspace_rid, clients)
-        for upload, source in zip(uploads, sources):
-            upload.target.CopyFrom(source)
+        _upload_all(uploads, workspace_rid, clients)
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
             items=[pending.item for pending in self._items],
