@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import pathlib
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core._utils.multipart_uploader import _FileUpload, _PartBounds, _PlannedUpload
+from nominal.core._utils.multipart_uploader import MultipartUploader, _FileUpload, _PartBounds, _PlannedUpload
+from nominal.core.exceptions import NominalMultipartUploadFailed
+from nominal.core.filetype import FileTypes
 
 
 def _plan(total_size: int, part_size: int) -> _PlannedUpload:
@@ -128,3 +130,121 @@ def test_coordinator_is_settle_once() -> None:
 
     assert complete.call_count == 0
     assert abort.call_count == 1
+
+
+class _FakeUploadService:
+    """Minimal fake of upload_api.UploadService for the whole multipart lifecycle.
+
+    The object key is the request filename, so results stay deterministic even though the
+    initiate calls run concurrently on the pool (a counter would race).
+    """
+
+    def __init__(self, *, fail_on_key: str | None = None, fail_on_initiate: bool = False) -> None:
+        self._verify = False
+        self._fail_on_key = fail_on_key
+        self._fail_on_initiate = fail_on_initiate
+        self.aborted: list[str] = []
+
+    def initiate_multipart_upload(self, auth_header, request):
+        if self._fail_on_initiate:
+            raise RuntimeError("initiate failed")
+        return MagicMock(key=request.filename, upload_id=f"uid-{request.filename}")
+
+    def sign_part(self, auth_header, key, part, upload_id):
+        if self._fail_on_key is not None and key == self._fail_on_key:
+            raise RuntimeError(f"sign failed for {key}")
+        return MagicMock(url=f"https://s3/{key}/{part}", headers={})
+
+    def list_parts(self, auth_header, key, upload_id):
+        return [MagicMock(etag="etag", part_number=1)]
+
+    def complete_multipart_upload(self, auth_header, key, upload_id, parts):
+        return MagicMock(location=f"s3://bucket/{key}")
+
+    def abort_multipart_upload(self, auth_header, key, upload_id):
+        self.aborted.append(key)
+
+
+def _uploader(client: _FakeUploadService) -> MultipartUploader:
+    session = MagicMock(spec=["put", "close"])
+    put_response = MagicMock()
+    put_response.status_code = 200
+    session.put.return_value = put_response
+    return MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+    )
+
+
+def test_enqueue_file_resolves_to_location(tmp_path) -> None:
+    f = tmp_path / "data.csv"  # name -> "data", safe_filename -> "data.csv", key -> "data.csv"
+    f.write_bytes(b"0123456789")
+    client = _FakeUploadService()
+    with _uploader(client) as up:
+        fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4)
+        assert fut.result(timeout=5) == "s3://bucket/data.csv"
+
+
+def test_initiate_failure_settles_future(tmp_path) -> None:
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"data")
+    client = _FakeUploadService(fail_on_initiate=True)
+    with _uploader(client) as up:
+        fut = up.enqueue_file(f, file_type=FileTypes.CSV)
+        with pytest.raises(RuntimeError, match="initiate failed"):
+            fut.result(timeout=5)
+    assert client.aborted == []  # no upload_id was ever obtained -> nothing to abort
+
+
+def test_enqueue_file_reads_correct_bytes_per_part(tmp_path) -> None:
+    f = tmp_path / "data.bin"
+    f.write_bytes(b"ABCDEFGHIJKL")  # 12 bytes, part_size 5 -> 5,5,2
+    client = _FakeUploadService()
+    up = _uploader(client)
+    session = up._session
+    try:
+        up.enqueue_file(f, file_type=FileTypes.CSV, part_size=5).result(timeout=5)
+    finally:
+        up.close()
+
+    sent = sorted(kwargs["data"] for _, kwargs in session.put.call_args_list)
+    assert sent == sorted([b"ABCDE", b"FGHIJ", b"KL"])
+
+
+def test_one_file_fails_others_still_resolve(tmp_path) -> None:
+    good = tmp_path / "good.csv"  # key -> "good.csv"
+    good.write_bytes(b"good-bytes")
+    bad = tmp_path / "bad.csv"  # key -> "bad.csv"; signing this key fails
+    bad.write_bytes(b"bad-bytes")
+    client = _FakeUploadService(fail_on_key="bad.csv")
+    with _uploader(client) as up:
+        good_fut = up.enqueue_file(good, file_type=FileTypes.CSV, part_size=4)
+        bad_fut = up.enqueue_file(bad, file_type=FileTypes.CSV, part_size=4)
+        assert good_fut.result(timeout=5) == "s3://bucket/good.csv"
+        # _sign_and_put_part (Task 1) wraps exhausted-retry failures in NominalMultipartUploadFailed
+        # (an ExceptionGroup subclass), not a bare RuntimeError -- see task-4-report.md Concerns.
+        with pytest.raises(NominalMultipartUploadFailed):
+            bad_fut.result(timeout=5)
+    assert client.aborted == ["bad.csv"]
+
+
+def test_enqueue_missing_file_raises_synchronously(tmp_path) -> None:
+    client = _FakeUploadService()
+    with _uploader(client) as up:
+        with pytest.raises(FileNotFoundError):
+            up.enqueue_file(tmp_path / "nope.csv", file_type=FileTypes.CSV)
+
+
+def test_close_shuts_down_pool_and_closes_session(tmp_path) -> None:
+    client = _FakeUploadService()
+    up = _uploader(client)
+    up.close()
+    assert up._closed is True
+    up._session.close.assert_called_once()
