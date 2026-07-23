@@ -223,9 +223,7 @@ class MultipartUploader:
         validate_upload_filename(name)
         total_size = path.stat().st_size  # raises FileNotFoundError synchronously if missing
 
-        pending = _PendingUpload(
-            path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size
-        )
+        pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
         future: Future[str] = Future()
         self._pool.submit(self._run_upload, pending, future)
         return future

@@ -14,9 +14,7 @@ from nominal.protos.ingest.v2 import file_ingest_pb2, ingest_service_pb2
 
 
 def _plan(total_size: int, part_size: int) -> _PlannedUpload:
-    return _PlannedUpload(
-        path=pathlib.Path("x"), key="k", upload_id="u", total_size=total_size, part_size=part_size
-    )
+    return _PlannedUpload(path=pathlib.Path("x"), key="k", upload_id="u", total_size=total_size, part_size=part_size)
 
 
 def test_parts_partial_final_chunk() -> None:
