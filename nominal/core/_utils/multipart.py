@@ -47,6 +47,71 @@ def _wrap_multipart_retry_exception(
     return wrapped
 
 
+def _sign_and_put_part(
+    upload_client: upload_api.UploadService,
+    multipart_session: requests.Session,
+    auth_header: str,
+    key: str,
+    upload_id: str,
+    part: int,
+    data: bytes,
+    num_retries: int = 3,
+    timeout: float | None = None,
+) -> requests.Response:
+    """Sign and PUT a single in-memory part to S3, retrying transient failures.
+
+    The caller sources `data` however it likes (a queue, a positioned read, ...).
+    """
+    attempt_errors: list[NominalMultipartUploadError] = []
+    for attempt in range(num_retries):
+        try:
+            log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
+
+            logger.debug("Signing part %d for upload", part, extra=log_extras)
+            sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+            logger.debug(
+                "Successfully signed part %d for upload",
+                part,
+                extra={"response.url": sign_response.url, **log_extras},
+            )
+
+            logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
+            put_response = multipart_session.put(
+                sign_response.url,
+                data=data,
+                headers=sign_response.headers,
+                verify=upload_client._verify,
+                timeout=timeout,
+            )
+            put_response.raise_for_status()
+            logger.debug(
+                "Finished pushing part %d for multipart upload with status %d",
+                part,
+                put_response.status_code,
+                extra={"response.url": put_response.url, **log_extras},
+            )
+            return put_response
+        except Exception as ex:
+            logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
+            attempt_errors.append(
+                _wrap_multipart_retry_exception(
+                    ex=ex,
+                    key=key,
+                    part=part,
+                    upload_id=upload_id,
+                    attempt=attempt + 1,
+                )
+            )
+
+    if attempt_errors:
+        raise NominalMultipartUploadFailed(
+            f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part} after {num_retries} attempts",
+            attempt_errors,
+        )
+
+    raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
+
+
 def _sign_and_upload_part_job(
     upload_client: upload_api.UploadService,
     multipart_session: requests.Session,
@@ -58,58 +123,40 @@ def _sign_and_upload_part_job(
     num_retries: int = 3,
 ) -> requests.Response:
     data = q.get()
-
     try:
-        attempt_errors: list[NominalMultipartUploadError] = []
-        for attempt in range(num_retries):
-            try:
-                log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
-
-                logger.debug("Signing part %d for upload", part, extra=log_extras)
-                sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
-                logger.debug(
-                    "Successfully signed part %d for upload",
-                    part,
-                    extra={"response.url": sign_response.url, **log_extras},
-                )
-
-                logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
-                put_response = multipart_session.put(
-                    sign_response.url,
-                    data=data,
-                    headers=sign_response.headers,
-                    verify=upload_client._verify,
-                )
-                put_response.raise_for_status()
-                logger.debug(
-                    "Finished pushing part %d for multipart upload with status %d",
-                    part,
-                    put_response.status_code,
-                    extra={"response.url": put_response.url, **log_extras},
-                )
-                return put_response
-            except Exception as ex:
-                logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
-                attempt_errors.append(
-                    _wrap_multipart_retry_exception(
-                        ex=ex,
-                        key=key,
-                        part=part,
-                        upload_id=upload_id,
-                        attempt=attempt + 1,
-                    )
-                )
-
-        if attempt_errors:
-            raise NominalMultipartUploadFailed(
-                f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part} "
-                f"after {num_retries} attempts",
-                attempt_errors,
-            )
-
-        raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
+        return _sign_and_put_part(
+            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries
+        )
     finally:
         q.task_done()
+
+
+def _initiate_multipart_upload(
+    upload_client: upload_api.UploadService,
+    auth_header: str,
+    filename: str,
+    mimetype: str,
+    workspace_rid: str | None,
+) -> tuple[str, str]:
+    """Initiate a multipart upload. Returns (key, upload_id)."""
+    request = ingest_api.InitiateMultipartUploadRequest(filename=filename, filetype=mimetype, workspace=workspace_rid)
+    response = upload_client.initiate_multipart_upload(auth_header, request)
+    return response.key, response.upload_id
+
+
+def _complete_multipart_upload(
+    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str
+) -> str:
+    """List parts and complete the upload. Returns the object location, or raises if absent."""
+    parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
+    parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
+    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
+    if response.location is None:
+        raise NominalMultipartUploadFailed(
+            "completing multipart upload failed: no location on response",
+            [RuntimeError("Multipart upload completion returned no location")],
+        )
+    return response.location
 
 
 def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
@@ -172,11 +219,7 @@ def put_multipart_upload(
 
     q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    initiate_request = ingest_api.InitiateMultipartUploadRequest(
-        filename=filename, filetype=mimetype, workspace=workspace_rid
-    )
-    initiate_response = upload_client.initiate_multipart_upload(auth_header, initiate_request)
-    key, upload_id = initiate_response.key, initiate_response.upload_id
+    key, upload_id = _initiate_multipart_upload(upload_client, auth_header, filename, mimetype, workspace_rid)
 
     # One session shared across all part jobs for this upload.
     session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
@@ -210,15 +253,7 @@ def put_multipart_upload(
         q.join()
 
         # mark the upload as completed
-        parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
-        parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
-        complete_response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
-        if complete_response.location is None:
-            raise NominalMultipartUploadFailed(
-                "completing multipart upload failed: no location on response",
-                [RuntimeError("Multipart upload completion returned no location")],
-            )
-        return complete_response.location
+        return _complete_multipart_upload(upload_client, auth_header, key, upload_id)
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)
         raise e
