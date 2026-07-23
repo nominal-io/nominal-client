@@ -27,6 +27,7 @@ from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.ts import (
     IntegralNanosecondsUTC,
     _AnyTimestampType,
@@ -129,6 +130,31 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 response.details.dataset.dataset_file_id,
             ),
         )
+
+    def _handle_video_ingest_response(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
+        details = response.details.dataset
+        if details is not None and details.dataset_file_id is not None:
+            raw = self._clients.catalog.get_dataset_file(
+                self._clients.auth_header, details.dataset_rid, details.dataset_file_id
+            )
+            file = _dataset_file_from_conjure(self._clients, raw)
+            if not isinstance(file, VideoDatasetFile):
+                raise NominalIngestError(f"ingested file {details.dataset_file_id!r} is not a video dataset file")
+            return file
+
+        # Backend compatibility: VideoOptsV2 may return a dataset RID without a dataset-file id.
+        # Fall back to the ingest job and require exactly one produced video file.
+        if response.ingest_job_rid is None:
+            raise NominalIngestError("video ingest returned neither a dataset-file id nor an ingest job to track")
+        job_conjure = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, response.ingest_job_rid)
+        job = IngestionJob._from_conjure(self._clients, job_conjure)
+        video_files = [f for f in job.dataset_files() if isinstance(f, VideoDatasetFile)]
+        if len(video_files) != 1:
+            raise NominalIngestError(
+                f"expected exactly one video file from ingest job {response.ingest_job_rid!r}, "
+                f"found {len(video_files)}"
+            )
+        return video_files[0]
 
     def add_tabular_data(
         self,
