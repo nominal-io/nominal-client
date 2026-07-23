@@ -306,6 +306,23 @@ def _parse_common_file_fields(
     )
 
 
+def _dataset_file_from_conjure(
+    clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile
+) -> DatasetFile:
+    """Build the correct DatasetFile subtype for a Catalog row.
+
+    Returns a VideoDatasetFile when the row carries video metadata, otherwise a plain DatasetFile.
+    This is the only place that knows about both types; the class factories stay type-specific.
+    """
+    # Local import avoids an import cycle (video_dataset_file imports this module).
+    from nominal.core.video_dataset_file import VideoDatasetFile
+
+    metadata = dataset_file.metadata
+    if metadata is not None and metadata.video is not None:
+        return VideoDatasetFile._from_conjure(clients, dataset_file)
+    return DatasetFile._from_conjure(clients, dataset_file)
+
+
 # TODO(drake): rename to something more dataset-file specific, expose in nominal.core __init__.py
 class IngestStatus(Enum):
     SUCCESS = "SUCCESS"

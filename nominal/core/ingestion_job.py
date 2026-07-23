@@ -9,7 +9,7 @@ from nominal_api import ingest_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
-from nominal.core.dataset_file import DatasetFile
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.dataset_file import as_files_ingested as _as_files_ingested
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -170,7 +170,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         while True:
             page = self._clients.catalog.get_dataset_files_for_job(self._clients.auth_header, self.rid, next_page_token)
             for dataset_file in page.files:
-                yield DatasetFile._from_conjure(self._clients, dataset_file)
+                yield _dataset_file_from_conjure(self._clients, dataset_file)
             if page.next_page is None:
                 break
             next_page_token = page.next_page

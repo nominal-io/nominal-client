@@ -21,7 +21,7 @@ from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
-from nominal.core.dataset_file import DatasetFile
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.datasource import DataSource
 from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
@@ -646,7 +646,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         if successful_only:
             files = filter(lambda f: f.ingest_status.type == "success", files)
         for file in files:
-            yield DatasetFile._from_conjure(self._clients, file)
+            yield _dataset_file_from_conjure(self._clients, file)
 
     def get_dataset_file(self, dataset_file_id: str) -> DatasetFile:
         """Retrieve the given dataset file by ID
@@ -662,7 +662,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """
         try:
             raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.rid, dataset_file_id)
-            return DatasetFile._from_conjure(self._clients, raw_file)
+            return _dataset_file_from_conjure(self._clients, raw_file)
         except Exception as ex:
             raise FileNotFoundError(
                 f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
@@ -1043,7 +1043,7 @@ def _iter_search_dataset_files(
     query: scout_catalog.SearchDatasetFilesQuery,
 ) -> Iterable[DatasetFile]:
     for raw_file in search_dataset_files_paginated(clients.catalog, clients.auth_header, dataset_rid, query):
-        yield DatasetFile._from_conjure(clients, raw_file)
+        yield _dataset_file_from_conjure(clients, raw_file)
 
 
 def _search_dataset_files(

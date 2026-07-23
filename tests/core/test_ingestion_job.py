@@ -60,7 +60,7 @@ def test_dataset_files_paginates_and_maps(mock_clients: MagicMock) -> None:
 
     sentinels = {raw_file_1: "f1", raw_file_2: "f2", raw_file_3: "f3"}
     with patch(
-        "nominal.core.ingestion_job.DatasetFile._from_conjure",
+        "nominal.core.ingestion_job._dataset_file_from_conjure",
         side_effect=lambda _clients, raw_file: sentinels[raw_file],
     ):
         result = job.dataset_files()

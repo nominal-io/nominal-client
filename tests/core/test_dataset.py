@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from typing import Any, cast
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -85,3 +85,19 @@ def test_write_logs_less_than_batch(mock_dataset: Dataset):
     assert len(endpoint.call_args_list) == 1
     _auth, _rid, req = endpoint.call_args_list[0][0]
     assert len(req.logs) == 3
+
+
+def test_list_files_specializes_video_rows():
+    ds = MagicMock()
+    video_row = MagicMock(name="video_row")
+    plain_row = MagicMock(name="plain_row")
+    # `ds` is a bare MagicMock (not a real Dataset instance), so patch the return value directly
+    # on its auto-vivified `_list_files` attribute rather than on the class -- patching
+    # `Dataset._list_files` has no effect here since `ds._list_files` never resolves to it.
+    ds._list_files.return_value = [video_row, plain_row]
+    with patch(
+        "nominal.core.dataset._dataset_file_from_conjure",
+        side_effect=lambda clients, row: "VIDEO" if row is video_row else "PLAIN",
+    ):
+        result = list(Dataset.list_files(ds, successful_only=False))
+    assert result == ["VIDEO", "PLAIN"]

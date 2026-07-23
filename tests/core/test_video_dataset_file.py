@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from nominal.core.dataset_file import DatasetFile, IngestStatus
+from nominal.core.dataset_file import DatasetFile, IngestStatus, _dataset_file_from_conjure
 from nominal.core.video_dataset_file import VideoDatasetFile
 
 
@@ -75,3 +75,33 @@ def test_timestamp_manifest_excluded_from_repr_and_equality():
 
     assert a == b  # differ only by the excluded manifest
     assert "timestamp_manifest" not in repr(a)
+
+
+def test_dispatch_returns_video_subtype_for_video_metadata():
+    clients = MagicMock()
+    row = MagicMock()
+    row.metadata.video = MagicMock()  # video arm present
+    with patch.object(VideoDatasetFile, "_from_conjure", return_value="video-file") as video_factory:
+        result = _dataset_file_from_conjure(clients, row)
+    assert result == "video-file"
+    video_factory.assert_called_once_with(clients, row)
+
+
+def test_dispatch_returns_base_type_when_no_video_metadata():
+    clients = MagicMock()
+    row = MagicMock()
+    row.metadata = None  # no metadata at all
+    with patch.object(DatasetFile, "_from_conjure", return_value="base-file") as base_factory:
+        result = _dataset_file_from_conjure(clients, row)
+    assert result == "base-file"
+    base_factory.assert_called_once_with(clients, row)
+
+
+def test_dispatch_returns_base_type_when_metadata_present_without_video_arm():
+    clients = MagicMock()
+    row = MagicMock()
+    row.metadata.video = None  # metadata present, but not a video row
+    with patch.object(DatasetFile, "_from_conjure", return_value="base-file") as base_factory:
+        result = _dataset_file_from_conjure(clients, row)
+    assert result == "base-file"
+    base_factory.assert_called_once_with(clients, row)
