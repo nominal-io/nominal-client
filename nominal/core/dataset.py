@@ -19,6 +19,7 @@ from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
+from nominal.core._video_ingest import build_video_ingest_options, build_video_timestamp_manifest
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
@@ -482,6 +483,142 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
     # Backward compatibility
     add_mcap_to_dataset_from_io = add_mcap_from_io
+
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload a video file to this dataset as a channel.
+
+        Exactly one of `start` (a single starting timestamp) or `frame_timestamps`
+        (per-frame absolute nanosecond timestamps) must be provided.
+        """
+        path = Path(path)
+        file_type = FileType.from_video(path)
+        with open(path, "rb") as video:
+            if start is not None:
+                return self.add_video_from_io(
+                    video,
+                    path_upload_name(path, file_type),
+                    channel=channel,
+                    start=start,
+                    file_type=file_type,
+                    tags=tags,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            elif frame_timestamps is not None:
+                return self.add_video_from_io(
+                    video,
+                    path_upload_name(path, file_type),
+                    channel=channel,
+                    frame_timestamps=frame_timestamps,
+                    file_type=file_type,
+                    tags=tags,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            else:  # This should never be reached due to the validation in `add_video_from_io`
+                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        channel: str,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from a binary file-like object to this dataset as a channel."""
+        if isinstance(video, TextIOBase):
+            raise TypeError(f"video {video!r} must be open in binary mode, rather than text mode")
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+
+        file_type = FileType(*file_type)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+        timestamp_manifest = build_video_timestamp_manifest(
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            start=start,
+            frame_timestamps=frame_timestamps,
+            header_provider=self._clients.header_provider,
+        )
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            video,
+            name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
+        )
+        request = ingest_api.IngestRequest(
+            options=build_video_ingest_options(
+                self.rid, channel, tags, s3_path, timestamp_manifest, overwrite_overlapping
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_video_ingest_response(response)
 
     def add_ardupilot_dataflash(
         self,

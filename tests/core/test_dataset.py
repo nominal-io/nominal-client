@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import MagicMock, Mock, patch
@@ -157,3 +158,40 @@ def test_handle_video_response_no_id_and_no_job_raises():
     ds = MagicMock()
     with pytest.raises(NominalIngestError, match="neither a dataset-file id nor an ingest job"):
         Dataset._handle_video_ingest_response(ds, _video_response(None, ingest_job_rid=None))
+
+
+def test_add_video_from_io_requires_a_timestamp_mode():
+    ds = MagicMock()
+    with pytest.raises(ValueError, match="Either 'start' or 'frame_timestamps'"):
+        Dataset.add_video_from_io(ds, io.BytesIO(b""), "v.mp4", channel="c")
+
+
+def test_add_video_from_io_rejects_both_timestamp_modes():
+    ds = MagicMock()
+    with pytest.raises(ValueError, match="Only one of 'start' or 'frame_timestamps'"):
+        Dataset.add_video_from_io(ds, io.BytesIO(b""), "v.mp4", channel="c", start=0, frame_timestamps=[1])
+
+
+def test_add_video_from_io_rejects_text_stream():
+    ds = MagicMock()
+    with pytest.raises(TypeError, match="binary mode"):
+        Dataset.add_video_from_io(ds, io.StringIO("x"), "v.mp4", channel="c", start=0)
+
+
+def test_add_video_from_io_submits_video_v2_and_returns_handler_result():
+    ds = MagicMock()
+    ds.rid = "ds-rid"
+    with (
+        patch("nominal.core.dataset.build_video_timestamp_manifest", return_value="MANIFEST") as build_manifest,
+        patch("nominal.core.dataset.build_video_ingest_options", return_value="OPTIONS") as build_opts,
+        patch("nominal.core.dataset.upload_multipart_io", return_value="s3://p"),
+    ):
+        result = Dataset.add_video_from_io(
+            ds, io.BytesIO(b"data"), "front.mp4", channel="camera/front", start=123, tags={"v": "a"}
+        )
+
+    build_manifest.assert_called_once()
+    build_opts.assert_called_once_with("ds-rid", "camera/front", {"v": "a"}, "s3://p", "MANIFEST", False)
+    ds._clients.ingest.ingest.assert_called_once()
+    ds._handle_video_ingest_response.assert_called_once_with(ds._clients.ingest.ingest.return_value)
+    assert result is ds._handle_video_ingest_response.return_value
