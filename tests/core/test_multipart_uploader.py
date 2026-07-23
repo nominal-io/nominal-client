@@ -301,3 +301,68 @@ def test_upload_all_raises_on_failure(tmp_path) -> None:
     with patch("nominal.experimental.ingest._ingest_builder.MultipartUploader.create", return_value=fake):
         with pytest.raises(RuntimeError, match="upload failed"):
             _upload_all(uploads, None, MagicMock())
+
+
+def test_create_smoke(tmp_path) -> None:
+    session = MagicMock(spec=["put", "close"])
+    put_response = MagicMock()
+    put_response.status_code = 200
+    session.put.return_value = put_response
+
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    client = _FakeUploadService()
+
+    with patch("nominal.core._utils.multipart_uploader.create_multipart_request_session", return_value=session):
+        # max_workers=1 avoids depending on cpu_count() for a deterministic test.
+        with MultipartUploader.create(
+            upload_client=client, auth_header="auth", workspace_rid=None, max_workers=1
+        ) as up:
+            fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4)
+            assert fut.result(timeout=5) == "s3://bucket/data.csv"
+
+
+def test_empty_file_uploads_single_zero_byte_part(tmp_path) -> None:
+    f = tmp_path / "empty.csv"
+    f.write_bytes(b"")
+    client = _FakeUploadService()
+    up = _uploader(client)
+    session = up._session
+    try:
+        fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=5)
+        assert fut.result(timeout=5) == "s3://bucket/empty.csv"
+    finally:
+        up.close()
+
+    session.put.assert_called_once()
+    _, kwargs = session.put.call_args
+    assert kwargs["data"] == b""
+
+
+def test_more_files_than_workers_no_deadlock(tmp_path) -> None:
+    # Same shape as `_uploader(client)`, but a single-worker pool: `_run_upload` submits part
+    # tasks and returns without ever waiting on a pool future, so this must not deadlock even
+    # when many files are enqueued against one worker.
+    client = _FakeUploadService()
+    session = MagicMock(spec=["put", "close"])
+    put_response = MagicMock()
+    put_response.status_code = 200
+    session.put.return_value = put_response
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=1),
+        _closed=False,
+    )
+    with up:
+        files = [tmp_path / f"file{i}.csv" for i in range(5)]
+        for f in files:
+            f.write_bytes(b"0123456789")
+        futures = [up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4) for f in files]
+        for f, fut in zip(files, futures):
+            assert fut.result(timeout=10) == f"s3://bucket/{f.name}"
