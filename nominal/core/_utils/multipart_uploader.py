@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import math
-import multiprocessing
 import pathlib
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -18,6 +17,7 @@ from typing_extensions import Self
 from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.multipart import (
     DEFAULT_CHUNK_SIZE,
+    DEFAULT_NUM_WORKERS,
     _abort,
     _complete_multipart_upload,
     _initiate_multipart_upload,
@@ -169,8 +169,7 @@ class MultipartUploader:
         header_provider: HeaderProvider | None = None,
     ) -> Self:
         if max_workers is None:
-            max_workers = multiprocessing.cpu_count()
-            logger.info("Inferring core count as %d", max_workers)
+            max_workers = DEFAULT_NUM_WORKERS
         session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(

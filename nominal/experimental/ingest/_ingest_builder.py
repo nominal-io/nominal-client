@@ -94,6 +94,7 @@ def _upload_all(
         auth_header=clients.auth_header,
         workspace_rid=workspace_rid,
         header_provider=clients.header_provider,
+        max_workers=20,
     ) as up:
         futures = {up.enqueue_file(u.path, file_type=u.file_type): u for u in uploads}
         for fut in as_completed(futures):

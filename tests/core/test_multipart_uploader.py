@@ -314,7 +314,7 @@ def test_create_smoke(tmp_path) -> None:
     client = _FakeUploadService()
 
     with patch("nominal.core._utils.multipart_uploader.create_multipart_request_session", return_value=session):
-        # max_workers=1 avoids depending on cpu_count() for a deterministic test.
+        # max_workers=1 for a deterministic single-threaded test.
         with MultipartUploader.create(
             upload_client=client, auth_header="auth", workspace_rid=None, max_workers=1
         ) as up:
