@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
@@ -85,7 +86,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook Template in the Nominal app"""
-        return f"{self._clients.app_base_url}/workbooks/templates/{self.rid}"
+        return workbook_template_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_template_api.Template:
         return self._clients.template.get(self._clients.auth_header, self.rid)

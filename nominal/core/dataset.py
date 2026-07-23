@@ -16,6 +16,7 @@ from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
@@ -51,7 +52,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        return f"{self._clients.app_base_url}/data-sources/{self.rid}"
+        return dataset_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
