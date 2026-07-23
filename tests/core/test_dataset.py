@@ -160,6 +160,42 @@ def test_handle_video_response_no_id_and_no_job_raises():
         Dataset._handle_video_ingest_response(ds, _video_response(None, ingest_job_rid=None))
 
 
+def test_add_video_requires_a_timestamp_mode():
+    ds = MagicMock()
+    with pytest.raises(ValueError, match="Either 'start' or 'frame_timestamps' must be provided"):
+        Dataset.add_video(ds, "v.mp4", channel="c")
+
+
+def test_add_video_rejects_both_timestamp_modes():
+    ds = MagicMock()
+    with pytest.raises(ValueError, match="Only one of 'start' or 'frame_timestamps' may be provided"):
+        Dataset.add_video(ds, "v.mp4", channel="c", start=0, frame_timestamps=[1])
+
+
+def test_add_video_forwards_start_mode(tmp_path):
+    ds = MagicMock()
+    f = tmp_path / "front.mp4"
+    f.write_bytes(b"\x00")
+    result = Dataset.add_video(ds, str(f), channel="cam", start=123, tags={"k": "v"})
+    ds.add_video_from_io.assert_called_once()
+    _, kwargs = ds.add_video_from_io.call_args
+    assert kwargs["channel"] == "cam"
+    assert kwargs["start"] == 123
+    assert kwargs.get("frame_timestamps") is None
+    assert result is ds.add_video_from_io.return_value
+
+
+def test_add_video_forwards_frame_timestamps_mode(tmp_path):
+    ds = MagicMock()
+    f = tmp_path / "front.mp4"
+    f.write_bytes(b"\x00")
+    Dataset.add_video(ds, str(f), channel="cam", frame_timestamps=[1, 2, 3])
+    ds.add_video_from_io.assert_called_once()
+    _, kwargs = ds.add_video_from_io.call_args
+    assert kwargs["frame_timestamps"] == [1, 2, 3]
+    assert kwargs.get("start") is None
+
+
 def test_add_video_from_io_requires_a_timestamp_mode():
     ds = MagicMock()
     with pytest.raises(ValueError, match="Either 'start' or 'frame_timestamps'"):

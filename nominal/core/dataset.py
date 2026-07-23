@@ -135,6 +135,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def _handle_video_ingest_response(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
         details = response.details.dataset
         if details is not None and details.dataset_file_id is not None:
+            # Assumes the backend already wrote `metadata.video` before segmentation (design-doc backend gate #2); if delayed, the isinstance check below is timing-sensitive and can spuriously raise NominalIngestError.
             raw = self._clients.catalog.get_dataset_file(
                 self._clients.auth_header, details.dataset_rid, details.dataset_file_id
             )
@@ -521,6 +522,11 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Exactly one of `start` (a single starting timestamp) or `frame_timestamps`
         (per-frame absolute nanosecond timestamps) must be provided.
         """
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+
         path = Path(path)
         file_type = FileType.from_video(path)
         with open(path, "rb") as video:
