@@ -925,6 +925,28 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """
         return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
 
+    def list_video_files(self, *, successful_only: bool = True) -> Iterable[VideoDatasetFile]:
+        """List video files ingested to this dataset.
+
+        If successful_only, yields successfully-ingested video files only; otherwise also
+        yields queued, ingesting, failed, and deletion-state video files.
+        """
+        for file in self.list_files(successful_only=successful_only):
+            if isinstance(file, VideoDatasetFile):
+                yield file
+
+    def get_video_file(self, dataset_file_id: str) -> VideoDatasetFile:
+        """Retrieve a video dataset file by ID.
+
+        Raises:
+            FileNotFoundError: the file does not exist in this dataset.
+            TypeError: the ID identifies a non-video dataset file.
+        """
+        file = self.get_dataset_file(dataset_file_id)
+        if not isinstance(file, VideoDatasetFile):
+            raise TypeError(f"dataset file {dataset_file_id!r} is not a video dataset file")
+        return file
+
     def get_log_stream(
         self,
         batch_size: int = 50_000,

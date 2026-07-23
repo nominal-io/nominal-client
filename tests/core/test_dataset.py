@@ -220,3 +220,28 @@ def test_add_mcap_video_from_io_builds_mcap_manifest_and_submits():
     build_opts.assert_called_once_with("ds-rid", "camera/front", None, "s3://p", "MANIFEST", False)
     ds._clients.ingest.ingest.assert_called_once()
     assert result is ds._handle_video_ingest_response.return_value
+
+
+def test_list_video_files_yields_only_video_subtypes():
+    ds = MagicMock()
+    video = MagicMock(spec=VideoDatasetFile)
+    plain = MagicMock()
+    ds.list_files.return_value = [video, plain, video]
+    result = list(Dataset.list_video_files(ds, successful_only=False))
+    assert result == [video, video]
+    ds.list_files.assert_called_once_with(successful_only=False)
+
+
+def test_get_video_file_returns_video_subtype():
+    ds = MagicMock()
+    video = MagicMock(spec=VideoDatasetFile)
+    ds.get_dataset_file.return_value = video
+    assert Dataset.get_video_file(ds, "file-1") is video
+    ds.get_dataset_file.assert_called_once_with("file-1")
+
+
+def test_get_video_file_raises_type_error_for_non_video():
+    ds = MagicMock()
+    ds.get_dataset_file.return_value = MagicMock()  # not a VideoDatasetFile
+    with pytest.raises(TypeError, match="not a video dataset file"):
+        Dataset.get_video_file(ds, "file-1")
