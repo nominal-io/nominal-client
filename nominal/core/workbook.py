@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
 
@@ -115,7 +116,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
-        return f"{self._clients.app_base_url}/workbooks/{self.rid}"
+        return workbook_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_notebook_api.Notebook:
         return self._clients.notebook.get(self._clients.auth_header, self.rid)
