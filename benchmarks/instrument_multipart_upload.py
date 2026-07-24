@@ -330,6 +330,50 @@ def build_instrumented_uploader(
     return up, recorder
 
 
+def verify_upload_file_roundtrip(clients: Any, *, size: int = 100_000, file_name: str = "_gzip_probe.bin") -> bool:
+    """Prove the small-file route isn't gzip-corrupting objects.
+
+    Uploads `size` random bytes via `upload_file`, downloads them back through a signed GET
+    URL, and checks byte-identity. This client auto-gzips POST bodies; if the server doesn't
+    decompress, the stored object is gzip-wrapped and this catches it. Returns True if clean.
+    Leaves one small probe object in the uploads bucket.
+    """
+    import gzip
+    import os
+
+    from nominal_api import ingest_api
+
+    from nominal.core._utils.networking import create_multipart_request_session
+
+    payload = os.urandom(size)
+    path = clients.upload.upload_file(
+        clients.auth_header, payload, file_name, size_bytes=len(payload),
+        workspace=clients.resolve_default_workspace_rid(),
+    )
+    resp = clients.upload.sign_download(clients.auth_header, ingest_api.SignDownloadRequest(path=path))
+    session = create_multipart_request_session(pool_size=1)
+    try:
+        got = session.get(resp.url, timeout=60)
+        got.raise_for_status()
+        downloaded = got.content
+    finally:
+        session.close()
+
+    if downloaded == payload:
+        print(f"OK: upload_file round-trip is byte-identical ({size} bytes) — no gzip corruption. Path: {path}")
+        return True
+    print(f"MISMATCH: sent {size} bytes, got {len(downloaded)} back. Path: {path}")
+    try:
+        if gzip.decompress(downloaded) == payload:
+            print(
+                "  -> the stored object is GZIP-COMPRESSED: the server did not decompress the client's "
+                "auto-gzipped body. upload_file needs a non-gzip transport before it can be used."
+            )
+    except Exception:
+        print("  -> not plain gzip; inspect the bytes.")
+    return False
+
+
 # --------------------------------------------------------------------------------------
 # Local, no-backend demo: drive the REAL MultipartUploader with latency-simulating fakes.
 # --------------------------------------------------------------------------------------
