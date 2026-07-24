@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import pathlib
 import threading
 import time
@@ -17,6 +18,7 @@ from nominal.core._utils.multipart_uploader import (
     _FileUpload,
     _is_throttle_error,
     _PartBounds,
+    _PartResult,
     _PlannedUpload,
     _ThrottleGate,
 )
@@ -57,12 +59,12 @@ def test_parts_empty_file_is_one_zero_byte_part() -> None:
     assert list(_plan(0, 5).parts()) == [_PartBounds(part_number=1, offset=0, size=0)]
 
 
-def _done_future(result: object = None, exc: BaseException | None = None) -> "Future[None]":
-    f: Future[None] = Future()
+def _done_future(result: _PartResult | None = None, exc: BaseException | None = None) -> "Future[_PartResult]":
+    f: Future[_PartResult] = Future()
     if exc is not None:
         f.set_exception(exc)
     else:
-        f.set_result(result)  # type: ignore[arg-type]
+        f.set_result(result if result is not None else _PartResult(part_number=1, etag='"e"'))
     return f
 
 
@@ -71,7 +73,7 @@ def _coordinator(num_parts: int, complete=None, abort=None) -> tuple[_FileUpload
     fu = _FileUpload(
         future=fut,
         num_parts=num_parts,
-        complete=complete or (lambda part_etags: "s3://bucket/obj"),
+        complete=complete or (lambda etags: "s3://bucket/obj"),
         abort=abort or MagicMock(),
     )
     return fu, fut
@@ -81,13 +83,13 @@ def test_coordinator_all_parts_succeed_completes_once() -> None:
     complete = MagicMock(return_value="s3://bucket/obj")
     abort = MagicMock()
     fu, fut = _coordinator(2, complete=complete, abort=abort)
-    fu.part_futures = [_done_future(), _done_future()]
+    fu.part_futures = [_done_future(_PartResult(1, '"a"')), _done_future(_PartResult(2, '"b"'))]
 
     for pf in fu.part_futures:
         fu.on_part_done(pf)
 
     assert fut.result() == "s3://bucket/obj"
-    complete.assert_called_once()  # called with the collected part ETags
+    complete.assert_called_once_with({1: '"a"', 2: '"b"'})
     abort.assert_not_called()
 
 
@@ -162,8 +164,9 @@ class _FakeUploadService:
         self._fail_on_initiate = fail_on_initiate
         self.aborted: list[str] = []
         self.initiate_calls = 0
-        self.list_parts_calls = 0
-        self.completed_parts: list[list[tuple[str, int]]] = []  # per-complete: [(etag, part_number), ...]
+        self.sign_part_calls = 0
+        self.complete_calls = 0
+        self.completed_etags: dict[int, str] = {}
         self.upload_file_calls: list[tuple[str, int | None, int]] = []  # (file_name, size_bytes, body_len)
 
     def initiate_multipart_upload(self, auth_header, request):
@@ -177,16 +180,17 @@ class _FakeUploadService:
         return f"s3://backend/{file_name}"
 
     def sign_part(self, auth_header, key, part, upload_id):
+        self.sign_part_calls += 1
         if self._fail_on_key is not None and key == self._fail_on_key:
             raise RuntimeError(f"sign failed for {key}")
         return MagicMock(url=f"https://s3/{key}/{part}", headers={})
 
     def list_parts(self, auth_header, key, upload_id):
-        self.list_parts_calls += 1
-        return [MagicMock(etag="etag", part_number=1)]
+        raise AssertionError("list_parts must not be called: etags come from the PUT responses")
 
     def complete_multipart_upload(self, auth_header, key, upload_id, parts):
-        self.completed_parts.append([(p.etag, p.part_number) for p in parts])
+        self.complete_calls += 1
+        self.completed_etags = {p.part_number: p.etag for p in parts}
         return MagicMock(location=f"s3://bucket/{key}")
 
     def abort_multipart_upload(self, auth_header, key, upload_id):
@@ -201,7 +205,7 @@ def _uploader(client: _FakeUploadService) -> MultipartUploader:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
     put_response.status_code = 200
-    put_response.headers = {"ETag": "etag-put"}  # S3 returns the part ETag on the PUT
+    put_response.headers = {"ETag": '"etag"'}  # S3 returns the part ETag on the PUT
     session.put.return_value = put_response
     return MultipartUploader(
         max_workers=4,
@@ -226,23 +230,92 @@ def test_enqueue_file_resolves_to_location(tmp_path) -> None:
         assert fut.result(timeout=5) == "s3://bucket/data.csv"
 
 
-def test_single_part_upload_completes_without_list_parts(tmp_path) -> None:
-    f = tmp_path / "one.csv"
-    f.write_bytes(b"0123456789")  # tiny -> one part at the default part size
+def test_single_part_file_costs_exactly_three_api_requests(tmp_path) -> None:
+    """The central performance claim: initiate + sign_part + complete, and nothing else.
+
+    Counted at the service boundary rather than by intercepting the gate, so this asserts the
+    observable request count instead of the uploader's internals.
+    """
     client = _FakeUploadService()
-    with _uploader(client) as up:
-        assert up.enqueue_file(f, file_type=FileTypes.CSV).result(timeout=5) == "s3://bucket/one.csv"
-    assert client.list_parts_calls == 0  # single part -> list_parts round-trip skipped
-    assert client.completed_parts == [[("etag-put", 1)]]  # completed straight from the PUT's ETag
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200, headers={"ETag": '"e1"'})
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _gate=_test_gate(),
+    )
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5) == "s3://bucket/data.csv"
+
+    # list_parts is covered by the fake raising AssertionError if it is ever called.
+    assert (client.initiate_calls, client.sign_part_calls, client.complete_calls) == (1, 1, 1)
+    assert client.completed_etags == {1: '"e1"'}
 
 
-def test_multipart_upload_completes_via_list_parts(tmp_path) -> None:
-    f = tmp_path / "multi.csv"
-    f.write_bytes(b"0123456789")  # part_size=4 -> 3 parts
+def test_multipart_etags_are_completed_in_part_number_order(tmp_path) -> None:
     client = _FakeUploadService()
-    with _uploader(client) as up:
-        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4).result(timeout=5) == "s3://bucket/multi.csv"
-    assert client.list_parts_calls == 1  # >1 part -> list_parts stays authoritative
+    session = MagicMock(spec=["put", "close"])
+    etags = iter(['"p1"', '"p2"', '"p3"'])
+
+    def put(url, **kwargs):  # type: ignore[no-untyped-def]
+        return MagicMock(status_code=200, headers={"ETag": next(etags)})
+
+    session.put.side_effect = put
+    up = MultipartUploader(
+        max_workers=1,  # single worker so the etag iterator maps 1:1 onto ascending part numbers
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=1),
+        _closed=False,
+        _gate=_test_gate(limit=1),
+    )
+    f = tmp_path / "data.bin"
+    f.write_bytes(b"ABCDEFGHIJKL")  # 12 bytes, part_size 5 -> 3 parts
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=5).result(timeout=10)
+
+    assert client.completed_etags == {1: '"p1"', 2: '"p2"', 3: '"p3"'}
+
+
+def test_missing_etag_header_fails_the_part_and_aborts(tmp_path) -> None:
+    client = _FakeUploadService()
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200, headers={})  # no ETag
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=3,  # >1 on purpose: proves the missing ETag does NOT consume retries
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _gate=_test_gate(),
+    )
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with up:
+        # Raised directly, not wrapped in NominalMultipartUploadFailed: a missing ETag is not
+        # retryable, so it never accumulates attempt errors.
+        with pytest.raises(NominalMultipartUploadError, match="no ETag for part 1"):
+            up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5)
+
+    assert client.aborted == ["data.csv"]  # the file still aborts its multipart upload
+    assert session.put.call_count == 1  # failed on the first attempt; no pointless re-uploads
 
 
 def test_initiate_failure_settles_future(tmp_path) -> None:
@@ -360,6 +433,7 @@ def test_create_smoke(tmp_path) -> None:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
     put_response.status_code = 200
+    put_response.headers = {"ETag": '"etag"'}
     session.put.return_value = put_response
 
     f = tmp_path / "data.csv"
@@ -400,6 +474,7 @@ def test_more_files_than_workers_no_deadlock(tmp_path) -> None:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
     put_response.status_code = 200
+    put_response.headers = {"ETag": '"etag"'}
     session.put.return_value = put_response
     up = MultipartUploader(
         max_workers=4,
@@ -447,6 +522,7 @@ def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
     put_response.status_code = 200
+    put_response.headers = {"ETag": '"etag"'}
     session.put.return_value = put_response
     up = MultipartUploader(
         max_workers=8,
@@ -495,7 +571,7 @@ def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
 
 def _small_file_uploader(client: _FakeUploadService, *, threshold: int) -> MultipartUploader:
     session = MagicMock(spec=["put", "close"])
-    session.put.return_value = MagicMock(status_code=200)
+    session.put.return_value = MagicMock(status_code=200, headers={"ETag": '"etag"'})
     return MultipartUploader(
         max_workers=4,
         timeout=30.0,
@@ -556,6 +632,113 @@ def test_create_rejects_oversized_small_file_route() -> None:
             workspace_rid=None,
             small_file_route_max_bytes=MAX_SMALL_FILE_ROUTE_BYTES + 1,
         )
+
+
+def test_zero_byte_file_never_takes_the_small_file_route(tmp_path) -> None:
+    """The single-shot endpoint rejects a declared size of zero, so empty files must go multipart."""
+    client = _FakeUploadService()
+    up = _small_file_uploader(client, threshold=4096)
+    f = tmp_path / "empty.csv"
+    f.write_bytes(b"")
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5) == "s3://bucket/empty.csv"
+
+    assert client.upload_file_calls == []
+    assert client.initiate_calls == 1
+
+
+def test_small_file_route_ceiling_is_four_mib() -> None:
+    assert MAX_SMALL_FILE_ROUTE_BYTES == 4 * 1024 * 1024
+    with pytest.raises(ValueError, match="small_file_route_max_bytes must be in"):
+        MultipartUploader.create(
+            upload_client=_FakeUploadService(),
+            auth_header="auth",
+            workspace_rid=None,
+            small_file_route_max_bytes=MAX_SMALL_FILE_ROUTE_BYTES + 1,
+        )
+
+
+@pytest.mark.parametrize("part_size", [0, -1])
+def test_enqueue_rejects_nonpositive_part_size(tmp_path, part_size: int) -> None:
+    """Raise on the caller's thread: part_size=0 used to surface as ZeroDivisionError via the future."""
+    client = _FakeUploadService()
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with _uploader(client) as up:
+        with pytest.raises(ValueError, match="part_size must be positive"):
+            up.enqueue_file(f, file_type=FileTypes.CSV, part_size=part_size)
+
+
+def test_enqueue_rejects_a_plan_exceeding_the_part_limit(tmp_path) -> None:
+    client = _FakeUploadService()
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"x" * 20_001)
+    with _uploader(client) as up:
+        with pytest.raises(ValueError, match="would need 20001 parts"):
+            up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1)
+
+
+def test_enqueue_warns_on_undersized_multipart_parts(tmp_path, caplog) -> None:
+    client = _FakeUploadService()
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"x" * 100)
+    with _uploader(client) as up:
+        with caplog.at_level(logging.WARNING):
+            up.enqueue_file(f, file_type=FileTypes.CSV, part_size=10).result(timeout=5)
+    assert "below the storage provider's 5 MiB minimum" in caplog.text
+
+
+def test_enqueue_does_not_warn_for_a_single_small_part(tmp_path, caplog) -> None:
+    """A single-part upload has no minimum size, so warning there would be noise."""
+    client = _FakeUploadService()
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"x" * 100)
+    with _uploader(client) as up:
+        with caplog.at_level(logging.WARNING):
+            up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5)
+    assert "5 MiB minimum" not in caplog.text
+
+
+def test_returned_future_is_not_cancellable(tmp_path) -> None:
+    """Cancelling used to release the in-flight slot mid-upload and then skip the abort."""
+    client = _FakeUploadService()
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200, headers={"ETag": '"e1"'})
+    up = MultipartUploader(
+        max_workers=2,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=2),
+        _closed=False,
+        _gate=_test_gate(),
+        _file_slots=threading.BoundedSemaphore(1),
+    )
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with up:
+        fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000)
+        assert fut.cancel() is False
+        assert fut.result(timeout=5) == "s3://bucket/data.csv"
+
+
+def test_coordinator_absorbs_a_cancelled_part_future() -> None:
+    """fut.exception() raises CancelledError on a cancelled future; reading it would hang the file."""
+    complete = MagicMock(return_value="s3://bucket/obj")
+    abort = MagicMock()
+    fu, fut = _coordinator(2, complete=complete, abort=abort)
+    cancelled: Future[_PartResult] = Future()
+    assert cancelled.cancel()
+    fu.part_futures = [cancelled]
+
+    fu.on_part_done(cancelled)  # must not raise, must not settle
+
+    assert not fut.done()
+    complete.assert_not_called()
+    abort.assert_not_called()
 
 
 def test_adaptive_limiter_blocks_at_limit_and_admits_on_release() -> None:

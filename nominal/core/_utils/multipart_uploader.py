@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from types import TracebackType
-from typing import Callable, Iterable, Sequence, Type, TypeVar
+from typing import Callable, Iterable, Mapping, Type, TypeVar
 
 import requests
 from nominal_api import upload_api
@@ -23,14 +23,17 @@ from nominal.core._utils.multipart import (
     _abort,
     _complete_multipart_upload,
     _initiate_multipart_upload,
-    _list_parts_then_complete,
     _put_part,
     _sign_part,
     _wrap_multipart_retry_exception,
     path_upload_name,
 )
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
-from nominal.core.exceptions import NominalMultipartUploadFailed, NominalRequestThrottledError
+from nominal.core.exceptions import (
+    NominalMultipartUploadError,
+    NominalMultipartUploadFailed,
+    NominalRequestThrottledError,
+)
 from nominal.core.filetype import FileType
 
 logger = logging.getLogger(__name__)
@@ -38,10 +41,13 @@ T = TypeVar("T")
 
 # Files at or below the uploader's `small_file_route_max_bytes` are uploaded single-shot via the
 # backend `upload_file` endpoint (one request) instead of the multipart flow. That endpoint holds
-# a server request thread for the whole transfer, so we hard-cap the opt-in threshold well inside
-# the "brief hold" zone to keep it safe under concurrency (large bodies belong on multipart, whose
-# parts stream directly to S3). Experimental.
-MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 1 MiB
+# a server request thread for the whole transfer, so the opt-in threshold is hard-capped: measured
+# throughput of the two routes reaches parity around this size, above which multipart is strictly
+# better (its bytes stream directly to storage and its parts parallelize). Experimental.
+MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 4 MiB
+
+_STORAGE_MIN_PART_SIZE_BYTES = 5 * 1024 * 1024  # provider minimum for every part but the last
+_STORAGE_MAX_PARTS = 10_000  # provider maximum parts per multipart upload
 
 # Adaptive-concurrency (AIMD) defaults.
 _AIMD_DECREASE = 0.5  # multiplicative decrease on a throttle
@@ -214,6 +220,14 @@ class _PartBounds:
 
 
 @dataclass(frozen=True)
+class _PartResult:
+    """One successfully uploaded part: its number and the storage provider's ETag for it."""
+
+    part_number: int
+    etag: str
+
+
+@dataclass(frozen=True)
 class _PlannedUpload:
     """A file whose upload has been initiated: object key, upload id, and part layout."""
 
@@ -244,44 +258,46 @@ class _FileUpload:
         self,
         future: "Future[str]",
         num_parts: int,
-        complete: Callable[[Sequence[str | None]], str],
+        complete: Callable[[Mapping[int, str]], str],
         abort: Callable[[BaseException], None],
     ) -> None:
         self.future = future
-        self.part_futures: list[Future[str | None]] = []
+        self.part_futures: list[Future[_PartResult]] = []
         self._remaining = num_parts
         self._complete = complete
         self._abort = abort
         self._settled = False
         self._lock = threading.Lock()
+        self._etags: dict[int, str] = {}
 
-    def on_part_done(self, fut: "Future[str | None]") -> None:
+    def on_part_done(self, fut: "Future[_PartResult]") -> None:
         # Decide the transition under the lock; run the (network) effect outside it.
+        failure: BaseException | None = None
         with self._lock:
             if self._settled:
                 return  # absorbs cancelled/extra siblings after settling
+            if fut.cancelled():
+                return  # only we cancel siblings, and only after settling; defensive
             exc = fut.exception()
             if exc is None:
+                part = fut.result()
+                self._etags[part.part_number] = part.etag
                 self._remaining -= 1
                 if self._remaining > 0:
                     return
                 self._settled = True
-                failed = False
             else:
                 self._settled = True
-                failed = True
+                failure = exc
 
-        if failed:
-            self._fail(exc)
+        if failure is not None:
+            self._fail(failure)
         else:
             self._finish()
 
     def _finish(self) -> None:
         try:
-            # All parts have succeeded here, so every result is available without blocking; the ETags
-            # (part-number order) let complete skip list_parts for single-part uploads.
-            part_etags = [f.result() for f in self.part_futures]
-            self.future.set_result(self._complete(part_etags))
+            self.future.set_result(self._complete(self._etags))
         except Exception as ce:  # completion itself failed
             self.future.set_exception(ce)
             self._safe_abort(ce)
@@ -453,23 +469,46 @@ class MultipartUploader:
         validate_upload_filename(name)
         total_size = path.stat().st_size  # raises FileNotFoundError synchronously if missing
 
+        if part_size <= 0:
+            raise ValueError(f"part_size must be positive, got {part_size}")
+        num_parts = max(1, math.ceil(total_size / part_size))
+        if num_parts > _STORAGE_MAX_PARTS:
+            raise ValueError(
+                f"'{path}' at part_size={part_size} would need {num_parts} parts, "
+                f"above the storage provider's limit of {_STORAGE_MAX_PARTS}; use a larger part_size"
+            )
+        if num_parts > 1 and part_size < _STORAGE_MIN_PART_SIZE_BYTES:
+            logger.warning(
+                "part_size=%d is below the storage provider's 5 MiB minimum for non-final parts; "
+                "uploading '%s' in %d parts may be rejected",
+                part_size,
+                path,
+                num_parts,
+            )
+
         pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
         if self._file_slots is not None:
             self._file_slots.acquire()  # static bound on concurrently-open multipart uploads
         future: Future[str] = Future()
+        # PENDING -> RUNNING, so cancel() returns False while set_result/set_exception still work.
+        # A caller-side cancel would otherwise release the file slot mid-upload and then make the
+        # real settlement raise InvalidStateError, skipping the abort.
+        future.set_running_or_notify_cancel()
         if self._file_slots is not None:
             future.add_done_callback(self._on_file_settled)
-        runner = (
-            self._run_small_file_upload
-            if self._small_file_route_max_bytes is not None and total_size <= self._small_file_route_max_bytes
-            else self._run_upload
+        # A declared size of zero is rejected by the single-shot endpoint, so empty files always
+        # take multipart, where a single zero-byte part completes normally.
+        use_small_file_route = (
+            self._small_file_route_max_bytes is not None and 0 < total_size <= self._small_file_route_max_bytes
         )
+        runner = self._run_small_file_upload if use_small_file_route else self._run_upload
         try:
             self._pool.submit(runner, pending, future)
-        except BaseException:
+        except BaseException as e:
             # Scheduling failed (e.g. pool already shut down): settle the future so its slot releases.
+            # (The future is RUNNING, not PENDING, so cancel() would no longer do this.)
             if self._file_slots is not None and not future.done():
-                future.cancel()
+                future.set_exception(e)
             raise
         return future
 
@@ -544,7 +583,7 @@ class MultipartUploader:
             )
         )
 
-    def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> str | None:
+    def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> _PartResult:
         """Sign (gated) and PUT (ungated) one part, re-signing on a failed PUT.
 
         The sign call consumes API request budget so it goes through the gate; the PUT goes
@@ -552,9 +591,8 @@ class MultipartUploader:
         and full pool concurrency. Re-signing on each attempt is what makes an expired signature
         self-healing.
 
-        Returns the part's ETag from the PUT response, or None if the header was absent — the
-        contract `_complete_upload` already relies on to skip `list_parts`. Task 3 replaces this
-        `str | None` return with a `_PartResult`.
+        Returns the part's number and the ETag from the PUT response. A missing ETag fails the
+        part immediately (see below) rather than being retried.
         """
         with plan.path.open("rb") as f:
             f.seek(bounds.offset)
@@ -575,12 +613,11 @@ class MultipartUploader:
                     verify=self._upload_client._verify,
                     timeout=self.timeout,
                 )
-                return put_response.headers.get("ETag")
             except NominalRequestThrottledError:
                 raise  # the gate already spent the full budget; a fresh one would only re-herd
             except Exception as ex:
                 logger.warning(
-                    "Failed to PUT part %d: %s",
+                    "Failed to sign or PUT part %d: %s",
                     bounds.part_number,
                     ex,
                     extra={"key": plan.key, "upload_id": plan.upload_id, "attempt": attempt + 1},
@@ -594,6 +631,17 @@ class MultipartUploader:
                         attempt=attempt + 1,
                     )
                 )
+                continue
+
+            etag = put_response.headers.get("ETag")
+            if not etag:
+                # Completing with a missing etag would produce a corrupt object, and no retry can
+                # supply one — fail the part immediately rather than re-uploading its bytes.
+                raise NominalMultipartUploadError(
+                    f"storage provider returned no ETag for part {bounds.part_number} "
+                    f"(key={plan.key}, upload_id={plan.upload_id})"
+                )
+            return _PartResult(part_number=bounds.part_number, etag=etag)
 
         raise NominalMultipartUploadFailed(
             f"Multipart upload failed for key={plan.key}, upload_id={plan.upload_id}, "
@@ -601,17 +649,9 @@ class MultipartUploader:
             attempt_errors,
         )
 
-    def _complete_upload(self, key: str, upload_id: str, part_etags: Sequence[str | None]) -> str:
-        # Single part: complete straight from the PUT's ETag, skipping list_parts. Multi-part, or a
-        # missing ETag: fall back to list_parts as the authoritative source (Task 3 removes the
-        # fallback). Both branches are API requests, so both go through the gate.
-        etag = part_etags[0] if len(part_etags) == 1 else None
-        if etag is not None:
-            return self._gate.call(
-                lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, {1: etag})
-            )
+    def _complete_upload(self, key: str, upload_id: str, etags: Mapping[int, str]) -> str:
         return self._gate.call(
-            lambda: _list_parts_then_complete(self._upload_client, self._auth_header, key, upload_id)
+            lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, etags)
         )
 
     def _abort_upload(self, key: str, upload_id: str, exc: BaseException) -> None:
