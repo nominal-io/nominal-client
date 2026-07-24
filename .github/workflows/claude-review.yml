@@ -44,7 +44,7 @@ jobs:
         uses: anthropics/claude-code-action@dde2242db6af13460b916652159b6ba19a598f30 # v1.0.120
         env:
           # Run subagents using cheaper, faster agents while leaving higher level thinking
-          # to the higher tier model (opus 4.8)
+          # to the higher tier model (opus 5)
           CLAUDE_CODE_SUBAGENT_MODEL: claude-sonnet-4-6
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -138,6 +138,6 @@ jobs:
           #   - `Skill` is granted so the review can invoke the thermo-nuclear-code-quality-review
           #     skill; without it the Skill tool is blocked and the skill silently never loads.
           claude_args: |
-            --model claude-opus-4-8
+            --model claude-opus-5
             --max-turns 100
             --allowedTools "Skill,mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
