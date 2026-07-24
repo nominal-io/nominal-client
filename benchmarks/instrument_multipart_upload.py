@@ -144,6 +144,14 @@ class InstrumentedUploadService:
     def abort_multipart_upload(self, auth_header: Any, key: Any, upload_id: Any) -> Any:
         return _timed(self._rec, "abort", NOMINAL, str(key), lambda: self._inner.abort_multipart_upload(auth_header, key, upload_id))
 
+    def upload_file(self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None) -> Any:
+        # Single-shot small-file path: one control-plane call that also carries the body.
+        label = f"{file_name} ({size_bytes}B)"
+        return _timed(
+            self._rec, "upload_file", NOMINAL, label,
+            lambda: self._inner.upload_file(auth_header, body, file_name, size_bytes, workspace),
+        )
+
 
 class InstrumentedSession:
     """Wraps the S3 PUT session (requests.Session-like) to time each part PUT.
@@ -171,7 +179,7 @@ class InstrumentedSession:
 # Reporting
 # --------------------------------------------------------------------------------------
 
-_STAGE_ORDER = ("initiate", "sign_part", "put", "list_parts", "complete", "abort")
+_STAGE_ORDER = ("upload_file", "initiate", "sign_part", "put", "list_parts", "complete", "abort")
 
 
 def _pct(sorted_vals: list[float], q: float) -> float:
@@ -290,6 +298,7 @@ def build_instrumented_uploader(
     *,
     max_workers: int = 8,
     max_files_in_flight: int | None = None,
+    small_file_route_max_bytes: int | None = None,
     timeout: float = 30.0,
     max_part_retries: int = 3,
 ) -> tuple[Any, Recorder]:
@@ -298,7 +307,9 @@ def build_instrumented_uploader(
     `clients` is a NominalClient's clients-bunch (e.g. `client._clients`). Returns
     (uploader, recorder); run your uploads through the uploader, close it, then
     call summarize(recorder). Set `max_files_in_flight` to bound how many files upload
-    at once (backpressure at enqueue) — try a low value with a high `max_workers`.
+    at once (backpressure at enqueue). Set `small_file_route_max_bytes` to route files
+    at/below that size single-shot via upload_file (EXPERIMENTAL) — then the report's
+    `upload_file` stage replaces the initiate/sign/put/list/complete rows.
     """
     from nominal.core._utils.multipart_uploader import MultipartUploader
 
@@ -309,6 +320,7 @@ def build_instrumented_uploader(
         workspace_rid=clients.resolve_default_workspace_rid(),
         max_workers=max_workers,
         max_files_in_flight=max_files_in_flight,
+        small_file_route_max_bytes=small_file_route_max_bytes,
         timeout=timeout,
         max_part_retries=max_part_retries,
         header_provider=clients.header_provider,
@@ -386,10 +398,14 @@ class _FakeClient:
         self._sleep()
         return None
 
+    def upload_file(self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None) -> str:
+        self._sleep()
+        return f"s3://bucket/{file_name}"
+
 
 def _run_demo(
     n_files: int, max_workers: int, api_ms: float, put_ms: float, jitter: bool, file_bytes: int, part_size: int,
-    max_files_in_flight: int | None,
+    max_files_in_flight: int | None, small_file_route_max_bytes: int | None,
 ) -> None:
     from nominal.core._utils.multipart_uploader import MultipartUploader
     from nominal.core.filetype import FileTypes
@@ -412,7 +428,7 @@ def _run_demo(
             max_workers=max_workers, timeout=30.0, max_part_retries=3,
             _upload_client=client, _auth_header="auth", _workspace_rid=None,
             _session=session, _pool=ThreadPoolExecutor(max_workers=max_workers), _closed=False,
-            _file_slots=file_slots,
+            _file_slots=file_slots, _small_file_route_max_bytes=small_file_route_max_bytes,
         )
         print(
             f"running {n_files} files x {parts_per_file} part(s) each @ max_workers={max_workers}, "
@@ -448,11 +464,12 @@ def main() -> None:
         help="multipart chunk size; a SMALL value makes each file multi-part (simulates 'few big files')",
     )
     ap.add_argument("--max-files-in-flight", type=int, default=None, help="cap concurrent files (backpressure at enqueue)")
+    ap.add_argument("--small-file-route-max-bytes", type=int, default=None, help="route files <= this single-shot via upload_file")
     ap.add_argument("--jitter", action="store_true", help="add gaussian jitter + a 2%% slow tail so outlier reporting is visible")
     args = ap.parse_args()
     _run_demo(
         args.files, args.workers, args.api_latency_ms, args.put_latency_ms, args.jitter, args.file_bytes,
-        args.part_size, args.max_files_in_flight,
+        args.part_size, args.max_files_in_flight, args.small_file_route_max_bytes,
     )
 
 

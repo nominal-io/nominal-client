@@ -29,6 +29,13 @@ from nominal.core.filetype import FileType
 
 logger = logging.getLogger(__name__)
 
+# Files at or below the uploader's `small_file_route_max_bytes` are uploaded single-shot via the
+# backend `upload_file` endpoint (one request) instead of the multipart flow. That endpoint holds
+# a server request thread for the whole transfer, so we hard-cap the opt-in threshold well inside
+# the "brief hold" zone to keep it safe under concurrency (large bodies belong on multipart, whose
+# parts stream directly to S3). Experimental.
+MAX_SMALL_FILE_ROUTE_BYTES = 1024 * 1024  # 1 MiB
+
 
 @dataclass(frozen=True)
 class _PartBounds:
@@ -148,6 +155,10 @@ class MultipartUploader:
     backpressure at `enqueue_file` (on the caller thread, never a pool worker). Keeping it low
     with a high `max_workers` keeps the pool busy with part-uploads instead of bursting every
     file's metadata calls up front.
+
+    `small_file_route_max_bytes` (EXPERIMENTAL) routes files at/below that size through the
+    backend single-shot `upload_file` endpoint (one request) rather than multipart, collapsing
+    the per-file metadata that rate-limits many-small-file batches. Larger files use multipart.
     """
 
     max_workers: int
@@ -162,6 +173,8 @@ class MultipartUploader:
     _closed: bool = field(default=False, repr=False)
     # Bounds files-in-flight; acquired in enqueue_file, released when the file's future settles.
     _file_slots: threading.BoundedSemaphore | None = field(default=None, repr=False)
+    # If set, files with size <= this go single-shot via upload_file instead of multipart.
+    _small_file_route_max_bytes: int | None = field(default=None, repr=False)
 
     @classmethod
     def create(
@@ -174,12 +187,26 @@ class MultipartUploader:
         timeout: float = 30.0,
         max_part_retries: int = 3,
         max_files_in_flight: int | None = None,
+        small_file_route_max_bytes: int | None = None,
         header_provider: HeaderProvider | None = None,
     ) -> Self:
+        """Create a MultipartUploader.
+
+        `small_file_route_max_bytes` (EXPERIMENTAL): if set, files whose size is <= this many
+        bytes are uploaded single-shot via the backend `upload_file` endpoint (one request)
+        instead of multipart — avoiding the per-file metadata burst that rate-limits many-small-
+        file batches. Guarded to `MAX_SMALL_FILE_ROUTE_BYTES`; larger files use multipart.
+        """
         if max_workers is None:
             max_workers = DEFAULT_NUM_WORKERS
         if max_files_in_flight is not None and max_files_in_flight <= 0:
             raise ValueError(f"max_files_in_flight must be positive, got {max_files_in_flight}")
+        if small_file_route_max_bytes is not None and not (0 < small_file_route_max_bytes <= MAX_SMALL_FILE_ROUTE_BYTES):
+            raise ValueError(
+                f"small_file_route_max_bytes must be in (0, {MAX_SMALL_FILE_ROUTE_BYTES}] bytes "
+                f"(the single-shot upload endpoint holds a server thread per upload; route larger "
+                f"files through multipart), got {small_file_route_max_bytes}"
+            )
         session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
         pool = ThreadPoolExecutor(max_workers=max_workers)
         file_slots = threading.BoundedSemaphore(max_files_in_flight) if max_files_in_flight is not None else None
@@ -194,6 +221,7 @@ class MultipartUploader:
             _pool=pool,
             _closed=False,
             _file_slots=file_slots,
+            _small_file_route_max_bytes=small_file_route_max_bytes,
         )
 
     # ---- lifecycle ----
@@ -244,8 +272,13 @@ class MultipartUploader:
         future: Future[str] = Future()
         if self._file_slots is not None:
             future.add_done_callback(self._release_slot)  # free the slot when the file settles
+        runner = (
+            self._run_small_file_upload
+            if self._small_file_route_max_bytes is not None and total_size <= self._small_file_route_max_bytes
+            else self._run_upload
+        )
         try:
-            self._pool.submit(self._run_upload, pending, future)
+            self._pool.submit(runner, pending, future)
         except BaseException:
             # Scheduling failed (e.g. pool already shut down): settle the future so its slot releases.
             if self._file_slots is not None and not future.done():
@@ -295,6 +328,28 @@ class MultipartUploader:
             # An initiate failure has nothing to abort; a post-initiate failure here is only
             # reachable if the pool was shut down mid-enqueue (unsupported concurrent enqueue/close)
             # and may orphan the initiated upload — acceptable under the non-atomic failure model.
+            if not future.done():
+                future.set_exception(e)
+
+    def _run_small_file_upload(self, pending: _PendingUpload, future: "Future[str]") -> None:
+        """Single-shot upload of a small file via the backend `upload_file` endpoint (no multipart).
+
+        One request instead of initiate + sign + PUT + list_parts + complete. Always passes
+        `size_bytes` so the server streams to S3 (and doesn't silently cap at its in-memory limit).
+        Reads the whole (small) file into memory.
+        """
+        try:
+            safe_filename = f"{pending.name}{pending.file_type.extension}"
+            body = pending.path.read_bytes()
+            location = self._upload_client.upload_file(
+                self._auth_header,
+                body,
+                safe_filename,
+                size_bytes=pending.total_size,
+                workspace=self._workspace_rid,
+            )
+            future.set_result(location)
+        except Exception as e:  # settle the future so its slot releases and the caller sees the error
             if not future.done():
                 future.set_exception(e)
 

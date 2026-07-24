@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core._utils.multipart_uploader import MultipartUploader, _FileUpload, _PartBounds, _PlannedUpload
+from nominal.core._utils.multipart_uploader import (
+    MAX_SMALL_FILE_ROUTE_BYTES,
+    MultipartUploader,
+    _FileUpload,
+    _PartBounds,
+    _PlannedUpload,
+)
 from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
 from nominal.experimental.ingest._ingest_builder import _Upload, _upload_all
@@ -144,11 +150,18 @@ class _FakeUploadService:
         self._fail_on_key = fail_on_key
         self._fail_on_initiate = fail_on_initiate
         self.aborted: list[str] = []
+        self.initiate_calls = 0
+        self.upload_file_calls: list[tuple[str, int | None, int]] = []  # (file_name, size_bytes, body_len)
 
     def initiate_multipart_upload(self, auth_header, request):
+        self.initiate_calls += 1
         if self._fail_on_initiate:
             raise RuntimeError("initiate failed")
         return MagicMock(key=request.filename, upload_id=f"uid-{request.filename}")
+
+    def upload_file(self, auth_header, body, file_name, size_bytes=None, workspace=None) -> str:
+        self.upload_file_calls.append((file_name, size_bytes, len(body)))
+        return f"s3://backend/{file_name}"
 
     def sign_part(self, auth_header, key, part, upload_id):
         if self._fail_on_key is not None and key == self._fail_on_key:
@@ -438,3 +451,67 @@ def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
     finally:
         gate.set()
         up.close()
+
+
+def _small_file_uploader(client: _FakeUploadService, *, threshold: int) -> MultipartUploader:
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200)
+    return MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid="ws-1",
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _small_file_route_max_bytes=threshold,
+    )
+
+
+def test_small_file_route_uses_upload_file_when_enabled(tmp_path) -> None:
+    """A file <= small_file_route_max_bytes uploads single-shot via upload_file, bypassing multipart."""
+    client = _FakeUploadService()
+    up = _small_file_uploader(client, threshold=1024)
+    f = tmp_path / "small.csv"
+    f.write_bytes(b"x" * 100)  # 100 bytes <= 1024
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV).result(timeout=5) == "s3://backend/small.csv"
+
+    assert client.upload_file_calls == [("small.csv", 100, 100)]  # (file_name, size_bytes, body_len)
+    assert client.initiate_calls == 0  # multipart bypassed
+    up._session.put.assert_not_called()  # no direct-to-S3 PUT
+
+
+def test_small_file_route_falls_back_to_multipart_above_threshold(tmp_path) -> None:
+    client = _FakeUploadService()
+    up = _small_file_uploader(client, threshold=64)
+    f = tmp_path / "big.csv"
+    f.write_bytes(b"x" * 200)  # 200 > 64 -> multipart
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5) == "s3://bucket/big.csv"
+
+    assert client.upload_file_calls == []
+    assert client.initiate_calls == 1
+
+
+def test_small_file_route_disabled_uses_multipart(tmp_path) -> None:
+    client = _FakeUploadService()
+    with _uploader(client) as up:  # no small_file_route_max_bytes -> disabled
+        f = tmp_path / "small.csv"
+        f.write_bytes(b"x" * 10)  # tiny, but the route is off
+        up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5)
+
+    assert client.upload_file_calls == []
+    assert client.initiate_calls == 1
+
+
+def test_create_rejects_oversized_small_file_route() -> None:
+    with pytest.raises(ValueError, match="small_file_route_max_bytes must be in"):
+        MultipartUploader.create(
+            upload_client=_FakeUploadService(),
+            auth_header="auth",
+            workspace_rid=None,
+            small_file_route_max_bytes=MAX_SMALL_FILE_ROUTE_BYTES + 1,
+        )
