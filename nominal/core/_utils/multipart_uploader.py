@@ -372,7 +372,7 @@ class MultipartUploader:
             gate.acquire()  # backpressure: at most (adaptively-)bounded files open at once
         future: Future[str] = Future()
         if gate is not None:
-            future.add_done_callback(self._release_slot)  # free the slot when the file settles
+            future.add_done_callback(self._on_file_settled)  # feed the limiter + free the slot on settle
         runner = (
             self._run_small_file_upload
             if self._small_file_route_max_bytes is not None and total_size <= self._small_file_route_max_bytes
@@ -387,10 +387,21 @@ class MultipartUploader:
             raise
         return future
 
-    def _release_slot(self, _future: "Future[str]") -> None:
-        gate = self._limiter or self._file_slots
-        if gate is not None:
-            gate.release()
+    def _on_file_settled(self, future: "Future[str]") -> None:
+        # Feed the adaptive limiter from EVERY file's outcome (both the small-file and multipart
+        # paths settle here), then always release the slot. Growing only on the small-file path
+        # would leave the limit stuck at its initial value for multipart-only workloads.
+        try:
+            if self._limiter is not None and not future.cancelled():
+                exc = future.exception()
+                if exc is None:
+                    self._limiter.on_success()
+                elif _is_throttle_error(exc):
+                    self._limiter.on_throttle()
+        finally:
+            gate = self._limiter or self._file_slots
+            if gate is not None:
+                gate.release()
 
     # ---- internals (run on pool threads) ----
 
@@ -449,22 +460,20 @@ class MultipartUploader:
                 future.set_exception(e)
 
     def _upload_file(self, file_name: str, body: bytes, size: int) -> str:
-        """Call the backend upload_file endpoint once. In adaptive mode, feed success/throttle
-        back to the limiter and retry a throttled upload with jittered backoff (holding this
-        file's slot while it waits) so it completes rather than surfacing a 429 failure.
+        """Call the backend upload_file endpoint once. In adaptive mode, retry a throttled upload
+        with jittered backoff (holding this file's slot while it waits) so it completes rather than
+        surfacing a 429 — signaling the limiter to shrink on each throttle. Success feedback is fed
+        centrally in `_on_file_settled` (so both this path and multipart grow the limit).
         """
         attempt = 0
         while True:
             try:
-                location = self._upload_client.upload_file(
+                return self._upload_client.upload_file(
                     self._auth_header, body, file_name, size_bytes=size, workspace=self._workspace_rid
                 )
-                if self._limiter is not None:
-                    self._limiter.on_success()
-                return location
             except Exception as e:
                 if self._limiter is not None and _is_throttle_error(e) and attempt < _THROTTLE_MAX_RETRIES:
-                    self._limiter.on_throttle()  # shrink the concurrency limit
+                    self._limiter.on_throttle()  # shrink promptly on each throttle during retries
                     time.sleep(_throttle_backoff(attempt))  # wait out the throttle (keeps holding the slot)
                     attempt += 1
                     continue

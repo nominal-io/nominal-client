@@ -584,3 +584,34 @@ def test_adaptive_small_file_retries_on_throttle_then_succeeds(tmp_path) -> None
 
     assert n["calls"] == 2  # throttled once, backed off, retried, succeeded
     assert client.upload_file_calls == [("small.csv", 100, 100)]  # only the successful call recorded
+
+
+def test_adaptive_grows_limit_from_multipart_successes(tmp_path) -> None:
+    """Regression: adaptive mode must grow the limit from MULTIPART successes too — otherwise the
+    limit stays at its initial value (1) and multipart-only workloads collapse to serial."""
+    client = _FakeUploadService()
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200)
+    limiter = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=8)
+    up = MultipartUploader(
+        max_workers=8,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=8),
+        _closed=False,
+        _small_file_route_max_bytes=1,  # 1-byte threshold -> every file takes the multipart path
+        _limiter=limiter,
+    )
+    files = [tmp_path / f"f{i}.csv" for i in range(10)]
+    for f in files:
+        f.write_bytes(b"0123456789")
+    with up:
+        futs = [up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4) for f in files]
+        for f, fut in zip(files, futs):
+            assert fut.result(timeout=10) == f"s3://bucket/{f.name}"
+
+    assert limiter.limit > 1.0  # grew from multipart completions (the bug left it stuck at 1.0)
