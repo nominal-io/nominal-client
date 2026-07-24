@@ -18,10 +18,12 @@ from nominal_api import (
     scout_asset_api,
     scout_catalog,
     scout_checks_api,
+    scout_datasource_connection_api,
     scout_layout_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
+    storage_datasource_api,
 )
 from typing_extensions import Self, deprecated
 
@@ -93,6 +95,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import (
     NominalConfigError,
+    NominalError,
     NominalInvalidArgumentError,
     NominalMethodRemovedError,
     NominalNotFoundError,
@@ -1044,10 +1047,44 @@ class NominalClient:
         *,
         required_tag_names: list[str] | None = None,
     ) -> StreamingConnection:
-        raise NominalMethodRemovedError(
-            "nominal.core.NominalClient.create_streaming_connection",
-            "use 'nominal.core.NominalClient.create_dataset' instead",
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+        datasource_response = self._clients.storage.create(
+            self._clients.auth_header,
+            storage_datasource_api.CreateNominalDataSourceRequest(
+                id=datasource_id,
+                description=datasource_description,
+                workspace=workspace_rid,
+            ),
         )
+        connection_response = self._clients.connection.create_connection(
+            self._clients.auth_header,
+            scout_datasource_connection_api.CreateConnection(
+                name=connection_name,
+                connection_details=scout_datasource_connection_api.ConnectionDetails(
+                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
+                        nominal_data_source_rid=datasource_response.rid,
+                    ),
+                ),
+                metadata={},
+                scraping=scout_datasource_connection_api.ScrapingConfig(
+                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
+                        channel_name_components=[
+                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
+                        ],
+                        separator=".",
+                    )
+                ),
+                required_tag_names=required_tag_names or [],
+                available_tag_values={},
+                should_scrape=True,
+                workspace=workspace_rid,
+                marking_rids=[],
+            ),
+        )
+        conn = Connection._from_conjure(self._clients, connection_response)
+        if isinstance(conn, StreamingConnection):
+            return conn
+        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_asset(
         self,

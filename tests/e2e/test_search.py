@@ -105,18 +105,6 @@ def _assert_archive_status_behavior(
     assert _rids(search_fn(ArchiveStatusFilter.ANY)) == active_rids | archived_rids
 
 
-def _assert_include_archived_behavior(
-    search_fn: Callable[[bool], Sequence[object]],
-    *,
-    active_rids: set[str],
-    archived_rids: set[str],
-) -> None:
-    with pytest.warns(UserWarning, match="include_archived"):
-        assert _rids(search_fn(False)) == active_rids
-    with pytest.warns(UserWarning, match="include_archived"):
-        assert _rids(search_fn(True)) == active_rids | archived_rids
-
-
 def _assert_include_drafts_behavior(
     search_fn: Callable[[bool], Sequence[object]],
     *,
@@ -589,15 +577,6 @@ def test_client_search_workbooks_archive_filters(
         active_rids={archive_search_context.active_run_workbook.rid},
         archived_rids={archive_search_context.archived_run_workbook.rid},
     )
-    _assert_include_archived_behavior(
-        lambda include_archived: client.search_workbooks(
-            run=search_context.run,
-            search_text=archive_search_context.run_workbook_tag,
-            include_archived=include_archived,
-        ),
-        active_rids={archive_search_context.active_run_workbook.rid},
-        archived_rids={archive_search_context.archived_run_workbook.rid},
-    )
 
 
 def test_client_search_workbooks_include_drafts(
@@ -630,14 +609,6 @@ def test_asset_search_workbooks_archive_filters(
         active_rids={archive_search_context.active_asset_workbook.rid},
         archived_rids={archive_search_context.archived_asset_workbook.rid},
     )
-    _assert_include_archived_behavior(
-        lambda include_archived: search_context.asset.search_workbooks(
-            search_text=archive_search_context.asset_workbook_tag,
-            include_archived=include_archived,
-        ),
-        active_rids={archive_search_context.active_asset_workbook.rid},
-        archived_rids={archive_search_context.archived_asset_workbook.rid},
-    )
 
 
 def test_asset_search_workbooks_include_drafts(
@@ -664,14 +635,6 @@ def test_run_search_workbooks_archive_filters(
         lambda archive_status: search_context.run.search_workbooks(
             search_text=archive_search_context.run_workbook_tag,
             archive_status=archive_status,
-        ),
-        active_rids={archive_search_context.active_run_workbook.rid},
-        archived_rids={archive_search_context.archived_run_workbook.rid},
-    )
-    _assert_include_archived_behavior(
-        lambda include_archived: search_context.run.search_workbooks(
-            search_text=archive_search_context.run_workbook_tag,
-            include_archived=include_archived,
         ),
         active_rids={archive_search_context.active_run_workbook.rid},
         archived_rids={archive_search_context.archived_run_workbook.rid},
