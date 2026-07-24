@@ -61,7 +61,7 @@ def _coordinator(num_parts: int, complete=None, abort=None) -> tuple[_FileUpload
     fu = _FileUpload(
         future=fut,
         num_parts=num_parts,
-        complete=complete or (lambda: "s3://bucket/obj"),
+        complete=complete or (lambda part_etags: "s3://bucket/obj"),
         abort=abort or MagicMock(),
     )
     return fu, fut
@@ -77,7 +77,7 @@ def test_coordinator_all_parts_succeed_completes_once() -> None:
         fu.on_part_done(pf)
 
     assert fut.result() == "s3://bucket/obj"
-    complete.assert_called_once_with()
+    complete.assert_called_once()  # called with the collected part ETags
     abort.assert_not_called()
 
 
@@ -152,6 +152,8 @@ class _FakeUploadService:
         self._fail_on_initiate = fail_on_initiate
         self.aborted: list[str] = []
         self.initiate_calls = 0
+        self.list_parts_calls = 0
+        self.completed_parts: list[list[tuple[str, int]]] = []  # per-complete: [(etag, part_number), ...]
         self.upload_file_calls: list[tuple[str, int | None, int]] = []  # (file_name, size_bytes, body_len)
 
     def initiate_multipart_upload(self, auth_header, request):
@@ -170,9 +172,11 @@ class _FakeUploadService:
         return MagicMock(url=f"https://s3/{key}/{part}", headers={})
 
     def list_parts(self, auth_header, key, upload_id):
+        self.list_parts_calls += 1
         return [MagicMock(etag="etag", part_number=1)]
 
     def complete_multipart_upload(self, auth_header, key, upload_id, parts):
+        self.completed_parts.append([(p.etag, p.part_number) for p in parts])
         return MagicMock(location=f"s3://bucket/{key}")
 
     def abort_multipart_upload(self, auth_header, key, upload_id):
@@ -183,6 +187,7 @@ def _uploader(client: _FakeUploadService) -> MultipartUploader:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
     put_response.status_code = 200
+    put_response.headers = {"ETag": "etag-put"}  # S3 returns the part ETag on the PUT
     session.put.return_value = put_response
     return MultipartUploader(
         max_workers=4,
@@ -204,6 +209,25 @@ def test_enqueue_file_resolves_to_location(tmp_path) -> None:
     with _uploader(client) as up:
         fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4)
         assert fut.result(timeout=5) == "s3://bucket/data.csv"
+
+
+def test_single_part_upload_completes_without_list_parts(tmp_path) -> None:
+    f = tmp_path / "one.csv"
+    f.write_bytes(b"0123456789")  # tiny -> one part at the default part size
+    client = _FakeUploadService()
+    with _uploader(client) as up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV).result(timeout=5) == "s3://bucket/one.csv"
+    assert client.list_parts_calls == 0  # single part -> list_parts round-trip skipped
+    assert client.completed_parts == [[("etag-put", 1)]]  # completed straight from the PUT's ETag
+
+
+def test_multipart_upload_completes_via_list_parts(tmp_path) -> None:
+    f = tmp_path / "multi.csv"
+    f.write_bytes(b"0123456789")  # part_size=4 -> 3 parts
+    client = _FakeUploadService()
+    with _uploader(client) as up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4).result(timeout=5) == "s3://bucket/multi.csv"
+    assert client.list_parts_calls == 1  # >1 part -> list_parts stays authoritative
 
 
 def test_initiate_failure_settles_future(tmp_path) -> None:

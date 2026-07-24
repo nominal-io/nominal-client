@@ -5,7 +5,7 @@ import logging
 import pathlib
 from functools import partial
 from queue import Queue
-from typing import BinaryIO, Iterable
+from typing import BinaryIO, Iterable, Sequence
 
 import requests
 from nominal_api import ingest_api, upload_api
@@ -145,11 +145,23 @@ def _initiate_multipart_upload(
 
 
 def _complete_multipart_upload(
-    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str
+    upload_client: upload_api.UploadService,
+    auth_header: str,
+    key: str,
+    upload_id: str,
+    part_etags: Sequence[str] | None = None,
 ) -> str:
-    """List parts and complete the upload. Returns the object location, or raises if absent."""
-    parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
-    parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
+    """Complete the upload and return the object location (raises if absent).
+
+    When ``part_etags`` is given (in part-number order), complete directly with those ETags — the S3
+    PUT responses already carry them — skipping the ``list_parts`` round-trip. Otherwise fall back to
+    ``list_parts`` as the authoritative source of parts.
+    """
+    if part_etags is None:
+        parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
+        parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
+    else:
+        parts = [ingest_api.Part(etag=etag, part_number=i) for i, etag in enumerate(part_etags, start=1)]
     response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
     if response.location is None:
         raise NominalMultipartUploadFailed(

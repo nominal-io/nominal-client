@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from types import TracebackType
-from typing import Callable, Iterable, Type
+from typing import Callable, Iterable, Sequence, Type
 
 import requests
 from nominal_api import upload_api
@@ -161,18 +161,18 @@ class _FileUpload:
         self,
         future: "Future[str]",
         num_parts: int,
-        complete: Callable[[], str],
+        complete: Callable[[Sequence[str | None]], str],
         abort: Callable[[BaseException], None],
     ) -> None:
         self.future = future
-        self.part_futures: list[Future[None]] = []
+        self.part_futures: list[Future[str | None]] = []
         self._remaining = num_parts
         self._complete = complete
         self._abort = abort
         self._settled = False
         self._lock = threading.Lock()
 
-    def on_part_done(self, fut: "Future[None]") -> None:
+    def on_part_done(self, fut: "Future[str | None]") -> None:
         # Decide the transition under the lock; run the (network) effect outside it.
         with self._lock:
             if self._settled:
@@ -195,7 +195,10 @@ class _FileUpload:
 
     def _finish(self) -> None:
         try:
-            self.future.set_result(self._complete())
+            # All parts have succeeded here, so every result is available without blocking; the ETags
+            # (part-number order) let complete skip list_parts for single-part uploads.
+            part_etags = [f.result() for f in self.part_futures]
+            self.future.set_result(self._complete(part_etags))
         except Exception as ce:  # completion itself failed
             self.future.set_exception(ce)
             self._safe_abort(ce)
@@ -426,7 +429,7 @@ class MultipartUploader:
             file_upload = _FileUpload(
                 future=future,
                 num_parts=len(bounds),
-                complete=partial(_complete_multipart_upload, self._upload_client, self._auth_header, key, upload_id),
+                complete=partial(self._complete_upload, key, upload_id),
                 abort=partial(_abort, self._upload_client, self._auth_header, key, upload_id),
             )
             # Submit all parts first, THEN wire callbacks — so a failure's sibling-cancel sees
@@ -479,11 +482,11 @@ class MultipartUploader:
                     continue
                 raise
 
-    def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> None:
+    def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> str | None:
         with plan.path.open("rb") as f:
             f.seek(bounds.offset)
             data = f.read(bounds.size)
-        _sign_and_put_part(
+        response = _sign_and_put_part(
             self._upload_client,
             self._session,
             self._auth_header,
@@ -494,3 +497,14 @@ class MultipartUploader:
             num_retries=self.max_part_retries,
             timeout=self.timeout,
         )
+        # S3 returns the part's ETag on the PUT; hand it back so a single-part upload can complete
+        # without a list_parts round-trip. None (header absent) makes complete fall back to list_parts.
+        return response.headers.get("ETag")
+
+    def _complete_upload(self, key: str, upload_id: str, part_etags: Sequence[str | None]) -> str:
+        # Single part: complete straight from the PUT's ETag, skipping list_parts (a 25% cut in a
+        # single-part file's control-plane calls). Multi-part, or a missing ETag: fall back to
+        # list_parts as the authoritative source.
+        etag = part_etags[0] if len(part_etags) == 1 else None
+        known = [etag] if etag else None
+        return _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, known)
