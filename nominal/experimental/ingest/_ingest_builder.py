@@ -335,8 +335,12 @@ class IngestBuilder:
         mcap_channels: mcap_ingest_pb2.McapChannelSelection | None = None
         if include_topics is not None or exclude_topics is not None:
             mcap_channels = mcap_ingest_pb2.McapChannelSelection(
-                include_topics=None if include_topics is None else mcap_ingest_pb2.McapTopicNames(include_topics),
-                exclude_topics=None if exclude_topics is None else mcap_ingest_pb2.McapTopicNames(exclude_topics),
+                include_topics=None
+                if include_topics is None
+                else mcap_ingest_pb2.McapTopicNames(topics=include_topics),
+                exclude_topics=None
+                if exclude_topics is None
+                else mcap_ingest_pb2.McapTopicNames(topics=exclude_topics),
             )
 
         options = mcap_ingest_pb2.McapIngestItem(
