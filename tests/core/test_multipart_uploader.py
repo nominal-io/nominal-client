@@ -846,6 +846,47 @@ def test_throttled_sign_part_is_retried_rather_than_failing_the_file(tmp_path) -
     assert limiter.limit < 8.0
 
 
+def test_permanently_throttled_sign_spends_only_one_gate_budget(tmp_path) -> None:
+    """A sign that never stops being throttled must exhaust exactly ONE gate throttle budget --
+    not get caught by the per-part retry loop, wrapped, and given a fresh budget max_part_retries
+    times over. The failure must also surface intact as NominalRequestThrottledError, not buried
+    inside a NominalMultipartUploadFailed group.
+    """
+    calls = {"n": 0}
+
+    class _AlwaysThrottleSign(_FakeUploadService):
+        def sign_part(self, auth_header, key, part, upload_id):  # type: ignore[no-untyped-def]
+            calls["n"] += 1
+            raise requests.exceptions.RetryError("too many 429 error responses")
+
+    client = _AlwaysThrottleSign()
+    session = MagicMock(spec=["put", "close"])
+    clock = _FakeClock()
+    limiter = _AdaptiveLimiter(initial=8, min_limit=1, max_limit=8)
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=3,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _gate=_ThrottleGate(limiter, deadline_seconds=3.0, clock=clock.time, sleep=clock.sleep, backoff=lambda _a: 1.0),
+    )
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with up:
+        fut = up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000)
+        with pytest.raises(NominalRequestThrottledError):
+            fut.result(timeout=5)
+
+    # deadline=3.0, backoff=1.0 -> one gate budget is exactly 4 sign attempts (elapsed 0,1,2,3).
+    # If a throttled-out sign were re-caught and retried by the part loop, this would be 4 * 3 = 12.
+    assert calls["n"] == 4
+
+
 def test_create_has_no_adaptive_concurrency_flag() -> None:
     """AIMD is unconditional now, so the flag is gone rather than defaulting to False."""
     import inspect

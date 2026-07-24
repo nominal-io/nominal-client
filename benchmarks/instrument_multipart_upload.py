@@ -299,7 +299,6 @@ def build_instrumented_uploader(
     max_workers: int = 8,
     max_files_in_flight: int | None = None,
     small_file_route_max_bytes: int | None = None,
-    adaptive_concurrency: bool = False,
     timeout: float = 30.0,
     max_part_retries: int = 3,
 ) -> tuple[Any, Recorder]:
@@ -322,7 +321,6 @@ def build_instrumented_uploader(
         max_workers=max_workers,
         max_files_in_flight=max_files_in_flight,
         small_file_route_max_bytes=small_file_route_max_bytes,
-        adaptive_concurrency=adaptive_concurrency,
         timeout=timeout,
         max_part_retries=max_part_retries,
         header_provider=clients.header_provider,

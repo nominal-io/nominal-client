@@ -576,6 +576,8 @@ class MultipartUploader:
                     timeout=self.timeout,
                 )
                 return put_response.headers.get("ETag")
+            except NominalRequestThrottledError:
+                raise  # the gate already spent the full budget; a fresh one would only re-herd
             except Exception as ex:
                 logger.warning(
                     "Failed to PUT part %d: %s",
