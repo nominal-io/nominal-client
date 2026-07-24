@@ -23,6 +23,7 @@ from nominal.core._utils.multipart import (
     _abort,
     _complete_multipart_upload,
     _initiate_multipart_upload,
+    _list_parts_then_complete,
     _sign_and_put_part,
     path_upload_name,
 )
@@ -44,6 +45,9 @@ _AIMD_COOLDOWN_S = 1.0  # debounce: at most one decrease per this window (one ov
 _THROTTLE_MAX_RETRIES = 8  # per-file retry budget when the server is throttling
 _THROTTLE_BACKOFF_BASE_S = 0.5
 _THROTTLE_BACKOFF_CAP_S = 30.0
+_AIMD_INITIAL_LIMIT = 8  # a slot is one API request; the server tolerates a burst well above this
+DEFAULT_THROTTLE_DEADLINE_S = 120.0  # a request unadmitted this long means unavailable, not busy
+_ABORT_THROTTLE_DEADLINE_S = 5.0  # best-effort rollback must not compete with live uploads
 
 
 class _AdaptiveLimiter:
@@ -106,13 +110,18 @@ class _AdaptiveLimiter:
 
 
 def _is_throttle_error(exc: BaseException) -> bool:
-    """True if `exc` looks like server rate-limiting (a 429) or its retry-exhaustion."""
-    if isinstance(exc, requests.exceptions.RetryError):  # conjure Retry exhausted on 429/503
+    """True if `exc` is the server refusing the request because the caller is over its budget.
+
+    Classification runs on the raw request error, before any per-part wrapping, so this never
+    needs to reach inside an ExceptionGroup. The conjure session retries 429s internally, so
+    sustained throttling arrives as retry exhaustion rather than as an individual 429.
+    """
+    if isinstance(exc, requests.exceptions.RetryError):
         return True
-    status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
-    if status == 429:
-        return True
-    return "429" in str(exc)
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    return bool(status == 429)
 
 
 def _throttle_backoff(attempt: int) -> float:
@@ -508,5 +517,6 @@ class MultipartUploader:
         # single-part file's control-plane calls). Multi-part, or a missing ETag: fall back to
         # list_parts as the authoritative source.
         etag = part_etags[0] if len(part_etags) == 1 else None
-        known = [etag] if etag else None
-        return _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, known)
+        if etag is not None:
+            return _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, {1: etag})
+        return _list_parts_then_complete(self._upload_client, self._auth_header, key, upload_id)

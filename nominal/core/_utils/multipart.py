@@ -5,7 +5,7 @@ import logging
 import pathlib
 from functools import partial
 from queue import Queue
-from typing import BinaryIO, Iterable, Sequence
+from typing import BinaryIO, Iterable, Mapping
 
 import requests
 from nominal_api import ingest_api, upload_api
@@ -47,6 +47,41 @@ def _wrap_multipart_retry_exception(
     return wrapped
 
 
+def _sign_part(
+    upload_client: upload_api.UploadService,
+    auth_header: str,
+    key: str,
+    upload_id: str,
+    part: int,
+) -> ingest_api.SignPartResponse:
+    """Presign the upload of one part. Exactly one API request; retrying is the caller's job."""
+    return upload_client.sign_part(auth_header, key, part, upload_id)
+
+
+def _put_part(
+    multipart_session: requests.Session,
+    sign_response: ingest_api.SignPartResponse,
+    data: bytes,
+    *,
+    verify: bool | str | None,
+    timeout: float | None = None,
+) -> requests.Response:
+    """PUT one already-signed part to the storage provider.
+
+    Exactly one request; retrying is the caller's job. The session's own transport-level retry
+    policy still applies underneath.
+    """
+    put_response = multipart_session.put(
+        sign_response.url,
+        data=data,
+        headers=sign_response.headers,
+        verify=verify,
+        timeout=timeout,
+    )
+    put_response.raise_for_status()
+    return put_response
+
+
 def _sign_and_put_part(
     upload_client: upload_api.UploadService,
     multipart_session: requests.Session,
@@ -64,11 +99,10 @@ def _sign_and_put_part(
     """
     attempt_errors: list[NominalMultipartUploadError] = []
     for attempt in range(num_retries):
+        log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
         try:
-            log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
-
             logger.debug("Signing part %d for upload", part, extra=log_extras)
-            sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+            sign_response = _sign_part(upload_client, auth_header, key, upload_id, part)
             logger.debug(
                 "Successfully signed part %d for upload",
                 part,
@@ -76,14 +110,9 @@ def _sign_and_put_part(
             )
 
             logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
-            put_response = multipart_session.put(
-                sign_response.url,
-                data=data,
-                headers=sign_response.headers,
-                verify=upload_client._verify,
-                timeout=timeout,
+            put_response = _put_part(
+                multipart_session, sign_response, data, verify=upload_client._verify, timeout=timeout
             )
-            put_response.raise_for_status()
             logger.debug(
                 "Finished pushing part %d for multipart upload with status %d",
                 part,
@@ -94,13 +123,7 @@ def _sign_and_put_part(
         except Exception as ex:
             logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
             attempt_errors.append(
-                _wrap_multipart_retry_exception(
-                    ex=ex,
-                    key=key,
-                    part=part,
-                    upload_id=upload_id,
-                    attempt=attempt + 1,
-                )
+                _wrap_multipart_retry_exception(ex=ex, key=key, part=part, upload_id=upload_id, attempt=attempt + 1)
             )
 
     if attempt_errors:
@@ -149,19 +172,14 @@ def _complete_multipart_upload(
     auth_header: str,
     key: str,
     upload_id: str,
-    part_etags: Sequence[str] | None = None,
+    etags: Mapping[int, str],
 ) -> str:
-    """Complete the upload and return the object location (raises if absent).
+    """Complete an upload from a caller-supplied {part_number: etag} mapping.
 
-    When ``part_etags`` is given (in part-number order), complete directly with those ETags — the S3
-    PUT responses already carry them — skipping the ``list_parts`` round-trip. Otherwise fall back to
-    ``list_parts`` as the authoritative source of parts.
+    Parts are sent in ascending part-number order, which the storage provider requires.
+    Returns the object location, or raises if the response carries none.
     """
-    if part_etags is None:
-        parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
-        parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
-    else:
-        parts = [ingest_api.Part(etag=etag, part_number=i) for i, etag in enumerate(part_etags, start=1)]
+    parts = [ingest_api.Part(etag=etags[number], part_number=number) for number in sorted(etags)]
     response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
     if response.location is None:
         raise NominalMultipartUploadFailed(
@@ -169,6 +187,20 @@ def _complete_multipart_upload(
             [RuntimeError("Multipart upload completion returned no location")],
         )
     return response.location
+
+
+def _list_parts_then_complete(
+    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str
+) -> str:
+    """Ask the server which parts landed, then complete the upload.
+
+    Used by callers that do not track ETags themselves (the single-stream `put_multipart_upload`
+    path). Costs one extra API request compared with supplying the ETags directly.
+    """
+    parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
+    return _complete_multipart_upload(
+        upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts_with_size}
+    )
 
 
 def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
@@ -265,7 +297,7 @@ def put_multipart_upload(
         q.join()
 
         # mark the upload as completed
-        return _complete_multipart_upload(upload_client, auth_header, key, upload_id)
+        return _list_parts_then_complete(upload_client, auth_header, key, upload_id)
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)
         raise e

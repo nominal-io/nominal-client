@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import pathlib
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from nominal.core._utils.multipart_uploader import (
     MAX_SMALL_FILE_ROUTE_BYTES,
     MultipartUploader,
     _AdaptiveLimiter,
     _FileUpload,
+    _is_throttle_error,
     _PartBounds,
     _PlannedUpload,
 )
-from nominal.core.exceptions import NominalMultipartUploadFailed
+from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
 from nominal.experimental.ingest._ingest_builder import _Upload, _upload_all
 from nominal.protos.ingest.v2 import file_ingest_pb2, ingest_service_pb2
@@ -419,8 +422,6 @@ def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
     Slots are acquired on the caller thread and released when the file's future settles (on a
     pool worker), so the caller's blocked acquire() always unblocks as files finish.
     """
-    import threading
-
     gate = threading.Event()
     reached_complete = threading.Semaphore(0)
 
@@ -543,8 +544,6 @@ def test_create_rejects_oversized_small_file_route() -> None:
 
 
 def test_adaptive_limiter_blocks_at_limit_and_admits_on_release() -> None:
-    import threading
-
     lim = _AdaptiveLimiter(initial=2, min_limit=1, max_limit=10)
     lim.acquire()
     lim.acquire()  # 2 in flight == limit 2
@@ -576,8 +575,6 @@ def test_adaptive_limiter_shrinks_on_throttle_with_cooldown() -> None:
 
 def test_adaptive_small_file_retries_on_throttle_then_succeeds(tmp_path) -> None:
     """In adaptive mode a throttled (429) upload_file backs off and retries instead of failing."""
-    import requests
-
     n = {"calls": 0}
 
     class _ThrottleOnce(_FakeUploadService):
@@ -612,7 +609,8 @@ def test_adaptive_small_file_retries_on_throttle_then_succeeds(tmp_path) -> None
 
 def test_adaptive_grows_limit_from_multipart_successes(tmp_path) -> None:
     """Regression: adaptive mode must grow the limit from MULTIPART successes too — otherwise the
-    limit stays at its initial value (1) and multipart-only workloads collapse to serial."""
+    limit stays at its initial value (1) and multipart-only workloads collapse to serial.
+    """
     client = _FakeUploadService()
     session = MagicMock(spec=["put", "close"])
     session.put.return_value = MagicMock(status_code=200)
@@ -639,3 +637,60 @@ def test_adaptive_grows_limit_from_multipart_successes(tmp_path) -> None:
             assert fut.result(timeout=10) == f"s3://bucket/{f.name}"
 
     assert limiter.limit > 1.0  # grew from multipart completions (the bug left it stuck at 1.0)
+
+
+def test_is_throttle_error_recognizes_retry_exhaustion() -> None:
+    assert _is_throttle_error(requests.exceptions.RetryError("too many 429 error responses"))
+
+
+def test_is_throttle_error_recognizes_a_429_response() -> None:
+    exc = requests.HTTPError("rejected")
+    exc.response = MagicMock(status_code=429)
+    assert _is_throttle_error(exc)
+
+
+def test_is_throttle_error_rejects_other_failures() -> None:
+    server_error = requests.HTTPError("boom")
+    server_error.response = MagicMock(status_code=500)
+    assert not _is_throttle_error(server_error)
+    assert not _is_throttle_error(ValueError("nothing to do with rate limits"))
+
+
+def test_is_throttle_error_does_not_inspect_exception_groups() -> None:
+    """By design, classification happens on the raw request error before per-part wrapping.
+
+    A wrapped group never reaches the gate, so we deliberately do not unwrap one. This test
+    documents that boundary -- if it ever starts returning True, classification has leaked
+    downstream of where it belongs.
+    """
+    inner = requests.exceptions.RetryError("too many 429 error responses")
+    wrapped = NominalMultipartUploadError(f"part 1 attempt 1: {inner}")
+    group = NominalMultipartUploadFailed("part 1 failed after 3 attempts", [wrapped])
+    assert not _is_throttle_error(group)
+
+
+def test_adaptive_limiter_stays_within_bounds() -> None:
+    now = [0.0]
+    lim = _AdaptiveLimiter(initial=5, min_limit=2, max_limit=6, cooldown=1.0, clock=lambda: now[0])
+    for _ in range(200):
+        lim.on_success()
+    assert lim.limit == 6.0
+    for tick in range(12):
+        now[0] = float(tick * 2)  # step past the cooldown so every throttle lands
+        lim.on_throttle()
+    assert lim.limit == 2.0
+
+
+def test_adaptive_limiter_admits_waiter_after_shrinking_below_inflight() -> None:
+    """Shrinking the limit under the in-flight count must not lose a wakeup."""
+    lim = _AdaptiveLimiter(initial=4, min_limit=1, max_limit=4)
+    for _ in range(4):
+        lim.acquire()
+    lim.on_throttle()  # limit 4 -> 2 while 4 are in flight
+
+    admitted = threading.Event()
+    threading.Thread(target=lambda: (lim.acquire(), admitted.set()), daemon=True).start()
+    assert not admitted.wait(0.2)
+    for _ in range(3):
+        lim.release()  # drains to 1 in flight, below the new limit of 2
+    assert admitted.wait(1.0)

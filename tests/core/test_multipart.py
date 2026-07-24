@@ -13,7 +13,13 @@ import pytest
 import requests
 
 from nominal.core._utils import multipart
-from nominal.core._utils.multipart import _complete_multipart_upload, _sign_and_put_part
+from nominal.core._utils.multipart import (
+    _complete_multipart_upload,
+    _list_parts_then_complete,
+    _put_part,
+    _sign_and_put_part,
+    _sign_part,
+)
 from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
 
@@ -98,10 +104,48 @@ def test_sign_and_put_part_raises_after_retries() -> None:
     assert session.put.call_count == 2
 
 
+def test_complete_multipart_upload_builds_parts_from_etags_in_order() -> None:
+    client = MagicMock(spec=["complete_multipart_upload"])
+    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
+
+    location = _complete_multipart_upload(client, "auth", "key", "uid", {3: '"c"', 1: '"a"', 2: '"b"'})
+
+    assert location == "s3://bucket/key"
+    _, _, _, parts = client.complete_multipart_upload.call_args[0]
+    assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"'), (2, '"b"'), (3, '"c"')]
+
+
 def test_complete_multipart_upload_raises_when_location_missing() -> None:
-    client = MagicMock(spec=["list_parts", "complete_multipart_upload"])
-    client.list_parts.return_value = [MagicMock(etag="e", part_number=1)]
+    client = MagicMock(spec=["complete_multipart_upload"])
     client.complete_multipart_upload.return_value = MagicMock(location=None)
 
     with pytest.raises(NominalMultipartUploadFailed):
-        _complete_multipart_upload(client, "auth", "key", "uid")
+        _complete_multipart_upload(client, "auth", "key", "uid", {1: '"e"'})
+
+
+def test_list_parts_then_complete_reads_etags_from_the_server() -> None:
+    """The legacy path has no ETags of its own, so it must still ask the server for them."""
+    client = MagicMock(spec=["list_parts", "complete_multipart_upload"])
+    client.list_parts.return_value = [MagicMock(etag='"b"', part_number=2), MagicMock(etag='"a"', part_number=1)]
+    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
+
+    assert _list_parts_then_complete(client, "auth", "key", "uid") == "s3://bucket/key"
+
+    client.list_parts.assert_called_once_with("auth", "key", "uid")
+    _, _, _, parts = client.complete_multipart_upload.call_args[0]
+    assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"'), (2, '"b"')]
+
+
+def test_sign_part_and_put_part_compose_without_retrying() -> None:
+    client = MagicMock(spec=["sign_part"])
+    client.sign_part.return_value = _sign_response()
+    session = MagicMock(spec=["put"])
+    session.put.side_effect = requests.ConnectionError("boom")
+
+    signed = _sign_part(client, "auth", "key", "uid", 7)
+    assert signed.url == "https://s3.example.com/signed"
+    client.sign_part.assert_called_once_with("auth", "key", 7, "uid")
+
+    with pytest.raises(requests.ConnectionError):
+        _put_part(session, signed, b"chunk", verify=False, timeout=9.0)
+    assert session.put.call_count == 1  # exactly one PUT; retrying is the caller's job
