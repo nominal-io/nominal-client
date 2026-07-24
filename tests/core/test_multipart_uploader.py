@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,7 @@ import pytest
 import requests
 
 from nominal.core._utils.multipart_uploader import (
+    DEFAULT_THROTTLE_DEADLINE_S,
     MAX_SMALL_FILE_ROUTE_BYTES,
     MultipartUploader,
     _AdaptiveLimiter,
@@ -16,8 +18,13 @@ from nominal.core._utils.multipart_uploader import (
     _is_throttle_error,
     _PartBounds,
     _PlannedUpload,
+    _ThrottleGate,
 )
-from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
+from nominal.core.exceptions import (
+    NominalMultipartUploadError,
+    NominalMultipartUploadFailed,
+    NominalRequestThrottledError,
+)
 from nominal.core.filetype import FileTypes
 from nominal.experimental.ingest._ingest_builder import _Upload, _upload_all
 from nominal.protos.ingest.v2 import file_ingest_pb2, ingest_service_pb2
@@ -186,6 +193,10 @@ class _FakeUploadService:
         self.aborted.append(key)
 
 
+def _test_gate(*, limit: int = 8) -> _ThrottleGate:
+    return _ThrottleGate(_AdaptiveLimiter(initial=limit, min_limit=1, max_limit=limit))
+
+
 def _uploader(client: _FakeUploadService) -> MultipartUploader:
     session = MagicMock(spec=["put", "close"])
     put_response = MagicMock()
@@ -202,6 +213,7 @@ def _uploader(client: _FakeUploadService) -> MultipartUploader:
         _session=session,
         _pool=ThreadPoolExecutor(max_workers=4),
         _closed=False,
+        _gate=_test_gate(),
     )
 
 
@@ -399,6 +411,7 @@ def test_more_files_than_workers_no_deadlock(tmp_path) -> None:
         _session=session,
         _pool=ThreadPoolExecutor(max_workers=1),
         _closed=False,
+        _gate=_test_gate(),
     )
     with up:
         files = [tmp_path / f"file{i}.csv" for i in range(5)]
@@ -445,6 +458,7 @@ def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
         _session=session,
         _pool=ThreadPoolExecutor(max_workers=8),
         _closed=False,
+        _gate=_test_gate(),
         _file_slots=threading.BoundedSemaphore(2),
     )
     paths = [tmp_path / f"f{i}.csv" for i in range(3)]
@@ -492,6 +506,7 @@ def _small_file_uploader(client: _FakeUploadService, *, threshold: int) -> Multi
         _session=session,
         _pool=ThreadPoolExecutor(max_workers=4),
         _closed=False,
+        _gate=_test_gate(),
         _small_file_route_max_bytes=threshold,
     )
 
@@ -573,72 +588,6 @@ def test_adaptive_limiter_shrinks_on_throttle_with_cooldown() -> None:
     assert lim.limit == 2.0
 
 
-def test_adaptive_small_file_retries_on_throttle_then_succeeds(tmp_path) -> None:
-    """In adaptive mode a throttled (429) upload_file backs off and retries instead of failing."""
-    n = {"calls": 0}
-
-    class _ThrottleOnce(_FakeUploadService):
-        def upload_file(self, auth_header, body, file_name, size_bytes=None, workspace=None) -> str:  # type: ignore[no-untyped-def]
-            n["calls"] += 1
-            if n["calls"] == 1:
-                raise requests.exceptions.RetryError("too many 429 error responses")
-            return super().upload_file(auth_header, body, file_name, size_bytes, workspace)
-
-    client = _ThrottleOnce()
-    up = MultipartUploader(
-        max_workers=4,
-        timeout=30.0,
-        max_part_retries=2,
-        _upload_client=client,
-        _auth_header="auth",
-        _workspace_rid="ws-1",
-        _session=MagicMock(spec=["put", "close"]),
-        _pool=ThreadPoolExecutor(max_workers=4),
-        _closed=False,
-        _small_file_route_max_bytes=4096,
-        _limiter=_AdaptiveLimiter(initial=2, min_limit=1, max_limit=4),
-    )
-    f = tmp_path / "small.csv"
-    f.write_bytes(b"x" * 100)
-    with up:
-        assert up.enqueue_file(f, file_type=FileTypes.CSV).result(timeout=10) == "s3://backend/small.csv"
-
-    assert n["calls"] == 2  # throttled once, backed off, retried, succeeded
-    assert client.upload_file_calls == [("small.csv", 100, 100)]  # only the successful call recorded
-
-
-def test_adaptive_grows_limit_from_multipart_successes(tmp_path) -> None:
-    """Regression: adaptive mode must grow the limit from MULTIPART successes too — otherwise the
-    limit stays at its initial value (1) and multipart-only workloads collapse to serial.
-    """
-    client = _FakeUploadService()
-    session = MagicMock(spec=["put", "close"])
-    session.put.return_value = MagicMock(status_code=200)
-    limiter = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=8)
-    up = MultipartUploader(
-        max_workers=8,
-        timeout=30.0,
-        max_part_retries=2,
-        _upload_client=client,
-        _auth_header="auth",
-        _workspace_rid=None,
-        _session=session,
-        _pool=ThreadPoolExecutor(max_workers=8),
-        _closed=False,
-        _small_file_route_max_bytes=1,  # 1-byte threshold -> every file takes the multipart path
-        _limiter=limiter,
-    )
-    files = [tmp_path / f"f{i}.csv" for i in range(10)]
-    for f in files:
-        f.write_bytes(b"0123456789")
-    with up:
-        futs = [up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4) for f in files]
-        for f, fut in zip(files, futs):
-            assert fut.result(timeout=10) == f"s3://bucket/{f.name}"
-
-    assert limiter.limit > 1.0  # grew from multipart completions (the bug left it stuck at 1.0)
-
-
 def test_is_throttle_error_recognizes_retry_exhaustion() -> None:
     assert _is_throttle_error(requests.exceptions.RetryError("too many 429 error responses"))
 
@@ -694,3 +643,213 @@ def test_adaptive_limiter_admits_waiter_after_shrinking_below_inflight() -> None
     for _ in range(3):
         lim.release()  # drains to 1 in flight, below the new limit of 2
     assert admitted.wait(1.0)
+
+
+class _FakeClock:
+    """Manual clock plus a sleep that advances it, so backoff is instant and deterministic."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def _gate(limiter: _AdaptiveLimiter, clock: _FakeClock, *, deadline: float = 120.0) -> _ThrottleGate:
+    return _ThrottleGate(
+        limiter,
+        deadline_seconds=deadline,
+        clock=clock.time,
+        sleep=clock.sleep,
+        backoff=lambda attempt: float(2**attempt),  # deterministic, no jitter, for assertions
+    )
+
+
+def test_gate_returns_result_and_grows_the_limit_on_success() -> None:
+    limiter = _AdaptiveLimiter(initial=2, min_limit=1, max_limit=8)
+    clock = _FakeClock()
+    before = limiter.limit
+
+    assert _gate(limiter, clock).call(lambda: "ok") == "ok"
+
+    assert limiter.limit > before
+    assert clock.sleeps == []
+
+
+def test_gate_retries_a_throttled_call_then_succeeds() -> None:
+    limiter = _AdaptiveLimiter(initial=8, min_limit=1, max_limit=8)
+    clock = _FakeClock()
+    calls = {"n": 0}
+
+    def op() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise requests.exceptions.RetryError("too many 429 error responses")
+        return "done"
+
+    assert _gate(limiter, clock).call(op) == "done"
+
+    assert calls["n"] == 3
+    assert clock.sleeps == [1.0, 2.0]  # 2**0, 2**1
+    assert limiter.limit < 8.0  # shrank on the way
+
+
+def test_gate_raises_when_the_throttle_deadline_is_exhausted() -> None:
+    limiter = _AdaptiveLimiter(initial=4, min_limit=1, max_limit=4)
+    clock = _FakeClock()
+    root = requests.exceptions.RetryError("too many 429 error responses")
+
+    def op() -> str:
+        raise root
+
+    with pytest.raises(NominalRequestThrottledError) as excinfo:
+        _gate(limiter, clock, deadline=10.0).call(op)
+
+    assert excinfo.value.__cause__ is root
+    assert "10.0s" in str(excinfo.value)
+    assert clock.now <= 10.0  # never sleeps past the deadline
+
+
+def test_gate_fails_fast_on_a_non_throttle_error() -> None:
+    limiter = _AdaptiveLimiter(initial=4, min_limit=1, max_limit=4)
+    clock = _FakeClock()
+
+    def op() -> str:
+        raise ValueError("bad request")
+
+    with pytest.raises(ValueError, match="bad request"):
+        _gate(limiter, clock).call(op)
+
+    assert clock.sleeps == []  # no retry
+    limiter.acquire()  # the slot was released, so this must not block
+
+
+def test_gate_admits_only_up_to_the_limit() -> None:
+    limiter = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=1)
+    gate = _gate(limiter, _FakeClock())
+    inside = threading.Event()
+    release = threading.Event()
+
+    def blocking_op() -> str:
+        inside.set()
+        release.wait(10)
+        return "first"
+
+    threading.Thread(target=lambda: gate.call(blocking_op), daemon=True).start()
+    assert inside.wait(10)
+
+    second_done = threading.Event()
+    threading.Thread(target=lambda: (gate.call(lambda: "second"), second_done.set()), daemon=True).start()
+    assert not second_done.wait(0.3)  # limit is 1 and it is taken
+
+    release.set()
+    assert second_done.wait(10)
+
+
+def test_gate_does_not_hold_its_slot_while_backing_off() -> None:
+    """A thread sleeping out a throttle must not occupy the concurrency it just asked to shrink."""
+    limiter = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=1)
+    backoff_entered = threading.Event()
+    release_backoff = threading.Event()
+
+    def sleep(_seconds: float) -> None:
+        backoff_entered.set()
+        release_backoff.wait(10)
+
+    gate = _ThrottleGate(limiter, deadline_seconds=120.0, clock=time.monotonic, sleep=sleep, backoff=lambda _a: 0.01)
+    attempts = {"n": 0}
+
+    def op() -> str:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise requests.exceptions.RetryError("too many 429 error responses")
+        return "ok"
+
+    threading.Thread(target=lambda: gate.call(op), daemon=True).start()
+    assert backoff_entered.wait(10)
+
+    acquired = threading.Event()
+    threading.Thread(target=lambda: (limiter.acquire(), acquired.set()), daemon=True).start()
+    assert acquired.wait(5), "the backing-off thread is still holding its slot"
+    release_backoff.set()
+
+
+def test_files_exceed_workers_at_gate_limit_one_without_deadlock(tmp_path) -> None:
+    """The invariant: no pool task waits on another pool task, so the tightest possible gate
+    (limit 1) against a single-worker pool and many files must still drain.
+    """
+    client = _FakeUploadService()
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200, headers={"ETag": '"e1"'})
+    up = MultipartUploader(
+        max_workers=1,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=1),
+        _closed=False,
+        _gate=_test_gate(limit=1),
+    )
+    with up:
+        files = [tmp_path / f"file{i}.csv" for i in range(5)]
+        for f in files:
+            f.write_bytes(b"0123456789")
+        futures = [up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4) for f in files]
+        for f, fut in zip(files, futures):
+            assert fut.result(timeout=20) == f"s3://bucket/{f.name}"
+
+
+def test_throttled_sign_part_is_retried_rather_than_failing_the_file(tmp_path) -> None:
+    """A throttled sign used to burn max_part_retries and kill the file; now the gate absorbs it."""
+    calls = {"n": 0}
+
+    class _ThrottleSignOnce(_FakeUploadService):
+        def sign_part(self, auth_header, key, part, upload_id):  # type: ignore[no-untyped-def]
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise requests.exceptions.RetryError("too many 429 error responses")
+            return super().sign_part(auth_header, key, part, upload_id)
+
+    client = _ThrottleSignOnce()
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200, headers={"ETag": '"e1"'})
+    limiter = _AdaptiveLimiter(initial=8, min_limit=1, max_limit=8)
+    clock = _FakeClock()
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _gate=_ThrottleGate(
+            limiter, deadline_seconds=120.0, clock=clock.time, sleep=clock.sleep, backoff=lambda a: float(2**a)
+        ),
+    )
+    f = tmp_path / "data.csv"
+    f.write_bytes(b"0123456789")
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV, part_size=1000).result(timeout=5) == "s3://bucket/data.csv"
+
+    assert calls["n"] == 2  # throttled once, retried inside the gate, succeeded
+    assert limiter.limit < 8.0
+
+
+def test_create_has_no_adaptive_concurrency_flag() -> None:
+    """AIMD is unconditional now, so the flag is gone rather than defaulting to False."""
+    import inspect
+
+    params = inspect.signature(MultipartUploader.create).parameters
+    assert "adaptive_concurrency" not in params
+    assert params["throttle_deadline"].default == DEFAULT_THROTTLE_DEADLINE_S

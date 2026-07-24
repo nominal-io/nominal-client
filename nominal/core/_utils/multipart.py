@@ -393,7 +393,9 @@ def upload_multipart_file(
         )
 
 
-def _abort(upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: Exception) -> None:
+def _abort(
+    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: BaseException
+) -> None:
     logger.error(
         "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}
     )

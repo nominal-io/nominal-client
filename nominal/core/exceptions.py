@@ -42,6 +42,10 @@ class NominalMultipartUploadFailed(NominalError, ExceptionGroup):
     """The multipart upload failed after retries."""
 
 
+class NominalRequestThrottledError(NominalError):
+    """The server throttled a request for longer than the caller's retry budget allowed."""
+
+
 class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
 
