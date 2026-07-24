@@ -516,6 +516,7 @@ def create_search_workbook_templates_query(
     properties: Mapping[str, str] | None = None,
     created_by: str | None = None,
     published: bool | None = None,
+    workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = [_backfill_workbook_template_archive_query_clause(archive_status)]
@@ -539,6 +540,9 @@ def create_search_workbook_templates_query(
 
     if published is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(is_published=published))
+
+    if workspace_rid is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(workspace=workspace_rid))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
