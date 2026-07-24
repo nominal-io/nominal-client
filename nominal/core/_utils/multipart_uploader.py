@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import math
 import pathlib
+import random
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
@@ -35,6 +37,88 @@ logger = logging.getLogger(__name__)
 # the "brief hold" zone to keep it safe under concurrency (large bodies belong on multipart, whose
 # parts stream directly to S3). Experimental.
 MAX_SMALL_FILE_ROUTE_BYTES = 1024 * 1024  # 1 MiB
+
+# Adaptive-concurrency (AIMD) defaults.
+_AIMD_DECREASE = 0.5  # multiplicative decrease on a throttle
+_AIMD_COOLDOWN_S = 1.0  # debounce: at most one decrease per this window (one overload != many cuts)
+_THROTTLE_MAX_RETRIES = 8  # per-file retry budget when the server is throttling
+_THROTTLE_BACKOFF_BASE_S = 0.5
+_THROTTLE_BACKOFF_CAP_S = 30.0
+
+
+class _AdaptiveLimiter:
+    """AIMD concurrency limiter (TCP-congestion-style).
+
+    Gates concurrent operations at a dynamic `limit`: additive-increase on success,
+    multiplicative-decrease on throttle, so it converges to whatever concurrency the current
+    context (server rate limit, network, machine) actually allows and rides just under it.
+    """
+
+    def __init__(
+        self,
+        *,
+        initial: float,
+        min_limit: int,
+        max_limit: int,
+        decrease: float = _AIMD_DECREASE,
+        cooldown: float = _AIMD_COOLDOWN_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._min = min_limit
+        self._max = max_limit
+        self._limit = float(max(min_limit, min(initial, max_limit)))
+        self._decrease = decrease
+        self._cooldown = cooldown
+        self._clock = clock
+        self._in_flight = 0
+        self._last_decrease = float("-inf")
+        self._cv = threading.Condition()
+
+    def acquire(self) -> None:
+        with self._cv:
+            while self._in_flight >= int(self._limit):
+                self._cv.wait()
+            self._in_flight += 1
+
+    def release(self) -> None:
+        with self._cv:
+            self._in_flight -= 1
+            self._cv.notify()
+
+    def on_success(self) -> None:
+        with self._cv:
+            if self._limit < self._max:
+                self._limit = min(float(self._max), self._limit + 1.0 / self._limit)  # ~+1 per `limit` successes
+                self._cv.notify()
+
+    def on_throttle(self) -> None:
+        with self._cv:
+            now = self._clock()
+            if now - self._last_decrease < self._cooldown:
+                return  # one overload event throttles many files at once; only cut once per window
+            self._last_decrease = now
+            self._limit = max(float(self._min), self._limit * self._decrease)
+
+    @property
+    def limit(self) -> float:
+        with self._cv:
+            return self._limit
+
+
+def _is_throttle_error(exc: BaseException) -> bool:
+    """True if `exc` looks like server rate-limiting (a 429) or its retry-exhaustion."""
+    if isinstance(exc, requests.exceptions.RetryError):  # conjure Retry exhausted on 429/503
+        return True
+    status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return True
+    return "429" in str(exc)
+
+
+def _throttle_backoff(attempt: int) -> float:
+    """Exponential backoff with full jitter, capped — spreads retries so they don't re-herd."""
+    ceiling = min(_THROTTLE_BACKOFF_CAP_S, _THROTTLE_BACKOFF_BASE_S * (2**attempt))
+    return random.uniform(0.0, ceiling)
 
 
 @dataclass(frozen=True)
@@ -175,6 +259,8 @@ class MultipartUploader:
     _file_slots: threading.BoundedSemaphore | None = field(default=None, repr=False)
     # If set, files with size <= this go single-shot via upload_file instead of multipart.
     _small_file_route_max_bytes: int | None = field(default=None, repr=False)
+    # AIMD files-in-flight limiter; when set (adaptive mode) it replaces the fixed _file_slots cap.
+    _limiter: _AdaptiveLimiter | None = field(default=None, repr=False)
 
     @classmethod
     def create(
@@ -188,6 +274,7 @@ class MultipartUploader:
         max_part_retries: int = 3,
         max_files_in_flight: int | None = None,
         small_file_route_max_bytes: int | None = None,
+        adaptive_concurrency: bool = False,
         header_provider: HeaderProvider | None = None,
     ) -> Self:
         """Create a MultipartUploader.
@@ -196,6 +283,12 @@ class MultipartUploader:
         bytes are uploaded single-shot via the backend `upload_file` endpoint (one request)
         instead of multipart — avoiding the per-file metadata burst that rate-limits many-small-
         file batches. Guarded to `MAX_SMALL_FILE_ROUTE_BYTES`; larger files use multipart.
+
+        `adaptive_concurrency` (EXPERIMENTAL): replace the fixed files-in-flight cap with an AIMD
+        limiter that discovers the context's real concurrency ceiling at runtime — growing on
+        success, backing off on server throttling (429), and retrying throttled small-file uploads
+        with jittered backoff so they complete rather than fail. `max_files_in_flight` (or
+        `max_workers`) becomes the ceiling it won't exceed. Applies to the small-file route.
         """
         if max_workers is None:
             max_workers = DEFAULT_NUM_WORKERS
@@ -209,7 +302,13 @@ class MultipartUploader:
             )
         session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
         pool = ThreadPoolExecutor(max_workers=max_workers)
-        file_slots = threading.BoundedSemaphore(max_files_in_flight) if max_files_in_flight is not None else None
+        limiter: _AdaptiveLimiter | None = None
+        file_slots: threading.BoundedSemaphore | None = None
+        if adaptive_concurrency:
+            ceiling = max_files_in_flight if max_files_in_flight is not None else max_workers
+            limiter = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=ceiling)
+        elif max_files_in_flight is not None:
+            file_slots = threading.BoundedSemaphore(max_files_in_flight)
         return cls(
             max_workers,
             timeout,
@@ -222,6 +321,7 @@ class MultipartUploader:
             _closed=False,
             _file_slots=file_slots,
             _small_file_route_max_bytes=small_file_route_max_bytes,
+            _limiter=limiter,
         )
 
     # ---- lifecycle ----
@@ -267,10 +367,11 @@ class MultipartUploader:
         total_size = path.stat().st_size  # raises FileNotFoundError synchronously if missing
 
         pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
-        if self._file_slots is not None:
-            self._file_slots.acquire()  # backpressure: at most max_files_in_flight open at once
+        gate = self._limiter or self._file_slots  # adaptive limiter takes precedence over the fixed cap
+        if gate is not None:
+            gate.acquire()  # backpressure: at most (adaptively-)bounded files open at once
         future: Future[str] = Future()
-        if self._file_slots is not None:
+        if gate is not None:
             future.add_done_callback(self._release_slot)  # free the slot when the file settles
         runner = (
             self._run_small_file_upload
@@ -281,14 +382,15 @@ class MultipartUploader:
             self._pool.submit(runner, pending, future)
         except BaseException:
             # Scheduling failed (e.g. pool already shut down): settle the future so its slot releases.
-            if self._file_slots is not None and not future.done():
+            if gate is not None and not future.done():
                 future.cancel()
             raise
         return future
 
     def _release_slot(self, _future: "Future[str]") -> None:
-        if self._file_slots is not None:
-            self._file_slots.release()
+        gate = self._limiter or self._file_slots
+        if gate is not None:
+            gate.release()
 
     # ---- internals (run on pool threads) ----
 
@@ -341,17 +443,32 @@ class MultipartUploader:
         try:
             safe_filename = f"{pending.name}{pending.file_type.extension}"
             body = pending.path.read_bytes()
-            location = self._upload_client.upload_file(
-                self._auth_header,
-                body,
-                safe_filename,
-                size_bytes=pending.total_size,
-                workspace=self._workspace_rid,
-            )
-            future.set_result(location)
+            future.set_result(self._upload_file(safe_filename, body, pending.total_size))
         except Exception as e:  # settle the future so its slot releases and the caller sees the error
             if not future.done():
                 future.set_exception(e)
+
+    def _upload_file(self, file_name: str, body: bytes, size: int) -> str:
+        """Call the backend upload_file endpoint once. In adaptive mode, feed success/throttle
+        back to the limiter and retry a throttled upload with jittered backoff (holding this
+        file's slot while it waits) so it completes rather than surfacing a 429 failure.
+        """
+        attempt = 0
+        while True:
+            try:
+                location = self._upload_client.upload_file(
+                    self._auth_header, body, file_name, size_bytes=size, workspace=self._workspace_rid
+                )
+                if self._limiter is not None:
+                    self._limiter.on_success()
+                return location
+            except Exception as e:
+                if self._limiter is not None and _is_throttle_error(e) and attempt < _THROTTLE_MAX_RETRIES:
+                    self._limiter.on_throttle()  # shrink the concurrency limit
+                    time.sleep(_throttle_backoff(attempt))  # wait out the throttle (keeps holding the slot)
+                    attempt += 1
+                    continue
+                raise
 
     def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> None:
         with plan.path.open("rb") as f:

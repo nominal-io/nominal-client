@@ -9,6 +9,7 @@ import pytest
 from nominal.core._utils.multipart_uploader import (
     MAX_SMALL_FILE_ROUTE_BYTES,
     MultipartUploader,
+    _AdaptiveLimiter,
     _FileUpload,
     _PartBounds,
     _PlannedUpload,
@@ -515,3 +516,71 @@ def test_create_rejects_oversized_small_file_route() -> None:
             workspace_rid=None,
             small_file_route_max_bytes=MAX_SMALL_FILE_ROUTE_BYTES + 1,
         )
+
+
+def test_adaptive_limiter_blocks_at_limit_and_admits_on_release() -> None:
+    import threading
+
+    lim = _AdaptiveLimiter(initial=2, min_limit=1, max_limit=10)
+    lim.acquire()
+    lim.acquire()  # 2 in flight == limit 2
+    admitted = threading.Event()
+    threading.Thread(target=lambda: (lim.acquire(), admitted.set()), daemon=True).start()
+    assert not admitted.wait(0.2)  # blocked at the limit
+    lim.release()
+    assert admitted.wait(1.0)  # a freed slot admits the waiter
+
+
+def test_adaptive_limiter_grows_on_success() -> None:
+    lim = _AdaptiveLimiter(initial=1, min_limit=1, max_limit=10)
+    for _ in range(20):
+        lim.on_success()
+    assert 3.0 < lim.limit <= 10.0  # additive increase grew it toward, but not past, the ceiling
+
+
+def test_adaptive_limiter_shrinks_on_throttle_with_cooldown() -> None:
+    now = [0.0]
+    lim = _AdaptiveLimiter(initial=8, min_limit=1, max_limit=10, decrease=0.5, cooldown=1.0, clock=lambda: now[0])
+    lim.on_throttle()
+    assert lim.limit == 4.0  # 8 * 0.5
+    lim.on_throttle()  # within the cooldown window -> ignored (one overload shouldn't collapse it)
+    assert lim.limit == 4.0
+    now[0] = 2.0
+    lim.on_throttle()  # past cooldown -> cuts again
+    assert lim.limit == 2.0
+
+
+def test_adaptive_small_file_retries_on_throttle_then_succeeds(tmp_path) -> None:
+    """In adaptive mode a throttled (429) upload_file backs off and retries instead of failing."""
+    import requests
+
+    n = {"calls": 0}
+
+    class _ThrottleOnce(_FakeUploadService):
+        def upload_file(self, auth_header, body, file_name, size_bytes=None, workspace=None) -> str:  # type: ignore[no-untyped-def]
+            n["calls"] += 1
+            if n["calls"] == 1:
+                raise requests.exceptions.RetryError("too many 429 error responses")
+            return super().upload_file(auth_header, body, file_name, size_bytes, workspace)
+
+    client = _ThrottleOnce()
+    up = MultipartUploader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=client,
+        _auth_header="auth",
+        _workspace_rid="ws-1",
+        _session=MagicMock(spec=["put", "close"]),
+        _pool=ThreadPoolExecutor(max_workers=4),
+        _closed=False,
+        _small_file_route_max_bytes=4096,
+        _limiter=_AdaptiveLimiter(initial=2, min_limit=1, max_limit=4),
+    )
+    f = tmp_path / "small.csv"
+    f.write_bytes(b"x" * 100)
+    with up:
+        assert up.enqueue_file(f, file_type=FileTypes.CSV).result(timeout=10) == "s3://backend/small.csv"
+
+    assert n["calls"] == 2  # throttled once, backed off, retried, succeeded
+    assert client.upload_file_calls == [("small.csv", 100, 100)]  # only the successful call recorded
