@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # a server request thread for the whole transfer, so we hard-cap the opt-in threshold well inside
 # the "brief hold" zone to keep it safe under concurrency (large bodies belong on multipart, whose
 # parts stream directly to S3). Experimental.
-MAX_SMALL_FILE_ROUTE_BYTES = 1024 * 1024  # 1 MiB
+MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 1 MiB
 
 # Adaptive-concurrency (AIMD) defaults.
 _AIMD_DECREASE = 0.5  # multiplicative decrease on a throttle
@@ -297,7 +297,9 @@ class MultipartUploader:
             max_workers = DEFAULT_NUM_WORKERS
         if max_files_in_flight is not None and max_files_in_flight <= 0:
             raise ValueError(f"max_files_in_flight must be positive, got {max_files_in_flight}")
-        if small_file_route_max_bytes is not None and not (0 < small_file_route_max_bytes <= MAX_SMALL_FILE_ROUTE_BYTES):
+        if small_file_route_max_bytes is not None and not (
+            0 < small_file_route_max_bytes <= MAX_SMALL_FILE_ROUTE_BYTES
+        ):
             raise ValueError(
                 f"small_file_route_max_bytes must be in (0, {MAX_SMALL_FILE_ROUTE_BYTES}] bytes "
                 f"(the single-shot upload endpoint holds a server thread per upload; route larger "
