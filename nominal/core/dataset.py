@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
 from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
@@ -23,7 +23,7 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
+from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
@@ -55,19 +55,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
-
-    @deprecated(
-        "Calling `poll_until_ingestion_completed()` on a `nominal.Dataset` is deprecated and will be removed in "
-        "a future release. Poll for ingestion completion instead on individual `nominal.DatasetFile`s, which are "
-        "obtained when ingesting files or by calling `dataset.list_files()`."
-    )
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        raise NominalMethodRemovedError(
-            "nominal.core.Dataset.poll_until_ingestion_completed",
-            "poll for ingestion completion on individual 'nominal.core.DatasetFile's, "
-            "which are obtained when ingesting files or by calling "
-            "'nominal.core.Dataset.list_files()' etc.",
-        )
 
     def update(
         self,
@@ -1073,32 +1060,6 @@ def _search_dataset_files(
 
 def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
     return {**datascope_tags, **(provided_tags or {})}
-
-
-@deprecated(
-    "poll_until_ingestion_completed() is deprecated and will be removed in a future release. "
-    "Instead, call poll_until_ingestion_completed() on individual DatasetFiles."
-)
-def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
-    """Block until all dataset ingestions have completed (succeeded or failed).
-
-    This method polls Nominal for ingest status on each of the datasets on an interval.
-    No specific ordering is guaranteed, but all datasets will be checked at least once.
-
-    Raises:
-    ------
-        NominalIngestMultiError: if any of the datasets failed to ingest
-
-    """
-    errors = {}
-    for dataset in datasets:
-        try:
-            for dataset_file in dataset.list_files():
-                dataset_file.poll_until_ingestion_completed(interval=interval)
-        except NominalIngestError as e:
-            errors[dataset.rid] = e
-    if errors:
-        raise NominalIngestMultiError(errors)
 
 
 def _get_datasets(

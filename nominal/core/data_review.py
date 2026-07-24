@@ -16,7 +16,7 @@ from nominal_api import (
     scout_datareview_api,
     scout_integrations_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
@@ -24,7 +24,6 @@ from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event
-from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -80,17 +79,6 @@ class DataReview(HasRid):
         return Checklist._from_conjure(
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
-        )
-
-    @deprecated(
-        "CheckViolations are deprecated and will be removed in a future version. "
-        "Checklists now produce Events. Use get_events() instead."
-    )
-    def get_violations(self) -> Sequence[CheckViolation]:
-        """Retrieves the list of check violations for the data review."""
-        raise NominalMethodRemovedError(
-            "nominal.core.DataReview.get_violations",
-            "use 'nominal.core.DataReview.get_events()' instead",
         )
 
     def get_events(self) -> Sequence[Event]:
@@ -173,31 +161,6 @@ class DataReviewBuilder:
     def add_integration(self, integration_rid: str) -> DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
-
-    @deprecated(
-        "`DataReviewBuilder.add_request` is deprecated and will be removed in a future release of the Nominal SDK. "
-        "Please use `DataReviewBuilder.execute_checklist` instead."
-    )
-    def add_request(
-        self,
-        run_rid: str,
-        checklist_rid: str,
-        commit: str | None = None,
-        *,
-        asset_rid: str | None = None,
-    ) -> DataReviewBuilder:
-        """Add a request to create a data review for the given checklist and run.
-
-        Args:
-            run_rid: RID of the Run to run the Checklist on
-            checklist_rid: RID of the checklist to execute on the Run
-            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
-            asset_rid: RID of the asset to run the checklist on within the Run (only required for multi-asset runs)
-
-        Returns:
-            DataReviewBuilder instance to continue building a data review with
-        """
-        return self.execute_checklist(run_rid, checklist_rid, commit=commit, asset=asset_rid)
 
     def execute_checklist(
         self,

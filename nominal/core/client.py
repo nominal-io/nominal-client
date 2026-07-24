@@ -12,23 +12,19 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
-    api,
     attachments_api,
     authentication_api,
     ingest_api,
     scout_asset_api,
     scout_catalog,
     scout_checks_api,
-    scout_datasource_connection_api,
     scout_layout_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
-    storage_datasource_api,
 )
 from typing_extensions import Self, deprecated
 
-from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
@@ -50,7 +46,6 @@ from nominal.core._utils.pagination_tools import (
     search_checklists_paginated,
     search_datasets_paginated,
     search_ingest_jobs_paginated,
-    search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
@@ -68,7 +63,6 @@ from nominal.core._utils.query_tools import (
     create_search_users_query,
     create_search_videos_query,
     create_search_workbook_templates_query,
-    resolve_effective_archive_status,
 )
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -99,7 +93,6 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import (
     NominalConfigError,
-    NominalError,
     NominalInvalidArgumentError,
     NominalMethodRemovedError,
     NominalNotFoundError,
@@ -372,10 +365,6 @@ class NominalClient:
         ):
             yield Dataset._from_conjure(self._clients, raw_dataset)
 
-    @warn_on_deprecated_argument(
-        "archived",
-        "'archived' is deprecated and will be removed in a future version of Nominal. Use 'archive_status' instead.",
-    )
     def search_datasets(
         self,
         *,
@@ -386,8 +375,7 @@ class NominalClient:
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT = WorkspaceSearchType.ALL,
-        archived: bool | None | _NotProvided = _NotProvided(),
-        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Dataset]:
         """Search for datasets the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -400,8 +388,6 @@ class NominalClient:
             before: Searches for datasets created before some time (inclusive).
             after: Searches for datasets created before after time (inclusive).
             workspace: Filters search to given workspace.
-            archived: Filters results to either archived or unarchived datasets.
-                NOTE: deprecated and will be removed in a future version of Nominal. Use ``archive_status`` instead.
             archive_status: Filter results to the given archive status.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
@@ -413,11 +399,6 @@ class NominalClient:
         Returns:
             All datasets which match all of the provided conditions
         """
-        effective_archive_status = resolve_effective_archive_status(
-            archive_status,
-            archived=archived,
-        )
-
         query = create_search_datasets_query(
             exact_match=exact_match,
             search_text=search_text,
@@ -426,7 +407,7 @@ class NominalClient:
             ingested_before_inclusive=before,
             ingested_after_inclusive=after,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            archive_status=effective_archive_status,
+            archive_status=archive_status,
         )
         return list(self._iter_search_datasets(query))
 
@@ -617,25 +598,8 @@ class NominalClient:
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
-        asset: Asset | str,
-    ) -> Run: ...
-    @overload
-    def create_run(
-        self,
-        name: str,
-        start: datetime | IntegralNanosecondsUTC,
-        end: datetime | IntegralNanosecondsUTC | None,
-        description: str | None = None,
-        *,
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
-        links: Sequence[str | Link | LinkDict] = (),
-        attachments: Iterable[Attachment] | Iterable[str] = (),
         assets: Sequence[Asset | str],
     ) -> Run: ...
-    @warn_on_deprecated_argument(
-        "asset", "The 'asset' parameter is deprecated and will be removed in a future release. Use 'assets' instead."
-    )
     def create_run(
         self,
         name: str,
@@ -647,7 +611,6 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         attachments: Iterable[Attachment] | Iterable[str] | None = None,
-        asset: Asset | str | None = None,
         assets: Sequence[Asset | str] | None = None,
     ) -> Run:
         """Create a run, which is is effectively a slice of time across a collection of assets and datasources.
@@ -661,11 +624,7 @@ class NominalClient:
             labels: Optional sequence of labels for the created run
             links: Link metadata to add to the created run
             attachments: Attachments to associate with the created run
-            asset: Singular asset to associate with the run
-                NOTE: mutually exclusive with `assets`
-                NOTE: deprecated-- use `assets` instead.
             assets: Sequence of assets to associate with the run
-                NOTE: mutually exclusive with `asset`
 
         Returns:
             Reference to the created run object
@@ -675,11 +634,7 @@ class NominalClient:
             ConjureHTTPError: error making request
 
         """
-        if asset and assets:
-            raise ValueError("Only one of 'asset' and 'assets' may be provided")
-        elif asset:
-            assets = [asset]
-        elif assets is None:
+        if assets is None:
             assets = []
 
         return _create_run(
@@ -785,26 +740,6 @@ class NominalClient:
                 archive_status=archive_status,
             )
         )
-
-    @deprecated(
-        "NominalClient.search_runs_by_asset is deprecated and will be removed in a future version. "
-        "Use Asset.list_runs() instead."
-    )
-    def search_runs_by_asset(self, asset: Asset | str) -> Sequence[Run]:
-        """Search for all runs associated with a given asset:
-
-        Args:
-            asset: Asset to search for runs from
-
-        Returns:
-            All runs associated with the given asset
-        """
-        return [
-            Run._from_conjure(self._clients, run)
-            for run in search_runs_by_asset_paginated(
-                self._clients.run, self._clients.auth_header, rid_from_instance_or_string(asset)
-            )
-        ]
 
     def create_dataset(
         self,
@@ -1098,60 +1033,6 @@ class NominalClient:
         return Connection._from_conjure(self._clients, response)
 
     @deprecated(
-        "`create_video_from_mcap` is deprecated and will be removed in a future version. "
-        "Create a new video with `create_video` and then `add_mcap` to upload a file to the video."
-    )
-    def create_video_from_mcap(
-        self,
-        path: PathLike,
-        topic: str,
-        name: str | None = None,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Video:
-        """Create a video from an MCAP file containing H264 or H265 video data.
-
-        If name is None, the name of the file will be used.
-
-        See `create_video_from_mcap_io` for more details.
-        """
-        path = Path(path)
-        if name is None:
-            name = path.name
-
-        video = self.create_video(name, description=description, labels=labels, properties=properties)
-        video.add_mcap(path, topic, description)
-        return video
-
-    @deprecated(
-        "`create_video_from_mcap_io` is deprecated and will be removed in a future version. "
-        "Create a new video with `create_video` and then `add_mcap_from_io` to upload a file to the video."
-    )
-    def create_video_from_mcap_io(
-        self,
-        mcap: BinaryIO,
-        topic: str,
-        name: str,
-        description: str | None = None,
-        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        file_name: str | None = None,
-    ) -> Video:
-        """Create video from topic in a mcap file.
-
-        Mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
-
-        If name is None, the name of the file will be used.
-        """
-        video = self.create_video(name, description=description, labels=labels, properties=properties)
-        video.add_mcap_from_io(mcap, file_name or name, topic, description, file_type)
-        return video
-
-    @deprecated(
         "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
         "Use `NominalClient.create_dataset` instead."
     )
@@ -1163,44 +1044,10 @@ class NominalClient:
         *,
         required_tag_names: list[str] | None = None,
     ) -> StreamingConnection:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-        datasource_response = self._clients.storage.create(
-            self._clients.auth_header,
-            storage_datasource_api.CreateNominalDataSourceRequest(
-                id=datasource_id,
-                description=datasource_description,
-                workspace=workspace_rid,
-            ),
+        raise NominalMethodRemovedError(
+            "nominal.core.NominalClient.create_streaming_connection",
+            "use 'nominal.core.NominalClient.create_dataset' instead",
         )
-        connection_response = self._clients.connection.create_connection(
-            self._clients.auth_header,
-            scout_datasource_connection_api.CreateConnection(
-                name=connection_name,
-                connection_details=scout_datasource_connection_api.ConnectionDetails(
-                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid,
-                    ),
-                ),
-                metadata={},
-                scraping=scout_datasource_connection_api.ScrapingConfig(
-                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
-                        channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
-                        ],
-                        separator=".",
-                    )
-                ),
-                required_tag_names=required_tag_names or [],
-                available_tag_values={},
-                should_scrape=True,
-                workspace=workspace_rid,
-                marking_rids=[],
-            ),
-        )
-        conn = Connection._from_conjure(self._clients, connection_response)
-        if isinstance(conn, StreamingConnection):
-            return conn
-        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_asset(
         self,
@@ -1603,16 +1450,6 @@ class NominalClient:
         raw_workbook = self._clients.notebook.get(self._clients.auth_header, rid)
         return Workbook._from_conjure(self._clients, raw_workbook)
 
-    @warn_on_deprecated_argument(
-        "archived",
-        "The 'archived' parameter for client.search_workbooks is deprecated and will be removed in a future version of "
-        "Nominal. Please use 'archive_status' instead!",
-    )
-    @warn_on_deprecated_argument(
-        "include_archived",
-        "The 'include_archived' parameter for client.search_workbooks is deprecated and will be removed in a future "
-        "version of Nominal. Please use 'archive_status' instead!",
-    )
     def search_workbooks(
         self,
         *,
@@ -1626,9 +1463,7 @@ class NominalClient:
         run: Run | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         include_drafts: bool = False,
-        archived: bool | None | _NotProvided = _NotProvided(),
-        include_archived: bool | _NotProvided = _NotProvided(),
-        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
@@ -1644,12 +1479,6 @@ class NominalClient:
             run: Searches for workbooks with the given run
             workspace: Filters search to given workspace.
             include_drafts: If true, include workbooks in draft state in results.
-            archived: Return workbooks that are either archived or not
-                NOTE: deprecated and will be removed in a future version of Nominal.
-                      Use ``archive_status=ArchiveStatusFilter.ARCHIVED`` instead.
-            include_archived: If true, include archived workbooks in results. Defaults to False.
-                NOTE: deprecated and will be removed in a future version of Nominal.
-                      Use ``archive_status=ArchiveStatusFilter.ANY`` instead.
             archive_status: Archive status to filter results to. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
@@ -1662,12 +1491,6 @@ class NominalClient:
         Returns:
             All workbooks which match all of the provided conditions
         """
-        effective_archive_status = resolve_effective_archive_status(
-            archive_status,
-            archived=archived,
-            include_archived=include_archived,
-        )
-
         return _search_workbooks(
             self._clients,
             exact_match=exact_match,
@@ -1682,7 +1505,7 @@ class NominalClient:
             run_rid=None if run is None else rid_from_instance_or_string(run),
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
             include_drafts=include_drafts,
-            archive_status=effective_archive_status,
+            archive_status=archive_status,
         )
 
     def get_workbook_template(self, rid: str) -> WorkbookTemplate:
@@ -1701,10 +1524,6 @@ class NominalClient:
         ):
             yield WorkbookTemplate._from_template_summary(self._clients, raw_template)
 
-    @warn_on_deprecated_argument(
-        "archived",
-        "'archived' is deprecated and will be removed in a future version of Nominal. Use 'archive_status' instead.",
-    )
     def search_workbook_templates(
         self,
         *,
@@ -1713,8 +1532,7 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
-        archived: bool | None | _NotProvided = _NotProvided(),
-        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
         published: bool | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
@@ -1726,19 +1544,12 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             created_by: Searches for workbook templates with the given creator's rid
-            archived: Searches for workbook templates that are archived if true
-                NOTE: deprecated and will be removed in a future version of Nominal. Use ``archive_status`` instead.
             archive_status: Filter results to the given archive status.
             published: Searches for workbook templates that have been published if true
 
         Returns:
             All workbook templates which match all of the provided conditions
         """
-        effective_archive_status = resolve_effective_archive_status(
-            archive_status,
-            archived=archived,
-        )
-
         query = create_search_workbook_templates_query(
             exact_match=exact_match,
             search_text=search_text,
@@ -1746,26 +1557,9 @@ class NominalClient:
             properties=properties,
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
             published=published,
-            archive_status=effective_archive_status,
+            archive_status=archive_status,
         )
         return list(self._iter_search_workbook_templates(query))
-
-    @deprecated(
-        "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "
-        "in a future release. Use `WorkbookTemplate.create_workbook` instead"
-    )
-    def create_workbook_from_template(
-        self,
-        template_rid: str,
-        run_rid: str,
-        title: str | None = None,
-        description: str | None = None,
-        is_draft: bool = False,
-    ) -> Workbook:
-        raise NominalMethodRemovedError(
-            "nominal.core.NominalClient.create_workbook_from_template",
-            "use 'nominal.core.WorkbookTemplate.create_workbook' instead",
-        )
 
     def create_workbook_template(
         self,
