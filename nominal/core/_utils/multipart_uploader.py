@@ -143,6 +143,11 @@ class MultipartUploader:
 
     Invariant: no pool task ever blocks waiting on another pool task (that would deadlock the
     single bounded pool). initiate/part/complete/abort are non-blocking submissions or callbacks.
+
+    `max_files_in_flight` (via `create`) caps how many files are uploading at once, applying
+    backpressure at `enqueue_file` (on the caller thread, never a pool worker). Keeping it low
+    with a high `max_workers` keeps the pool busy with part-uploads instead of bursting every
+    file's metadata calls up front.
     """
 
     max_workers: int
@@ -155,6 +160,8 @@ class MultipartUploader:
     _session: requests.Session = field(repr=False)
     _pool: ThreadPoolExecutor = field(repr=False)
     _closed: bool = field(default=False, repr=False)
+    # Bounds files-in-flight; acquired in enqueue_file, released when the file's future settles.
+    _file_slots: threading.BoundedSemaphore | None = field(default=None, repr=False)
 
     @classmethod
     def create(
@@ -166,12 +173,16 @@ class MultipartUploader:
         max_workers: int | None = None,
         timeout: float = 30.0,
         max_part_retries: int = 3,
+        max_files_in_flight: int | None = None,
         header_provider: HeaderProvider | None = None,
     ) -> Self:
         if max_workers is None:
             max_workers = DEFAULT_NUM_WORKERS
+        if max_files_in_flight is not None and max_files_in_flight <= 0:
+            raise ValueError(f"max_files_in_flight must be positive, got {max_files_in_flight}")
         session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
         pool = ThreadPoolExecutor(max_workers=max_workers)
+        file_slots = threading.BoundedSemaphore(max_files_in_flight) if max_files_in_flight is not None else None
         return cls(
             max_workers,
             timeout,
@@ -182,6 +193,7 @@ class MultipartUploader:
             _session=session,
             _pool=pool,
             _closed=False,
+            _file_slots=file_slots,
         )
 
     # ---- lifecycle ----
@@ -212,10 +224,14 @@ class MultipartUploader:
         name: str | None = None,
         part_size: int = DEFAULT_CHUNK_SIZE,
     ) -> "Future[str]":
-        """Schedule a file upload and return a future for its S3 location. Non-blocking.
+        """Schedule a file upload and return a future for its S3 location.
 
         Obvious errors (missing file, invalid object name) surface here synchronously; upload
         failures surface via the returned future.
+
+        Non-blocking, unless the uploader was created with `max_files_in_flight`: then this blocks
+        until fewer than that many files are still uploading, so an unbounded list can be enqueued
+        without opening every file's multipart upload (and bursting its metadata) at once.
         """
         file_type = file_type if file_type is not None else FileType.from_path(path)
         name = name if name is not None else path_upload_name(path, file_type)
@@ -223,9 +239,23 @@ class MultipartUploader:
         total_size = path.stat().st_size  # raises FileNotFoundError synchronously if missing
 
         pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
+        if self._file_slots is not None:
+            self._file_slots.acquire()  # backpressure: at most max_files_in_flight open at once
         future: Future[str] = Future()
-        self._pool.submit(self._run_upload, pending, future)
+        if self._file_slots is not None:
+            future.add_done_callback(self._release_slot)  # free the slot when the file settles
+        try:
+            self._pool.submit(self._run_upload, pending, future)
+        except BaseException:
+            # Scheduling failed (e.g. pool already shut down): settle the future so its slot releases.
+            if self._file_slots is not None and not future.done():
+                future.cancel()
+            raise
         return future
+
+    def _release_slot(self, _future: "Future[str]") -> None:
+        if self._file_slots is not None:
+            self._file_slots.release()
 
     # ---- internals (run on pool threads) ----
 

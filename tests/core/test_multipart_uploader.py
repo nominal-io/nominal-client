@@ -366,3 +366,75 @@ def test_more_files_than_workers_no_deadlock(tmp_path) -> None:
         futures = [up.enqueue_file(f, file_type=FileTypes.CSV, part_size=4) for f in files]
         for f, fut in zip(files, futures):
             assert fut.result(timeout=10) == f"s3://bucket/{f.name}"
+
+
+def test_create_rejects_nonpositive_max_files_in_flight() -> None:
+    with pytest.raises(ValueError, match="max_files_in_flight must be positive"):
+        MultipartUploader.create(
+            upload_client=_FakeUploadService(), auth_header="auth", workspace_rid=None, max_files_in_flight=0
+        )
+
+
+def test_max_files_in_flight_backpressures_enqueue(tmp_path) -> None:
+    """With max_files_in_flight=2, the 3rd enqueue blocks until an in-flight file completes.
+
+    Slots are acquired on the caller thread and released when the file's future settles (on a
+    pool worker), so the caller's blocked acquire() always unblocks as files finish.
+    """
+    import threading
+
+    gate = threading.Event()
+    reached_complete = threading.Semaphore(0)
+
+    class _GatingClient(_FakeUploadService):
+        def complete_multipart_upload(self, auth_header, key, upload_id, parts):  # type: ignore[no-untyped-def]
+            reached_complete.release()  # this file reached its final (complete) step
+            gate.wait(10)  # hold it open (future unsettled -> slot held) until the test releases
+            return super().complete_multipart_upload(auth_header, key, upload_id, parts)
+
+    session = MagicMock(spec=["put", "close"])
+    put_response = MagicMock()
+    put_response.status_code = 200
+    session.put.return_value = put_response
+    up = MultipartUploader(
+        max_workers=8,
+        timeout=30.0,
+        max_part_retries=2,
+        _upload_client=_GatingClient(),
+        _auth_header="auth",
+        _workspace_rid=None,
+        _session=session,
+        _pool=ThreadPoolExecutor(max_workers=8),
+        _closed=False,
+        _file_slots=threading.BoundedSemaphore(2),
+    )
+    paths = [tmp_path / f"f{i}.csv" for i in range(3)]
+    for p in paths:
+        p.write_bytes(b"data")
+
+    try:
+        f0 = up.enqueue_file(paths[0], file_type=FileTypes.CSV)
+        f1 = up.enqueue_file(paths[1], file_type=FileTypes.CSV)
+        # both files fill a slot and block in complete()
+        assert reached_complete.acquire(timeout=10)
+        assert reached_complete.acquire(timeout=10)
+
+        third_returned = threading.Event()
+        holder: dict[str, Future[str]] = {}
+
+        def enqueue_third() -> None:
+            holder["fut"] = up.enqueue_file(paths[2], file_type=FileTypes.CSV)
+            third_returned.set()
+
+        threading.Thread(target=enqueue_third, daemon=True).start()
+        assert not third_returned.wait(0.5)  # blocked: both slots are held
+
+        gate.set()  # let the two in-flight files complete -> release their slots
+        assert third_returned.wait(10)  # 3rd enqueue now proceeds
+
+        assert f0.result(timeout=10) == f"s3://bucket/{paths[0].name}"
+        assert f1.result(timeout=10) == f"s3://bucket/{paths[1].name}"
+        assert holder["fut"].result(timeout=10) == f"s3://bucket/{paths[2].name}"
+    finally:
+        gate.set()
+        up.close()
