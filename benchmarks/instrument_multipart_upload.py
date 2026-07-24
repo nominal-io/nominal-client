@@ -25,15 +25,24 @@ If you want it too, ask and I'll add a tiny opt-in hook in the uploader.
 --------------------------------------------------------------------------------
 USAGE — against the REAL backend (the measurement that matters):
 
-    from benchmarks.instrument_multipart_upload import build_instrumented_uploader, summarize
+    import threading
+    from benchmarks.instrument_multipart_upload import build_instrumented_uploader, sample_gate_limit, summarize
 
     up, rec = build_instrumented_uploader(client._clients, max_workers=8)  # the setting that 429s
-    futs = [up.enqueue_file(p) for p in paths]     # e.g. 1000 tiny files
-    for f in futs:
-        try: f.result()
-        except Exception: pass                     # keep going; failures are recorded
+    limit_samples: list[tuple[float, float]] = []
+    stop = threading.Event()
+    sampler = threading.Thread(target=sample_gate_limit, args=(up._gate, stop, limit_samples), daemon=True)
+    sampler.start()
+    try:
+        futs = [up.enqueue_file(p) for p in paths]     # e.g. 1000 tiny files
+        for f in futs:
+            try: f.result()
+            except Exception: pass                     # keep going; failures are recorded
+    finally:
+        stop.set()
+        sampler.join(timeout=2.0)
     up.close()
-    summarize(rec)
+    summarize(rec, limit_samples=limit_samples)
 
 USAGE — locally, no backend (illustrates the pattern the design produces):
 
@@ -94,6 +103,20 @@ class Recorder:
             self.records.append(rec)
 
 
+def sample_gate_limit(
+    gate: Any, stop: threading.Event, out: list[tuple[float, float]], *, interval_s: float = 0.25
+) -> None:
+    """Poll the throttle gate's adaptive limit until `stop` is set.
+
+    Run this on a daemon thread for the duration of an upload run. Whether the limit converges or
+    oscillates is the signal that decides whether concurrency is the right control variable at all.
+    """
+    t0 = time.monotonic()
+    while not stop.is_set():
+        out.append((time.monotonic() - t0, gate.limit))
+        stop.wait(interval_s)
+
+
 def _error_label(exc: BaseException) -> str:
     status = getattr(exc, "status_code", None)
     if status is None:
@@ -117,7 +140,8 @@ def _timed(rec: Recorder, stage: str, population: str, label: str, fn: Callable[
 class InstrumentedUploadService:
     """Drop-in wrapper for upload_api.UploadService that times every Nominal-API call.
 
-    `_verify` is proxied because _sign_and_put_part reads it for the S3 PUT.
+    `_verify` is proxied because the uploader's part-upload path (`_sign_part` then `_put_part`)
+    reads it for the S3 PUT.
     """
 
     def __init__(self, inner: Any, recorder: Recorder) -> None:
@@ -225,7 +249,14 @@ def _pool_composition(recs: list[CallRecord], t0: float, wall: float, max_worker
     print(f"    s3-put  |{_sparkline(s3, vmax)}|")
 
 
-def summarize(recorder: Recorder, *, rate_window_s: float = 0.5, slowest_n: int = 5, max_workers: int | None = None) -> None:
+def summarize(
+    recorder: Recorder,
+    *,
+    rate_window_s: float = 0.5,
+    slowest_n: int = 5,
+    max_workers: int | None = None,
+    limit_samples: list[tuple[float, float]] | None = None,
+) -> None:
     recs = sorted(recorder.records, key=lambda r: r.t_start)
     if not recs:
         print("no calls recorded")
@@ -286,6 +317,16 @@ def summarize(recorder: Recorder, *, rate_window_s: float = 0.5, slowest_n: int 
         top = sorted(rs, key=lambda r: r.ms, reverse=True)[:slowest_n]
         shown = ", ".join(f"{r.ms:.0f}ms({r.label}{'' if r.ok else ' ' + str(r.error)})" for r in top)
         print(f"  {stage:10s} {shown}")
+
+    if limit_samples:
+        limits = [lim for _t, lim in limit_samples]
+        ramp = " .:-=+*#@"
+        peak = max(limits) or 1.0
+        line = "".join(ramp[min(len(ramp) - 1, int(lim / peak * (len(ramp) - 1)))] for lim in limits)
+        print("\n=== adaptive concurrency limit over time ===")
+        print(f"  min={min(limits):.2f}  mean={sum(limits) / len(limits):.2f}  max={peak:.2f}")
+        print(f"  limit   |{line}|")
+        print("  a limit that keeps sawtoothing never found the ceiling; one that pins flat found it early")
 
 
 # --------------------------------------------------------------------------------------
@@ -451,7 +492,7 @@ def _run_demo(
     n_files: int, max_workers: int, api_ms: float, put_ms: float, jitter: bool, file_bytes: int, part_size: int,
     max_files_in_flight: int | None, small_file_route_max_bytes: int | None,
 ) -> None:
-    from nominal.core._utils.multipart_uploader import MultipartUploader
+    from nominal.core._utils.multipart_uploader import MultipartUploader, _AdaptiveLimiter, _ThrottleGate
     from nominal.core.filetype import FileTypes
 
     rec = Recorder()
@@ -471,21 +512,30 @@ def _run_demo(
         up = MultipartUploader(
             max_workers=max_workers, timeout=30.0, max_part_retries=3,
             _upload_client=client, _auth_header="auth", _workspace_rid=None,
-            _session=session, _pool=ThreadPoolExecutor(max_workers=max_workers), _closed=False,
-            _file_slots=file_slots, _small_file_route_max_bytes=small_file_route_max_bytes,
+            _session=session, _pool=ThreadPoolExecutor(max_workers=max_workers),
+            _gate=_ThrottleGate(_AdaptiveLimiter(initial=8, min_limit=1, max_limit=max_workers)),
+            _closed=False, _file_slots=file_slots, _small_file_route_max_bytes=small_file_route_max_bytes,
         )
         print(
             f"running {n_files} files x {parts_per_file} part(s) each @ max_workers={max_workers}, "
             f"max_files_in_flight={max_files_in_flight}, api={api_ms}ms put={put_ms}ms jitter={jitter} ..."
         )
         t0 = time.monotonic()
+        limit_samples: list[tuple[float, float]] = []
+        stop = threading.Event()
+        sampler = threading.Thread(target=sample_gate_limit, args=(up._gate, stop, limit_samples), daemon=True)
+        sampler.start()
         try:
-            futures = [up.enqueue_file(p, file_type=FileTypes.CSV, part_size=part_size) for p in paths]
-            done = sum(1 for f in futures if _safe_result(f))
+            try:
+                futures = [up.enqueue_file(p, file_type=FileTypes.CSV, part_size=part_size) for p in paths]
+                done = sum(1 for f in futures if _safe_result(f))
+            finally:
+                up.close()
         finally:
-            up.close()
+            stop.set()
+            sampler.join(timeout=2.0)
         print(f"done: {done}/{n_files} in {time.monotonic() - t0:.1f}s")
-    summarize(rec, max_workers=max_workers)
+    summarize(rec, max_workers=max_workers, limit_samples=limit_samples)
 
 
 def _safe_result(fut: Any) -> bool:
