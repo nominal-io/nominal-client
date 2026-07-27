@@ -321,7 +321,7 @@ def summarize(
     if limit_samples:
         limits = [lim for _t, lim in limit_samples]
         ramp = " .:-=+*#@"
-        peak = max(limits) or 1.0
+        peak = max([*limits, float(max_workers or 0)]) or 1.0
         line = "".join(ramp[min(len(ramp) - 1, int(lim / peak * (len(ramp) - 1)))] for lim in limits)
         print("\n=== adaptive concurrency limit over time ===")
         print(f"  min={min(limits):.2f}  mean={sum(limits) / len(limits):.2f}  max={peak:.2f}")
@@ -423,6 +423,7 @@ def verify_upload_file_roundtrip(clients: Any, *, size: int = 100_000, file_name
 class _FakeResponse:
     def __init__(self, url: str) -> None:
         self.url, self.status_code = url, 200
+        self.headers = {"ETag": '"sim-etag"'}
 
     def raise_for_status(self) -> None:
         return None
