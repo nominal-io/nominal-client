@@ -25,8 +25,8 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.multipart_uploader import MultipartUploader
 from nominal.core.filetype import FileType, FileTypes
+from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
     containerized_ingest_pb2,
@@ -86,17 +86,18 @@ def _upload_all(
 
     Atomic: the first upload failure raises before any ingest is triggered. Targets filled
     before that point are irrelevant because nothing is sent and the builder is single-use.
+    The failure surfaces as whatever the uploader raised — a multipart failure, a throttle
+    error, or a `CancelledError` for a file the abnormal shutdown cut short — so no caller
+    should assume a single exception type here.
     """
     if not uploads:
         return
-    with MultipartUploader.create(
-        upload_client=clients.upload,
-        auth_header=clients.auth_header,
-        workspace_rid=workspace_rid,
-        header_provider=clients.header_provider,
-        max_workers=20,
-    ) as up:
+    with MultipartUploader.create(clients, workspace_rid=workspace_rid, max_workers=20) as up:
         futures = {up.enqueue_file(u.path, file_type=u.file_type): u for u in uploads}
+        # `as_completed` MUST stay inside the `with`. Leaving the block on an exception closes
+        # the uploader with `cancel_pending=True`, and the futures that shutdown cancels are
+        # never waiter-notified — waiting on them out here would block forever. Letting the
+        # first `fut.result()` raise from inside is what gets that shutdown to run at all.
         for fut in as_completed(futures):
             upload = futures[fut]
             upload.target.CopyFrom(common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=fut.result())))
