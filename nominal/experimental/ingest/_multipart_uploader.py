@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import math
 import pathlib
-from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
+import threading
+from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Iterable, Type
@@ -148,6 +149,9 @@ class MultipartUploader:
     # If set, files with 0 < size <= this go single-shot via upload_file instead of multipart.
     _small_file_route_max_bytes: int | None = field(default=None, repr=False)
     _closed: bool = field(default=False, repr=False)
+    # Set by a cancelling close: every part task short-circuits instead of uploading. This is how
+    # the part lane is revoked -- see `close` for why the executor's own cancellation cannot be.
+    _draining: threading.Event = field(default_factory=threading.Event, repr=False)
 
     @classmethod
     def create(
@@ -262,10 +266,21 @@ class MultipartUploader:
         self._closed = True
         try:
             if cancel_pending:
-                # Revoke the part pool FIRST: running drivers' queued sibling parts cancel and
-                # new part submits raise, so drivers unblock at the next part boundary, abort,
-                # and settle — instead of finishing a possibly-huge file.
-                self._part_pool.shutdown(wait=False, cancel_futures=True)
+                # Revoke the part lane FIRST, so a running driver unblocks at its next part
+                # boundary, aborts, and settles instead of finishing a possibly-huge file.
+                #
+                # Revoking it with `cancel_futures=True` would deadlock: that drains queued work
+                # items out of the pool and cancels their futures WITHOUT anyone ever calling
+                # `set_running_or_notify_cancel`, so the futures sit in CANCELLED-but-not-notified
+                # — a state `concurrent.futures.wait` neither counts as done nor is ever woken by.
+                # A driver waiting on a queued sibling would then wait forever, and this close
+                # with it. So the queued parts must still RUN: the flag makes each one
+                # short-circuit in microseconds, and its future settles (and notifies) normally.
+                self._draining.set()
+                self._part_pool.shutdown(wait=False)
+                # Queued drivers never started, so plain cancellation is safe here: nothing inside
+                # the uploader waits on a driver future, only the caller, and `result()`/`done()`/
+                # `cancelled()` all read CANCELLED correctly.
                 self._driver_pool.shutdown(wait=True, cancel_futures=True)
                 self._small_pool.shutdown(wait=True, cancel_futures=True)
                 self._part_pool.shutdown(wait=True)
@@ -417,13 +432,21 @@ class MultipartUploader:
 
         Returns the part's number and the ETag from the PUT response. A missing ETag fails the
         part immediately (see below) rather than being retried.
+
+        Raises CancelledError the moment a cancelling close is in progress -- checked before the
+        slice read, so a revoked part costs microseconds instead of a `part_size` read, and again
+        before each attempt, so a retry never outlives the close.
         """
+        if self._draining.is_set():
+            raise CancelledError("uploader is closing")
         with plan.path.open("rb") as f:
             f.seek(bounds.offset)
             data = f.read(bounds.size)
 
         attempt_errors: list[Exception] = []
         for attempt in range(self.max_part_retries):
+            if self._draining.is_set():
+                raise CancelledError("uploader is closing")
             try:
                 sign_response = self._gate.call(
                     lambda: _sign_part(

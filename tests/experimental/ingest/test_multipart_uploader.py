@@ -76,24 +76,27 @@ class FakePutSession:
 
 
 class SplitPutSession:
-    """A PUT session that parks part 1 and fails part 2, so a *late* part failure is observable.
+    """A PUT session that parks part 1, so part 2's fate is observable while part 1 is uploading.
 
-    Part 2 waits for part 1 to park before failing, which makes "the last part failed while an
-    earlier one is still uploading" a guarantee rather than a race.
+    With `part_two_fails` (the default) part 2 waits for part 1 to park before raising, which
+    makes "a later part failed while an earlier one is still uploading" a guarantee, not a race.
     """
 
     def __init__(self) -> None:
-        """Part 1 stays parked until `release` is set; part 2 always fails."""
+        """Part 1 stays parked until `release` is set; part 2 fails unless told otherwise."""
         self.part_one_parked = threading.Event()
         self.release = threading.Event()
+        self.part_two_fails = True
         self.closed = False
 
     def put(self, url, data=None, headers=None, verify=None, timeout=None):
         if url.endswith("/2"):
-            self.part_one_parked.wait(timeout=10)  # order this failure after part 1 parks
-            raise ConnectionError("part 2 failed")
-        self.part_one_parked.set()
-        self.release.wait(timeout=10)
+            if self.part_two_fails:
+                self.part_one_parked.wait(timeout=10)  # order this failure after part 1 parks
+                raise ConnectionError("part 2 failed")
+        else:
+            self.part_one_parked.set()
+            self.release.wait(timeout=10)
         return SimpleNamespace(status_code=200, headers={"ETag": '"etag-1"'}, raise_for_status=lambda: None)
 
     def close(self) -> None:
@@ -293,6 +296,35 @@ class TestClose:
                 session.put_release.set()
                 raise KeyboardInterrupt
         assert any(f.cancelled() for f in futures)
+
+    def test_cancel_pending_with_queued_sibling_parts_still_returns(self, tmp_path) -> None:
+        """Close must return when a running driver has parts still QUEUED at revoke time.
+
+        Revoking the part lane with `shutdown(cancel_futures=True)` drains those work items and
+        leaves their futures CANCELLED-but-never-notified, which `concurrent.futures.wait` does
+        not count as done — the driver would block forever and close would never return. Parts
+        must instead RUN and short-circuit, so their futures settle normally.
+        """
+        part_size = 5 * 1024 * 1024
+        # max_workers=1: part 1 occupies the only part worker, so part 2 is queued at close time.
+        up, service, _ = make_uploader(tmp_path, max_workers=1, max_part_retries=1)
+        session = SplitPutSession()
+        session.part_two_fails = False  # part 2 must be revoked by close, not fail on its own
+        up._session = session
+        fut = up.enqueue_file(write_file(tmp_path, "two-parts.bin", part_size + 1), part_size=part_size)
+        assert session.part_one_parked.wait(timeout=10)  # part 1 running, part 2 queued behind it
+
+        closer = threading.Thread(target=up.close, kwargs={"cancel_pending": True})
+        closer.start()
+        assert up._draining.wait(timeout=10)  # the part lane is revoked; only now let part 1 finish
+        session.release.set()
+
+        closer.join(timeout=10)
+        assert not closer.is_alive(), "close(cancel_pending=True) did not return"
+        assert fut.done()
+        with pytest.raises(CancelledError):
+            fut.result(timeout=10)
+        assert service.calls.count("abort") == 1
 
     def test_close_closes_owned_sessions_but_not_injected_client(self, tmp_path) -> None:
         up, _, session = make_uploader(tmp_path)
