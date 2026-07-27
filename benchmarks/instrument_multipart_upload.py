@@ -42,7 +42,7 @@ USAGE — against the REAL backend (the measurement that matters):
         stop.set()
         sampler.join(timeout=2.0)
     up.close()
-    summarize(rec, limit_samples=limit_samples)
+    summarize(rec, max_workers=8, limit_samples=limit_samples)
 
 USAGE — locally, no backend (illustrates the pattern the design produces):
 
@@ -321,10 +321,14 @@ def summarize(
     if limit_samples:
         limits = [lim for _t, lim in limit_samples]
         ramp = " .:-=+*#@"
-        peak = max([*limits, float(max_workers or 0)]) or 1.0
-        line = "".join(ramp[min(len(ramp) - 1, int(lim / peak * (len(ramp) - 1)))] for lim in limits)
+        observed_peak = max(limits)
+        ceiling = max(observed_peak, float(max_workers or 0)) or 1.0
+        line = "".join(ramp[min(len(ramp) - 1, int(lim / ceiling * (len(ramp) - 1)))] for lim in limits)
         print("\n=== adaptive concurrency limit over time ===")
-        print(f"  min={min(limits):.2f}  mean={sum(limits) / len(limits):.2f}  max={peak:.2f}")
+        print(
+            f"  min={min(limits):.2f}  mean={sum(limits) / len(limits):.2f}  "
+            f"max={observed_peak:.2f}  ceiling={ceiling:.2f}"
+        )
         print(f"  limit   |{line}|")
         print("  a limit that keeps sawtoothing never found the ceiling; one that pins flat found it early")
 
