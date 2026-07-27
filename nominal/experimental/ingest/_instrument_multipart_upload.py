@@ -437,12 +437,22 @@ def build_instrumented_uploader(
     recorder = Recorder()
     # Build the SAME dedicated client the uploader would build for itself, then wrap it —
     # instrumenting clients.upload would measure a transport the uploader no longer uses.
+    #
+    # The pool sizing mirrors `create()`'s (same resolution order for the small-route default)
+    # because it is not incidental: the small lane and the part lane share this client, so at
+    # the default `requests` pool of 10 a 16-thread run would have urllib3 discard connections
+    # past the max and re-handshake TLS on the next call. That cost lands in the nominal
+    # population's p90/p99/max — the very columns this harness exists to produce — so a client
+    # that differed here would be measuring the harness, not the uploader.
+    pool = (max_workers if small_route_workers is None else small_route_workers) + max_workers
     raw_client, client_session = create_conjure_service_client_with_session(
         upload_api.UploadService,
         user_agent=clients._user_agent,
         service_config=clients._service_config,
         header_provider=clients.header_provider,
         retry_status_forcelist=(308,),
+        pool_connections=pool,
+        pool_maxsize=pool,
     )
     up = MultipartUploader.create(
         clients,
