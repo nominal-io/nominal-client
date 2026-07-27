@@ -75,6 +75,31 @@ class FakePutSession:
         self.closed = True
 
 
+class SplitPutSession:
+    """A PUT session that parks part 1 and fails part 2, so a *late* part failure is observable.
+
+    Part 2 waits for part 1 to park before failing, which makes "the last part failed while an
+    earlier one is still uploading" a guarantee rather than a race.
+    """
+
+    def __init__(self) -> None:
+        """Part 1 stays parked until `release` is set; part 2 always fails."""
+        self.part_one_parked = threading.Event()
+        self.release = threading.Event()
+        self.closed = False
+
+    def put(self, url, data=None, headers=None, verify=None, timeout=None):
+        if url.endswith("/2"):
+            self.part_one_parked.wait(timeout=10)  # order this failure after part 1 parks
+            raise ConnectionError("part 2 failed")
+        self.part_one_parked.set()
+        self.release.wait(timeout=10)
+        return SimpleNamespace(status_code=200, headers={"ETag": '"etag-1"'}, raise_for_status=lambda: None)
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def make_uploader(tmp_path: pathlib.Path, service: FakeUploadService | None = None, **create_kwargs):
     service = service or FakeUploadService()
     clients = MagicMock()
@@ -197,6 +222,28 @@ class TestFailureHandling:
         up.close()
         assert service.calls.count("abort") == 1
 
+    def test_late_part_failure_does_not_wait_for_earlier_parts(self, tmp_path) -> None:
+        """A failing part must cancel and abort while its lower-numbered siblings still upload.
+
+        Collecting part results in index order would block on part 1 first, so this file's
+        failure would surface only after the whole 5 MiB part had finished uploading — and, for a
+        real multi-GiB file, not for many minutes.
+        """
+        part_size = 5 * 1024 * 1024  # the provider minimum, so a 2-part plan is legal
+        up, service, _ = make_uploader(tmp_path, max_part_retries=1)
+        session = SplitPutSession()
+        up._session = session
+        path = write_file(tmp_path, "two-parts.bin", part_size + 1)
+        try:
+            fut = up.enqueue_file(path, part_size=part_size)
+            assert session.part_one_parked.wait(timeout=10)  # part 1 is mid-PUT and stays there
+            with pytest.raises(NominalMultipartUploadFailed):
+                fut.result(timeout=10)
+            assert service.calls.count("abort") == 1
+        finally:
+            session.release.set()
+            up.close()
+
     def test_missing_etag_fails_part_immediately(self, tmp_path) -> None:
         up, service, session = make_uploader(tmp_path)
         session.put = MagicMock(
@@ -288,14 +335,16 @@ class TestNoDeadlock:
 
     def test_long_puts_do_not_stall_small_files(self, tmp_path) -> None:
         service = FakeUploadService()
+        # max_workers=1: the big file is a single part, so its parked PUT occupies the ENTIRE
+        # part pool. Under one shared pool the small file would queue behind it and never run.
         up, service, session = make_uploader(
-            tmp_path, service=service, small_file_route_max_bytes=512, max_workers=2, small_route_workers=2
+            tmp_path, service=service, small_file_route_max_bytes=512, max_workers=1, small_route_workers=2
         )
         session.put_release.clear()  # every PUT parks its part thread
         big = write_file(tmp_path, "big.csv", 4096)
         small = write_file(tmp_path, "small.csv", 100)
         big_fut = up.enqueue_file(big)
-        assert session.put_started.wait(timeout=10)  # part pool now fully occupied
+        assert session.put_started.wait(timeout=10)  # the part pool's only worker is now parked
         small_fut = up.enqueue_file(small)
         assert small_fut.result(timeout=10).startswith("s3://")  # small lane unaffected
         session.put_release.set()

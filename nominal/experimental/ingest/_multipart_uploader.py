@@ -386,8 +386,17 @@ class MultipartUploader:
         try:
             for bounds in plan.parts():
                 futs.append(self._part_pool.submit(self._upload_part, plan, bounds))
-            wait(futs, return_when=FIRST_EXCEPTION)
-            results = [f.result() for f in futs]  # raises the first part failure
+            done, _unfinished = wait(futs, return_when=FIRST_EXCEPTION)
+            # Surface a failure before collecting results. The collection below blocks on parts
+            # in index order, so a high-numbered part's failure would otherwise wait out every
+            # lower-numbered part's upload — minutes, on a large file — before cancelling its
+            # siblings and aborting. Reaching past this loop means `wait` returned because every
+            # part finished, and finished successfully.
+            for part_future in (fut for fut in futs if fut in done):
+                failure = part_future.exception()  # raises CancelledError for a revoked part
+                if failure is not None:
+                    raise failure
+            results = [f.result() for f in futs]
             etags = {r.part_number: r.etag for r in results}
             return self._gate.call(
                 lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, etags)
