@@ -1,5 +1,5 @@
-"""Per-stage timing instrumentation for MultipartUploader, to find which part(s)
-/ stage(s) misbehave when uploading many small files.
+"""Per-stage timing instrumentation for the experimental MultipartUploader, to find which
+part(s) / stage(s) misbehave when uploading many small files.
 
 It times every *network* stage of the upload by wrapping the two clients the
 uploader talks through:
@@ -8,15 +8,20 @@ uploader talks through:
   ------------------------------------   ----------------------------
   initiate_multipart_upload              PUT (per part)
   sign_part (per part)
-  list_parts
   complete_multipart_upload
+  upload_file (small-file route)
   abort
+  list_parts
 
 For each call it records: stage, population (nominal|s3), start/end (so we see
 front-loading), duration, the *per-population* concurrency in flight when it
 started, outcome, and a short identity label. `summarize()` then prints, per
 stage, the latency distribution (p50/p90/p99/max), failures, the peak concurrency
-and request rate for each population, and the slowest individual calls (outliers).
+and request rate for each population, the adaptive pacer's request rate over time,
+and the slowest individual calls (outliers).
+
+`list_parts` is wrapped for completeness only: the driver-model uploader tracks its own
+ETags and never calls it.
 
 The local **read** stage (open+seek+read inside `_upload_part`) is NOT wrapped —
 it's a local disk read of microseconds for small files, so it isn't the suspect.
@@ -26,12 +31,16 @@ If you want it too, ask and I'll add a tiny opt-in hook in the uploader.
 USAGE — against the REAL backend (the measurement that matters):
 
     import threading
-    from benchmarks.instrument_multipart_upload import build_instrumented_uploader, sample_gate_limit, summarize
+    from nominal.experimental.ingest._instrument_multipart_upload import (
+        build_instrumented_uploader,
+        sample_gate_rate,
+        summarize,
+    )
 
-    up, rec = build_instrumented_uploader(client._clients, max_workers=8)  # the setting that 429s
-    limit_samples: list[tuple[float, float]] = []
+    up, rec, client_session = build_instrumented_uploader(client._clients, max_workers=8)
+    rate_samples: list[tuple[float, float]] = []
     stop = threading.Event()
-    sampler = threading.Thread(target=sample_gate_limit, args=(up._gate, stop, limit_samples), daemon=True)
+    sampler = threading.Thread(target=sample_gate_rate, args=(up._gate, stop, rate_samples), daemon=True)
     sampler.start()
     try:
         futs = [up.enqueue_file(p) for p in paths]     # e.g. 1000 tiny files
@@ -41,12 +50,13 @@ USAGE — against the REAL backend (the measurement that matters):
     finally:
         stop.set()
         sampler.join(timeout=2.0)
-    up.close()
-    summarize(rec, max_workers=8, limit_samples=limit_samples)
+        up.close()
+        client_session.close()   # injected clients are never closed by the uploader
+    summarize(rec, max_workers=8, rate_samples=rate_samples)
 
 USAGE — locally, no backend (illustrates the pattern the design produces):
 
-    uv run python benchmarks/instrument_multipart_upload.py --files 1000 --workers 8 \
+    uv run python -m nominal.experimental.ingest._instrument_multipart_upload --files 1000 --workers 8 \
         --api-latency-ms 40 --put-latency-ms 15 --jitter
 """
 
@@ -59,9 +69,16 @@ import tempfile
 import threading
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
+
+import requests
+from nominal_api import upload_api
+
+from nominal.core._utils.networking import create_conjure_service_client_with_session
+from nominal.experimental.ingest._multipart_uploader import MultipartUploader
+from nominal.experimental.ingest._upload_pacing import _AdaptivePacer, _ThrottleGate
 
 NOMINAL = "nominal"  # control-plane / rate-limited calls
 S3 = "s3"  # storage PUTs / bandwidth-bound
@@ -85,7 +102,8 @@ class CallRecord:
 
 class Recorder:
     """Thread-safe collector. Tracks in-flight concurrency per population separately,
-    so we can see Nominal-API concurrency vs S3-PUT concurrency independently."""
+    so we can see Nominal-API concurrency vs S3-PUT concurrency independently.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -103,17 +121,17 @@ class Recorder:
             self.records.append(rec)
 
 
-def sample_gate_limit(
-    gate: Any, stop: threading.Event, out: list[tuple[float, float]], *, interval_s: float = 0.25
+def sample_gate_rate(
+    gate: _ThrottleGate, stop: threading.Event, out: list[tuple[float, float]], *, interval_s: float = 0.25
 ) -> None:
-    """Poll the throttle gate's adaptive limit until `stop` is set.
+    """Poll the throttle gate's adaptive request rate (req/s) until `stop` is set.
 
-    Run this on a daemon thread for the duration of an upload run. Whether the limit converges or
-    oscillates is the signal that decides whether concurrency is the right control variable at all.
+    Run this on a daemon thread for the duration of an upload run. Whether the rate converges or
+    oscillates is the signal that decides whether pacing found the server's budget at all.
     """
     t0 = time.monotonic()
     while not stop.is_set():
-        out.append((time.monotonic() - t0, gate.limit))
+        out.append((time.monotonic() - t0, gate.current_rate))
         stop.wait(interval_s)
 
 
@@ -154,25 +172,52 @@ class InstrumentedUploadService:
 
     def initiate_multipart_upload(self, auth_header: Any, request: Any) -> Any:
         label = getattr(request, "filename", "")
-        return _timed(self._rec, "initiate", NOMINAL, label, lambda: self._inner.initiate_multipart_upload(auth_header, request))
+        return _timed(
+            self._rec, "initiate", NOMINAL, label, lambda: self._inner.initiate_multipart_upload(auth_header, request)
+        )
 
     def sign_part(self, auth_header: Any, key: Any, part: Any, upload_id: Any) -> Any:
-        return _timed(self._rec, "sign_part", NOMINAL, f"{key}#{part}", lambda: self._inner.sign_part(auth_header, key, part, upload_id))
+        return _timed(
+            self._rec,
+            "sign_part",
+            NOMINAL,
+            f"{key}#{part}",
+            lambda: self._inner.sign_part(auth_header, key, part, upload_id),
+        )
 
     def list_parts(self, auth_header: Any, key: Any, upload_id: Any) -> Any:
-        return _timed(self._rec, "list_parts", NOMINAL, str(key), lambda: self._inner.list_parts(auth_header, key, upload_id))
+        return _timed(
+            self._rec, "list_parts", NOMINAL, str(key), lambda: self._inner.list_parts(auth_header, key, upload_id)
+        )
 
     def complete_multipart_upload(self, auth_header: Any, key: Any, upload_id: Any, parts: Any) -> Any:
-        return _timed(self._rec, "complete", NOMINAL, str(key), lambda: self._inner.complete_multipart_upload(auth_header, key, upload_id, parts))
+        return _timed(
+            self._rec,
+            "complete",
+            NOMINAL,
+            str(key),
+            lambda: self._inner.complete_multipart_upload(auth_header, key, upload_id, parts),
+        )
 
     def abort_multipart_upload(self, auth_header: Any, key: Any, upload_id: Any) -> Any:
-        return _timed(self._rec, "abort", NOMINAL, str(key), lambda: self._inner.abort_multipart_upload(auth_header, key, upload_id))
+        return _timed(
+            self._rec,
+            "abort",
+            NOMINAL,
+            str(key),
+            lambda: self._inner.abort_multipart_upload(auth_header, key, upload_id),
+        )
 
-    def upload_file(self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None) -> Any:
+    def upload_file(
+        self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None
+    ) -> Any:
         # Single-shot small-file path: one control-plane call that also carries the body.
         label = f"{file_name} ({size_bytes}B)"
         return _timed(
-            self._rec, "upload_file", NOMINAL, label,
+            self._rec,
+            "upload_file",
+            NOMINAL,
+            label,
             lambda: self._inner.upload_file(auth_header, body, file_name, size_bytes, workspace),
         )
 
@@ -191,7 +236,10 @@ class InstrumentedSession:
         size = len(data) if isinstance(data, (bytes, bytearray)) else -1
         label = f"{url.split('?', 1)[0].rsplit('/', 1)[-1]} ({size}B)"
         return _timed(
-            self._rec, "put", S3, label,
+            self._rec,
+            "put",
+            S3,
+            label,
             lambda: self._inner.put(url, data=data, headers=headers, verify=verify, timeout=timeout),
         )
 
@@ -236,8 +284,14 @@ def _pool_composition(recs: list[CallRecord], t0: float, wall: float, max_worker
     print("\n=== pool composition (where worker-time goes) ===")
     for pop in (S3, NOMINAL):
         b = busy.get(pop, 0.0)
-        print(f"  {pop:8s}: {b:7.1f} worker-s  ({100 * b / total_busy:4.1f}% of busy time)  mean_concurrency={b / wall:4.1f}")
-    print(f"  -> S3-PUT share of pool work = {100 * busy.get(S3, 0.0) / total_busy:.0f}%  (higher = 'mostly parts uploading' = your target)")
+        print(
+            f"  {pop:8s}: {b:7.1f} worker-s  ({100 * b / total_busy:4.1f}% of busy time)  "
+            f"mean_concurrency={b / wall:4.1f}"
+        )
+    print(
+        f"  -> S3-PUT share of pool work = {100 * busy.get(S3, 0.0) / total_busy:.0f}%  "
+        f"(higher = 'mostly parts uploading' = your target)"
+    )
 
     n = 48
     times = [t0 + wall * (i + 0.5) / n for i in range(n)]
@@ -249,13 +303,56 @@ def _pool_composition(recs: list[CallRecord], t0: float, wall: float, max_worker
     print(f"    s3-put  |{_sparkline(s3, vmax)}|")
 
 
+def _rate_trace(rate_samples: list[tuple[float, float]]) -> None:
+    """Print the pacer's adaptive request rate (req/s) over the run.
+
+    Normalized to its own observed max: a rate has no pool-size ceiling to be read against — it
+    is requests per second, not a count of workers — so the trace's *shape* is the whole signal.
+    """
+    rates = [rate for _t, rate in rate_samples]
+    peak = max(rates) or 1.0
+    line = "".join(_SPARK[min(len(_SPARK) - 1, int(rate / peak * (len(_SPARK) - 1)))] for rate in rates)
+    print("\n=== adaptive request rate over time (req/s) ===")
+    print(
+        f"  min={min(rates):.2f}  mean={sum(rates) / len(rates):.2f}  max={peak:.2f}  "
+        f"(trace normalized to the observed max)"
+    )
+    print(f"  rate    |{line}|")
+    print("  a rate that keeps sawtoothing never found the budget; one that pins flat found it early")
+
+
+def _failures(recs: list[CallRecord]) -> None:
+    fails = [r for r in recs if not r.ok]
+    if not fails:
+        # ASCII only, like the sparkline ramp: this prints to a Windows cp1252 console.
+        print("\nno surfaced failures -- if a stage's p99/max >> p50, that's retry/backoff (likely 429s) absorbed")
+        return
+    grouped: dict[tuple[str, str | None], int] = defaultdict(int)
+    for r in fails:
+        grouped[(r.stage, r.error)] += 1
+    print(f"\n=== surfaced failures: {len(fails)} ===")
+    for (stage, err), n in sorted(grouped.items(), key=lambda kv: -kv[1]):
+        print(f"  {stage:10s} {err}: {n}")
+
+
+def _slowest(by_stage: dict[str, list[CallRecord]], slowest_n: int) -> None:
+    print(f"\n=== slowest {slowest_n} calls per stage (outliers) ===")
+    for stage in _STAGE_ORDER:
+        rs = by_stage.get(stage)
+        if not rs:
+            continue
+        top = sorted(rs, key=lambda r: r.ms, reverse=True)[:slowest_n]
+        shown = ", ".join(f"{r.ms:.0f}ms({r.label}{'' if r.ok else ' ' + str(r.error)})" for r in top)
+        print(f"  {stage:10s} {shown}")
+
+
 def summarize(
     recorder: Recorder,
     *,
     rate_window_s: float = 0.5,
     slowest_n: int = 5,
     max_workers: int | None = None,
-    limit_samples: list[tuple[float, float]] | None = None,
+    rate_samples: list[tuple[float, float]] | None = None,
 ) -> None:
     recs = sorted(recorder.records, key=lambda r: r.t_start)
     if not recs:
@@ -277,8 +374,8 @@ def summarize(
         fails = sum(1 for r in rs if not r.ok)
         first, last = min(r.t_start for r in rs) - t0, max(r.t_start for r in rs) - t0
         print(
-            f"{stage:10s} {len(rs):6d} {_pct(ms, .50):6.0f}m {_pct(ms, .90):6.0f}m "
-            f"{_pct(ms, .99):6.0f}m {ms[-1]:7.0f}m {fails:6d}  {f'[{first:.1f},{last:.1f}]':>14s}"
+            f"{stage:10s} {len(rs):6d} {_pct(ms, 0.50):6.0f}m {_pct(ms, 0.90):6.0f}m "
+            f"{_pct(ms, 0.99):6.0f}m {ms[-1]:7.0f}m {fails:6d}  {f'[{first:.1f},{last:.1f}]':>14s}"
         )
 
     # Two-population concurrency + rate.
@@ -295,42 +392,10 @@ def summarize(
         print(f"  {pop:8s}: peak concurrency={peak_conc:3d}   peak rate={peak_rate:6.0f} req/s   calls={len(prs)}")
 
     _pool_composition(recs, t0, wall, max_workers)
-
-    # Failures.
-    fails = [r for r in recs if not r.ok]
-    if fails:
-        grouped: dict[tuple[str, str | None], int] = defaultdict(int)
-        for r in fails:
-            grouped[(r.stage, r.error)] += 1
-        print(f"\n=== surfaced failures: {len(fails)} ===")
-        for (stage, err), n in sorted(grouped.items(), key=lambda kv: -kv[1]):
-            print(f"  {stage:10s} {err}: {n}")
-    else:
-        print("\nno surfaced failures — if a stage's p99/max >> p50, that's retry/backoff (likely 429s) being absorbed")
-
-    # Outliers: slowest individual calls per stage.
-    print(f"\n=== slowest {slowest_n} calls per stage (outliers) ===")
-    for stage in _STAGE_ORDER:
-        rs = by_stage.get(stage)
-        if not rs:
-            continue
-        top = sorted(rs, key=lambda r: r.ms, reverse=True)[:slowest_n]
-        shown = ", ".join(f"{r.ms:.0f}ms({r.label}{'' if r.ok else ' ' + str(r.error)})" for r in top)
-        print(f"  {stage:10s} {shown}")
-
-    if limit_samples:
-        limits = [lim for _t, lim in limit_samples]
-        ramp = " .:-=+*#@"
-        observed_peak = max(limits)
-        ceiling = max(observed_peak, float(max_workers or 0)) or 1.0
-        line = "".join(ramp[min(len(ramp) - 1, int(lim / ceiling * (len(ramp) - 1)))] for lim in limits)
-        print("\n=== adaptive concurrency limit over time ===")
-        print(
-            f"  min={min(limits):.2f}  mean={sum(limits) / len(limits):.2f}  "
-            f"max={observed_peak:.2f}  ceiling={ceiling:.2f}"
-        )
-        print(f"  limit   |{line}|")
-        print("  a limit that keeps sawtoothing never found the ceiling; one that pins flat found it early")
+    _failures(recs)
+    _slowest(by_stage, slowest_n)
+    if rate_samples:
+        _rate_trace(rate_samples)
 
 
 # --------------------------------------------------------------------------------------
@@ -342,37 +407,56 @@ def build_instrumented_uploader(
     clients: Any,
     *,
     max_workers: int = 8,
-    max_files_in_flight: int | None = None,
+    small_route_workers: int | None = None,
+    max_multipart_files_in_flight: int | None = None,
     small_file_route_max_bytes: int | None = None,
     timeout: float = 30.0,
     max_part_retries: int = 3,
-) -> tuple[Any, Recorder]:
+) -> tuple[MultipartUploader, Recorder, requests.Session]:
     """Build a MultipartUploader whose Nominal client and S3 session are both timed.
 
-    `clients` is a NominalClient's clients-bunch (e.g. `client._clients`). Returns
-    (uploader, recorder); run your uploads through the uploader, close it, then
-    call summarize(recorder). Set `max_files_in_flight` to bound how many files upload
-    at once (backpressure at enqueue). Set `small_file_route_max_bytes` to route files
-    at/below that size single-shot via upload_file (EXPERIMENTAL) — then the report's
-    `upload_file` stage replaces the initiate/sign/put/list/complete rows.
-    """
-    from nominal.core._utils.multipart_uploader import MultipartUploader
+    Args:
+        clients: A NominalClient's clients-bunch (e.g. `client._clients`), as
+            `MultipartUploader.create` takes it.
+        max_workers: Part-pool size, and the default for the other two pools.
+        small_route_workers: Small-pool size. Defaults to `max_workers`.
+        max_multipart_files_in_flight: Driver-pool size — the bound on concurrently open
+            multipart uploads. Defaults to `max_workers`.
+        small_file_route_max_bytes: Route files at/below this size single-shot via `upload_file`
+            (EXPERIMENTAL) — then the report's `upload_file` stage replaces the
+            initiate/sign_part/put/complete rows.
+        timeout: Per-request timeout for direct-to-storage part PUTs.
+        max_part_retries: Attempts per part before the file fails.
 
+    Returns:
+        `(uploader, recorder, client_session)`. Run your uploads through the uploader, close it,
+        then close `client_session` and call `summarize(recorder)`. Closing the session is the
+        caller's job: the instrumented upload client is *injected*, and the uploader never closes
+        an injected client's session.
+    """
     recorder = Recorder()
+    # Build the SAME dedicated client the uploader would build for itself, then wrap it —
+    # instrumenting clients.upload would measure a transport the uploader no longer uses.
+    raw_client, client_session = create_conjure_service_client_with_session(
+        upload_api.UploadService,
+        user_agent=clients._user_agent,
+        service_config=clients._service_config,
+        header_provider=clients.header_provider,
+        retry_status_forcelist=(308,),
+    )
     up = MultipartUploader.create(
-        upload_client=InstrumentedUploadService(clients.upload, recorder),
-        auth_header=clients.auth_header,
-        workspace_rid=clients.resolve_default_workspace_rid(),
+        clients,
         max_workers=max_workers,
-        max_files_in_flight=max_files_in_flight,
+        small_route_workers=small_route_workers,
+        max_multipart_files_in_flight=max_multipart_files_in_flight,
         small_file_route_max_bytes=small_file_route_max_bytes,
         timeout=timeout,
         max_part_retries=max_part_retries,
-        header_provider=clients.header_provider,
+        upload_client=cast(upload_api.UploadService, InstrumentedUploadService(raw_client, recorder)),
     )
     # Wrap the real session create() just built (keeps its TLS/retry/pool config).
-    up._session = InstrumentedSession(up._session, recorder)  # type: ignore[assignment]
-    return up, recorder
+    up._session = cast(requests.Session, InstrumentedSession(up._session, recorder))
+    return up, recorder, client_session
 
 
 def verify_upload_file_roundtrip(clients: Any, *, size: int = 100_000, file_name: str = "_gzip_probe.bin") -> bool:
@@ -392,7 +476,10 @@ def verify_upload_file_roundtrip(clients: Any, *, size: int = 100_000, file_name
 
     payload = os.urandom(size)
     path = clients.upload.upload_file(
-        clients.auth_header, payload, file_name, size_bytes=len(payload),
+        clients.auth_header,
+        payload,
+        file_name,
+        size_bytes=len(payload),
         workspace=clients.resolve_default_workspace_rid(),
     )
     resp = clients.upload.sign_download(clients.auth_header, ingest_api.SignDownloadRequest(path=path))
@@ -405,7 +492,7 @@ def verify_upload_file_roundtrip(clients: Any, *, size: int = 100_000, file_name
         session.close()
 
     if downloaded == payload:
-        print(f"OK: upload_file round-trip is byte-identical ({size} bytes) — no gzip corruption. Path: {path}")
+        print(f"OK: upload_file round-trip is byte-identical ({size} bytes) -- no gzip corruption. Path: {path}")
         return True
     print(f"MISMATCH: sent {size} bytes, got {len(downloaded)} back. Path: {path}")
     try:
@@ -440,11 +527,14 @@ class _FakeSession:
     def _sleep(self) -> None:
         base = self._latency
         if self._jitter and base:
-            base = max(0.0, random.gauss(base, base * 0.35)) + (base * 8 if random.random() < 0.02 else 0)  # 2% slow tail
+            # gaussian around the configured latency, plus a 2% slow tail
+            base = max(0.0, random.gauss(base, base * 0.35)) + (base * 8 if random.random() < 0.02 else 0)
         if base:
             time.sleep(base)
 
-    def put(self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None) -> _FakeResponse:
+    def put(
+        self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None
+    ) -> _FakeResponse:
         self._sleep()
         return _FakeResponse(url)
 
@@ -488,23 +578,35 @@ class _FakeClient:
         self._sleep()
         return None
 
-    def upload_file(self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None) -> str:
+    def upload_file(
+        self, auth_header: Any, body: Any, file_name: Any, size_bytes: Any = None, workspace: Any = None
+    ) -> str:
         self._sleep()
         return f"s3://bucket/{file_name}"
 
 
 def _run_demo(
-    n_files: int, max_workers: int, api_ms: float, put_ms: float, jitter: bool, file_bytes: int, part_size: int,
-    max_files_in_flight: int | None, small_file_route_max_bytes: int | None,
+    *,
+    n_files: int,
+    max_workers: int,
+    small_route_workers: int | None,
+    max_multipart_files_in_flight: int | None,
+    api_ms: float,
+    put_ms: float,
+    jitter: bool,
+    file_bytes: int,
+    part_size: int,
+    small_file_route_max_bytes: int | None,
+    initial_rate: float,
 ) -> None:
-    from nominal.core._utils.multipart_uploader import MultipartUploader, _AdaptiveLimiter, _ThrottleGate
     from nominal.core.filetype import FileTypes
 
     rec = Recorder()
     client = InstrumentedUploadService(_FakeClient(api_ms / 1000.0, jitter), rec)
     session = InstrumentedSession(_FakeSession(put_ms / 1000.0, jitter), rec)
     parts_per_file = max(1, -(-file_bytes // part_size))  # ceil
-    file_slots = threading.BoundedSemaphore(max_files_in_flight) if max_files_in_flight else None
+    small_workers = max_workers if small_route_workers is None else small_route_workers
+    drivers = max_workers if max_multipart_files_in_flight is None else max_multipart_files_in_flight
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = pathlib.Path(tmp)
@@ -514,21 +616,32 @@ def _run_demo(
             p.write_bytes(b"\0" * file_bytes)  # content is irrelevant; size drives the part count
             paths.append(p)
 
+        # Constructed field-by-field rather than via `create()`: the fakes replace both transports,
+        # so there is no client to build and no session to own.
         up = MultipartUploader(
-            max_workers=max_workers, timeout=30.0, max_part_retries=3,
-            _upload_client=client, _auth_header="auth", _workspace_rid=None,
-            _session=session, _pool=ThreadPoolExecutor(max_workers=max_workers),
-            _gate=_ThrottleGate(_AdaptiveLimiter(initial=8, min_limit=1, max_limit=max_workers)),
-            _closed=False, _file_slots=file_slots, _small_file_route_max_bytes=small_file_route_max_bytes,
+            max_workers=max_workers,
+            timeout=30.0,
+            max_part_retries=3,
+            _upload_client=cast(upload_api.UploadService, client),
+            _auth_header="auth",
+            _workspace_rid=None,
+            _session=cast(requests.Session, session),
+            _owned_client_session=None,  # the fake client owns no session
+            _small_pool=ThreadPoolExecutor(small_workers, thread_name_prefix="demo-upload-small"),
+            _driver_pool=ThreadPoolExecutor(drivers, thread_name_prefix="demo-upload-file"),
+            _part_pool=ThreadPoolExecutor(max_workers, thread_name_prefix="demo-upload-part"),
+            _gate=_ThrottleGate(_AdaptivePacer(initial_rate=initial_rate)),
+            _small_file_route_max_bytes=small_file_route_max_bytes,
         )
         print(
-            f"running {n_files} files x {parts_per_file} part(s) each @ max_workers={max_workers}, "
-            f"max_files_in_flight={max_files_in_flight}, api={api_ms}ms put={put_ms}ms jitter={jitter} ..."
+            f"running {n_files} files x {parts_per_file} part(s) each @ part_workers={max_workers}, "
+            f"small_workers={small_workers}, drivers={drivers}, initial_rate={initial_rate}/s, "
+            f"api={api_ms}ms put={put_ms}ms jitter={jitter} ..."
         )
         t0 = time.monotonic()
-        limit_samples: list[tuple[float, float]] = []
+        rate_samples: list[tuple[float, float]] = []
         stop = threading.Event()
-        sampler = threading.Thread(target=sample_gate_limit, args=(up._gate, stop, limit_samples), daemon=True)
+        sampler = threading.Thread(target=sample_gate_rate, args=(up._gate, stop, rate_samples), daemon=True)
         sampler.start()
         try:
             try:
@@ -540,10 +653,10 @@ def _run_demo(
             stop.set()
             sampler.join(timeout=2.0)
         print(f"done: {done}/{n_files} in {time.monotonic() - t0:.1f}s")
-    summarize(rec, max_workers=max_workers, limit_samples=limit_samples)
+    summarize(rec, max_workers=max_workers, rate_samples=rate_samples)
 
 
-def _safe_result(fut: Any) -> bool:
+def _safe_result(fut: Future[str]) -> bool:
     try:
         fut.result()
         return True
@@ -554,21 +667,54 @@ def _safe_result(fut: Any) -> bool:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Per-stage timing for MultipartUploader (local fake-backed demo).")
     ap.add_argument("--files", type=int, default=1000)
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=8, help="part-pool size, and the default for the other two pools")
+    ap.add_argument("--small-route-workers", type=int, default=None, help="small-pool size; defaults to --workers")
+    ap.add_argument(
+        "--max-multipart-files-in-flight",
+        type=int,
+        default=None,
+        help="driver-pool size = concurrently open multipart uploads; defaults to --workers",
+    )
     ap.add_argument("--api-latency-ms", type=float, default=40.0)
     ap.add_argument("--put-latency-ms", type=float, default=15.0)
     ap.add_argument("--file-bytes", type=int, default=8, help="size of each generated file")
     ap.add_argument(
-        "--part-size", type=int, default=64_000_000,
+        "--part-size",
+        type=int,
+        default=64_000_000,
         help="multipart chunk size; a SMALL value makes each file multi-part (simulates 'few big files')",
     )
-    ap.add_argument("--max-files-in-flight", type=int, default=None, help="cap concurrent files (backpressure at enqueue)")
-    ap.add_argument("--small-file-route-max-bytes", type=int, default=None, help="route files <= this single-shot via upload_file")
-    ap.add_argument("--jitter", action="store_true", help="add gaussian jitter + a 2%% slow tail so outlier reporting is visible")
+    ap.add_argument(
+        "--small-file-route-max-bytes",
+        type=int,
+        default=None,
+        help="route files <= this single-shot via upload_file",
+    )
+    ap.add_argument(
+        "--initial-rate",
+        type=float,
+        default=10.0,
+        help="pacer's starting request rate in req/s (the pacer's own default). Nothing here ever throttles, "
+        "so the pacer probes upward from this and the demo's runtime is dominated by that ramp",
+    )
+    ap.add_argument(
+        "--jitter",
+        action="store_true",
+        help="add gaussian jitter + a 2%% slow tail so outlier reporting is visible",
+    )
     args = ap.parse_args()
     _run_demo(
-        args.files, args.workers, args.api_latency_ms, args.put_latency_ms, args.jitter, args.file_bytes,
-        args.part_size, args.max_files_in_flight, args.small_file_route_max_bytes,
+        n_files=args.files,
+        max_workers=args.workers,
+        small_route_workers=args.small_route_workers,
+        max_multipart_files_in_flight=args.max_multipart_files_in_flight,
+        api_ms=args.api_latency_ms,
+        put_ms=args.put_latency_ms,
+        jitter=args.jitter,
+        file_bytes=args.file_bytes,
+        part_size=args.part_size,
+        small_file_route_max_bytes=args.small_file_route_max_bytes,
+        initial_rate=args.initial_rate,
     )
 
 
