@@ -136,6 +136,41 @@ def test_list_parts_then_complete_reads_etags_from_the_server() -> None:
     assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"'), (2, '"b"')]
 
 
+def test_put_multipart_upload_completes_via_list_parts() -> None:
+    """Regression lock: `put_multipart_upload` (the legacy path) never collects per-part ETags of
+    its own, so its completion must still ask the server for them via list_parts -- not the
+    ETag-based primitive the newer MultipartUploader uses.
+    """
+    upload_client = MagicMock(
+        spec=["initiate_multipart_upload", "sign_part", "list_parts", "complete_multipart_upload", "_verify"]
+    )
+    upload_client._verify = False
+    upload_client.initiate_multipart_upload.return_value = MagicMock(key="key", upload_id="uid")
+    upload_client.sign_part.return_value = _sign_response()
+    upload_client.list_parts.return_value = [MagicMock(etag='"a"', part_number=1)]
+    upload_client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
+
+    session = MagicMock(spec=["put", "close"])
+    session.put.return_value = MagicMock(status_code=200)
+
+    with patch.object(multipart, "create_multipart_request_session", return_value=session):
+        location = multipart.put_multipart_upload(
+            "Bearer token",
+            "ri.workspace",
+            io.BytesIO(b"data"),
+            "file.csv",
+            "text/csv",
+            upload_client,
+            chunk_size=1_000_000,
+            max_workers=1,
+        )
+
+    assert location == "s3://bucket/key"
+    upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid")
+    _, _, _, parts = upload_client.complete_multipart_upload.call_args[0]
+    assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"')]
+
+
 def test_sign_part_and_put_part_compose_without_retrying() -> None:
     client = MagicMock(spec=["sign_part"])
     client.sign_part.return_value = _sign_response()
