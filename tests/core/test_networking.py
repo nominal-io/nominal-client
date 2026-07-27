@@ -7,6 +7,7 @@ import pytest
 import requests
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
+from nominal_api import upload_api
 from requests.adapters import HTTPAdapter
 
 from nominal.core._utils.networking import (
@@ -14,6 +15,7 @@ from nominal.core._utils.networking import (
     NominalRequestsAdapter,
     SslBypassRequestsAdapter,
     create_conjure_service_client,
+    create_conjure_service_client_with_session,
 )
 from nominal.core.exceptions import HeaderConflictError
 
@@ -174,3 +176,51 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
 
     assert prepared.headers["User-Agent"] == "provider-agent"
     session.close()
+
+
+_TEST_URI = "https://api.example.test"
+
+
+def _config() -> ServiceConfiguration:
+    return ServiceConfiguration(security=SslConfiguration(trust_store_path=None), uris=[_TEST_URI])
+
+
+def _adapter(session: requests.Session) -> HTTPAdapter:
+    return session.get_adapter(_TEST_URI)
+
+
+class TestRetryStatusForcelist:
+    def test_default_forcelist_unchanged(self) -> None:
+        """The default forcelist must match the retry behavior the plain factory has always had."""
+        _client, session = create_conjure_service_client_with_session(
+            upload_api.UploadService, "test-agent/0", _config()
+        )
+        assert sorted(_adapter(session).max_retries.status_forcelist) == [308, 429, 503]
+        session.close()
+
+    def test_reduced_forcelist_applies(self) -> None:
+        """A caller that only wants 308 retried must not get transport retries on 429/503."""
+        _client, session = create_conjure_service_client_with_session(
+            upload_api.UploadService, "test-agent/0", _config(), retry_status_forcelist=(308,)
+        )
+        assert list(_adapter(session).max_retries.status_forcelist) == [308]
+        session.close()
+
+    def test_pool_sizing_applies(self) -> None:
+        """Explicit pool sizing must reach the mounted transport adapter."""
+        _client, session = create_conjure_service_client_with_session(
+            upload_api.UploadService,
+            "test-agent/0",
+            _config(),
+            pool_connections=40,
+            pool_maxsize=40,
+        )
+        adapter = _adapter(session)
+        assert adapter._pool_connections == 40
+        assert adapter._pool_maxsize == 40
+        session.close()
+
+    def test_plain_factory_still_returns_client_only(self) -> None:
+        """The pre-existing factory keeps returning a bare client, not a tuple."""
+        client = create_conjure_service_client(upload_api.UploadService, "test-agent/0", _config())
+        assert isinstance(client, upload_api.UploadService)
