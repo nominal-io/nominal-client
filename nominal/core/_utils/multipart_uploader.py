@@ -200,7 +200,8 @@ class _ThrottleGate:
                 elapsed = self._clock() - started
                 if elapsed >= budget:
                     raise NominalRequestThrottledError(
-                        f"server kept throttling this request for {budget}s across {attempt + 1} attempts; giving up"
+                        f"server kept throttling this request for {elapsed:.1f}s (budget {budget}s) across "
+                        f"{attempt + 1} attempts; giving up"
                     ) from exc
                 self._sleep(min(self._backoff(attempt), budget - elapsed))
                 attempt += 1
@@ -457,12 +458,18 @@ class MultipartUploader:
     ) -> "Future[str]":
         """Schedule a file upload and return a future for its S3 location.
 
-        Obvious errors (missing file, invalid object name) surface here synchronously; upload
-        failures surface via the returned future.
+        Obvious errors (missing file, invalid object name, non-positive `part_size`, or a
+        `part_size` whose part count would exceed the storage provider's limit) surface here
+        synchronously; upload failures surface via the returned future.
 
         Non-blocking, unless the uploader was created with `max_files_in_flight`: then this blocks
         until fewer than that many files are still uploading, so an unbounded list can be enqueued
         without opening every file's multipart upload (and bursting its metadata) at once.
+
+        Raises:
+            FileNotFoundError: `path` does not exist.
+            ValueError: `name` is unsafe for storage, `part_size` is not positive, or `part_size`
+                would need more parts than the storage provider allows.
         """
         file_type = file_type if file_type is not None else FileType.from_path(path)
         name = name if name is not None else path_upload_name(path, file_type)
@@ -563,7 +570,7 @@ class MultipartUploader:
     def _run_small_file_upload(self, pending: _PendingUpload, future: "Future[str]") -> None:
         """Single-shot upload of a small file via the backend `upload_file` endpoint (no multipart).
 
-        One request instead of initiate + sign + PUT + list_parts + complete. Always passes
+        One request instead of initiate + sign + PUT + complete. Always passes
         `size_bytes` so the server streams to S3 (and doesn't silently cap at its in-memory limit).
         Reads the whole (small) file into memory.
         """

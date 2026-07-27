@@ -34,7 +34,7 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
-class NominalMultipartUploadError(Exception):
+class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
 
