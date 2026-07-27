@@ -16,6 +16,15 @@ from nominal.core.exceptions import NominalRequestThrottledError
 
 T = TypeVar("T")
 
+
+class _AdmissionDeadlineExceeded(Exception):
+    """The next free pace slot lies past the caller's deadline; no slot was claimed.
+
+    Module-private: `_ThrottleGate` translates it into `NominalRequestThrottledError`, so it
+    never reaches a caller.
+    """
+
+
 DEFAULT_THROTTLE_DEADLINE_S = 120.0  # a request unadmitted this long means unavailable, not busy
 _ABORT_THROTTLE_DEADLINE_S = 5.0  # best-effort rollback must not compete with live uploads
 
@@ -76,10 +85,26 @@ class _AdaptivePacer:
         with self._lock:
             return self._rate
 
-    def acquire(self) -> None:
+    def acquire(self, *, deadline_at: float | None = None) -> None:
+        """Claim the next pace slot and sleep until it comes due.
+
+        Args:
+            deadline_at: Absolute time by which admission must have happened, or None to wait
+                however long the queue takes. A caller that cannot wait that long must not hold
+                a slot it will never use, so a slot past the deadline is refused rather than
+                claimed — the queue is left exactly as it was found.
+
+        Raises:
+            _AdmissionDeadlineExceeded: The next free slot falls after `deadline_at`.
+        """
         with self._lock:
             now = self._clock()
             slot = max(now, self._next_slot)
+            if deadline_at is not None and slot > deadline_at:
+                # Refuse before mutating anything: no slot consumed, no saturation recorded.
+                raise _AdmissionDeadlineExceeded(
+                    f"next pace slot is {slot - now:.1f}s away, past the caller's deadline"
+                )
             if slot > now:
                 self._interval_saturated = True  # demand met pacing: this interval may increase
             self._next_slot = slot + 1.0 / self._rate
@@ -100,11 +125,18 @@ class _AdaptivePacer:
                 self._rate = max(self._min, self._rate * self._decrease_factor)
 
     def _maybe_roll_interval(self) -> None:
-        # Lazy interval accounting: no timer thread. Multiple silent intervals collapse into
-        # one roll with saturated=False, so quiet time never moves the rate.
+        # Lazy interval accounting: no timer thread, so a roll can arrive long after the window
+        # it closes. A gap spanning more than one interval means a whole interval went by without
+        # a settlement, so whatever the flags recorded describes a window that has since fallen
+        # silent — discard that evidence instead of letting it bank an increase. Dropping a stale
+        # throttle along with it only suppresses an increase, which is the safe direction.
         now = self._clock()
-        if now - self._interval_start < self._interval:
+        elapsed = now - self._interval_start
+        if elapsed < self._interval:
             return
+        if elapsed >= 2 * self._interval:
+            self._interval_saturated = False
+            self._interval_throttled = False
         if self._interval_saturated and not self._interval_throttled:
             if self._probing:
                 self._rate *= self._probe_factor
@@ -120,7 +152,9 @@ class _ThrottleGate:
 
     On a throttle the request feeds the pacer and simply re-enters paced admission — the
     post-cut pacing IS the backoff (a herd cannot form through a paced gate). The only
-    safeguard is the per-request wall-clock deadline.
+    safeguard is the per-request wall-clock deadline, which bounds the whole call: waiting for
+    a pace slot spends the same budget as the request does, so a short-deadline caller (an
+    abort, say) fails fast instead of blocking behind a queue it can never reach the front of.
     """
 
     def __init__(
@@ -139,24 +173,55 @@ class _ThrottleGate:
         return self._pacer.rate
 
     def call(self, op: Callable[[], T], *, deadline_seconds: float | None = None) -> T:
+        """Run `op` under paced admission, retrying for as long as the server throttles it.
+
+        Args:
+            op: The request to run. It is retried verbatim on a throttle, so it must be safe to
+                repeat.
+            deadline_seconds: Wall-clock budget for the whole call, counting time spent waiting
+                for paced admission as well as time spent in `op`. Defaults to the gate's own
+                budget.
+
+        Returns:
+            Whatever `op` returns on the first attempt the server does not throttle.
+
+        Raises:
+            NominalRequestThrottledError: The budget ran out — either the server kept throttling
+                the request, or the paced queue could not admit it in time. `__cause__` is the
+                last throttle seen, or None if the budget expired before any attempt was made.
+            Exception: Any non-throttle error from `op`, re-raised unchanged from the attempt
+                that produced it (never retried).
+        """
         budget = self._deadline_seconds if deadline_seconds is None else deadline_seconds
         started = self._clock()
+        deadline_at = started + budget
         attempt = 0
+        last_throttle: BaseException | None = None
         while True:
-            self._pacer.acquire()
+            try:
+                # Admission waits spend the same budget as the request itself, so a queue deeper
+                # than the budget fails fast instead of blocking past the caller's deadline.
+                self._pacer.acquire(deadline_at=deadline_at)
+            except _AdmissionDeadlineExceeded:
+                raise self._exhausted(
+                    "the paced queue could not admit this request", started, budget, attempt
+                ) from last_throttle
             try:
                 result = op()
             except BaseException as exc:
                 if not _is_throttle_error(exc):
                     raise
                 self._pacer.on_throttle()
-                elapsed = self._clock() - started
-                if elapsed >= budget:
-                    raise NominalRequestThrottledError(
-                        f"server kept throttling this request for {elapsed:.1f}s "
-                        f"(budget {budget}s) across {attempt + 1} attempts; giving up"
-                    ) from exc
+                last_throttle = exc
+                if self._clock() - started >= budget:
+                    raise self._exhausted("server kept throttling this request", started, budget, attempt + 1) from exc
                 attempt += 1
             else:
                 self._pacer.on_success()
                 return result
+
+    def _exhausted(self, detail: str, started: float, budget: float, attempts: int) -> NominalRequestThrottledError:
+        elapsed = self._clock() - started
+        return NominalRequestThrottledError(
+            f"{detail} after {elapsed:.1f}s of a {budget}s budget across {attempts} attempts; giving up"
+        )

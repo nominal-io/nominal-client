@@ -9,6 +9,7 @@ import requests
 from nominal.core.exceptions import NominalRequestThrottledError
 from nominal.experimental.ingest._upload_pacing import (
     _AdaptivePacer,
+    _AdmissionDeadlineExceeded,
     _is_throttle_error,
     _ThrottleGate,
 )
@@ -77,10 +78,22 @@ class TestAdaptivePacer:
 
     def test_zero_request_intervals_do_not_advance_adaptation(self) -> None:
         pacer, clock = make_pacer(interval=2.0)
-        clock.now += 60.0  # 30 silent intervals
-        pacer.acquire()
-        pacer.on_success()
+        pacer.acquire()  # t=0.0, admits immediately
+        pacer.acquire()  # waits for its slot, so this interval really did see demand
+        pacer.on_success()  # too early to roll: the saturation is still on the books
+        clock.now = 600.0  # ten minutes of zero requests
+        pacer.acquire()  # nothing banked, nothing to wait for
+        pacer.on_success()  # the roll here must not cash in saturation from ten minutes ago
         assert pacer.rate == pytest.approx(10.0)
+
+    def test_silence_after_a_throttled_interval_also_leaves_the_rate_alone(self) -> None:
+        pacer, clock = make_pacer(interval=2.0)
+        pacer.acquire()
+        pacer.on_throttle()  # rate 6.0, and this interval is marked dirty
+        clock.now = 600.0
+        pacer.acquire()
+        pacer.on_success()  # stale dirt is dropped too, but silence still earns nothing
+        assert pacer.rate == pytest.approx(6.0)
 
     def test_throttle_cuts_once_per_interval(self) -> None:
         pacer, clock = make_pacer()
@@ -117,6 +130,24 @@ class TestAdaptivePacer:
         assert clock.now == pytest.approx(0.2)
         pacer.acquire()  # ...but the new claim is spaced at the new rate
         assert clock.now == pytest.approx(0.2 + 1.0 / 6.0)
+
+    def test_acquire_refuses_a_slot_past_its_deadline_without_claiming_it(self) -> None:
+        pacer, clock = make_pacer(initial_rate=0.1, min_rate=0.1)  # one slot every 10s
+        pacer.acquire()  # t=0.0, which puts the next free slot at 10.0
+
+        with pytest.raises(_AdmissionDeadlineExceeded):
+            pacer.acquire(deadline_at=5.0)
+
+        assert clock.now == pytest.approx(0.0)  # refused up front, never slept toward the slot
+        assert clock.sleeps == []
+        pacer.acquire()  # the refused caller left the queue exactly as it found it
+        assert clock.now == pytest.approx(10.0)
+
+    def test_acquire_takes_a_slot_that_lands_within_its_deadline(self) -> None:
+        pacer, clock = make_pacer(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
+        pacer.acquire()  # t=0.0, next free slot at 2.0
+        pacer.acquire(deadline_at=5.0)  # 2.0 is inside the deadline: wait for it, don't refuse
+        assert clock.now == pytest.approx(2.0)
 
     def test_concurrent_acquires_all_admit_and_stay_paced(self) -> None:
         # Real threads contending on the pacer, against a frozen clock (sleep records instead
@@ -236,6 +267,46 @@ class TestThrottleGate:
 
         with pytest.raises(NominalRequestThrottledError):
             gate.call(op, deadline_seconds=5.0)
+
+    def test_admission_beyond_the_deadline_refuses_without_consuming_a_slot(self) -> None:
+        # The abort path runs on a 5s budget; a queue deeper than that must fail fast rather
+        # than block for the minutes the pacer would otherwise make it wait.
+        gate, pacer, clock = make_gate(initial_rate=0.1, min_rate=0.1)  # one slot every 10s
+        pacer.acquire()  # t=0.0, which puts the next free slot far beyond a 5s budget
+        ran = []
+
+        with pytest.raises(NominalRequestThrottledError) as excinfo:
+            gate.call(lambda: ran.append(1), deadline_seconds=5.0)
+
+        assert clock.now == pytest.approx(0.0)  # raised promptly, not after a 10s sleep
+        assert ran == []  # the request was never issued
+        assert excinfo.value.__cause__ is None  # no throttle was ever observed
+        assert "attempts" in str(excinfo.value)
+        pacer.acquire()  # the refused call did not push the queue back
+        assert clock.now == pytest.approx(10.0)
+
+    def test_admission_within_the_deadline_is_unaffected(self) -> None:
+        gate, pacer, clock = make_gate(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
+        pacer.acquire()  # t=0.0, next free slot at 2.0 — inside a 5s budget
+        assert gate.call(lambda: "ok", deadline_seconds=5.0) == "ok"
+        assert clock.now == pytest.approx(2.0)  # waited for its slot and was admitted
+
+    def test_admission_waits_count_against_the_retry_budget(self) -> None:
+        # op burns no wall clock at all, so every second of the budget is admission wait: the
+        # call must still give up at the budget instead of sleeping past it.
+        gate, pacer, clock = make_gate(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
+        issued_at = []
+
+        def op():
+            issued_at.append(clock.now)
+            raise _StatusError(429)
+
+        with pytest.raises(NominalRequestThrottledError) as excinfo:
+            gate.call(op, deadline_seconds=5.0)
+
+        assert clock.now <= 5.0  # never slept past the deadline waiting for a slot
+        assert issued_at == pytest.approx([0.0, 2.0, 4.0])
+        assert isinstance(excinfo.value.__cause__, _StatusError)  # last throttle is preserved
 
     def test_current_rate_exposed(self) -> None:
         gate, pacer, clock = make_gate()
