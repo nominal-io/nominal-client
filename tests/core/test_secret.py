@@ -87,6 +87,7 @@ def test_search_secrets_follows_pagination_cursors_and_ands_filters() -> None:
     page1 = secrets_pb2.SearchSecretsResponse(results=[_proto_secret("ri.secret.a")], next_page_token="tok")
     page2 = secrets_pb2.SearchSecretsResponse(results=[_proto_secret("ri.secret.b")], next_page_token="")
     clients.secrets.Search.side_effect = [page1, page2]
+    clients.resolve_default_workspace_rid.side_effect = ["ri.workspace.default"]
 
     results = client.search_secrets(search_text="text", labels=["label"])
 
@@ -98,6 +99,7 @@ def test_search_secrets_follows_pagination_cursors_and_ands_filters() -> None:
             "and": [
                 secrets_pb2.SearchSecretsQuery(search_text="text"),
                 secrets_pb2.SearchSecretsQuery(label="label"),
+                secrets_pb2.SearchSecretsQuery(workspace="ri.workspace.default"),
             ]
         }
     )
