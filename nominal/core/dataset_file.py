@@ -255,9 +255,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         return cls(**_parse_common_file_fields(clients, dataset_file))
 
 
-def _parse_common_file_fields(
-    clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile
-) -> dict[str, Any]:
+def _parse_common_file_fields(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> dict[str, Any]:
     """Parse the fields shared by every DatasetFile subtype from a Catalog row."""
     upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
     ingest_time = (
@@ -281,9 +279,7 @@ def _parse_common_file_fields(
     timestamp_type = None
     if dataset_file.timestamp_metadata is not None:
         timestamp_column = dataset_file.timestamp_metadata.series_name
-        timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(
-            dataset_file.timestamp_metadata.timestamp_type
-        )
+        timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(dataset_file.timestamp_metadata.timestamp_type)
 
     ingest_error = dataset_file.ingest_status.error
     ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
@@ -306,9 +302,7 @@ def _parse_common_file_fields(
     )
 
 
-def _dataset_file_from_conjure(
-    clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile
-) -> DatasetFile:
+def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> DatasetFile:
     """Build the correct DatasetFile subtype for a Catalog row.
 
     Returns a VideoDatasetFile when the row carries video metadata, otherwise a plain DatasetFile.

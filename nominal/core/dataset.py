@@ -153,8 +153,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         video_files = [f for f in job.dataset_files() if isinstance(f, VideoDatasetFile)]
         if len(video_files) != 1:
             raise NominalIngestError(
-                f"expected exactly one video file from ingest job {response.ingest_job_rid!r}, "
-                f"found {len(video_files)}"
+                f"expected exactly one video file from ingest job {response.ingest_job_rid!r}, found {len(video_files)}"
             )
         return video_files[0]
 
