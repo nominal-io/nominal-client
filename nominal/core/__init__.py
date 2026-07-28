@@ -21,7 +21,7 @@ from nominal.core.container_image import (
 )
 from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
-from nominal.core.dataset import Dataset, poll_until_ingestion_completed
+from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event
@@ -76,7 +76,6 @@ __all__ = [
     "LogStream",
     "Comment",
     "NominalClient",
-    "poll_until_ingestion_completed",
     "Run",
     "SearchEventOriginType",
     "Secret",

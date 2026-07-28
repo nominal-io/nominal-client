@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 from nominal_api import (
     api,
@@ -19,7 +19,6 @@ from nominal_api import (
     scout_video_api,
 )
 
-from nominal._utils.deprecation_tools import _NotProvided
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
@@ -76,39 +75,6 @@ class ArchiveStatusFilter(Enum):
             return [types_pb2.ArchivedStatus.NOT_ARCHIVED]
         else:  # ANY
             return [types_pb2.ArchivedStatus.ARCHIVED, types_pb2.ArchivedStatus.NOT_ARCHIVED]
-
-
-def resolve_effective_archive_status(
-    archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
-    *,
-    archived: bool | None | _NotProvided = _NotProvided(),
-    include_archived: bool | _NotProvided = _NotProvided(),
-) -> ArchiveStatusFilter:
-    """Resolve deprecated archive filter arguments into a single ArchiveStatusFilter."""
-    has_archive_status = isinstance(archive_status, ArchiveStatusFilter)
-    has_archived = isinstance(archived, bool)
-    has_include_archived = isinstance(include_archived, bool)
-
-    if has_archive_status and (has_archived or has_include_archived):
-        legacy_args = []
-        if has_archived:
-            legacy_args.append("`archived`")
-        if has_include_archived:
-            legacy_args.append("`include_archived`")
-
-        raise ValueError(
-            f"Cannot provide `archive_status` alongside deprecated {' or '.join(legacy_args)}. "
-            "Use only `archive_status`."
-        )
-
-    if has_archived and archived:
-        return ArchiveStatusFilter.ARCHIVED
-    elif has_include_archived and include_archived:
-        return ArchiveStatusFilter.ANY
-    elif has_archive_status:
-        return cast(ArchiveStatusFilter, archive_status)
-    else:
-        return ArchiveStatusFilter.NOT_ARCHIVED
 
 
 def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> scout_catalog.SearchDatasetsQuery:
