@@ -9,6 +9,7 @@ import pytest
 
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.exceptions import NominalIngestError
+from nominal.core.filetype import FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -214,20 +215,50 @@ def test_add_video_from_io_rejects_text_stream():
         Dataset.add_video_from_io(ds, io.StringIO("x"), "v.mp4", channel="c", start=0)
 
 
-def test_add_video_from_io_submits_video_v2_and_returns_handler_result():
+def test_add_video_from_io_delegates_to_ingest_video():
+    """add_video_from_io validates and forwards the timestamp mode to the shared ingest tail."""
+    ds = MagicMock()
+    result = Dataset.add_video_from_io(
+        ds, io.BytesIO(b"data"), "front.mp4", channel="camera/front", start=123, tags={"v": "a"}
+    )
+    ds._ingest_video.assert_called_once()
+    _, kwargs = ds._ingest_video.call_args
+    assert kwargs["channel"] == "camera/front"
+    assert kwargs["start"] == 123
+    assert kwargs.get("frame_timestamps") is None
+    assert kwargs["tags"] == {"v": "a"}
+    assert result is ds._ingest_video.return_value
+
+
+def test_ingest_video_uploads_and_submits_video_v2():
+    """The shared ingest tail builds the manifest, uploads, submits VideoOptsV2, and returns the handled file."""
     ds = MagicMock()
     ds.rid = "ds-rid"
     with (
-        patch("nominal.core.dataset.build_video_timestamp_manifest", return_value="MANIFEST") as build_manifest,
+        patch("nominal.core.dataset._build_video_file_timestamp_manifest", return_value="MANIFEST") as build_manifest,
         patch("nominal.core.dataset.build_video_ingest_options", return_value="OPTIONS") as build_opts,
         patch("nominal.core.dataset.upload_multipart_io", return_value="s3://p"),
     ):
-        result = Dataset.add_video_from_io(
-            ds, io.BytesIO(b"data"), "front.mp4", channel="camera/front", start=123, tags={"v": "a"}
+        result = Dataset._ingest_video(
+            ds,
+            io.BytesIO(b"data"),
+            "front.mp4",
+            channel="camera/front",
+            file_type=FileTypes.MP4,
+            tags={"v": "a"},
+            overwrite_overlapping=False,
+            start=123,
         )
 
     build_manifest.assert_called_once()
-    build_opts.assert_called_once_with("ds-rid", "camera/front", {"v": "a"}, "s3://p", "MANIFEST", False)
+    build_opts.assert_called_once_with(
+        "ds-rid",
+        channel="camera/front",
+        tags={"v": "a"},
+        s3_path="s3://p",
+        timestamp_manifest="MANIFEST",
+        overwrite_overlapping=False,
+    )
     ds._clients.ingest.ingest.assert_called_once()
     ds._handle_video_ingest_response.assert_called_once_with(ds._clients.ingest.ingest.return_value)
     assert result is ds._handle_video_ingest_response.return_value
@@ -239,23 +270,27 @@ def test_add_mcap_video_from_io_rejects_text_stream():
         Dataset.add_mcap_video_from_io(ds, io.StringIO("x"), "v.mcap", channel="c", topic="/t")
 
 
-def test_add_mcap_video_from_io_builds_mcap_manifest_and_submits():
+def test_add_mcap_video_from_io_delegates_with_mcap_topic():
+    """add_mcap_video_from_io forwards the topic as the mcap timestamp mode of the shared ingest tail."""
     ds = MagicMock()
-    ds.rid = "ds-rid"
-    with (
-        patch("nominal.core.dataset.build_video_timestamp_manifest", return_value="MANIFEST") as build_manifest,
-        patch("nominal.core.dataset.build_video_ingest_options", return_value="OPTIONS") as build_opts,
-        patch("nominal.core.dataset.upload_multipart_io", return_value="s3://p"),
-    ):
-        result = Dataset.add_mcap_video_from_io(
-            ds, io.BytesIO(b"data"), "rec.mcap", channel="camera/front", topic="/camera/front/h264"
-        )
-
-    _, kwargs = build_manifest.call_args
+    result = Dataset.add_mcap_video_from_io(
+        ds, io.BytesIO(b"data"), "rec.mcap", channel="camera/front", topic="/camera/front/h264"
+    )
+    ds._ingest_video.assert_called_once()
+    _, kwargs = ds._ingest_video.call_args
+    assert kwargs["channel"] == "camera/front"
     assert kwargs["mcap_topic"] == "/camera/front/h264"
-    build_opts.assert_called_once_with("ds-rid", "camera/front", None, "s3://p", "MANIFEST", False)
-    ds._clients.ingest.ingest.assert_called_once()
-    assert result is ds._handle_video_ingest_response.return_value
+    assert result is ds._ingest_video.return_value
+
+
+def test_add_mcap_video_rejects_non_mcap_path(tmp_path):
+    """A non-.mcap path raises locally instead of uploading under an mcap name."""
+    ds = MagicMock()
+    f = tmp_path / "front.mp4"
+    f.write_bytes(b"\x00")
+    with pytest.raises(ValueError, match="must end in"):
+        Dataset.add_mcap_video(ds, str(f), channel="cam", topic="/t")
+    ds.add_mcap_video_from_io.assert_not_called()
 
 
 def test_list_video_files_yields_only_video_subtypes():

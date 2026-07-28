@@ -19,7 +19,7 @@ from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
-from nominal.core._video_ingest import build_video_ingest_options, build_video_timestamp_manifest
+from nominal.core._video_ingest import build_video_ingest_options
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
@@ -28,6 +28,7 @@ from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -135,7 +136,9 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def _handle_video_ingest_response(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
         details = response.details.dataset
         if details is not None and details.dataset_file_id is not None:
-            # Assumes the backend already wrote `metadata.video` before segmentation (design-doc backend gate #2); if delayed, the isinstance check below is timing-sensitive and can spuriously raise NominalIngestError.
+            # The backend writes `metadata.video` when it creates the dataset-file row, before segmentation is
+            # dispatched — so a video ingest's row is video-typed from the moment it exists. A non-video result
+            # here means the id points at a genuinely non-video file, not a not-yet-populated one.
             raw = self._clients.catalog.get_dataset_file(
                 self._clients.auth_header, details.dataset_rid, details.dataset_file_id
             )
@@ -518,8 +521,22 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     ) -> VideoDatasetFile:
         """Upload a video file to this dataset as a channel.
 
-        Exactly one of `start` (a single starting timestamp) or `frame_timestamps`
-        (per-frame absolute nanosecond timestamps) must be provided.
+        Args:
+            path: Path to the H264/H265-encoded video file to add to this dataset.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
+                Exactly one of `start` or `frame_timestamps` must be provided.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            ValueError: neither or both of `start` and `frame_timestamps` were provided.
         """
         if start is None and frame_timestamps is None:
             raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
@@ -528,7 +545,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         path = Path(path)
         file_type = FileType.from_video(path)
-        with open(path, "rb") as video:
+        with path.open("rb") as video:
             if start is not None:
                 return self.add_video_from_io(
                     video,
@@ -549,7 +566,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                     tags=tags,
                     overwrite_overlapping=overwrite_overlapping,
                 )
-            else:  # This should never be reached due to the validation in `add_video_from_io`
+            else:  # This should never be reached due to the validation at the top of this method
                 raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
 
     @overload
@@ -590,7 +607,31 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         tags: Mapping[str, str] | None = None,
         overwrite_overlapping: bool = False,
     ) -> VideoDatasetFile:
-        """Upload video data from a binary file-like object to this dataset as a channel."""
+        """Upload video data from a binary file-like object to this dataset as a channel.
+
+        The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO,
+        containing H264 or H265-encoded video data.
+
+        Args:
+            video: File-like object containing video data encoded in H264 or H265.
+            name: Name of the file to use when uploading.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
+                Exactly one of `start` or `frame_timestamps` must be provided.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            TypeError: `video` is open in text mode rather than binary mode.
+            ValueError: neither or both of `start` and `frame_timestamps` were provided.
+        """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video!r} must be open in binary mode, rather than text mode")
         if start is None and frame_timestamps is None:
@@ -598,32 +639,16 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         if start is not None and frame_timestamps is not None:
             raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
 
-        file_type = FileType(*file_type)
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-        timestamp_manifest = build_video_timestamp_manifest(
-            self._clients.auth_header,
-            workspace_rid,
-            self._clients.upload,
-            start=start,
-            frame_timestamps=frame_timestamps,
-            header_provider=self._clients.header_provider,
-        )
-        s3_path = upload_multipart_io(
-            self._clients.auth_header,
-            workspace_rid,
+        return self._ingest_video(
             video,
             name,
-            file_type,
-            self._clients.upload,
-            header_provider=self._clients.header_provider,
+            channel=channel,
+            file_type=FileType(*file_type),
+            tags=tags,
+            overwrite_overlapping=overwrite_overlapping,
+            start=start,
+            frame_timestamps=frame_timestamps,
         )
-        request = ingest_api.IngestRequest(
-            options=build_video_ingest_options(
-                self.rid, channel, tags, s3_path, timestamp_manifest, overwrite_overlapping
-            )
-        )
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_video_ingest_response(response)
 
     def add_mcap_video(
         self,
@@ -636,11 +661,26 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     ) -> VideoDatasetFile:
         """Upload video data from an MCAP file to this dataset as a channel.
 
-        Timestamps are obtained from the selected `topic`.
+        Args:
+            path: Path to the MCAP file (must end in `.mcap`) containing H264/H265 video data.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            ValueError: `path` does not end in `.mcap`.
         """
         path = Path(path)
-        file_type = FileType(*FileTypes.MCAP)
-        with open(path, "rb") as mcap:
+        file_type = FileType.from_path(path)
+        if file_type != FileTypes.MCAP:
+            raise ValueError(f"mcap path '{path}' must end in `{FileTypes.MCAP.extension}`")
+
+        with path.open("rb") as mcap:
             return self.add_mcap_video_from_io(
                 mcap,
                 path_upload_name(path, file_type),
@@ -662,23 +702,67 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         tags: Mapping[str, str] | None = None,
         overwrite_overlapping: bool = False,
     ) -> VideoDatasetFile:
-        """Upload video data from a binary MCAP file-like object to this dataset as a channel."""
+        """Upload video data from a binary MCAP file-like object to this dataset as a channel.
+
+        The mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        Args:
+            mcap: File-like binary object containing MCAP data with H264/H265 video.
+            name: Name of the file to use when uploading.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
+            file_type: Metadata about the type of file (e.g. MCAP).
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            TypeError: `mcap` is open in text mode rather than binary mode.
+        """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap!r} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
+        return self._ingest_video(
+            mcap,
+            name,
+            channel=channel,
+            file_type=FileType(*file_type),
+            tags=tags,
+            overwrite_overlapping=overwrite_overlapping,
+            mcap_topic=topic,
+        )
+
+    def _ingest_video(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        channel: str,
+        file_type: FileType,
+        tags: Mapping[str, str] | None,
+        overwrite_overlapping: bool,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        mcap_topic: str | None = None,
+    ) -> VideoDatasetFile:
+        """Upload a video stream and submit the VideoOptsV2 ingest shared by all add-video methods."""
         workspace_rid = self._clients.resolve_default_workspace_rid()
-        timestamp_manifest = build_video_timestamp_manifest(
+        timestamp_manifest = _build_video_file_timestamp_manifest(
             self._clients.auth_header,
             workspace_rid,
             self._clients.upload,
-            mcap_topic=topic,
+            start=start,
+            frame_timestamps=frame_timestamps,
+            mcap_topic=mcap_topic,
             header_provider=self._clients.header_provider,
         )
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             workspace_rid,
-            mcap,
+            video,
             name,
             file_type,
             self._clients.upload,
@@ -686,7 +770,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         )
         request = ingest_api.IngestRequest(
             options=build_video_ingest_options(
-                self.rid, channel, tags, s3_path, timestamp_manifest, overwrite_overlapping
+                self.rid,
+                channel=channel,
+                tags=tags,
+                s3_path=s3_path,
+                timestamp_manifest=timestamp_manifest,
+                overwrite_overlapping=overwrite_overlapping,
             )
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)

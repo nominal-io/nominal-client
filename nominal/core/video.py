@@ -455,24 +455,34 @@ def _build_video_file_timestamp_manifest(
     upload_client: upload_api.UploadService,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+    mcap_topic: str | None = None,
     header_provider: HeaderProvider | None = None,
 ) -> scout_video_api.VideoFileTimestampManifest:
-    if None not in (start, frame_timestamps):
-        raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")
-    elif frame_timestamps is not None:
+    """Build a timestamp manifest for video ingest.
+
+    Exactly one of `start`, `frame_timestamps`, or `mcap_topic` must be provided.
+    """
+    provided = [mode for mode in (start, frame_timestamps, mcap_topic) if mode is not None]
+    if len(provided) != 1:
+        raise ValueError("exactly one of 'start', 'frame_timestamps', or 'mcap_topic' must be provided")
+
+    if mcap_topic is not None:
+        return scout_video_api.VideoFileTimestampManifest(
+            mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=mcap_topic))
+        )
+    if frame_timestamps is not None:
         manifest_s3_path = _upload_frame_timestamps(
             auth_header, workspace_rid, upload_client, frame_timestamps, header_provider=header_provider
         )
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
-    elif start is not None:
+    if start is not None:
         # TODO(drake): expose scale parameter to users
         return scout_video_api.VideoFileTimestampManifest(
             no_manifest=scout_video_api.NoTimestampManifest(
                 starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
             )
         )
-    else:
-        raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
+    raise AssertionError("unreachable: exactly one timestamp mode was validated above")
 
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
