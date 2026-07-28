@@ -119,7 +119,7 @@ def test_handle_video_response_prefers_direct_dataset_file_id():
     ds = MagicMock()
     video_file = MagicMock(spec=VideoDatasetFile)
     with patch("nominal.core.dataset._dataset_file_from_conjure", return_value=video_file):
-        result = Dataset._handle_video_ingest_response(ds, _video_response("file-1"))
+        result = Dataset._resolve_ingested_video_file(ds, _video_response("file-1"))
     assert result is video_file
     ds._clients.catalog.get_dataset_file.assert_called_once()
 
@@ -130,7 +130,7 @@ def test_handle_video_response_direct_id_non_video_raises():
         patch("nominal.core.dataset._dataset_file_from_conjure", return_value=MagicMock()),  # not a VideoDatasetFile
         pytest.raises(NominalIngestError, match="not a video dataset file"),
     ):
-        Dataset._handle_video_ingest_response(ds, _video_response("file-1"))
+        Dataset._resolve_ingested_video_file(ds, _video_response("file-1"))
 
 
 def test_handle_video_response_falls_back_to_ingest_job_single_video_file():
@@ -140,7 +140,7 @@ def test_handle_video_response_falls_back_to_ingest_job_single_video_file():
     # A non-video file (bare MagicMock) and the one video file; the handler must filter to the video.
     job.dataset_files.return_value = [MagicMock(), video_file]
     with patch("nominal.core.dataset.IngestionJob._from_conjure", return_value=job):
-        result = Dataset._handle_video_ingest_response(ds, _video_response(None))
+        result = Dataset._resolve_ingested_video_file(ds, _video_response(None))
     assert result is video_file
 
 
@@ -152,13 +152,13 @@ def test_handle_video_response_fallback_zero_or_multiple_raises():
         patch("nominal.core.dataset.IngestionJob._from_conjure", return_value=job),
         pytest.raises(NominalIngestError, match="exactly one video file"),
     ):
-        Dataset._handle_video_ingest_response(ds, _video_response(None))
+        Dataset._resolve_ingested_video_file(ds, _video_response(None))
 
 
 def test_handle_video_response_no_id_and_no_job_raises():
     ds = MagicMock()
     with pytest.raises(NominalIngestError, match="neither a dataset-file id nor an ingest job"):
-        Dataset._handle_video_ingest_response(ds, _video_response(None, ingest_job_rid=None))
+        Dataset._resolve_ingested_video_file(ds, _video_response(None, ingest_job_rid=None))
 
 
 def test_add_video_requires_a_timestamp_mode():
@@ -260,7 +260,9 @@ def test_ingest_video_uploads_and_submits_video_v2():
         overwrite_overlapping=False,
     )
     ds._clients.ingest.ingest.assert_called_once()
-    ds._handle_video_ingest_response.assert_called_once_with(ds._clients.ingest.ingest.return_value)
+    ds._handle_video_ingest_response.assert_called_once_with(
+        ds._clients.ingest.ingest.return_value, channel="camera/front"
+    )
     assert result is ds._handle_video_ingest_response.return_value
 
 

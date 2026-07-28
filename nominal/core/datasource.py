@@ -15,6 +15,7 @@ from nominal_api import (
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
+    scout_video,
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
@@ -71,6 +72,8 @@ class DataSource(HasRid):
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
+        @property
+        def video(self) -> scout_video.VideoService: ...
         @property
         def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property

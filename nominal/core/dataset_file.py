@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog, scout_datasource, scout_video
 from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
@@ -63,6 +63,12 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        # Used by the VideoDatasetFile subtype (see DataSource._Clients for the same
+        # one-protocol-per-hierarchy convention): video-channel timing updates and channel discovery.
+        @property
+        def video(self) -> scout_video.VideoService: ...
+        @property
+        def datasource(self) -> scout_datasource.DataSourceService: ...
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)

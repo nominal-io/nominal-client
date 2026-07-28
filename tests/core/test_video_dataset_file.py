@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from nominal.core.dataset_file import DatasetFile, IngestStatus, _dataset_file_from_conjure
 from nominal.core.video_dataset_file import VideoDatasetFile
 
@@ -105,3 +107,85 @@ def test_dispatch_returns_base_type_when_metadata_present_without_video_arm():
         result = _dataset_file_from_conjure(clients, row)
     assert result == "base-file"
     base_factory.assert_called_once_with(clients, row)
+
+
+def _video_file(clients: MagicMock, *, channel: str | None = None, bounds: object = None) -> VideoDatasetFile:
+    kwargs = _common_kwargs(clients)
+    kwargs["bounds"] = bounds
+    return VideoDatasetFile(
+        **kwargs,
+        _timestamp_manifest=MagicMock(name="manifest"),
+        channel=channel,
+    )
+
+
+def _update_request(clients: MagicMock) -> object:
+    """The single request passed to the batch-update endpoint."""
+    args, _ = clients.video.batch_update_video_channel_dataset_files.call_args
+    return args[1]
+
+
+def test_update_uses_known_channel_without_discovery():
+    """A file that already knows its channel updates without probing for it."""
+    clients = MagicMock()
+    file = _video_file(clients, channel="camera/front")
+    with patch.object(VideoDatasetFile, "refresh", return_value=file) as refresh:
+        file.update(starting_timestamp=1_700_000_000_000_000_000)
+
+    clients.datasource.search_channels.assert_not_called()
+    request = _update_request(clients)
+    assert request.channel_series.data_source.channel == "camera/front"
+    assert request.channel_series.data_source.data_source_rid == "ds-1"
+    assert [u.dataset_file_id for u in request.updates] == ["file-1"]
+    assert request.updates[0].start is not None
+    refresh.assert_called_once()
+
+
+def test_update_discovers_channel_when_unknown():
+    """A file read back without a channel resolves one before updating."""
+    clients = MagicMock()
+    file = _video_file(clients, channel=None)
+    with (
+        patch("nominal.core.video_dataset_file.resolve_video_channel_for_file", return_value="camera/rear") as resolve,
+        patch.object(VideoDatasetFile, "refresh", return_value=file),
+    ):
+        result = file.update(name="renamed.mp4")
+
+    resolve.assert_called_once()
+    assert _update_request(clients).channel_series.data_source.channel == "camera/rear"
+    assert _update_request(clients).updates[0].title == "renamed.mp4"
+    # The resolved channel is carried onto the returned file so a second update skips discovery.
+    assert result.channel == "camera/rear"
+
+
+def test_update_maps_each_scale_input_to_its_union_arm():
+    """ending_timestamp, true_frame_rate, and scale_factor each set their own ScaleParameter arm."""
+    for kwargs, arm in (
+        ({"ending_timestamp": 1_700_000_000_000_000_000}, "ending_timestamp"),
+        ({"true_frame_rate": 29.97}, "true_frame_rate"),
+        ({"scale_factor": 2.0}, "scale_factor"),
+    ):
+        clients = MagicMock()
+        file = _video_file(clients, channel="cam")
+        with patch.object(VideoDatasetFile, "refresh", return_value=file):
+            file.update(**kwargs)
+        scale = _update_request(clients).updates[0].scale_parameter
+        assert getattr(scale, arm) is not None, arm
+
+
+def test_update_rejects_multiple_scale_inputs():
+    """Only one of the three scale inputs may be supplied, matching legacy VideoFile.update."""
+    clients = MagicMock()
+    file = _video_file(clients, channel="cam")
+    with pytest.raises(ValueError, match="at most one of"):
+        file.update(true_frame_rate=30.0, scale_factor=2.0)
+    clients.video.batch_update_video_channel_dataset_files.assert_not_called()
+
+
+def test_update_requires_at_least_one_field():
+    """An update with nothing set is rejected rather than sent as a no-op."""
+    clients = MagicMock()
+    file = _video_file(clients, channel="cam")
+    with pytest.raises(ValueError, match="At least one of"):
+        file.update()
+    clients.video.batch_update_video_channel_dataset_files.assert_not_called()
