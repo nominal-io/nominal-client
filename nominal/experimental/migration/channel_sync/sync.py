@@ -36,6 +36,7 @@ import logging
 import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
@@ -110,6 +111,14 @@ class ChannelSyncOptions:
     """Export tuning: max channels per export request (column-partitions large channel sets)."""
     max_concurrent_links: int = DEFAULT_MAX_CONCURRENT_LINKS
     """Export tuning: max presigned links generated concurrently (bounds backend compute queries)."""
+    download_workers: int = 1
+    """Concurrent ``export_to_files`` calls during ``phase="download"`` (1 = serial, the historical
+    behaviour). Underconstrained-heavy datasets produce thousands of small per-channel export windows
+    where each call is dominated by API round-trip latency, so fanning calls out gives a near-linear
+    wall-clock win. Only applies to the download-only path (no shared write stream); streaming passes
+    stay serial. Each concurrent call generates its own presigned links, so the effective backend
+    concurrency is up to ``download_workers x max_concurrent_links`` -- size the product to stay under
+    the backend's concurrent-query limit."""
     show_progress: bool = True
     """Render a single determinate progress bar for the whole pass, measured in slices (channel x
     missing-bucket units, the total known up front from detection). Route logs to a file when
@@ -510,12 +519,62 @@ def _stream_missing(
         # Not download-only -> the caller (phase "all"/retry) always passes a destination.
         assert destination_dataset is not None
         stream_ctx = destination_dataset.get_write_stream(batch_size=options.batch_size)
+    # Flatten the nested loops into task lists so the download-only path can fan them out. Each task
+    # is fully self-contained: both worker functions swallow their own failures (returning 0 and
+    # leaving the range short for re-detect), so tasks never poison each other.
+    grouped_tasks = [
+        (group_idx, channels, range_start, range_end)
+        for group_idx, (signature, channels) in enumerate(groups.items())
+        for range_start, range_end in signature
+    ]
+    fallback_tasks = [
+        (ch_idx, channel, range_start, range_end)
+        for ch_idx, (channel, ranges) in enumerate(fallback)
+        for range_start, range_end in ranges
+    ]
+
     with (
         _progress_bar(options.show_progress, total_slices, description) as advance,
         stream_ctx as stream,
     ):
-        for group_idx, (signature, channels) in enumerate(groups.items()):
-            for range_start, range_end in signature:
+        if download_only and options.download_workers > 1:
+            # Download-only opens no shared write stream, so range exports are independent — fan them
+            # out. Rich's Progress locks internally, so `advance` is safe from worker threads. The
+            # streaming path stays serial: every exported file feeds one shared write stream.
+            with ThreadPoolExecutor(max_workers=options.download_workers, thread_name_prefix="sync-download") as pool:
+                futures = [
+                    pool.submit(
+                        _export_and_stream_range,
+                        handler,
+                        stream,
+                        channels,
+                        range_start,
+                        range_end,
+                        type_by_name,
+                        options,
+                        advance,
+                        group_idx=group_idx,
+                    )
+                    for group_idx, channels, range_start, range_end in grouped_tasks
+                ] + [
+                    pool.submit(
+                        _export_and_stream_channel,
+                        handler,
+                        stream,
+                        channel,
+                        range_start,
+                        range_end,
+                        type_by_name,
+                        options,
+                        advance,
+                        channel_idx=ch_idx,
+                    )
+                    for ch_idx, channel, range_start, range_end in fallback_tasks
+                ]
+                for future in as_completed(futures):
+                    points += future.result()
+        else:
+            for group_idx, channels, range_start, range_end in grouped_tasks:
                 points += _export_and_stream_range(
                     handler,
                     stream,
@@ -527,8 +586,7 @@ def _stream_missing(
                     advance,
                     group_idx=group_idx,
                 )
-        for ch_idx, (channel, ranges) in enumerate(fallback):
-            for range_start, range_end in ranges:
+            for ch_idx, channel, range_start, range_end in fallback_tasks:
                 points += _export_and_stream_channel(
                     handler,
                     stream,
