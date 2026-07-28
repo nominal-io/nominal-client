@@ -394,6 +394,58 @@ def test_non_precise_channels_sharing_range_export_to_distinct_files(tmp_path: P
     assert len(list(tmp_path.glob("*.csv.gz"))) == 2
 
 
+class _ThreadRecordingHandler(_PrefixRecordingHandler):
+    """Records the thread name of each export_to_files call alongside the prefix."""
+
+    def __init__(self) -> None:
+        """Initialize the thread-name buffer."""
+        super().__init__()
+        self.thread_names: list[str] = []
+
+    def export_to_files(self, *args: Any, **kwargs: Any) -> list[Path]:
+        """Record the calling thread's name, then delegate to the prefix-recording base."""
+        import threading
+
+        self.thread_names.append(threading.current_thread().name)
+        return super().export_to_files(*args, **kwargs)
+
+
+def test_download_workers_fans_out_download_only_exports(tmp_path: Path) -> None:
+    """With download_workers > 1 and download_only, every export runs on a pool thread, all ranges
+    are exported exactly once, and file prefixes stay distinct (no collisions).
+    """
+    hour = 3600 * SEC
+    handler = _ThreadRecordingHandler()
+    source_by_name = {f"c{i}": _channel(f"c{i}") for i in range(4)}
+    # Distinct ranges per channel -> 4 groups -> 4 independent export tasks.
+    missing = {f"c{i}": [(i * hour, (i + 1) * hour)] for i in range(4)}
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path, download_workers=4)
+
+    sync_mod._stream_missing(handler, None, missing, source_by_name, set(), options, download_only=True)
+
+    assert len(handler.prefixes) == 4
+    assert len(set(handler.prefixes)) == 4, f"file_prefix collision: {handler.prefixes}"
+    assert len(list(tmp_path.glob("*.csv.gz"))) == 4
+    # Every export ran on a pool worker thread, never the main thread.
+    assert all(name.startswith("sync-download") for name in handler.thread_names), handler.thread_names
+
+
+def test_download_workers_ignored_when_streaming(tmp_path: Path) -> None:
+    """The streaming path must stay serial (one shared write stream) even when download_workers > 1."""
+    hour = 3600 * SEC
+    handler = _ThreadRecordingHandler()
+    source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
+    missing = {"c1": [(0, hour)], "c2": [(hour, 2 * hour)]}
+    dest = SimpleNamespace(get_write_stream=lambda batch_size: FakeStream())
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path, download_workers=4)
+
+    sync_mod._stream_missing(handler, dest, missing, source_by_name, set(), options)
+
+    assert len(handler.prefixes) == 2
+    # No pool threads: everything ran inline on the calling thread.
+    assert all(not name.startswith("sync-download") for name in handler.thread_names), handler.thread_names
+
+
 def test_progress_bar_renders_nothing_when_total_is_zero() -> None:
     # Nothing to count (e.g. detecting against a freshly empty destination) -> no bar, not a phantom 1.
     with sync_mod._progress_bar(show=True, total=0, description="Counting destination channels") as advance:
