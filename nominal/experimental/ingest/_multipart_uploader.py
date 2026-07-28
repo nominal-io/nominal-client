@@ -258,8 +258,8 @@ class MultipartUploader:
         Args:
             cancel_pending: If false (the default), every enqueued file runs to completion before
                 this returns. If true, queued files are dropped and in-flight multipart files are
-                cut short at their next part boundary, so the wait is bounded by one in-flight
-                request rather than by the rest of the batch.
+                cut short at their next part boundary, so the wait is bounded by one round of
+                in-flight uploads plus the capped abort pass — not by the rest of the batch.
         """
         if self._closed:
             return
@@ -278,11 +278,19 @@ class MultipartUploader:
                 # short-circuit in microseconds, and its future settles (and notifies) normally.
                 self._draining.set()
                 self._part_pool.shutdown(wait=False)
-                # Queued drivers never started, so plain cancellation is safe here: nothing inside
-                # the uploader waits on a driver future, only the caller, and `result()`/`done()`/
-                # `cancelled()` all read CANCELLED correctly.
+                # Revoke the small lane now, join it later. Nothing inside the uploader waits on a
+                # small future, so there is no ordering reason to hold the queue open — and every
+                # reason to drop it: the driver join below runs for a whole round of part uploads
+                # plus the abort pass, and a live small pool would spend that window uploading
+                # files the caller was told were dropped and outbidding those aborts for pace
+                # slots (a refused abort leaves a multipart upload open server-side).
+                #
+                # Queued drivers and queued smalls never started, so plain cancellation is safe for
+                # both: nothing inside the uploader waits on either future, only the caller, and
+                # `result()`/`done()`/`cancelled()` all read CANCELLED correctly.
+                self._small_pool.shutdown(wait=False, cancel_futures=True)
                 self._driver_pool.shutdown(wait=True, cancel_futures=True)
-                self._small_pool.shutdown(wait=True, cancel_futures=True)
+                self._small_pool.shutdown(wait=True)
                 self._part_pool.shutdown(wait=True)
             else:
                 self._driver_pool.shutdown(wait=True)  # drivers submit parts: part pool must outlive them

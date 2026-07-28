@@ -25,7 +25,6 @@ ETags and never calls it.
 
 The local **read** stage (open+seek+read inside `_upload_part`) is NOT wrapped —
 it's a local disk read of microseconds for small files, so it isn't the suspect.
-If you want it too, ask and I'll add a tiny opt-in hook in the uploader.
 
 --------------------------------------------------------------------------------
 USAGE — against the REAL backend (the measurement that matters):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import threading
-from concurrent.futures import CancelledError
+from concurrent.futures import CancelledError, Future
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -153,6 +153,29 @@ def write_file(tmp_path: pathlib.Path, name: str, size: int) -> pathlib.Path:
     p = tmp_path / name
     p.write_bytes(b"x" * size)
     return p
+
+
+def settled_latch(futures: list[Future[str]]) -> threading.Event:
+    """An event set once every one of `futures` has settled, cancellations included.
+
+    `concurrent.futures.wait` cannot be used for this: a future revoked by
+    `shutdown(cancel_futures=True)` is cancelled but never notified, a state `wait` does not
+    count as done and is never woken by. Done callbacks do fire on cancellation.
+    """
+    latch = threading.Event()
+    lock = threading.Lock()
+    remaining = len(futures)
+
+    def on_settled(_fut: Future[str]) -> None:
+        nonlocal remaining
+        with lock:
+            remaining -= 1
+            if remaining == 0:
+                latch.set()
+
+    for fut in futures:
+        fut.add_done_callback(on_settled)
+    return latch
 
 
 def real_clients():
@@ -389,6 +412,53 @@ class TestClose:
         with pytest.raises(CancelledError):
             fut.result(timeout=10)
         assert service.calls.count("abort") == 1
+
+    def test_cancel_pending_revokes_queued_small_files_before_joining_drivers(self, tmp_path) -> None:
+        """Queued small files must be dropped as the cancelling close starts, not after it joins.
+
+        The driver join it precedes is not quick: it lasts a whole round of in-flight part PUTs
+        (up to `timeout`) plus the capped abort pass. A small pool left live across that window
+        keeps uploading files the caller was promised were dropped, and spends the request budget
+        the time-budgeted aborts need to roll their multipart uploads back.
+        """
+        service = FakeUploadService()
+        service.upload_file_release.clear()  # the first small file parks inside upload_file
+        up, service, session = make_uploader(
+            tmp_path,
+            service=service,
+            small_file_route_max_bytes=128,
+            small_route_workers=1,
+            max_workers=1,
+            max_multipart_files_in_flight=1,
+        )
+        session.put_release.clear()  # a driver parked mid-PUT is what makes the driver join block
+
+        big_fut = up.enqueue_file(write_file(tmp_path, "big.csv", 4096))
+        assert session.put_started.wait(timeout=10)
+        running = up.enqueue_file(write_file(tmp_path, "s0.csv", 100))
+        assert service.upload_file_started.wait(timeout=10)  # the only small worker is now parked
+        queued = [up.enqueue_file(write_file(tmp_path, f"s{i}.csv", 100)) for i in range(1, 4)]
+        settled = settled_latch(queued)
+
+        closer = threading.Thread(target=up.close, kwargs={"cancel_pending": True})
+        closer.start()
+        assert up._draining.wait(timeout=10)
+        # The queued files have to settle while the small worker is STILL parked and the driver
+        # is STILL mid-PUT: the small lane never gets another turn, and close never gets past its
+        # driver join. Revoked late, this is unreachable — nothing here can settle them.
+        # (The probe is deliberately shorter than the fakes' 10s self-release valves, so a late
+        # revoke fails here rather than being rescued by a park expiring.)
+        assert settled.wait(timeout=5), "queued small files outlived the start of a cancelling close"
+
+        service.upload_file_release.set()  # let the in-flight small finish...
+        session.put_release.set()  # ...and the driver, so close can join and return
+        closer.join(timeout=10)
+        assert not closer.is_alive(), "close(cancel_pending=True) did not return"
+
+        assert running.result(timeout=10) == "s3://bucket/s0.csv"  # in-flight small still settles
+        assert big_fut.done()
+        assert all(f.cancelled() for f in queued)
+        assert service.calls.count("upload_file") == 1  # the queued ones never ran
 
     def test_close_closes_owned_sessions_but_not_injected_client(self, tmp_path) -> None:
         up, _, session = make_uploader(tmp_path)

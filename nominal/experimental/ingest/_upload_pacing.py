@@ -1,7 +1,7 @@
 """Adaptive request pacing for the experimental uploader.
 
-The server meters *requests* with a token-bucket-style budget discovered at runtime; the
-mirror-image client is a paced admission gate whose rate adapts on 429s.
+The server refuses requests over budget with an immediate 429; the client discovers its
+sustainable request rate at runtime and paces admissions to it.
 """
 
 from __future__ import annotations
