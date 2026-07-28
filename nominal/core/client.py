@@ -12,6 +12,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
+    api,
     attachments_api,
     authentication_api,
     ingest_api,
@@ -97,7 +98,6 @@ from nominal.core.exceptions import (
     NominalConfigError,
     NominalError,
     NominalInvalidArgumentError,
-    NominalMethodRemovedError,
     NominalNotFoundError,
 )
 from nominal.core.filetype import FileType, FileTypes
