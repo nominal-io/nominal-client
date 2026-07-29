@@ -34,12 +34,16 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
-class NominalMultipartUploadError(Exception):
+class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
 
 class NominalMultipartUploadFailed(NominalError, ExceptionGroup):
     """The multipart upload failed after retries."""
+
+
+class NominalRequestThrottledError(NominalError):
+    """The server throttled a request for longer than the caller's retry budget allowed."""
 
 
 class NominalConfigError(NominalError):
