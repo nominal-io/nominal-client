@@ -140,15 +140,22 @@ class RecordingPutSession:
         self.closed = True
 
 
+def fake_nominal_client(service: FakeUploadService | None = None) -> MagicMock:
+    """A NominalClient stand-in shaped like `create` consumes it: a bundle with an upload client."""
+    client = MagicMock()
+    client._clients.upload = service if service is not None else FakeUploadService()
+    client._clients.auth_header = "Bearer test"
+    client._clients.header_provider = None
+    client._clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
+    return client
+
+
 def make_uploader(tmp_path: pathlib.Path, service: FakeUploadService | None = None, **create_kwargs):
     service = service or FakeUploadService()
-    clients = MagicMock()
-    clients.auth_header = "Bearer test"
-    clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
     # Route off unless a test opts in: the fixtures here are all tiny, and the multipart tests
     # must keep exercising multipart under the production default (which routes them single-shot).
     create_kwargs.setdefault("small_file_route_max_bytes", None)
-    up = MultipartUploader.create(clients, upload_client=service, **create_kwargs)
+    up = MultipartUploader.create(fake_nominal_client(service), **create_kwargs)
     session = FakePutSession()
     up._session = session  # swap the S3 session for a fake; TLS never touched in unit tests
     return up, service, session
@@ -182,15 +189,6 @@ def settled_latch(futures: list[Future[str]]) -> threading.Event:
     for fut in futures:
         fut.add_done_callback(on_settled)
     return latch
-
-
-def real_clients():
-    """A clients bundle shaped like `create` consumes it: shared upload client + auth context."""
-    clients = MagicMock()
-    clients.auth_header = "Bearer test"
-    clients.header_provider = None
-    clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
-    return clients
 
 
 class TestRoutesAndRequestCounts:
@@ -247,7 +245,7 @@ class TestNonBlockingEnqueueAndCancellation:
     def test_enqueue_never_blocks_and_queued_files_do_not_initiate(self, tmp_path) -> None:
         service = FakeUploadService()
         service.upload_file_release.clear()  # unrelated; keep smalls out of this test
-        up, service, session = make_uploader(tmp_path, service=service, max_workers=2, max_multipart_files_in_flight=1)
+        up, service, session = make_uploader(tmp_path, service=service, max_storage_workers=2, max_files_in_flight=1)
         session.put_release.clear()  # first file's PUT holds its driver open
         paths = [write_file(tmp_path, f"f{i}.csv", 100) for i in range(10)]
         futures = [up.enqueue_file(p) for p in paths]  # returns immediately, driver pool of 1
@@ -264,7 +262,7 @@ class TestNonBlockingEnqueueAndCancellation:
         assert service.calls.count("initiate") == 9  # the cancelled file never initiated
 
     def test_running_file_is_not_cancellable(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_multipart_files_in_flight=1)
+        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
         session.put_release.clear()
         path = write_file(tmp_path, "f.csv", 100)
         fut = up.enqueue_file(path)
@@ -351,7 +349,7 @@ class TestFailureHandling:
 
 class TestClose:
     def test_close_drains_and_settles_everything(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, max_multipart_files_in_flight=2)
+        up, service, _ = make_uploader(tmp_path, max_files_in_flight=2)
         futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(8)]
         up.close()
         assert all(f.done() for f in futures)
@@ -364,7 +362,7 @@ class TestClose:
             up.enqueue_file(write_file(tmp_path, "f.csv", 100))
 
     def test_cancel_pending_drops_queued_files(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_multipart_files_in_flight=1)
+        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
         session.put_release.clear()
         futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
@@ -376,7 +374,7 @@ class TestClose:
         assert service.calls.count("initiate") < 6  # ...and never initiated
 
     def test_exit_on_exception_takes_cancel_path(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_multipart_files_in_flight=1)
+        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
         session.put_release.clear()
         futures = []
         with pytest.raises(KeyboardInterrupt):
@@ -396,8 +394,8 @@ class TestClose:
         must instead RUN and short-circuit, so their futures settle normally.
         """
         part_size = 5 * 1024 * 1024
-        # max_workers=1: part 1 occupies the only part worker, so part 2 is queued at close time.
-        up, service, _ = make_uploader(tmp_path, max_workers=1, max_part_retries=1)
+        # max_storage_workers=1: part 1 occupies the only part worker, so part 2 is queued at close time.
+        up, service, _ = make_uploader(tmp_path, max_storage_workers=1, max_part_retries=1)
         session = SplitPutSession()
         session.part_two_fails = False  # part 2 must be revoked by close, not fail on its own
         up._session = session
@@ -430,9 +428,9 @@ class TestClose:
             tmp_path,
             service=service,
             small_file_route_max_bytes=128,
-            small_route_workers=1,
-            max_workers=1,
-            max_multipart_files_in_flight=1,
+            max_small_file_workers=1,
+            max_storage_workers=1,
+            max_files_in_flight=1,
         )
         session.put_release.clear()  # a driver parked mid-PUT is what makes the driver join block
 
@@ -471,7 +469,7 @@ class TestClose:
         so close settles every issued future itself. This pins the public guarantee that
         idiomatic stdlib waiting cannot hang after a cancelling close.
         """
-        up, service, session = make_uploader(tmp_path, max_multipart_files_in_flight=1)
+        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
         session.put_release.clear()
         futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
@@ -488,40 +486,31 @@ class TestClose:
         assert session.closed  # S3 session owned + closed; the upload client is not ours to touch
 
 
-class TestDefaultUploadClient:
-    def test_defaults_to_the_shared_client(self) -> None:
+class TestSharedUploadClient:
+    def test_uses_the_clients_shared_upload_client(self) -> None:
         # The shared conjure client's transport-level throttle retries ARE the local layer of
         # the two-layer backoff; the uploader must ride it rather than building its own.
-        clients = real_clients()
-        up = MultipartUploader.create(clients)
+        client = fake_nominal_client()
+        up = MultipartUploader.create(client)
         try:
-            assert up._upload_client is clients.upload
-        finally:
-            up.close()
-
-    def test_injected_client_wins_over_the_shared_one(self) -> None:
-        clients = real_clients()
-        injected = MagicMock()
-        up = MultipartUploader.create(clients, upload_client=injected)
-        try:
-            assert up._upload_client is injected
+            assert up._upload_client is client._clients.upload
         finally:
             up.close()
 
 
 class TestNoDeadlock:
     def test_bound_of_one_with_multipart_file_completes(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, max_workers=2, max_multipart_files_in_flight=1)
+        up, service, _ = make_uploader(tmp_path, max_storage_workers=2, max_files_in_flight=1)
         path = write_file(tmp_path, "f.csv", 100)
         with up:
             assert up.enqueue_file(path).result(timeout=10)
 
     def test_long_puts_do_not_stall_small_files(self, tmp_path) -> None:
         service = FakeUploadService()
-        # max_workers=1: the big file is a single part, so its parked PUT occupies the ENTIRE
+        # max_storage_workers=1: the big file is a single part, so its parked PUT occupies the ENTIRE
         # part pool. Under one shared pool the small file would queue behind it and never run.
         up, service, session = make_uploader(
-            tmp_path, service=service, small_file_route_max_bytes=512, max_workers=1, small_route_workers=2
+            tmp_path, service=service, small_file_route_max_bytes=512, max_storage_workers=1, max_small_file_workers=2
         )
         session.put_release.clear()  # every PUT parks its part thread
         big = write_file(tmp_path, "big.csv", 4096)
@@ -572,20 +561,20 @@ class TestPartLayout:
 
 class TestCreateValidation:
     @pytest.mark.parametrize("value", [0, -1])
-    @pytest.mark.parametrize("kwarg", ["max_workers", "small_route_workers", "max_multipart_files_in_flight"])
+    @pytest.mark.parametrize("kwarg", ["max_storage_workers", "max_small_file_workers", "max_files_in_flight"])
     def test_pool_sizes_must_be_positive(self, kwarg: str, value: int) -> None:
         """A zero-width pool would silently swallow the whole batch; there is no unbounded mode."""
         with pytest.raises(ValueError, match=f"{kwarg} must be positive"):
-            MultipartUploader.create(MagicMock(), upload_client=FakeUploadService(), **{kwarg: value})
+            MultipartUploader.create(fake_nominal_client(), **{kwarg: value})
 
     def test_small_file_route_ceiling_is_four_mib(self) -> None:
         assert MAX_SMALL_FILE_ROUTE_BYTES == 4 * 1024 * 1024
 
     @pytest.mark.parametrize("value", [0, -1, MAX_SMALL_FILE_ROUTE_BYTES + 1])
     def test_small_file_route_size_must_sit_inside_the_ceiling(self, value: int) -> None:
-        """The single-shot endpoint holds a server thread per upload, so the opt-in is capped."""
+        """Single-shot is disproportionately expensive server-side for big files, so it's capped."""
         with pytest.raises(ValueError, match="small_file_route_max_bytes must be in"):
-            MultipartUploader.create(MagicMock(), upload_client=FakeUploadService(), small_file_route_max_bytes=value)
+            MultipartUploader.create(fake_nominal_client(), small_file_route_max_bytes=value)
 
 
 class TestSmallFileRoute:
@@ -613,10 +602,7 @@ class TestSmallFileRoute:
     def test_the_route_is_on_by_default_with_files_split_at_one_mib(self, tmp_path) -> None:
         """`create()`'s own default must route at-threshold files single-shot and larger multipart."""
         service = FakeUploadService()
-        clients = MagicMock()
-        clients.auth_header = "Bearer test"
-        clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
-        up = MultipartUploader.create(clients, upload_client=service)
+        up = MultipartUploader.create(fake_nominal_client(service))
         up._session = RecordingPutSession()
 
         with up:

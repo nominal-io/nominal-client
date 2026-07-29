@@ -21,7 +21,6 @@ from typing import Mapping, Sequence, overload
 from typing_extensions import Self
 
 from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalClient
-from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
@@ -79,8 +78,7 @@ class _PendingItem:
 
 def _upload_all(
     uploads: Sequence[_Upload],
-    workspace_rid: str | None,
-    clients: ClientsBunch,
+    client: NominalClient,
 ) -> None:
     """Upload every file in parallel, filling each upload's `target` in place.
 
@@ -92,7 +90,7 @@ def _upload_all(
     """
     if not uploads:
         return
-    with MultipartUploader.create(clients, workspace_rid=workspace_rid) as up:
+    with MultipartUploader.create(client) as up:
         futures = {up.enqueue_file(u.path, file_type=u.file_type): u for u in uploads}
         # `as_completed` stays inside the `with` so the first failed `fut.result()` raises while
         # the uploader is still open: leaving the block on that exception is what runs the
@@ -536,11 +534,9 @@ class IngestBuilder:
         if not self._items:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
         self._submitted = True
-        clients = self._client._clients
-        workspace_rid = clients.resolve_default_workspace_rid()
 
         uploads = [upload for pending in self._items for upload in pending.uploads]
-        _upload_all(uploads, workspace_rid, clients)
+        _upload_all(uploads, self._client)
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
             items=[pending.item for pending in self._items],

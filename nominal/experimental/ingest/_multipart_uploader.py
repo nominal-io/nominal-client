@@ -15,7 +15,7 @@ import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Any, Iterable, Type
+from typing import TYPE_CHECKING, Iterable, Type
 
 import requests
 from nominal_api import upload_api
@@ -41,29 +41,35 @@ from nominal.core.exceptions import (
 from nominal.core.filetype import FileType
 from nominal.experimental.ingest._upload_pacing import (
     _ABORT_THROTTLE_DEADLINE_S,
+    DEFAULT_MAX_BACKOFF_DURATION_S,
     DEFAULT_THROTTLE_DEADLINE_S,
     NOMINAL_MAX_CONCURRENCY,
+    _GlobalBackoff,
     _ThrottleGate,
 )
 
+if TYPE_CHECKING:
+    from nominal.core.client import NominalClient
+
 logger = logging.getLogger(__name__)
 
-# Files at or below the uploader's `small_file_route_max_bytes` are uploaded single-shot via the
-# backend `upload_file` endpoint (one request) instead of the multipart flow. That endpoint holds
-# a server request thread for the whole transfer, so the opt-in threshold is hard-capped: measured
-# throughput of the two routes reaches parity around this size, above which multipart is strictly
-# better (its bytes stream directly to storage and its parts parallelize). Experimental.
-MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 4 MiB
-
-# Default single-shot threshold. Below this size the route's single request beats the multipart
-# flow's three; comfortably inside the hard ceiling above so there is headroom to raise it.
+# DEFAULT single-shot threshold: files at or below this size are uploaded in one request via the
+# backend `upload_file` endpoint instead of the multipart flow (whose minimum cost is three
+# requests). Sits comfortably inside the hard ceiling below, so callers have headroom to raise it.
 DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES = 1024 * 1024  # 1 MiB
 
-# Benchmark-tuned part-pool default. Aggregate upload throughput rises with concurrent PUT
-# streams only until the network path saturates; past that point more streams actively degrade
-# every stream (they congest a shared queue and recover slowly from the synchronized losses),
-# so the default is a moderate fixed width rather than something scaled to CPU count.
-DEFAULT_MAX_WORKERS = 10
+# Hard CEILING on the `small_file_route_max_bytes` knob (not the default — that is above). The
+# single-shot endpoint is disproportionately expensive server-side for large transfers, and
+# measured throughput of the two routes reaches parity around this size, above which multipart is
+# strictly better (its bytes stream directly to storage and its parts parallelize). Experimental.
+MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 4 MiB
+
+# Benchmark-tuned default for concurrent direct-to-storage PUT streams. Aggregate throughput
+# rises with stream count only until the network path saturates, and on some uplinks pushing
+# past saturation actively degrades every stream, so more is not reliably faster. Raise this
+# when the path to storage is measured to reward more concurrent streams — e.g. a benchmark on
+# a high-bandwidth egress showing N streams sustaining more aggregate throughput than 10 do.
+DEFAULT_MAX_STORAGE_WORKERS = 10
 
 _STORAGE_MIN_PART_SIZE_BYTES = 5 * 1024 * 1024  # provider minimum for every part but the last
 _STORAGE_MAX_PARTS = 10_000  # provider maximum parts per multipart upload
@@ -137,7 +143,6 @@ class MultipartUploader:
     the per-file metadata that rate-limits many-small-file batches. Larger files use multipart.
     """
 
-    max_workers: int
     timeout: float
     max_part_retries: int
 
@@ -166,38 +171,39 @@ class MultipartUploader:
     @classmethod
     def create(
         cls,
-        clients: Any,
+        client: NominalClient,
         *,
-        workspace_rid: str | None = None,
-        max_workers: int | None = None,
-        small_route_workers: int | None = None,
-        max_multipart_files_in_flight: int | None = None,
+        max_storage_workers: int | None = None,
+        max_small_file_workers: int | None = None,
+        max_files_in_flight: int | None = None,
         small_file_route_max_bytes: int | None = DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES,
-        nominal_max_concurrency: int = NOMINAL_MAX_CONCURRENCY,
+        max_nominal_concurrency: int = NOMINAL_MAX_CONCURRENCY,
         timeout: float = 30.0,
         max_part_retries: int = 3,
-        throttle_deadline: float = DEFAULT_THROTTLE_DEADLINE_S,
-        upload_client: upload_api.UploadService | None = None,
+        per_request_retry_timeout: float = DEFAULT_THROTTLE_DEADLINE_S,
+        max_backoff_duration: float = DEFAULT_MAX_BACKOFF_DURATION_S,
     ) -> Self:
         """Create a MultipartUploader sized for one batch of uploads.
 
         Args:
-            clients: The client bundle to upload with. Duck-typed: `upload`, `auth_header`,
-                `header_provider`, `resolve_default_workspace_rid()`.
-            workspace_rid: Workspace to upload into. Defaults to the clients' default workspace.
-            max_workers: Part-pool size — the number of concurrent direct-to-storage PUT streams.
-                Defaults to `DEFAULT_MAX_WORKERS` (benchmark-tuned; see its comment). Raise it
-                only on network paths measured to reward more concurrent streams — past
-                saturation, extra streams slow each other down.
-            small_route_workers: Small-pool size. Defaults to `nominal_max_concurrency` — small
-                files spend their whole task inside the nominal lane, so extra threads beyond the
-                lane width would only queue at its entrance.
-            max_multipart_files_in_flight: Driver-pool size, which *is* the bound on concurrently
-                open multipart uploads. Defaults to half of `max_workers` (rounded up), which
+            client: The `NominalClient` to upload with. Uploads land in the client's configured
+                workspace, and requests ride the client's shared transport, whose short jittered
+                throttle retries are the local layer of the two-layer backoff. The uploader
+                never closes anything it borrows from the client.
+            max_storage_workers: Part-pool size — the number of concurrent direct-to-storage PUT
+                streams. Defaults to `DEFAULT_MAX_STORAGE_WORKERS` (benchmark-tuned). Raising it
+                may degrade throughput rather than improve it: past the network path's
+                saturation point, streams contend with each other. Raise it when the path to
+                storage is measured to reward more concurrent streams.
+            max_small_file_workers: Small-pool size. Defaults to `max_nominal_concurrency` —
+                small files spend their whole task inside the nominal lane, so extra threads
+                beyond the lane width would only queue at its entrance.
+            max_files_in_flight: Driver-pool size, which *is* the bound on concurrently open
+                multipart uploads. Defaults to half of `max_storage_workers` (rounded up), which
                 keeps the part pool fed without piling up a hard-to-drain tail of half-done
                 files; there is no unbounded mode.
-            nominal_max_concurrency: Width of the nominal lane — the maximum number of Nominal API
-                requests in flight at once, across every pool. Benchmark-tuned to fill the
+            max_nominal_concurrency: Width of the nominal lane — the maximum number of Nominal
+                API requests in flight at once, across every pool. Benchmark-tuned to fill the
                 server's admission budget without provoking refusals; see
                 `NOMINAL_MAX_CONCURRENCY`.
             small_file_route_max_bytes: EXPERIMENTAL. Files whose size is <= this many bytes
@@ -208,13 +214,13 @@ class MultipartUploader:
                 send every file through multipart.
             timeout: Per-request timeout for direct-to-storage part PUTs.
             max_part_retries: Attempts per part before the file fails.
-            throttle_deadline: Wall-clock budget, per request, for retrying while the server is
-                throttling. Throttling is not a terminal error inside that budget; exceeding it
-                raises `NominalRequestThrottledError`. Non-throttle errors always fail immediately.
-            upload_client: Injection seam for tests and instrumentation. Defaults to the shared
-                `clients.upload`, whose transport performs each request's own short jittered
-                retries of throttle statuses (the local layer of the two-layer backoff). The
-                uploader never closes an upload client, its own default or otherwise.
+            per_request_retry_timeout: Wall-clock budget, per request, for retrying while the
+                server is throttling. Throttling is not a terminal error inside that budget;
+                exceeding it raises `NominalRequestThrottledError`. Non-throttle errors always
+                fail immediately.
+            max_backoff_duration: Cap on the shared storm damper's delay. Under sustained
+                throttling the damper doubles toward this cap and every retry sleeps a jittered
+                fraction of it; successes decay it back to zero.
 
         Returns:
             An uploader ready to accept files. Close it (or use it as a context manager) to
@@ -224,14 +230,14 @@ class MultipartUploader:
             ValueError: A pool size is not positive, or `small_file_route_max_bytes` is outside
                 `(0, MAX_SMALL_FILE_ROUTE_BYTES]`.
         """
-        max_workers = DEFAULT_MAX_WORKERS if max_workers is None else max_workers
-        small_route_workers = nominal_max_concurrency if small_route_workers is None else small_route_workers
-        drivers = math.ceil(max_workers / 2) if max_multipart_files_in_flight is None else max_multipart_files_in_flight
+        storage_workers = DEFAULT_MAX_STORAGE_WORKERS if max_storage_workers is None else max_storage_workers
+        small_file_workers = max_nominal_concurrency if max_small_file_workers is None else max_small_file_workers
+        files_in_flight = math.ceil(storage_workers / 2) if max_files_in_flight is None else max_files_in_flight
         for label, value in (
-            ("max_workers", max_workers),
-            ("small_route_workers", small_route_workers),
-            ("max_multipart_files_in_flight", drivers),
-            ("nominal_max_concurrency", nominal_max_concurrency),
+            ("max_storage_workers", storage_workers),
+            ("max_small_file_workers", small_file_workers),
+            ("max_files_in_flight", files_in_flight),
+            ("max_nominal_concurrency", max_nominal_concurrency),
         ):
             if value <= 0:
                 raise ValueError(f"{label} must be positive, got {value}")
@@ -240,34 +246,40 @@ class MultipartUploader:
         ):
             raise ValueError(
                 f"small_file_route_max_bytes must be in (0, {MAX_SMALL_FILE_ROUTE_BYTES}] bytes "
-                f"(the single-shot upload endpoint holds a server thread per upload; route larger "
-                f"files through multipart), got {small_file_route_max_bytes}"
+                f"(the single-shot upload endpoint is disproportionately expensive server-side for "
+                f"large transfers; route larger files through multipart), got {small_file_route_max_bytes}"
             )
 
         logger.debug(
-            "creating uploader: max_workers=%d, small_route_workers=%d, max_multipart_files_in_flight=%d, "
-            "nominal_max_concurrency=%d, small_file_route_max_bytes=%s, throttle_deadline=%.0fs",
-            max_workers,
-            small_route_workers,
-            drivers,
-            nominal_max_concurrency,
+            "creating uploader: max_storage_workers=%d, max_small_file_workers=%d, max_files_in_flight=%d, "
+            "max_nominal_concurrency=%d, small_file_route_max_bytes=%s, per_request_retry_timeout=%.0fs",
+            storage_workers,
+            small_file_workers,
+            files_in_flight,
+            max_nominal_concurrency,
             small_file_route_max_bytes,
-            throttle_deadline,
+            per_request_retry_timeout,
         )
+        clients = client._clients
         return cls(
-            max_workers,
             timeout,
             max_part_retries,
             # The shared client's transport-level status retries are the LOCAL layer of the
             # two-layer backoff; the gate's lane + damper are the global layer.
-            _upload_client=upload_client if upload_client is not None else clients.upload,
+            _upload_client=clients.upload,
             _auth_header=clients.auth_header,
-            _workspace_rid=workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid(),
-            _session=create_multipart_request_session(pool_size=max_workers, header_provider=clients.header_provider),
-            _small_pool=ThreadPoolExecutor(small_route_workers, thread_name_prefix="nominal-upload-small"),
-            _driver_pool=ThreadPoolExecutor(drivers, thread_name_prefix="nominal-upload-file"),
-            _part_pool=ThreadPoolExecutor(max_workers, thread_name_prefix="nominal-upload-part"),
-            _gate=_ThrottleGate(max_concurrency=nominal_max_concurrency, deadline_seconds=throttle_deadline),
+            _workspace_rid=clients.resolve_default_workspace_rid(),
+            _session=create_multipart_request_session(
+                pool_size=storage_workers, header_provider=clients.header_provider
+            ),
+            _small_pool=ThreadPoolExecutor(small_file_workers, thread_name_prefix="nominal-upload-small"),
+            _driver_pool=ThreadPoolExecutor(files_in_flight, thread_name_prefix="nominal-upload-file"),
+            _part_pool=ThreadPoolExecutor(storage_workers, thread_name_prefix="nominal-upload-part"),
+            _gate=_ThrottleGate(
+                max_concurrency=max_nominal_concurrency,
+                deadline_seconds=per_request_retry_timeout,
+                backoff=_GlobalBackoff(cap=max_backoff_duration),
+            ),
             _small_file_route_max_bytes=small_file_route_max_bytes,
         )
 

@@ -44,7 +44,9 @@ DEFAULT_THROTTLE_DEADLINE_S = 120.0  # a request unadmitted this long means unav
 _ABORT_THROTTLE_DEADLINE_S = 5.0  # best-effort rollback must not compete with live uploads
 
 _BACKOFF_BASE_S = 0.05  # first storm signal: pause in the tens of milliseconds
-_BACKOFF_CAP_S = 2.0  # a fully-stormed lane still offers max_concurrency/cap requests per second
+# Cap on the damper's delay: a fully-stormed lane still offers max_concurrency/cap requests per
+# second. Exposed as the uploader's `max_backoff_duration` knob.
+DEFAULT_MAX_BACKOFF_DURATION_S = 2.0
 _BACKOFF_DECAY = 0.9  # per-success decay: a healthy lane forgets a storm within ~a second of traffic
 
 
@@ -76,7 +78,7 @@ class _GlobalBackoff:
         self,
         *,
         base: float = _BACKOFF_BASE_S,
-        cap: float = _BACKOFF_CAP_S,
+        cap: float = DEFAULT_MAX_BACKOFF_DURATION_S,
         decay: float = _BACKOFF_DECAY,
     ) -> None:
         self._base = base

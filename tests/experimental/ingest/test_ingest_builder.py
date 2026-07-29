@@ -47,10 +47,10 @@ class FakeUploader:
         self.exit_exc_type = exc_type
 
 
-def upload_with(fake: FakeUploader, uploads, workspace_rid="rid.workspace.test", clients=None):
+def upload_with(fake: FakeUploader, uploads, client=None):
     """Run `_upload_all` against `fake` instead of a real uploader."""
     with patch.object(MultipartUploader, "create", autospec=True, return_value=fake) as create:
-        _upload_all(uploads, workspace_rid, clients if clients is not None else MagicMock())
+        _upload_all(uploads, client if client is not None else MagicMock())
     return create
 
 
@@ -65,28 +65,26 @@ class TestUploadAll:
 
         assert [u.target.s3.path for u in uploads] == ["s3://bucket/a", "s3://bucket/b"]
 
-    def test_passes_the_clients_bundle_and_workspace_to_the_uploader(self, tmp_path) -> None:
-        """`create` derives auth and headers from `clients`, so the bundle itself must reach it.
+    def test_passes_the_client_to_the_uploader(self, tmp_path) -> None:
+        """`create` derives auth, workspace, and transport from the client, so it must reach it.
 
         `autospec=True` is what makes this bite: a call that no longer matches `create`'s real
         signature fails here instead of only in production.
         """
         a = tmp_path / "a.csv"
         a.write_bytes(b"a")
-        clients = MagicMock()
+        client = MagicMock()
 
-        create = upload_with(
-            FakeUploader({"a.csv": "s3://bucket/a"}), [make_upload(a)], workspace_rid="rid.workspace.x", clients=clients
-        )
+        create = upload_with(FakeUploader({"a.csv": "s3://bucket/a"}), [make_upload(a)], client=client)
 
-        (passed_clients,) = create.call_args.args  # autospec on a classmethod drops `cls`
-        assert passed_clients is clients
-        assert create.call_args.kwargs["workspace_rid"] == "rid.workspace.x"
+        (passed_client,) = create.call_args.args  # autospec on a classmethod drops `cls`
+        assert passed_client is client
+        assert create.call_args.kwargs == {}  # the uploader's defaults govern; nothing overridden
 
     def test_no_files_never_builds_an_uploader(self) -> None:
         """An empty batch must not spin up thread pools and an HTTP session for nothing."""
         with patch.object(MultipartUploader, "create", autospec=True) as create:
-            _upload_all([], "rid.workspace.test", MagicMock())
+            _upload_all([], MagicMock())
         create.assert_not_called()
 
     @pytest.mark.parametrize(
