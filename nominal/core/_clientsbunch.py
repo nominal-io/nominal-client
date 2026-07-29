@@ -39,7 +39,7 @@ from nominal.core._utils.networking import (
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
-from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
@@ -142,39 +142,43 @@ class ClientsBunch:
         compare=False,
     )
 
+    # Conjure services
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
     authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
+    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
+    compute: scout_compute_api.ComputeService
     connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
-    datasource: scout_datasource.DataSourceService
-    ingest: ingest_api.IngestService
-    ingest_jobs: ingest_api.IngestJobService
-    run: scout.RunService
-    units: units_pb2_grpc.UnitsServiceStub
-    upload: upload_api.UploadService
-    video: scout_video.VideoService
-    video_file: scout_video.VideoFileService
-    compute: scout_compute_api.ComputeService
-    storage: storage_datasource_api.NominalDataSourceService
-    storage_writer: storage_writer_api.NominalChannelWriterService
-    template: scout.TemplateService
-    notebook: scout.NotebookService
-    checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
-    proto_write: ProtoWriteService
+    datasource: scout_datasource.DataSourceService
     event: event.EventService
-    comments: comments_pb2_grpc.CommentsServiceStub
-    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    ingest_jobs: ingest_api.IngestJobService
+    ingest: ingest_api.IngestService
+    notebook: scout.NotebookService
+    proto_write: ProtoWriteService
+    run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
-    workspace: workspaces_pb2_grpc.WorkspaceServiceStub
+    storage_writer: storage_writer_api.NominalChannelWriterService
+    storage: storage_datasource_api.NominalDataSourceService
+    template: scout.TemplateService
+    upload: upload_api.UploadService
+    video_file: scout_video.VideoFileService
+    video: scout_video.VideoService
+
+    # GRPC services
+    comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
-    secrets: secrets_pb2_grpc.SecretServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
+    secrets: secrets_pb2_grpc.SecretServiceStub
+    units: units_pb2_grpc.UnitsServiceStub
+    workspace: workspaces_pb2_grpc.WorkspaceServiceStub
 
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
         """Fetch a single workspace by its RID via the gRPC workspace service.
@@ -307,36 +311,37 @@ class ClientsBunch:
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
+            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
+            compute=client_factory(scout_compute_api.ComputeService),
             connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
+            datareview=client_factory(scout_datareview_api.DataReviewService),
             datasource=client_factory(scout_datasource.DataSourceService),
-            ingest=client_factory(ingest_api.IngestService),
+            event=client_factory(event.EventService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
+            ingest=client_factory(ingest_api.IngestService),
+            notebook=client_factory(scout.NotebookService),
+            proto_write=client_factory(ProtoWriteService),
             run=client_factory(scout.RunService),
-            units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
+            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
+            storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
+            storage=client_factory(storage_datasource_api.NominalDataSourceService),
+            template=client_factory(scout.TemplateService),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
-            compute=client_factory(scout_compute_api.ComputeService),
-            storage=client_factory(storage_datasource_api.NominalDataSourceService),
-            storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
-            template=client_factory(scout.TemplateService),
-            notebook=client_factory(scout.NotebookService),
-            checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
-            datareview=client_factory(scout_datareview_api.DataReviewService),
-            proto_write=client_factory(ProtoWriteService),
-            event=client_factory(event.EventService),
-            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
-            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             # GRPC Service Stubs
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
-            workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
-            secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
+            secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
+            workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
         )
 
 
