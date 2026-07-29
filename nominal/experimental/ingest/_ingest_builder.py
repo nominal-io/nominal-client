@@ -344,11 +344,12 @@ class IngestBuilder:
                 else mcap_ingest_pb2.McapTopicNames(topics=exclude_topics),
             )
 
-        # The proto field has no presence, so None (leave unset) and False are wire-identical;
-        # assigning only a real value is what the generated stub's `bool` typing expects.
-        options = mcap_ingest_pb2.McapIngestItem(source=None, channels=mcap_channels)
-        if ignore_invalid_topics is not None:
-            options.ignore_invalid_topics = ignore_invalid_topics
+        options = mcap_ingest_pb2.McapIngestItem(
+            source=None,
+            channels=mcap_channels,
+            # The proto field has no presence, so None (unset) and False are wire-identical.
+            ignore_invalid_topics=ignore_invalid_topics or False,
+        )
         item = ingest_service_pb2.IngestItem(
             mcap=options,
             tags=tags or {},
