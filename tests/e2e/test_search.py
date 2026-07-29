@@ -218,8 +218,7 @@ def archive_search_context(  # noqa: PLR0915
     archived_asset.archive()
 
     # Videos are dual-written as datasets sharing the video's name, so the session tag alone matches
-    # the fixture's videos too: dataset search needs a tag that only its own datasets carry. The test
-    # filters on exact_match, since dataset search_text is tokenized and would match the tag alone.
+    # the fixture's videos too: dataset search needs a tag that only its own datasets carry.
     dataset_tag = f"archive-dataset-{search_context.tag}"
     active_dataset = client.create_dataset(f"{dataset_tag}-active")
     archived_dataset = client.create_dataset(f"{dataset_tag}-archived")
@@ -517,6 +516,8 @@ def test_search_datasets_archive_status(
     """Dataset search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_datasets(
+            # exact_match, not search_text: dataset search_text is tokenized, so even this compound
+            # tag matches every resource carrying the session tag.
             exact_match=archive_search_context.dataset_tag,
             archive_status=archive_status,
         ),
