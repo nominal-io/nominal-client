@@ -69,6 +69,8 @@ class ArchiveSearchContext:
 
     archived_run: Run
     archived_asset: Asset
+    dataset_tag: str
+    active_dataset: Dataset
     archived_dataset: Dataset
     active_secret: Secret
     archived_secret: Secret
@@ -215,7 +217,12 @@ def archive_search_context(  # noqa: PLR0915
     )
     archived_asset.archive()
 
-    archived_dataset = client.create_dataset(f"dataset-archived-{search_context.tag}")
+    # Videos are dual-written as datasets sharing the video's name, so the session tag alone matches
+    # the fixture's videos too: dataset search needs a tag that only its own datasets carry. The test
+    # filters on exact_match, since dataset search_text is tokenized and would match the tag alone.
+    dataset_tag = f"archive-dataset-{search_context.tag}"
+    active_dataset = client.create_dataset(f"{dataset_tag}-active")
+    archived_dataset = client.create_dataset(f"{dataset_tag}-archived")
     archived_dataset.archive()
 
     active_secret = client.create_secret(f"secret-active-{search_context.tag}", "active secret value")
@@ -295,6 +302,8 @@ def archive_search_context(  # noqa: PLR0915
     ctx = ArchiveSearchContext(
         archived_run=archived_run,
         archived_asset=archived_asset,
+        dataset_tag=dataset_tag,
+        active_dataset=active_dataset,
         archived_dataset=archived_dataset,
         active_secret=active_secret,
         archived_secret=archived_secret,
@@ -331,6 +340,7 @@ def archive_search_context(  # noqa: PLR0915
     active_secret.archive()
     archived_secret.archive()
     archived_video.archive()
+    active_dataset.archive()
     archived_dataset.archive()
     archived_asset.archive()
     archived_run.archive()
@@ -502,16 +512,15 @@ def test_search_videos_archive_status(
 
 def test_search_datasets_archive_status(
     client: NominalClient,
-    search_context: SearchContext,
     archive_search_context: ArchiveSearchContext,
 ) -> None:
     """Dataset search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_datasets(
-            search_text=search_context.tag,
+            exact_match=archive_search_context.dataset_tag,
             archive_status=archive_status,
         ),
-        active_rids={search_context.dataset.rid},
+        active_rids={archive_search_context.active_dataset.rid},
         archived_rids={archive_search_context.archived_dataset.rid},
     )
 
