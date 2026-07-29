@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 
 from nominal.core.exceptions import NominalMultipartUploadFailed, NominalRequestThrottledError
 from nominal.experimental.ingest._multipart_uploader import (
@@ -626,10 +627,11 @@ class TestSmallFileRoute:
         assert service.calls == ["initiate", "sign", "complete"]
 
 
-class _Throttled(Exception):
+def _throttled() -> requests.exceptions.HTTPError:
     """The server refusing a request because the caller is over its request budget."""
-
-    status_code = 429
+    response = requests.Response()
+    response.status_code = 429
+    return requests.exceptions.HTTPError("429 too many requests", response=response)
 
 
 class _FakeClock:
@@ -665,7 +667,7 @@ def throttle_first_call(service: FakeUploadService, method: str, counter: dict[s
     def throttled_once(*args, **kwargs):
         counter["n"] += 1
         if counter["n"] == 1:
-            raise _Throttled()
+            raise _throttled()
         return original(*args, **kwargs)
 
     setattr(service, method, throttled_once)
@@ -717,7 +719,7 @@ class TestThrottlingIsAbsorbedByTheGate:
         def always_throttle(*args, **kwargs):
             calls["n"] += 1
             clock.now += 1.0  # each attempt burns a second of the budget
-            raise _Throttled()
+            raise _throttled()
 
         service.sign_part = always_throttle
         path = write_file(tmp_path, "f.csv", 100)

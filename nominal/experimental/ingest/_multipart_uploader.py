@@ -331,13 +331,9 @@ class MultipartUploader:
                 # upload open server-side).
                 for future in self._issued_futures:
                     future.cancel()  # queued files drop; running or settled ones are unaffected
-                self._driver_pool.shutdown(wait=True)
-                self._small_pool.shutdown(wait=True)
-                self._part_pool.shutdown(wait=True)
-            else:
-                self._driver_pool.shutdown(wait=True)  # drivers submit parts: part pool must outlive them
-                self._part_pool.shutdown(wait=True)
-                self._small_pool.shutdown(wait=True)
+            self._driver_pool.shutdown(wait=True)  # drivers submit parts: part pool must outlive them
+            self._part_pool.shutdown(wait=True)
+            self._small_pool.shutdown(wait=True)
         finally:
             self._session.close()
 

@@ -54,15 +54,15 @@ def _is_throttle_error(exc: BaseException) -> bool:
     """True if `exc` is the server refusing the request because the caller is over budget.
 
     `RetryError` is the primary signal: the transport's own short retry ladder was exhausted,
-    meaning the throttling is sustained rather than momentary. Raw 429/503 are kept for
-    injected transports that do not retry statuses locally.
+    meaning the throttling is sustained rather than momentary. Raw 429/503 surface as
+    `requests.HTTPError` (the conjure client's errors subclass it) from transports that do not
+    retry statuses locally.
     """
     if isinstance(exc, requests.exceptions.RetryError):
         return True
-    status = getattr(exc, "status_code", None)
-    if status is None:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-    return status in (429, 503)
+    if isinstance(exc, requests.exceptions.HTTPError):
+        return exc.response is not None and exc.response.status_code in (429, 503)
+    return False
 
 
 class _GlobalBackoff:
@@ -121,9 +121,13 @@ class _ThrottleGate:
     def __init__(
         self,
         *,
-        max_concurrency: int = NOMINAL_MAX_CONCURRENCY,
-        deadline_seconds: float = DEFAULT_THROTTLE_DEADLINE_S,
+        # Deliberately no defaults on the tuning config: the uploader's `create()` owns the
+        # defaults, and a second set here could only drift from it.
+        max_concurrency: int,
+        deadline_seconds: float,
         backoff: _GlobalBackoff | None = None,
+        # The time seams below default to the real clock; tests inject deterministic ones so
+        # throttle/backoff behavior is testable without real sleeping.
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         jitter: Callable[[float], float] | None = None,

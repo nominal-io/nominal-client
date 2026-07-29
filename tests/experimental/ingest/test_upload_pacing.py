@@ -42,10 +42,11 @@ def make_gate(**overrides):
     return _ThrottleGate(**kwargs), clock
 
 
-class _StatusError(Exception):
-    def __init__(self, status: int) -> None:
-        super().__init__(f"status {status}")
-        self.status_code = status
+def _status_error(status: int) -> requests.exceptions.HTTPError:
+    """A real requests HTTPError carrying `status`, as the conjure client's errors do."""
+    response = requests.Response()
+    response.status_code = status
+    return requests.exceptions.HTTPError(f"status {status}", response=response)
 
 
 class TestGlobalBackoff:
@@ -83,16 +84,16 @@ class TestGlobalBackoff:
 
 class TestThrottleClassification:
     def test_429_is_throttle(self) -> None:
-        assert _is_throttle_error(_StatusError(429))
+        assert _is_throttle_error(_status_error(429))
 
     def test_503_is_throttle(self) -> None:
-        assert _is_throttle_error(_StatusError(503))
+        assert _is_throttle_error(_status_error(503))
 
     def test_retry_error_is_throttle(self) -> None:
         assert _is_throttle_error(requests.exceptions.RetryError())
 
     def test_400_is_not_throttle(self) -> None:
-        assert not _is_throttle_error(_StatusError(400))
+        assert not _is_throttle_error(_status_error(400))
 
     def test_plain_exception_is_not_throttle(self) -> None:
         assert not _is_throttle_error(ValueError("nope"))
@@ -150,7 +151,7 @@ class TestThrottleGateSuccessPath:
 class TestThrottleGateBackoffPath:
     def test_throttle_bumps_damper_sleeps_then_succeeds(self) -> None:
         gate, clock = make_gate()
-        outcomes: list = [_StatusError(429), _StatusError(429), "ok"]
+        outcomes: list = [_status_error(429), _status_error(429), "ok"]
 
         def op() -> str:
             result = outcomes.pop(0)
@@ -191,7 +192,7 @@ class TestThrottleGateBackoffPath:
             nested_result.append(gate.call(lambda: "nested ok", deadline_seconds=0.5))
 
         gate._sleep = sleep_and_probe  # type: ignore[method-assign]
-        outcomes: list = [_StatusError(429), "outer ok"]
+        outcomes: list = [_status_error(429), "outer ok"]
 
         def op() -> str:
             result = outcomes.pop(0)
@@ -209,12 +210,12 @@ class TestThrottleGateBackoffPath:
 
         def throttled_and_slow() -> str:
             clock_a.now += 1.0  # one attempt runs, bumps the damper, then exhausts the budget
-            raise _StatusError(429)
+            raise _status_error(429)
 
         with pytest.raises(NominalRequestThrottledError):
             gate_a.call(throttled_and_slow, deadline_seconds=0.5)
         # gate_b's retry sleeps a delay seeded by gate_a's storm signal (0.05 doubled to 0.10):
-        outcomes: list = [_StatusError(429), "ok"]
+        outcomes: list = [_status_error(429), "ok"]
 
         def op() -> str:
             result = outcomes.pop(0)
@@ -232,11 +233,11 @@ class TestThrottleGateDeadlines:
 
         def op() -> None:
             clock.now += 3.0
-            raise _StatusError(429)
+            raise _status_error(429)
 
         with pytest.raises(NominalRequestThrottledError) as excinfo:
             gate.call(op)
-        assert isinstance(excinfo.value.__cause__, _StatusError)
+        assert isinstance(excinfo.value.__cause__, requests.exceptions.HTTPError)
         message = str(excinfo.value)
         assert "server kept throttling" in message
         assert "attempts" in message
@@ -247,7 +248,7 @@ class TestThrottleGateDeadlines:
         gate, clock = make_gate(deadline_seconds=1.0)
 
         def op() -> None:
-            raise _StatusError(429)
+            raise _status_error(429)
 
         with pytest.raises(NominalRequestThrottledError):
             gate.call(op)
@@ -259,7 +260,7 @@ class TestThrottleGateDeadlines:
 
         def op() -> None:
             clock.now += 3.0
-            raise _StatusError(429)
+            raise _status_error(429)
 
         with pytest.raises(NominalRequestThrottledError):
             gate.call(op, deadline_seconds=5.0)
