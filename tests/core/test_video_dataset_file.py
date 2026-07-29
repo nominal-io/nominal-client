@@ -40,7 +40,8 @@ def test_from_conjure_populates_aggregates_from_segment_metadata():
         num_frames=100, num_segments=3, scale_factor=2.0, media_duration_seconds=10.0, media_frame_rate=30.0
     )
     row = _video_row(segment)
-    with patch("nominal.core.video_dataset_file._parse_common_file_fields", return_value=_common_kwargs(clients)):
+    base = DatasetFile(**_common_kwargs(clients))
+    with patch.object(DatasetFile, "_from_conjure", return_value=base):
         file = VideoDatasetFile._from_conjure(clients, row)
 
     assert isinstance(file, DatasetFile)
@@ -52,7 +53,8 @@ def test_from_conjure_populates_aggregates_from_segment_metadata():
 def test_from_conjure_leaves_aggregates_none_without_segment_metadata():
     clients = MagicMock()
     row = _video_row(segment=None)
-    with patch("nominal.core.video_dataset_file._parse_common_file_fields", return_value=_common_kwargs(clients)):
+    base = DatasetFile(**_common_kwargs(clients))
+    with patch.object(DatasetFile, "_from_conjure", return_value=base):
         file = VideoDatasetFile._from_conjure(clients, row)
 
     assert file.num_frames is None
@@ -125,14 +127,13 @@ def _update_request(clients: MagicMock) -> object:
     return args[1]
 
 
-def test_update_uses_known_channel_without_discovery():
-    """A file that already knows its channel updates without probing for it."""
+def test_update_addresses_the_known_channel():
+    """An update is addressed to the file's known channel on its dataset."""
     clients = MagicMock()
     file = _video_file(clients, channel="camera/front")
     with patch.object(VideoDatasetFile, "refresh", return_value=file) as refresh:
         file.update(starting_timestamp=1_700_000_000_000_000_000)
 
-    clients.datasource.search_channels.assert_not_called()
     request = _update_request(clients)
     assert request.channel_series.data_source.channel == "camera/front"
     assert request.channel_series.data_source.data_source_rid == "ds-1"
@@ -141,21 +142,13 @@ def test_update_uses_known_channel_without_discovery():
     refresh.assert_called_once()
 
 
-def test_update_discovers_channel_when_unknown():
-    """A file read back without a channel resolves one before updating."""
+def test_update_without_known_channel_raises():
+    """A file read back without a channel cannot be updated until the backend records the channel."""
     clients = MagicMock()
     file = _video_file(clients, channel=None)
-    with (
-        patch("nominal.core.video_dataset_file.resolve_video_channel_for_file", return_value="camera/rear") as resolve,
-        patch.object(VideoDatasetFile, "refresh", return_value=file),
-    ):
-        result = file.update(name="renamed.mp4")
-
-    resolve.assert_called_once()
-    assert _update_request(clients).channel_series.data_source.channel == "camera/rear"
-    assert _update_request(clients).updates[0].title == "renamed.mp4"
-    # The resolved channel is carried onto the returned file so a second update skips discovery.
-    assert result.channel == "camera/rear"
+    with pytest.raises(ValueError, match="channel is not known"):
+        file.update(name="renamed.mp4")
+    clients.video.batch_update_video_channel_dataset_files.assert_not_called()
 
 
 def test_update_maps_each_scale_input_to_its_union_arm():

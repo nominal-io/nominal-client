@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from typing import overload
 
 from nominal_api import scout_catalog, scout_video_api
 from typing_extensions import Self
 
-from nominal.core._video_ingest import resolve_video_channel_for_file, video_channel_series
-from nominal.core.dataset_file import DatasetFile, _parse_common_file_fields
+from nominal.core.dataset_file import DatasetFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -27,7 +27,7 @@ class VideoDatasetFile(DatasetFile):
     """The video channel this file backs, when known.
 
     Populated on upload. `None` for files read back through the generic dataset-file paths, since the
-    Catalog row does not record the channel; `update()` resolves it on demand in that case.
+    Catalog row does not record the channel; `update()` requires it to be known.
     """
 
     num_frames: int | None = None
@@ -35,6 +35,41 @@ class VideoDatasetFile(DatasetFile):
     media_duration_seconds: float | None = None
     media_frame_rate: float | None = None
     scale_factor: float | None = None
+
+    @overload
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        starting_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+    ) -> Self: ...
+
+    @overload
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        starting_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+        ending_timestamp: datetime | IntegralNanosecondsUTC,
+    ) -> Self: ...
+
+    @overload
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        starting_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+        true_frame_rate: float,
+    ) -> Self: ...
+
+    @overload
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        starting_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+        scale_factor: float,
+    ) -> Self: ...
 
     def update(
         self,
@@ -63,21 +98,27 @@ class VideoDatasetFile(DatasetFile):
 
         Raises:
             ValueError: no field was provided, more than one of {ending_timestamp, true_frame_rate,
-                scale_factor} was provided, or this file's video channel could not be resolved.
+                scale_factor} was provided, or this file's channel is not known.
 
         NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         NOTE: video channels do not carry per-file descriptions, so unlike the legacy
             `VideoFile.update` there is no `description` parameter.
         """
-        scale_inputs = (ending_timestamp, true_frame_rate, scale_factor)
-        if sum(value is not None for value in scale_inputs) > 1:
+        scale_inputs = [value for value in (ending_timestamp, true_frame_rate, scale_factor) if value is not None]
+        if len(scale_inputs) > 1:
             raise ValueError(
                 "Expected at most one of 'ending_timestamp', 'true_frame_rate', and 'scale_factor' to be present"
             )
-        if name is None and starting_timestamp is None and all(value is None for value in scale_inputs):
+        if name is None and starting_timestamp is None and not scale_inputs:
             raise ValueError(
                 "At least one of 'name', 'starting_timestamp', 'ending_timestamp', 'true_frame_rate', "
                 "or 'scale_factor' must be provided"
+            )
+        if self.channel is None:
+            raise ValueError(
+                f"cannot update video file {self.id!r}: its channel is not known. update() is currently "
+                "supported on handles returned by the Dataset.add_video / add_mcap_video methods; files "
+                "read back from the catalog do not yet carry their channel."
             )
 
         if ending_timestamp is not None:
@@ -91,11 +132,17 @@ class VideoDatasetFile(DatasetFile):
         else:
             scale_parameter = None
 
-        channel = self.channel if self.channel is not None else self._resolve_channel()
+        channel = self.channel
         self._clients.video.batch_update_video_channel_dataset_files(
             self._clients.auth_header,
             scout_video_api.BatchUpdateVideoChannelDatasetFilesRequest(
-                channel_series=video_channel_series(self.dataset_rid, channel),
+                channel_series=scout_video_api.VideoChannelSeries(
+                    data_source=scout_video_api.VideoDataSourceChannel(
+                        data_source_rid=self.dataset_rid,
+                        channel=channel,
+                        tags={},
+                    )
+                ),
                 updates=[
                     scout_video_api.VideoChannelDatasetFileUpdate(
                         dataset_file_id=self.id,
@@ -109,13 +156,10 @@ class VideoDatasetFile(DatasetFile):
             ),
         )
         # The response carries only the updated bounds, so refresh instead: that also picks up the
-        # segment metadata the backend recomputes after a rescale.
+        # segment metadata the backend recomputes after a rescale. The refreshed instance is rebuilt
+        # from the Catalog row, which does not record the channel, so re-stamp the one we know.
         refreshed = self.refresh()
         return refreshed if refreshed.channel is not None else replace(refreshed, channel=channel)
-
-    def _resolve_channel(self) -> str:
-        """Discover which video channel this file backs (the Catalog row does not record it)."""
-        return resolve_video_channel_for_file(self._clients, self.dataset_rid, self.id, self.bounds)
 
     @classmethod
     def _from_conjure(cls, clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
@@ -123,8 +167,22 @@ class VideoDatasetFile(DatasetFile):
             raise ValueError(f"dataset file {dataset_file.id!r} has no video metadata")
         video_meta = dataset_file.metadata.video
         segment = video_meta.segment_metadata
+        base = DatasetFile._from_conjure(clients, dataset_file)
         return cls(
-            **_parse_common_file_fields(clients, dataset_file),
+            id=base.id,
+            dataset_rid=base.dataset_rid,
+            name=base.name,
+            bounds=base.bounds,
+            uploaded_at=base.uploaded_at,
+            ingested_at=base.ingested_at,
+            deleted_at=base.deleted_at,
+            ingest_status=base.ingest_status,
+            timestamp_channel=base.timestamp_channel,
+            timestamp_type=base.timestamp_type,
+            file_tags=base.file_tags,
+            tag_columns=base.tag_columns,
+            _clients=base._clients,
+            _ingest_error_message=base._ingest_error_message,
             _timestamp_manifest=video_meta.timestamp_manifest,
             num_frames=None if segment is None else segment.num_frames,
             num_segments=None if segment is None else segment.num_segments,

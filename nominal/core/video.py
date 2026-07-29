@@ -470,19 +470,20 @@ def _build_video_file_timestamp_manifest(
         return scout_video_api.VideoFileTimestampManifest(
             mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=mcap_topic))
         )
-    if frame_timestamps is not None:
+    elif frame_timestamps is not None:
         manifest_s3_path = _upload_frame_timestamps(
             auth_header, workspace_rid, upload_client, frame_timestamps, header_provider=header_provider
         )
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
-    if start is not None:
+    elif start is not None:
         # TODO(drake): expose scale parameter to users
         return scout_video_api.VideoFileTimestampManifest(
             no_manifest=scout_video_api.NoTimestampManifest(
                 starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
             )
         )
-    raise AssertionError("unreachable: exactly one timestamp mode was validated above")
+    else:
+        raise ValueError("exactly one of 'start', 'frame_timestamps', or 'mcap_topic' must be provided")
 
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:

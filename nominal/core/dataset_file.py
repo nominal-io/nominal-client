@@ -7,10 +7,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog, scout_datasource, scout_video
+from nominal_api import api, ingest_api, scout_catalog, scout_video
 from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
@@ -63,12 +63,10 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
-        # Used by the VideoDatasetFile subtype (see DataSource._Clients for the same
-        # one-protocol-per-hierarchy convention): video-channel timing updates and channel discovery.
+        # Used by the VideoDatasetFile subtype for video-channel timing updates (see
+        # DataSource._Clients for the same one-protocol-per-hierarchy convention).
         @property
         def video(self) -> scout_video.VideoService: ...
-        @property
-        def datasource(self) -> scout_datasource.DataSourceService: ...
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
@@ -258,54 +256,51 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
-        return cls(**_parse_common_file_fields(clients, dataset_file))
+        upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
+        ingest_time = (
+            None
+            if dataset_file.ingested_at is None
+            else _SecondsNanos.from_flexible(dataset_file.ingested_at).to_nanoseconds()
+        )
+        delete_time = (
+            None
+            if dataset_file.deleted_at is None
+            else _SecondsNanos.from_flexible(dataset_file.deleted_at).to_nanoseconds()
+        )
 
+        file_tags = None
+        tag_columns = None
+        if dataset_file.ingest_tag_metadata is not None:
+            file_tags = dataset_file.ingest_tag_metadata.additional_file_tags
+            tag_columns = dataset_file.ingest_tag_metadata.tag_columns
 
-def _parse_common_file_fields(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> dict[str, Any]:
-    """Parse the fields shared by every DatasetFile subtype from a Catalog row."""
-    upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
-    ingest_time = (
-        None
-        if dataset_file.ingested_at is None
-        else _SecondsNanos.from_flexible(dataset_file.ingested_at).to_nanoseconds()
-    )
-    delete_time = (
-        None
-        if dataset_file.deleted_at is None
-        else _SecondsNanos.from_flexible(dataset_file.deleted_at).to_nanoseconds()
-    )
+        timestamp_column = None
+        timestamp_type = None
+        if dataset_file.timestamp_metadata is not None:
+            timestamp_column = dataset_file.timestamp_metadata.series_name
+            timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(
+                dataset_file.timestamp_metadata.timestamp_type
+            )
 
-    file_tags = None
-    tag_columns = None
-    if dataset_file.ingest_tag_metadata is not None:
-        file_tags = dataset_file.ingest_tag_metadata.additional_file_tags
-        tag_columns = dataset_file.ingest_tag_metadata.tag_columns
+        ingest_error = dataset_file.ingest_status.error
+        ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
 
-    timestamp_column = None
-    timestamp_type = None
-    if dataset_file.timestamp_metadata is not None:
-        timestamp_column = dataset_file.timestamp_metadata.series_name
-        timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(dataset_file.timestamp_metadata.timestamp_type)
-
-    ingest_error = dataset_file.ingest_status.error
-    ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
-
-    return dict(
-        id=dataset_file.id,
-        dataset_rid=dataset_file.dataset_rid,
-        name=dataset_file.name,
-        bounds=None if dataset_file.bounds is None else Bounds._from_conjure(dataset_file.bounds),
-        uploaded_at=upload_time,
-        ingested_at=ingest_time,
-        deleted_at=delete_time,
-        ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
-        timestamp_channel=timestamp_column,
-        timestamp_type=timestamp_type,
-        file_tags=file_tags,
-        tag_columns=tag_columns,
-        _clients=clients,
-        _ingest_error_message=ingest_error_message,
-    )
+        return cls(
+            id=dataset_file.id,
+            dataset_rid=dataset_file.dataset_rid,
+            name=dataset_file.name,
+            bounds=None if dataset_file.bounds is None else Bounds._from_conjure(dataset_file.bounds),
+            uploaded_at=upload_time,
+            ingested_at=ingest_time,
+            deleted_at=delete_time,
+            ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
+            timestamp_channel=timestamp_column,
+            timestamp_type=timestamp_type,
+            file_tags=file_tags,
+            tag_columns=tag_columns,
+            _clients=clients,
+            _ingest_error_message=ingest_error_message,
+        )
 
 
 def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> DatasetFile:
