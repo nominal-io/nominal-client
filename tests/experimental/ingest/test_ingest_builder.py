@@ -36,6 +36,7 @@ class FakeUploader:
         """
         self.results = results
         self.enqueued: list[pathlib.Path] = []
+        self.enqueued_contents: list[bytes] = []  # captured at enqueue: temp files die at submit
         self.exit_exc_type: type[BaseException] | None = None
 
     def enqueue_file(
@@ -47,6 +48,7 @@ class FakeUploader:
         part_size: int | None = None,
     ) -> Future[str]:
         self.enqueued.append(path)
+        self.enqueued_contents.append(path.read_bytes())
         fut: Future[str] = Future()
         outcome = self.results.get(path.name, f"s3://bucket/{path.name}")
         if isinstance(outcome, BaseException):
@@ -75,7 +77,7 @@ def upload_with(fake: FakeUploader, files: list[_PendingFile], client: MagicMock
 def one_file_builder(write_file: WriteFile) -> tuple[MagicMock, IngestBuilder]:
     """A builder holding one registered CSV, on a MagicMock client."""
     client = MagicMock()
-    builder = IngestBuilder(client, "ri.catalog.test.dataset").add_csv(
+    builder = IngestBuilder(client, "ri.catalog.test.dataset").add_tabular_data(
         write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds"
     )
     return client, builder
@@ -151,8 +153,8 @@ class TestSubmit:
         """
         client = MagicMock()
         builder = IngestBuilder(client, "ri.catalog.test.dataset")
-        builder.add_csv(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
-        builder.add_csv(write_file("b.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file("b.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
 
         with patch.object(
             MultipartUploader,
@@ -170,8 +172,8 @@ class TestSubmit:
         path = write_file("a.csv", 1)
         client = MagicMock()
         builder = IngestBuilder(client, "ri.catalog.test.dataset")
-        builder.add_csv(path, timestamp_column="ts", timestamp_type="epoch_seconds")
-        builder.add_csv(path, timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(path, timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(path, timestamp_column="ts", timestamp_type="epoch_seconds")
         fake = FakeUploader({"a.csv": "s3://bucket/a"})
 
         with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
@@ -210,10 +212,44 @@ class TestSubmit:
             builder.submit()
 
         _video_path, manifest_path = fake.enqueued
-        assert json.loads(manifest_path.read_text()) == [1, 2, 3]
+        assert json.loads(fake.enqueued_contents[1]) == [1, 2, 3]  # what the manifest carried when uploaded
         (request,) = client._clients.ingest_v2.Ingest.call_args.args
         manifest = request.items[0].video.ingest.timestamp_manifest
         assert [s.s3.path for s in manifest.timestamp_manifest_files.sources] == [f"s3://bucket/{manifest_path.name}"]
+        assert not manifest_path.exists()  # the generated temp manifest is deleted once uploads finish
+
+    def test_a_failed_submit_still_deletes_the_generated_manifest(self, write_file: WriteFile) -> None:
+        """A builder-generated manifest must not outlive a failed submit — the builder is single-use."""
+        builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+        builder.add_video(write_file("cam.mp4", 1), channel="camera.front", frame_timestamps=[1, 2, 3])
+        fake = FakeUploader({"cam.mp4": RuntimeError("boom")})
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+            with pytest.raises(RuntimeError, match="boom"):
+                builder.submit()
+
+        _video_path, manifest_path = fake.enqueued
+        assert not manifest_path.exists()
+
+    def test_tabular_dispatches_on_extension(self, write_file: WriteFile) -> None:
+        """One method handles both tabular formats: the extension picks the wire options."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_tabular_data(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file("b.parquet", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
+            builder.submit()
+
+        (request,) = client._clients.ingest_v2.Ingest.call_args.args
+        assert request.items[0].file.ingest.HasField("csv")
+        assert request.items[1].file.ingest.HasField("parquet")
+
+    def test_tabular_rejects_a_non_tabular_path(self, write_file: WriteFile) -> None:
+        """A non-tabular extension fails at registration, before any upload."""
+        builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+        with pytest.raises(ValueError, match="tabular"):
+            builder.add_tabular_data(write_file("cam.mp4", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
 
     @pytest.mark.parametrize(
         ("kwargs", "message"),

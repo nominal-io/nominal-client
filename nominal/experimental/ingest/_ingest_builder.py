@@ -228,8 +228,8 @@ _PendingItem = Union[_FileItem, _McapItem, _LogItem, _DataflashItem, _VideoItem,
 def _write_frame_timestamps(frame_timestamps: Sequence[IntegralNanosecondsUTC]) -> Path:
     """Write per-frame timestamps as the JSON manifest file the video segmenter consumes.
 
-    A small temp file, uploaded at submit time like any registered file. The builder has no
-    lifecycle hook after submit, so the file is left for the OS temp cleaner.
+    A small temp file, uploaded at submit time like any registered file and deleted by
+    `submit()` once the upload phase is over (the builder tracks it in `_temp_files`).
     """
     fd, name = tempfile.mkstemp(prefix="nominal_video_manifest_", suffix=".json")
     with os.fdopen(fd, "w") as f:
@@ -287,6 +287,7 @@ class IngestBuilder:
         self._dataset_rid = rid_from_instance_or_string(dataset)
         self._pending: list[_PendingItem] = []
         self._tags: dict[str, str] = dict(tags or {})
+        self._temp_files: list[Path] = []  # builder-generated files, deleted once uploads finish
         self._submitted = False
 
     def add_tags(self, tags: Mapping[str, str]) -> Self:
@@ -301,7 +302,7 @@ class IngestBuilder:
         self._tags.update(tags)
         return self
 
-    def add_csv(
+    def add_tabular_data(
         self,
         path: PathLike,
         timestamp_column: str,
@@ -313,9 +314,11 @@ class IngestBuilder:
         channel_name_overrides: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
-        """Register a CSV file to ingest as a tabular file.
+        """Register a tabular file (CSV or Parquet), mirroring `Dataset.add_tabular_data`.
 
-        Supported extensions: .csv / .csv.gz.
+        Supported extensions: .csv / .csv.gz, .parquet / .parquet.gz, and the parquet-archive
+        formats (.parquet.tar / .parquet.tar.gz / .parquet.zip). The format is inferred from
+        the extension.
 
         Args:
             path: Path to the file on disk.
@@ -330,11 +333,12 @@ class IngestBuilder:
 
         Returns:
             This builder, for chaining.
+
+        Raises:
+            ValueError: the path is not a supported tabular format.
         """
         file_path = Path(path)
-        file_type = FileType.from_tabular(file_path)
-        if not file_type.is_csv():
-            raise ValueError(f"Cannot add path '{file_path}' as CSV: inferred file type {file_type} not CSV!")
+        file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
 
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=common_pb2.TimestampMetadata(
@@ -343,61 +347,17 @@ class IngestBuilder:
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
-            csv=file_ingest_pb2.CsvIngestOptions(
-                format=file_ingest_pb2.CsvFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns or {}))
-            ),
         )
-        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
-        return self
-
-    def add_parquet(
-        self,
-        path: PathLike,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        *,
-        tag_columns: Mapping[str, str] | None = None,
-        units: Mapping[str, str] | None = None,
-        channel_prefix: str | None = None,
-        channel_name_overrides: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> Self:
-        """Register a Parquet file to ingest as a tabular file.
-
-        Supported extensions: .parquet / .parquet.gz, and the parquet-archive
-        formats (.parquet.tar / .parquet.tar.gz / .parquet.zip).
-
-        Args:
-            path: Path to the file on disk.
-            timestamp_column: Column containing the timestamp for each row. This column is not
-                ingested as its own channel; it sets the timestamps for every other channel.
-            timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_seconds'.
-            tag_columns: Mapping of tag keys to the columns whose values supply each tag.
-            units: Mapping of channel name to unit symbol.
-            channel_prefix: Prefix prepended to every channel name ingested from this file.
-            channel_name_overrides: Mapping of original channel name to the name to ingest it under.
-            tags: Key-value pairs applied as tags to all data from this file.
-
-        Returns:
-            This builder, for chaining.
-        """
-        file_path = Path(path)
-        file_type = FileType.from_tabular(file_path)
-        if not file_type.is_parquet():
-            raise ValueError(f"Cannot add path '{file_path}' as parquet: inferred file type {file_type} not parquet!")
-
-        options = file_ingest_pb2.FileIngestOptions(
-            timestamp_metadata=common_pb2.TimestampMetadata(
-                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
-            ),
-            units=units,
-            channel_prefix=channel_prefix,
-            channel_name_overrides=channel_name_overrides,
-            parquet=file_ingest_pb2.ParquetIngestOptions(
-                format=file_ingest_pb2.ParquetFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})),
-                is_archive=file_type.is_parquet_archive(),
-            ),
-        )
+        wide_format = file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})
+        if file_type.is_csv():
+            options.csv.CopyFrom(file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide_format)))
+        else:
+            options.parquet.CopyFrom(
+                file_ingest_pb2.ParquetIngestOptions(
+                    format=file_ingest_pb2.ParquetFormat(wide=wide_format),
+                    is_archive=file_type.is_parquet_archive(),
+                )
+            )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
 
@@ -589,8 +549,8 @@ class IngestBuilder:
         )
         return self
 
-    def add_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
-        """Register an ArduPilot Dataflash (.bin) file.
+    def add_ardupilot_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
+        """Register an ArduPilot Dataflash (.bin) file, mirroring `Dataset.add_ardupilot_dataflash`.
 
         Args:
             path: Path to the Dataflash file on disk.
@@ -672,6 +632,7 @@ class IngestBuilder:
             )
         elif frame_timestamps is not None:
             manifest_file = _PendingFile(_write_frame_timestamps(frame_timestamps), FileTypes.JSON)
+            self._temp_files.append(manifest_file.path)
 
         self._pending.append(
             _VideoItem(
@@ -790,7 +751,13 @@ class IngestBuilder:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
         self._submitted = True
 
-        locations = _upload_all([file for pending in self._pending for file in pending.files], self._client)
+        try:
+            locations = _upload_all([file for pending in self._pending for file in pending.files], self._client)
+        finally:
+            # Builder-generated files (video timestamp manifests) are dead once the upload phase
+            # is over — uploaded or failed, the single-use builder never needs them again.
+            for temp_file in self._temp_files:
+                temp_file.unlink(missing_ok=True)
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
             items=[pending.build(locations) for pending in self._pending],

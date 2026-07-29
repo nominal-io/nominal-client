@@ -34,17 +34,17 @@ from nominal.experimental.ingest import IngestBuilder
 client = NominalClient.from_profile("default")
 dataset = client.get_dataset("rid...")
 
-# tags here are applied as defaults to all non-avro files, overrideable per file
+# tags here are applied as defaults to every file, overrideable per file
 builder = IngestBuilder(client, dataset, tags={"aircraft": "test-tail-1"})
 
-# add parquet files
-builder.add_parquet(
+# add tabular files (csv or parquet, inferred from the extension)
+builder.add_tabular_data(
     "test.parquet",
     timestamp_column="time",
     timestamp_type="epoch_seconds",
     tags={"subsystem": "nav"},
 )
-builder.add_parquet(
+builder.add_tabular_data(
     "test2.parquet",
     timestamp_column="time2",
     timestamp_type="epoch_nanoseconds",
@@ -52,7 +52,7 @@ builder.add_parquet(
 )
 
 # add a dataflash file
-builder.add_dataflash("test.bin")
+builder.add_ardupilot_dataflash("test.bin")
 
 # add a video, frames timestamped from a known start instant
 # (or pass frame_timestamps=[...] for one epoch-nanosecond timestamp per frame)
