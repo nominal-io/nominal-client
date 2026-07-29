@@ -100,6 +100,9 @@ class _PlannedUpload:
     upload_id: str
     total_size: int
     part_size: int
+    # Set by this file's driver when the file fails: every sibling part short-circuits at its
+    # next boundary instead of continuing to sign and PUT against an upload being aborted.
+    revoked: threading.Event = field(default_factory=threading.Event)
 
     def parts(self) -> Iterable[_PartBounds]:
         # An empty file still yields exactly one (zero-byte) part so completion has a part to list.
@@ -193,7 +196,10 @@ class MultipartUploader:
                 streams. Defaults to `DEFAULT_MAX_STORAGE_WORKERS` (benchmark-tuned). Raising it
                 may degrade throughput rather than improve it: past the network path's
                 saturation point, streams contend with each other. Raise it when the path to
-                storage is measured to reward more concurrent streams.
+                storage is measured to reward more concurrent streams — and tune it together
+                with `enqueue_file`'s `part_size`: each stream holds one full part in memory,
+                so peak buffered upload memory is roughly `max_storage_workers × part_size`
+                (~640 MiB at the defaults; 40 workers at the default part size is ~2.5 GiB).
             max_small_file_workers: Small-pool size. Defaults to `max_nominal_concurrency` —
                 small files spend their whole task inside the nominal lane, so extra threads
                 beyond the lane width would only queue at its entrance.
@@ -367,7 +373,9 @@ class MultipartUploader:
             file_type: Override the file type inferred from `path`.
             name: Override the object name derived from `path` (the file type's extension is
                 still appended).
-            part_size: Bytes per multipart part. Ignored on the small-file route.
+            part_size: Bytes per multipart part. Ignored on the small-file route. Each in-flight
+                part is held fully in memory, so peak buffered memory across the uploader is
+                roughly `max_storage_workers × part_size` — tune the two together.
 
         Returns:
             A future resolving to the uploaded object's location.
@@ -514,13 +522,19 @@ class MultipartUploader:
             return location
         except BaseException as e:
             logger.debug(
-                "multipart upload for %s failed with %s after %.2fs; cancelling sibling parts and aborting",
+                "multipart upload for %s failed with %s after %.2fs; revoking sibling parts and aborting",
                 safe_filename,
                 type(e).__name__,
                 time.monotonic() - started,
             )
+            # Revoke BEFORE aborting: running siblings stop at their next boundary instead of
+            # continuing to sign, PUT, and retry against the upload id the abort is about to
+            # invalidate — which wastes bandwidth and budget, and a part landing after the abort
+            # can leave the multipart upload alive server-side. A PUT attempt already in flight
+            # can still land; the revoke bounds the exposure to that single attempt.
+            plan.revoked.set()
             for f in futs:
-                f.cancel()  # queued siblings dequeue; running ones finish and are ignored
+                f.cancel()  # queued siblings dequeue; running ones stop at their next boundary
             self._safe_abort(key, upload_id, e)
             raise
 
@@ -535,12 +549,15 @@ class MultipartUploader:
         Returns the part's number and the ETag from the PUT response. A missing ETag fails the
         part immediately (see below) rather than being retried.
 
-        Raises CancelledError the moment a cancelling close is in progress -- checked before the
-        slice read, so a revoked part costs microseconds instead of a `part_size` read, and again
-        before each attempt, so a retry never outlives the close.
+        Raises CancelledError the moment a cancelling close is in progress or this file's driver
+        has revoked its parts -- checked before the slice read, so a revoked part costs
+        microseconds instead of a `part_size` read, and again before each attempt, so a retry
+        never outlives the close or feeds an aborted upload.
         """
         if self._draining.is_set():
             raise CancelledError("uploader is closing")
+        if plan.revoked.is_set():
+            raise CancelledError("file upload failed; sibling parts revoked")
         with plan.path.open("rb") as f:
             f.seek(bounds.offset)
             data = f.read(bounds.size)
@@ -549,6 +566,8 @@ class MultipartUploader:
         for attempt in range(self.max_part_retries):
             if self._draining.is_set():
                 raise CancelledError("uploader is closing")
+            if plan.revoked.is_set():
+                raise CancelledError("file upload failed; sibling parts revoked")
             try:
                 sign_response = self._gate.call(
                     lambda: self._upload_client.sign_part(

@@ -116,16 +116,24 @@ class SplitPutSession:
         self.part_one_parked = threading.Event()
         self.release = threading.Event()
         self.part_two_fails = True
+        self.part_one_fails_after_release = False
+        self.put_counts: dict[int, int] = {}  # part number -> PUT attempts
+        self.lock = threading.Lock()
         self.closed = False
 
     def put(self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None) -> Any:
-        if url.endswith("/2"):
+        part = int(url.rsplit("/", 1)[1])
+        with self.lock:
+            self.put_counts[part] = self.put_counts.get(part, 0) + 1
+        if part == 2:
             if self.part_two_fails:
                 self.part_one_parked.wait(timeout=10)  # order this failure after part 1 parks
                 raise ConnectionError("part 2 failed")
         else:
             self.part_one_parked.set()
             self.release.wait(timeout=10)
+            if self.part_one_fails_after_release:
+                raise ConnectionError("part 1 failed after release")
         return SimpleNamespace(status_code=200, headers={"ETag": '"etag-1"'}, raise_for_status=lambda: None)
 
     def close(self) -> None:
@@ -340,6 +348,36 @@ class TestFailureHandling:
             with pytest.raises(NominalMultipartUploadFailed):
                 fut.result(timeout=10)
             assert service.calls.count("abort") == 1
+        finally:
+            session.release.set()
+            up.close()
+
+    def test_a_failed_file_revokes_its_running_sibling_parts(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """Once a file fails, a surviving sibling part must not retry against the aborted upload.
+
+        Part 2 exhausts its retries and fails the file while part 1 is mid-PUT; when part 1's
+        own attempt then fails, its retry boundary must see the revocation and stop — not
+        re-sign and re-PUT its bytes at an upload id the abort just invalidated (which wastes
+        budget and can leave the multipart upload alive server-side). max_part_retries=3 is
+        what makes this bite: without the revoke, part 1 would visibly retry twice more.
+        """
+        part_size = 5 * 1024 * 1024
+        up, service, _ = make_uploader(max_part_retries=3)
+        session = SplitPutSession()
+        session.part_one_fails_after_release = True
+        up._session = session
+        path = write_file("two-parts.bin", part_size + 1)
+        try:
+            fut = up.enqueue_file(path, part_size=part_size)
+            with pytest.raises(NominalMultipartUploadFailed):
+                fut.result(timeout=10)  # part 2 exhausts its 3 attempts while part 1 is parked
+            assert service.calls.count("abort") == 1
+            session.release.set()  # part 1's PUT now fails; its retry boundary must see the revoke
+            up.close()  # joins the part pool, so part 1's task has fully settled
+            assert session.put_counts == {1: 1, 2: 3}  # part 1 never retried after the revoke
+            assert service.calls.count("sign") == 4  # 1 for part 1 + 3 for part 2; no re-sign
         finally:
             session.release.set()
             up.close()
