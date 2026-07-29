@@ -4,6 +4,7 @@ import pathlib
 import threading
 from concurrent.futures import CancelledError, Future, wait
 from types import SimpleNamespace
+from typing import Any, Callable, Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,7 +16,9 @@ from nominal.experimental.ingest._multipart_uploader import (
     MAX_SMALL_FILE_ROUTE_BYTES,
     MultipartUploader,
 )
-from nominal.experimental.ingest._upload_pacing import _ThrottleGate
+
+WriteFile = Callable[[str, int], pathlib.Path]
+MakeUploader = Callable[..., "tuple[MultipartUploader, FakeUploadService, FakePutSession]"]
 
 
 class FakeUploadService:
@@ -42,31 +45,33 @@ class FakeUploadService:
         with self.lock:
             self.calls.append(name)
 
-    def initiate_multipart_upload(self, auth, request):
+    def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
         self._record("initiate")
         return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}")
 
-    def sign_part(self, auth, key, part, upload_id):
+    def sign_part(self, auth: str, key: str, part: int, upload_id: str) -> Any:
         self._record("sign")
         if self.fail_sign_for_key is not None and key == self.fail_sign_for_key:
             raise ConnectionError(f"sign failed for {key}")
         return SimpleNamespace(url=f"https://s3.example/{key}/{part}", headers={})
 
-    def complete_multipart_upload(self, auth, key, upload_id, parts):
+    def complete_multipart_upload(self, auth: str, key: str, upload_id: str, parts: Any) -> Any:
         self._record("complete")
         with self.lock:
             self.completed_etags[key] = {p.part_number: p.etag for p in parts}
         return SimpleNamespace(location=f"s3://bucket/{key}")
 
-    def abort_multipart_upload(self, auth, key, upload_id):
+    def abort_multipart_upload(self, auth: str, key: str, upload_id: str) -> None:
         self._record("abort")
         with self.lock:
             self.aborted.append(key)
 
-    def list_parts(self, auth, key, upload_id):
+    def list_parts(self, auth: str, key: str, upload_id: str) -> None:
         raise AssertionError("list_parts must not be called: etags come from the PUT responses")
 
-    def upload_file(self, auth, body, file_name, size_bytes=None, workspace=None):
+    def upload_file(
+        self, auth: str, body: bytes, file_name: str, size_bytes: int | None = None, workspace: str | None = None
+    ) -> str:
         self._record("upload_file")
         with self.lock:
             self.upload_file_args.append((file_name, size_bytes, len(body)))
@@ -85,7 +90,7 @@ class FakePutSession:
         self.put_release.set()
         self.closed = False
 
-    def put(self, url, data=None, headers=None, verify=None, timeout=None):
+    def put(self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None) -> Any:
         self.put_started.set()
         self.put_release.wait(timeout=10)
         return SimpleNamespace(status_code=200, headers={"ETag": '"etag-1"'}, raise_for_status=lambda: None)
@@ -108,7 +113,7 @@ class SplitPutSession:
         self.part_two_fails = True
         self.closed = False
 
-    def put(self, url, data=None, headers=None, verify=None, timeout=None):
+    def put(self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None) -> Any:
         if url.endswith("/2"):
             if self.part_two_fails:
                 self.part_one_parked.wait(timeout=10)  # order this failure after part 1 parks
@@ -131,7 +136,7 @@ class RecordingPutSession:
         self.parts: dict[int, bytes] = {}  # part number -> bytes sent
         self.closed = False
 
-    def put(self, url, data=None, headers=None, verify=None, timeout=None):
+    def put(self, url: str, data: Any = None, headers: Any = None, verify: Any = None, timeout: Any = None) -> Any:
         part = int(url.rsplit("/", 1)[1])
         with self.lock:
             self.parts[part] = data
@@ -151,21 +156,30 @@ def fake_nominal_client(service: FakeUploadService | None = None) -> MagicMock:
     return client
 
 
-def make_uploader(tmp_path: pathlib.Path, service: FakeUploadService | None = None, **create_kwargs):
-    service = service or FakeUploadService()
-    # Route off unless a test opts in: the fixtures here are all tiny, and the multipart tests
-    # must keep exercising multipart under the production default (which routes them single-shot).
-    create_kwargs.setdefault("small_file_route_max_bytes", None)
-    up = MultipartUploader.create(fake_nominal_client(service), **create_kwargs)
-    session = FakePutSession()
-    up._session = session  # swap the S3 session for a fake; TLS never touched in unit tests
-    return up, service, session
+@pytest.fixture
+def make_uploader() -> Iterator[MakeUploader]:
+    """Factory for uploaders wired to hand fakes; closes every uploader it made at teardown.
 
+    The small-file route is pinned OFF unless a test opts in: the fixtures here are all tiny,
+    and the multipart tests must keep exercising multipart under the production default
+    (which routes them single-shot).
+    """
+    created: list[MultipartUploader] = []
 
-def write_file(tmp_path: pathlib.Path, name: str, size: int) -> pathlib.Path:
-    p = tmp_path / name
-    p.write_bytes(b"x" * size)
-    return p
+    def _make(
+        service: FakeUploadService | None = None, **create_kwargs: Any
+    ) -> tuple[MultipartUploader, FakeUploadService, FakePutSession]:
+        service = service or FakeUploadService()
+        create_kwargs.setdefault("small_file_route_max_bytes", None)
+        up = MultipartUploader.create(fake_nominal_client(service), **create_kwargs)
+        created.append(up)
+        session = FakePutSession()
+        up._session = session  # swap the S3 session for a fake; TLS never touched in unit tests
+        return up, service, session
+
+    yield _make
+    for up in created:
+        up.close(cancel_pending=True)  # idempotent: a no-op for uploaders the test already closed
 
 
 def settled_latch(futures: list[Future[str]]) -> threading.Event:
@@ -193,62 +207,77 @@ def settled_latch(futures: list[Future[str]]) -> threading.Event:
 
 
 class TestRoutesAndRequestCounts:
-    def test_single_part_multipart_makes_exactly_three_calls(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path)
-        path = write_file(tmp_path, "f.csv", 100)
+    def test_single_part_multipart_makes_exactly_three_calls(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """A single-part multipart file costs exactly initiate + sign + complete."""
+        up, service, _ = make_uploader()
+        path = write_file("f.csv", 100)
         with up:
             assert up.enqueue_file(path).result(timeout=10).startswith("s3://")
         assert service.calls == ["initiate", "sign", "complete"]
 
-    def test_small_route_makes_exactly_one_call(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=1024)
-        path = write_file(tmp_path, "f.csv", 100)
+    def test_small_route_makes_exactly_one_call(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A file under the single-shot threshold costs exactly one API request."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=1024)
+        path = write_file("f.csv", 100)
         with up:
             up.enqueue_file(path).result(timeout=10)
         assert service.calls == ["upload_file"]
 
-    def test_zero_byte_file_takes_multipart(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=1024)
-        path = write_file(tmp_path, "empty.csv", 0)
+    def test_zero_byte_file_takes_multipart(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """Empty files always take multipart: the single-shot endpoint rejects a declared size of 0."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=1024)
+        path = write_file("empty.csv", 0)
         with up:
             up.enqueue_file(path).result(timeout=10)
         assert service.calls == ["initiate", "sign", "complete"]
 
 
 class TestValidation:
-    def test_part_size_must_be_positive(self, tmp_path) -> None:
-        up, _, _ = make_uploader(tmp_path)
-        path = write_file(tmp_path, "f.csv", 100)
+    def test_part_size_must_be_positive(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A non-positive part size is rejected synchronously at enqueue."""
+        up, _, _ = make_uploader()
+        path = write_file("f.csv", 100)
         with up, pytest.raises(ValueError, match="part_size"):
             up.enqueue_file(path, part_size=0)
 
-    def test_too_many_parts_rejected(self, tmp_path) -> None:
-        up, _, _ = make_uploader(tmp_path)
-        path = write_file(tmp_path, "f.csv", 20_001)
+    def test_too_many_parts_rejected(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A plan needing more parts than the storage provider allows is rejected at enqueue."""
+        up, _, _ = make_uploader()
+        path = write_file("f.csv", 20_001)
         with up, pytest.raises(ValueError, match="10000|10,000"):
             up.enqueue_file(path, part_size=2)
 
-    def test_multi_part_below_provider_minimum_rejected(self, tmp_path) -> None:
-        # Promoted from a warning: non-final parts below 5 MiB fail at complete-time
-        # server-side, after all bytes are spent — reject synchronously instead.
-        up, _, _ = make_uploader(tmp_path)
-        path = write_file(tmp_path, "f.csv", 4096)
+    def test_multi_part_below_provider_minimum_rejected(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """Non-final parts below the provider's 5 MiB minimum are rejected before any bytes are spent.
+
+        The server would reject them at complete-time, after the whole file had uploaded.
+        """
+        up, _, _ = make_uploader()
+        path = write_file("f.csv", 4096)
         with up, pytest.raises(ValueError, match="5 MiB"):
             up.enqueue_file(path, part_size=1024)
 
-    def test_missing_file_raises_synchronously(self, tmp_path) -> None:
-        up, _, _ = make_uploader(tmp_path)
+    def test_missing_file_raises_synchronously(self, make_uploader: MakeUploader, tmp_path: pathlib.Path) -> None:
+        """A nonexistent path fails at enqueue on the calling thread, not later inside a worker."""
+        up, _, _ = make_uploader()
         with up, pytest.raises(FileNotFoundError):
             up.enqueue_file(tmp_path / "missing.csv")
 
 
 class TestNonBlockingEnqueueAndCancellation:
-    def test_enqueue_never_blocks_and_queued_files_do_not_initiate(self, tmp_path) -> None:
+    def test_enqueue_never_blocks_and_queued_files_do_not_initiate(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """Enqueue returns immediately, and a still-queued file can be cancelled without any request."""
         service = FakeUploadService()
         service.upload_file_release.clear()  # unrelated; keep smalls out of this test
-        up, service, session = make_uploader(tmp_path, service=service, max_storage_workers=2, max_files_in_flight=1)
+        up, service, session = make_uploader(service=service, max_storage_workers=2, max_files_in_flight=1)
         session.put_release.clear()  # first file's PUT holds its driver open
-        paths = [write_file(tmp_path, f"f{i}.csv", 100) for i in range(10)]
+        paths = [write_file(f"f{i}.csv", 100) for i in range(10)]
         futures = [up.enqueue_file(p) for p in paths]  # returns immediately, driver pool of 1
         assert session.put_started.wait(timeout=10)
         assert service.calls.count("initiate") == 1  # only the running driver initiated
@@ -262,10 +291,11 @@ class TestNonBlockingEnqueueAndCancellation:
         up.close()
         assert service.calls.count("initiate") == 9  # the cancelled file never initiated
 
-    def test_running_file_is_not_cancellable(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
+    def test_running_file_is_not_cancellable(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """Cancelling a file whose upload already started returns False and the file completes."""
+        up, service, session = make_uploader(max_files_in_flight=1)
         session.put_release.clear()
-        path = write_file(tmp_path, "f.csv", 100)
+        path = write_file("f.csv", 100)
         fut = up.enqueue_file(path)
         assert session.put_started.wait(timeout=10)
         assert fut.cancel() is False
@@ -275,17 +305,20 @@ class TestNonBlockingEnqueueAndCancellation:
 
 
 class TestFailureHandling:
-    def test_part_failure_aborts_once_and_surfaces(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_part_retries=2)
+    def test_part_failure_aborts_once_and_surfaces(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A part that fails every retry fails the file and aborts its multipart upload exactly once."""
+        up, service, session = make_uploader(max_part_retries=2)
         session.put = MagicMock(side_effect=ConnectionError("boom"))
-        path = write_file(tmp_path, "f.csv", 100)
+        path = write_file("f.csv", 100)
         fut = up.enqueue_file(path)
         with pytest.raises(NominalMultipartUploadFailed):
             fut.result(timeout=10)
         up.close()
         assert service.calls.count("abort") == 1
 
-    def test_late_part_failure_does_not_wait_for_earlier_parts(self, tmp_path) -> None:
+    def test_late_part_failure_does_not_wait_for_earlier_parts(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """A failing part must cancel and abort while its lower-numbered siblings still upload.
 
         Collecting part results in index order would block on part 1 first, so this file's
@@ -293,10 +326,10 @@ class TestFailureHandling:
         real multi-GiB file, not for many minutes.
         """
         part_size = 5 * 1024 * 1024  # the provider minimum, so a 2-part plan is legal
-        up, service, _ = make_uploader(tmp_path, max_part_retries=1)
+        up, service, _ = make_uploader(max_part_retries=1)
         session = SplitPutSession()
         up._session = session
-        path = write_file(tmp_path, "two-parts.bin", part_size + 1)
+        path = write_file("two-parts.bin", part_size + 1)
         try:
             fut = up.enqueue_file(path, part_size=part_size)
             assert session.part_one_parked.wait(timeout=10)  # part 1 is mid-PUT and stays there
@@ -307,38 +340,41 @@ class TestFailureHandling:
             session.release.set()
             up.close()
 
-    def test_missing_etag_fails_part_immediately(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_part_retries=3)
+    def test_missing_etag_fails_part_immediately(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A PUT response without an ETag fails the part on its first attempt, never retried.
+
+        No retry can conjure an ETag the provider never sent; completing without one would
+        produce a silently corrupt object, so the part dies rather than re-uploading its bytes.
+        """
+        up, service, session = make_uploader(max_part_retries=3)
         session.put = MagicMock(
             return_value=SimpleNamespace(status_code=200, headers={}, raise_for_status=lambda: None)
         )
-        path = write_file(tmp_path, "f.csv", 100)
+        path = write_file("f.csv", 100)
         fut = up.enqueue_file(path)
         with pytest.raises(Exception, match="ETag"):
             fut.result(timeout=10)
         up.close()
-        # max_part_retries=3 on purpose: no retry can conjure an ETag the provider never sent, so
-        # the part must die on its first attempt rather than re-uploading its bytes twice more.
         assert session.put.call_count == 1
         assert service.calls.count("abort") == 1
 
-    def test_initiate_failure_settles_the_future_without_aborting(self, tmp_path) -> None:
+    def test_initiate_failure_settles_the_future_without_aborting(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """Initiate is what yields the upload id, so a failure there leaves nothing to roll back."""
-        up, service, _ = make_uploader(tmp_path)
+        up, service, _ = make_uploader()
         service.initiate_multipart_upload = MagicMock(side_effect=RuntimeError("initiate failed"))
-        path = write_file(tmp_path, "f.csv", 100)
+        path = write_file("f.csv", 100)
         with up:
             with pytest.raises(RuntimeError, match="initiate failed"):
                 up.enqueue_file(path).result(timeout=10)
         assert service.aborted == []
 
-    def test_one_file_failing_leaves_the_others_alone(self, tmp_path) -> None:
+    def test_one_file_failing_leaves_the_others_alone(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """Files are independent: one bad file must not take the batch down with it."""
-        up, service, _ = make_uploader(
-            tmp_path, service=FakeUploadService(fail_sign_for_key="bad.csv"), max_part_retries=2
-        )
-        good = write_file(tmp_path, "good.csv", 100)
-        bad = write_file(tmp_path, "bad.csv", 100)
+        up, service, _ = make_uploader(service=FakeUploadService(fail_sign_for_key="bad.csv"), max_part_retries=2)
+        good = write_file("good.csv", 100)
+        bad = write_file("bad.csv", 100)
         with up:
             good_fut = up.enqueue_file(good)
             bad_fut = up.enqueue_file(bad)
@@ -349,23 +385,26 @@ class TestFailureHandling:
 
 
 class TestClose:
-    def test_close_drains_and_settles_everything(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, max_files_in_flight=2)
-        futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(8)]
+    def test_close_drains_and_settles_everything(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A plain close runs every enqueued file to completion before returning."""
+        up, service, _ = make_uploader(max_files_in_flight=2)
+        futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(8)]
         up.close()
         assert all(f.done() for f in futures)
         assert service.calls.count("complete") == 8
 
-    def test_enqueue_after_close_raises(self, tmp_path) -> None:
-        up, _, _ = make_uploader(tmp_path)
+    def test_enqueue_after_close_raises(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A closed uploader refuses new files instead of silently dropping them."""
+        up, _, _ = make_uploader()
         up.close()
         with pytest.raises(RuntimeError):
-            up.enqueue_file(write_file(tmp_path, "f.csv", 100))
+            up.enqueue_file(write_file("f.csv", 100))
 
-    def test_cancel_pending_drops_queued_files(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
+    def test_cancel_pending_drops_queued_files(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A cancelling close drops queued files without ever initiating their uploads."""
+        up, service, session = make_uploader(max_files_in_flight=1)
         session.put_release.clear()
-        futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
+        futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
         session.put_release.set()
         up.close(cancel_pending=True)
@@ -374,19 +413,22 @@ class TestClose:
         assert len(cancelled) >= 1  # queued drivers dropped
         assert service.calls.count("initiate") < 6  # ...and never initiated
 
-    def test_exit_on_exception_takes_cancel_path(self, tmp_path) -> None:
-        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
+    def test_exit_on_exception_takes_cancel_path(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """Leaving the context on an exception drops pending files instead of finishing the batch."""
+        up, service, session = make_uploader(max_files_in_flight=1)
         session.put_release.clear()
-        futures = []
+        futures: list[Future[str]] = []
         with pytest.raises(KeyboardInterrupt):
             with up:
-                futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
+                futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
                 assert session.put_started.wait(timeout=10)
                 session.put_release.set()
                 raise KeyboardInterrupt
         assert any(f.cancelled() for f in futures)
 
-    def test_cancel_pending_with_queued_sibling_parts_still_returns(self, tmp_path) -> None:
+    def test_cancel_pending_with_queued_sibling_parts_still_returns(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """Close must return when a running driver has parts still QUEUED at revoke time.
 
         Revoking the part lane with `shutdown(cancel_futures=True)` drains those work items and
@@ -395,12 +437,12 @@ class TestClose:
         must instead RUN and short-circuit, so their futures settle normally.
         """
         part_size = 5 * 1024 * 1024
-        # max_storage_workers=1: part 1 occupies the only part worker, so part 2 is queued at close time.
-        up, service, _ = make_uploader(tmp_path, max_storage_workers=1, max_part_retries=1)
+        # max_storage_workers=1: part 1 occupies the only part worker, so part 2 queues at close.
+        up, service, _ = make_uploader(max_storage_workers=1, max_part_retries=1)
         session = SplitPutSession()
         session.part_two_fails = False  # part 2 must be revoked by close, not fail on its own
         up._session = session
-        fut = up.enqueue_file(write_file(tmp_path, "two-parts.bin", part_size + 1), part_size=part_size)
+        fut = up.enqueue_file(write_file("two-parts.bin", part_size + 1), part_size=part_size)
         assert session.part_one_parked.wait(timeout=10)  # part 1 running, part 2 queued behind it
 
         closer = threading.Thread(target=up.close, kwargs={"cancel_pending": True})
@@ -415,7 +457,9 @@ class TestClose:
             fut.result(timeout=10)
         assert service.calls.count("abort") == 1
 
-    def test_cancel_pending_revokes_queued_small_files_before_joining_drivers(self, tmp_path) -> None:
+    def test_cancel_pending_revokes_queued_small_files_before_joining_drivers(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """Queued small files must be dropped as the cancelling close starts, not after it joins.
 
         The driver join it precedes is not quick: it lasts a whole round of in-flight part PUTs
@@ -426,7 +470,6 @@ class TestClose:
         service = FakeUploadService()
         service.upload_file_release.clear()  # the first small file parks inside upload_file
         up, service, session = make_uploader(
-            tmp_path,
             service=service,
             small_file_route_max_bytes=128,
             max_small_file_workers=1,
@@ -435,11 +478,11 @@ class TestClose:
         )
         session.put_release.clear()  # a driver parked mid-PUT is what makes the driver join block
 
-        big_fut = up.enqueue_file(write_file(tmp_path, "big.csv", 4096))
+        big_fut = up.enqueue_file(write_file("big.csv", 4096))
         assert session.put_started.wait(timeout=10)
-        running = up.enqueue_file(write_file(tmp_path, "s0.csv", 100))
+        running = up.enqueue_file(write_file("s0.csv", 100))
         assert service.upload_file_started.wait(timeout=10)  # the only small worker is now parked
-        queued = [up.enqueue_file(write_file(tmp_path, f"s{i}.csv", 100)) for i in range(1, 4)]
+        queued = [up.enqueue_file(write_file(f"s{i}.csv", 100)) for i in range(1, 4)]
         settled = settled_latch(queued)
 
         closer = threading.Thread(target=up.close, kwargs={"cancel_pending": True})
@@ -462,7 +505,9 @@ class TestClose:
         assert all(f.cancelled() for f in queued)
         assert service.calls.count("upload_file") == 1  # the queued ones never ran
 
-    def test_futures_are_waitable_after_a_cancelling_close(self, tmp_path) -> None:
+    def test_futures_are_waitable_after_a_cancelling_close(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """Dropped futures must be settled AND waiter-visible once close returns.
 
         Revoking them via `shutdown(cancel_futures=True)` would leave them
@@ -470,9 +515,9 @@ class TestClose:
         so close settles every issued future itself. This pins the public guarantee that
         idiomatic stdlib waiting cannot hang after a cancelling close.
         """
-        up, service, session = make_uploader(tmp_path, max_files_in_flight=1)
+        up, service, session = make_uploader(max_files_in_flight=1)
         session.put_release.clear()
-        futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
+        futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
         session.put_release.set()
         up.close(cancel_pending=True)
@@ -481,16 +526,20 @@ class TestClose:
         assert not_done == set(), "close returned with futures still invisible to wait()"
         assert any(f.cancelled() for f in futures)  # the drop actually happened
 
-    def test_close_closes_the_s3_session_and_never_the_upload_client(self, tmp_path) -> None:
-        up, _, session = make_uploader(tmp_path)
+    def test_close_closes_the_s3_session_and_never_the_upload_client(self, make_uploader: MakeUploader) -> None:
+        """Close releases the storage session it owns; the shared upload client is not its to touch."""
+        up, _, session = make_uploader()
         up.close()
-        assert session.closed  # S3 session owned + closed; the upload client is not ours to touch
+        assert session.closed
 
 
 class TestSharedUploadClient:
     def test_uses_the_clients_shared_upload_client(self) -> None:
-        # The shared conjure client's transport-level throttle retries ARE the local layer of
-        # the two-layer backoff; the uploader must ride it rather than building its own.
+        """The uploader rides the client's shared transport rather than building its own.
+
+        The shared conjure client's transport-level throttle retries ARE the local layer of
+        the two-layer backoff.
+        """
         client = fake_nominal_client()
         up = MultipartUploader.create(client)
         try:
@@ -500,22 +549,28 @@ class TestSharedUploadClient:
 
 
 class TestNoDeadlock:
-    def test_bound_of_one_with_multipart_file_completes(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, max_storage_workers=2, max_files_in_flight=1)
-        path = write_file(tmp_path, "f.csv", 100)
+    def test_bound_of_one_with_multipart_file_completes(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """The tightest driver bound still completes a multipart file (drivers never starve parts)."""
+        up, _, _ = make_uploader(max_storage_workers=2, max_files_in_flight=1)
+        path = write_file("f.csv", 100)
         with up:
             assert up.enqueue_file(path).result(timeout=10)
 
-    def test_long_puts_do_not_stall_small_files(self, tmp_path) -> None:
+    def test_long_puts_do_not_stall_small_files(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """A saturated part pool must not delay the small-file route.
+
+        max_storage_workers=1: the big file's parked PUT occupies the ENTIRE part pool. Under
+        one shared pool the small file would queue behind it and never run.
+        """
         service = FakeUploadService()
-        # max_storage_workers=1: the big file is a single part, so its parked PUT occupies the ENTIRE
-        # part pool. Under one shared pool the small file would queue behind it and never run.
         up, service, session = make_uploader(
-            tmp_path, service=service, small_file_route_max_bytes=512, max_storage_workers=1, max_small_file_workers=2
+            service=service, small_file_route_max_bytes=512, max_storage_workers=1, max_small_file_workers=2
         )
         session.put_release.clear()  # every PUT parks its part thread
-        big = write_file(tmp_path, "big.csv", 4096)
-        small = write_file(tmp_path, "small.csv", 100)
+        big = write_file("big.csv", 4096)
+        small = write_file("small.csv", 100)
         big_fut = up.enqueue_file(big)
         assert session.put_started.wait(timeout=10)  # the part pool's only worker is now parked
         small_fut = up.enqueue_file(small)
@@ -526,7 +581,9 @@ class TestNoDeadlock:
 
 
 class TestPartLayout:
-    def test_each_part_carries_its_own_byte_range_and_etag(self, tmp_path) -> None:
+    def test_each_part_carries_its_own_byte_range_and_etag(
+        self, make_uploader: MakeUploader, tmp_path: pathlib.Path
+    ) -> None:
         """Every part PUTs exactly its slice, and completion files each ETag under its part number.
 
         A slice or ETag mix-up completes an object that is silently corrupt — nothing downstream
@@ -534,7 +591,7 @@ class TestPartLayout:
         """
         part_size = 5 * 1024 * 1024  # the provider minimum, so a 3-part plan is legal
         body = b"A" * part_size + b"B" * part_size + b"C" * 7
-        up, service, _ = make_uploader(tmp_path)
+        up, service, _ = make_uploader()
         session = RecordingPutSession()
         up._session = session
         path = tmp_path / "three-parts.bin"
@@ -546,12 +603,12 @@ class TestPartLayout:
         assert session.parts == {1: b"A" * part_size, 2: b"B" * part_size, 3: b"C" * 7}
         assert service.completed_etags["three-parts.bin"] == {1: '"etag-1"', 2: '"etag-2"', 3: '"etag-3"'}
 
-    def test_an_empty_file_puts_one_zero_byte_part(self, tmp_path) -> None:
+    def test_an_empty_file_puts_one_zero_byte_part(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """Completion needs at least one part to list, so an empty file still uploads one."""
-        up, service, _ = make_uploader(tmp_path)
+        up, service, _ = make_uploader()
         session = RecordingPutSession()
         up._session = session
-        path = write_file(tmp_path, "empty.csv", 0)
+        path = write_file("empty.csv", 0)
 
         with up:
             up.enqueue_file(path).result(timeout=10)
@@ -569,6 +626,7 @@ class TestCreateValidation:
             MultipartUploader.create(fake_nominal_client(), **{kwarg: value})
 
     def test_small_file_route_ceiling_is_four_mib(self) -> None:
+        """The single-shot opt-in ceiling is a public contract; moving it is a breaking change."""
         assert MAX_SMALL_FILE_ROUTE_BYTES == 4 * 1024 * 1024
 
     @pytest.mark.parametrize("value", [0, -1, MAX_SMALL_FILE_ROUTE_BYTES + 1])
@@ -579,10 +637,12 @@ class TestCreateValidation:
 
 
 class TestSmallFileRoute:
-    def test_declares_the_real_size_and_never_touches_storage_directly(self, tmp_path) -> None:
+    def test_declares_the_real_size_and_never_touches_storage_directly(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
         """`size_bytes` makes the server stream to storage instead of capping at its memory limit."""
-        up, service, session = make_uploader(tmp_path, small_file_route_max_bytes=1024)
-        path = write_file(tmp_path, "small.csv", 100)
+        up, service, session = make_uploader(small_file_route_max_bytes=1024)
+        path = write_file("small.csv", 100)
 
         with up:
             assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/small.csv"
@@ -590,9 +650,12 @@ class TestSmallFileRoute:
         assert service.upload_file_args == [("small.csv", 100, 100)]  # (file name, size_bytes, body length)
         assert not session.put_started.is_set()  # no direct-to-storage PUT on this route
 
-    def test_a_file_above_the_threshold_still_takes_multipart(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=64)
-        path = write_file(tmp_path, "big.csv", 200)
+    def test_a_file_above_the_threshold_still_takes_multipart(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """Files bigger than the threshold ignore the single-shot route entirely."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=64)
+        path = write_file("big.csv", 200)
 
         with up:
             up.enqueue_file(path).result(timeout=10)
@@ -600,25 +663,22 @@ class TestSmallFileRoute:
         assert service.upload_file_args == []
         assert service.calls == ["initiate", "sign", "complete"]
 
-    def test_the_route_is_on_by_default_with_files_split_at_one_mib(self, tmp_path) -> None:
+    def test_the_route_is_on_by_default_with_files_split_at_one_mib(self, write_file: WriteFile) -> None:
         """`create()`'s own default must route at-threshold files single-shot and larger multipart."""
         service = FakeUploadService()
         up = MultipartUploader.create(fake_nominal_client(service))
         up._session = RecordingPutSession()
 
         with up:
-            up.enqueue_file(write_file(tmp_path, "at_threshold.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES)).result(
-                timeout=10
-            )
-            up.enqueue_file(write_file(tmp_path, "above.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES + 1)).result(
-                timeout=10
-            )
+            up.enqueue_file(write_file("at_threshold.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES)).result(timeout=10)
+            up.enqueue_file(write_file("above.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES + 1)).result(timeout=10)
 
         assert [name for (name, _, _) in service.upload_file_args] == ["at_threshold.csv"]
 
-    def test_passing_none_disables_the_route(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=None)
-        path = write_file(tmp_path, "small.csv", 100)
+    def test_passing_none_disables_the_route(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
+        """`small_file_route_max_bytes=None` sends even tiny files through multipart."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=None)
+        path = write_file("small.csv", 100)
 
         with up:
             up.enqueue_file(path).result(timeout=10)
@@ -634,43 +694,38 @@ def _throttled() -> requests.exceptions.HTTPError:
     return requests.exceptions.HTTPError("429 too many requests", response=response)
 
 
-class _FakeClock:
-    """Deterministic clock whose sleep advances it, so a throttle retry never really waits."""
+def _throttle_once(original: Callable[..., Any]) -> tuple[Callable[..., Any], dict[str, int]]:
+    """Wrap `original` so its first call throttles; return the wrapper and a call counter."""
+    calls = {"n": 0}
 
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def __call__(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.now += seconds
-
-
-def install_test_gate(up: MultipartUploader, *, deadline_seconds: float = 120.0) -> _FakeClock:
-    """Swap in a gate on a fake clock, so throttle retries are instant and countable.
-
-    The lane is made wide enough that admission never blocks, and damper sleeps run on the
-    fake clock; the gate's own semantics are covered in test_upload_pacing.
-    """
-    clock = _FakeClock()
-    up._gate = _ThrottleGate(
-        max_concurrency=1000, deadline_seconds=deadline_seconds, clock=clock, sleep=clock.sleep, jitter=lambda d: d
-    )
-    return clock
-
-
-def throttle_first_call(service: FakeUploadService, method: str, counter: dict[str, int]):
-    """Replace `service.method` with one that throttles once, then defers to the original."""
-    original = getattr(service, method)
-
-    def throttled_once(*args, **kwargs):
-        counter["n"] += 1
-        if counter["n"] == 1:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] == 1:
             raise _throttled()
         return original(*args, **kwargs)
 
-    setattr(service, method, throttled_once)
+    return wrapper, calls
+
+
+def _throttle_initiate_once(service: FakeUploadService) -> dict[str, int]:
+    """Make the first initiate call throttle; return its call counter."""
+    wrapper, calls = _throttle_once(service.initiate_multipart_upload)
+    service.initiate_multipart_upload = wrapper
+    return calls
+
+
+def _throttle_sign_once(service: FakeUploadService) -> dict[str, int]:
+    """Make the first sign call throttle; return its call counter."""
+    wrapper, calls = _throttle_once(service.sign_part)
+    service.sign_part = wrapper
+    return calls
+
+
+def _throttle_complete_once(service: FakeUploadService) -> dict[str, int]:
+    """Make the first complete call throttle; return its call counter."""
+    wrapper, calls = _throttle_once(service.complete_multipart_upload)
+    service.complete_multipart_upload = wrapper
+    return calls
 
 
 class TestThrottlingIsAbsorbedByTheGate:
@@ -680,13 +735,26 @@ class TestThrottlingIsAbsorbedByTheGate:
     dead file. These pin each call site by throttling it and requiring the file to survive.
     """
 
-    @pytest.mark.parametrize("method", ["initiate_multipart_upload", "sign_part", "complete_multipart_upload"])
-    def test_a_throttled_multipart_call_is_retried_rather_than_failing_the_file(self, tmp_path, method: str) -> None:
-        up, service, _ = make_uploader(tmp_path)
+    @pytest.mark.parametrize(
+        "throttle_endpoint_once",
+        [
+            pytest.param(_throttle_initiate_once, id="initiate"),
+            pytest.param(_throttle_sign_once, id="sign"),
+            pytest.param(_throttle_complete_once, id="complete"),
+        ],
+    )
+    def test_a_throttled_multipart_call_is_retried_rather_than_failing_the_file(
+        self,
+        throttle_endpoint_once: Callable[[FakeUploadService], dict[str, int]],
+        make_uploader: MakeUploader,
+        write_file: WriteFile,
+        install_test_gate: Callable[..., Any],
+    ) -> None:
+        """A single throttle on any multipart call site is retried instead of failing the file."""
+        up, service, _ = make_uploader()
         install_test_gate(up)
-        calls = {"n": 0}
-        throttle_first_call(service, method, calls)
-        path = write_file(tmp_path, "f.csv", 100)
+        calls = throttle_endpoint_once(service)
+        path = write_file("f.csv", 100)
 
         with up:
             assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/f.csv"
@@ -694,35 +762,46 @@ class TestThrottlingIsAbsorbedByTheGate:
         assert calls["n"] == 2  # throttled once, retried inside the gate, then succeeded
         assert service.aborted == []
 
-    def test_a_throttled_small_route_upload_is_retried_rather_than_failing_the_file(self, tmp_path) -> None:
-        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=1024)
+    def test_a_throttled_small_route_upload_is_retried_rather_than_failing_the_file(
+        self,
+        make_uploader: MakeUploader,
+        write_file: WriteFile,
+        install_test_gate: Callable[..., Any],
+    ) -> None:
+        """A single throttle on the single-shot route is retried instead of failing the file."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=1024)
         install_test_gate(up)
-        calls = {"n": 0}
-        throttle_first_call(service, "upload_file", calls)
-        path = write_file(tmp_path, "small.csv", 100)
+        wrapper, calls = _throttle_once(service.upload_file)
+        service.upload_file = wrapper
+        path = write_file("small.csv", 100)
 
         with up:
             assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/small.csv"
 
         assert calls["n"] == 2
 
-    def test_a_permanently_throttled_sign_spends_exactly_one_budget(self, tmp_path) -> None:
+    def test_a_permanently_throttled_sign_spends_exactly_one_budget(
+        self,
+        make_uploader: MakeUploader,
+        write_file: WriteFile,
+        install_test_gate: Callable[..., Any],
+    ) -> None:
         """A sign that throttles forever must exhaust one gate budget, not one per part retry.
 
         It also has to surface intact as `NominalRequestThrottledError` instead of being folded
         into a multipart failure group, which would hide why the file died.
         """
-        up, service, _ = make_uploader(tmp_path, max_part_retries=3)
+        up, service, _ = make_uploader(max_part_retries=3)
         clock = install_test_gate(up, deadline_seconds=3.0)
         calls = {"n": 0}
 
-        def always_throttle(*args, **kwargs):
+        def always_throttle(*args: Any, **kwargs: Any) -> Any:
             calls["n"] += 1
             clock.now += 1.0  # each attempt burns a second of the budget
             raise _throttled()
 
         service.sign_part = always_throttle
-        path = write_file(tmp_path, "f.csv", 100)
+        path = write_file("f.csv", 100)
 
         with up:
             with pytest.raises(NominalRequestThrottledError):

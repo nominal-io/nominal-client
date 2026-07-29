@@ -24,6 +24,7 @@ from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalC
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.exceptions import NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
@@ -66,14 +67,6 @@ class _Upload:
     path: Path
     file_type: FileType
     target: common_pb2.IngestSource
-
-
-@dataclass(frozen=True)
-class _PendingItem:
-    """A built ingest item and the uploads whose sources it is still waiting on (1 for most kinds)."""
-
-    item: ingest_service_pb2.IngestItem
-    uploads: tuple[_Upload, ...]
 
 
 def _upload_all(
@@ -127,7 +120,10 @@ class IngestBuilder:
         """
         self._client = client
         self._dataset_rid = rid_from_instance_or_string(dataset)
-        self._items: list[_PendingItem] = []
+        # Parallel accumulators: the items to send, and the file uploads that must land first
+        # (each upload's `target` aliases a source sub-message inside one of the items).
+        self._items: list[ingest_service_pb2.IngestItem] = []
+        self._uploads: list[_Upload] = []
         self._tags: dict[str, str] = dict(tags or {})
         self._submitted = False
 
@@ -188,7 +184,8 @@ class IngestBuilder:
             ),
         )
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
-        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.file.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, file_type, item.file.source))
         return self
 
     def add_parquet(
@@ -238,7 +235,8 @@ class IngestBuilder:
             ),
         )
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
-        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.file.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, file_type, item.file.source))
         return self
 
     def add_avro_stream(
@@ -272,7 +270,8 @@ class IngestBuilder:
             )
 
         # Avro deliberately omits channel_name_overrides: the backend rejects it for avro
-        # ("channel names come from record data"). TODO(drake): expose it once the backend accepts it.
+        # ("channel names come from record data").
+        # TODO(drake): expose channel_name_overrides here once the backend accepts it for avro.
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=_canonical_avro_timestamp_metadata(),
             units=units,
@@ -280,7 +279,8 @@ class IngestBuilder:
             avro=file_ingest_pb2.AvroIngestOptions(),
         )
         item = ingest_service_pb2.IngestItem(file=file_ingest_pb2.FileIngestItem(ingest=options), tags=tags or {})
-        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.file.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, file_type, item.file.source))
         return self
 
     @overload
@@ -353,7 +353,8 @@ class IngestBuilder:
             mcap=options,
             tags=tags or {},
         )
-        self._items.append(_PendingItem(item, (_Upload(file_path, FileTypes.MCAP, item.mcap.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, FileTypes.MCAP, item.mcap.source))
         return self
 
     @overload
@@ -416,7 +417,8 @@ class IngestBuilder:
             ),
         )
         item = ingest_service_pb2.IngestItem(log=log, tags=tags or {})
-        self._items.append(_PendingItem(item, (_Upload(file_path, file_type, item.log.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, file_type, item.log.source))
         return self
 
     def add_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
@@ -431,7 +433,8 @@ class IngestBuilder:
         """
         file_path = Path(path)
         item = ingest_service_pb2.IngestItem(dataflash=mcap_ingest_pb2.DataflashIngestItem(), tags=tags or {})
-        self._items.append(_PendingItem(item, (_Upload(file_path, FileTypes.DATAFLASH, item.dataflash.source),)))
+        self._items.append(item)
+        self._uploads.append(_Upload(file_path, FileTypes.DATAFLASH, item.dataflash.source))
         return self
 
     @overload
@@ -501,11 +504,11 @@ class IngestBuilder:
             ),
         )
         item = ingest_service_pb2.IngestItem(containerized=containerized, tags=tags or {})
-        uploads = tuple(
+        self._items.append(item)
+        self._uploads.extend(
             _Upload(Path(source), FileType.from_path(Path(source)), item.containerized.sources[name])
             for name, source in sources.items()
         )
-        self._items.append(_PendingItem(item, uploads))
         return self
 
     def submit(self) -> IngestionJob:
@@ -523,11 +526,11 @@ class IngestBuilder:
             produced files with `list(job.as_files_ingested())`.
 
         Raises:
-            RuntimeError: this builder was already submitted.
+            NominalIngestError: this builder was already submitted.
             ValueError: if no files have been added.
         """
         if self._submitted:
-            raise RuntimeError(
+            raise NominalIngestError(
                 "this IngestBuilder was already submitted; builders are single-use — "
                 "create a new builder to ingest more files"
             )
@@ -535,11 +538,10 @@ class IngestBuilder:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
         self._submitted = True
 
-        uploads = [upload for pending in self._items for upload in pending.uploads]
-        _upload_all(uploads, self._client)
+        _upload_all(self._uploads, self._client)
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
-            items=[pending.item for pending in self._items],
+            items=self._items,
             tags=self._tags,
         )
         with translate_grpc_errors():
