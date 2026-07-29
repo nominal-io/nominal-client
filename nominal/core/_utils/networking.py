@@ -6,7 +6,7 @@ import ssl
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence, Type, TypeVar
+from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
 import truststore
@@ -220,65 +220,18 @@ def create_conjure_service_client(
     Returns:
         Instantiated conjure client object to hit the API with
     """
-    client, _session = create_conjure_service_client_with_session(
-        service_class,
-        user_agent=user_agent,
-        service_config=service_config,
-        return_none_for_unknown_union_types=return_none_for_unknown_union_types,
-        header_provider=header_provider,
-    )
-    return client
-
-
-def create_conjure_service_client_with_session(
-    service_class: Type[T],
-    user_agent: str,
-    service_config: ServiceConfiguration,
-    return_none_for_unknown_union_types: bool = False,
-    header_provider: HeaderProvider | None = None,
-    retry_status_forcelist: Sequence[int] = (308, 429, 503),
-    pool_connections: int | None = None,
-    pool_maxsize: int | None = None,
-) -> tuple[T, requests.Session]:
-    """As `create_conjure_service_client`, but returns the session too.
-
-    A caller that owns the client's lifecycle can close the returned session, and can tune the
-    transport's status-retries and connection-pool sizing. The default forcelist matches the
-    behavior of `create_conjure_service_client` exactly.
-
-    Args:
-        service_class: Conjure class of the service to create a client for
-        user_agent: User agent string to add as a header to all requests
-        service_config: Configuration for the service containing metadata such as the base URL of the api, security
-            settings, and timeout settings.
-        return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
-            union type is encountered during decoding API responses.
-        header_provider: Additional default headers to attach to each request.
-        retry_status_forcelist: HTTP status codes the transport retries automatically. Narrow this when the caller
-            wants to handle a status itself (e.g. to pace requests) rather than have urllib3 silently retry it.
-        pool_connections: Number of cached host connection pools. Defaults to the `requests` default when None.
-        pool_maxsize: Per-host connection limit. Defaults to the `requests` default when None.
-
-    Returns:
-        Tuple of the instantiated conjure client object and the session backing it
-    """
     # setup retry to match java remoting
     # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
     retry = RetryWithJitter(
         total=service_config.max_num_retries,
         connect=service_config.max_num_retries,  # Allow connection error retries
         read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
-        status_forcelist=list(retry_status_forcelist),
+        status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    adapter_kwargs: dict[str, Any] = {}
-    if pool_connections is not None:
-        adapter_kwargs["pool_connections"] = pool_connections
-    if pool_maxsize is not None:
-        adapter_kwargs["pool_maxsize"] = pool_maxsize
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry, **adapter_kwargs)
+    transport_adapter = NominalRequestsAdapter(max_retries=retry)
     session = HeaderProviderSession(header_provider)
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -287,7 +240,7 @@ def create_conjure_service_client_with_session(
         verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
-    client = service_class(  # type: ignore
+    return service_class(  # type: ignore
         session,
         service_config.uris,
         service_config.connect_timeout,
@@ -295,7 +248,6 @@ def create_conjure_service_client_with_session(
         verify,
         return_none_for_unknown_union_types,
     )
-    return client, session
 
 
 def create_conjure_client_factory(

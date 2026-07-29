@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import pathlib
 import threading
-from concurrent.futures import CancelledError, Future
+from concurrent.futures import CancelledError, Future, wait
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from conjure_python_client import ServiceConfiguration
-from conjure_python_client._http.configuration import SslConfiguration
 
 from nominal.core.exceptions import NominalMultipartUploadFailed, NominalRequestThrottledError
-from nominal.experimental.ingest._multipart_uploader import MAX_SMALL_FILE_ROUTE_BYTES, MultipartUploader
-from nominal.experimental.ingest._upload_pacing import _AdaptivePacer, _ThrottleGate
+from nominal.experimental.ingest._multipart_uploader import (
+    DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES,
+    MAX_SMALL_FILE_ROUTE_BYTES,
+    MultipartUploader,
+)
+from nominal.experimental.ingest._upload_pacing import _ThrottleGate
 
 
 class FakeUploadService:
@@ -143,6 +145,9 @@ def make_uploader(tmp_path: pathlib.Path, service: FakeUploadService | None = No
     clients = MagicMock()
     clients.auth_header = "Bearer test"
     clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
+    # Route off unless a test opts in: the fixtures here are all tiny, and the multipart tests
+    # must keep exercising multipart under the production default (which routes them single-shot).
+    create_kwargs.setdefault("small_file_route_max_bytes", None)
     up = MultipartUploader.create(clients, upload_client=service, **create_kwargs)
     session = FakePutSession()
     up._session = session  # swap the S3 session for a fake; TLS never touched in unit tests
@@ -158,9 +163,10 @@ def write_file(tmp_path: pathlib.Path, name: str, size: int) -> pathlib.Path:
 def settled_latch(futures: list[Future[str]]) -> threading.Event:
     """An event set once every one of `futures` has settled, cancellations included.
 
-    `concurrent.futures.wait` cannot be used for this: a future revoked by
-    `shutdown(cancel_futures=True)` is cancelled but never notified, a state `wait` does not
-    count as done and is never woken by. Done callbacks do fire on cancellation.
+    Done callbacks fire the instant a future is cancelled, so this observes a mid-close drop
+    at the earliest possible moment. `concurrent.futures.wait` only wakes once the pools'
+    workers have drained (and thereby waiter-notified) the cancelled items — a point close
+    guarantees only by the time it returns, too late for a probe that runs DURING close.
     """
     latch = threading.Event()
     lock = threading.Lock()
@@ -179,13 +185,10 @@ def settled_latch(futures: list[Future[str]]) -> threading.Event:
 
 
 def real_clients():
-    """A clients bundle complete enough for `create` to build its own upload client."""
-    config = ServiceConfiguration(security=SslConfiguration(trust_store_path=None), uris=["https://api.example.test"])
+    """A clients bundle shaped like `create` consumes it: shared upload client + auth context."""
     clients = MagicMock()
     clients.auth_header = "Bearer test"
     clients.header_provider = None
-    clients._user_agent = "test-agent/0"
-    clients._service_config = config
     clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
     return clients
 
@@ -460,36 +463,50 @@ class TestClose:
         assert all(f.cancelled() for f in queued)
         assert service.calls.count("upload_file") == 1  # the queued ones never ran
 
-    def test_close_closes_owned_sessions_but_not_injected_client(self, tmp_path) -> None:
+    def test_futures_are_waitable_after_a_cancelling_close(self, tmp_path) -> None:
+        """Dropped futures must be settled AND waiter-visible once close returns.
+
+        Revoking them via `shutdown(cancel_futures=True)` would leave them
+        CANCELLED-but-never-notified — a state `concurrent.futures.wait` blocks on forever —
+        so close settles every issued future itself. This pins the public guarantee that
+        idiomatic stdlib waiting cannot hang after a cancelling close.
+        """
+        up, service, session = make_uploader(tmp_path, max_multipart_files_in_flight=1)
+        session.put_release.clear()
+        futures = [up.enqueue_file(write_file(tmp_path, f"f{i}.csv", 100)) for i in range(6)]
+        assert session.put_started.wait(timeout=10)
+        session.put_release.set()
+        up.close(cancel_pending=True)
+
+        done, not_done = wait(futures, timeout=5)
+        assert not_done == set(), "close returned with futures still invisible to wait()"
+        assert any(f.cancelled() for f in futures)  # the drop actually happened
+
+    def test_close_closes_the_s3_session_and_never_the_upload_client(self, tmp_path) -> None:
         up, _, session = make_uploader(tmp_path)
         up.close()
-        assert session.closed  # S3 session owned + closed
-        assert up._owned_client_session is None  # injected client: nothing owned to close
+        assert session.closed  # S3 session owned + closed; the upload client is not ours to touch
 
 
-class TestDedicatedUploadClient:
-    def test_no_injected_client_builds_one_that_does_not_retry_throttles(self) -> None:
-        up = MultipartUploader.create(real_clients())
+class TestDefaultUploadClient:
+    def test_defaults_to_the_shared_client(self) -> None:
+        # The shared conjure client's transport-level throttle retries ARE the local layer of
+        # the two-layer backoff; the uploader must ride it rather than building its own.
+        clients = real_clients()
+        up = MultipartUploader.create(clients)
         try:
-            owned = up._owned_client_session
-            assert owned is not None
-            adapter = owned.get_adapter("https://api.example.test")
-            # 429/503 must reach the gate in one round trip, not after transport retry exhaustion
-            assert list(adapter.max_retries.status_forcelist) == [308]
+            assert up._upload_client is clients.upload
         finally:
             up.close()
 
-    def test_close_closes_the_owned_client_session(self) -> None:
-        up = MultipartUploader.create(real_clients())
-        real_session = up._owned_client_session
-        assert real_session is not None
-        owned = MagicMock()
-        up._owned_client_session = owned
+    def test_injected_client_wins_over_the_shared_one(self) -> None:
+        clients = real_clients()
+        injected = MagicMock()
+        up = MultipartUploader.create(clients, upload_client=injected)
         try:
-            up.close()
-            owned.close.assert_called_once()
+            assert up._upload_client is injected
         finally:
-            real_session.close()
+            up.close()
 
 
 class TestNoDeadlock:
@@ -593,6 +610,35 @@ class TestSmallFileRoute:
         assert service.upload_file_args == []
         assert service.calls == ["initiate", "sign", "complete"]
 
+    def test_the_route_is_on_by_default_with_files_split_at_one_mib(self, tmp_path) -> None:
+        """`create()`'s own default must route at-threshold files single-shot and larger multipart."""
+        service = FakeUploadService()
+        clients = MagicMock()
+        clients.auth_header = "Bearer test"
+        clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
+        up = MultipartUploader.create(clients, upload_client=service)
+        up._session = RecordingPutSession()
+
+        with up:
+            up.enqueue_file(write_file(tmp_path, "at_threshold.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES)).result(
+                timeout=10
+            )
+            up.enqueue_file(write_file(tmp_path, "above.csv", DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES + 1)).result(
+                timeout=10
+            )
+
+        assert [name for (name, _, _) in service.upload_file_args] == ["at_threshold.csv"]
+
+    def test_passing_none_disables_the_route(self, tmp_path) -> None:
+        up, service, _ = make_uploader(tmp_path, small_file_route_max_bytes=None)
+        path = write_file(tmp_path, "small.csv", 100)
+
+        with up:
+            up.enqueue_file(path).result(timeout=10)
+
+        assert service.upload_file_args == []
+        assert service.calls == ["initiate", "sign", "complete"]
+
 
 class _Throttled(Exception):
     """The server refusing a request because the caller is over its request budget."""
@@ -616,12 +662,13 @@ class _FakeClock:
 def install_test_gate(up: MultipartUploader, *, deadline_seconds: float = 120.0) -> _FakeClock:
     """Swap in a gate on a fake clock, so throttle retries are instant and countable.
 
-    The pace rate is pinned (floor == initial) so pacing contributes no wall clock of its own
-    and cannot drift between attempts; rate adaptation itself is covered in test_upload_pacing.
+    The lane is made wide enough that admission never blocks, and damper sleeps run on the
+    fake clock; the gate's own semantics are covered in test_upload_pacing.
     """
     clock = _FakeClock()
-    pacer = _AdaptivePacer(initial_rate=1000.0, min_rate=1000.0, clock=clock, sleep=clock.sleep)
-    up._gate = _ThrottleGate(pacer, deadline_seconds=deadline_seconds, clock=clock)
+    up._gate = _ThrottleGate(
+        max_concurrency=1000, deadline_seconds=deadline_seconds, clock=clock, sleep=clock.sleep, jitter=lambda d: d
+    )
     return clock
 
 

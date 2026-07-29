@@ -11,6 +11,7 @@ import logging
 import math
 import pathlib
 import threading
+import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -23,7 +24,6 @@ from typing_extensions import Self
 from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.multipart import (
     DEFAULT_CHUNK_SIZE,
-    DEFAULT_NUM_WORKERS,
     _abort,
     _complete_multipart_upload,
     _initiate_multipart_upload,
@@ -32,10 +32,7 @@ from nominal.core._utils.multipart import (
     _wrap_multipart_retry_exception,
     path_upload_name,
 )
-from nominal.core._utils.networking import (
-    create_conjure_service_client_with_session,
-    create_multipart_request_session,
-)
+from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
@@ -45,7 +42,7 @@ from nominal.core.filetype import FileType
 from nominal.experimental.ingest._upload_pacing import (
     _ABORT_THROTTLE_DEADLINE_S,
     DEFAULT_THROTTLE_DEADLINE_S,
-    _AdaptivePacer,
+    NOMINAL_MAX_CONCURRENCY,
     _ThrottleGate,
 )
 
@@ -57,6 +54,16 @@ logger = logging.getLogger(__name__)
 # throughput of the two routes reaches parity around this size, above which multipart is strictly
 # better (its bytes stream directly to storage and its parts parallelize). Experimental.
 MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 4 MiB
+
+# Default single-shot threshold. Below this size the route's single request beats the multipart
+# flow's three; comfortably inside the hard ceiling above so there is headroom to raise it.
+DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES = 1024 * 1024  # 1 MiB
+
+# Benchmark-tuned part-pool default. Aggregate upload throughput rises with concurrent PUT
+# streams only until the network path saturates; past that point more streams actively degrade
+# every stream (they congest a shared queue and recover slowly from the synchronized losses),
+# so the default is a moderate fixed width rather than something scaled to CPU count.
+DEFAULT_MAX_WORKERS = 10
 
 _STORAGE_MIN_PART_SIZE_BYTES = 5 * 1024 * 1024  # provider minimum for every part but the last
 _STORAGE_MAX_PARTS = 10_000  # provider maximum parts per multipart upload
@@ -138,10 +145,8 @@ class MultipartUploader:
     _auth_header: str = field(repr=False)
     _workspace_rid: str | None = field(repr=False)
     # The session used for direct-to-storage PUTs; always owned (and closed) by this uploader.
+    # The upload client itself is the caller's (usually the shared conjure client): never closed here.
     _session: requests.Session = field(repr=False)
-    # The dedicated upload client's session, or None when the client was injected. An injected
-    # client's lifecycle belongs to its owner, so the uploader never closes it.
-    _owned_client_session: requests.Session | None = field(repr=False)
     _small_pool: ThreadPoolExecutor = field(repr=False)
     _driver_pool: ThreadPoolExecutor = field(repr=False)
     _part_pool: ThreadPoolExecutor = field(repr=False)
@@ -152,6 +157,11 @@ class MultipartUploader:
     # Set by a cancelling close: every part task short-circuits instead of uploading. This is how
     # the part lane is revoked -- see `close` for why the executor's own cancellation cannot be.
     _draining: threading.Event = field(default_factory=threading.Event, repr=False)
+    # Every future handed out by `enqueue_file`, so a cancelling close can settle the queued ones
+    # itself (see `close`). `_issue_lock` serializes issuing against the transition to `_closed`:
+    # a future appended under it is guaranteed to be covered by close's cancel pass.
+    _issued_futures: list[Future[str]] = field(default_factory=list, repr=False)
+    _issue_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @classmethod
     def create(
@@ -162,7 +172,8 @@ class MultipartUploader:
         max_workers: int | None = None,
         small_route_workers: int | None = None,
         max_multipart_files_in_flight: int | None = None,
-        small_file_route_max_bytes: int | None = None,
+        small_file_route_max_bytes: int | None = DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES,
+        nominal_max_concurrency: int = NOMINAL_MAX_CONCURRENCY,
         timeout: float = 30.0,
         max_part_retries: int = 3,
         throttle_deadline: float = DEFAULT_THROTTLE_DEADLINE_S,
@@ -171,25 +182,39 @@ class MultipartUploader:
         """Create a MultipartUploader sized for one batch of uploads.
 
         Args:
-            clients: The client bundle to upload with. Duck-typed: `auth_header`,
-                `header_provider`, `resolve_default_workspace_rid()`, `_user_agent`,
-                `_service_config`.
+            clients: The client bundle to upload with. Duck-typed: `upload`, `auth_header`,
+                `header_provider`, `resolve_default_workspace_rid()`.
             workspace_rid: Workspace to upload into. Defaults to the clients' default workspace.
-            max_workers: Part-pool size, and the default for the other two pools.
-            small_route_workers: Small-pool size. Defaults to `max_workers`.
+            max_workers: Part-pool size — the number of concurrent direct-to-storage PUT streams.
+                Defaults to `DEFAULT_MAX_WORKERS` (benchmark-tuned; see its comment). Raise it
+                only on network paths measured to reward more concurrent streams — past
+                saturation, extra streams slow each other down.
+            small_route_workers: Small-pool size. Defaults to `nominal_max_concurrency` — small
+                files spend their whole task inside the nominal lane, so extra threads beyond the
+                lane width would only queue at its entrance.
             max_multipart_files_in_flight: Driver-pool size, which *is* the bound on concurrently
-                open multipart uploads. Defaults to `max_workers`; there is no unbounded mode.
-            small_file_route_max_bytes: EXPERIMENTAL. If set, files whose size is <= this many
-                bytes are uploaded single-shot via the backend `upload_file` endpoint (one
-                request) instead of multipart — avoiding the per-file metadata burst that
-                rate-limits many-small-file batches. Guarded to `MAX_SMALL_FILE_ROUTE_BYTES`.
+                open multipart uploads. Defaults to half of `max_workers` (rounded up), which
+                keeps the part pool fed without piling up a hard-to-drain tail of half-done
+                files; there is no unbounded mode.
+            nominal_max_concurrency: Width of the nominal lane — the maximum number of Nominal API
+                requests in flight at once, across every pool. Benchmark-tuned to fill the
+                server's admission budget without provoking refusals; see
+                `NOMINAL_MAX_CONCURRENCY`.
+            small_file_route_max_bytes: EXPERIMENTAL. Files whose size is <= this many bytes
+                are uploaded single-shot via the backend `upload_file` endpoint (one request)
+                instead of multipart — avoiding the per-file metadata burst that rate-limits
+                many-small-file batches. Defaults to `DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES`;
+                guarded to `MAX_SMALL_FILE_ROUTE_BYTES`. Pass None to disable the route and
+                send every file through multipart.
             timeout: Per-request timeout for direct-to-storage part PUTs.
             max_part_retries: Attempts per part before the file fails.
             throttle_deadline: Wall-clock budget, per request, for retrying while the server is
                 throttling. Throttling is not a terminal error inside that budget; exceeding it
                 raises `NominalRequestThrottledError`. Non-throttle errors always fail immediately.
-            upload_client: Injection seam for tests and callers with their own client. When None
-                the uploader builds (and owns) a dedicated one; an injected client is never closed.
+            upload_client: Injection seam for tests and instrumentation. Defaults to the shared
+                `clients.upload`, whose transport performs each request's own short jittered
+                retries of throttle statuses (the local layer of the two-layer backoff). The
+                uploader never closes an upload client, its own default or otherwise.
 
         Returns:
             An uploader ready to accept files. Close it (or use it as a context manager) to
@@ -199,13 +224,14 @@ class MultipartUploader:
             ValueError: A pool size is not positive, or `small_file_route_max_bytes` is outside
                 `(0, MAX_SMALL_FILE_ROUTE_BYTES]`.
         """
-        max_workers = DEFAULT_NUM_WORKERS if max_workers is None else max_workers
-        small_route_workers = max_workers if small_route_workers is None else small_route_workers
-        drivers = max_workers if max_multipart_files_in_flight is None else max_multipart_files_in_flight
+        max_workers = DEFAULT_MAX_WORKERS if max_workers is None else max_workers
+        small_route_workers = nominal_max_concurrency if small_route_workers is None else small_route_workers
+        drivers = math.ceil(max_workers / 2) if max_multipart_files_in_flight is None else max_multipart_files_in_flight
         for label, value in (
             ("max_workers", max_workers),
             ("small_route_workers", small_route_workers),
             ("max_multipart_files_in_flight", drivers),
+            ("nominal_max_concurrency", nominal_max_concurrency),
         ):
             if value <= 0:
                 raise ValueError(f"{label} must be positive, got {value}")
@@ -218,35 +244,30 @@ class MultipartUploader:
                 f"files through multipart), got {small_file_route_max_bytes}"
             )
 
-        client: upload_api.UploadService
-        owned_session: requests.Session | None
-        if upload_client is None:
-            # The uploader owns its client: transport status-retries reduced to redirects so
-            # 429/503 reach the gate in one round trip; pool sized to this uploader's threads.
-            client, owned_session = create_conjure_service_client_with_session(
-                upload_api.UploadService,
-                user_agent=clients._user_agent,
-                service_config=clients._service_config,
-                header_provider=clients.header_provider,
-                retry_status_forcelist=(308,),
-                pool_connections=small_route_workers + max_workers,
-                pool_maxsize=small_route_workers + max_workers,
-            )
-        else:
-            client, owned_session = upload_client, None  # injected: its lifecycle is not ours
+        logger.debug(
+            "creating uploader: max_workers=%d, small_route_workers=%d, max_multipart_files_in_flight=%d, "
+            "nominal_max_concurrency=%d, small_file_route_max_bytes=%s, throttle_deadline=%.0fs",
+            max_workers,
+            small_route_workers,
+            drivers,
+            nominal_max_concurrency,
+            small_file_route_max_bytes,
+            throttle_deadline,
+        )
         return cls(
             max_workers,
             timeout,
             max_part_retries,
-            _upload_client=client,
+            # The shared client's transport-level status retries are the LOCAL layer of the
+            # two-layer backoff; the gate's lane + damper are the global layer.
+            _upload_client=upload_client if upload_client is not None else clients.upload,
             _auth_header=clients.auth_header,
             _workspace_rid=workspace_rid if workspace_rid is not None else clients.resolve_default_workspace_rid(),
             _session=create_multipart_request_session(pool_size=max_workers, header_provider=clients.header_provider),
-            _owned_client_session=owned_session,
             _small_pool=ThreadPoolExecutor(small_route_workers, thread_name_prefix="nominal-upload-small"),
             _driver_pool=ThreadPoolExecutor(drivers, thread_name_prefix="nominal-upload-file"),
             _part_pool=ThreadPoolExecutor(max_workers, thread_name_prefix="nominal-upload-part"),
-            _gate=_ThrottleGate(_AdaptivePacer(), deadline_seconds=throttle_deadline),
+            _gate=_ThrottleGate(max_concurrency=nominal_max_concurrency, deadline_seconds=throttle_deadline),
             _small_file_route_max_bytes=small_file_route_max_bytes,
         )
 
@@ -255,41 +276,50 @@ class MultipartUploader:
     def close(self, *, cancel_pending: bool = False) -> None:
         """Shut the uploader down; afterwards `enqueue_file` raises.
 
+        Either way, every future `enqueue_file` has returned is settled by the time this
+        returns — dropped files with `CancelledError` — and is safe to pass to
+        `concurrent.futures.wait` / `as_completed` from any thread.
+
         Args:
             cancel_pending: If false (the default), every enqueued file runs to completion before
                 this returns. If true, queued files are dropped and in-flight multipart files are
                 cut short at their next part boundary, so the wait is bounded by one round of
                 in-flight uploads plus the capped abort pass — not by the rest of the batch.
         """
-        if self._closed:
-            return
-        self._closed = True
+        with self._issue_lock:
+            if self._closed:
+                return
+            self._closed = True
+        logger.debug("closing uploader (cancel_pending=%s)", cancel_pending)
         try:
             if cancel_pending:
                 # Revoke the part lane FIRST, so a running driver unblocks at its next part
                 # boundary, aborts, and settles instead of finishing a possibly-huge file.
-                #
-                # Revoking it with `cancel_futures=True` would deadlock: that drains queued work
-                # items out of the pool and cancels their futures WITHOUT anyone ever calling
-                # `set_running_or_notify_cancel`, so the futures sit in CANCELLED-but-not-notified
-                # — a state `concurrent.futures.wait` neither counts as done nor is ever woken by.
-                # A driver waiting on a queued sibling would then wait forever, and this close
-                # with it. So the queued parts must still RUN: the flag makes each one
-                # short-circuit in microseconds, and its future settles (and notifies) normally.
+                # The queued parts still RUN — each short-circuits on the drain flag in
+                # microseconds. Draining them with `cancel_futures=True` instead would strand
+                # their futures CANCELLED-but-never-notified (nothing ever calls
+                # `set_running_or_notify_cancel` on a drained work item), a state
+                # `concurrent.futures.wait` neither counts as done nor is ever woken by — and
+                # a driver waiting on a queued sibling would wait forever, this close with it.
                 self._draining.set()
                 self._part_pool.shutdown(wait=False)
-                # Revoke the small lane now, join it later. Nothing inside the uploader waits on a
-                # small future, so there is no ordering reason to hold the queue open — and every
-                # reason to drop it: the driver join below runs for a whole round of part uploads
-                # plus the abort pass, and a live small pool would spend that window uploading
-                # files the caller was told were dropped and outbidding those aborts for pace
-                # slots (a refused abort leaves a multipart upload open server-side).
+                self._small_pool.shutdown(wait=False)
+                self._driver_pool.shutdown(wait=False)
+                # Drop queued files by cancelling their futures ourselves — never with the
+                # executors' `cancel_futures=True`, whose queue drain strands caller-held
+                # futures in that same never-notified state. A future cancelled here is
+                # dequeued by its pool's workers as a properly notified no-op, so the joins
+                # below double as a settle barrier: by the time close returns, every future
+                # this uploader ever issued is done AND visible to `wait`/`as_completed`.
                 #
-                # Queued drivers and queued smalls never started, so plain cancellation is safe for
-                # both: nothing inside the uploader waits on either future, only the caller, and
-                # `result()`/`done()`/`cancelled()` all read CANCELLED correctly.
-                self._small_pool.shutdown(wait=False, cancel_futures=True)
-                self._driver_pool.shutdown(wait=True, cancel_futures=True)
+                # Cancelling before the driver join matters: that join lasts a whole round of
+                # in-flight part PUTs plus the capped abort pass, and queued files left alive
+                # across it would keep uploading after the caller was told they were dropped —
+                # and outbid the aborts for lane slots (a refused abort leaves a multipart
+                # upload open server-side).
+                for future in self._issued_futures:
+                    future.cancel()  # queued files drop; running or settled ones are unaffected
+                self._driver_pool.shutdown(wait=True)
                 self._small_pool.shutdown(wait=True)
                 self._part_pool.shutdown(wait=True)
             else:
@@ -298,8 +328,6 @@ class MultipartUploader:
                 self._small_pool.shutdown(wait=True)
         finally:
             self._session.close()
-            if self._owned_client_session is not None:
-                self._owned_client_session.close()
 
     def __enter__(self) -> Self:
         return self
@@ -324,7 +352,8 @@ class MultipartUploader:
         Never blocks: the file is validated on the calling thread and then queued on its route's
         pool. The returned future is the executor's own, so cancelling a file that has not started
         yet genuinely dequeues it (and it never initiates anything); cancelling a running file
-        returns False.
+        returns False. The future stays safe to wait on across a cancelling close: `close`
+        settles every future it drops (see `close`).
 
         Args:
             path: File to upload.
@@ -368,9 +397,24 @@ class MultipartUploader:
         pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
         # A declared size of zero is rejected by the single-shot endpoint, so empty files always
         # take multipart, where a single zero-byte part completes normally.
-        if self._small_file_route_max_bytes is not None and 0 < total_size <= self._small_file_route_max_bytes:
-            return self._small_pool.submit(self._run_small_file_upload, pending)
-        return self._driver_pool.submit(self._upload_one, pending)
+        small_route = (
+            self._small_file_route_max_bytes is not None and 0 < total_size <= self._small_file_route_max_bytes
+        )
+        if small_route:
+            logger.debug("enqueued %s (%d bytes) on the single-shot route", name, total_size)
+        else:
+            logger.debug("enqueued %s (%d bytes) on the multipart route, %d part(s)", name, total_size, num_parts)
+        # Issued under the lock so a future can never slip past close's cancel pass: once close
+        # holds the lock, enqueueing raises here instead of racing the executors' own shutdown.
+        with self._issue_lock:
+            if self._closed:
+                raise RuntimeError("uploader is closed")
+            if small_route:
+                future = self._small_pool.submit(self._run_small_file_upload, pending)
+            else:
+                future = self._driver_pool.submit(self._upload_one, pending)
+            self._issued_futures.append(future)
+        return future
 
     # ---- small route (small-pool thread) ----
 
@@ -382,22 +426,29 @@ class MultipartUploader:
         """
         safe_filename = f"{pending.name}{pending.file_type.extension}"
         body = pending.path.read_bytes()
-        return self._gate.call(
+        started = time.monotonic()
+        location = self._gate.call(
             lambda: self._upload_client.upload_file(
                 self._auth_header, body, safe_filename, size_bytes=pending.total_size, workspace=self._workspace_rid
             )
         )
+        logger.debug(
+            "uploaded %s single-shot (%d bytes) in %.2fs", safe_filename, pending.total_size, time.monotonic() - started
+        )
+        return location
 
     # ---- multipart route (driver-pool thread) ----
 
     def _upload_one(self, pending: _PendingUpload) -> str:
         """Run one file's whole multipart lifecycle: initiate, fan out parts, complete or abort."""
         safe_filename = f"{pending.name}{pending.file_type.extension}"
+        started = time.monotonic()
         key, upload_id = self._gate.call(
             lambda: _initiate_multipart_upload(
                 self._upload_client, self._auth_header, safe_filename, pending.file_type.mimetype, self._workspace_rid
             )
         )
+        logger.debug("initiated multipart upload for %s: key=%s upload_id=%s", safe_filename, key, upload_id)
         plan = _PlannedUpload(
             path=pending.path,
             key=key,
@@ -421,10 +472,24 @@ class MultipartUploader:
                     raise failure
             results = [f.result() for f in futs]
             etags = {r.part_number: r.etag for r in results}
-            return self._gate.call(
+            location = self._gate.call(
                 lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, etags)
             )
+            logger.debug(
+                "completed multipart upload for %s (%d bytes, %d parts) in %.2fs",
+                safe_filename,
+                pending.total_size,
+                len(etags),
+                time.monotonic() - started,
+            )
+            return location
         except BaseException as e:
+            logger.debug(
+                "multipart upload for %s failed with %s after %.2fs; cancelling sibling parts and aborting",
+                safe_filename,
+                type(e).__name__,
+                time.monotonic() - started,
+            )
             for f in futs:
                 f.cancel()  # queued siblings dequeue; running ones finish and are ignored
             self._safe_abort(key, upload_id, e)

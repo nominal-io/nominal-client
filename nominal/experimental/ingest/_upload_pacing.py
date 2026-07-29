@@ -1,11 +1,25 @@
-"""Adaptive request pacing for the experimental uploader.
+"""Request governance for the experimental uploader: two-layer backoff, throughput-first.
 
-The server refuses requests over budget with an immediate 429; the client discovers its
-sustainable request rate at runtime and paces admissions to it.
+The transport performs each request's own short jittered retries (the standard conjure
+client retries throttle statuses locally on a sub-second ladder). This module adds the two
+pieces that need to be global:
+
+- a fixed-width admission lane (`max_concurrency` tickets) so at most N requests ever touch
+  the Nominal API concurrently — bounding the offered pressure structurally instead of
+  estimating a rate; and
+- one shared damping delay (`_GlobalBackoff`) that rises when *sustained* throttling is
+  observed (transport retry exhaustion, or raw 429/503 from transports without local
+  retries) and decays on success — smoothing storms without a controller.
+
+A refused request is cheap for the server, so the design goal is throughput, not 429
+avoidance: isolated throttles resolve invisibly in the transport's local retries, and the
+global layer only engages when the budget is genuinely saturated.
 """
 
 from __future__ import annotations
 
+import logging
+import random
 import threading
 import time
 from typing import Callable, TypeVar
@@ -14,27 +28,32 @@ import requests
 
 from nominal.core.exceptions import NominalRequestThrottledError
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T")
 
-
-class _AdmissionDeadlineExceeded(Exception):
-    """The next free pace slot lies past the caller's deadline; no slot was claimed.
-
-    Module-private: `_ThrottleGate` translates it into `NominalRequestThrottledError`, so it
-    never reaches a caller.
-    """
-
+# The structural bound on offered request pressure: at typical round-trip times this lane
+# width offers roughly the server's admission budget, so refusals stay rare. Benchmark-tuned —
+# wider lanes finished many-small-file batches no sooner while a large fraction of requests
+# were refused and re-sent (each refused single-shot upload re-transmits its whole body).
+# Fits well inside the shared client's per-host connection pool, so a full lane never churns
+# connections.
+NOMINAL_MAX_CONCURRENCY = 5
 
 DEFAULT_THROTTLE_DEADLINE_S = 120.0  # a request unadmitted this long means unavailable, not busy
 _ABORT_THROTTLE_DEADLINE_S = 5.0  # best-effort rollback must not compete with live uploads
+
+_BACKOFF_BASE_S = 0.05  # first storm signal: pause in the tens of milliseconds
+_BACKOFF_CAP_S = 2.0  # a fully-stormed lane still offers max_concurrency/cap requests per second
+_BACKOFF_DECAY = 0.9  # per-success decay: a healthy lane forgets a storm within ~a second of traffic
 
 
 def _is_throttle_error(exc: BaseException) -> bool:
     """True if `exc` is the server refusing the request because the caller is over budget.
 
-    429 is the budget refusal; 503 is the server shedding load (with transport status-retries
-    disabled it must not become terminal); RetryError is kept defensively for any call path
-    still riding a transport that absorbs throttle statuses internally.
+    `RetryError` is the primary signal: the transport's own short retry ladder was exhausted,
+    meaning the throttling is sustained rather than momentary. Raw 429/503 are kept for
+    injected transports that do not retry statuses locally.
     """
     if isinstance(exc, requests.exceptions.RetryError):
         return True
@@ -44,151 +63,99 @@ def _is_throttle_error(exc: BaseException) -> bool:
     return status in (429, 503)
 
 
-class _AdaptivePacer:
-    """Paces admissions at an adaptive rate; the single control variable is `rate` (req/s).
+class _GlobalBackoff:
+    """One shared damping delay — no estimation, two moves.
 
-    Claim-slot-then-sleep: each acquirer claims its own wake time under the lock and sleeps
-    outside it, so there are no condition waits and no wakeup ordering. Idle time is never
-    banked. An adaptation interval may raise the rate only if some acquirer actually waited
-    during it (the saturation gate) — an unsaturated lane can never inflate the estimate.
+    A throttle signal doubles the delay (floored at `base`, capped at `cap`); a success
+    decays it (snapping to zero once it falls below half the base, so a recovered lane pays
+    nothing). Every backing-off thread sleeps a full-jittered fraction of the same shared
+    number, which is what keeps a storm's retries from re-herding.
     """
 
     def __init__(
         self,
         *,
-        initial_rate: float = 10.0,
-        min_rate: float = 0.5,
-        interval: float = 2.0,
-        probe_factor: float = 1.5,
-        decrease_factor: float = 0.6,
-        additive_increase: float = 1.0,
-        clock: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
+        base: float = _BACKOFF_BASE_S,
+        cap: float = _BACKOFF_CAP_S,
+        decay: float = _BACKOFF_DECAY,
     ) -> None:
-        self._min = min_rate
-        self._interval = interval
-        self._probe_factor = probe_factor
-        self._decrease_factor = decrease_factor
-        self._additive_increase = additive_increase
-        self._clock = clock
-        self._sleep = sleep
+        self._base = base
+        self._cap = cap
+        self._decay = decay
         self._lock = threading.Lock()
-        self._rate = max(min_rate, initial_rate)
-        self._next_slot = float("-inf")
-        self._probing = True
-        self._interval_start = clock()
-        self._interval_saturated = False
-        self._interval_throttled = False
+        self._delay = 0.0
 
     @property
-    def rate(self) -> float:
+    def current(self) -> float:
         with self._lock:
-            return self._rate
-
-    def acquire(self, *, deadline_at: float | None = None) -> None:
-        """Claim the next pace slot and sleep until it comes due.
-
-        Args:
-            deadline_at: Absolute time by which admission must have happened, or None to wait
-                however long the queue takes. A caller that cannot wait that long must not hold
-                a slot it will never use, so a slot past the deadline is refused rather than
-                claimed — the queue is left exactly as it was found.
-
-        Raises:
-            _AdmissionDeadlineExceeded: The next free slot falls after `deadline_at`.
-        """
-        with self._lock:
-            now = self._clock()
-            slot = max(now, self._next_slot)
-            if deadline_at is not None and slot > deadline_at:
-                # Refuse before mutating anything: no slot consumed, no saturation recorded.
-                raise _AdmissionDeadlineExceeded(
-                    f"next pace slot is {slot - now:.1f}s away, past the caller's deadline"
-                )
-            if slot > now:
-                self._interval_saturated = True  # demand met pacing: this interval may increase
-            self._next_slot = slot + 1.0 / self._rate
-        wait = slot - self._clock()
-        if wait > 0:
-            self._sleep(wait)
-
-    def on_success(self) -> None:
-        with self._lock:
-            self._maybe_roll_interval()
+            return self._delay
 
     def on_throttle(self) -> None:
         with self._lock:
-            self._maybe_roll_interval()
-            self._probing = False
-            if not self._interval_throttled:  # one empty-bucket event throttles everything at
-                self._interval_throttled = True  # once; count it as one signal, not twenty
-                self._rate = max(self._min, self._rate * self._decrease_factor)
+            self._delay = min(self._cap, max(self._base, self._delay * 2.0))
 
-    def _maybe_roll_interval(self) -> None:
-        # Lazy interval accounting: no timer thread, so a roll can arrive long after the window
-        # it closes. A gap spanning more than one interval means a whole interval went by without
-        # a settlement, so whatever the flags recorded describes a window that has since fallen
-        # silent — discard that evidence instead of letting it bank an increase. Dropping a stale
-        # throttle along with it only suppresses an increase, which is the safe direction.
-        now = self._clock()
-        elapsed = now - self._interval_start
-        if elapsed < self._interval:
-            return
-        if elapsed >= 2 * self._interval:
-            self._interval_saturated = False
-            self._interval_throttled = False
-        if self._interval_saturated and not self._interval_throttled:
-            if self._probing:
-                self._rate *= self._probe_factor
-            else:
-                self._rate += self._additive_increase
-        self._interval_start = now
-        self._interval_saturated = False
-        self._interval_throttled = False
+    def on_success(self) -> None:
+        with self._lock:
+            if self._delay > 0.0:
+                self._delay *= self._decay
+                if self._delay <= self._base / 2.0:
+                    self._delay = 0.0
 
 
 class _ThrottleGate:
-    """Admits Nominal API requests through the pacer and owns throttle retry semantics.
+    """Admits Nominal API requests through a fixed-width lane and owns global throttle retry.
 
-    On a throttle the request feeds the pacer and simply re-enters paced admission — the
-    post-cut pacing IS the backoff (a herd cannot form through a paced gate). The only
-    safeguard is the per-request wall-clock deadline, which bounds the whole call: waiting for
-    a pace slot spends the same budget as the request does, so a short-deadline caller (an
-    abort, say) fails fast instead of blocking behind a queue it can never reach the front of.
+    `call` acquires one of `max_concurrency` tickets for the duration of the request (the
+    transport's local retries included), so offered pressure is bounded structurally. On a
+    sustained-throttle signal the ticket is released *before* any backoff sleep — a sleeping
+    thread must never occupy the lane it is backing off from — the shared damper is bumped,
+    and the request re-enters the lane after a jittered fraction of the damper's delay.
+
+    The only wall clock is the per-request deadline, which bounds the whole call: lane
+    admission waits spend the same budget as the request does, so a short-deadline caller
+    (an abort, say) fails fast instead of blocking behind a stormed lane.
     """
 
     def __init__(
         self,
-        pacer: _AdaptivePacer,
         *,
+        max_concurrency: int = NOMINAL_MAX_CONCURRENCY,
         deadline_seconds: float = DEFAULT_THROTTLE_DEADLINE_S,
+        backoff: _GlobalBackoff | None = None,
         clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+        jitter: Callable[[float], float] | None = None,
     ) -> None:
-        self._pacer = pacer
+        self._semaphore = threading.Semaphore(max_concurrency)
+        self._backoff = backoff if backoff is not None else _GlobalBackoff()
         self._deadline_seconds = deadline_seconds
         self._clock = clock
+        self._sleep = sleep
+        self._jitter = jitter if jitter is not None else (lambda delay: random.uniform(0.0, delay))
 
     @property
-    def current_rate(self) -> float:
-        return self._pacer.rate
+    def current_backoff(self) -> float:
+        """The shared damper's current delay, in seconds (0.0 when the lane is healthy)."""
+        return self._backoff.current
 
     def call(self, op: Callable[[], T], *, deadline_seconds: float | None = None) -> T:
-        """Run `op` under paced admission, retrying for as long as the server throttles it.
+        """Run `op` under lane admission, retrying for as long as the server throttles it.
 
         Args:
-            op: The request to run. It is retried verbatim on a throttle, so it must be safe to
-                repeat.
-            deadline_seconds: Wall-clock budget for the whole call, counting time spent waiting
-                for paced admission as well as time spent in `op`. Defaults to the gate's own
-                budget.
+            op: The request to run. It is retried verbatim on a throttle, so it must be safe
+                to repeat.
+            deadline_seconds: Wall-clock budget for the whole call, counting lane-admission
+                waits and backoff sleeps as well as time spent in `op`. Defaults to the
+                gate's own budget.
 
         Returns:
             Whatever `op` returns on the first attempt the server does not throttle.
 
         Raises:
-            NominalRequestThrottledError: The budget ran out — either the server kept throttling
-                the request, or the paced queue could not admit it in time. `__cause__` is the
-                last throttle seen, or None if the budget expired before any attempt was made.
+            NominalRequestThrottledError: The budget ran out — either the server kept
+                throttling the request, or the lane could not admit it in time. `__cause__`
+                is the last throttle seen, or None if the budget expired before any attempt
+                was made.
             Exception: Any non-throttle error from `op`, re-raised unchanged from the attempt
                 that produced it (never retried).
         """
@@ -198,26 +165,38 @@ class _ThrottleGate:
         attempt = 0
         last_throttle: BaseException | None = None
         while True:
-            try:
-                # Admission waits spend the same budget as the request itself, so a queue deeper
-                # than the budget fails fast instead of blocking past the caller's deadline.
-                self._pacer.acquire(deadline_at=deadline_at)
-            except _AdmissionDeadlineExceeded:
+            remaining = deadline_at - self._clock()
+            if remaining <= 0 or not self._semaphore.acquire(timeout=remaining):
                 raise self._exhausted(
-                    "the paced queue could not admit this request", started, budget, attempt
+                    "the nominal lane could not admit this request", started, budget, attempt
                 ) from last_throttle
             try:
                 result = op()
             except BaseException as exc:
+                # Released before classification: whatever happens next, this thread is done
+                # using the lane, and a backoff sleep must not hold a ticket.
+                self._semaphore.release()
                 if not _is_throttle_error(exc):
                     raise
-                self._pacer.on_throttle()
+                self._backoff.on_throttle()
                 last_throttle = exc
-                if self._clock() - started >= budget:
+                elapsed = self._clock() - started
+                logger.debug(
+                    "request throttled by the server (attempt %d, %.1fs into a %.0fs budget); global damper now %.3fs",
+                    attempt + 1,
+                    elapsed,
+                    budget,
+                    self._backoff.current,
+                )
+                if elapsed >= budget:
                     raise self._exhausted("server kept throttling this request", started, budget, attempt + 1) from exc
                 attempt += 1
+                delay = self._backoff.current
+                if delay > 0.0:
+                    self._sleep(min(self._jitter(delay), budget - elapsed))
             else:
-                self._pacer.on_success()
+                self._semaphore.release()
+                self._backoff.on_success()
                 return result
 
     def _exhausted(self, detail: str, started: float, budget: float, attempts: int) -> NominalRequestThrottledError:

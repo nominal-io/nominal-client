@@ -8,7 +8,7 @@ import pytest
 
 from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
-from nominal.experimental.ingest._ingest_builder import MultipartUploader, _Upload, _upload_all
+from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader, _Upload, _upload_all
 from nominal.protos.ingest.v2 import file_ingest_pb2, ingest_service_pb2
 
 
@@ -122,6 +122,43 @@ class TestUploadAll:
             upload_with(fake, [make_upload(a)])
 
         assert fake.exit_exc_type is RuntimeError
+
+    def test_a_second_submit_raises_instead_of_reingesting(self, tmp_path) -> None:
+        """Builders are single-use: re-submitting would re-upload and double-ingest every item."""
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"a")
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset").add_csv(
+            a, timestamp_column="ts", timestamp_type="epoch_seconds"
+        )
+
+        with patch.object(
+            MultipartUploader, "create", autospec=True, return_value=FakeUploader({"a.csv": "s3://bucket/a"})
+        ):
+            builder.submit()
+            with pytest.raises(RuntimeError, match="single-use"):
+                builder.submit()
+
+        client._clients.ingest_v2.Ingest.assert_called_once()
+
+    def test_a_failed_submit_also_consumes_the_builder(self, tmp_path) -> None:
+        """Even a failed trigger may have committed server-side, so no retry path exists."""
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"a")
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset").add_csv(
+            a, timestamp_column="ts", timestamp_type="epoch_seconds"
+        )
+
+        with patch.object(
+            MultipartUploader, "create", autospec=True, return_value=FakeUploader({"a.csv": RuntimeError("boom")})
+        ):
+            with pytest.raises(RuntimeError, match="boom"):
+                builder.submit()
+            with pytest.raises(RuntimeError, match="single-use"):
+                builder.submit()
+
+        client._clients.ingest_v2.Ingest.assert_not_called()
 
     def test_targets_are_left_untouched_when_an_upload_fails(self, tmp_path) -> None:
         """Atomicity: a partially filled request must never be sendable."""

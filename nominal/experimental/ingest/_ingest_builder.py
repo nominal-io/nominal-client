@@ -92,12 +92,11 @@ def _upload_all(
     """
     if not uploads:
         return
-    with MultipartUploader.create(clients, workspace_rid=workspace_rid, max_workers=20) as up:
+    with MultipartUploader.create(clients, workspace_rid=workspace_rid) as up:
         futures = {up.enqueue_file(u.path, file_type=u.file_type): u for u in uploads}
-        # `as_completed` MUST stay inside the `with`. Leaving the block on an exception closes
-        # the uploader with `cancel_pending=True`, and the futures that shutdown cancels are
-        # never waiter-notified — waiting on them out here would block forever. Letting the
-        # first `fut.result()` raise from inside is what gets that shutdown to run at all.
+        # `as_completed` stays inside the `with` so the first failed `fut.result()` raises while
+        # the uploader is still open: leaving the block on that exception is what runs the
+        # cancelling close that drops the rest of the batch.
         for fut in as_completed(futures):
             upload = futures[fut]
             upload.target.CopyFrom(common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=fut.result())))
@@ -107,7 +106,9 @@ class IngestBuilder:
     """Accumulate files and submit them as a single (MULTI) ingest job.
 
     EXPERIMENTAL / UNSTABLE — see the module docstring. Targets an existing dataset; the v2
-    endpoint does not create datasets. Build with `add_*` (fluent), then `submit()`.
+    endpoint does not create datasets. Build with `add_*` (fluent), then `submit()` exactly
+    once: a builder is single-use, and a second `submit()` raises rather than re-uploading
+    and re-ingesting everything it holds.
     """
 
     def __init__(
@@ -130,6 +131,7 @@ class IngestBuilder:
         self._dataset_rid = rid_from_instance_or_string(dataset)
         self._items: list[_PendingItem] = []
         self._tags: dict[str, str] = dict(tags or {})
+        self._submitted = False
 
     def add_tags(self, tags: Mapping[str, str]) -> Self:
         """Add request-level tags applied to every item in the job.
@@ -514,15 +516,26 @@ class IngestBuilder:
         Uploads run in parallel and the call is atomic: if any upload fails, no ingest is
         triggered. The call returns immediately with the job in flight.
 
+        Single-use: one `submit()` consumes the builder, whether it succeeds or fails. A
+        failed trigger request can have been committed server-side (a timeout, say), so there
+        is no retry that cannot double-ingest — build a new builder instead.
+
         Returns:
             The created ingest job. Track it by polling `job.refresh().status`, or block on its
             produced files with `list(job.as_files_ingested())`.
 
         Raises:
+            RuntimeError: this builder was already submitted.
             ValueError: if no files have been added.
         """
+        if self._submitted:
+            raise RuntimeError(
+                "this IngestBuilder was already submitted; builders are single-use — "
+                "create a new builder to ingest more files"
+            )
         if not self._items:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
+        self._submitted = True
         clients = self._client._clients
         workspace_rid = clients.resolve_default_workspace_rid()
 

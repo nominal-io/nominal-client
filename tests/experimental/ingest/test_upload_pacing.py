@@ -8,15 +8,14 @@ import requests
 
 from nominal.core.exceptions import NominalRequestThrottledError
 from nominal.experimental.ingest._upload_pacing import (
-    _AdaptivePacer,
-    _AdmissionDeadlineExceeded,
+    _GlobalBackoff,
     _is_throttle_error,
     _ThrottleGate,
 )
 
 
 class _FakeClock:
-    """Deterministic clock whose sleep advances time — no real sleeping anywhere."""
+    """Deterministic clock whose sleep advances time — no real sleeping in fake-time tests."""
 
     def __init__(self) -> None:
         self.now = 0.0
@@ -30,148 +29,56 @@ class _FakeClock:
         self.now += seconds
 
 
-def make_pacer(**overrides):
+def make_gate(**overrides):
     clock = _FakeClock()
-    kwargs = dict(initial_rate=10.0, clock=clock, sleep=clock.sleep)
+    kwargs = dict(
+        max_concurrency=4,
+        deadline_seconds=120.0,
+        clock=clock,
+        sleep=clock.sleep,
+        jitter=lambda delay: delay,  # deterministic: sleep the full damper delay
+    )
     kwargs.update(overrides)
-    return _AdaptivePacer(**kwargs), clock
-
-
-def saturate_one_interval(pacer: _AdaptivePacer, clock: _FakeClock) -> None:
-    """Back-to-back acquires + successes until an interval boundary has passed."""
-    end = clock.now + 2.0
-    while clock.now <= end:
-        pacer.acquire()
-        pacer.on_success()
-
-
-class TestAdaptivePacer:
-    def test_acquires_are_spaced_one_over_rate(self) -> None:
-        pacer, clock = make_pacer()
-        times = []
-        for _ in range(3):
-            pacer.acquire()
-            times.append(clock.now)
-        assert times == pytest.approx([0.0, 0.1, 0.2])
-
-    def test_idle_gap_does_not_bank_slots(self) -> None:
-        pacer, clock = make_pacer()
-        pacer.acquire()  # t=0.0
-        clock.now = 10.0  # long idle gap
-        pacer.acquire()  # admits at 10.0 with no wait (nothing banked)
-        assert clock.now == pytest.approx(10.0)
-        pacer.acquire()  # next claim is exactly 1/rate later
-        assert clock.now == pytest.approx(10.1)
-
-    def test_probe_multiplies_on_clean_saturated_interval(self) -> None:
-        pacer, clock = make_pacer(interval=2.0)
-        saturate_one_interval(pacer, clock)
-        assert pacer.rate == pytest.approx(15.0)
-
-    def test_unsaturated_interval_never_raises_rate(self) -> None:
-        pacer, clock = make_pacer(interval=2.0)
-        for _ in range(6):  # demand 1/s << 10/s: no acquire ever waits
-            pacer.acquire()
-            pacer.on_success()
-            clock.now += 1.0
-        assert pacer.rate == pytest.approx(10.0)
-
-    def test_zero_request_intervals_do_not_advance_adaptation(self) -> None:
-        pacer, clock = make_pacer(interval=2.0)
-        pacer.acquire()  # t=0.0, admits immediately
-        pacer.acquire()  # waits for its slot, so this interval really did see demand
-        pacer.on_success()  # too early to roll: the saturation is still on the books
-        clock.now = 600.0  # ten minutes of zero requests
-        pacer.acquire()  # nothing banked, nothing to wait for
-        pacer.on_success()  # the roll here must not cash in saturation from ten minutes ago
-        assert pacer.rate == pytest.approx(10.0)
-
-    def test_silence_after_a_throttled_interval_also_leaves_the_rate_alone(self) -> None:
-        pacer, clock = make_pacer(interval=2.0)
-        pacer.acquire()
-        pacer.on_throttle()  # rate 6.0, and this interval is marked dirty
-        clock.now = 600.0
-        pacer.acquire()
-        pacer.on_success()  # stale dirt is dropped too, but silence still earns nothing
-        assert pacer.rate == pytest.approx(6.0)
-
-    def test_throttle_cuts_once_per_interval(self) -> None:
-        pacer, clock = make_pacer()
-        pacer.acquire()
-        pacer.on_throttle()
-        assert pacer.rate == pytest.approx(6.0)
-        pacer.acquire()
-        pacer.on_throttle()  # same interval: debounced
-        assert pacer.rate == pytest.approx(6.0)
-
-    def test_converged_regime_adds_after_clean_saturated_interval(self) -> None:
-        pacer, clock = make_pacer()
-        pacer.acquire()
-        pacer.on_throttle()  # leaves probe; rate = 6.0
-        saturate_one_interval(pacer, clock)  # the interval that saw the throttle never raises
-        assert pacer.rate == pytest.approx(6.0)
-        saturate_one_interval(pacer, clock)  # the first clean saturated interval after it does
-        assert pacer.rate == pytest.approx(7.0)  # +1.0, NOT ×1.5
-
-    def test_rate_never_below_floor(self) -> None:
-        pacer, clock = make_pacer(initial_rate=1.0, min_rate=0.5)
-        for _ in range(5):
-            pacer.acquire()
-            pacer.on_throttle()
-            clock.now += 3.0  # new interval each time so every cut applies
-        assert pacer.rate == pytest.approx(0.5)
-
-    def test_rate_change_does_not_respace_claimed_slots(self) -> None:
-        pacer, clock = make_pacer()
-        pacer.acquire()  # t=0.0 (claims next=0.1)
-        pacer.acquire()  # t=0.1 (claims next=0.2)
-        pacer.on_throttle()  # rate -> 6.0
-        pacer.acquire()  # already-claimed 0.2 stands...
-        assert clock.now == pytest.approx(0.2)
-        pacer.acquire()  # ...but the new claim is spaced at the new rate
-        assert clock.now == pytest.approx(0.2 + 1.0 / 6.0)
-
-    def test_acquire_refuses_a_slot_past_its_deadline_without_claiming_it(self) -> None:
-        pacer, clock = make_pacer(initial_rate=0.1, min_rate=0.1)  # one slot every 10s
-        pacer.acquire()  # t=0.0, which puts the next free slot at 10.0
-
-        with pytest.raises(_AdmissionDeadlineExceeded):
-            pacer.acquire(deadline_at=5.0)
-
-        assert clock.now == pytest.approx(0.0)  # refused up front, never slept toward the slot
-        assert clock.sleeps == []
-        pacer.acquire()  # the refused caller left the queue exactly as it found it
-        assert clock.now == pytest.approx(10.0)
-
-    def test_acquire_takes_a_slot_that_lands_within_its_deadline(self) -> None:
-        pacer, clock = make_pacer(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
-        pacer.acquire()  # t=0.0, next free slot at 2.0
-        pacer.acquire(deadline_at=5.0)  # 2.0 is inside the deadline: wait for it, don't refuse
-        assert clock.now == pytest.approx(2.0)
-
-    def test_concurrent_acquires_all_admit_and_stay_paced(self) -> None:
-        # Real threads contending on the pacer, against a frozen clock (sleep records instead
-        # of advancing it) so the claimed spacing is exact and not scheduler-dependent.
-        clock = _FakeClock()
-        waits: list[float] = []
-        lock = threading.Lock()
-
-        def record(seconds: float) -> None:
-            with lock:
-                waits.append(seconds)
-
-        pacer = _AdaptivePacer(initial_rate=100.0, clock=clock, sleep=record)
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            list(pool.map(lambda _: pacer.acquire(), range(32)))  # returning at all = no deadlock
-        # One acquirer admits immediately; the other 31 hold distinct, contiguous slots — no two
-        # threads ever share a slot, so concurrency cannot burst past the rate.
-        assert sorted(waits) == pytest.approx([k / 100.0 for k in range(1, 32)])
+    return _ThrottleGate(**kwargs), clock
 
 
 class _StatusError(Exception):
     def __init__(self, status: int) -> None:
         super().__init__(f"status {status}")
         self.status_code = status
+
+
+class TestGlobalBackoff:
+    def test_starts_at_zero_and_success_keeps_it_there(self) -> None:
+        backoff = _GlobalBackoff()
+        backoff.on_success()
+        assert backoff.current == 0.0
+
+    def test_first_throttle_lands_on_the_base(self) -> None:
+        backoff = _GlobalBackoff(base=0.05, cap=2.0)
+        backoff.on_throttle()
+        assert backoff.current == pytest.approx(0.05)
+
+    def test_throttles_double_up_to_the_cap(self) -> None:
+        backoff = _GlobalBackoff(base=0.05, cap=2.0)
+        for _ in range(20):
+            backoff.on_throttle()
+        assert backoff.current == pytest.approx(2.0)
+
+    def test_success_decays_and_snaps_to_zero(self) -> None:
+        backoff = _GlobalBackoff(base=0.05, cap=2.0, decay=0.5)
+        backoff.on_throttle()  # 0.05
+        backoff.on_success()  # 0.025: at the base/2 boundary, snaps to zero
+        assert backoff.current == 0.0
+
+    def test_storm_then_recovery_round_trip(self) -> None:
+        backoff = _GlobalBackoff(base=0.05, cap=2.0, decay=0.9)
+        for _ in range(10):
+            backoff.on_throttle()
+        assert backoff.current == pytest.approx(2.0)
+        for _ in range(200):
+            backoff.on_success()
+        assert backoff.current == 0.0
 
 
 class TestThrottleClassification:
@@ -191,123 +98,192 @@ class TestThrottleClassification:
         assert not _is_throttle_error(ValueError("nope"))
 
 
-def make_gate(**pacer_overrides):
-    pacer, clock = make_pacer(**pacer_overrides)
-    gate = _ThrottleGate(pacer, deadline_seconds=120.0, clock=clock)
-    return gate, pacer, clock
-
-
-class TestThrottleGate:
-    def test_success_returns_result_and_feeds_pacer(self) -> None:
-        gate, pacer, clock = make_gate()
+class TestThrottleGateSuccessPath:
+    def test_success_returns_result_with_no_sleeping(self) -> None:
+        gate, clock = make_gate()
         assert gate.call(lambda: "ok") == "ok"
-        # successes reach the pacer: a clean, saturated interval of them raises the rate
-        while clock.now <= 2.0:
-            gate.call(lambda: "ok")
-        assert pacer.rate == pytest.approx(15.0)
+        assert clock.sleeps == []
+        assert gate.current_backoff == 0.0
 
-    def test_non_throttle_error_raises_immediately(self) -> None:
-        gate, pacer, clock = make_gate()
-        calls = []
+    def test_non_throttle_error_raises_immediately_and_releases_the_lane(self) -> None:
+        gate, _clock = make_gate(max_concurrency=1)
+        calls: list[int] = []
 
-        def op():
+        def op() -> None:
             calls.append(1)
             raise ValueError("terminal")
 
         with pytest.raises(ValueError):
             gate.call(op)
         assert len(calls) == 1
+        # The single ticket must have been released on the failure path:
+        assert gate.call(lambda: "still works") == "still works"
 
-    def test_throttled_op_retries_until_success_with_only_pacer_waits(self) -> None:
-        gate, pacer, clock = make_gate()
-        outcomes = [_StatusError(429), _StatusError(429), "ok"]
+    def test_lane_admits_at_most_max_concurrency(self) -> None:
+        gate, _clock = make_gate(max_concurrency=3)
+        admitted = threading.Semaphore(0)
+        release = threading.Event()
+        lock = threading.Lock()
+        active = [0]
+        peak = [0]
 
-        def op():
+        def op() -> str:
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            admitted.release()
+            release.wait(timeout=10)
+            with lock:
+                active[0] -= 1
+            return "ok"
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [pool.submit(gate.call, op) for _ in range(6)]
+            for _ in range(3):
+                assert admitted.acquire(timeout=10)  # three calls admitted concurrently
+            release.set()
+            for fut in futures:
+                assert fut.result(timeout=10) == "ok"
+        assert peak[0] == 3  # never more than the lane width, and the lane was fully used
+
+
+class TestThrottleGateBackoffPath:
+    def test_throttle_bumps_damper_sleeps_then_succeeds(self) -> None:
+        gate, clock = make_gate()
+        outcomes: list = [_StatusError(429), _StatusError(429), "ok"]
+
+        def op() -> str:
             result = outcomes.pop(0)
             if isinstance(result, Exception):
                 raise result
             return result
 
         assert gate.call(op) == "ok"
-        # the only waits are pace slots (the second at the post-cut rate) — the gate adds no
-        # backoff sleep of its own; the re-paced admission is the backoff
-        assert clock.sleeps == pytest.approx([1.0 / 10.0, 1.0 / 6.0])
+        # Two throttles: the damper went base -> 2*base, and each retry slept the full delay.
+        assert clock.sleeps == [pytest.approx(0.05), pytest.approx(0.10)]
 
-    def test_throttle_cuts_rate(self) -> None:
-        gate, pacer, clock = make_gate()
-        outcomes = [_StatusError(429), "ok"]
+    def test_retry_error_is_the_primary_signal(self) -> None:
+        gate, clock = make_gate()
+        outcomes: list = [requests.exceptions.RetryError(), "ok"]
 
-        def op():
+        def op() -> str:
             result = outcomes.pop(0)
             if isinstance(result, Exception):
                 raise result
             return result
 
-        gate.call(op)
-        assert pacer.rate < 10.0
+        assert gate.call(op) == "ok"
+        assert clock.sleeps == [pytest.approx(0.05)]
 
-    def test_deadline_exceeded_raises_with_cause_and_attempts(self) -> None:
-        gate, pacer, clock = make_gate()
+    def test_backoff_sleep_holds_no_lane_ticket(self) -> None:
+        # One-ticket lane; a nested successful call runs from INSIDE the backoff sleep. If the
+        # sleeping thread still held its ticket, the nested call could never be admitted and
+        # would exhaust its short deadline instead of succeeding.
+        clock = _FakeClock()
+        gate = _ThrottleGate(
+            max_concurrency=1, deadline_seconds=120.0, clock=clock, sleep=clock.sleep, jitter=lambda d: d
+        )
+        nested_result: list[str] = []
+        original_sleep = gate._sleep
 
-        def op():
-            clock.now += 30.0  # each attempt burns 30s of wall clock
+        def sleep_and_probe(seconds: float) -> None:
+            original_sleep(seconds)
+            nested_result.append(gate.call(lambda: "nested ok", deadline_seconds=0.5))
+
+        gate._sleep = sleep_and_probe  # type: ignore[method-assign]
+        outcomes: list = [_StatusError(429), "outer ok"]
+
+        def op() -> str:
+            result = outcomes.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        assert gate.call(op) == "outer ok"
+        assert nested_result == ["nested ok"]
+
+    def test_shared_damper_across_gates(self) -> None:
+        backoff = _GlobalBackoff(base=0.05, cap=2.0)
+        gate_a, clock_a = make_gate(backoff=backoff)
+        gate_b, clock_b = make_gate(backoff=backoff)
+
+        def throttled_and_slow() -> str:
+            clock_a.now += 1.0  # one attempt runs, bumps the damper, then exhausts the budget
+            raise _StatusError(429)
+
+        with pytest.raises(NominalRequestThrottledError):
+            gate_a.call(throttled_and_slow, deadline_seconds=0.5)
+        # gate_b's retry sleeps a delay seeded by gate_a's storm signal (0.05 doubled to 0.10):
+        outcomes: list = [_StatusError(429), "ok"]
+
+        def op() -> str:
+            result = outcomes.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        assert gate_b.call(op) == "ok"
+        assert clock_b.sleeps == [pytest.approx(0.10)]
+
+
+class TestThrottleGateDeadlines:
+    def test_sustained_throttle_exhausts_the_budget(self) -> None:
+        gate, clock = make_gate(deadline_seconds=10.0)
+
+        def op() -> None:
+            clock.now += 3.0
             raise _StatusError(429)
 
         with pytest.raises(NominalRequestThrottledError) as excinfo:
             gate.call(op)
         assert isinstance(excinfo.value.__cause__, _StatusError)
-        assert "attempts" in str(excinfo.value)
+        message = str(excinfo.value)
+        assert "server kept throttling" in message
+        assert "attempts" in message
+
+    def test_backoff_sleeps_consume_the_budget(self) -> None:
+        # op costs zero wall time; only damper sleeps (via clock.sleep) advance the clock, so
+        # exhaustion here proves backoff time counts against the deadline.
+        gate, clock = make_gate(deadline_seconds=1.0)
+
+        def op() -> None:
+            raise _StatusError(429)
+
+        with pytest.raises(NominalRequestThrottledError):
+            gate.call(op)
+        assert clock.now >= 1.0
+        assert clock.sleeps  # it got there by sleeping, not by op time
 
     def test_per_call_deadline_override(self) -> None:
-        gate, pacer, clock = make_gate()
+        gate, clock = make_gate(deadline_seconds=120.0)
 
-        def op():
+        def op() -> None:
             clock.now += 3.0
             raise _StatusError(429)
 
         with pytest.raises(NominalRequestThrottledError):
             gate.call(op, deadline_seconds=5.0)
+        assert clock.now < 10.0  # the 120s default demonstrably did not govern
 
-    def test_admission_beyond_the_deadline_refuses_without_consuming_a_slot(self) -> None:
-        # The abort path runs on a 5s budget; a queue deeper than that must fail fast rather
-        # than block for the minutes the pacer would otherwise make it wait.
-        gate, pacer, clock = make_gate(initial_rate=0.1, min_rate=0.1)  # one slot every 10s
-        pacer.acquire()  # t=0.0, which puts the next free slot far beyond a 5s budget
-        ran = []
+    def test_full_lane_refuses_a_short_deadline_caller_promptly(self) -> None:
+        # Real threads and a real (bounded, sub-second) semaphore timeout: the lane's single
+        # ticket is parked on an Event, so the short-deadline caller cannot be admitted and
+        # must fail fast with no attempt made — the abort-path guarantee.
+        gate = _ThrottleGate(max_concurrency=1, deadline_seconds=120.0)
+        occupied = threading.Event()
+        release = threading.Event()
 
-        with pytest.raises(NominalRequestThrottledError) as excinfo:
-            gate.call(lambda: ran.append(1), deadline_seconds=5.0)
+        def parked() -> str:
+            occupied.set()
+            release.wait(timeout=10)
+            return "parked done"
 
-        assert clock.now == pytest.approx(0.0)  # raised promptly, not after a 10s sleep
-        assert ran == []  # the request was never issued
-        assert excinfo.value.__cause__ is None  # no throttle was ever observed
-        assert "attempts" in str(excinfo.value)
-        pacer.acquire()  # the refused call did not push the queue back
-        assert clock.now == pytest.approx(10.0)
-
-    def test_admission_within_the_deadline_is_unaffected(self) -> None:
-        gate, pacer, clock = make_gate(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
-        pacer.acquire()  # t=0.0, next free slot at 2.0 — inside a 5s budget
-        assert gate.call(lambda: "ok", deadline_seconds=5.0) == "ok"
-        assert clock.now == pytest.approx(2.0)  # waited for its slot and was admitted
-
-    def test_admission_waits_count_against_the_retry_budget(self) -> None:
-        # op burns no wall clock at all, so every second of the budget is admission wait: the
-        # call must still give up at the budget instead of sleeping past it.
-        gate, pacer, clock = make_gate(initial_rate=0.5, min_rate=0.5)  # one slot every 2s
-        issued_at = []
-
-        def op():
-            issued_at.append(clock.now)
-            raise _StatusError(429)
-
-        with pytest.raises(NominalRequestThrottledError) as excinfo:
-            gate.call(op, deadline_seconds=5.0)
-
-        assert clock.now <= 5.0  # never slept past the deadline waiting for a slot
-        assert issued_at == pytest.approx([0.0, 2.0, 4.0])
-        assert isinstance(excinfo.value.__cause__, _StatusError)  # last throttle is preserved
-
-    def test_current_rate_exposed(self) -> None:
-        gate, pacer, clock = make_gate()
-        assert gate.current_rate == pytest.approx(10.0)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(gate.call, parked)
+            assert occupied.wait(timeout=10)
+            with pytest.raises(NominalRequestThrottledError) as excinfo:
+                gate.call(lambda: "never runs", deadline_seconds=0.05)
+            assert "lane could not admit" in str(excinfo.value)
+            assert excinfo.value.__cause__ is None  # no throttle was ever observed
+            release.set()
+            assert fut.result(timeout=10) == "parked done"
