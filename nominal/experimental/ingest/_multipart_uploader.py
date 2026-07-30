@@ -183,6 +183,40 @@ class MultipartUploader:
     `small_file_route_max_bytes` (EXPERIMENTAL) routes files at/below that size through the
     backend single-shot `upload_file` endpoint (one request) rather than multipart, collapsing
     the per-file metadata that rate-limits many-small-file batches. Larger files use multipart.
+
+    **Tuning.** The knobs compose around one budget and one pipe. Every Nominal API request
+    (initiate/sign/complete/`upload_file`) competes for the server's per-caller admission
+    budget through the `max_nominal_concurrency` lane, while file bytes flow directly to
+    storage over `max_storage_workers` concurrent PUT streams. Which of the two binds depends
+    on the batch shape:
+
+    - *Many small files* — the admission budget binds long before bandwidth does. The
+      single-shot route is the big lever: one request per file instead of multipart's three.
+      Widening the lane does NOT finish the batch sooner once the budget is the wall — it only
+      provokes refusals, and a refused single-shot upload re-sends its whole body, so wire
+      traffic grows with no time won. The offered request rate is roughly lane width divided
+      by request latency; if uploads show heavy throttling (long per-request tails), narrow
+      the lane rather than widening it.
+    - *A few huge files* — bandwidth binds and the lane sits idle. Aggregate throughput is
+      roughly streams x per-stream throughput, but only until the network path saturates;
+      past saturation, extra streams degrade each other and aggregate can FALL. Find the knee
+      empirically: measure at the default `max_storage_workers`, then halve and double it and
+      keep whichever is faster. `part_size` (on `enqueue_file`) sets how many streams one file
+      can occupy — keep files at roughly 3+ parts so streams stay fed near file boundaries —
+      and `max_files_in_flight` trades a flatter finishing tail (lower) against more
+      interleaving (higher).
+    - *Memory* — each PUT stream holds one full part in memory, so peak buffered memory is
+      roughly `max_storage_workers x part_size` (~640 MiB at the defaults). Shrink either to
+      fit a constrained host.
+    - *Unreliable networks* — `file_retry_timeout` (default one hour) rides out outages by
+      retrying whole files whose failures look like network weather; `timeout` and
+      `max_part_retries` bound each hung PUT attempt; a smaller `part_size` makes every retry
+      cheaper at the cost of more requests.
+
+    When in doubt, keep the defaults — they are benchmark-tuned, and the classic mistake is
+    raising everything at once, which slows BOTH regimes: streams past saturation contend with
+    each other, and lane width past the admission budget only converts useful bandwidth into
+    refused-and-resent requests.
     """
 
     timeout: float
