@@ -6,37 +6,46 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
 
 name: release-please
 
 jobs:
   release-please:
+    uses: nominal-io/git-automations/.github/workflows/release-please-wrapper.yml@main
+    secrets:
+      bot-token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      app-id: ${{ secrets.NOMBOT_APP_ID }}
+      app-private-key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
+    with:
+      manifest-file: .release-please-manifest.json
+      config-file: release-please-config.json
+      should-expedite-release: false
+
+  sync-uv-lock:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.pr != '' }}
     runs-on: depot-ubuntu-24.04-small
     steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
       - name: Check out release PR branch
-        if: ${{ steps.release.outputs.pr }}
         uses: actions/checkout@v4
         with:
           # Using fromJSON since github refnames don't provide the release-please
           # branch, which is what this next commit needs to be based off of
-          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
 
       - name: Install uv
-        if: ${{ steps.release.outputs.pr }}
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.x"
 
       - name: Sync uv.lock to release PR
-        if: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail
           if uv lock --check; then
