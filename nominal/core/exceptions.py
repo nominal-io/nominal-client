@@ -46,6 +46,14 @@ class NominalRequestThrottledError(NominalError):
     """The server throttled a request for longer than the caller's retry budget allowed."""
 
 
+class NominalIngestUploadFailed(NominalError, ExceptionGroup):
+    """One or more files in an ingest batch failed to upload; nothing was ingested.
+
+    Each member exception names the file it belongs to and carries the underlying failure as
+    its `__cause__`.
+    """
+
+
 class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
 

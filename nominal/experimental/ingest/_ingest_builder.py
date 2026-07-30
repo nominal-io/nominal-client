@@ -14,6 +14,7 @@ TODO(drake): add ``add_point_cloud`` once the backend accepts that item kind.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from concurrent.futures import as_completed
@@ -29,7 +30,7 @@ from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalC
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.exceptions import NominalIngestError
+from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
@@ -48,6 +49,8 @@ from nominal.ts import (
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, eq=False)
@@ -237,25 +240,53 @@ def _write_frame_timestamps(frame_timestamps: Sequence[IntegralNanosecondsUTC]) 
     return Path(name)
 
 
-def _upload_all(files: Sequence[_PendingFile], client: NominalClient) -> dict[_PendingFile, str]:
-    """Upload every file in parallel; return each file's storage location, keyed by the file.
+def _upload_failure_group(failures: Mapping[_PendingFile, BaseException], total: int) -> NominalIngestUploadFailed:
+    """Bundle per-file upload failures into one raisable group, each member naming its file."""
+    members: list[NominalIngestError] = []
+    for file, exc in failures.items():
+        member = NominalIngestError(f"failed to upload '{file.path}'")
+        member.__cause__ = exc
+        members.append(member)
+    return NominalIngestUploadFailed(
+        f"{len(failures)} of {total} file(s) failed to upload; nothing was ingested", members
+    )
 
-    Atomic: the first upload failure raises before any location is returned, so no ingest is
-    ever triggered with a partial batch. The failure surfaces as whatever the uploader raised —
-    a multipart failure, a throttle error, or a `CancelledError` for a file the abnormal
-    shutdown cut short — so no caller should assume a single exception type here.
+
+def _upload_all(
+    files: Sequence[_PendingFile], client: NominalClient, *, allow_partial: bool
+) -> dict[_PendingFile, str | BaseException]:
+    """Upload every file in parallel; return each file's outcome (location or failure) by file.
+
+    The uploader has already absorbed transient failures (its file-level retry budget), so a
+    failure reaching this layer is permanent or outlasted that budget.
+
+    With `allow_partial=False` this is atomic and fail-fast: the first failure raises a
+    `NominalIngestUploadFailed` carrying every failure that has surfaced by that moment, and
+    leaving the `with` block on that exception runs the cancelling close that drops the rest
+    of the batch. With `allow_partial=True` every file runs to settlement and failures are
+    returned as outcomes for the caller to prune.
     """
     if not files:
         return {}
-    locations: dict[_PendingFile, str] = {}
+    outcomes: dict[_PendingFile, str | BaseException] = {}
     with MultipartUploader.create(client) as up:
         futures = {up.enqueue_file(file.path, file_type=file.file_type): file for file in files}
-        # `as_completed` stays inside the `with` so the first failed `fut.result()` raises while
-        # the uploader is still open: leaving the block on that exception is what runs the
-        # cancelling close that drops the rest of the batch.
         for fut in as_completed(futures):
-            locations[futures[fut]] = fut.result()
-    return locations
+            try:
+                outcomes[futures[fut]] = fut.result()
+            except BaseException as exc:
+                outcomes[futures[fut]] = exc
+                if not allow_partial:
+                    # Sweep the other already-settled futures so the report carries every failure
+                    # known at this moment — without waiting on files still uploading.
+                    for other, other_file in futures.items():
+                        if other_file not in outcomes and other.done():
+                            other_exc = other.exception()
+                            if other_exc is not None:
+                                outcomes[other_file] = other_exc
+                    failures = {file: out for file, out in outcomes.items() if isinstance(out, BaseException)}
+                    raise _upload_failure_group(failures, total=len(files)) from None
+    return outcomes
 
 
 class IngestBuilder:
@@ -724,15 +755,25 @@ class IngestBuilder:
         )
         return self
 
-    def submit(self) -> IngestionJob:
+    def submit(self, *, allow_partial: bool = False) -> IngestionJob:
         """Upload all registered files and trigger one ingest job.
 
-        Uploads run in parallel and the call is atomic: if any upload fails, no ingest is
-        triggered. The call returns immediately with the job in flight.
+        Uploads run in parallel, with transient failures (network weather, throttling) retried
+        by the uploader's own per-file budget. By default the call is atomic and fail-fast: the
+        first file that fails permanently cancels the batch and raises, and no ingest is
+        triggered. With `allow_partial=True`, every file runs to settlement instead — items
+        whose files failed are logged and pruned, and one ingest job is triggered for the items
+        that uploaded cleanly.
 
         Single-use: one `submit()` consumes the builder, whether it succeeds or fails. A
         failed trigger request can have been committed server-side (a timeout, say), so there
         is no retry that cannot double-ingest — build a new builder instead.
+
+        Args:
+            allow_partial: If true, items whose files failed to upload are dropped from the
+                job (each failure logged as an error) instead of failing the whole batch.
+                Deliberately reported through logs, not the return value — the job always
+                covers exactly the items that uploaded.
 
         Returns:
             The created ingest job. Track it by polling `job.refresh().status`, or block on its
@@ -740,6 +781,9 @@ class IngestBuilder:
 
         Raises:
             NominalIngestError: this builder was already submitted.
+            NominalIngestUploadFailed: a file failed to upload — any file when
+                `allow_partial` is false, or every file when it is true. Members carry
+                per-file detail.
             ValueError: if no files have been added.
         """
         if self._submitted:
@@ -751,16 +795,42 @@ class IngestBuilder:
             raise ValueError("cannot submit an ingest job with no files; add at least one file first")
         self._submitted = True
 
+        all_files = [file for pending in self._pending for file in pending.files]
         try:
-            locations = _upload_all([file for pending in self._pending for file in pending.files], self._client)
+            outcomes = _upload_all(all_files, self._client, allow_partial=allow_partial)
         finally:
             # Builder-generated files (video timestamp manifests) are dead once the upload phase
             # is over — uploaded or failed, the single-use builder never needs them again.
             for temp_file in self._temp_files:
                 temp_file.unlink(missing_ok=True)
+
+        locations = {file: out for file, out in outcomes.items() if isinstance(out, str)}
+        failures = {file: out for file, out in outcomes.items() if isinstance(out, BaseException)}
+        items: list[ingest_service_pb2.IngestItem] = []
+        for pending in self._pending:
+            failed = [file for file in pending.files if file in failures]
+            if not failed:
+                items.append(pending.build(locations))
+                continue
+            # allow_partial=False cannot reach here: _upload_all raised on the first failure.
+            for file in failed:
+                logger.error("failed to upload '%s'; dropping its item from the ingest job", file.path)
+            for file in pending.files:
+                if file in locations:
+                    logger.warning("'%s' uploaded but its item was dropped because a sibling file failed", file.path)
+        if not items:
+            raise _upload_failure_group(failures, total=len(all_files))
+        if failures:
+            logger.error(
+                "ingesting %d of %d items; %d file(s) failed to upload and their items were dropped",
+                len(items),
+                len(self._pending),
+                len(failures),
+            )
+
         request = ingest_service_pb2.IngestRequest(
             dataset_rid=self._dataset_rid,
-            items=[pending.build(locations) for pending in self._pending],
+            items=items,
             tags=self._tags,
         )
         with translate_grpc_errors():

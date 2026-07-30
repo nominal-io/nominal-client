@@ -82,6 +82,11 @@ for file in job.as_files_ingested():
     print(f"ingested {file.name}")
 ```
 
+By default `submit()` is atomic: any file failing permanently cancels the batch and raises an
+exception group naming each failed file, and nothing is ingested. Pass
+`submit(allow_partial=True)` to instead drop failed items (logged as errors) and ingest
+everything that uploaded cleanly.
+
 ## New Upload Machinery
 
 Under the hood, `submit()` uploads through a new experimental uploader (`MultipartUploader`, also
@@ -89,6 +94,11 @@ exported from this package) that runs every file concurrently: small files take 
 route, large files fan multipart parts out across a pool of direct-to-storage streams, and every
 Nominal API request passes through a fixed-width admission lane with retry and backoff handling
 tuned to the backend's throttling behavior.
+
+The uploader also rides out network weather on its own: transient failures (dropped connections,
+timeouts, throttling) retry each affected file on a backoff for up to an hour by default (the
+`file_retry_timeout` knob), so a wifi blip mid-batch pauses the upload rather than killing it.
+Permanent failures — a broken file, a rejected request — still surface immediately.
 
 A typical experience on a strong network:
 

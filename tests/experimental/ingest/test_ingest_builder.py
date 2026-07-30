@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
 from concurrent.futures import CancelledError, Future
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core.exceptions import NominalIngestError, NominalMultipartUploadFailed
+from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader, _PendingFile, _upload_all
 
@@ -69,7 +70,7 @@ class FakeUploader:
 def upload_with(fake: FakeUploader, files: list[_PendingFile], client: MagicMock | None = None) -> MagicMock:
     """Run `_upload_all` against `fake` instead of a real uploader; return the patched `create`."""
     with patch.object(MultipartUploader, "create", autospec=True, return_value=fake) as create:
-        _upload_all(files, client if client is not None else MagicMock())
+        _upload_all(files, client if client is not None else MagicMock(), allow_partial=False)
     return create
 
 
@@ -90,7 +91,8 @@ class TestUploadAll:
         fake = FakeUploader({"a.csv": "s3://bucket/a", "b.csv": "s3://bucket/b"})
 
         with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
-            assert _upload_all(files, MagicMock()) == {files[0]: "s3://bucket/a", files[1]: "s3://bucket/b"}
+            outcomes = _upload_all(files, MagicMock(), allow_partial=False)
+        assert outcomes == {files[0]: "s3://bucket/a", files[1]: "s3://bucket/b"}
 
     def test_passes_the_client_to_the_uploader(self, write_file: WriteFile) -> None:
         """`create` derives auth, workspace, and transport from the client, so it must reach it.
@@ -111,7 +113,7 @@ class TestUploadAll:
     def test_no_files_never_builds_an_uploader(self) -> None:
         """An empty batch must not spin up thread pools and an HTTP session for nothing."""
         with patch.object(MultipartUploader, "create", autospec=True) as create:
-            assert _upload_all([], MagicMock()) == {}
+            assert _upload_all([], MagicMock(), allow_partial=False) == {}
         create.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -125,23 +127,40 @@ class TestUploadAll:
         ],
         ids=["multipart-failure", "cancelled"],
     )
-    def test_any_upload_failure_propagates(self, write_file: WriteFile, failure: BaseException) -> None:
-        """Whatever exception a file settles with reaches the caller unchanged."""
-        with pytest.raises(type(failure)):
+    def test_any_upload_failure_surfaces_in_the_group(self, write_file: WriteFile, failure: BaseException) -> None:
+        """Whatever exception a file settles with reaches the caller as that member's cause."""
+        with pytest.raises(NominalIngestUploadFailed) as excinfo:
             upload_with(FakeUploader({"a.csv": failure}), [pending_file(write_file("a.csv", 1))])
 
+        (member,) = excinfo.value.exceptions
+        assert member.__cause__ is failure
+        assert "a.csv" in str(member)
+
     def test_failure_leaves_the_uploader_context_by_raising(self, write_file: WriteFile) -> None:
-        """The `with` block must see the exception: that is what cancels the rest of the batch.
+        """The `with` block must see the group: that is what cancels the rest of the batch.
 
         Swallowing it would leave the remaining files uploading after the caller was told the
         batch failed.
         """
         fake = FakeUploader({"a.csv": RuntimeError("upload failed")})
 
-        with pytest.raises(RuntimeError, match="upload failed"):
+        with pytest.raises(NominalIngestUploadFailed):
             upload_with(fake, [pending_file(write_file("a.csv", 1))])
 
-        assert fake.exit_exc_type is RuntimeError
+        assert fake.exit_exc_type is NominalIngestUploadFailed
+
+    def test_fail_fast_reports_every_failure_already_settled(self, write_file: WriteFile) -> None:
+        """The atomic failure carries every failure known at raise time, not just the first."""
+        files = [pending_file(write_file(name, 1)) for name in ("a.csv", "b.csv", "c.csv")]
+        fake = FakeUploader(
+            {"a.csv": RuntimeError("a broke"), "b.csv": "s3://bucket/b", "c.csv": RuntimeError("c broke")}
+        )
+
+        with pytest.raises(NominalIngestUploadFailed) as excinfo:
+            upload_with(fake, files)
+
+        causes = {str(member.__cause__) for member in excinfo.value.exceptions}
+        assert causes == {"a broke", "c broke"}  # both settled failures reported; the success is not
 
 
 class TestSubmit:
@@ -225,7 +244,7 @@ class TestSubmit:
         fake = FakeUploader({"cam.mp4": RuntimeError("boom")})
 
         with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
-            with pytest.raises(RuntimeError, match="boom"):
+            with pytest.raises(NominalIngestUploadFailed):
                 builder.submit()
 
         _video_path, manifest_path = fake.enqueued
@@ -295,9 +314,62 @@ class TestSubmit:
         with patch.object(
             MultipartUploader, "create", autospec=True, return_value=FakeUploader({"a.csv": RuntimeError("boom")})
         ):
-            with pytest.raises(RuntimeError, match="boom"):
+            with pytest.raises(NominalIngestUploadFailed):
                 builder.submit()
             with pytest.raises(NominalIngestError, match="single-use"):
                 builder.submit()
+
+        client._clients.ingest_v2.Ingest.assert_not_called()
+
+
+class TestSubmitAllowPartial:
+    def test_failed_items_are_pruned_and_the_rest_ingest(
+        self, write_file: WriteFile, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """With allow_partial, a failed file drops its item — logged — and the survivors ingest."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_tabular_data(write_file("good.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file("bad.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        fake = FakeUploader({"good.csv": "s3://bucket/good", "bad.csv": RuntimeError("disk on fire")})
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+            with caplog.at_level(logging.ERROR):
+                builder.submit(allow_partial=True)
+
+        (request,) = client._clients.ingest_v2.Ingest.call_args.args
+        assert [item.file.source.s3.path for item in request.items] == ["s3://bucket/good"]
+        assert "bad.csv" in caplog.text  # the dropped file is reported, per the deliberate log-only contract
+
+    def test_a_multi_file_item_is_pruned_whole(self, write_file: WriteFile, caplog: pytest.LogCaptureFixture) -> None:
+        """An item with one failed file must not ingest half-armed: every sibling drops with it."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_containerized(
+            extractor="ri.extractor.test",
+            sources={"input_a": write_file("ok.abc", 1), "input_b": write_file("broken.abc", 1)},
+        )
+        builder.add_tabular_data(write_file("good.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        fake = FakeUploader({"broken.abc": RuntimeError("boom"), "good.csv": "s3://bucket/good"})
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+            with caplog.at_level(logging.WARNING):
+                builder.submit(allow_partial=True)
+
+        (request,) = client._clients.ingest_v2.Ingest.call_args.args
+        assert len(request.items) == 1  # only the tabular item survived
+        assert request.items[0].file.source.s3.path == "s3://bucket/good"
+        assert "ok.abc" in caplog.text  # the uploaded-but-dropped sibling is called out
+
+    def test_all_files_failing_raises_even_with_allow_partial(self, write_file: WriteFile) -> None:
+        """There is no partial job to trigger when nothing uploaded — that is still an error."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_tabular_data(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        fake = FakeUploader({"a.csv": RuntimeError("boom")})
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+            with pytest.raises(NominalIngestUploadFailed):
+                builder.submit(allow_partial=True)
 
         client._clients.ingest_v2.Ingest.assert_not_called()
