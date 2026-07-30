@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
@@ -132,15 +132,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 response.details.dataset.dataset_file_id,
             ),
         )
-
-    def _handle_video_ingest_response(
-        self, response: ingest_api.IngestResponse, *, channel: str | None = None
-    ) -> VideoDatasetFile:
-        """Resolve an ingest response to the video file it created, stamping the known channel on it."""
-        file = self._resolve_ingested_video_file(response)
-        # The Catalog row does not record the channel, but the caller just supplied it — carry it so
-        # update() does not have to rediscover it.
-        return file if channel is None else replace(file, channel=channel)
 
     def _resolve_ingested_video_file(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
         details = response.details.dataset
@@ -788,7 +779,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             )
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_video_ingest_response(response, channel=channel)
+        return self._resolve_ingested_video_file(response)
 
     def add_ardupilot_dataflash(
         self,

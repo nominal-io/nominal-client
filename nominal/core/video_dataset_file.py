@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import overload
 
@@ -22,13 +22,6 @@ class VideoDatasetFile(DatasetFile):
 
     # Private, unsupported ingest provenance. Excluded from repr and equality.
     _timestamp_manifest: scout_video_api.VideoFileTimestampManifest = field(repr=False, compare=False)
-
-    channel: str | None = None
-    """The video channel this file backs, when known.
-
-    Populated on upload. `None` for files read back through the generic dataset-file paths, since the
-    Catalog row does not record the channel; `update()` requires it to be known.
-    """
 
     num_frames: int | None = None
     num_segments: int | None = None
@@ -97,8 +90,8 @@ class VideoDatasetFile(DatasetFile):
             This file, refreshed with its new bounds and recomputed segment metadata.
 
         Raises:
-            ValueError: no field was provided, more than one of {ending_timestamp, true_frame_rate,
-                scale_factor} was provided, or this file's channel is not known.
+            ValueError: no field was provided, or more than one of {ending_timestamp, true_frame_rate,
+                scale_factor} was provided.
 
         NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         NOTE: video channels do not carry per-file descriptions, so unlike the legacy
@@ -114,12 +107,6 @@ class VideoDatasetFile(DatasetFile):
                 "At least one of 'name', 'starting_timestamp', 'ending_timestamp', 'true_frame_rate', "
                 "or 'scale_factor' must be provided"
             )
-        if self.channel is None:
-            raise ValueError(
-                f"cannot update video file {self.id!r}: its channel is not known. update() is currently "
-                "supported on handles returned by the Dataset.add_video / add_mcap_video methods; files "
-                "read back from the catalog do not yet carry their channel."
-            )
 
         if ending_timestamp is not None:
             scale_parameter = scout_video_api.ScaleParameter(
@@ -132,17 +119,10 @@ class VideoDatasetFile(DatasetFile):
         else:
             scale_parameter = None
 
-        channel = self.channel
         self._clients.video.batch_update_video_channel_dataset_files(
             self._clients.auth_header,
             scout_video_api.BatchUpdateVideoChannelDatasetFilesRequest(
-                channel_series=scout_video_api.VideoChannelSeries(
-                    data_source=scout_video_api.VideoDataSourceChannel(
-                        data_source_rid=self.dataset_rid,
-                        channel=channel,
-                        tags={},
-                    )
-                ),
+                dataset_rid=self.dataset_rid,
                 updates=[
                     scout_video_api.VideoChannelDatasetFileUpdate(
                         dataset_file_id=self.id,
@@ -156,10 +136,8 @@ class VideoDatasetFile(DatasetFile):
             ),
         )
         # The response carries only the updated bounds, so refresh instead: that also picks up the
-        # segment metadata the backend recomputes after a rescale. The refreshed instance is rebuilt
-        # from the Catalog row, which does not record the channel, so re-stamp the one we know.
-        refreshed = self.refresh()
-        return refreshed if refreshed.channel is not None else replace(refreshed, channel=channel)
+        # segment metadata the backend recomputes after a rescale.
+        return self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> Self:

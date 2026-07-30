@@ -260,10 +260,8 @@ def test_ingest_video_uploads_and_submits_video_v2():
         overwrite_overlapping=False,
     )
     ds._clients.ingest.ingest.assert_called_once()
-    ds._handle_video_ingest_response.assert_called_once_with(
-        ds._clients.ingest.ingest.return_value, channel="camera/front"
-    )
-    assert result is ds._handle_video_ingest_response.return_value
+    ds._resolve_ingested_video_file.assert_called_once_with(ds._clients.ingest.ingest.return_value)
+    assert result is ds._resolve_ingested_video_file.return_value
 
 
 def test_add_mcap_video_from_io_rejects_text_stream():

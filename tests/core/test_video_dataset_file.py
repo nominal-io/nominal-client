@@ -111,13 +111,12 @@ def test_dispatch_returns_base_type_when_metadata_present_without_video_arm():
     base_factory.assert_called_once_with(clients, row)
 
 
-def _video_file(clients: MagicMock, *, channel: str | None = None, bounds: object = None) -> VideoDatasetFile:
+def _video_file(clients: MagicMock, *, bounds: object = None) -> VideoDatasetFile:
     kwargs = _common_kwargs(clients)
     kwargs["bounds"] = bounds
     return VideoDatasetFile(
         **kwargs,
         _timestamp_manifest=MagicMock(name="manifest"),
-        channel=channel,
     )
 
 
@@ -127,28 +126,19 @@ def _update_request(clients: MagicMock) -> object:
     return args[1]
 
 
-def test_update_addresses_the_known_channel():
-    """An update is addressed to the file's known channel on its dataset."""
+def test_update_addresses_the_files_dataset():
+    """An update is addressed to the file's own dataset; no channel identity is sent."""
     clients = MagicMock()
-    file = _video_file(clients, channel="camera/front")
+    file = _video_file(clients)
     with patch.object(VideoDatasetFile, "refresh", return_value=file) as refresh:
         file.update(starting_timestamp=1_700_000_000_000_000_000)
 
     request = _update_request(clients)
-    assert request.channel_series.data_source.channel == "camera/front"
-    assert request.channel_series.data_source.data_source_rid == "ds-1"
+    assert request.dataset_rid == "ds-1"
+    assert request.channel_series is None
     assert [u.dataset_file_id for u in request.updates] == ["file-1"]
     assert request.updates[0].start is not None
     refresh.assert_called_once()
-
-
-def test_update_without_known_channel_raises():
-    """A file read back without a channel cannot be updated until the backend records the channel."""
-    clients = MagicMock()
-    file = _video_file(clients, channel=None)
-    with pytest.raises(ValueError, match="channel is not known"):
-        file.update(name="renamed.mp4")
-    clients.video.batch_update_video_channel_dataset_files.assert_not_called()
 
 
 def test_update_maps_each_scale_input_to_its_union_arm():
@@ -159,7 +149,7 @@ def test_update_maps_each_scale_input_to_its_union_arm():
         ({"scale_factor": 2.0}, "scale_factor"),
     ):
         clients = MagicMock()
-        file = _video_file(clients, channel="cam")
+        file = _video_file(clients)
         with patch.object(VideoDatasetFile, "refresh", return_value=file):
             file.update(**kwargs)
         scale = _update_request(clients).updates[0].scale_parameter
@@ -169,7 +159,7 @@ def test_update_maps_each_scale_input_to_its_union_arm():
 def test_update_rejects_multiple_scale_inputs():
     """Only one of the three scale inputs may be supplied, matching legacy VideoFile.update."""
     clients = MagicMock()
-    file = _video_file(clients, channel="cam")
+    file = _video_file(clients)
     with pytest.raises(ValueError, match="at most one of"):
         file.update(true_frame_rate=30.0, scale_factor=2.0)
     clients.video.batch_update_video_channel_dataset_files.assert_not_called()
@@ -178,7 +168,7 @@ def test_update_rejects_multiple_scale_inputs():
 def test_update_requires_at_least_one_field():
     """An update with nothing set is rejected rather than sent as a no-op."""
     clients = MagicMock()
-    file = _video_file(clients, channel="cam")
+    file = _video_file(clients)
     with pytest.raises(ValueError, match="At least one of"):
         file.update()
     clients.video.batch_update_video_channel_dataset_files.assert_not_called()
