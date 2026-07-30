@@ -26,7 +26,10 @@ jobs:
       - name: Get app token for release-please
         id: app-token
         if: ${{ env.USE_APP_TOKEN == 'true' }}
-        uses: nominal-io/workflow-application-token-action@d8644a5aa546f763f73b94c762b092e088486db7 # v0.0.1
+        # A minting failure degrades to the token below rather than blocking the
+        # release: a skipped or failed step leaves the output empty.
+        continue-on-error: true
+        uses: nominal-io/workflow-application-token-action@d8644a5aa546f763f73b94c762b092e088486db7 # 0.0.1
         with:
           application_id: ${{ secrets.NOMBOT_APP_ID }}
           application_private_key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
