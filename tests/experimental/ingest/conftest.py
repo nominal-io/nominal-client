@@ -40,6 +40,12 @@ def write_file(tmp_path: pathlib.Path) -> Callable[[str, int], pathlib.Path]:
 
 
 @pytest.fixture
+def fake_clock() -> FakeClock:
+    """A fresh deterministic clock for tests that drive time seams directly."""
+    return FakeClock()
+
+
+@pytest.fixture
 def make_gate() -> Callable[..., tuple[_ThrottleGate, FakeClock]]:
     """Factory for a throttle gate on a fresh fake clock with deterministic (identity) jitter."""
 

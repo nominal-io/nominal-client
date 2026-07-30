@@ -10,12 +10,13 @@ from __future__ import annotations
 import logging
 import math
 import pathlib
+import random
 import threading
 import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import TYPE_CHECKING, Iterable, Type
+from typing import TYPE_CHECKING, Callable, Iterable, Type
 
 import requests
 from nominal_api import upload_api
@@ -70,8 +71,47 @@ MAX_SMALL_FILE_ROUTE_BYTES = 4 * 1024 * 1024  # 4 MiB
 # a high-bandwidth egress showing N streams sustaining more aggregate throughput than 10 do.
 DEFAULT_MAX_STORAGE_WORKERS = 10
 
+# Per-file budget for retrying TRANSIENT failures (network weather, throttling) before the
+# file's future settles with the error. Sized for the laptop story: a wifi drop mid-batch
+# should pause the upload, not kill it — files quietly probe-retry until the network returns.
+# Permanent failures (a broken file, a 4xx) never enter this loop and still fail instantly.
+DEFAULT_FILE_RETRY_TIMEOUT_S = 3600.0
+
 _STORAGE_MIN_PART_SIZE_BYTES = 5 * 1024 * 1024  # provider minimum for every part but the last
 _STORAGE_MAX_PARTS = 10_000  # provider maximum parts per multipart upload
+
+_FILE_RETRY_BASE_S = 1.0  # first retry lands quickly: brief blips resolve in seconds
+_FILE_RETRY_CAP_S = 60.0  # a long outage is probed about once a minute, not hammered
+
+
+def _is_transient_upload_error(exc: BaseException) -> bool:
+    """True if `exc` is network weather that retrying the whole file can outlast.
+
+    Transient: connection failures, timeouts, transport retry exhaustion, throttle-budget
+    exhaustion, and HTTP 408/429/5xx — including any of those as the underlying causes inside
+    a part-failure group. Everything else (local I/O errors, other 4xx, corruption, unknown
+    exceptions) is treated as permanent: retrying cannot help, so the failure surfaces
+    immediately.
+    """
+    transient_types = (
+        ConnectionError,  # raw socket-level errors
+        TimeoutError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+        requests.exceptions.RetryError,
+        NominalRequestThrottledError,  # the gate spent one request budget; a retry gets a fresh one
+    )
+    if isinstance(exc, transient_types):
+        return True
+    if isinstance(exc, requests.exceptions.HTTPError):
+        status = None if exc.response is None else exc.response.status_code
+        return status is not None and (status in (408, 429) or status >= 500)
+    if isinstance(exc, NominalMultipartUploadFailed):
+        # A part that exhausted its attempts: transient iff every attempt failed transiently
+        # (each wrapped attempt error chains the original as its __cause__).
+        causes = [wrapped.__cause__ for wrapped in exc.exceptions]
+        return bool(causes) and all(cause is not None and _is_transient_upload_error(cause) for cause in causes)
+    return False
 
 
 @dataclass(frozen=True)
@@ -160,6 +200,13 @@ class MultipartUploader:
     _gate: _ThrottleGate = field(repr=False)
     # If set, files with 0 < size <= this go single-shot via upload_file instead of multipart.
     _small_file_route_max_bytes: int | None = field(default=None, repr=False)
+    # Per-file transient-retry budget in seconds; None disables file-level retry entirely.
+    _file_retry_timeout: float | None = field(default=None, repr=False)
+    # Time seams for the file-retry loop. `_retry_wait` sleeps AND watches the drain flag
+    # (True = close in progress); None resolves to `self._draining.wait`. Tests inject fakes.
+    _retry_clock: Callable[[], float] = field(default=time.monotonic, repr=False)
+    _retry_wait: Callable[[float], bool] | None = field(default=None, repr=False)
+    _retry_jitter: Callable[[float], float] = field(default=lambda delay: random.uniform(0.0, delay), repr=False)
     _closed: bool = field(default=False, repr=False)
     # Set by a cancelling close: every part task short-circuits instead of uploading. This is how
     # the part lane is revoked -- see `close` for why the executor's own cancellation cannot be.
@@ -184,6 +231,7 @@ class MultipartUploader:
         max_part_retries: int = 3,
         per_request_retry_timeout: float = DEFAULT_THROTTLE_DEADLINE_S,
         max_backoff_duration: float = DEFAULT_MAX_BACKOFF_DURATION_S,
+        file_retry_timeout: float | None = DEFAULT_FILE_RETRY_TIMEOUT_S,
     ) -> Self:
         """Create a MultipartUploader sized for one batch of uploads.
 
@@ -226,6 +274,13 @@ class MultipartUploader:
             max_backoff_duration: Cap on the shared storm damper's delay. Under sustained
                 throttling the damper doubles toward this cap and every retry sleeps a jittered
                 fraction of it; successes decay it back to zero.
+            file_retry_timeout: Wall-clock budget, per file, for retrying TRANSIENT failures —
+                connection errors, timeouts, throttle-budget exhaustion, HTTP 408/429/5xx —
+                by re-running the file's whole upload after a jittered exponential backoff.
+                Sized for network weather: a wifi drop mid-batch pauses the affected files
+                rather than failing them. Permanent failures (a broken file, other 4xx,
+                unknown errors) never retry and surface immediately regardless of this value.
+                Pass None to disable file-level retry.
 
         Returns:
             An uploader ready to accept files. Close it (or use it as a context manager) to
@@ -280,6 +335,7 @@ class MultipartUploader:
             _small_pool=ThreadPoolExecutor(small_file_workers, thread_name_prefix="nominal-upload-small"),
             _driver_pool=ThreadPoolExecutor(files_in_flight, thread_name_prefix="nominal-upload-file"),
             _part_pool=ThreadPoolExecutor(storage_workers, thread_name_prefix="nominal-upload-part"),
+            _file_retry_timeout=file_retry_timeout,
             _gate=_ThrottleGate(
                 max_concurrency=max_nominal_concurrency,
                 deadline_seconds=per_request_retry_timeout,
@@ -438,9 +494,48 @@ class MultipartUploader:
             self._issued_futures.append(future)
         return future
 
+    # ---- file-level transient retry (runs on the task's own pool thread) ----
+
+    def _run_with_file_retry(self, upload_once: Callable[[], str], name: str) -> str:
+        """Run one file's upload, retrying transient failures until the file's retry budget expires.
+
+        Transient failures (see `_is_transient_upload_error`) re-run the whole upload after a
+        jittered exponential backoff; permanent or unknown failures raise immediately. The
+        backoff waits ON the drain flag, so a cancelling close interrupts the wait instantly
+        and the file settles as cancelled — close latency never grows with the retry budget.
+        """
+        if self._file_retry_timeout is None:
+            return upload_once()
+        wait_for_drain = self._retry_wait if self._retry_wait is not None else self._draining.wait
+        deadline = self._retry_clock() + self._file_retry_timeout
+        delay = _FILE_RETRY_BASE_S
+        while True:
+            try:
+                return upload_once()
+            except BaseException as exc:
+                if not _is_transient_upload_error(exc):
+                    raise
+                remaining = deadline - self._retry_clock()
+                if remaining <= 0:
+                    raise
+                wait_s = min(self._retry_jitter(delay), remaining)
+                logger.warning(
+                    "transient failure uploading %s; retrying in %.1fs (%.0fs of retry budget left): %s",
+                    name,
+                    wait_s,
+                    remaining,
+                    exc,
+                )
+                if wait_for_drain(wait_s):
+                    raise CancelledError("uploader is closing") from exc
+                delay = min(delay * 2.0, _FILE_RETRY_CAP_S)
+
     # ---- small route (small-pool thread) ----
 
     def _run_small_file_upload(self, pending: _PendingUpload) -> str:
+        return self._run_with_file_retry(lambda: self._run_small_file_upload_attempt(pending), pending.name)
+
+    def _run_small_file_upload_attempt(self, pending: _PendingUpload) -> str:
         """Upload a small file in one request via the backend `upload_file` endpoint.
 
         Always passes `size_bytes` so the server streams to storage (and doesn't silently cap at
@@ -466,7 +561,14 @@ class MultipartUploader:
     # ---- multipart route (driver-pool thread) ----
 
     def _upload_one(self, pending: _PendingUpload) -> str:
-        """Run one file's whole multipart lifecycle: initiate, fan out parts, complete or abort."""
+        return self._run_with_file_retry(lambda: self._upload_one_attempt(pending), pending.name)
+
+    def _upload_one_attempt(self, pending: _PendingUpload) -> str:
+        """Run one file's whole multipart lifecycle: initiate, fan out parts, complete or abort.
+
+        A failed attempt aborts its own upload id before raising, so a file-level retry starts
+        from a clean slate with a fresh initiate.
+        """
         # A cancelling close can race this task past its cancel pass (the pool worker marks it
         # running first); settle it like every other dropped file, before it spends a request.
         if self._draining.is_set():

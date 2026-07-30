@@ -184,6 +184,9 @@ def make_uploader() -> Iterator[MakeUploader]:
     ) -> tuple[MultipartUploader, FakeUploadService, FakePutSession]:
         service = service or FakeUploadService()
         create_kwargs.setdefault("small_file_route_max_bytes", None)
+        # File-level transient retry off unless a test opts in: most failure tests pin the
+        # single-attempt contracts, and the default budget would real-sleep between attempts.
+        create_kwargs.setdefault("file_retry_timeout", None)
         up = MultipartUploader.create(fake_nominal_client(service), **create_kwargs)
         created.append(up)
         session = FakePutSession()
@@ -864,3 +867,117 @@ class TestThrottlingIsAbsorbedByTheGate:
         # throttled-out call and handed it a fresh budget, this would be 3 * max_part_retries.
         assert calls["n"] == 3
         assert service.aborted == ["f.csv"]
+
+
+class TestFileLevelTransientRetry:
+    """The uploader's own resilience: transient failures retry whole files; permanent ones don't.
+
+    The retry seams (`_retry_clock`, `_retry_wait`, `_retry_jitter`) are injected so no test
+    sleeps for real; `_retry_wait` returning True means "a cancelling close started".
+    """
+
+    @staticmethod
+    def _install_retry_seams(up: MultipartUploader, clock: Any) -> None:
+        up._retry_clock = clock
+        up._retry_wait = lambda seconds: (clock.sleep(seconds), False)[1]
+        up._retry_jitter = lambda delay: delay
+
+    def test_a_transient_failure_retries_the_file_and_succeeds(
+        self, make_uploader: MakeUploader, write_file: WriteFile, fake_clock: Any
+    ) -> None:
+        """A file whose attempt dies of network weather is re-run whole and completes."""
+        service = FakeUploadService(fail_sign_for_key="f.csv")  # sign dies with ConnectionError
+        up, service, _ = make_uploader(service=service, max_part_retries=1, file_retry_timeout=60.0)
+        self._install_retry_seams(up, fake_clock)
+        original_wait = up._retry_wait
+
+        def heal_then_wait(seconds: float) -> bool:
+            service.fail_sign_for_key = None  # the network comes back during the backoff
+            return original_wait(seconds)
+
+        up._retry_wait = heal_then_wait
+        path = write_file("f.csv", 100)
+
+        with up:
+            assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/f.csv"
+
+        assert service.calls.count("abort") == 1  # the failed attempt rolled itself back
+        assert service.calls.count("complete") == 1  # the retry completed cleanly
+
+    def test_a_permanent_failure_never_retries(
+        self, make_uploader: MakeUploader, write_file: WriteFile, fake_clock: Any
+    ) -> None:
+        """A non-network failure settles immediately even with a generous retry budget."""
+        up, service, _ = make_uploader(file_retry_timeout=60.0)
+        self._install_retry_seams(up, fake_clock)
+        service.initiate_multipart_upload = MagicMock(side_effect=RuntimeError("not weather"))
+        path = write_file("f.csv", 100)
+
+        with up:
+            with pytest.raises(RuntimeError, match="not weather"):
+                up.enqueue_file(path).result(timeout=10)
+
+        assert service.initiate_multipart_upload.call_count == 1
+        assert fake_clock.sleeps == []  # no backoff was ever taken
+
+    def test_the_retry_budget_bounds_a_sustained_outage(
+        self, make_uploader: MakeUploader, write_file: WriteFile, fake_clock: Any
+    ) -> None:
+        """A failure that never heals surfaces once the file's retry budget is spent."""
+        service = FakeUploadService(fail_sign_for_key="f.csv")
+        up, service, _ = make_uploader(service=service, max_part_retries=1, file_retry_timeout=10.0)
+        self._install_retry_seams(up, fake_clock)
+        path = write_file("f.csv", 100)
+
+        with up:
+            with pytest.raises(NominalMultipartUploadFailed):
+                up.enqueue_file(path).result(timeout=10)
+
+        # Backoff doubles from 1s: sleeps 1+2+4+... land the clock past the 10s budget, and the
+        # final failure surfaces rather than waiting again.
+        assert fake_clock.now >= 10.0
+        assert service.calls.count("abort") >= 2  # multiple whole-file attempts each rolled back
+
+    def test_a_cancelling_close_interrupts_the_backoff_wait(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """A file parked in a retry backoff settles as cancelled the moment close begins."""
+        service = FakeUploadService(fail_sign_for_key="f.csv")
+        up, service, _ = make_uploader(service=service, max_part_retries=1, file_retry_timeout=60.0)
+        up._retry_wait = lambda seconds: True  # the drain flag is raised mid-wait
+        path = write_file("f.csv", 100)
+
+        with up:
+            with pytest.raises(CancelledError):
+                up.enqueue_file(path).result(timeout=10)
+
+        assert service.calls.count("sign") == 1  # the retry never ran; the wait saw the close
+
+    def test_a_throttle_budget_exhaustion_is_retried_at_the_file_level(
+        self,
+        make_uploader: MakeUploader,
+        write_file: WriteFile,
+        install_test_gate: Callable[..., Any],
+        fake_clock: Any,
+    ) -> None:
+        """A file that outlives one gate budget gets a fresh one instead of failing the batch."""
+        up, service, _ = make_uploader(small_file_route_max_bytes=1024, file_retry_timeout=60.0)
+        gate_clock = install_test_gate(up, deadline_seconds=1.0)
+        self._install_retry_seams(up, fake_clock)
+        calls = {"n": 0}
+        original = service.upload_file
+
+        def throttle_out_once(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                gate_clock.now += 2.0  # burn the whole gate budget in one attempt
+                raise _throttled()
+            return original(*args, **kwargs)
+
+        service.upload_file = throttle_out_once
+        path = write_file("small.csv", 100)
+
+        with up:
+            assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/small.csv"
+
+        assert calls["n"] == 2  # one throttled-out attempt, one clean retry

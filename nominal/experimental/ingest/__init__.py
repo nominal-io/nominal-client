@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from nominal.experimental.ingest._ingest_builder import IngestBuilder
 from nominal.experimental.ingest._multipart_uploader import (
+    DEFAULT_FILE_RETRY_TIMEOUT_S,
     DEFAULT_MAX_STORAGE_WORKERS,
     DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES,
     MAX_SMALL_FILE_ROUTE_BYTES,
@@ -12,6 +13,7 @@ from nominal.experimental.ingest._multipart_uploader import (
 from nominal.experimental.ingest._upload_pacing import NOMINAL_MAX_CONCURRENCY
 
 __all__ = [
+    "DEFAULT_FILE_RETRY_TIMEOUT_S",
     "DEFAULT_MAX_STORAGE_WORKERS",
     "DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES",
     "MAX_SMALL_FILE_ROUTE_BYTES",
