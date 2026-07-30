@@ -93,25 +93,25 @@ def _is_transient_upload_error(exc: BaseException) -> bool:
     exceptions) is treated as permanent: retrying cannot help, so the failure surfaces
     immediately.
     """
-    transient_types = (
-        ConnectionError,  # raw socket-level errors
-        TimeoutError,
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-        requests.exceptions.RetryError,
-        NominalRequestThrottledError,  # the gate spent one request budget; a retry gets a fresh one
-    )
-    if isinstance(exc, transient_types):
-        return True
-    if isinstance(exc, requests.exceptions.HTTPError):
-        status = None if exc.response is None else exc.response.status_code
-        return status is not None and (status in (408, 429) or status >= 500)
-    if isinstance(exc, NominalMultipartUploadFailed):
-        # A part that exhausted its attempts: transient iff every attempt failed transiently
-        # (each wrapped attempt error chains the original as its __cause__).
-        causes = [wrapped.__cause__ for wrapped in exc.exceptions]
-        return bool(causes) and all(cause is not None and _is_transient_upload_error(cause) for cause in causes)
-    return False
+    match exc:
+        case (
+            ConnectionError()  # raw socket-level errors
+            | TimeoutError()
+            | requests.exceptions.ConnectionError()
+            | requests.exceptions.Timeout()
+            | requests.exceptions.RetryError()
+            | NominalRequestThrottledError()  # the gate spent one request budget; a retry gets a fresh one
+        ):
+            return True
+        case requests.exceptions.HTTPError(response=response) if response is not None:
+            return response.status_code in (408, 429) or response.status_code >= 500
+        case NominalMultipartUploadFailed():
+            # A part that exhausted its attempts: transient iff every attempt failed transiently
+            # (each wrapped attempt error chains the original as its __cause__).
+            causes = [wrapped.__cause__ for wrapped in exc.exceptions]
+            return bool(causes) and all(cause is not None and _is_transient_upload_error(cause) for cause in causes)
+        case _:
+            return False
 
 
 @dataclass(frozen=True)
