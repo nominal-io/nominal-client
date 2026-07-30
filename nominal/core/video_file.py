@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Protocol, Tuple
 
 from nominal_api import scout_catalog, scout_video, scout_video_api
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
@@ -32,10 +32,18 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
 
+    @deprecated(
+        "`VideoFile` is deprecated in favor of video channels on a dataset. Video dataset files are deleted rather "
+        "than archived: use `VideoDatasetFile.delete` instead."
+    )
     def archive(self) -> None:
         """Archive the video file, disallowing it to appear when playing back the video"""
         self._clients.video_file.archive(self._clients.auth_header, self.rid)
 
+    @deprecated(
+        "`VideoFile` is deprecated in favor of video channels on a dataset. Video dataset files are deleted rather "
+        "than archived, so there is no unarchive: see `VideoDatasetFile`."
+    )
     def unarchive(self) -> None:
         """Unarchive the video file, allowing it to appear when playing back the video"""
         self._clients.video_file.unarchive(self._clients.auth_header, self.rid)
@@ -43,6 +51,10 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
     def _get_latest_api(self) -> scout_video_api.VideoFile:
         return self._clients.video_file.get(self._clients.auth_header, self.rid)
 
+    @deprecated(
+        "`VideoFile.update` is deprecated in favor of video channels on a dataset. Use `VideoDatasetFile.update` on a "
+        "file from `Dataset.list_video_files` instead."
+    )
     def update(
         self,
         *,
@@ -104,6 +116,10 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         )
         return self._refresh_from_api(updated_file)
 
+    @deprecated(
+        "`VideoFile` is deprecated in favor of video channels on a dataset. Use "
+        "`VideoDatasetFile.poll_until_ingestion_completed` instead."
+    )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video file on an interval.

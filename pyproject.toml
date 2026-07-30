@@ -191,6 +191,9 @@ disable_error_code = ["no-untyped-def"]
 [tool.pytest.ini_options]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
+    # The legacy standalone-video API is deprecated but still supported, and tests/e2e exercises it
+    # on purpose to keep covering it. Scoped to those deprecations by message.
+    "ignore:.*video channels on a dataset:DeprecationWarning",
 ]
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
