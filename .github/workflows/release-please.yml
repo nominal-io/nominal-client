@@ -9,7 +9,7 @@ permissions:
   issues: read
 
 concurrency:
-  group: release-please-${{ github.ref }}
+  group: release-please-${{ github.event.pull_request.base.ref || github.ref }}
   cancel-in-progress: false
 
 name: release-please
