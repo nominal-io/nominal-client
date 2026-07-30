@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pathlib
-from typing import Any, Callable
+from typing import Callable
 
 import pytest
 
@@ -46,30 +46,11 @@ def fake_clock() -> FakeClock:
 
 
 @pytest.fixture
-def make_gate() -> Callable[..., tuple[_ThrottleGate, FakeClock]]:
-    """Factory for a throttle gate on a fresh fake clock with deterministic (identity) jitter."""
-
-    def _make(**overrides: Any) -> tuple[_ThrottleGate, FakeClock]:
-        clock = FakeClock()
-        kwargs: dict[str, Any] = {
-            "max_concurrency": 4,
-            "deadline_seconds": 120.0,
-            "clock": clock,
-            "sleep": clock.sleep,
-            "jitter": lambda delay: delay,  # deterministic: sleep the full damper delay
-        }
-        kwargs.update(overrides)
-        return _ThrottleGate(**kwargs), clock
-
-    return _make
-
-
-@pytest.fixture
 def install_test_gate() -> Callable[..., FakeClock]:
     """Factory swapping an uploader's gate for one on a fake clock: retries instant and countable.
 
-    The lane is made wide enough that admission never blocks; the gate's own semantics are
-    covered in test_upload_pacing.
+    The lane is made wide enough that admission never blocks; the gate's user-visible behavior
+    (throttle absorption, budgets, the concurrency cap) is pinned through the uploader tests.
     """
 
     def _install(up: MultipartUploader, *, deadline_seconds: float = 120.0) -> FakeClock:

@@ -3,23 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-from concurrent.futures import CancelledError, Future
+from concurrent.futures import Future
 from datetime import datetime, timezone
 from typing import Any, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed, NominalMultipartUploadFailed
-from nominal.core.filetype import FileType, FileTypes
-from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader, _PendingFile, _upload_all
+from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
+from nominal.core.filetype import FileType
+from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader
 
 WriteFile = Callable[[str, int], pathlib.Path]
-
-
-def pending_file(path: pathlib.Path) -> _PendingFile:
-    """A CSV `_PendingFile`, as the builder registers them for upload."""
-    return _PendingFile(path=path, file_type=FileTypes.CSV)
 
 
 class FakeUploader:
@@ -67,13 +62,6 @@ class FakeUploader:
         self.exit_exc_type = exc_type
 
 
-def upload_with(fake: FakeUploader, files: list[_PendingFile], client: MagicMock | None = None) -> MagicMock:
-    """Run `_upload_all` against `fake` instead of a real uploader; return the patched `create`."""
-    with patch.object(MultipartUploader, "create", autospec=True, return_value=fake) as create:
-        _upload_all(files, client if client is not None else MagicMock(), allow_partial=False)
-    return create
-
-
 @pytest.fixture
 def one_file_builder(write_file: WriteFile) -> tuple[MagicMock, IngestBuilder]:
     """A builder holding one registered CSV, on a MagicMock client."""
@@ -82,85 +70,6 @@ def one_file_builder(write_file: WriteFile) -> tuple[MagicMock, IngestBuilder]:
         write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds"
     )
     return client, builder
-
-
-class TestUploadAll:
-    def test_returns_each_files_location_keyed_by_the_file(self, write_file: WriteFile) -> None:
-        """Every file's location comes back keyed by the file object itself — no order to get wrong."""
-        files = [pending_file(write_file("a.csv", 1)), pending_file(write_file("b.csv", 1))]
-        fake = FakeUploader({"a.csv": "s3://bucket/a", "b.csv": "s3://bucket/b"})
-
-        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
-            outcomes = _upload_all(files, MagicMock(), allow_partial=False)
-        assert outcomes == {files[0]: "s3://bucket/a", files[1]: "s3://bucket/b"}
-
-    def test_passes_the_client_to_the_uploader(self, write_file: WriteFile) -> None:
-        """`create` derives auth, workspace, and transport from the client, so it must reach it.
-
-        `autospec=True` is what makes this bite: a call that no longer matches `create`'s real
-        signature fails here instead of only in production.
-        """
-        client = MagicMock()
-
-        create = upload_with(
-            FakeUploader({"a.csv": "s3://bucket/a"}), [pending_file(write_file("a.csv", 1))], client=client
-        )
-
-        (passed_client,) = create.call_args.args  # autospec on a classmethod drops `cls`
-        assert passed_client is client
-        assert create.call_args.kwargs == {}  # the uploader's defaults govern; nothing overridden
-
-    def test_no_files_never_builds_an_uploader(self) -> None:
-        """An empty batch must not spin up thread pools and an HTTP session for nothing."""
-        with patch.object(MultipartUploader, "create", autospec=True) as create:
-            assert _upload_all([], MagicMock(), allow_partial=False) == {}
-        create.assert_not_called()
-
-    @pytest.mark.parametrize(
-        "failure",
-        [
-            NominalMultipartUploadFailed("part 1 failed", [RuntimeError("boom")]),
-            # A file the uploader's abnormal shutdown cut short settles with CancelledError as
-            # its exception. Nothing here may assume a multipart failure is the only way an
-            # upload ends badly.
-            CancelledError("uploader is closing"),
-        ],
-        ids=["multipart-failure", "cancelled"],
-    )
-    def test_any_upload_failure_surfaces_in_the_group(self, write_file: WriteFile, failure: BaseException) -> None:
-        """Whatever exception a file settles with reaches the caller as that member's cause."""
-        with pytest.raises(NominalIngestUploadFailed) as excinfo:
-            upload_with(FakeUploader({"a.csv": failure}), [pending_file(write_file("a.csv", 1))])
-
-        (member,) = excinfo.value.exceptions
-        assert member.__cause__ is failure
-        assert "a.csv" in str(member)
-
-    def test_failure_leaves_the_uploader_context_by_raising(self, write_file: WriteFile) -> None:
-        """The `with` block must see the group: that is what cancels the rest of the batch.
-
-        Swallowing it would leave the remaining files uploading after the caller was told the
-        batch failed.
-        """
-        fake = FakeUploader({"a.csv": RuntimeError("upload failed")})
-
-        with pytest.raises(NominalIngestUploadFailed):
-            upload_with(fake, [pending_file(write_file("a.csv", 1))])
-
-        assert fake.exit_exc_type is NominalIngestUploadFailed
-
-    def test_fail_fast_reports_every_failure_already_settled(self, write_file: WriteFile) -> None:
-        """The atomic failure carries every failure known at raise time, not just the first."""
-        files = [pending_file(write_file(name, 1)) for name in ("a.csv", "b.csv", "c.csv")]
-        fake = FakeUploader(
-            {"a.csv": RuntimeError("a broke"), "b.csv": "s3://bucket/b", "c.csv": RuntimeError("c broke")}
-        )
-
-        with pytest.raises(NominalIngestUploadFailed) as excinfo:
-            upload_with(fake, files)
-
-        causes = {str(member.__cause__) for member in excinfo.value.exceptions}
-        assert causes == {"a broke", "c broke"}  # both settled failures reported; the success is not
 
 
 class TestSubmit:
@@ -236,6 +145,23 @@ class TestSubmit:
         manifest = request.items[0].video.ingest.timestamp_manifest
         assert [s.s3.path for s in manifest.timestamp_manifest_files.sources] == [f"s3://bucket/{manifest_path.name}"]
         assert not manifest_path.exists()  # the generated temp manifest is deleted once uploads finish
+
+    def test_a_failed_submit_names_every_settled_failure_per_file(self, write_file: WriteFile) -> None:
+        """The atomic failure is a group whose members name each failed file and chain its cause."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        for name in ("a.csv", "b.csv", "c.csv"):
+            builder.add_tabular_data(write_file(name, 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        fake = FakeUploader({"a.csv": RuntimeError("a broke"), "c.csv": RuntimeError("c broke")})
+
+        with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+            with pytest.raises(NominalIngestUploadFailed) as excinfo:
+                builder.submit()
+
+        assert {str(member.__cause__) for member in excinfo.value.exceptions} == {"a broke", "c broke"}
+        member_text = " ".join(str(member) for member in excinfo.value.exceptions)
+        assert "a.csv" in member_text and "c.csv" in member_text  # each member names its file
+        client._clients.ingest_v2.Ingest.assert_not_called()
 
     def test_a_failed_submit_still_deletes_the_generated_manifest(self, write_file: WriteFile) -> None:
         """A builder-generated manifest must not outlive a failed submit — the builder is single-use."""

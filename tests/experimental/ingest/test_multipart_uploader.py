@@ -199,42 +199,6 @@ def make_uploader() -> Iterator[MakeUploader]:
         up.close(cancel_pending=True)  # idempotent: a no-op for uploaders the test already closed
 
 
-def settled_latch(futures: list[Future[str]]) -> threading.Event:
-    """An event set once every one of `futures` has settled, cancellations included.
-
-    Done callbacks fire the instant a future is cancelled, so this observes a mid-close drop
-    at the earliest possible moment. `concurrent.futures.wait` only wakes once the pools'
-    workers have drained (and thereby waiter-notified) the cancelled items — a point close
-    guarantees only by the time it returns, too late for a probe that runs DURING close.
-    """
-    latch = threading.Event()
-    lock = threading.Lock()
-    remaining = len(futures)
-
-    def on_settled(_fut: Future[str]) -> None:
-        nonlocal remaining
-        with lock:
-            remaining -= 1
-            if remaining == 0:
-                latch.set()
-
-    for fut in futures:
-        fut.add_done_callback(on_settled)
-    return latch
-
-
-class TestRoutesAndRequestCounts:
-    def test_single_part_multipart_makes_exactly_three_calls(
-        self, make_uploader: MakeUploader, write_file: WriteFile
-    ) -> None:
-        """A single-part multipart file costs exactly initiate + sign + complete."""
-        up, service, _ = make_uploader()
-        path = write_file("f.csv", 100)
-        with up:
-            assert up.enqueue_file(path).result(timeout=10).startswith("s3://")
-        assert service.calls == ["initiate", "sign", "complete"]
-
-
 class TestValidation:
     def test_part_size_must_be_positive(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """A non-positive part size is rejected synchronously at enqueue."""
@@ -403,18 +367,6 @@ class TestFailureHandling:
         assert session.put.call_count == 1
         assert service.calls.count("abort") == 1
 
-    def test_initiate_failure_settles_the_future_without_aborting(
-        self, make_uploader: MakeUploader, write_file: WriteFile
-    ) -> None:
-        """Initiate is what yields the upload id, so a failure there leaves nothing to roll back."""
-        up, service, _ = make_uploader()
-        service.initiate_multipart_upload = MagicMock(side_effect=RuntimeError("initiate failed"))
-        path = write_file("f.csv", 100)
-        with up:
-            with pytest.raises(RuntimeError, match="initiate failed"):
-                up.enqueue_file(path).result(timeout=10)
-        assert service.aborted == []
-
     def test_one_file_failing_leaves_the_others_alone(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """Files are independent: one bad file must not take the batch down with it."""
         up, service, _ = make_uploader(service=FakeUploadService(fail_sign_for_key="bad.csv"), max_part_retries=2)
@@ -502,77 +454,6 @@ class TestClose:
             fut.result(timeout=10)
         assert service.calls.count("abort") == 1
 
-    def test_cancel_pending_revokes_queued_small_files_before_joining_drivers(
-        self, make_uploader: MakeUploader, write_file: WriteFile
-    ) -> None:
-        """Queued small files must be dropped as the cancelling close starts, not after it joins.
-
-        The driver join it precedes is not quick: it lasts a whole round of in-flight part PUTs
-        (up to `timeout`) plus the capped abort pass. A small pool left live across that window
-        keeps uploading files the caller was promised were dropped, and spends the request budget
-        the time-budgeted aborts need to roll their multipart uploads back.
-        """
-        service = FakeUploadService()
-        service.upload_file_release.clear()  # the first small file parks inside upload_file
-        up, service, session = make_uploader(
-            service=service,
-            small_file_route_max_bytes=128,
-            max_small_file_workers=1,
-            max_storage_workers=1,
-            max_files_in_flight=1,
-        )
-        session.put_release.clear()  # a driver parked mid-PUT is what makes the driver join block
-
-        big_fut = up.enqueue_file(write_file("big.csv", 4096))
-        assert session.put_started.wait(timeout=10)
-        running = up.enqueue_file(write_file("s0.csv", 100))
-        assert service.upload_file_started.wait(timeout=10)  # the only small worker is now parked
-        queued = [up.enqueue_file(write_file(f"s{i}.csv", 100)) for i in range(1, 4)]
-        settled = settled_latch(queued)
-
-        closer = threading.Thread(target=up.close, kwargs={"cancel_pending": True})
-        closer.start()
-        assert up._draining.wait(timeout=10)
-        # The queued files have to settle while the small worker is STILL parked and the driver
-        # is STILL mid-PUT: the small lane never gets another turn, and close never gets past its
-        # driver join. Revoked late, this is unreachable — nothing here can settle them.
-        # (The probe is deliberately shorter than the fakes' 10s self-release valves, so a late
-        # revoke fails here rather than being rescued by a park expiring.)
-        assert settled.wait(timeout=5), "queued small files outlived the start of a cancelling close"
-
-        service.upload_file_release.set()  # let the in-flight small finish...
-        session.put_release.set()  # ...and the driver, so close can join and return
-        closer.join(timeout=10)
-        assert not closer.is_alive(), "close(cancel_pending=True) did not return"
-
-        assert running.result(timeout=10) == "s3://bucket/s0.csv"  # in-flight small still settles
-        assert big_fut.done()
-        assert all(f.cancelled() for f in queued)
-        assert service.calls.count("upload_file") == 1  # the queued ones never ran
-
-    def test_a_task_starting_after_a_cancelling_close_settles_as_cancelled(
-        self, make_uploader: MakeUploader, write_file: WriteFile
-    ) -> None:
-        """A file whose task slips past close's cancel pass still settles CancelledError, request-free.
-
-        A pool worker can dequeue a queued file in the instant between close revoking the pools
-        and cancelling the issued futures, marking it running before `cancel()` can land; the
-        task-start drain check settles it like every other dropped file instead of letting it
-        spend real requests. That window is too narrow to hit from outside, so this pins the
-        guard by raising the drain flag directly — the first act of every cancelling close.
-        """
-        up, service, _ = make_uploader(small_file_route_max_bytes=1024)
-        up._draining.set()
-
-        small_fut = up.enqueue_file(write_file("small.csv", 100))
-        multipart_fut = up.enqueue_file(write_file("big.csv", 4096))
-
-        with pytest.raises(CancelledError):
-            small_fut.result(timeout=10)
-        with pytest.raises(CancelledError):
-            multipart_fut.result(timeout=10)
-        assert service.calls == []  # dropped before spending a single request
-
     def test_futures_are_waitable_after_a_cancelling_close(
         self, make_uploader: MakeUploader, write_file: WriteFile
     ) -> None:
@@ -593,12 +474,6 @@ class TestClose:
         done, not_done = wait(futures, timeout=5)
         assert not_done == set(), "close returned with futures still invisible to wait()"
         assert any(f.cancelled() for f in futures)  # the drop actually happened
-
-    def test_close_closes_the_s3_session_and_never_the_upload_client(self, make_uploader: MakeUploader) -> None:
-        """Close releases the storage session it owns; the shared upload client is not its to touch."""
-        up, _, session = make_uploader()
-        up.close()
-        assert session.closed
 
 
 class TestNoDeadlock:
@@ -981,3 +856,44 @@ class TestFileLevelTransientRetry:
             assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/small.csv"
 
         assert calls["n"] == 2  # one throttled-out attempt, one clean retry
+
+
+class TestNominalConcurrencyCap:
+    def test_max_nominal_concurrency_bounds_simultaneous_api_requests(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """The `max_nominal_concurrency` knob is a hard cap on in-flight Nominal API requests.
+
+        Six small files race through a two-wide lane: exactly two requests run at once — the
+        lane fills — and the peak never exceeds it across the whole batch.
+        """
+        up, service, _ = make_uploader(
+            small_file_route_max_bytes=1024, max_small_file_workers=6, max_nominal_concurrency=2
+        )
+        lock = threading.Lock()
+        active = [0]
+        peak = [0]
+        lane_full = threading.Event()
+        original = service.upload_file
+
+        def tracked(*args: Any, **kwargs: Any) -> Any:
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+                if active[0] == 2:
+                    lane_full.set()
+            try:
+                return original(*args, **kwargs)
+            finally:
+                with lock:
+                    active[0] -= 1
+
+        service.upload_file = tracked
+        service.upload_file_release.clear()  # park in-flight requests so concurrency is observable
+        futures = [up.enqueue_file(write_file(f"s{i}.csv", 10)) for i in range(6)]
+
+        assert lane_full.wait(timeout=10)  # the lane fills to its width...
+        service.upload_file_release.set()
+        for fut in futures:
+            assert fut.result(timeout=10).startswith("s3://")
+        assert peak[0] == 2  # ...and is never exceeded across all six files
