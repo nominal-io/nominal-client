@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
+from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
@@ -19,7 +19,6 @@ from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
-from nominal.core._video_ingest import build_video_ingest_options
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
@@ -769,8 +768,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             header_provider=self._clients.header_provider,
         )
         request = ingest_api.IngestRequest(
-            options=build_video_ingest_options(
-                self.rid,
+            options=self._build_video_ingest_options(
                 channel=channel,
                 tags=tags,
                 s3_path=s3_path,
@@ -780,6 +778,29 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         return self._resolve_ingested_video_file(response)
+
+    def _build_video_ingest_options(
+        self,
+        *,
+        channel: str,
+        tags: Mapping[str, str] | None,
+        s3_path: str,
+        timestamp_manifest: scout_video_api.VideoFileTimestampManifest,
+        overwrite_overlapping: bool,
+    ) -> ingest_api.IngestOptions:
+        """Build IngestOptions for a VideoOptsV2 ingest into a channel on this dataset."""
+        return ingest_api.IngestOptions(
+            video_v2=ingest_api.VideoOptsV2(
+                source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                target=ingest_api.DatasetIngestTarget(
+                    existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+                ),
+                timestamp_manifest=timestamp_manifest,
+                channel=channel,
+                tags={**(tags or {})},
+                over_write_segments=overwrite_overlapping or None,
+            )
+        )
 
     def add_ardupilot_dataflash(
         self,
