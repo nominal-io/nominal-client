@@ -26,10 +26,13 @@ jobs:
       - name: Get app token for release-please
         id: app-token
         if: ${{ env.USE_APP_TOKEN == 'true' }}
-        uses: actions/create-github-app-token@v2
+        uses: nominal-io/workflow-application-token-action@d8644a5aa546f763f73b94c762b092e088486db7 # v0.0.1
         with:
-          app-id: ${{ secrets.NOMBOT_APP_ID }}
-          private-key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
+          application_id: ${{ secrets.NOMBOT_APP_ID }}
+          application_private_key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
+          organization: "nominal-io"
+          permissions: "contents:write, pull_requests:write, issues:write"
+          revoke_token: true
 
       - uses: googleapis/release-please-action@v4
         id: release
