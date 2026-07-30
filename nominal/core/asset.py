@@ -13,7 +13,7 @@ from nominal_api import (
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
@@ -233,6 +233,10 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
+    @deprecated(
+        "Attaching a standalone `Video` to an asset is deprecated in favor of video channels on a dataset. Attach the "
+        "dataset that carries the video channels with `Asset.add_dataset` instead."
+    )
     def add_video(self, data_scope_name: str, video: Video | str) -> None:
         """Add a video to this asset.
 
@@ -360,6 +364,10 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         )
         return dataset
 
+    @deprecated(
+        "`Asset.get_or_create_video` is deprecated in favor of video channels on a dataset. Use "
+        "`Asset.get_or_create_dataset`, then `Dataset.add_video` to upload video to a channel on it."
+    )
     def get_or_create_video(
         self,
         data_scope_name: str,
@@ -504,6 +512,10 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
 
         return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
+    @deprecated(
+        "Resolving a standalone `Video` data scope is deprecated in favor of video channels on a dataset. Use "
+        "`Asset.get_dataset` with the data scope name, then `Dataset.list_video_files` to reach the video files."
+    )
     def get_video(self, data_scope_name: str) -> Video:
         """Retrieve a video by data scope name.
 
