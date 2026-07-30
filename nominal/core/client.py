@@ -385,8 +385,8 @@ class NominalClient:
 
         Args:
             exact_match: Case-insensitive substring of the dataset's name, description, labels, or properties.
-            search_text: Fuzzy (tokenized and similarity) match across those same fields, so results need not
-                contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
+                on name and description, so results need not contain the given text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
             before: Searches for datasets ingested before some time (inclusive).
@@ -509,7 +509,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
 
         Args:
-            search_text: Searches for a (case-insensitive) substring across all text fields.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
+                on name and description, so results need not contain the given text verbatim.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             workspace: Filters search to given workspace.
@@ -553,7 +554,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(video.label == label) AND (video.property == property)`
 
         Args:
-            search_text: Searches for a (case-insensitive) substring across all text fields.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
+                on name and description, so results need not contain the given text verbatim.
             labels: A sequence of labels that must ALL be present on a video to be included.
             properties: A mapping of key-value pairs that must ALL be present on a video to be included.
             workspace: Filters search to given workspace.
@@ -709,12 +711,13 @@ class NominalClient:
         Args:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
-            name_substring: Searches for a (case-insensitive) substring in the name.
+            name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
+                of the run's name, description, labels, or properties.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
-            search_text: Fuzzy (tokenized and similarity) match across those same fields, so results need not
-                contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
+                on name and description, so results need not contain the given text verbatim.
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
