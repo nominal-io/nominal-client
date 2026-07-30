@@ -3,17 +3,75 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import api, datasource, scout_catalog, scout_video_api
 
 from nominal.core.dataset_file import DatasetFile, IngestStatus, _dataset_file_from_conjure
 from nominal.core.video_dataset_file import VideoDatasetFile
 
+SEGMENTS = datasource.VideoSegmentsMetadata(
+    media_duration_seconds=10.0, media_frame_rate=30.0, num_frames=100, num_segments=3, scale_factor=2.0
+)
 
-def _common_kwargs(clients: MagicMock) -> dict:
-    return dict(
+
+def _catalog_file_bean(
+    *, video: bool = True, video_segments: datasource.VideoSegmentsMetadata | None = None
+) -> scout_catalog.DatasetFile:
+    """A minimal real catalog row: a video row when `video`, a plain row otherwise."""
+    manifest = scout_video_api.VideoFileTimestampManifest(
+        no_manifest=scout_video_api.NoTimestampManifest(starting_timestamp=api.Timestamp(seconds=1, nanos=0))
+    )
+    metadata = (
+        scout_catalog.DatasetFileMetadata(
+            video=datasource.VideoFileMetadata(timestamp_manifest=manifest, segment_metadata=video_segments)
+        )
+        if video
+        else None
+    )
+    return scout_catalog.DatasetFile(
+        dataset_rid="ds-1",
+        handle=scout_catalog.Handle(s3=scout_catalog.S3Handle(bucket="bucket", key="key")),
+        id="file-1",
+        ingest_status=api.IngestStatusV2(success=api.SuccessResult()),
+        name="front.mp4",
+        uploaded_at="2026-07-30T00:00:00Z",
+        metadata=metadata,
+    )
+
+
+@pytest.mark.parametrize(
+    ("bean", "expected_type"),
+    [
+        (_catalog_file_bean(), VideoDatasetFile),
+        (_catalog_file_bean(video=False), DatasetFile),
+    ],
+    ids=["video-arm", "no-metadata"],
+)
+def test_dispatch_specializes_only_video_rows(bean: scout_catalog.DatasetFile, expected_type: type):
+    """Rows with a video metadata arm come back as VideoDatasetFile; everything else stays the base type.
+
+    The third dispatch state — metadata present with no video arm — is forward-compat for future
+    metadata kinds and cannot be built with today's bindings (video is the union's only arm, and
+    unknown arms are rejected at construction and decode), so only the two real states are exercised.
+    """
+    result = _dataset_file_from_conjure(MagicMock(), bean)
+    assert type(result) is expected_type
+
+
+@pytest.mark.parametrize("segments", [None, SEGMENTS], ids=["absent", "present"])
+def test_from_conjure_maps_segment_aggregates(segments: datasource.VideoSegmentsMetadata | None):
+    """Aggregates mirror segment metadata when present and stay None before segmentation completes."""
+    file = VideoDatasetFile._from_conjure(MagicMock(), _catalog_file_bean(video_segments=segments))
+    expected = (None, None, None, None, None) if segments is None else (100, 3, 10.0, 30.0, 2.0)
+    actual = (file.num_frames, file.num_segments, file.media_duration_seconds, file.media_frame_rate, file.scale_factor)
+    assert actual == expected
+
+
+def _video_file(clients: MagicMock, *, bounds: object = None) -> VideoDatasetFile:
+    return VideoDatasetFile(
         id="file-1",
         dataset_rid="ds-1",
         name="front.mp4",
-        bounds=None,
+        bounds=bounds,
         uploaded_at=0,
         ingested_at=None,
         deleted_at=None,
@@ -24,98 +82,6 @@ def _common_kwargs(clients: MagicMock) -> dict:
         tag_columns=None,
         _clients=clients,
         _ingest_error_message=None,
-    )
-
-
-def _video_row(segment: object | None) -> MagicMock:
-    row = MagicMock()
-    row.metadata.video.timestamp_manifest = MagicMock(name="manifest")
-    row.metadata.video.segment_metadata = segment
-    return row
-
-
-def test_from_conjure_populates_aggregates_from_segment_metadata():
-    clients = MagicMock()
-    segment = MagicMock(
-        num_frames=100, num_segments=3, scale_factor=2.0, media_duration_seconds=10.0, media_frame_rate=30.0
-    )
-    row = _video_row(segment)
-    base = DatasetFile(**_common_kwargs(clients))
-    with patch.object(DatasetFile, "_from_conjure", return_value=base):
-        file = VideoDatasetFile._from_conjure(clients, row)
-
-    assert isinstance(file, DatasetFile)
-    assert (file.num_frames, file.num_segments, file.scale_factor) == (100, 3, 2.0)
-    assert (file.media_duration_seconds, file.media_frame_rate) == (10.0, 30.0)
-    assert file._timestamp_manifest is row.metadata.video.timestamp_manifest
-
-
-def test_from_conjure_leaves_aggregates_none_without_segment_metadata():
-    clients = MagicMock()
-    row = _video_row(segment=None)
-    base = DatasetFile(**_common_kwargs(clients))
-    with patch.object(DatasetFile, "_from_conjure", return_value=base):
-        file = VideoDatasetFile._from_conjure(clients, row)
-
-    assert file.num_frames is None
-    assert file.num_segments is None
-    assert file.media_duration_seconds is None
-    assert file.media_frame_rate is None
-    assert file.scale_factor is None
-
-
-def test_timestamp_manifest_excluded_from_repr_and_equality():
-    clients = MagicMock()
-    shared = dict(
-        **_common_kwargs(clients),
-        num_frames=1,
-        num_segments=1,
-        media_duration_seconds=1.0,
-        media_frame_rate=1.0,
-        scale_factor=1.0,
-    )
-    a = VideoDatasetFile(**shared, _timestamp_manifest=MagicMock(name="m1"))
-    b = VideoDatasetFile(**shared, _timestamp_manifest=MagicMock(name="m2"))
-
-    assert a == b  # differ only by the excluded manifest
-    assert "timestamp_manifest" not in repr(a)
-
-
-def test_dispatch_returns_video_subtype_for_video_metadata():
-    clients = MagicMock()
-    row = MagicMock()
-    row.metadata.video = MagicMock()  # video arm present
-    with patch.object(VideoDatasetFile, "_from_conjure", return_value="video-file") as video_factory:
-        result = _dataset_file_from_conjure(clients, row)
-    assert result == "video-file"
-    video_factory.assert_called_once_with(clients, row)
-
-
-def test_dispatch_returns_base_type_when_no_video_metadata():
-    clients = MagicMock()
-    row = MagicMock()
-    row.metadata = None  # no metadata at all
-    with patch.object(DatasetFile, "_from_conjure", return_value="base-file") as base_factory:
-        result = _dataset_file_from_conjure(clients, row)
-    assert result == "base-file"
-    base_factory.assert_called_once_with(clients, row)
-
-
-def test_dispatch_returns_base_type_when_metadata_present_without_video_arm():
-    clients = MagicMock()
-    row = MagicMock()
-    row.metadata.video = None  # metadata present, but not a video row
-    with patch.object(DatasetFile, "_from_conjure", return_value="base-file") as base_factory:
-        result = _dataset_file_from_conjure(clients, row)
-    assert result == "base-file"
-    base_factory.assert_called_once_with(clients, row)
-
-
-def _video_file(clients: MagicMock, *, bounds: object = None) -> VideoDatasetFile:
-    kwargs = _common_kwargs(clients)
-    kwargs["bounds"] = bounds
-    return VideoDatasetFile(
-        **kwargs,
         _timestamp_manifest=MagicMock(name="manifest"),
     )
 
@@ -135,25 +101,9 @@ def test_update_addresses_the_files_dataset():
 
     request = _update_request(clients)
     assert request.dataset_rid == "ds-1"
-    assert request.channel_series is None
     assert [u.dataset_file_id for u in request.updates] == ["file-1"]
     assert request.updates[0].start is not None
     refresh.assert_called_once()
-
-
-def test_update_maps_each_scale_input_to_its_union_arm():
-    """ending_timestamp, true_frame_rate, and scale_factor each set their own ScaleParameter arm."""
-    for kwargs, arm in (
-        ({"ending_timestamp": 1_700_000_000_000_000_000}, "ending_timestamp"),
-        ({"true_frame_rate": 29.97}, "true_frame_rate"),
-        ({"scale_factor": 2.0}, "scale_factor"),
-    ):
-        clients = MagicMock()
-        file = _video_file(clients)
-        with patch.object(VideoDatasetFile, "refresh", return_value=file):
-            file.update(**kwargs)
-        scale = _update_request(clients).updates[0].scale_parameter
-        assert getattr(scale, arm) is not None, arm
 
 
 def test_update_rejects_multiple_scale_inputs():

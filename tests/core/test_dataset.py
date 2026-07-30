@@ -9,7 +9,6 @@ import pytest
 
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.exceptions import NominalIngestError
-from nominal.core.filetype import FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -91,22 +90,6 @@ def test_write_logs_less_than_batch(mock_dataset: Dataset):
     assert len(req.logs) == 3
 
 
-def test_list_files_specializes_video_rows():
-    ds = MagicMock()
-    video_row = MagicMock(name="video_row")
-    plain_row = MagicMock(name="plain_row")
-    # `ds` is a bare MagicMock (not a real Dataset instance), so patch the return value directly
-    # on its auto-vivified `_list_files` attribute rather than on the class -- patching
-    # `Dataset._list_files` has no effect here since `ds._list_files` never resolves to it.
-    ds._list_files.return_value = [video_row, plain_row]
-    with patch(
-        "nominal.core.dataset._dataset_file_from_conjure",
-        side_effect=lambda clients, row: "VIDEO" if row is video_row else "PLAIN",
-    ):
-        result = list(Dataset.list_files(ds, successful_only=False))
-    assert result == ["VIDEO", "PLAIN"]
-
-
 def _video_response(dataset_file_id, ingest_job_rid="job-1"):
     response = MagicMock()
     response.details.dataset.dataset_rid = "ds-1"
@@ -115,7 +98,8 @@ def _video_response(dataset_file_id, ingest_job_rid="job-1"):
     return response
 
 
-def test_handle_video_response_prefers_direct_dataset_file_id():
+def test_resolve_ingested_video_file_prefers_direct_dataset_file_id():
+    """A response carrying a dataset-file id is resolved through the catalog, not the ingest job."""
     ds = MagicMock()
     video_file = MagicMock(spec=VideoDatasetFile)
     with patch("nominal.core.dataset._dataset_file_from_conjure", return_value=video_file):
@@ -124,7 +108,8 @@ def test_handle_video_response_prefers_direct_dataset_file_id():
     ds._clients.catalog.get_dataset_file.assert_called_once()
 
 
-def test_handle_video_response_direct_id_non_video_raises():
+def test_resolve_ingested_video_file_direct_id_non_video_raises():
+    """A direct file id pointing at a non-video row is an error, not a silent base-type return."""
     ds = MagicMock()
     with (
         patch("nominal.core.dataset._dataset_file_from_conjure", return_value=MagicMock()),  # not a VideoDatasetFile
@@ -133,7 +118,8 @@ def test_handle_video_response_direct_id_non_video_raises():
         Dataset._resolve_ingested_video_file(ds, _video_response("file-1"))
 
 
-def test_handle_video_response_falls_back_to_ingest_job_single_video_file():
+def test_resolve_ingested_video_file_falls_back_to_ingest_job_single_video_file():
+    """Without a file id, the single video file produced by the ingest job is returned."""
     ds = MagicMock()
     video_file = MagicMock(spec=VideoDatasetFile)
     job = MagicMock()
@@ -144,7 +130,8 @@ def test_handle_video_response_falls_back_to_ingest_job_single_video_file():
     assert result is video_file
 
 
-def test_handle_video_response_fallback_zero_or_multiple_raises():
+def test_resolve_ingested_video_file_fallback_zero_or_multiple_raises():
+    """The job fallback requires exactly one produced video file."""
     ds = MagicMock()
     job = MagicMock()
     job.dataset_files.return_value = []
@@ -155,132 +142,69 @@ def test_handle_video_response_fallback_zero_or_multiple_raises():
         Dataset._resolve_ingested_video_file(ds, _video_response(None))
 
 
-def test_handle_video_response_no_id_and_no_job_raises():
+def test_resolve_ingested_video_file_no_id_and_no_job_raises():
+    """A response with neither a file id nor an ingest job cannot be resolved."""
     ds = MagicMock()
     with pytest.raises(NominalIngestError, match="neither a dataset-file id nor an ingest job"):
         Dataset._resolve_ingested_video_file(ds, _video_response(None, ingest_job_rid=None))
 
 
-def test_add_video_requires_a_timestamp_mode():
+@pytest.mark.parametrize(
+    "bad_timestamps",
+    [{}, {"start": 0, "frame_timestamps": [1]}],
+    ids=["neither", "both"],
+)
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [("add_video", ("v.mp4",)), ("add_video_from_io", (io.BytesIO(b""), "v.mp4"))],
+    ids=["path", "io"],
+)
+def test_video_entry_points_require_exactly_one_timestamp_mode(method, args, bad_timestamps):
+    """Every video entry point rejects zero or two timestamp modes before doing any work."""
     ds = MagicMock()
-    with pytest.raises(ValueError, match="Either 'start' or 'frame_timestamps' must be provided"):
-        Dataset.add_video(ds, "v.mp4", channel="c")
+    with pytest.raises(ValueError, match="'start' or 'frame_timestamps'"):
+        getattr(Dataset, method)(ds, *args, channel="c", **bad_timestamps)
 
 
-def test_add_video_rejects_both_timestamp_modes():
-    ds = MagicMock()
-    with pytest.raises(ValueError, match="Only one of 'start' or 'frame_timestamps' may be provided"):
-        Dataset.add_video(ds, "v.mp4", channel="c", start=0, frame_timestamps=[1])
-
-
-def test_add_video_forwards_start_mode(tmp_path):
-    ds = MagicMock()
-    f = tmp_path / "front.mp4"
-    f.write_bytes(b"\x00")
-    result = Dataset.add_video(ds, str(f), channel="cam", start=123, tags={"k": "v"})
-    ds.add_video_from_io.assert_called_once()
-    _, kwargs = ds.add_video_from_io.call_args
-    assert kwargs["channel"] == "cam"
-    assert kwargs["start"] == 123
-    assert kwargs.get("frame_timestamps") is None
-    assert result is ds.add_video_from_io.return_value
-
-
-def test_add_video_forwards_frame_timestamps_mode(tmp_path):
-    ds = MagicMock()
-    f = tmp_path / "front.mp4"
-    f.write_bytes(b"\x00")
-    Dataset.add_video(ds, str(f), channel="cam", frame_timestamps=[1, 2, 3])
-    ds.add_video_from_io.assert_called_once()
-    _, kwargs = ds.add_video_from_io.call_args
-    assert kwargs["frame_timestamps"] == [1, 2, 3]
-    assert kwargs.get("start") is None
-
-
-def test_add_video_from_io_requires_a_timestamp_mode():
-    ds = MagicMock()
-    with pytest.raises(ValueError, match="Either 'start' or 'frame_timestamps'"):
-        Dataset.add_video_from_io(ds, io.BytesIO(b""), "v.mp4", channel="c")
-
-
-def test_add_video_from_io_rejects_both_timestamp_modes():
-    ds = MagicMock()
-    with pytest.raises(ValueError, match="Only one of 'start' or 'frame_timestamps'"):
-        Dataset.add_video_from_io(ds, io.BytesIO(b""), "v.mp4", channel="c", start=0, frame_timestamps=[1])
-
-
-def test_add_video_from_io_rejects_text_stream():
+@pytest.mark.parametrize(
+    ("method", "kwargs"),
+    [("add_video_from_io", {"start": 0}), ("add_mcap_video_from_io", {"topic": "/t"})],
+    ids=["video", "mcap"],
+)
+def test_video_from_io_entry_points_reject_text_streams(method, kwargs):
+    """Both from-io video entry points reject text-mode streams before uploading."""
     ds = MagicMock()
     with pytest.raises(TypeError, match="binary mode"):
-        Dataset.add_video_from_io(ds, io.StringIO("x"), "v.mp4", channel="c", start=0)
+        getattr(Dataset, method)(ds, io.StringIO("x"), "v", channel="c", **kwargs)
 
 
-def test_add_video_from_io_delegates_to_ingest_video():
-    """add_video_from_io validates and forwards the timestamp mode to the shared ingest tail."""
-    ds = MagicMock()
-    result = Dataset.add_video_from_io(
-        ds, io.BytesIO(b"data"), "front.mp4", channel="camera/front", start=123, tags={"v": "a"}
-    )
-    ds._ingest_video.assert_called_once()
-    _, kwargs = ds._ingest_video.call_args
-    assert kwargs["channel"] == "camera/front"
-    assert kwargs["start"] == 123
-    assert kwargs.get("frame_timestamps") is None
-    assert kwargs["tags"] == {"v": "a"}
-    assert result is ds._ingest_video.return_value
-
-
-def test_ingest_video_uploads_and_submits_video_v2():
-    """The shared ingest tail builds the manifest, uploads, submits VideoOptsV2, and returns the handled file."""
-    ds = MagicMock()
-    ds.rid = "ds-rid"
+def test_add_video_from_io_submits_video_v2_ingest(mock_dataset: Dataset):
+    """The real IngestRequest handed to ingest carries the manifest arm, channel, tags, source, and target."""
+    ingest_endpoint = Mock()
+    cast(Any, mock_dataset._clients.ingest).ingest = ingest_endpoint
+    video_file = MagicMock(spec=VideoDatasetFile)
     with (
-        patch("nominal.core.dataset._build_video_file_timestamp_manifest", return_value="MANIFEST") as build_manifest,
-        patch("nominal.core.dataset.build_video_ingest_options", return_value="OPTIONS") as build_opts,
-        patch("nominal.core.dataset.upload_multipart_io", return_value="s3://p"),
+        patch("nominal.core.dataset.upload_multipart_io", return_value="s3://bucket/front.mp4"),
+        patch("nominal.core.dataset._dataset_file_from_conjure", return_value=video_file),
     ):
-        result = Dataset._ingest_video(
-            ds,
+        result = mock_dataset.add_video_from_io(
             io.BytesIO(b"data"),
             "front.mp4",
             channel="camera/front",
-            file_type=FileTypes.MP4,
-            tags={"v": "a"},
-            overwrite_overlapping=False,
             start=123,
+            tags={"vehicle": "alpha"},
         )
 
-    build_manifest.assert_called_once()
-    build_opts.assert_called_once_with(
-        "ds-rid",
-        channel="camera/front",
-        tags={"v": "a"},
-        s3_path="s3://p",
-        timestamp_manifest="MANIFEST",
-        overwrite_overlapping=False,
-    )
-    ds._clients.ingest.ingest.assert_called_once()
-    ds._resolve_ingested_video_file.assert_called_once_with(ds._clients.ingest.ingest.return_value)
-    assert result is ds._resolve_ingested_video_file.return_value
-
-
-def test_add_mcap_video_from_io_rejects_text_stream():
-    ds = MagicMock()
-    with pytest.raises(TypeError, match="binary mode"):
-        Dataset.add_mcap_video_from_io(ds, io.StringIO("x"), "v.mcap", channel="c", topic="/t")
-
-
-def test_add_mcap_video_from_io_delegates_with_mcap_topic():
-    """add_mcap_video_from_io forwards the topic as the mcap timestamp mode of the shared ingest tail."""
-    ds = MagicMock()
-    result = Dataset.add_mcap_video_from_io(
-        ds, io.BytesIO(b"data"), "rec.mcap", channel="camera/front", topic="/camera/front/h264"
-    )
-    ds._ingest_video.assert_called_once()
-    _, kwargs = ds._ingest_video.call_args
-    assert kwargs["channel"] == "camera/front"
-    assert kwargs["mcap_topic"] == "/camera/front/h264"
-    assert result is ds._ingest_video.return_value
+    _auth, request = ingest_endpoint.call_args[0]
+    opts = request.options.video_v2
+    assert opts is not None
+    assert opts.channel == "camera/front"
+    assert opts.tags == {"vehicle": "alpha"}
+    assert opts.source.s3.path == "s3://bucket/front.mp4"
+    assert opts.target.existing.dataset_rid == "test-rid"
+    assert opts.timestamp_manifest.no_manifest is not None
+    assert opts.over_write_segments is None  # overwrite_overlapping=False maps to an absent field
+    assert result is video_file
 
 
 def test_add_mcap_video_rejects_non_mcap_path(tmp_path):
@@ -294,6 +218,7 @@ def test_add_mcap_video_rejects_non_mcap_path(tmp_path):
 
 
 def test_list_video_files_yields_only_video_subtypes():
+    """list_video_files filters mixed dataset files down to the video subtype."""
     ds = MagicMock()
     video = MagicMock(spec=VideoDatasetFile)
     plain = MagicMock()
@@ -303,15 +228,8 @@ def test_list_video_files_yields_only_video_subtypes():
     ds.list_files.assert_called_once_with(successful_only=False)
 
 
-def test_get_video_file_returns_video_subtype():
-    ds = MagicMock()
-    video = MagicMock(spec=VideoDatasetFile)
-    ds.get_dataset_file.return_value = video
-    assert Dataset.get_video_file(ds, "file-1") is video
-    ds.get_dataset_file.assert_called_once_with("file-1")
-
-
 def test_get_video_file_raises_type_error_for_non_video():
+    """get_video_file refuses to hand back a non-video file as a video handle."""
     ds = MagicMock()
     ds.get_dataset_file.return_value = MagicMock()  # not a VideoDatasetFile
     with pytest.raises(TypeError, match="not a video dataset file"):

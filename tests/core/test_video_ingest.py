@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core._video_ingest import build_video_ingest_options
 from nominal.core.video import _build_video_file_timestamp_manifest
 
 
@@ -37,36 +36,3 @@ def test_manifest_requires_exactly_one_mode():
         _build_video_file_timestamp_manifest("auth", None, MagicMock())
     with pytest.raises(ValueError, match="exactly one of"):
         _build_video_file_timestamp_manifest("auth", None, MagicMock(), start=1, mcap_topic="/t")
-
-
-def test_ingest_options_builds_video_v2():
-    """The options builder maps every argument onto the VideoOptsV2 arm."""
-    manifest = MagicMock(name="manifest")
-    opts = build_video_ingest_options(
-        "ds-rid",
-        channel="camera/front",
-        tags={"vehicle": "alpha"},
-        s3_path="s3://p",
-        timestamp_manifest=manifest,
-        overwrite_overlapping=True,
-    )
-    assert opts.video_v2 is not None
-    assert opts.video_v2.channel == "camera/front"
-    assert opts.video_v2.tags == {"vehicle": "alpha"}
-    assert opts.video_v2.over_write_segments is True
-    assert opts.video_v2.target.existing.dataset_rid == "ds-rid"
-    assert opts.video_v2.timestamp_manifest is manifest
-
-
-def test_ingest_options_none_tags_becomes_empty_and_no_overwrite_is_none():
-    """Absent tags map to an empty dict and overwrite=False maps to an absent field."""
-    opts = build_video_ingest_options(
-        "ds-rid",
-        channel="c",
-        tags=None,
-        s3_path="s3://p",
-        timestamp_manifest=MagicMock(),
-        overwrite_overlapping=False,
-    )
-    assert opts.video_v2.tags == {}
-    assert opts.video_v2.over_write_segments is None

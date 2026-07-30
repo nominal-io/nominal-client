@@ -143,9 +143,9 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 self._clients.auth_header, details.dataset_rid, details.dataset_file_id
             )
             file = _dataset_file_from_conjure(self._clients, raw)
-            if not isinstance(file, VideoDatasetFile):
-                raise NominalIngestError(f"ingested file {details.dataset_file_id!r} is not a video dataset file")
-            return file
+            if isinstance(file, VideoDatasetFile):
+                return file
+            raise NominalIngestError(f"ingested file {details.dataset_file_id!r} is not a video dataset file")
 
         # Backend compatibility: VideoOptsV2 may return a dataset RID without a dataset-file id.
         # Fall back to the ingest job and require exactly one produced video file.
@@ -573,7 +573,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def add_video_from_io(
         self,
         video: BinaryIO,
-        name: str,
+        file_name: str,
         *,
         channel: str,
         start: datetime | IntegralNanosecondsUTC,
@@ -586,7 +586,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def add_video_from_io(
         self,
         video: BinaryIO,
-        name: str,
+        file_name: str,
         *,
         channel: str,
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
@@ -598,7 +598,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def add_video_from_io(
         self,
         video: BinaryIO,
-        name: str,
+        file_name: str,
         *,
         channel: str,
         start: datetime | IntegralNanosecondsUTC | None = None,
@@ -614,7 +614,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Args:
             video: File-like object containing video data encoded in H264 or H265.
-            name: Name of the file to use when uploading.
+            file_name: Name of the file to use when uploading.
             channel: Name of the video channel within this dataset that the file's frames belong to.
             start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
                 Exactly one of `start` or `frame_timestamps` must be provided.
@@ -641,7 +641,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         return self._ingest_video(
             video,
-            name,
+            file_name,
             channel=channel,
             file_type=FileType(*file_type),
             tags=tags,
@@ -694,7 +694,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def add_mcap_video_from_io(
         self,
         mcap: BinaryIO,
-        name: str,
+        file_name: str,
         *,
         channel: str,
         topic: str,
@@ -708,7 +708,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Args:
             mcap: File-like binary object containing MCAP data with H264/H265 video.
-            name: Name of the file to use when uploading.
+            file_name: Name of the file to use when uploading.
             channel: Name of the video channel within this dataset that the file's frames belong to.
             topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
             file_type: Metadata about the type of file (e.g. MCAP).
@@ -727,7 +727,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         return self._ingest_video(
             mcap,
-            name,
+            file_name,
             channel=channel,
             file_type=FileType(*file_type),
             tags=tags,
@@ -738,7 +738,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def _ingest_video(
         self,
         video: BinaryIO,
-        name: str,
+        file_name: str,
         *,
         channel: str,
         file_type: FileType,
@@ -763,7 +763,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             self._clients.auth_header,
             workspace_rid,
             video,
-            name,
+            file_name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
