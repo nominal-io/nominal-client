@@ -712,7 +712,8 @@ class NominalClient:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
             name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
-                of the run's name, description, labels, or properties.
+                of the run's name, description, labels, or properties. For name-only matching, filter the
+                returned runs on their names.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.

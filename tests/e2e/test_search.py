@@ -351,7 +351,11 @@ def archive_search_context(  # noqa: PLR0915
 
 
 def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring returns only runs whose name contains the session tag."""
+    """Searching runs by name_substring narrows results to the run carrying the session tag.
+
+    name_substring is an alias for exact_match, which matches a run's name, description, labels and
+    properties, so this covers narrowing by the tag rather than name-scoped matching.
+    """
     results = client.search_runs(name_substring=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
