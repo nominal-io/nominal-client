@@ -1,7 +1,7 @@
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -9,14 +9,13 @@ permissions:
   issues: read
 
 concurrency:
-  group: release-please-${{ github.event.pull_request.base.ref || github.ref }}
+  group: release-please-${{ github.ref }}
   cancel-in-progress: false
 
 name: release-please
 
 jobs:
   release-please:
-    if: ${{ github.event.pull_request.merged == true }}
     uses: nominal-io/git-automations/.github/workflows/release-please-wrapper.yml@main
     secrets:
       bot-token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
