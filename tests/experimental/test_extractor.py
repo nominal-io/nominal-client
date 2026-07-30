@@ -79,7 +79,8 @@ def test_manifest_mode_writes_manifest_from_outputs(dirs: tuple[Path, Path]) -> 
         "outputs": [
             {**entry, "relativePath": "part_0.parquet"},
             {**entry, "relativePath": "part_1.parquet"},
-        ]
+        ],
+        "videoOutputs": None,
     }
 
 

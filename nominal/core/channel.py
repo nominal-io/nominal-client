@@ -46,6 +46,7 @@ class ChannelDataType(enum.Enum):
     STRING = "STRING"
     LOG = "LOG"
     INT = "INT"
+    VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
 
     @classmethod
@@ -64,6 +65,8 @@ class ChannelDataType(enum.Enum):
             return storage_series_api.NominalDataType.LOG
         elif self == ChannelDataType.INT:
             return storage_series_api.NominalDataType.INT64
+        elif self == ChannelDataType.VIDEO:
+            return storage_series_api.NominalDataType.VIDEO
         else:
             return storage_series_api.NominalDataType.UNKNOWN
 

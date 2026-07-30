@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog, scout_video
 from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
@@ -63,6 +63,10 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        # Used by the VideoDatasetFile subtype for video-channel timing updates (see
+        # DataSource._Clients for the same one-protocol-per-hierarchy convention).
+        @property
+        def video(self) -> scout_video.VideoService: ...
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
@@ -297,6 +301,21 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             _clients=clients,
             _ingest_error_message=ingest_error_message,
         )
+
+
+def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> DatasetFile:
+    """Build the correct DatasetFile subtype for a Catalog row.
+
+    Returns a VideoDatasetFile when the row carries video metadata, otherwise a plain DatasetFile.
+    This is the only place that knows about both types; the class factories stay type-specific.
+    """
+    # Local import avoids an import cycle (video_dataset_file imports this module).
+    from nominal.core.video_dataset_file import VideoDatasetFile
+
+    metadata = dataset_file.metadata
+    if metadata is not None and metadata.video is not None:
+        return VideoDatasetFile._from_conjure(clients, dataset_file)
+    return DatasetFile._from_conjure(clients, dataset_file)
 
 
 # TODO(drake): rename to something more dataset-file specific, expose in nominal.core __init__.py
