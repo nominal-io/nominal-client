@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.155.0](https://github.com/nominal-io/nominal-client/compare/v1.154.0...v1.155.0) (2026-07-30)
+
+
+### Features
+
+* **experimental:** multi-file ingest jobs — IngestBuilder over a throughput-tuned uploader ([#848](https://github.com/nominal-io/nominal-client/issues/848)) ([501971c](https://github.com/nominal-io/nominal-client/commit/501971c928fd51c9d18b8f2b113f79bef7beeefd))
+* make search default to the configured workspace of the profile, not all workspaces ([#892](https://github.com/nominal-io/nominal-client/issues/892)) ([98e95fa](https://github.com/nominal-io/nominal-client/commit/98e95faede711aebe95ab8ac1fef4f3a8c8df200))
+* remove deprecated methods / arguments across client ([#893](https://github.com/nominal-io/nominal-client/issues/893)) ([81e3d77](https://github.com/nominal-io/nominal-client/commit/81e3d779b5f17a1bea51f7e7eaec5bfef820e8e4))
+
+
+### Bug Fixes
+
+* **tests:** scope dataset archive-status search to its own datasets ([#899](https://github.com/nominal-io/nominal-client/issues/899)) ([fe37181](https://github.com/nominal-io/nominal-client/commit/fe3718114c3d11f095db8179fd9da2d82475efef))
+
 ## [1.154.0](https://github.com/nominal-io/nominal-client/compare/v1.153.0...v1.154.0) (2026-07-21)
 
 
