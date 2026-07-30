@@ -23,7 +23,7 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError
+from nominal.core.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
@@ -308,20 +308,25 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Note: The previous schema with only "double" and "string" value types is still fully supported.
 
         Args:
-            path: Path to the .avro file to upload
+            path: Path to the .avro or .avro.gz file to upload
 
         Returns:
             Reference to the ingesting DatasetFile
 
+        Raises:
+            ValueError: `path` does not end in .avro or .avro.gz.
+
         """
         avro_path = Path(path)
+        # Also resolves .avro vs .avro.gz, which a hardcoded AVRO_STREAM would have described wrongly.
+        file_type = FileType.from_avro_stream(avro_path)
         workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_file(
             self._clients.auth_header,
             workspace_rid,
             avro_path,
             self._clients.upload,
-            file_type=FileTypes.AVRO_STREAM,
+            file_type=file_type,
             header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
@@ -537,10 +542,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Raises:
             ValueError: neither or both of `start` and `frame_timestamps` were provided.
         """
-        if start is None and frame_timestamps is None:
-            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
-        if start is not None and frame_timestamps is not None:
-            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
 
         path = Path(path)
         file_type = FileType.from_video(path)
@@ -565,8 +568,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                     tags=tags,
                     overwrite_overlapping=overwrite_overlapping,
                 )
-            else:  # This should never be reached due to the validation at the top of this method
-                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+            else:  # unreachable: the check at the top of this method admits exactly one mode
+                raise NominalVideoTimestampModeError()
 
     @overload
     def add_video_from_io(
@@ -633,10 +636,10 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video!r} must be open in binary mode, rather than text mode")
-        if start is None and frame_timestamps is None:
-            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
-        if start is not None and frame_timestamps is not None:
-            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+        # Checked here as well as in the manifest builder _ingest_video reaches, so bad arguments
+        # fail before the upload and the message names only this method's two modes.
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
 
         return self._ingest_video(
             video,

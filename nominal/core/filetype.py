@@ -73,6 +73,9 @@ class FileType(NamedTuple):
     def is_parquet(self) -> bool:
         return self.is_parquet_file() or self.is_parquet_archive()
 
+    def is_avro_stream(self) -> bool:
+        return self in FileTypes._AVRO_STREAM_TYPES
+
     def is_journal(self) -> bool:
         return self in FileTypes._JOURNAL_TYPES
 
@@ -102,6 +105,16 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
+    def from_avro_stream(cls, path: PathLike) -> FileType:
+        file_type = cls.from_path(path)
+        if not file_type.is_avro_stream():
+            raise ValueError(
+                f"avro-stream path '{path}' must end in one of {[f.extension for f in FileTypes._AVRO_STREAM_TYPES]}"
+            )
+
+        return file_type
+
+    @classmethod
     def from_path_journal_json(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_journal():
@@ -123,6 +136,7 @@ class FileType(NamedTuple):
 class FileTypes:
     AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
+    AVRO_STREAM_GZ: FileType = FileType(".avro.gz", "application/avro")
     BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
@@ -144,6 +158,7 @@ class FileTypes:
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
     ZIP: FileType = FileType(".zip", "application/zip")
 
+    _AVRO_STREAM_TYPES = (AVRO_STREAM, AVRO_STREAM_GZ)
     _CSV_TYPES = (CSV, CSV_GZ)
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
     _PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)

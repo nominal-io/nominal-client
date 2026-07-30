@@ -117,6 +117,51 @@ class NominalContainerImageError(NominalError):
     """A containerized extractor's container image is in a failed or unusable state."""
 
 
+class ExtractorError(NominalError):
+    """Raised when the extractor contract is violated (missing input, wrong output count, ...).
+
+    Exported as `nominal.experimental.extractor.ExtractorError`, which is where authors meet it.
+    """
+
+
+# Every surface that anchors a video offers the same choice under different names -- an absolute
+# start, per-frame timestamps -- and accepts exactly one. Shared so the wording cannot drift between
+# them, and used as the default message below.
+ONE_TIMESTAMP_MODE_ERROR = "exactly one of 'start' or 'frame_timestamps' must be provided"
+
+
+class NominalVideoTimestampModeError(NominalError, ValueError):
+    """Neither or both of a video's timestamp modes were provided; exactly one is required.
+
+    Also a `ValueError`, which is what these call sites raised before this type existed, so
+    `except ValueError` keeps working.
+
+    The default message names the two modes every video surface offers. The one surface that accepts
+    a third, `_build_video_file_timestamp_manifest`, passes its own.
+    """
+
+    def __init__(self, message: str = ONE_TIMESTAMP_MODE_ERROR) -> None:
+        """Initialize error."""
+        super().__init__(message)
+
+
+class NominalVideoScaleModeError(NominalError, ValueError):
+    """More than one way of scaling a video's playback rate was given; at most one is allowed.
+
+    `ending_timestamp`, `true_frame_rate`, and `scale_factor` express the same quantity three ways.
+    Also a `ValueError`, which is what this raised before the type existed.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "Expected at most one of 'ending_timestamp', 'true_frame_rate', and 'scale_factor' to be present"
+        ),
+    ) -> None:
+        """Initialize error."""
+        super().__init__(message)
+
+
 class NominalVideoStreamError(NominalError):
     """An error occurred during live video streaming."""
 

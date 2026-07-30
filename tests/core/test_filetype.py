@@ -16,6 +16,7 @@ from nominal.core.filetype import FileType, FileTypes
         ("x.parquet", FileTypes.PARQUET),
         ("x.jsonl", FileTypes.JOURNAL_JSONL),
         ("x.mp4", FileTypes.MP4),
+        ("x.avro", FileTypes.AVRO_STREAM),
         # Multi-suffix types must beat their shorter counterparts regardless of
         # the declaration order of FileTypes members (longest match wins).
         ("x.parquet.zip", FileTypes.PARQUET_ZIP),
@@ -24,6 +25,7 @@ from nominal.core.filetype import FileType, FileTypes
         ("x.parquet.tar.gz", FileTypes.PARQUET_TAR_GZ),
         ("x.csv.gz", FileTypes.CSV_GZ),
         ("x.jsonl.gz", FileTypes.JOURNAL_JSONL_GZ),
+        ("x.avro.gz", FileTypes.AVRO_STREAM_GZ),
         # Extension matching is case-insensitive.
         ("X.ZIP", FileTypes.ZIP),
         ("X.PARQUET.ZIP", FileTypes.PARQUET_ZIP),
@@ -33,3 +35,22 @@ from nominal.core.filetype import FileType, FileTypes
 )
 def test_from_path_infers_registered_type(path: str, expected: FileType) -> None:
     assert FileType.from_path(path) == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        pytest.param("x.avro", FileTypes.AVRO_STREAM, id="avro"),
+        pytest.param("x.avro.gz", FileTypes.AVRO_STREAM_GZ, id="avro-gz"),
+        pytest.param("some/dir/X.AVRO", FileTypes.AVRO_STREAM, id="uppercase-with-directory"),
+    ],
+)
+def test_from_avro_stream_accepts_both_encodings(path: str, expected: FileType) -> None:
+    """The ingest pipeline reads plain and gzipped avro streams, so both resolve."""
+    assert FileType.from_avro_stream(path) == expected
+
+
+@pytest.mark.parametrize("path", ["x.parquet", "x.csv", "x.jsonl", "x.mp4", "x"])
+def test_from_avro_stream_rejects_other_extensions(path: str) -> None:
+    with pytest.raises(ValueError, match="avro-stream path"):
+        FileType.from_avro_stream(path)

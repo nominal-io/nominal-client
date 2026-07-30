@@ -7,6 +7,7 @@ from typing import overload
 from nominal_api import scout_catalog, scout_video_api
 from typing_extensions import Self
 
+from nominal.core._video_types import _scale_parameter
 from nominal.core.dataset_file import DatasetFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -97,27 +98,14 @@ class VideoDatasetFile(DatasetFile):
         NOTE: video channels do not carry per-file descriptions, so unlike the legacy
             `VideoFile.update` there is no `description` parameter.
         """
-        scale_inputs = [value for value in (ending_timestamp, true_frame_rate, scale_factor) if value is not None]
-        if len(scale_inputs) > 1:
-            raise ValueError(
-                "Expected at most one of 'ending_timestamp', 'true_frame_rate', and 'scale_factor' to be present"
-            )
-        if name is None and starting_timestamp is None and not scale_inputs:
+        if all(value is None for value in (name, starting_timestamp, ending_timestamp, true_frame_rate, scale_factor)):
             raise ValueError(
                 "At least one of 'name', 'starting_timestamp', 'ending_timestamp', 'true_frame_rate', "
                 "or 'scale_factor' must be provided"
             )
-
-        if ending_timestamp is not None:
-            scale_parameter = scout_video_api.ScaleParameter(
-                ending_timestamp=_SecondsNanos.from_flexible(ending_timestamp).to_api()
-            )
-        elif true_frame_rate is not None:
-            scale_parameter = scout_video_api.ScaleParameter(true_frame_rate=true_frame_rate)
-        elif scale_factor is not None:
-            scale_parameter = scout_video_api.ScaleParameter(scale_factor=scale_factor)
-        else:
-            scale_parameter = None
+        scale_parameter = _scale_parameter(
+            ending_timestamp=ending_timestamp, true_frame_rate=true_frame_rate, scale_factor=scale_factor
+        )
 
         self._clients.video.batch_update_video_channel_dataset_files(
             self._clients.auth_header,

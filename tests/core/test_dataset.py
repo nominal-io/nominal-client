@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import io
 from collections.abc import Iterator
 from typing import Any, cast
@@ -234,3 +235,34 @@ def test_get_video_file_raises_type_error_for_non_video():
     ds.get_dataset_file.return_value = MagicMock()  # not a VideoDatasetFile
     with pytest.raises(TypeError, match="not a video dataset file"):
         Dataset.get_video_file(ds, "file-1")
+
+
+@pytest.mark.parametrize("filename", ["records.parquet", "records.csv", "records.jsonl", "records"])
+def test_add_avro_stream_rejects_non_avro_extensions(mock_dataset: Dataset, tmp_path, filename: str) -> None:
+    """A wrong extension fails before any bytes are uploaded, matching the other add_* methods."""
+    path = tmp_path / filename
+    path.write_bytes(b"not avro")
+
+    with pytest.raises(ValueError, match="avro-stream path"):
+        mock_dataset.add_avro_stream(path)
+
+    mock_dataset._clients.upload.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_extension"),
+    [("records.avro", ".avro"), ("records.avro.gz", ".avro.gz")],
+)
+def test_add_avro_stream_uploads_with_the_resolved_file_type(
+    mock_dataset: Dataset, tmp_path, filename: str, expected_extension: str
+) -> None:
+    """A gzipped stream uploads described as .avro.gz, not as plain .avro."""
+    path = tmp_path / filename
+    path.write_bytes(b"avro")
+
+    # The mocked ingest response cannot build a DatasetFile; what is under test is the upload itself.
+    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path") as upload:
+        with contextlib.suppress(ValueError):
+            mock_dataset.add_avro_stream(path)
+
+    assert upload.call_args.kwargs["file_type"].extension == expected_extension
