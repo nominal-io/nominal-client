@@ -6,46 +6,51 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  issues: read
-
-concurrency:
-  group: release-please-${{ github.ref }}
-  cancel-in-progress: false
 
 name: release-please
 
 jobs:
   release-please:
-    uses: nominal-io/git-automations/.github/workflows/release-please-wrapper.yml@main
-    secrets:
-      bot-token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
-      github-token: ${{ secrets.GITHUB_TOKEN }}
-      app-id: ${{ secrets.NOMBOT_APP_ID }}
-      app-private-key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
-    with:
-      manifest-file: .release-please-manifest.json
-      config-file: release-please-config.json
-      should-expedite-release: false
-
-  sync-uv-lock:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.pr != '' }}
     runs-on: depot-ubuntu-24.04-small
+    env:
+      # `if:` cannot read the secrets context, so resolve availability here.
+      USE_APP_TOKEN: ${{ secrets.NOMBOT_APP_ID != '' && secrets.NOMBOT_PRIVATE_KEY != '' }}
     steps:
+      # A GitHub App installation gets its own API rate limit, rather than sharing
+      # the bot user's limit with every other repo. Release-please pages through
+      # every tag, so it is the step that exhausts the shared limit.
+      - name: Get app token for release-please
+        id: app-token
+        if: ${{ env.USE_APP_TOKEN == 'true' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NOMBOT_APP_ID }}
+          private-key: ${{ secrets.NOMBOT_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token || secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
       - name: Check out release PR branch
+        if: ${{ steps.release.outputs.pr }}
         uses: actions/checkout@v4
         with:
           # Using fromJSON since github refnames don't provide the release-please
           # branch, which is what this next commit needs to be based off of
-          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
 
       - name: Install uv
+        if: ${{ steps.release.outputs.pr }}
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.x"
 
       - name: Sync uv.lock to release PR
+        if: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail
           if uv lock --check; then
