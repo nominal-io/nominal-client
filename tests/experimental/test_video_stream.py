@@ -7,8 +7,10 @@ import pytest
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video
 
-# Requires the `video` extra (and GStreamer) to import the rust bindings.
-pytest.importorskip("nominal_video")
+# Requires the `video` extra to import the rust bindings, plus GStreamer at load time. exc_type covers
+# the CI case where the package is installed but its GStreamer libs are not (ImportError on import),
+# which importorskip otherwise reports as a warning rather than a skip.
+pytest.importorskip("nominal_video", exc_type=ImportError)
 
 from nominal.experimental.video import Src, VideoStream  # noqa: E402
 
