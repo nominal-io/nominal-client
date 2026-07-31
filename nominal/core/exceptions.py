@@ -8,6 +8,14 @@ class NominalError(Exception):
     """Base class for Nominal exceptions."""
 
 
+class LegacyVideoDeprecationWarning(DeprecationWarning):
+    """Emitted by the legacy standalone-video API, superseded by video channels on a dataset.
+
+    Subclasses DeprecationWarning so it can be filtered on its own without muting every other
+    deprecation, e.g. `warnings.filterwarnings("ignore", category=LegacyVideoDeprecationWarning)`.
+    """
+
+
 class NominalIngestError(NominalError):
     """An error occurred during ingest."""
 

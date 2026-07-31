@@ -12,7 +12,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions
-from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
 
     @deprecated(
         "`VideoFile` is deprecated in favor of video channels on a dataset. Video dataset files are deleted rather "
-        "than archived: use `VideoDatasetFile.delete` instead."
+        "than archived: use `VideoDatasetFile.delete` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def archive(self) -> None:
         """Archive the video file, disallowing it to appear when playing back the video"""
@@ -42,7 +43,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
 
     @deprecated(
         "`VideoFile` is deprecated in favor of video channels on a dataset. Video dataset files are deleted rather "
-        "than archived, so there is no unarchive: see `VideoDatasetFile`."
+        "than archived, so there is no unarchive: see `VideoDatasetFile`.",
+        category=LegacyVideoDeprecationWarning,
     )
     def unarchive(self) -> None:
         """Unarchive the video file, allowing it to appear when playing back the video"""
@@ -53,7 +55,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
 
     @deprecated(
         "`VideoFile.update` is deprecated in favor of video channels on a dataset. Use `VideoDatasetFile.update` on a "
-        "file from `Dataset.list_video_files` instead."
+        "file from `Dataset.list_video_files` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def update(
         self,
@@ -118,7 +121,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
 
     @deprecated(
         "`VideoFile` is deprecated in favor of video channels on a dataset. Use "
-        "`VideoDatasetFile.poll_until_ingestion_completed` instead."
+        "`VideoDatasetFile.poll_until_ingestion_completed` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.

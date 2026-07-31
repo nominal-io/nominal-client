@@ -33,6 +33,8 @@ class VideoStream:
 
         from nominal.experimental.video import VideoStream, Src, StreamOptions
 
+        # Live streaming still targets a standalone `Video`: it has no video-channel
+        # equivalent yet, so `create_video` is used here despite being deprecated.
         video = client.create_video("my stream")
 
         # Context manager — open/close handled automatically:

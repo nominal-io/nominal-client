@@ -18,7 +18,7 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
-from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestError, NominalIngestFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -51,7 +51,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Polling a standalone `Video` is deprecated in favor of video channels on a dataset. Poll the individual files "
-        "returned by `Dataset.add_video` or `Dataset.list_video_files` instead."
+        "returned by `Dataset.add_video` or `Dataset.list_video_files` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -87,7 +88,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Updating a standalone `Video` is deprecated in favor of video channels on a dataset. Use `Dataset.update` for "
-        "the dataset's own metadata, or `VideoDatasetFile.update` for a video file's title and timing."
+        "the dataset's own metadata, or `VideoDatasetFile.update` for a video file's title and timing.",
+        category=LegacyVideoDeprecationWarning,
     )
     def update(
         self,
@@ -121,7 +123,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Archiving a standalone `Video` is deprecated in favor of video channels on a dataset. Archive the backing "
-        "dataset with `Dataset.archive` instead."
+        "dataset with `Dataset.archive` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def archive(self) -> None:
         """Archive this video.
@@ -131,7 +134,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Unarchiving a standalone `Video` is deprecated in favor of video channels on a dataset. Unarchive the backing "
-        "dataset with `Dataset.unarchive` instead."
+        "dataset with `Dataset.unarchive` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def unarchive(self) -> None:
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
@@ -159,7 +163,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Adding a file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
-        "`Dataset.add_video` on a new or existing dataset instead."
+        "`Dataset.add_video` on a new or existing dataset instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def add_file(
         self,
@@ -237,7 +242,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Adding a file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
-        "`Dataset.add_video_from_io` on a new or existing dataset instead."
+        "`Dataset.add_video_from_io` on a new or existing dataset instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def add_from_io(
         self,
@@ -322,7 +328,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Adding an MCAP file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
-        "`Dataset.add_mcap_video` on a new or existing dataset instead."
+        "`Dataset.add_mcap_video` on a new or existing dataset instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def add_mcap(
         self,
@@ -363,7 +370,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Adding an MCAP file to a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
-        "`Dataset.add_mcap_video_from_io` on a new or existing dataset instead."
+        "`Dataset.add_mcap_video_from_io` on a new or existing dataset instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def add_mcap_from_io(
         self,
@@ -437,7 +445,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
     @deprecated(
         "Listing the files of a standalone `Video` is deprecated in favor of video channels on a dataset. Use "
-        "`Dataset.list_video_files` instead."
+        "`Dataset.list_video_files` instead.",
+        category=LegacyVideoDeprecationWarning,
     )
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""
