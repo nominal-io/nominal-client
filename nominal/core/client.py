@@ -95,6 +95,7 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import (
+    LegacyVideoDeprecationWarning,
     NominalConfigError,
     NominalError,
     NominalInvalidArgumentError,
@@ -540,6 +541,11 @@ class NominalClient:
         for video in search_videos_paginated(self._clients.video, self._clients.auth_header, query, archive_status):
             yield Video._from_conjure(self._clients, video)
 
+    @deprecated(
+        "`NominalClient.search_videos` is deprecated in favor of video channels on a dataset. Search for the dataset "
+        "with `NominalClient.search_datasets`, then list its video files with `Dataset.list_video_files`.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def search_videos(
         self,
         search_text: str | None = None,
@@ -784,6 +790,11 @@ class NominalClient:
 
         return dataset
 
+    @deprecated(
+        "`NominalClient.create_video` is deprecated in favor of video channels on a dataset. Create a dataset with "
+        "`NominalClient.create_dataset`, then upload video to a channel on it with `Dataset.add_video`.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def create_video(
         self,
         name: str,
@@ -816,6 +827,11 @@ class NominalClient:
 
     create_empty_video = create_video
 
+    @deprecated(
+        "`NominalClient.get_video` is deprecated in favor of video channels on a dataset. Fetch the dataset with "
+        "`NominalClient.get_dataset`, then use `Dataset.list_video_files` or `Dataset.get_video_file`.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
         response = self._clients.video.get(self._clients.auth_header, rid)
@@ -826,6 +842,11 @@ class NominalClient:
         for response in self._clients.video.batch_get(self._clients.auth_header, request).responses:
             yield Video._from_conjure(self._clients, response)
 
+    @deprecated(
+        "`NominalClient.get_videos` is deprecated in favor of video channels on a dataset. Fetch the datasets with "
+        "`NominalClient.get_datasets`, then use `Dataset.list_video_files`.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def get_videos(self, rids: Iterable[str]) -> Sequence[Video]:
         """Retrieve videos by their RID."""
         return list(self._iter_get_videos(rids))

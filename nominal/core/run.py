@@ -12,7 +12,7 @@ from nominal_api import (
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
@@ -32,6 +32,7 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
@@ -385,6 +386,11 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
+    @deprecated(
+        "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
+        "dataset that carries the video channels with `Run.add_dataset` instead.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def add_video(self, ref_name: str, video: Video | str) -> None:
         """Add a video to a run via video object or RID."""
         request = scout_run_api.CreateRunDataSource(
@@ -494,6 +500,11 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
         return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
 
+    @deprecated(
+        "Resolving a standalone `Video` ref is deprecated in favor of video channels on a dataset. Use "
+        "`Run.get_dataset` with the ref name, then `Dataset.list_video_files` to reach the video files.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def get_video(self, ref_name: str) -> Video:
         """Get a video for this run by its ref name.
 
