@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 class VideoStream:
     """A live video stream from any source to a Nominal video via WHIP.
 
+    Note: this targets a legacy standalone :class:`~nominal.core.video.Video`. The platform also supports
+    streaming to a video channel on a dataset (``generate_whip_stream_v2``), which this helper has not been
+    ported to yet; until then it is the one place a deprecated ``create_video`` call is still expected.
+
     Use ``VideoStream.create()`` to construct — it resolves the WHIP endpoint
     from the Nominal video and prepares the pipeline configuration. The pipeline
     itself is not started until ``open()`` is called (or the context manager is entered).
@@ -33,8 +37,8 @@ class VideoStream:
 
         from nominal.experimental.video import VideoStream, Src, StreamOptions
 
-        # Live streaming still targets a standalone `Video`: it has no video-channel
-        # equivalent yet, so `create_video` is used here despite being deprecated.
+        # `VideoStream` has not been ported to video channels yet, so it still takes a
+        # standalone `Video` and `create_video` is used here despite being deprecated.
         video = client.create_video("my stream")
 
         # Context manager — open/close handled automatically:

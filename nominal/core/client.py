@@ -792,8 +792,7 @@ class NominalClient:
 
     @deprecated(
         "`NominalClient.create_video` is deprecated in favor of video channels on a dataset. Create a dataset with "
-        "`NominalClient.create_dataset`, then upload video to a channel on it with `Dataset.add_video`. The "
-        "experimental `VideoStream` API is the exception: live streaming still requires a standalone `Video`.",
+        "`NominalClient.create_dataset`, then upload video to a channel on it with `Dataset.add_video`.",
         category=LegacyVideoDeprecationWarning,
     )
     def create_video(
