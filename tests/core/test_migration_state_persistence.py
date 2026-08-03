@@ -295,6 +295,83 @@ class TestDebouncedSave:
             first.join()
 
 
+class TestParallelSaveThroughput:
+    def test_large_state_saves_do_not_stall_parallel_workers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end regression test for incremental saves starving parallel workers.
+
+        Runs the real parallel runner — ThreadSafeMigrationState, debounced persist hook,
+        atomic save_state to disk, thread pool — with only the network-touching copy_from
+        mocked, against a state pre-seeded large enough (~250 MB of JSON) that one full
+        serialization takes ~0.7s.
+
+        The regression metric is the worst-case latency of a single state *read* from a
+        worker thread. Serializing under the state lock blocked every worker's
+        get_mapped_rid/record_mapping for the full serialization (~0.7s here, tens of
+        seconds at real-migration state sizes, back-to-back due to the debounce timing
+        flaw); with the snapshot fix, workers only ever wait on the C-level snapshot copy
+        (~0.02s). Reads are timed rather than writes because a write may legitimately run
+        the debounced save synchronously on its own thread — the fix's contract is that
+        one thread saving never stalls the *other* workers.
+        """
+        from nominal.experimental.migration import parallel_migration_runner
+        from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+
+        num_assets = 4
+        mappings_per_asset = 50
+        runner = MigrationRunner(
+            migration_resources=MigrationResources(
+                source_assets={
+                    f"ri.scout.asset.{i}": AssetResources(
+                        asset=MagicMock(rid=f"ri.scout.asset.{i}"), source_workbook_templates=[]
+                    )
+                    for i in range(num_assets)
+                },
+                source_standalone_templates=[],
+            ),
+            dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+            destination_client=MagicMock(),
+            migration_state_path=tmp_path / "state.json",
+        )
+        runner.migration_state = MigrationState(
+            rid_mapping={
+                ResourceType.DATASET_FILE.value: {
+                    f"ri.catalog.file.{i:040d}": f"ri.catalog.file.dest.{i:040d}" for i in range(2_000_000)
+                }
+            }
+        )
+        worst_read_seconds = [0.0]
+        worst_read_lock = threading.Lock()
+
+        def fake_copy_from(self: object, asset: MagicMock, options: object) -> None:
+            # Each worker alternates reads and writes with small gaps, like real
+            # per-resource migration work between API calls.
+            for i in range(mappings_per_asset):
+                time.sleep(0.005)
+                read_start = time.monotonic()
+                runner.migration_state.get_mapped_rid(ResourceType.RUN, f"{asset.rid}-run-{i}")
+                read_elapsed = time.monotonic() - read_start
+                with worst_read_lock:
+                    worst_read_seconds[0] = max(worst_read_seconds[0], read_elapsed)
+                runner.migration_state.record_mapping(ResourceType.RUN, f"{asset.rid}-run-{i}", f"new-{asset.rid}-{i}")
+
+        monkeypatch.setattr(parallel_migration_runner.AssetMigrator, "copy_from", fake_copy_from)
+
+        parallel_migration_runner.run_parallel_migration(runner, max_workers=num_assets)
+
+        # Snapshot copy at this scale is ~0.02s; serializing under the lock was ~0.7s.
+        # 0.3s splits the two by an order of magnitude in each direction.
+        assert worst_read_seconds[0] < 0.3, (
+            f"a worker's state read stalled {worst_read_seconds[0]:.2f}s — "
+            "state serialization is blocking parallel workers"
+        )
+
+        restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert len(restored.rid_mapping[ResourceType.RUN.value]) == num_assets * mappings_per_asset
+        assert len(restored.rid_mapping[ResourceType.DATASET_FILE.value]) == 2_000_000
+
+
 class TestThreadSafeToJson:
     def test_to_json_matches_plain_state(self) -> None:
         """Snapshotting for serialization must not change the serialized output."""
