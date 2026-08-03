@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import signal
 import sys
 import threading
@@ -225,15 +226,123 @@ class TestDebouncedSave:
         debounced()
         assert len(saves) == 2
 
+    def test_interval_measured_from_save_completion(self) -> None:
+        """A save slower than the interval must not make the very next mutation save again.
+
+        Timing from save start meant that once serialization outlasted the interval, every
+        mutation retriggered a save and the migration serialized back-to-back forever.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def slow_save() -> None:
+            saves.append("save")
+            clock[0] += 5.0  # save takes 5s, well past the 1s interval
+
+        debounced = _DebouncedSave(slow_save, min_interval_seconds=1.0, time_fn=lambda: clock[0], interval_scale=1.0)
+        debounced()  # finishes at t=5
+        clock[0] = 5.5
+        debounced()  # 0.5s after completion: must be debounced despite 5.5s since start
+        assert len(saves) == 1
+        clock[0] = 10.5
+        debounced()
+        assert len(saves) == 2
+
+    def test_interval_scales_with_save_duration(self) -> None:
+        """The interval must grow with save cost so serialization stays a bounded fraction
+        of wall-clock time as the state file grows.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def slow_save() -> None:
+            saves.append("save")
+            clock[0] += 2.0
+
+        debounced = _DebouncedSave(slow_save, min_interval_seconds=1.0, time_fn=lambda: clock[0], interval_scale=9.0)
+        debounced()  # finishes at t=2 -> next interval is 18s
+        clock[0] = 15.0
+        debounced()
+        assert len(saves) == 1
+        clock[0] = 20.5  # 18.5s after completion
+        debounced()
+        assert len(saves) == 2
+
+    def test_calls_during_in_flight_save_return_without_blocking(self) -> None:
+        """Worker threads must never queue behind an in-flight save — they record their
+        mapping and move on; the next post-interval mutation persists it.
+        """
+        save_started = threading.Event()
+        release_save = threading.Event()
+        saves: list[str] = []
+
+        def blocking_save() -> None:
+            saves.append("save")
+            save_started.set()
+            release_save.wait(timeout=10)
+
+        debounced = _DebouncedSave(blocking_save, min_interval_seconds=0.0)
+        first = threading.Thread(target=debounced)
+        first.start()
+        try:
+            assert save_started.wait(timeout=10)
+            start = time.monotonic()
+            debounced()  # must return immediately, not wait for the in-flight save
+            assert time.monotonic() - start < 1.0
+            assert saves == ["save"]
+        finally:
+            release_save.set()
+            first.join()
+
 
 class TestThreadSafeToJson:
     def test_to_json_matches_plain_state(self) -> None:
-        """Taking the lock during serialization must not change the serialized output."""
+        """Snapshotting for serialization must not change the serialized output."""
         plain = MigrationState()
         safe = ThreadSafeMigrationState()
         for state in (plain, safe):
             state.record_mapping(ResourceType.ASSET, "a", "b")
+            state.record_pending_multi_asset_workbook("wb-a", ["a1", "a2"])
+            state.record_pending_multi_run_workbook("wb-r", ["r1"])
+            state.record_skip(ResourceType.WORKBOOK, "wb-s", "out of scope")
         assert safe.to_json() == plain.to_json()
+
+    def test_snapshot_covers_all_state_fields(self) -> None:
+        """ThreadSafeMigrationState.to_json copies each MigrationState field explicitly;
+        a new field must be added to that snapshot or it would silently vanish from the
+        persisted state file.
+        """
+        assert {f.name for f in dataclasses.fields(MigrationState)} == {
+            "rid_mapping",
+            "pending_multi_asset_workbooks",
+            "pending_multi_run_workbooks",
+            "skipped_resources",
+        }, "MigrationState fields changed: update ThreadSafeMigrationState.to_json's snapshot"
+
+    def test_state_lock_is_released_during_serialization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Serialization is O(state size); it must run outside the state lock so
+        worker threads can keep recording mappings while a save is in progress.
+        """
+        safe = ThreadSafeMigrationState()
+        safe.record_mapping(ResourceType.ASSET, "a", "b")
+        lock_was_free: list[bool] = []
+        original_to_json = MigrationState.to_json
+
+        def probing_to_json(self: MigrationState) -> str:
+            def probe() -> None:
+                acquired = safe._lock.acquire(blocking=False)
+                if acquired:
+                    safe._lock.release()
+                lock_was_free.append(acquired)
+
+            probe_thread = threading.Thread(target=probe)
+            probe_thread.start()
+            probe_thread.join()
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", probing_to_json)
+        safe.to_json()
+        assert lock_was_free == [True]
 
     def test_to_json_is_reentrant_on_same_thread(self) -> None:
         """The signal flush handler may fire while the main thread already holds the lock
