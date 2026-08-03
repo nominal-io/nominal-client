@@ -29,6 +29,7 @@ import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from nominal_api import scout_compute_api
 
@@ -47,6 +48,11 @@ _BATCHABLE_TYPES = frozenset({ChannelDataType.DOUBLE, ChannelDataType.INT, Chann
 DEFAULT_DETECT_CHANNELS_PER_REQUEST = 100
 DEFAULT_DETECT_WORKERS = 8
 _PRESENCE_PROBE_BATCH = 200
+# The compute backend rejects any summarize request where window / resolution exceeds
+# DEFAULT_MAX_RESULT_POINTS = 10_000 (scout ComputeUtils.isResolutionIntervalTooSmall ->
+# Compute:ResolutionIntervalTooSmallForRange). Long windows are therefore counted in segments of at
+# most this many buckets per request and the per-bucket counts merged client-side.
+MAX_BUCKETS_PER_REQUEST = 10_000
 
 
 def _iter_bucket_starts(
@@ -95,6 +101,22 @@ def merge_bucket_ranges(bucket_starts: list[int], bucket: IntegralNanosecondsUTC
     return ranges
 
 
+def _iter_window_segments(
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+    bucket: IntegralNanosecondsUTC,
+    max_buckets: int,
+) -> list[tuple[int, int]]:
+    """Split ``[start, end)`` into consecutive segments of at most ``max_buckets`` buckets each.
+
+    Segment edges land on the global bucket grid (``start + k * max_buckets * bucket``), so a bucket
+    never straddles two segments and per-segment counts merge without overlap.
+    """
+    span = int(bucket) * max_buckets
+    edges = list(range(int(start), int(end), span)) + [int(end)]
+    return list(zip(edges, edges[1:]))
+
+
 @dataclass(frozen=True)
 class ChannelBucketCounts:
     """Per-bucket data counts for a single channel.
@@ -129,7 +151,7 @@ def shortfall_buckets(source: ChannelBucketCounts, destination: ChannelBucketCou
     )
 
 
-def count_channels(
+def count_channels(  # noqa: PLR0912 - one cohesive segment/chunk/fallback pipeline
     channels: Sequence[Channel],
     start: IntegralNanosecondsUTC,
     end: IntegralNanosecondsUTC,
@@ -140,12 +162,25 @@ def count_channels(
     workers: int = DEFAULT_DETECT_WORKERS,
     request_delay: float = 0.0,
     on_advance: Callable[[int], None] | None = None,
+    presence_fallback: Literal["present", "empty"] = "present",
 ) -> dict[str, ChannelBucketCounts]:
     """Count per-bucket data for many channels using batched, parallel server-side compute.
 
     Numeric and string channels are summarized in ``batch_compute_with_units`` requests, chunked by
-    ``channels_per_request`` with chunks issued across ``workers`` threads. Any channel whose batch
-    result errored falls back to a whole-window presence probe.
+    ``channels_per_request`` with chunks issued across ``workers`` threads. Windows longer than
+    ``MAX_BUCKETS_PER_REQUEST`` buckets are counted in multiple per-segment requests (the backend
+    rejects summarize requests beyond that many buckets) and merged client-side.
+
+    Channels that cannot be counted precisely (non-batchable data types, or a batch result that
+    errored in any segment) take the fallback selected by ``presence_fallback``:
+
+    * ``"present"``: a whole-window presence probe -- 1 in every bucket if the channel has any data
+      in the window, else 0. Correct for the *source* side, where the worst case is syncing a range
+      that was already fine.
+    * ``"empty"``: 0 in every bucket, no probe. Required for the *destination* side: a probe that
+      finds any data (e.g. recent live ingest) would otherwise read as "every bucket covered" and
+      silently mask real gaps. Treating the side as empty makes the worst case a re-download, never
+      a silent skip.
 
     Args:
         channels: The channels to count. Assumed to have unique names and share a single client
@@ -159,6 +194,7 @@ def count_channels(
         request_delay: Seconds to sleep between consecutive batch submissions (rate-limiting).
         on_advance: Optional progress hook called with the number of channels resolved each step
             (summing to ``len(channels)`` over the call) -- drives the caller's detection bar.
+        presence_fallback: How imprecisely-countable channels are represented (see above).
 
     Returns:
         A mapping of channel name to its :class:`ChannelBucketCounts`, for every input channel.
@@ -168,42 +204,85 @@ def count_channels(
     fallback = [c for c in channels if c.data_type not in _BATCHABLE_TYPES]
 
     results: dict[str, ChannelBucketCounts] = {}
-    errored: list[Channel] = []
+    errored_by_name: dict[str, Channel] = {}
+    merged: dict[str, dict[int, int]] = {}
     chunks = [batchable[i : i + channels_per_request] for i in range(0, len(batchable), channels_per_request)]
+    segments = _iter_window_segments(start, end, bucket, MAX_BUCKETS_PER_REQUEST)
 
     if chunks:
         logger.info(
-            "Counting %d channel(s) over %d bucket(s) in %d batched request(s) across %d worker(s)",
+            "Counting %d channel(s) over %d bucket(s) in %d batched request(s) across %d worker(s)%s",
             len(batchable),
             len(starts),
-            len(chunks),
+            len(chunks) * len(segments),
             workers,
+            f" ({len(segments)} window segment(s) of <={MAX_BUCKETS_PER_REQUEST} buckets)" if len(segments) > 1 else "",
         )
-        done = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, len(chunks)))) as pool:
-            futures = []
-            for i, chunk in enumerate(chunks):
-                if request_delay > 0 and i > 0:
-                    time.sleep(request_delay)
-                futures.append(pool.submit(_count_chunk, chunk, start, end, bucket, starts, tags))
-            for future in concurrent.futures.as_completed(futures):
-                chunk_counts, chunk_errored = future.result()
-                results.update(chunk_counts)
-                errored.extend(chunk_errored)
-                done += len(chunk_counts) + len(chunk_errored)
-                logger.info("Detection progress: %d/%d channels counted", done, len(batchable))
-                # Advance only by channels resolved in this batch; errored ones advance below in the
-                # presence pass, so the total over the whole call sums to len(channels).
-                if on_advance is not None:
-                    on_advance(len(chunk_counts))
+        for seg_idx, (seg_start, seg_end) in enumerate(segments):
+            seg_starts = _iter_bucket_starts(seg_start, seg_end, bucket)
+            done = 0
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, len(chunks)))) as pool:
+                futures = []
+                for i, chunk in enumerate(chunks):
+                    if request_delay > 0 and (i > 0 or seg_idx > 0):
+                        time.sleep(request_delay)
+                    futures.append(pool.submit(_count_chunk, chunk, seg_start, seg_end, bucket, seg_starts, tags))
+                for future in concurrent.futures.as_completed(futures):
+                    chunk_counts, chunk_errored = future.result()
+                    for name, cbc in chunk_counts.items():
+                        merged.setdefault(name, {}).update(cbc.counts)
+                    for ch in chunk_errored:
+                        errored_by_name[ch.name] = ch
+                    done += len(chunk_counts) + len(chunk_errored)
+                    if len(segments) > 1:
+                        logger.info(
+                            "Detection progress: %d/%d channels counted (segment %d/%d)",
+                            done,
+                            len(batchable),
+                            seg_idx + 1,
+                            len(segments),
+                        )
+                    else:
+                        logger.info("Detection progress: %d/%d channels counted", done, len(batchable))
+                    # Advance once per channel over the whole call: every batchable channel advances
+                    # during the first segment; non-batchable ones advance in the fallback pass.
+                    if on_advance is not None and seg_idx == 0:
+                        on_advance(len(chunk_counts) + len(chunk_errored))
+        # A channel that errored in ANY segment has incomplete counts; route it to the fallback
+        # rather than presenting a partial (silently gappy) precise result.
+        for ch in batchable:
+            if ch.name not in errored_by_name:
+                results[ch.name] = ChannelBucketCounts(ch.name, merged.get(ch.name, {}), precise=True)
 
+    errored = list(errored_by_name.values())
     presence_channels = fallback + errored
     if presence_channels:
-        logger.info("Presence-probing %d channel(s) (non-batchable or errored)", len(presence_channels))
-        with_data = _channels_with_data(presence_channels, start, end, tags, on_advance)
-        for channel in presence_channels:
-            present = 1 if channel.name in with_data else 0
-            results[channel.name] = ChannelBucketCounts(channel.name, dict.fromkeys(starts, present), precise=False)
+        sample = ", ".join(sorted(c.name for c in presence_channels)[:10]) + (
+            "..." if len(presence_channels) > 10 else ""
+        )
+        if presence_fallback == "empty":
+            logger.warning(
+                "%d channel(s) could not be counted precisely (non-batchable type or batch error); "
+                "treating them as EMPTY on this side so every source bucket reads as short "
+                "(worst case re-download, never a silent skip): %s",
+                len(presence_channels),
+                sample,
+            )
+            for channel in presence_channels:
+                results[channel.name] = ChannelBucketCounts(channel.name, dict.fromkeys(starts, 0), precise=False)
+        else:
+            logger.warning(
+                "%d channel(s) could not be counted precisely (non-batchable type or batch error); "
+                "falling back to a whole-window presence probe (uniform per-bucket counts): %s",
+                len(presence_channels),
+                sample,
+            )
+            with_data = _channels_with_data(presence_channels, start, end, tags, None)
+            for channel in presence_channels:
+                present = 1 if channel.name in with_data else 0
+                results[channel.name] = ChannelBucketCounts(channel.name, dict.fromkeys(starts, present), precise=False)
+        if on_advance is not None:
+            on_advance(len(fallback))
 
     return results
 
