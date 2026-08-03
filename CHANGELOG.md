@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.156.0](https://github.com/nominal-io/nominal-client/compare/v1.155.0...v1.156.0) (2026-08-03)
+
+
+### Features
+
+* **extractor:** declare extractor-produced videos with ctx.add_video ([#902](https://github.com/nominal-io/nominal-client/issues/902)) ([e5d91f7](https://github.com/nominal-io/nominal-client/commit/e5d91f74b6ae356b9302fb4f5ea2896604a1a62c))
+* **video:** add dataset video ingest and typed video dataset files ([#896](https://github.com/nominal-io/nominal-client/issues/896)) ([89e360c](https://github.com/nominal-io/nominal-client/commit/89e360c3de5675dd2fe310ce754f46d450470074))
+* **video:** channel-based live streaming, deprecate legacy video api ([#906](https://github.com/nominal-io/nominal-client/issues/906)) ([0123967](https://github.com/nominal-io/nominal-client/commit/01239673857ab18678d67512dce05996d21cde52))
+
+
+### Bug Fixes
+
+* **ci:** mint the app token in-repo for release-please ([#904](https://github.com/nominal-io/nominal-client/issues/904)) ([8158719](https://github.com/nominal-io/nominal-client/commit/815871917c2c223babfd29938102b1574b48611f))
+* **ci:** use shared release-please wrapper with app token ([#901](https://github.com/nominal-io/nominal-client/issues/901)) ([739db3c](https://github.com/nominal-io/nominal-client/commit/739db3c2395a8685a029302ea33a2d820628d15a))
+* **ci:** use the org's app-token action for release-please ([#905](https://github.com/nominal-io/nominal-client/issues/905)) ([c8b1008](https://github.com/nominal-io/nominal-client/commit/c8b10088f83af3377977f8a54da8ad8181e95287))
+
 ## [1.155.0](https://github.com/nominal-io/nominal-client/compare/v1.154.0...v1.155.0) (2026-07-30)
 
 
