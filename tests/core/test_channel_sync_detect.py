@@ -147,6 +147,105 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
     assert advanced == 152
 
 
+# --- count_channels: long-window segmentation (backend 10k-bucket cap) --------------------
+
+
+def test_count_channels_segments_long_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A window over MAX_BUCKETS_PER_REQUEST buckets splits into per-segment requests whose counts
+    merge into one complete precise result (the backend 400s any request beyond the cap).
+    """
+    monkeypatch.setattr(detect_mod, "MAX_BUCKETS_PER_REQUEST", 4)
+    ch = SimpleNamespace(name="c", data_type=ChannelDataType.DOUBLE)
+
+    seen: list[tuple[int, int, int]] = []
+
+    def fake_count_chunk(
+        chunk: Any, start: int, end: int, bucket: int, starts: Any, tags: Any
+    ) -> tuple[dict[str, ChannelBucketCounts], list[Any]]:
+        seen.append((start, end, len(starts)))
+        return {"c": ChannelBucketCounts("c", dict.fromkeys(starts, 2), precise=True)}, []
+
+    monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
+
+    advanced = 0
+
+    def on_advance(n: int) -> None:
+        nonlocal advanced
+        advanced += n
+
+    # 10 one-second buckets with a 4-bucket cap -> segments of 4, 4, and 2 buckets.
+    result = count_channels([ch], 0, 10 * SEC, SEC, on_advance=on_advance)
+
+    assert sorted(seen) == [(0, 4 * SEC, 4), (4 * SEC, 8 * SEC, 4), (8 * SEC, 10 * SEC, 2)]
+    assert result["c"].precise is True
+    # Merged counts cover every bucket of the full window exactly once.
+    assert result["c"].counts == dict.fromkeys(range(0, 10 * SEC, SEC), 2)
+    # The channel advances exactly once over the whole call (first segment only).
+    assert advanced == 1
+
+
+def test_count_channels_errored_in_any_segment_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A channel whose batch errored in one segment must not surface a partial precise result --
+    it routes to the fallback for the whole window.
+    """
+    monkeypatch.setattr(detect_mod, "MAX_BUCKETS_PER_REQUEST", 4)
+    ch = SimpleNamespace(name="c", data_type=ChannelDataType.DOUBLE)
+
+    def fake_count_chunk(
+        chunk: Any, start: int, end: int, bucket: int, starts: Any, tags: Any
+    ) -> tuple[dict[str, ChannelBucketCounts], list[Any]]:
+        if start == 4 * SEC:  # second segment errors
+            return {}, list(chunk)
+        return {"c": ChannelBucketCounts("c", dict.fromkeys(starts, 2), precise=True)}, []
+
+    monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
+    monkeypatch.setattr(detect_mod, "_channels_with_data", lambda *a, **k: {"c"})
+
+    result = count_channels([ch], 0, 10 * SEC, SEC)
+
+    assert result["c"].precise is False
+    # Whole-window presence fill, not the partial per-segment counts.
+    assert result["c"].counts == dict.fromkeys(range(0, 10 * SEC, SEC), 1)
+
+
+# --- count_channels: presence_fallback="empty" (destination side) --------------------------
+
+
+def test_count_channels_presence_fallback_empty_skips_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With presence_fallback="empty", imprecisely-countable channels read as all-zero (fully
+    missing) and no presence probe is issued -- a probe finding any data would mask real gaps.
+    """
+    err = SimpleNamespace(name="err", data_type=ChannelDataType.DOUBLE)
+    log = SimpleNamespace(name="log0", data_type=ChannelDataType.LOG)
+
+    def fake_count_chunk(
+        chunk: Any, start: int, end: int, bucket: int, starts: Any, tags: Any
+    ) -> tuple[dict[str, ChannelBucketCounts], list[Any]]:
+        return {}, list(chunk)
+
+    monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
+    monkeypatch.setattr(
+        detect_mod,
+        "_channels_with_data",
+        lambda *a, **k: pytest.fail("presence probe must not run in 'empty' mode"),
+    )
+
+    advanced = 0
+
+    def on_advance(n: int) -> None:
+        nonlocal advanced
+        advanced += n
+
+    result = count_channels([err, log], 0, 2 * SEC, SEC, on_advance=on_advance, presence_fallback="empty")
+
+    assert result["err"].precise is False
+    assert result["err"].counts == {0: 0, SEC: 0}
+    assert result["log0"].precise is False
+    assert result["log0"].counts == {0: 0, SEC: 0}
+    # Both channels advance exactly once over the call (err in the chunk pass, log0 in fallback).
+    assert advanced == 2
+
+
 # --- _count_chunk: result/request length mismatch -----------------------------------------
 
 
