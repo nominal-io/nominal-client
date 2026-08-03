@@ -30,6 +30,7 @@ Caveats:
 from __future__ import annotations
 
 import contextlib
+import csv
 import datetime
 import gzip
 import itertools
@@ -212,7 +213,21 @@ def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable
         yield lambda n: progress.advance(task, n)
 
 
-def _run_stream_phase(
+def _csv_header_channel_names(header_line: str) -> list[str]:
+    """Channel names from an exported CSV header row.
+
+    Parses with the csv module so quoted (the exporter's style) and unquoted (hand-prepared or
+    re-written files) headers both work -- a naive quote-split on a header of the other style
+    yields garbage names that silently match nothing (the canary-run failure mode).
+    """
+    try:
+        row = next(csv.reader([header_line]))
+    except (StopIteration, csv.Error):
+        return []
+    return [name for name in row if name and name != "timestamp"]
+
+
+def _run_stream_phase(  # noqa: PLR0915 - linear stream pipeline: scan, gate, snapshot, stream, record
     source_dataset: Dataset | None,
     destination_dataset: Dataset,
     options: ChannelSyncOptions,
@@ -258,12 +273,22 @@ def _run_stream_phase(
                 header = fh.readline().strip()
         except OSError:
             continue
-        file_names.update(n for col in header.split('","') if (n := col.strip('"')) and n != "timestamp")
+        file_names.update(_csv_header_channel_names(header))
 
     # No range-stamped sync files (e.g. ad-hoc CSVs dropped in the dir) -> no gate, no snapshot;
     # everything streams exactly as before.
     dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()} if file_names else {}
     in_scope = [dest_by_name[name] for name in sorted(file_names) if name in dest_by_name]
+    if file_names and not in_scope:
+        # Expected only when streaming into a fresh destination (the write stream auto-creates
+        # channels). Against a destination that should already hold these channels, this means the
+        # coverage gate and the ingest-session snapshot are BOTH inactive -- say so loudly.
+        logger.warning(
+            "None of the %d channel(s) named in the downloaded files exist in the destination yet: "
+            "the stream-time coverage gate and the ingest-session snapshot are INACTIVE for this "
+            "stream. Expected for a brand-new destination; investigate before proceeding otherwise.",
+            len(file_names),
+        )
     canonical_tags = {k: v for k, v in (options.tags or {}).items() if not k.startswith("_nominal_")} or None
 
     dest_counts: dict[str, Mapping[int, int]] | None = None
@@ -782,8 +807,7 @@ def _reconcile_downloaded_files(
         except OSError:
             logger.warning("Unreadable downloaded file skipped during reconciliation: %s", path)
             return None
-        names = [col.strip('"') for col in header.split('","')]
-        return [n for n in names if n and n != "timestamp"], span
+        return _csv_header_channel_names(header), span
 
     spans_by_channel: dict[str, list[tuple[int, int]]] = {}
     with ThreadPoolExecutor(max_workers=max(4, options.download_workers)) as pool:
