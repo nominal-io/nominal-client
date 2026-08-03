@@ -30,8 +30,10 @@ Caveats:
 from __future__ import annotations
 
 import contextlib
+import datetime
 import gzip
 import itertools
+import json
 import logging
 import tempfile
 import time
@@ -132,6 +134,15 @@ class ChannelSyncOptions:
     and exports the missing ranges to ``output_dir`` without streaming (files are kept). ``"stream"``
     skips detection/export and streams every CSV already in ``output_dir`` into the destination. The
     single-stage phases run once with no settle/retry loop, and compose across separate invocations."""
+    stream_skip_covered_buckets: bool = True
+    """Stream-phase gate: before streaming, count the destination per bucket and skip any file rows
+    in buckets the destination already fully covers (``dest_count >= that bucket's row count in the
+    file``). Detection's shortfall rule over-downloads when the *source* holds overlapping duplicate
+    ingest sessions (per-bucket counts sum across matching series, so a duplicated source reads as
+    "short" against a complete destination) -- without this gate, streaming those buckets would
+    append duplicate points. The downloaded files hold merged/deduplicated data, so the comparison
+    is exact at whole-bucket granularity. Partially-covered buckets still stream in full (the
+    documented bucket-granularity append caveat)."""
     channel_allowlist: frozenset[str] | None = None
     """If set, only channels whose names are in this set are processed. All others are skipped before
     detection and download. Used internally by :func:`sync_missing_channel_data_for_tag_filters` with
@@ -209,10 +220,10 @@ def _run_stream_phase(
     """Execute the stream phase: push pre-downloaded CSVs from output_dir into the destination.
 
     Channel types are loaded from the source dataset when provided, or inferred from CSV columns
-    otherwise. Tags are loaded from sync_tags.json in output_dir when not set on options.
+    otherwise. Tags are loaded from sync_tags.json in output_dir when not set on options. Writes a
+    ``stream_ingest_rids.json`` bookkeeping file recording the ingest-session RIDs this stream
+    created (best effort; for undo).
     """
-    import json
-
     assert options.output_dir is not None
     output_dir = options.output_dir
 
@@ -228,11 +239,124 @@ def _run_stream_phase(
             options = replace(options, tags=loaded_tags)
             logger.info("Loaded tags from %s: %s", tags_file, loaded_tags)
 
+    # Channels and window come from the files themselves: names from the CSV headers, the bucket
+    # grid anchor and end from the range-stamped file names (every range is bucket-aligned to the
+    # download run's detection grid).
+    file_names: set[str] = set()
+    anchor: int | None = None
+    window_end: int | None = None
+    for path in sorted(output_dir.glob("sync_*.csv.gz")):
+        parts = path.name.split("_")
+        try:
+            file_start, file_end = int(parts[1]), int(parts[2])
+        except (IndexError, ValueError):
+            continue
+        anchor = file_start if anchor is None else min(anchor, file_start)
+        window_end = file_end if window_end is None else max(window_end, file_end)
+        try:
+            with gzip.open(path, "rt") as fh:
+                header = fh.readline().strip()
+        except OSError:
+            continue
+        file_names.update(n for col in header.split('","') if (n := col.strip('"')) and n != "timestamp")
+
+    # No range-stamped sync files (e.g. ad-hoc CSVs dropped in the dir) -> no gate, no snapshot;
+    # everything streams exactly as before.
+    dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()} if file_names else {}
+    in_scope = [dest_by_name[name] for name in sorted(file_names) if name in dest_by_name]
+    canonical_tags = {k: v for k, v in (options.tags or {}).items() if not k.startswith("_nominal_")} or None
+
+    dest_counts: dict[str, Mapping[int, int]] | None = None
+    if options.stream_skip_covered_buckets and in_scope and anchor is not None and window_end is not None:
+        logger.info(
+            "Stream gate: counting destination coverage for %d channel(s) to skip already-covered buckets",
+            len(in_scope),
+        )
+        counted = count_channels(
+            in_scope,
+            anchor,
+            window_end,
+            options.bucket,
+            canonical_tags,
+            channels_per_request=options.detect_channels_per_request,
+            workers=options.detect_workers,
+            request_delay=options.detect_request_delay,
+            # Imprecise destination counts must never suppress streaming: "empty" makes the gate a
+            # no-op for those channels (everything streams), the conservative direction here.
+            presence_fallback="empty",
+        )
+        dest_counts = {name: cbc.counts for name, cbc in counted.items()}
+
+    # Snapshot the destination's ingest-session RIDs before streaming so the sessions created BY
+    # this stream can be identified afterwards (the write API never returns them client-side).
+    rids_before = (
+        _ingest_rid_snapshot(in_scope, anchor, window_end)
+        if in_scope and anchor is not None and window_end is not None
+        else {}
+    )
+
     logger.info("Streaming pre-downloaded files from %s into the destination", output_dir)
-    return _stream_from_dir(destination_dataset, output_dir, type_by_name, options)
+    points = _stream_from_dir(
+        destination_dataset, output_dir, type_by_name, options, dest_counts=dest_counts, grid_anchor=anchor or 0
+    )
+
+    if in_scope and anchor is not None and window_end is not None:
+        if options.settle_seconds > 0:
+            # Session tags surface with ingestion; give it a moment before the after-snapshot.
+            time.sleep(options.settle_seconds)
+        rids_after = _ingest_rid_snapshot(in_scope, anchor, window_end)
+        new_by_channel = {
+            name: sorted(rids_after.get(name, set()) - rids_before.get(name, set()))
+            for name in rids_after
+            if rids_after.get(name, set()) - rids_before.get(name, set())
+        }
+        new_union = sorted({rid for rids in new_by_channel.values() for rid in rids})
+        record = {
+            "window": [anchor, window_end],
+            "streamed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "points_streamed": points,
+            "new_ingest_rids": new_union,
+            "new_ingest_rids_by_channel": new_by_channel,
+            "before_union": sorted({rid for rids in rids_before.values() for rid in rids}),
+            "caveats": [
+                "get_available_tags truncates to ~75 values per key; very session-dense channels may under-report",
+                "sessions created concurrently by live ingest (e.g. dual-write) during the stream also appear as new",
+            ],
+        }
+        rid_file = output_dir / _STREAM_SESSIONS_FILE
+        rid_file.write_text(json.dumps(record, indent=2))
+        logger.info(
+            "Streaming wrote through %d new ingest session(s) (recorded in %s): %s",
+            len(new_union),
+            rid_file,
+            ", ".join(new_union[:10]) + ("..." if len(new_union) > 10 else ""),
+        )
+    return points
 
 
-def sync_missing_channel_data(
+def _ingest_rid_snapshot(
+    channels: Sequence[Channel],
+    start: IntegralNanosecondsUTC,
+    end: IntegralNanosecondsUTC,
+) -> dict[str, set[str]]:
+    """Per-channel ``_nominal_ingest_rid`` values present over the window.
+
+    Best-effort bookkeeping for undo: diffing snapshots taken before and after a stream identifies
+    the streaming sessions the stream created (the write API never returns session RIDs). Subject to
+    the ~75-values-per-key truncation of ``get_available_tags``.
+    """
+    snapshot: dict[str, set[str]] = {}
+    for channel in channels:
+        try:
+            tags = channel.get_available_tags(start, end)
+        except Exception:
+            logger.warning("Could not snapshot ingest RIDs for channel %r; skipping", channel.name)
+            continue
+        snapshot[channel.name] = set(tags.get("_nominal_ingest_rid", set()))
+    return snapshot
+
+
+def sync_missing_channel_data(  # noqa: PLR0912, PLR0915 - linear phase dispatcher; splitting would obscure it
     source_dataset: Dataset | None,
     source_client: NominalClient | None,
     destination_dataset: Dataset | None,
@@ -343,6 +467,20 @@ def sync_missing_channel_data(
     if options.phase == "download":
         logger.info("Downloading %d channel(s) with missing data to %s", len(missing), options.output_dir)
         _stream_missing(handler, destination_dataset, missing, source_by_name, non_precise, options, download_only=True)
+        # Trust nothing: verify the files on disk actually cover every detected-short bucket, and
+        # surface what they don't in the report (the retry loop can bottom out and leave holes).
+        report.still_short.extend(_reconcile_downloaded_files(missing, options))
+        if report.still_short:
+            affected = sorted({s.channel for s in report.still_short})
+            logger.warning(
+                "Post-download verification: %d range(s) across %d channel(s) NOT covered by the "
+                "downloaded files (see report / 'Still short'): %s",
+                len(report.still_short),
+                len(affected),
+                ", ".join(affected[:10]) + ("..." if len(affected) > 10 else ""),
+            )
+        else:
+            logger.info("Post-download verification: every detected-short bucket is covered by the downloaded files")
         return report
 
     # phase="all": stream, settle, re-detect, and retry whatever is still short. The phase validation
@@ -451,6 +589,11 @@ def _detect_missing(
                 workers=options.detect_workers,
                 request_delay=options.detect_request_delay,
                 on_advance=advance,
+                # A presence probe is anti-conservative on the destination: any data at all (e.g.
+                # recent live ingest) would read as "every bucket covered" and silently mask real
+                # gaps. Treat imprecisely-countable destination channels as empty instead -- the
+                # worst case becomes a re-download, never a silent skip.
+                presence_fallback="empty",
             )
 
     missing: dict[str, list[tuple[int, int]]] = {}
@@ -541,10 +684,13 @@ def _stream_missing(
             # Download-only opens no shared write stream, so range exports are independent — fan them
             # out. Rich's Progress locks internally, so `advance` is safe from worker threads. The
             # streaming path stays serial: every exported file feeds one shared write stream.
+            # Grouped tasks go through the halving path: download-only has no re-detect loop, so a
+            # whole-export failure (timeout, transient no-file return) must retry here or the range
+            # is silently lost.
             with ThreadPoolExecutor(max_workers=options.download_workers, thread_name_prefix="sync-download") as pool:
                 futures = [
                     pool.submit(
-                        _export_and_stream_range,
+                        _export_and_stream_halving,
                         handler,
                         stream,
                         channels,
@@ -574,8 +720,11 @@ def _stream_missing(
                 for future in as_completed(futures):
                     points += future.result()
         else:
+            # Streaming (phase="all") keeps the log-and-continue behaviour: its verify loop re-detects
+            # and retries. Download-only has no such loop, so failures retry via halving even serially.
+            grouped_export = _export_and_stream_halving if download_only else _export_and_stream_range
             for group_idx, channels, range_start, range_end in grouped_tasks:
-                points += _export_and_stream_range(
+                points += grouped_export(
                     handler,
                     stream,
                     channels,
@@ -600,6 +749,68 @@ def _stream_missing(
                 )
     # Exiting the context flushes and closes the stream (wait=True).
     return points
+
+
+def _reconcile_downloaded_files(
+    missing: Mapping[str, list[tuple[int, int]]],
+    options: ChannelSyncOptions,
+) -> list[StillShort]:
+    """Verify the files in ``output_dir`` cover every detected-short bucket; return what they don't.
+
+    The download loop retries failures, but retries can bottom out (a single-bucket export that keeps
+    failing is left short) -- this pass makes those holes loud instead of trusting the loop. Each
+    downloaded file's time span comes from its name (``sync_<start>_<end>_...``) and its channels from
+    the CSV header; a short bucket counts as covered when any file containing the channel overlaps it.
+
+    Returns:
+        One :class:`StillShort` per (channel, contiguous uncovered range), empty when fully covered.
+    """
+    assert options.output_dir is not None
+    bucket = int(options.bucket)
+
+    files = sorted(options.output_dir.glob("sync_*.csv.gz"))
+
+    def _spans_entry(path: Path) -> tuple[list[str], tuple[int, int]] | None:
+        parts = path.name.split("_")
+        try:
+            span = (int(parts[1]), int(parts[2]))
+        except (IndexError, ValueError):
+            return None
+        try:
+            with gzip.open(path, "rt") as fh:
+                header = fh.readline().strip()
+        except OSError:
+            logger.warning("Unreadable downloaded file skipped during reconciliation: %s", path)
+            return None
+        names = [col.strip('"') for col in header.split('","')]
+        return [n for n in names if n and n != "timestamp"], span
+
+    spans_by_channel: dict[str, list[tuple[int, int]]] = {}
+    with ThreadPoolExecutor(max_workers=max(4, options.download_workers)) as pool:
+        for entry in pool.map(_spans_entry, files):
+            if entry is None:
+                continue
+            names, span = entry
+            for name in names:
+                spans_by_channel.setdefault(name, []).append(span)
+
+    still: list[StillShort] = []
+    tags = dict(options.tags or {})
+    for name, ranges in missing.items():
+        spans = sorted(spans_by_channel.get(name, []))
+        uncovered: list[int] = []
+        idx = 0
+        for range_start, range_end in sorted(ranges):
+            for b in range(range_start, range_end, bucket):
+                # Spans and buckets are both sorted: walk the span pointer forward past spans that
+                # end at or before this bucket, then check the current span for overlap.
+                while idx < len(spans) and spans[idx][1] <= b:
+                    idx += 1
+                if not (idx < len(spans) and spans[idx][0] < b + bucket):
+                    uncovered.append(b)
+        for urs, ure in merge_bucket_ranges(uncovered, bucket):
+            still.append(StillShort(name, tags, (urs, ure)))
+    return still
 
 
 def _export_and_stream(
@@ -639,7 +850,7 @@ def _export_and_stream(
     def _on_file_complete(path: Path) -> None:
         nonlocal points
         try:
-            streamed, slices = _stream_file(stream, path, type_by_name, options.tags, options.bucket)
+            streamed, slices, _skipped = _stream_file(stream, path, type_by_name, options.tags, options.bucket)
             points += streamed
             if advance is not None:
                 advance(slices)
@@ -650,7 +861,7 @@ def _export_and_stream(
                 path.unlink(missing_ok=True)
 
     with tmp_ctx as out_dir:
-        handler.export_to_files(
+        paths = handler.export_to_files(
             channels,
             range_start,
             range_end,
@@ -661,6 +872,14 @@ def _export_and_stream(
             show_progress=False,
             on_file_complete=_on_file_complete,
             skip_rate_estimation=skip_rate_estimation,
+        )
+    # Download-only ranges come straight from detection, so source data exists by construction: an
+    # export that produced no file is always a failure (observed cause: a transient estimation miss
+    # makes the planner "see" no data and return silently). Raise so the halving caller retries.
+    if stream is None and not paths:
+        raise RuntimeError(
+            f"export produced no file for [{range_start}, {range_end}) over {len(channels)} channel(s) "
+            "despite detected shortfall"
         )
     return points
 
@@ -703,6 +922,86 @@ def _export_and_stream_range(
         return 0
 
 
+def _export_and_stream_halving(
+    handler: PolarsExportHandler,
+    stream: DataStream | None,
+    channels: Sequence[Channel],
+    range_start: int,
+    range_end: int,
+    type_by_name: Mapping[str, ChannelDataType],
+    options: ChannelSyncOptions,
+    advance: Callable[[int], None] | None,
+    *,
+    skip_rate_estimation: bool = False,
+    group_idx: int = 0,
+) -> int:
+    """Export+stream ``channels`` over a range, halving the range and retrying on export failure.
+
+    On any whole-export failure (backend timeout on a dense request, a transient no-file return, a
+    dropped connection) the range splits at a bucket-aligned midpoint and each half retries -- a
+    retry-with-backoff that also discovers a workable request size by trial. Bottoms out at one
+    ``bucket``: a single-bucket export that still fails is left short (logged; the download phase's
+    post-download reconciliation reports it).
+    """
+    try:
+        return _export_and_stream(
+            handler,
+            stream,
+            channels,
+            range_start,
+            range_end,
+            type_by_name,
+            options,
+            advance,
+            skip_rate_estimation=skip_rate_estimation,
+            group_idx=group_idx,
+        )
+    except Exception as exc:
+        span = range_end - range_start
+        if span <= int(options.bucket):
+            logger.warning(
+                "%d channel(s) range [%d, %d) could not be exported even at one-bucket granularity (%s); leaving short",
+                len(channels),
+                range_start,
+                range_end,
+                exc,
+            )
+            return 0
+        # Split at a bucket-aligned midpoint; guarantee forward progress.
+        mid = range_start + max(1, (span // int(options.bucket)) // 2) * int(options.bucket)
+        logger.info(
+            "Export failed for %d channel(s) over [%d, %d) (%s); halving at %d and retrying",
+            len(channels),
+            range_start,
+            range_end,
+            exc,
+            mid,
+        )
+        return _export_and_stream_halving(
+            handler,
+            stream,
+            channels,
+            range_start,
+            mid,
+            type_by_name,
+            options,
+            advance,
+            skip_rate_estimation=skip_rate_estimation,
+            group_idx=group_idx,
+        ) + _export_and_stream_halving(
+            handler,
+            stream,
+            channels,
+            mid,
+            range_end,
+            type_by_name,
+            options,
+            advance,
+            skip_rate_estimation=skip_rate_estimation,
+            group_idx=group_idx,
+        )
+
+
 def _export_and_stream_channel(
     handler: PolarsExportHandler,
     stream: DataStream | None,
@@ -715,70 +1014,19 @@ def _export_and_stream_channel(
     *,
     channel_idx: int = 0,
 ) -> int:
-    """Export+stream one channel whose rate can't be estimated, halving the range and retrying on
-    export failure.
-
-    The export request size for these channels can't be planned (rate estimation fails), so we try the
-    whole range and, if the export request fails (e.g. too large for the backend), recursively split
-    the range at a bucket-aligned midpoint and retry each half -- discovering a workable size by trial.
-    Bottoms out at one ``bucket``: a single-bucket export that still fails is genuinely unexportable and
-    is left short (logged).
-    """
-    try:
-        return _export_and_stream(
-            handler,
-            stream,
-            [channel],
-            range_start,
-            range_end,
-            type_by_name,
-            options,
-            advance,
-            skip_rate_estimation=True,
-            group_idx=channel_idx,
-        )
-    except Exception as exc:
-        span = range_end - range_start
-        if span <= int(options.bucket):
-            logger.warning(
-                "Channel %r range [%d, %d) could not be exported even at one-bucket granularity (%s); leaving short",
-                channel.name,
-                range_start,
-                range_end,
-                exc,
-            )
-            return 0
-        # Split at a bucket-aligned midpoint; guarantee forward progress.
-        mid = range_start + max(1, (span // int(options.bucket)) // 2) * int(options.bucket)
-        logger.info(
-            "Export failed for channel %r over [%d, %d) (%s); halving at %d and retrying",
-            channel.name,
-            range_start,
-            range_end,
-            exc,
-            mid,
-        )
-        return _export_and_stream_channel(
-            handler,
-            stream,
-            channel,
-            range_start,
-            mid,
-            type_by_name,
-            options,
-            advance,
-            channel_idx=channel_idx,
-        ) + _export_and_stream_channel(
-            handler,
-            stream,
-            channel,
-            mid,
-            range_end,
-            type_by_name,
-            options,
-            advance,
-            channel_idx=channel_idx,
-        )
+    """Export+stream one channel whose rate can't be estimated (see :func:`_export_and_stream_halving`)."""
+    return _export_and_stream_halving(
+        handler,
+        stream,
+        [channel],
+        range_start,
+        range_end,
+        type_by_name,
+        options,
+        advance,
+        skip_rate_estimation=True,
+        group_idx=channel_idx,
+    )
 
 
 def _stream_from_dir(
@@ -786,6 +1034,8 @@ def _stream_from_dir(
     output_dir: Path,
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
+    dest_counts: Mapping[str, Mapping[int, int]] | None = None,
+    grid_anchor: int = 0,
 ) -> int:
     """Stream every exported CSV already in ``output_dir`` into the destination (the ``"stream"`` phase).
 
@@ -800,19 +1050,31 @@ def _stream_from_dir(
 
     logger.info("Streaming %d file(s) from %s", len(files), output_dir)
     points = 0
+    skipped = 0
     with (
         _progress_bar(options.show_progress, len(files), "Streaming files") as advance,
         destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
     ):
         for path in files:
             try:
-                streamed, _ = _stream_file(stream, path, type_by_name, options.tags, options.bucket)
+                streamed, _, file_skipped = _stream_file(
+                    stream,
+                    path,
+                    type_by_name,
+                    options.tags,
+                    options.bucket,
+                    dest_counts=dest_counts,
+                    grid_anchor=grid_anchor,
+                )
                 points += streamed
+                skipped += file_skipped
             except Exception:
                 logger.exception("Failed to stream file %s; skipping", path)
             finally:
                 if advance is not None:
                     advance(1)
+    if skipped:
+        logger.info("Stream gate skipped %d point(s) in buckets the destination already fully covers", skipped)
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
@@ -838,7 +1100,9 @@ def _stream_file(
     type_by_name: Mapping[str, ChannelDataType],
     tags: Mapping[str, str] | None,
     bucket: IntegralNanosecondsUTC,
-) -> tuple[int, int]:
+    dest_counts: Mapping[str, Mapping[int, int]] | None = None,
+    grid_anchor: int = 0,
+) -> tuple[int, int, int]:
     """Re-read one exported gzipped CSV and enqueue every non-null point into ``stream``.
 
     The file is a wide CSV: one timestamp column (epoch nanoseconds) plus one column per channel.
@@ -848,9 +1112,14 @@ def _stream_file(
     When ``stream`` is ``None`` the file is read and measured but not enqueued (download-only mode):
     the returned point count reflects what *would* stream, and the slice count still advances the bar.
 
-    Returns ``(points_streamed, slices_covered)`` where a slice is one (channel, ``bucket``-wide
-    bucket) cell that had data in this file -- used to advance the per-file progress bar. Each
-    (channel, bucket) lives in exactly one file, so per-file slice counts sum to the run's total.
+    When ``dest_counts`` is given (the stream-phase coverage gate), rows in buckets the destination
+    already fully covers (``dest_count >= this file's row count for the bucket``, buckets aligned to
+    ``grid_anchor``) are skipped rather than streamed -- the third returned element counts them.
+
+    Returns ``(points_streamed, slices_covered, points_skipped)`` where a slice is one (channel,
+    ``bucket``-wide bucket) cell that had data in this file -- used to advance the per-file progress
+    bar. Each (channel, bucket) lives in exactly one file, so per-file slice counts sum to the run's
+    total.
     """
     # Peek the header to know which columns this column-partitioned file carries, then force the
     # schema for the channel columns (timestamp infers as Int64 from epoch-nanosecond integers).
@@ -869,7 +1138,7 @@ def _stream_file(
     # then fail on a later float ("could not parse '12.65' as dtype i64").
     frame = pl.read_csv(raw, schema_overrides=schema_overrides, null_values=[""], infer_schema_length=None)
     if frame.height == 0:
-        return 0, 0
+        return 0, 0, 0
 
     if type_by_name:
         data_columns = [col for col in frame.columns if col in type_by_name]
@@ -887,10 +1156,32 @@ def _stream_file(
 
     points = 0
     slices = 0
+    skipped = 0
     for channel_name in data_columns:
         column = frame.select([time_col, channel_name]).drop_nulls(channel_name)
         if column.height == 0:
             continue
+        if dest_counts is not None and channel_name in dest_counts:
+            # Coverage gate: drop rows in buckets the destination already fully covers. The file
+            # holds merged/deduplicated data, so per-bucket row counts are the ground truth to
+            # compare the destination against (see ChannelSyncOptions.stream_skip_covered_buckets).
+            channel_dest = dest_counts[channel_name]
+            bucket_expr = ((pl.col(time_col) - grid_anchor) // int(bucket) * int(bucket) + grid_anchor).alias(
+                "__bucket"
+            )
+            column = column.with_columns(bucket_expr)
+            covered = [
+                bucket_start
+                for bucket_start, file_count in column.group_by("__bucket").len().iter_rows()
+                if channel_dest.get(bucket_start, 0) >= file_count
+            ]
+            if covered:
+                before = column.height
+                column = column.filter(~pl.col("__bucket").is_in(covered))
+                skipped += before - column.height
+            column = column.drop("__bucket")
+            if column.height == 0:
+                continue
         timestamps = column.get_column(time_col).to_list()
         values = column.get_column(channel_name).to_list()
         # INT channels were read as Float64 (see _polars_dtype); re-cast whole-number values back to
@@ -902,10 +1193,12 @@ def _stream_file(
         points += len(values)
         # Distinct buckets this channel has data in within this file -- one slice each.
         slices += (column.get_column(time_col) // int(bucket)).n_unique()
-    return points, slices
+    return points, slices, skipped
 
 
 _TAGS_METADATA_FILE = "sync_tags.json"
+
+_STREAM_SESSIONS_FILE = "stream_ingest_rids.json"
 
 _UNDERCONSTRAINED_PROBE_BATCH = 200
 
