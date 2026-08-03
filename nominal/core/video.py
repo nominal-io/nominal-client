@@ -18,12 +18,20 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
-from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestError, NominalIngestFailed
+from nominal.core.exceptions import (
+    LegacyVideoDeprecationWarning,
+    NominalIngestError,
+    NominalIngestFailed,
+    NominalVideoTimestampModeError,
+)
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
+
+# Raised by the manifest builder, which additionally accepts an mcap topic as a timestamp mode.
+_ONE_OF_THREE_MODES_ERROR = "exactly one of 'start', 'frame_timestamps', or 'mcap_topic' must be provided"
 
 
 @dataclass(frozen=True)
@@ -191,6 +199,11 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         Returns:
             Reference to the created video file.
         """
+        # Without this, passing both modes would take the 'start' branch below and silently drop the
+        # per-frame timestamps: add_from_io only ever sees the one mode this method forwards.
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
+
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
 
@@ -213,8 +226,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
                     file_type=file_type,
                     overwrite_overlapping=overwrite_overlapping,
                 )
-            else:  # This should never be reached due to the validation above
-                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+            else:  # unreachable: the check at the top of this method admits exactly one mode
+                raise NominalVideoTimestampModeError()
 
     @overload
     def add_from_io(
@@ -275,11 +288,10 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        # Validation: ensure exactly one of start or frame_timestamps is provided
-        if start is None and frame_timestamps is None:
-            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
-        if start is not None and frame_timestamps is not None:
-            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+        # Checked here as well as in the manifest builder below, so bad arguments fail before the
+        # workspace lookup and the upload, and the message names only this method's two modes.
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
 
         workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
@@ -509,7 +521,7 @@ def _build_video_file_timestamp_manifest(
     """
     provided = [mode for mode in (start, frame_timestamps, mcap_topic) if mode is not None]
     if len(provided) != 1:
-        raise ValueError("exactly one of 'start', 'frame_timestamps', or 'mcap_topic' must be provided")
+        raise NominalVideoTimestampModeError(_ONE_OF_THREE_MODES_ERROR)
 
     if mcap_topic is not None:
         return scout_video_api.VideoFileTimestampManifest(
@@ -527,8 +539,8 @@ def _build_video_file_timestamp_manifest(
                 starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
             )
         )
-    else:
-        raise ValueError("exactly one of 'start', 'frame_timestamps', or 'mcap_topic' must be provided")
+    else:  # unreachable: the check above admits exactly one mode
+        raise NominalVideoTimestampModeError(_ONE_OF_THREE_MODES_ERROR)
 
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
