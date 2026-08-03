@@ -613,6 +613,32 @@ def test_ingest_rid_snapshot_collects_per_channel_rids() -> None:
     assert "c" not in snapshot  # probe failure skips the channel rather than raising
 
 
+# --- _csv_header_channel_names: quote-style tolerance ---------------------------------------
+
+
+def test_csv_header_channel_names_handles_both_quote_styles() -> None:
+    """The exporter writes quoted headers; hand-prepared or rewritten files may be unquoted. Both
+    must parse to the same names -- the quote-split parser silently matched nothing on unquoted
+    headers, deactivating the stream gate and the session snapshot (the canary-run failure mode).
+    """
+    quoted = '"timestamp","Differential_Pressure","CO Conversion (X, N2 Tracer)"'
+    unquoted = "timestamp,Differential_Pressure,rpm"
+    assert sync_mod._csv_header_channel_names(quoted) == ["Differential_Pressure", "CO Conversion (X, N2 Tracer)"]
+    assert sync_mod._csv_header_channel_names(unquoted) == ["Differential_Pressure", "rpm"]
+    assert sync_mod._csv_header_channel_names("") == []
+
+
+def test_reconcile_downloaded_files_parses_unquoted_headers(tmp_path: Path) -> None:
+    """Reconciliation must attribute coverage from unquoted-header files too."""
+    hour = 3600 * SEC
+    _write_csv_gz(tmp_path / f"sync_0_{hour}_g0000_x.csv.gz", "timestamp,c1\n0,1\n")
+
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
+    still = sync_mod._reconcile_downloaded_files({"c1": [(0, hour)]}, options)
+
+    assert still == []  # the unquoted-header file covers the short bucket
+
+
 def test_progress_bar_renders_nothing_when_total_is_zero() -> None:
     # Nothing to count (e.g. detecting against a freshly empty destination) -> no bar, not a phantom 1.
     with sync_mod._progress_bar(show=True, total=0, description="Counting destination channels") as advance:
