@@ -56,7 +56,7 @@ def test_stream_file_maps_columns_types_and_drops_nulls(tmp_path: Path) -> None:
     stream = FakeStream()
     type_by_name = {"rpm": ChannelDataType.DOUBLE, "state": ChannelDataType.STRING}
 
-    points, _slices = sync_mod._stream_file(stream, path, type_by_name, {"unit": "rpm"}, SEC)
+    points, _slices, _skipped = sync_mod._stream_file(stream, path, type_by_name, {"unit": "rpm"}, SEC)
 
     by_channel = {c[0]: c for c in stream.calls}
     # DOUBLE channel streams floats even though the CSV held integral text.
@@ -79,7 +79,7 @@ def test_stream_file_int_channel_tolerates_floats_and_recasts_integral(tmp_path:
     stream = FakeStream()
     type_by_name = {"count": ChannelDataType.INT}
 
-    points, _slices = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
+    points, _slices, _skipped = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
 
     assert points == 3
     values = stream.calls[0][2]
@@ -97,7 +97,7 @@ def test_stream_file_does_not_crash_on_integral_then_float_column(tmp_path: Path
     _write_csv_gz(path, "timestamp,rpm,extra\n" + rows)
     stream = FakeStream()
 
-    points, _slices = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
+    points, _slices, _skipped = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
 
     # 51 rpm points stream; 'extra' (not a known channel) is ignored, but its float didn't crash.
     assert points == 51
@@ -115,7 +115,7 @@ def test_stream_file_tolerates_float_beyond_inference_sample(tmp_path: Path) -> 
     _write_csv_gz(path, "timestamp,rpm\n" + rows)
     stream = FakeStream()
 
-    points, _slices = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
+    points, _slices, _skipped = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
 
     assert points == n + 1
     assert stream.calls[0][2][-1] == 0.5  # the late float streamed as a float, no crash
@@ -128,7 +128,7 @@ def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path:
     stream = FakeStream()
     type_by_name = {"timestamp": ChannelDataType.DOUBLE}
 
-    points, _slices = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
+    points, _slices, _skipped = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
 
     assert points == 2
     assert stream.calls[0][0] == "timestamp"
@@ -446,6 +446,173 @@ def test_download_workers_ignored_when_streaming(tmp_path: Path) -> None:
     assert all(not name.startswith("sync-download") for name in handler.thread_names), handler.thread_names
 
 
+class _FlakyHandler:
+    """Fails export for any range wider than max_ok_span; writes one file per surviving call."""
+
+    def __init__(self, max_ok_span: int) -> None:
+        """Set the widest range that exports successfully."""
+        self.max_ok_span = max_ok_span
+        self.calls: list[tuple[int, int]] = []
+
+    def export_to_files(
+        self,
+        channels: Any,
+        start: int,
+        end: int,
+        out_dir: str,
+        *,
+        tags: Any = None,
+        timestamp_type: Any = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        on_file_planned: Any = None,
+        on_file_complete: Any = None,
+        skip_rate_estimation: bool = False,
+    ) -> list[Path]:
+        """Raise for wide ranges (simulating a backend timeout); write a file otherwise."""
+        self.calls.append((start, end))
+        if end - start > self.max_ok_span:
+            raise RuntimeError("Compute:TimeoutExceeded (simulated)")
+        path = Path(out_dir) / f"{file_prefix}.csv.gz"
+        _write_csv_gz(path, f"timestamp,{channels[0].name}\n{start},1\n")
+        if on_file_complete is not None:
+            on_file_complete(path)
+        return [path]
+
+
+def test_download_grouped_export_failure_halves_and_retries(tmp_path: Path) -> None:
+    """Download-only grouped exports must halve-and-retry on failure (no re-detect loop exists to
+    save them). A 4-bucket range failing wholesale converges to four single-bucket successes.
+    """
+    hour = 3600 * SEC
+    handler = _FlakyHandler(max_ok_span=hour)  # only single-bucket exports succeed
+    source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
+    missing = {"c1": [(0, 4 * hour)], "c2": [(0, 4 * hour)]}  # one group, one wide range
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path, download_workers=4)
+
+    sync_mod._stream_missing(handler, None, missing, source_by_name, set(), options, download_only=True)
+
+    # The wide range failed, then halves failed, then all four single buckets succeeded.
+    assert len(list(tmp_path.glob("*.csv.gz"))) == 4
+    spans = sorted((e - s) for s, e in handler.calls)
+    assert spans[-1] == 4 * hour  # the original wide attempt happened
+    assert spans[:4] == [hour] * 4  # ...and bottomed out at per-bucket exports
+
+
+def test_download_only_export_with_no_file_raises(tmp_path: Path) -> None:
+    """An export that silently returns no file (transient planner miss) must raise in download-only:
+    the range came from detection, so source data exists by construction.
+    """
+
+    class _NoFileHandler:
+        def export_to_files(self, *args: Any, **kwargs: Any) -> list[Path]:
+            return []
+
+    options = ChannelSyncOptions(output_dir=tmp_path)
+    with pytest.raises(RuntimeError, match="no file"):
+        sync_mod._export_and_stream(_NoFileHandler(), None, [_channel("c1")], 0, SEC, {}, options, None)
+
+
+def test_reconcile_downloaded_files_reports_uncovered_ranges(tmp_path: Path) -> None:
+    """Reconciliation flags exactly the short buckets no downloaded file covers."""
+    hour = 3600 * SEC
+    # c1 short over [0, 4h); files cover [0, 1h) and [2h, 3h) -> holes at [1h, 2h) and [3h, 4h).
+    _write_csv_gz(tmp_path / f"sync_0_{hour}_g0000_x.csv.gz", '"timestamp","c1"\n0,1\n')
+    _write_csv_gz(tmp_path / f"sync_{2 * hour}_{3 * hour}_g0000_x.csv.gz", '"timestamp","c1"\n0,1\n')
+    # c2 short over [0, 1h) and fully covered.
+    _write_csv_gz(tmp_path / f"sync_0_{hour}_g0001_x.csv.gz", '"timestamp","c2"\n0,1\n')
+
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path, tags={"stand": "1"})
+    still = sync_mod._reconcile_downloaded_files({"c1": [(0, 4 * hour)], "c2": [(0, hour)]}, options)
+
+    holes = {(s.channel, s.time_range) for s in still}
+    assert holes == {("c1", (hour, 2 * hour)), ("c1", (3 * hour, 4 * hour))}
+    assert all(s.tags == {"stand": "1"} for s in still)
+
+
+# --- _stream_file: stream-time coverage gate ------------------------------------------------
+
+
+def test_stream_file_gate_skips_covered_buckets(tmp_path: Path) -> None:
+    """Rows in buckets the destination already fully covers (dest_count >= file rows) are skipped;
+    everything else streams. Guards against re-appending data detection over-downloaded when the
+    source held overlapping duplicate ingest sessions.
+    """
+    path = tmp_path / "part.csv.gz"
+    # Bucket [0, 1s): 2 rows; bucket [1s, 2s): 2 rows.
+    _write_csv_gz(path, f"timestamp,rpm\n0,1\n500000000,2\n{SEC},3\n{SEC + 500000000},4\n")
+    stream = FakeStream()
+    # Destination fully covers bucket 0 (2 >= 2) but only partially covers bucket 1 (1 < 2).
+    dest_counts = {"rpm": {0: 2, SEC: 1}}
+
+    points, _slices, skipped = sync_mod._stream_file(
+        stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC, dest_counts=dest_counts, grid_anchor=0
+    )
+
+    assert points == 2
+    assert skipped == 2
+    assert stream.calls[0][1] == [SEC, SEC + 500000000]  # only bucket-1 rows streamed
+    assert stream.calls[0][2] == [3.0, 4.0]
+
+
+def test_stream_file_gate_ignores_channels_without_dest_counts(tmp_path: Path) -> None:
+    """A channel absent from dest_counts streams in full -- the gate never suppresses by default."""
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, "timestamp,rpm\n0,1\n1000000000,2\n")
+    stream = FakeStream()
+
+    points, _slices, skipped = sync_mod._stream_file(
+        stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC, dest_counts={"other": {0: 99}}, grid_anchor=0
+    )
+
+    assert points == 2
+    assert skipped == 0
+
+
+def test_stream_file_gate_respects_grid_anchor(tmp_path: Path) -> None:
+    """Bucket alignment follows grid_anchor, not epoch zero: a row at anchor+0.5s lands in the
+    anchor bucket, so an anchor-keyed dest count gates it.
+    """
+    anchor = 7 * SEC  # grid offset (detection windows rarely start on epoch-aligned seconds)
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, f"timestamp,rpm\n{anchor + 500000000},1\n")
+    stream = FakeStream()
+
+    _points, _slices, skipped = sync_mod._stream_file(
+        stream,
+        path,
+        {"rpm": ChannelDataType.DOUBLE},
+        None,
+        SEC,
+        dest_counts={"rpm": {anchor: 1}},
+        grid_anchor=anchor,
+    )
+
+    assert skipped == 1
+    assert not stream.calls
+
+
+# --- _ingest_rid_snapshot -------------------------------------------------------------------
+
+
+def test_ingest_rid_snapshot_collects_per_channel_rids() -> None:
+    ch_a = SimpleNamespace(
+        name="a", get_available_tags=lambda s, e: {"_nominal_ingest_rid": {"rid-1", "rid-2"}, "stand": {"1"}}
+    )
+    ch_b = SimpleNamespace(name="b", get_available_tags=lambda s, e: {"stand": {"1"}})
+
+    def _boom(s: Any, e: Any) -> dict[str, set[str]]:
+        raise RuntimeError("api down")
+
+    ch_c = SimpleNamespace(name="c", get_available_tags=_boom)
+
+    snapshot = sync_mod._ingest_rid_snapshot([ch_a, ch_b, ch_c], 0, SEC)
+
+    assert snapshot["a"] == {"rid-1", "rid-2"}
+    assert snapshot["b"] == set()
+    assert "c" not in snapshot  # probe failure skips the channel rather than raising
+
+
 def test_progress_bar_renders_nothing_when_total_is_zero() -> None:
     # Nothing to count (e.g. detecting against a freshly empty destination) -> no bar, not a phantom 1.
     with sync_mod._progress_bar(show=True, total=0, description="Counting destination channels") as advance:
@@ -601,7 +768,7 @@ def test_stream_file_measures_without_streaming_when_stream_is_none(tmp_path: Pa
     path = tmp_path / "part.csv.gz"
     _write_csv_gz(path, "timestamp,rpm\n0,1\n1000000000,2\n")
     # stream=None -> read + count, but never enqueue (download-only measurement path).
-    points, slices = sync_mod._stream_file(None, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
+    points, slices, _skipped = sync_mod._stream_file(None, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
     assert points == 2
     assert slices == 2
 
@@ -786,10 +953,12 @@ def test_detect_missing_strips_nominal_tags_for_destination(monkeypatch: pytest.
     )
 
     captured_dest_tags: list[Any] = []
+    captured_fallback: list[Any] = []
 
     def fake_count(channels: Any, start: Any, end: Any, bucket: Any, tags: Any, **k: Any) -> dict[str, Any]:
         if channels and channels[0].name == "temp":
             captured_dest_tags.append(tags)
+            captured_fallback.append(k.get("presence_fallback"))
         return {"temp": ChannelBucketCounts("temp", {0: 5}, True)}
 
     monkeypatch.setattr(sync_mod, "count_channels", fake_count)
@@ -802,6 +971,9 @@ def test_detect_missing_strips_nominal_tags_for_destination(monkeypatch: pytest.
     dest_tags = captured_dest_tags[0]
     assert "_nominal_ingest_rid" not in (dest_tags or {})
     assert (dest_tags or {}).get("stand") == "1"
+    # Destination counting must treat imprecisely-countable channels as empty (re-download) rather
+    # than presence-probed (any live-ingest data would read as full coverage and mask real gaps).
+    assert captured_fallback == ["empty"]
 
 
 def test_channel_allowlist_restricts_channels_processed(monkeypatch: pytest.MonkeyPatch) -> None:

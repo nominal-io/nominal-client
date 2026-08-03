@@ -107,6 +107,7 @@ def sync_from_config(cfg: Mapping[str, Any]) -> None:
         channels_per_request=int(cfg.get("channels_per_request", defaults.channels_per_request)),
         max_concurrent_links=int(cfg.get("max_concurrent_links", defaults.max_concurrent_links)),
         download_workers=int(cfg.get("download_workers", defaults.download_workers)),
+        stream_skip_covered_buckets=bool(cfg.get("stream_skip_covered_buckets", defaults.stream_skip_covered_buckets)),
         show_progress=bool(cfg.get("show_progress", defaults.show_progress)),
         output_dir=pathlib.Path(output_dir) if output_dir else None,
         phase=phase,
