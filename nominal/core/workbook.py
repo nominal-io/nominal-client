@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
@@ -259,7 +259,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
         """Delete the workbook permanently."""
         self._clients.notebook.delete(self._clients.auth_header, self.rid)
 
-    def _create_template_from_workbook(
+    def create_template(
         self,
         *,
         title: str | None = None,
@@ -275,7 +275,9 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             description: Description for the new template. Defaults to the current workbook description.
             labels: Labels for the new template. Defaults to the current workbook labels.
             properties: Properties for the new template. Defaults to the current workbook properties.
-            workspace_rid: Workspace RID to create the template in. Defaults to the current workbook's workspace.
+            workspace_rid: Workspace RID to create the template in. Defaults to the client's workspace: the
+                configured `workspace_rid` if the client is pinned to one, otherwise a lazily-resolved
+                default workspace.
 
         Returns:
             The created WorkbookTemplate
@@ -308,6 +310,28 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             labels=raw_workbook.metadata.labels if labels is None else [*labels],
             properties=raw_workbook.metadata.properties if properties is None else {**properties},
             commit_message="Initial version",
+        )
+
+    @deprecated(
+        "`Workbook._create_template_from_workbook` is deprecated in favor of the public "
+        "`Workbook.create_template`, and will be removed in a future version.",
+        category=UserWarning,
+    )
+    def _create_template_from_workbook(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace_rid: str | None = None,
+    ) -> WorkbookTemplate:
+        return self.create_template(
+            title=title,
+            description=description,
+            labels=labels,
+            properties=properties,
+            workspace_rid=workspace_rid,
         )
 
     @classmethod
