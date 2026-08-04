@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 from typing import cast
 
@@ -21,9 +22,9 @@ from nominal.experimental.migration.migrator.workbook_template_migrator import W
 
 logger = logging.getLogger(__name__)
 
-# Uniquifies temp file names: saves can overlap (worker-thread persist hooks, and the
-# signal handler re-entering save_state on the main thread), and a shared temp name would
-# let one save consume another's file out from under its os.replace.
+# Uniquifies temp file names: the signal handler can re-enter save_state on a main thread
+# already mid-save (the save lock is reentrant), and a shared temp name would let one save
+# consume another's file out from under its os.replace.
 _TMP_COUNTER = itertools.count()
 
 
@@ -87,6 +88,11 @@ class MigrationRunner:
         else:
             self.migration_state = MigrationState(rid_mapping={})
             self.migration_state_path = resolved_path
+        # Serializes concurrent save_state calls (worker persist hooks, the signal flush,
+        # the final save) so their os.replace calls land in snapshot order — an in-flight
+        # save holding an older snapshot must not overwrite a newer one. Reentrant because
+        # the signal handler may re-enter save_state on a main thread already mid-save.
+        self._save_lock = threading.RLock()
 
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
@@ -151,11 +157,15 @@ class MigrationRunner:
         if self.dry_run:
             logger.info(f"{DRY_RUN_PREFIX} Skipping migration state write to %s", self.migration_state_path)
             return
-        self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write-then-rename so a process killed mid-write can never leave a truncated state file
-        # behind — state is saved incrementally and a corrupt file would break resume.
-        tmp_path = self.migration_state_path.with_name(
-            f"{self.migration_state_path.name}.{os.getpid()}.{next(_TMP_COUNTER)}.tmp"
-        )
-        tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
-        os.replace(tmp_path, self.migration_state_path)
+        # The whole snapshot -> write -> replace sequence runs under the save lock: a save
+        # that started earlier holds an older snapshot, and letting its os.replace land
+        # after a newer save's (e.g. the SIGINT/SIGTERM flush) would regress the file.
+        with self._save_lock:
+            self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
+            # Write-then-rename so a process killed mid-write can never leave a truncated state
+            # file behind — state is saved incrementally and a corrupt file would break resume.
+            tmp_path = self.migration_state_path.with_name(
+                f"{self.migration_state_path.name}.{os.getpid()}.{next(_TMP_COUNTER)}.tmp"
+            )
+            tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
+            os.replace(tmp_path, self.migration_state_path)

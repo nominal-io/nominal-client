@@ -90,6 +90,51 @@ class TestSaveStateAtomicity:
         assert len(restored.rid_mapping[ResourceType.RUN.value]) == 5
 
 
+class TestSaveOrdering:
+    def test_stale_save_cannot_clobber_newer_save(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An in-flight save holding an older snapshot must not overwrite a newer save's
+        file — e.g. a debounced worker save racing the SIGINT/SIGTERM flush. save_state
+        serializes snapshot -> write -> replace, so replaces land in snapshot order.
+        """
+        runner = _make_runner(tmp_path)
+        state = ThreadSafeMigrationState()
+        runner.migration_state = state
+        state.record_mapping(ResourceType.ASSET, "old", "new")
+
+        snapshot_taken = threading.Event()
+        release_stale_save = threading.Event()
+        stale = [True]
+        original_to_json = ThreadSafeMigrationState.to_json
+
+        def gated_to_json(self: ThreadSafeMigrationState) -> str:
+            serialized = original_to_json(self)
+            if stale[0]:
+                stale[0] = False
+                snapshot_taken.set()
+                # Hold the now-stale snapshot while newer state is recorded and saved.
+                release_stale_save.wait(timeout=10)
+            return serialized
+
+        monkeypatch.setattr(ThreadSafeMigrationState, "to_json", gated_to_json)
+        stale_save = threading.Thread(target=runner.save_state)
+        stale_save.start()
+        try:
+            assert snapshot_taken.wait(timeout=10)
+            state.record_mapping(ResourceType.RUN, "newer", "mapping")
+            newer_save = threading.Thread(target=runner.save_state)
+            newer_save.start()
+            time.sleep(0.1)  # give the newer save a head start it must not be able to use
+        finally:
+            release_stale_save.set()
+        stale_save.join(timeout=10)
+        newer_save.join(timeout=10)
+
+        restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert restored.get_mapped_rid(ResourceType.RUN, "newer") == "mapping", (
+            "a stale in-flight save overwrote a newer save's file"
+        )
+
+
 class TestSignalFlush:
     def test_sigint_saves_state_before_propagating(self, tmp_path: Path) -> None:
         """Cancellation (SIGINT) must persist recorded state before the process unwinds."""
@@ -268,6 +313,55 @@ class TestDebouncedSave:
         debounced()
         assert len(saves) == 2
 
+    def test_failed_save_is_debounced_like_a_successful_one(self) -> None:
+        """A raising save must not retry on every subsequent mutation — that is the same
+        back-to-back-serialization pathology debouncing exists to prevent, triggered by a
+        failing save (ENOSPC, ...) instead of a slow one.
+        """
+        attempts: list[str] = []
+        clock = [0.0]
+
+        def failing_save() -> None:
+            attempts.append("save")
+            raise OSError("disk full")
+
+        debounced = _DebouncedSave(failing_save, min_interval_seconds=1.0, time_fn=lambda: clock[0])
+        with pytest.raises(OSError, match="disk full"):
+            debounced()
+        clock[0] = 0.5
+        debounced()  # within the interval: must not retry the failing save
+        assert len(attempts) == 1
+        clock[0] = 1.5
+        with pytest.raises(OSError, match="disk full"):
+            debounced()  # after the interval: retried
+        assert len(attempts) == 2
+
+    def test_interval_is_capped(self) -> None:
+        """The scaled interval must not grow without bound — a multi-minute save would
+        otherwise stretch the SIGKILL data-loss window to interval_scale times that.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def very_slow_save() -> None:
+            saves.append("save")
+            clock[0] += 20.0
+
+        debounced = _DebouncedSave(
+            very_slow_save,
+            min_interval_seconds=1.0,
+            time_fn=lambda: clock[0],
+            interval_scale=9.0,
+            max_interval_seconds=60.0,
+        )
+        debounced()  # finishes at t=20; unclamped interval would be 180s
+        clock[0] = 20.0 + 30.0
+        debounced()  # below the 60s cap: still debounced
+        assert len(saves) == 1
+        clock[0] = 20.0 + 61.0
+        debounced()  # past the cap: must save even though 9 x 20s has not elapsed
+        assert len(saves) == 2
+
     def test_calls_during_in_flight_save_return_without_blocking(self) -> None:
         """Worker threads must never queue behind an in-flight save — they record their
         mapping and move on; the next post-interval mutation persists it.
@@ -395,6 +489,30 @@ class TestThreadSafeToJson:
             "pending_multi_run_workbooks",
             "skipped_resources",
         }, "MigrationState fields changed: update ThreadSafeMigrationState.to_json's snapshot"
+
+    def test_snapshot_is_isolated_from_concurrent_mutation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Serialization runs outside the lock, so workers mutate the live state while
+        asdict/json.dumps walk the snapshot. The snapshot must be a genuine copy — shared
+        inner dicts would make asdict crash with 'dictionary changed size during iteration'
+        or leak mid-save mutations into the file.
+        """
+        safe = ThreadSafeMigrationState()
+        safe.record_mapping(ResourceType.ASSET, "before", "b")
+        original_to_json = MigrationState.to_json
+
+        def mutating_to_json(self: MigrationState) -> str:
+            # Runs on the snapshot, outside the state lock: mutate the live state from
+            # another thread mid-serialization, exactly like a worker recording a mapping.
+            mutator = threading.Thread(target=lambda: safe.record_mapping(ResourceType.ASSET, "during", "d"))
+            mutator.start()
+            mutator.join()
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", mutating_to_json)
+        serialized = safe.to_json()
+        assert "before" in serialized
+        assert "during" not in serialized, "snapshot shares containers with the live state"
+        assert safe.get_mapped_rid(ResourceType.ASSET, "during") == "d"
 
     def test_state_lock_is_released_during_serialization(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Serialization is O(state size); it must run outside the state lock so

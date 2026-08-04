@@ -35,8 +35,9 @@ def run_concurrent(
         executor: The thread pool to submit tasks to.
         tasks: The migration tasks to run.
         on_task_complete: Called after every task settles (success or failure) — used to
-            persist migration state incrementally so a killed process loses at most the
-            in-flight tasks.
+            persist migration state incrementally. The parallel runner passes a debounced
+            save, so persistence may lag by up to one debounce interval; unconditional
+            saves happen at the signal flush and the runner's final `finally`.
     """
     if not tasks:
         return

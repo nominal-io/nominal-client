@@ -59,15 +59,17 @@ class _DebouncedSave:
     dataset file — saving on every mapping would be quadratic over a large migration.
 
     The interval is measured from when the previous save *finished* and scales with how
-    long that save took (``interval_scale`` x duration, floored at ``min_interval_seconds``),
-    so serialization is bounded to a fraction of wall-clock time no matter how large the
-    state grows. Timing from save *start* would mean that once a save outlasts the interval,
-    every mutation retriggers a save back-to-back and the migration spends all its time
-    serializing. Callers never block: if a save is already in flight on another thread, the
-    call returns immediately.
+    long that save took (``interval_scale`` x duration, floored at ``min_interval_seconds``
+    and capped at ``max_interval_seconds``), so serialization is bounded to a fraction of
+    wall-clock time no matter how large the state grows. Timing from save *start* would
+    mean that once a save outlasts the interval, every mutation retriggers a save
+    back-to-back and the migration spends all its time serializing. Callers never block:
+    if a save is already in flight on another thread, the call returns immediately.
 
     Debouncing bounds the SIGKILL data-loss window to one interval plus one save of
-    mappings; all other exits still save unconditionally (signal flush, finally).
+    mappings; the cap keeps that window bounded even when a single save takes minutes
+    (past it, persistence knowingly exceeds ~1/interval_scale of wall-clock). All other
+    exits still save unconditionally (signal flush, finally).
     """
 
     def __init__(
@@ -76,9 +78,11 @@ class _DebouncedSave:
         min_interval_seconds: float = 1.0,
         time_fn: Callable[[], float] = time.monotonic,
         interval_scale: float = 9.0,
+        max_interval_seconds: float = 60.0,
     ) -> None:
         self._save = save
         self._min_interval_seconds = min_interval_seconds
+        self._max_interval_seconds = max_interval_seconds
         self._current_interval_seconds = min_interval_seconds
         self._time_fn = time_fn
         self._interval_scale = interval_scale
@@ -94,12 +98,19 @@ class _DebouncedSave:
             started = self._time_fn()
             if started - self._last_save < self._current_interval_seconds:
                 return
-            self._save()
-            finished = self._time_fn()
-            self._last_save = finished
-            # interval_scale=9 caps serialization at ~10% of wall-clock time.
-            scaled_interval = self._interval_scale * (finished - started)
-            self._current_interval_seconds = max(self._min_interval_seconds, scaled_interval)
+            try:
+                self._save()
+            finally:
+                # Debounce failed saves too — otherwise a persistently failing save
+                # (ENOSPC, ...) retries a full O(state size) serialization on every
+                # subsequent mutation, the exact pathology debouncing exists to prevent.
+                finished = self._time_fn()
+                self._last_save = finished
+                # interval_scale=9 caps serialization at ~10% of wall-clock time.
+                scaled_interval = self._interval_scale * (finished - started)
+                self._current_interval_seconds = min(
+                    max(self._min_interval_seconds, scaled_interval), self._max_interval_seconds
+                )
         finally:
             self._lock.release()
 
