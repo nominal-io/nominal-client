@@ -991,6 +991,18 @@ def _export_and_stream_halving(
                 exc,
             )
             return 0
+        # A partially-successful export may have written some of its files before failing (a
+        # column-partitioned request can succeed for one partition and fail for another). The halves
+        # below re-export the WHOLE range, so any survivors of this attempt would overlap the
+        # retried halves -- duplicate rows on disk that a later stream would re-append. Delete this
+        # attempt's files (matched by their exact range-and-group prefix) before retrying.
+        if options.output_dir is not None:
+            prefix = f"sync_{range_start}_{range_end}_g{group_idx:04d}"
+            for stale in options.output_dir.glob(f"{prefix}*"):
+                if stale.name[len(prefix) : len(prefix) + 1].isdigit():
+                    continue  # a longer group index that happens to share this prefix
+                stale.unlink(missing_ok=True)
+                logger.info("Removed partial file from failed export attempt: %s", stale.name)
         # Split at a bucket-aligned midpoint; guarantee forward progress.
         mid = range_start + max(1, (span // int(options.bucket)) // 2) * int(options.bucket)
         logger.info(
