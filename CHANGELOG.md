@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.156.1](https://github.com/nominal-io/nominal-client/compare/v1.156.0...v1.156.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **migration:** stop incremental state saves from stalling parallel workers ([#907](https://github.com/nominal-io/nominal-client/issues/907)) ([efe4483](https://github.com/nominal-io/nominal-client/commit/efe4483c097221892c2f9bea8b6fdc5ee3e2db93))
+
 ## [1.156.0](https://github.com/nominal-io/nominal-client/compare/v1.155.0...v1.156.0) (2026-08-03)
 
 
