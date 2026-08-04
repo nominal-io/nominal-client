@@ -124,6 +124,44 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
+class SqlService(Service):
+    """Hand-written REST client for the SQL query endpoint (nominal.sql.v1.SqlService).
+
+    No generated binding exists yet in nominal-api-protos; reachable as plain HTTPS+JSON despite
+    the proto declaring Query as server-streaming (the gateway returns one concatenated body).
+    Replace with generated bindings once nominal-api-protos ships this service.
+    """
+
+    def query(self, auth_header: str, workspace_rid: str, query: str, max_rows: int | None = None) -> bytes:
+        _headers = {
+            "Accept": "application/octet-stream",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+        _json: dict[str, object] = {"query": query, "workspace_rid": workspace_rid}
+        if max_rows is not None:
+            _json["max_rows"] = max_rows
+        _response = self._request("POST", self._uri + "/sql/v1/query", params={}, headers=_headers, json=_json)
+        return _response.content
+
+    def export(self, auth_header: str, workspace_rid: str, query: str) -> dict[str, object]:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+        _json = {"query": query, "workspace_rid": workspace_rid}
+        _response = self._request(
+            "POST", self._uri + "/sql/v1/query/export", params={}, headers=_headers, json=_json
+        )
+        return _response.json()  # type: ignore[no-any-return]
+
+    def get_sql_catalog(self, auth_header: str) -> dict[str, object]:
+        _headers = {"Accept": "application/json", "Authorization": auth_header}
+        _response = self._request("GET", self._uri + "/sql/v1/catalog", params={}, headers=_headers)
+        return _response.json()  # type: ignore[no-any-return]
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -162,6 +200,7 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
+    sql: SqlService
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
@@ -326,6 +365,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             run=client_factory(scout.RunService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
+            sql=client_factory(SqlService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
