@@ -499,6 +499,60 @@ def test_download_grouped_export_failure_halves_and_retries(tmp_path: Path) -> N
     assert spans[:4] == [hour] * 4  # ...and bottomed out at per-bucket exports
 
 
+class _PartialThenFailHandler:
+    """Writes one file for the requested range, then raises for ranges wider than max_ok_span --
+    simulating a column-partitioned export where one partition lands and another times out.
+    """
+
+    def __init__(self, max_ok_span: int) -> None:
+        """Set the widest range that exports successfully."""
+        self.max_ok_span = max_ok_span
+
+    def export_to_files(
+        self,
+        channels: Any,
+        start: int,
+        end: int,
+        out_dir: str,
+        *,
+        tags: Any = None,
+        timestamp_type: Any = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        on_file_planned: Any = None,
+        on_file_complete: Any = None,
+        skip_rate_estimation: bool = False,
+    ) -> list[Path]:
+        """Always write a partial file first; raise afterwards for wide ranges."""
+        path = Path(out_dir) / f"{file_prefix}_x.csv.gz"
+        _write_csv_gz(path, f"timestamp,{channels[0].name}\n{start},1\n")
+        if on_file_complete is not None:
+            on_file_complete(path)
+        if end - start > self.max_ok_span:
+            raise RuntimeError("Failed to export 1 of 2 file(s) (simulated)")
+        return [path]
+
+
+def test_halving_removes_partial_files_of_failed_attempts(tmp_path: Path) -> None:
+    """A failed attempt's surviving partial files must be deleted before the halves re-export the
+    range -- otherwise they overlap the retried halves and a later stream re-appends the rows twice
+    (observed as ~2x duplication in downloaded data).
+    """
+    hour = 3600 * SEC
+    handler = _PartialThenFailHandler(max_ok_span=hour)
+    source_by_name = {"c1": _channel("c1")}
+    missing = {"c1": [(0, 4 * hour)]}
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path, download_workers=2)
+
+    sync_mod._stream_missing(handler, None, missing, source_by_name, set(), options, download_only=True)
+
+    names = sorted(f.name for f in tmp_path.glob("*.csv.gz"))
+    # Only the four single-bucket exports survive; every wider attempt's partial file was removed.
+    assert len(names) == 4, names
+    spans = sorted((int(n.split("_")[1]), int(n.split("_")[2])) for n in names)
+    assert spans == [(0, hour), (hour, 2 * hour), (2 * hour, 3 * hour), (3 * hour, 4 * hour)]
+
+
 def test_download_only_export_with_no_file_raises(tmp_path: Path) -> None:
     """An export that silently returns no file (transient planner miss) must raise in download-only:
     the range came from detection, so source data exists by construction.
