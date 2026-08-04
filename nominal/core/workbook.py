@@ -9,9 +9,10 @@ from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, sc
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
+from nominal.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +267,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
         description: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
-        workspace_rid: str | None = None,
+        workspace: Workspace | str | None = None,
     ) -> WorkbookTemplate:
         """Create a workbook template from this workbook.
 
@@ -275,12 +276,16 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             description: Description for the new template. Defaults to the current workbook description.
             labels: Labels for the new template. Defaults to the current workbook labels.
             properties: Properties for the new template. Defaults to the current workbook properties.
-            workspace_rid: Workspace RID to create the template in. Defaults to the client's workspace: the
-                configured `workspace_rid` if the client is pinned to one, otherwise a lazily-resolved
-                default workspace.
+            workspace: Workspace (or workspace RID) to create the template in. Defaults to the client's
+                workspace: the configured `workspace_rid` if the client is pinned to one, otherwise a
+                lazily-resolved default workspace.
 
         Returns:
             The created WorkbookTemplate
+
+        Raises:
+            ValueError: If this workbook is a comparison workbook, which templates do not yet support.
+            ValueError: If the workbook has no content to template.
         """
         from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
 
@@ -298,7 +303,11 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             raise ValueError("Missing content for workbook")
 
         workbook_title = raw_workbook.metadata.title or "workbook"
-        workspace_rid = workspace_rid or self._clients.resolve_default_workspace_rid()
+        workspace_rid = (
+            rid_from_instance_or_string(workspace)
+            if workspace is not None
+            else self._clients.resolve_default_workspace_rid()
+        )
 
         return _create_workbook_template_with_content_and_layout(
             self._clients,
@@ -331,7 +340,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             description=description,
             labels=labels,
             properties=properties,
-            workspace_rid=workspace_rid,
+            workspace=workspace_rid,
         )
 
     @classmethod
