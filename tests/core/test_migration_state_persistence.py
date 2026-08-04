@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import signal
 import sys
 import threading
@@ -87,6 +88,51 @@ class TestSaveStateAtomicity:
             runner.save_state()
         restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert len(restored.rid_mapping[ResourceType.RUN.value]) == 5
+
+
+class TestSaveOrdering:
+    def test_stale_save_cannot_clobber_newer_save(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An in-flight save holding an older snapshot must not overwrite a newer save's
+        file — e.g. a debounced worker save racing the SIGINT/SIGTERM flush. save_state
+        serializes snapshot -> write -> replace, so replaces land in snapshot order.
+        """
+        runner = _make_runner(tmp_path)
+        state = ThreadSafeMigrationState()
+        runner.migration_state = state
+        state.record_mapping(ResourceType.ASSET, "old", "new")
+
+        snapshot_taken = threading.Event()
+        release_stale_save = threading.Event()
+        stale = [True]
+        original_to_json = ThreadSafeMigrationState.to_json
+
+        def gated_to_json(self: ThreadSafeMigrationState) -> str:
+            serialized = original_to_json(self)
+            if stale[0]:
+                stale[0] = False
+                snapshot_taken.set()
+                # Hold the now-stale snapshot while newer state is recorded and saved.
+                release_stale_save.wait(timeout=10)
+            return serialized
+
+        monkeypatch.setattr(ThreadSafeMigrationState, "to_json", gated_to_json)
+        stale_save = threading.Thread(target=runner.save_state)
+        stale_save.start()
+        try:
+            assert snapshot_taken.wait(timeout=10)
+            state.record_mapping(ResourceType.RUN, "newer", "mapping")
+            newer_save = threading.Thread(target=runner.save_state)
+            newer_save.start()
+            time.sleep(0.1)  # give the newer save a head start it must not be able to use
+        finally:
+            release_stale_save.set()
+        stale_save.join(timeout=10)
+        newer_save.join(timeout=10)
+
+        restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert restored.get_mapped_rid(ResourceType.RUN, "newer") == "mapping", (
+            "a stale in-flight save overwrote a newer save's file"
+        )
 
 
 class TestSignalFlush:
@@ -225,15 +271,290 @@ class TestDebouncedSave:
         debounced()
         assert len(saves) == 2
 
+    def test_interval_measured_from_save_completion(self) -> None:
+        """A save slower than the interval must not make the very next mutation save again.
+
+        Timing from save start meant that once serialization outlasted the interval, every
+        mutation retriggered a save and the migration serialized back-to-back forever.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def slow_save() -> None:
+            saves.append("save")
+            clock[0] += 5.0  # save takes 5s, well past the 1s interval
+
+        debounced = _DebouncedSave(slow_save, min_interval_seconds=1.0, time_fn=lambda: clock[0], interval_scale=1.0)
+        debounced()  # finishes at t=5
+        clock[0] = 5.5
+        debounced()  # 0.5s after completion: must be debounced despite 5.5s since start
+        assert len(saves) == 1
+        clock[0] = 10.5
+        debounced()
+        assert len(saves) == 2
+
+    def test_interval_scales_with_save_duration(self) -> None:
+        """The interval must grow with save cost so serialization stays a bounded fraction
+        of wall-clock time as the state file grows.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def slow_save() -> None:
+            saves.append("save")
+            clock[0] += 2.0
+
+        debounced = _DebouncedSave(slow_save, min_interval_seconds=1.0, time_fn=lambda: clock[0], interval_scale=9.0)
+        debounced()  # finishes at t=2 -> next interval is 18s
+        clock[0] = 15.0
+        debounced()
+        assert len(saves) == 1
+        clock[0] = 20.5  # 18.5s after completion
+        debounced()
+        assert len(saves) == 2
+
+    def test_failed_save_is_debounced_like_a_successful_one(self) -> None:
+        """A raising save must not retry on every subsequent mutation — that is the same
+        back-to-back-serialization pathology debouncing exists to prevent, triggered by a
+        failing save (ENOSPC, ...) instead of a slow one.
+        """
+        attempts: list[str] = []
+        clock = [0.0]
+
+        def failing_save() -> None:
+            attempts.append("save")
+            raise OSError("disk full")
+
+        debounced = _DebouncedSave(failing_save, min_interval_seconds=1.0, time_fn=lambda: clock[0])
+        with pytest.raises(OSError, match="disk full"):
+            debounced()
+        clock[0] = 0.5
+        debounced()  # within the interval: must not retry the failing save
+        assert len(attempts) == 1
+        clock[0] = 1.5
+        with pytest.raises(OSError, match="disk full"):
+            debounced()  # after the interval: retried
+        assert len(attempts) == 2
+
+    def test_interval_is_capped(self) -> None:
+        """The scaled interval must not grow without bound — a multi-minute save would
+        otherwise stretch the SIGKILL data-loss window to interval_scale times that.
+        """
+        saves: list[str] = []
+        clock = [0.0]
+
+        def very_slow_save() -> None:
+            saves.append("save")
+            clock[0] += 20.0
+
+        debounced = _DebouncedSave(
+            very_slow_save,
+            min_interval_seconds=1.0,
+            time_fn=lambda: clock[0],
+            interval_scale=9.0,
+            max_interval_seconds=60.0,
+        )
+        debounced()  # finishes at t=20; unclamped interval would be 180s
+        clock[0] = 20.0 + 30.0
+        debounced()  # below the 60s cap: still debounced
+        assert len(saves) == 1
+        clock[0] = 20.0 + 61.0
+        debounced()  # past the cap: must save even though 9 x 20s has not elapsed
+        assert len(saves) == 2
+
+    def test_calls_during_in_flight_save_return_without_blocking(self) -> None:
+        """Worker threads must never queue behind an in-flight save — they record their
+        mapping and move on; the next post-interval mutation persists it.
+        """
+        save_started = threading.Event()
+        release_save = threading.Event()
+        saves: list[str] = []
+
+        def blocking_save() -> None:
+            saves.append("save")
+            save_started.set()
+            release_save.wait(timeout=10)
+
+        debounced = _DebouncedSave(blocking_save, min_interval_seconds=0.0)
+        first = threading.Thread(target=debounced)
+        first.start()
+        try:
+            assert save_started.wait(timeout=10)
+            start = time.monotonic()
+            debounced()  # must return immediately, not wait for the in-flight save
+            assert time.monotonic() - start < 1.0
+            assert saves == ["save"]
+        finally:
+            release_save.set()
+            first.join()
+
+
+class TestParallelSaveThroughput:
+    def test_large_state_saves_do_not_stall_parallel_workers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end regression test for incremental saves starving parallel workers.
+
+        Runs the real parallel runner — ThreadSafeMigrationState, debounced persist hook,
+        atomic save_state to disk, thread pool — with only the network-touching copy_from
+        mocked. Base serialization is slowed by an injected 2s sleep, deterministically
+        simulating the multi-second serialization of a real large migration state without
+        seeding gigabytes (which made the signal depend on serializer speed and GIL
+        scheduling; real-scale numbers live in the PR benchmark).
+
+        The contract under test: serialization time, however long, must not extend
+        state-lock hold time. Pre-fix, ThreadSafeMigrationState.to_json ran base
+        serialization under the state lock, so one save stalled every other worker for
+        its full duration; post-fix the lock is held only for the snapshot copy and the
+        slow serialization runs off-lock. The metric is the *fastest* worker's loop
+        duration (~0.25s of real work): the slowest worker may legitimately run a
+        debounced save synchronously on its own thread — the fix's contract is that one
+        thread saving never stalls the *others*.
+        """
+        from nominal.experimental.migration import parallel_migration_runner
+        from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+        from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
+
+        num_assets = 4
+        mappings_per_asset = 50
+        serialization_delay = 2.0
+        runner = MigrationRunner(
+            migration_resources=MigrationResources(
+                source_assets={
+                    f"ri.scout.asset.{i}": AssetResources(
+                        asset=MagicMock(rid=f"ri.scout.asset.{i}"), source_workbook_templates=[]
+                    )
+                    for i in range(num_assets)
+                },
+                source_standalone_templates=[],
+            ),
+            dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+            destination_client=MagicMock(),
+            migration_state_path=tmp_path / "state.json",
+        )
+        runner.migration_state = MigrationState(
+            rid_mapping={
+                ResourceType.DATASET_FILE.value: {
+                    f"ri.catalog.file.{i:040d}": f"ri.catalog.file.dest.{i:040d}" for i in range(100_000)
+                }
+            }
+        )
+        original_to_json = MigrationState.to_json
+
+        def slow_to_json(self: MigrationState) -> str:
+            # Pre-fix this ran under the state lock (via ThreadSafeMigrationState.to_json);
+            # post-fix it runs on the off-lock snapshot. sleep yields the GIL, so blocked
+            # workers are schedulable and the stall is observable either way.
+            time.sleep(serialization_delay)
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", slow_to_json)
+        worker_durations: list[float] = []
+        durations_lock = threading.Lock()
+
+        def fake_copy_from(self: object, asset: MagicMock, options: object) -> None:
+            # Each worker alternates reads and writes with small gaps, like real
+            # per-resource migration work between API calls.
+            start = time.monotonic()
+            for i in range(mappings_per_asset):
+                time.sleep(0.005)
+                runner.migration_state.get_mapped_rid(ResourceType.RUN, f"{asset.rid}-run-{i}")
+                runner.migration_state.record_mapping(ResourceType.RUN, f"{asset.rid}-run-{i}", f"new-{asset.rid}-{i}")
+            with durations_lock:
+                worker_durations.append(time.monotonic() - start)
+
+        monkeypatch.setattr(AssetMigrator, "copy_from", fake_copy_from)
+
+        parallel_migration_runner.run_parallel_migration(runner, max_workers=num_assets)
+
+        # Each worker's real work is ~0.25s. Pre-fix, the first (worker-thread) save held
+        # the state lock through the 2s serialization, so every other worker's next state
+        # access blocked ≥2s. Post-fix the lock is held only for the snapshot copy and the
+        # fastest worker finishes in ~0.3s. 1s splits the two by >3x in each direction.
+        fastest = min(worker_durations)
+        assert fastest < 1.0, (
+            f"even the fastest worker took {fastest:.2f}s for ~0.25s of work "
+            f"(all workers: {', '.join(f'{d:.2f}s' for d in sorted(worker_durations))}) — "
+            "state serialization is stalling parallel workers"
+        )
+
+        restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
+        assert len(restored.rid_mapping[ResourceType.RUN.value]) == num_assets * mappings_per_asset
+        assert len(restored.rid_mapping[ResourceType.DATASET_FILE.value]) == 100_000
+
 
 class TestThreadSafeToJson:
     def test_to_json_matches_plain_state(self) -> None:
-        """Taking the lock during serialization must not change the serialized output."""
+        """Snapshotting for serialization must not change the serialized output."""
         plain = MigrationState()
         safe = ThreadSafeMigrationState()
         for state in (plain, safe):
             state.record_mapping(ResourceType.ASSET, "a", "b")
+            state.record_pending_multi_asset_workbook("wb-a", ["a1", "a2"])
+            state.record_pending_multi_run_workbook("wb-r", ["r1"])
+            state.record_skip(ResourceType.WORKBOOK, "wb-s", "out of scope")
         assert safe.to_json() == plain.to_json()
+
+    def test_snapshot_covers_all_state_fields(self) -> None:
+        """ThreadSafeMigrationState.to_json copies each MigrationState field explicitly;
+        a new field must be added to that snapshot or it would silently vanish from the
+        persisted state file.
+        """
+        assert {f.name for f in dataclasses.fields(MigrationState)} == {
+            "rid_mapping",
+            "pending_multi_asset_workbooks",
+            "pending_multi_run_workbooks",
+            "skipped_resources",
+        }, "MigrationState fields changed: update ThreadSafeMigrationState.to_json's snapshot"
+
+    def test_snapshot_is_isolated_from_concurrent_mutation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Serialization runs outside the lock, so workers mutate the live state while
+        asdict/json.dumps walk the snapshot. The snapshot must be a genuine copy — shared
+        inner dicts would make asdict crash with 'dictionary changed size during iteration'
+        or leak mid-save mutations into the file.
+        """
+        safe = ThreadSafeMigrationState()
+        safe.record_mapping(ResourceType.ASSET, "before", "b")
+        original_to_json = MigrationState.to_json
+
+        def mutating_to_json(self: MigrationState) -> str:
+            # Runs on the snapshot, outside the state lock: mutate the live state from
+            # another thread mid-serialization, exactly like a worker recording a mapping.
+            mutator = threading.Thread(target=lambda: safe.record_mapping(ResourceType.ASSET, "during", "d"))
+            mutator.start()
+            mutator.join()
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", mutating_to_json)
+        serialized = safe.to_json()
+        assert "before" in serialized
+        assert "during" not in serialized, "snapshot shares containers with the live state"
+        assert safe.get_mapped_rid(ResourceType.ASSET, "during") == "d"
+
+    def test_state_lock_is_released_during_serialization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Serialization is O(state size); it must run outside the state lock so
+        worker threads can keep recording mappings while a save is in progress.
+        """
+        safe = ThreadSafeMigrationState()
+        safe.record_mapping(ResourceType.ASSET, "a", "b")
+        lock_was_free: list[bool] = []
+        original_to_json = MigrationState.to_json
+
+        def probing_to_json(self: MigrationState) -> str:
+            def probe() -> None:
+                acquired = safe._lock.acquire(blocking=False)
+                if acquired:
+                    safe._lock.release()
+                lock_was_free.append(acquired)
+
+            probe_thread = threading.Thread(target=probe)
+            probe_thread.start()
+            probe_thread.join()
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", probing_to_json)
+        safe.to_json()
+        assert lock_was_free == [True]
 
     def test_to_json_is_reentrant_on_same_thread(self) -> None:
         """The signal flush handler may fire while the main thread already holds the lock

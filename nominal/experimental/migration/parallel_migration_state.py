@@ -103,7 +103,18 @@ class ThreadSafeMigrationState(MigrationState):
             return super().workbook_was_skipped(workbook_rid)
 
     def to_json(self) -> str:
-        # Serialization walks every nested dict, so it must hold the same lock as the
-        # mutators — state is saved incrementally while worker threads are still writing.
+        # Snapshot under the lock, serialize outside it: json.dumps over a large state takes
+        # seconds, and holding the lock that long blocks every worker's record_mapping /
+        # get_mapped_rid — collapsing parallel workers to a single thread. The snapshot uses
+        # C-level container copies, which are orders of magnitude cheaper than serialization.
+        # SkippedResource entries are append-only and never mutated, so sharing them with the
+        # snapshot is safe. If MigrationState gains a field, it must be copied here too
+        # (guarded by a test asserting the expected field set).
         with self._lock:
-            return super().to_json()
+            snapshot = MigrationState(
+                rid_mapping={k: dict(v) for k, v in self.rid_mapping.items()},
+                pending_multi_asset_workbooks={k: list(v) for k, v in self.pending_multi_asset_workbooks.items()},
+                pending_multi_run_workbooks={k: list(v) for k, v in self.pending_multi_run_workbooks.items()},
+                skipped_resources=list(self.skipped_resources),
+            )
+        return snapshot.to_json()

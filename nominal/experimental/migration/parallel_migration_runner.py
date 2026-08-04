@@ -57,8 +57,19 @@ class _DebouncedSave:
 
     Serializing the state is O(state size), and file-heavy assets record a mapping per
     dataset file — saving on every mapping would be quadratic over a large migration.
-    Debouncing bounds the SIGKILL data-loss window to ``min_interval_seconds`` of mappings;
-    all other exits still save unconditionally (per-task callback, signal flush, finally).
+
+    The interval is measured from when the previous save *finished* and scales with how
+    long that save took (``interval_scale`` x duration, floored at ``min_interval_seconds``
+    and capped at ``max_interval_seconds``), so serialization is bounded to a fraction of
+    wall-clock time no matter how large the state grows. Timing from save *start* would
+    mean that once a save outlasts the interval, every mutation retriggers a save
+    back-to-back and the migration spends all its time serializing. Callers never block:
+    if a save is already in flight on another thread, the call returns immediately.
+
+    Debouncing bounds the SIGKILL data-loss window to one interval plus one save of
+    mappings; the cap keeps that window bounded even when a single save takes minutes
+    (past it, persistence knowingly exceeds ~1/interval_scale of wall-clock). All other
+    exits still save unconditionally (signal flush, finally).
     """
 
     def __init__(
@@ -66,20 +77,42 @@ class _DebouncedSave:
         save: Callable[[], None],
         min_interval_seconds: float = 1.0,
         time_fn: Callable[[], float] = time.monotonic,
+        interval_scale: float = 9.0,
+        max_interval_seconds: float = 60.0,
     ) -> None:
         self._save = save
         self._min_interval_seconds = min_interval_seconds
+        self._max_interval_seconds = max_interval_seconds
+        self._current_interval_seconds = min_interval_seconds
         self._time_fn = time_fn
+        self._interval_scale = interval_scale
         self._lock = threading.Lock()
         self._last_save = float("-inf")
 
     def __call__(self) -> None:
-        with self._lock:
-            now = self._time_fn()
-            if now - self._last_save < self._min_interval_seconds:
+        if not self._lock.acquire(blocking=False):
+            # A save is already in flight on another thread; its post-save timestamp
+            # covers this mutation's debounce window.
+            return
+        try:
+            started = self._time_fn()
+            if started - self._last_save < self._current_interval_seconds:
                 return
-            self._last_save = now
-        self._save()
+            try:
+                self._save()
+            finally:
+                # Debounce failed saves too — otherwise a persistently failing save
+                # (ENOSPC, ...) retries a full O(state size) serialization on every
+                # subsequent mutation, the exact pathology debouncing exists to prevent.
+                finished = self._time_fn()
+                self._last_save = finished
+                # interval_scale=9 caps serialization at ~10% of wall-clock time.
+                scaled_interval = self._interval_scale * (finished - started)
+                self._current_interval_seconds = min(
+                    max(self._min_interval_seconds, scaled_interval), self._max_interval_seconds
+                )
+        finally:
+            self._lock.release()
 
 
 @contextmanager
@@ -124,18 +157,19 @@ def _flush_state_on_termination(runner: MigrationRunner) -> Iterator[None]:
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     """Run resource migration with a shared thread pool.
 
-    Migration state is persisted after every settled task, flushed by a SIGINT/SIGTERM
-    handler, and saved one final time in a `finally` that is reachable even while copies
-    are still in flight: on interruption the executor is shut down without waiting
-    (queued tasks cancelled), so the last save happens immediately instead of blocking
-    behind in-flight work until the process is hard-killed.
+    Migration state is persisted incrementally (debounced) as tasks settle and mappings are
+    recorded, flushed by a SIGINT/SIGTERM handler, and saved one final time in a `finally`
+    that is reachable even while copies are still in flight: on interruption the executor
+    is shut down without waiting (queued tasks cancelled), so the last save happens
+    immediately instead of blocking behind in-flight work until the process is hard-killed.
     """
     max_workers = validate_max_workers(max_workers)
     thread_safe_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
     # Persist child-resource mappings (runs, dataset files, workbooks, ...) as they are
     # recorded mid-asset — per-task saves alone would lose everything inside a long-running
     # asset on a hard kill. Debounced; dry runs skip the write inside save_state itself.
-    thread_safe_state.set_persist_hook(_DebouncedSave(runner.save_state))
+    debounced_save = _DebouncedSave(runner.save_state)
+    thread_safe_state.set_persist_hook(debounced_save)
     runner.migration_state = thread_safe_state
 
     ctx = MigrationContext(
@@ -198,9 +232,11 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     try:
         with _flush_state_on_termination(runner):
-            # State is saved after every settled task so a killed run resumes from the
-            # last completed resource instead of losing everything.
-            run_concurrent(executor, tasks, on_task_complete=runner.save_state)
+            # State is saved (debounced) as tasks settle so a killed run resumes from
+            # recent progress instead of losing everything. Unconditional per-task saves
+            # would serialize the full O(state size) tree once per task — quadratic when
+            # many small template/checklist tasks settle in a burst.
+            run_concurrent(executor, tasks, on_task_complete=debounced_save)
         executor.shutdown(wait=True)
     except BaseException:
         # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight

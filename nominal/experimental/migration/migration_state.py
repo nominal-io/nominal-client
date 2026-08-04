@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 from nominal.experimental.migration.resource_type import ResourceType
@@ -48,7 +48,13 @@ class MigrationState:
         return cls.from_dict(json.loads(data))
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self))
+        # Not dataclasses.asdict(self): it deep-copies the whole O(state size) mapping tree
+        # only to feed json.dumps, which serializes the containers directly. Only
+        # skipped_resources holds dataclasses that need converting. fields() excludes
+        # ThreadSafeMigrationState's plain instance attrs (lock, hook), as asdict did.
+        payload: dict[str, Any] = {f.name: getattr(self, f.name) for f in fields(self)}
+        payload["skipped_resources"] = [asdict(item) for item in self.skipped_resources]
+        return json.dumps(payload)
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.rid_mapping.setdefault(resource_type.value, {})[old_rid] = new_rid
