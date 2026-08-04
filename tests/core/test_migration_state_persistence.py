@@ -397,23 +397,27 @@ class TestParallelSaveThroughput:
 
         Runs the real parallel runner — ThreadSafeMigrationState, debounced persist hook,
         atomic save_state to disk, thread pool — with only the network-touching copy_from
-        mocked, against a state pre-seeded large enough (~250 MB of JSON) that one full
-        serialization takes ~0.7s.
+        mocked. Base serialization is slowed by an injected 2s sleep, deterministically
+        simulating the multi-second serialization of a real large migration state without
+        seeding gigabytes (which made the signal depend on serializer speed and GIL
+        scheduling; real-scale numbers live in the PR benchmark).
 
-        The regression metric is the worst-case latency of a single state *read* from a
-        worker thread. Serializing under the state lock blocked every worker's
-        get_mapped_rid/record_mapping for the full serialization (~0.7s here, tens of
-        seconds at real-migration state sizes, back-to-back due to the debounce timing
-        flaw); with the snapshot fix, workers only ever wait on the C-level snapshot copy
-        (~0.02s). Reads are timed rather than writes because a write may legitimately run
-        the debounced save synchronously on its own thread — the fix's contract is that
-        one thread saving never stalls the *other* workers.
+        The contract under test: serialization time, however long, must not extend
+        state-lock hold time. Pre-fix, ThreadSafeMigrationState.to_json ran base
+        serialization under the state lock, so one save stalled every other worker for
+        its full duration; post-fix the lock is held only for the snapshot copy and the
+        slow serialization runs off-lock. The metric is the *fastest* worker's loop
+        duration (~0.25s of real work): the slowest worker may legitimately run a
+        debounced save synchronously on its own thread — the fix's contract is that one
+        thread saving never stalls the *others*.
         """
         from nominal.experimental.migration import parallel_migration_runner
         from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+        from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 
         num_assets = 4
         mappings_per_asset = 50
+        serialization_delay = 2.0
         runner = MigrationRunner(
             migration_resources=MigrationResources(
                 source_assets={
@@ -431,39 +435,52 @@ class TestParallelSaveThroughput:
         runner.migration_state = MigrationState(
             rid_mapping={
                 ResourceType.DATASET_FILE.value: {
-                    f"ri.catalog.file.{i:040d}": f"ri.catalog.file.dest.{i:040d}" for i in range(2_000_000)
+                    f"ri.catalog.file.{i:040d}": f"ri.catalog.file.dest.{i:040d}" for i in range(100_000)
                 }
             }
         )
-        worst_read_seconds = [0.0]
-        worst_read_lock = threading.Lock()
+        original_to_json = MigrationState.to_json
+
+        def slow_to_json(self: MigrationState) -> str:
+            # Pre-fix this ran under the state lock (via ThreadSafeMigrationState.to_json);
+            # post-fix it runs on the off-lock snapshot. sleep yields the GIL, so blocked
+            # workers are schedulable and the stall is observable either way.
+            time.sleep(serialization_delay)
+            return original_to_json(self)
+
+        monkeypatch.setattr(MigrationState, "to_json", slow_to_json)
+        worker_durations: list[float] = []
+        durations_lock = threading.Lock()
 
         def fake_copy_from(self: object, asset: MagicMock, options: object) -> None:
             # Each worker alternates reads and writes with small gaps, like real
             # per-resource migration work between API calls.
+            start = time.monotonic()
             for i in range(mappings_per_asset):
                 time.sleep(0.005)
-                read_start = time.monotonic()
                 runner.migration_state.get_mapped_rid(ResourceType.RUN, f"{asset.rid}-run-{i}")
-                read_elapsed = time.monotonic() - read_start
-                with worst_read_lock:
-                    worst_read_seconds[0] = max(worst_read_seconds[0], read_elapsed)
                 runner.migration_state.record_mapping(ResourceType.RUN, f"{asset.rid}-run-{i}", f"new-{asset.rid}-{i}")
+            with durations_lock:
+                worker_durations.append(time.monotonic() - start)
 
-        monkeypatch.setattr(parallel_migration_runner.AssetMigrator, "copy_from", fake_copy_from)
+        monkeypatch.setattr(AssetMigrator, "copy_from", fake_copy_from)
 
         parallel_migration_runner.run_parallel_migration(runner, max_workers=num_assets)
 
-        # Snapshot copy at this scale is ~0.02s; serializing under the lock was ~0.7s.
-        # 0.3s splits the two by an order of magnitude in each direction.
-        assert worst_read_seconds[0] < 0.3, (
-            f"a worker's state read stalled {worst_read_seconds[0]:.2f}s — "
-            "state serialization is blocking parallel workers"
+        # Each worker's real work is ~0.25s. Pre-fix, the first (worker-thread) save held
+        # the state lock through the 2s serialization, so every other worker's next state
+        # access blocked ≥2s. Post-fix the lock is held only for the snapshot copy and the
+        # fastest worker finishes in ~0.3s. 1s splits the two by >3x in each direction.
+        fastest = min(worker_durations)
+        assert fastest < 1.0, (
+            f"even the fastest worker took {fastest:.2f}s for ~0.25s of work "
+            f"(all workers: {', '.join(f'{d:.2f}s' for d in sorted(worker_durations))}) — "
+            "state serialization is stalling parallel workers"
         )
 
         restored = MigrationState.from_json((tmp_path / "state.json").read_text(encoding="utf-8"))
         assert len(restored.rid_mapping[ResourceType.RUN.value]) == num_assets * mappings_per_asset
-        assert len(restored.rid_mapping[ResourceType.DATASET_FILE.value]) == 2_000_000
+        assert len(restored.rid_mapping[ResourceType.DATASET_FILE.value]) == 100_000
 
 
 class TestThreadSafeToJson:
