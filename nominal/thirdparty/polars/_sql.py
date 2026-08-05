@@ -31,8 +31,7 @@ def query_sql_to_dataframe(
     Raises:
         conjure_python_client.ConjureHTTPError: On query failure.
     """
-    from nominal.experimental.sql import query_sql
-
     import polars as pl
+    from nominal.experimental.sql import query_sql
 
     return pl.from_arrow(query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid))

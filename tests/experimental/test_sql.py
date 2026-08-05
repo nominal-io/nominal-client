@@ -6,8 +6,6 @@ import pytest
 from conjure_python_client import ConjureHTTPError
 from requests.exceptions import HTTPError
 
-pa = pytest.importorskip("pyarrow")
-
 from nominal.core.client import NominalClient
 from nominal.experimental.sql import (
     SqlCatalogColumn,
@@ -16,6 +14,8 @@ from nominal.experimental.sql import (
     get_sql_catalog,
     query_sql,
 )
+
+pa = pytest.importorskip("pyarrow")
 
 
 def _arrow_ipc_bytes(table: pa.Table) -> bytes:

@@ -151,9 +151,7 @@ class SqlService(Service):
             "Authorization": auth_header,
         }
         _json = {"query": query, "workspace_rid": workspace_rid}
-        _response = self._request(
-            "POST", self._uri + "/sql/v1/query/export", params={}, headers=_headers, json=_json
-        )
+        _response = self._request("POST", self._uri + "/sql/v1/query/export", params={}, headers=_headers, json=_json)
         return _response.json()  # type: ignore[no-any-return]
 
     def get_sql_catalog(self, auth_header: str) -> dict[str, object]:
