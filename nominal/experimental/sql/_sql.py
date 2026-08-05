@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, cast
 from nominal.core import NominalClient
 
 if TYPE_CHECKING:
-    import pyarrow as pa
+    import pyarrow as pa  # type: ignore[import-untyped]
 
 
 @dataclass(frozen=True)
@@ -65,12 +65,12 @@ class SqlCatalog:
 
         tables = [
             SqlCatalogTable(
-                name=t["name"],  # type: ignore[index]
-                columns=[SqlCatalogColumn(**c) for c in t.get("columns", [])],  # type: ignore[index]
+                name=t["name"],
+                columns=[SqlCatalogColumn(**c) for c in t.get("columns", [])],
             )
             for t in catalog.get("tables", [])
         ]
-        functions = [SqlCatalogFunction(name=f["name"]) for f in catalog.get("functions", [])]  # type: ignore[index]
+        functions = [SqlCatalogFunction(name=f["name"]) for f in catalog.get("functions", [])]
         return cls(tables=tables, functions=functions)
 
 
@@ -99,10 +99,10 @@ def query_sql(
     import pyarrow as pa
 
     resolved_workspace_rid = (
-        workspace_rid if workspace_rid is not None else client._clients.resolve_default_workspace_rid()  # type: ignore[attr-defined]
+        workspace_rid if workspace_rid is not None else client._clients.resolve_default_workspace_rid()
     )
-    payload = client._clients.sql.query(  # type: ignore[attr-defined]
-        client._clients.auth_header,  # type: ignore[attr-defined]
+    payload = client._clients.sql.query(
+        client._clients.auth_header,
         resolved_workspace_rid,
         query,
         max_rows,
@@ -131,10 +131,10 @@ def export_sql(
             or if SQL export is not configured for this deployment.
     """
     resolved_workspace_rid = (
-        workspace_rid if workspace_rid is not None else client._clients.resolve_default_workspace_rid()  # type: ignore[attr-defined]
+        workspace_rid if workspace_rid is not None else client._clients.resolve_default_workspace_rid()
     )
-    response = client._clients.sql.export(  # type: ignore[attr-defined]
-        client._clients.auth_header,  # type: ignore[attr-defined]
+    response = client._clients.sql.export(
+        client._clients.auth_header,
         resolved_workspace_rid,
         query,
     )
@@ -153,7 +153,5 @@ def get_sql_catalog(client: NominalClient) -> SqlCatalog:
     Raises:
         conjure_python_client.ConjureHTTPError: On backend errors.
     """
-    raw = client._clients.sql.get_sql_catalog(  # type: ignore[attr-defined]
-        client._clients.auth_header  # type: ignore[attr-defined]
-    )
+    raw = client._clients.sql.get_sql_catalog(client._clients.auth_header)
     return SqlCatalog._from_json(raw)

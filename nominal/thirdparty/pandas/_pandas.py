@@ -44,7 +44,10 @@ def query_sql_to_dataframe(
     """
     from nominal.experimental.sql import query_sql
 
-    return query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid).to_pandas()
+    arrow_table = query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid)
+
+    # query_sql always returns pa.Table, so to_pandas always returns DataFrame
+    return cast(pd.DataFrame, arrow_table.to_pandas())
 
 
 def upload_dataframe_to_dataset(

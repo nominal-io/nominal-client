@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from nominal.core import NominalClient
 
@@ -34,4 +34,5 @@ def query_sql_to_dataframe(
     import polars as pl
     from nominal.experimental.sql import query_sql
 
-    return pl.from_arrow(query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid))
+    # query_sql always returns pa.Table, so pl.from_arrow always returns DataFrame
+    return cast(pl.DataFrame, pl.from_arrow(query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid)))
