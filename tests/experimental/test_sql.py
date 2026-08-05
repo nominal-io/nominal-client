@@ -10,10 +10,8 @@ pa = pytest.importorskip("pyarrow")
 
 from nominal.core.client import NominalClient
 from nominal.experimental.sql import (
-    SqlCatalog,
     SqlCatalogColumn,
     SqlCatalogFunction,
-    SqlCatalogTable,
     export_sql,
     get_sql_catalog,
     query_sql,
@@ -85,7 +83,7 @@ def test_export_sql_returns_presigned_url() -> None:
     client = NominalClient(_clients=clients)
 
     clients.sql.export.return_value = {
-        "presigned_url": "https://example.com/result.parquet",
+        "presignedUrl": "https://example.com/result.parquet",
         "query_id": "q-1",
     }
 
@@ -101,13 +99,11 @@ def test_export_sql_with_explicit_workspace() -> None:
     clients.auth_header = "Bearer token"
     client = NominalClient(_clients=clients)
 
-    clients.sql.export.return_value = {"presigned_url": "https://example.com/result.csv", "query_id": "q-2"}
+    clients.sql.export.return_value = {"presignedUrl": "https://example.com/result.csv", "query_id": "q-2"}
 
     export_sql(client, "SELECT COUNT(*) FROM datasets", workspace_rid="ri.workspace.explicit")
 
-    clients.sql.export.assert_called_once_with(
-        "Bearer token", "ri.workspace.explicit", "SELECT COUNT(*) FROM datasets"
-    )
+    clients.sql.export.assert_called_once_with("Bearer token", "ri.workspace.explicit", "SELECT COUNT(*) FROM datasets")
     clients.resolve_default_workspace_rid.assert_not_called()
 
 
@@ -118,7 +114,7 @@ def test_get_sql_catalog_parses_tables_and_functions() -> None:
     client = NominalClient(_clients=clients)
 
     clients.sql.get_sql_catalog.return_value = {
-        "sql_catalog": {
+        "sqlCatalog": {
             "tables": [
                 {
                     "name": "datasets",
@@ -151,7 +147,7 @@ def test_get_sql_catalog_handles_empty_catalog() -> None:
     clients.auth_header = "Bearer token"
     client = NominalClient(_clients=clients)
 
-    clients.sql.get_sql_catalog.return_value = {"sql_catalog": {"tables": [], "functions": []}}
+    clients.sql.get_sql_catalog.return_value = {"sqlCatalog": {"tables": [], "functions": []}}
 
     catalog = get_sql_catalog(client)
 
