@@ -513,8 +513,6 @@ def test_system_metadata_defaults_when_not_injected(
             "does not support time unit 'hours'",
             id="unit-outside-contract",
         ),
-        pytest.param({"timestamp_column": "ts"}, "together", id="column-without-type"),
-        pytest.param({"timestamp_type": "epoch_seconds"}, "together", id="type-without-column"),
     ],
 )
 def test_add_output_rejects_unexpressible_timestamp_metadata(
@@ -522,7 +520,7 @@ def test_add_output_rejects_unexpressible_timestamp_metadata(
     add_output_kwargs: dict[str, Any],
     expected_match: str,
 ) -> None:
-    """Per-output timestamp metadata only expresses what the manifest contract allows."""
+    """A timestamp type the manifest contract cannot express is an ExtractorError."""
 
     @manifest_extractor
     def emit(ctx: ManifestExtractorContext) -> None:
@@ -531,6 +529,32 @@ def test_add_output_rejects_unexpressible_timestamp_metadata(
         ctx.add_tabular(out, **add_output_kwargs)
 
     with pytest.raises(ExtractorError, match=expected_match):
+        run_extractor(emit)
+
+
+@pytest.mark.parametrize(
+    "add_output_kwargs",
+    [
+        pytest.param({"timestamp_column": "ts"}, id="column-without-type"),
+        pytest.param({"timestamp_type": "epoch_seconds"}, id="type-without-column"),
+    ],
+)
+def test_add_output_rejects_a_half_specified_timestamp_pair_as_a_value_error(
+    run_extractor: RunExtractor, add_output_kwargs: dict[str, Any]
+) -> None:
+    """A malformed argument is a ValueError, as everywhere else in the client.
+
+    ExtractorError is reserved for violations of the extractor's own contract -- a reserved file
+    name, a file outside the output directory -- not for a caller passing half of a pair.
+    """
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "data.csv"
+        out.write_text("ts,x")
+        ctx.add_tabular(out, **add_output_kwargs)
+
+    with pytest.raises(ValueError, match="pass both"):
         run_extractor(emit)
 
 
@@ -1120,3 +1144,89 @@ def test_rejected_declaration_does_not_count_as_declared(
         run_extractor(emit)
 
     assert "notavideo.txt" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("timestamp_type", "expected_timestamp_metadata"),
+    [
+        pytest.param(
+            "epoch_microseconds",
+            {"seriesName": "timestamps", "epochTimeUnit": "MICROSECONDS", "relativeOffset": None},
+            id="epoch",
+        ),
+        pytest.param(
+            ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+            {
+                "seriesName": "timestamps",
+                "epochTimeUnit": "MILLISECONDS",
+                "relativeOffset": "2026-01-01T00:00:00.000000000Z",
+            },
+            id="relative",
+        ),
+        pytest.param(None, None, id="omitted-defers-to-job-level"),
+    ],
+)
+def test_avro_output_declares_how_to_read_its_timestamps(
+    manifest_document: ReadManifest,
+    run_extractor: RunExtractor,
+    timestamp_type: Any,
+    expected_timestamp_metadata: dict[str, Any] | None,
+) -> None:
+    """An avro output declares a timestamp type and no column: the schema fixes which field holds them."""
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "records.avro"
+        out.write_bytes(b"avro")
+        ctx.add_avro_stream(out, timestamp_type=timestamp_type)
+
+    run_extractor(emit)
+
+    [entry] = manifest_document()["outputs"]
+    assert entry["ingestType"] == "AVRO_STREAM"
+    assert entry["timestampMetadata"] == expected_timestamp_metadata
+
+
+@pytest.mark.parametrize(
+    ("timestamp_type", "expected_match"),
+    [
+        pytest.param("iso_8601", "numeric epoch", id="non-numeric-type"),
+        pytest.param(ts.Custom("yyyy-DDD HH:mm:ss"), "numeric epoch", id="custom-format"),
+        pytest.param(ts.Relative("hours", start=0), "does not support time unit 'hours'", id="unit-outside-contract"),
+    ],
+)
+def test_avro_output_rejects_unexpressible_timestamp_type(
+    run_extractor: RunExtractor, timestamp_type: Any, expected_match: str
+) -> None:
+    """A type the manifest cannot express is refused at the call, not silently narrowed.
+
+    The first two are also type errors under the numeric-only annotation; the runtime guard is what
+    protects callers without a type checker, so the test exercises it directly.
+    """
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "records.avro"
+        out.write_bytes(b"avro")
+        ctx.add_avro_stream(out, timestamp_type=timestamp_type)
+
+    with pytest.raises(ExtractorError, match=expected_match):
+        run_extractor(emit)
+
+
+def test_avro_output_composes_channel_prefix_and_timestamp_type(
+    manifest_document: ReadManifest, run_extractor: RunExtractor
+) -> None:
+    """The two avro options are independent and both reach the entry."""
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / "records.avro.gz"
+        out.write_bytes(b"avro")
+        ctx.add_avro_stream(out, channel_prefix="sensors/", timestamp_type=ts.Epoch("seconds"))
+
+    run_extractor(emit)
+
+    [entry] = manifest_document()["outputs"]
+    assert entry["channelPrefix"] == "sensors/"
+    assert entry["timestampMetadata"]["epochTimeUnit"] == "SECONDS"

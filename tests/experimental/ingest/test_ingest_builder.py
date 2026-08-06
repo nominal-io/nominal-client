@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal import ts
 from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType
 from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader
@@ -246,6 +247,78 @@ class TestSubmit:
                 builder.submit()
 
         client._clients.ingest_v2.Ingest.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("kwargs", "expected"),
+        [
+            pytest.param({}, ts.Epoch("nanoseconds"), id="default-is-the-canonical-schema"),
+            pytest.param({"timestamp_type": "epoch_microseconds"}, ts.Epoch("microseconds"), id="epoch-literal"),
+            pytest.param(
+                {"timestamp_type": ts.Relative("seconds", start=0)},
+                ts.Relative("seconds", start=0),
+                id="relative",
+            ),
+        ],
+    )
+    def test_avro_item_carries_the_declared_timestamp_type(
+        self, write_file: WriteFile, kwargs: dict[str, Any], expected: ts.TypedTimestampType
+    ) -> None:
+        """An avro item always carries timestamp metadata, defaulting to the canonical schema's reading."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_avro_stream(write_file("records.avro", 1), **kwargs)
+
+        with patch.object(
+            MultipartUploader, "create", autospec=True, return_value=FakeUploader({"records.avro": "s3://bucket/a"})
+        ):
+            builder.submit()
+
+        (request,) = client._clients.ingest_v2.Ingest.call_args.args
+        metadata = request.items[0].file.ingest.timestamp_metadata
+        assert metadata.column == "timestamps"
+        assert ts._proto_timestamp_type_to_typed_timestamp_type(metadata.type) == expected
+
+    @pytest.mark.parametrize(
+        "timestamp_type",
+        [
+            pytest.param("epoch_microseconds", id="epoch-literal"),
+            pytest.param(ts.Epoch("nanoseconds"), id="epoch"),
+            pytest.param(ts.Relative("seconds", start=0), id="relative"),
+        ],
+    )
+    def test_log_item_accepts_any_numeric_timestamp_type(
+        self, write_file: WriteFile, timestamp_type: ts._AnyNumericTimestampType
+    ) -> None:
+        """Log timestamps are read as numbers, so every numeric type -- including relative -- works."""
+        client = MagicMock()
+        builder = IngestBuilder(client, "ri.catalog.test.dataset")
+        builder.add_journal_json(write_file("logs.jsonl", 1), timestamp_column="ts", timestamp_type=timestamp_type)
+
+        with patch.object(
+            MultipartUploader, "create", autospec=True, return_value=FakeUploader({"logs.jsonl": "s3://bucket/a"})
+        ):
+            builder.submit()
+
+        (request,) = client._clients.ingest_v2.Ingest.call_args.args
+        metadata = request.items[0].log.timestamp_metadata
+        assert metadata.column == "ts"
+        assert ts._proto_timestamp_type_to_typed_timestamp_type(metadata.type) == ts._to_typed_timestamp_type(
+            timestamp_type
+        )
+
+    @pytest.mark.parametrize(
+        "timestamp_type",
+        [
+            pytest.param("iso_8601", id="iso8601"),
+            pytest.param(ts.Custom("yyyy-DDD HH:mm:ss"), id="custom"),
+        ],
+    )
+    def test_log_item_rejects_string_format_timestamp_types(self, write_file: WriteFile, timestamp_type: Any) -> None:
+        """A string-format type cannot describe a numeric log timestamp, so it fails at the call."""
+        builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+
+        with pytest.raises(ValueError, match="must be numeric"):
+            builder.add_journal_json(write_file("logs.jsonl", 1), timestamp_column="ts", timestamp_type=timestamp_type)
 
 
 class TestSubmitAllowPartial:

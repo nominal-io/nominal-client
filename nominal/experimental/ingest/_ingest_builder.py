@@ -45,9 +45,12 @@ from nominal.protos.ingest.v2 import (
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsUTC,
+    Relative,
+    _AnyNumericTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
+    _validate_timestamp_pair,
 )
 
 logger = logging.getLogger(__name__)
@@ -398,19 +401,24 @@ class IngestBuilder:
         *,
         units: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
+        timestamp_type: _AnyNumericTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register an Avro stream (.avro) file.
 
         The file must conform to the canonical Avro stream schema (see `Dataset.add_avro_stream`
-        for the schema definition); its timestamps come from the epoch-nanosecond `timestamps`
-        field, so no timestamp column is passed here.
+        for the schema definition). The schema fixes which field holds the timestamps, so this takes
+        no timestamp column -- only how to read the numbers in that field.
 
         Args:
             path: Path to the .avro file on disk.
             units: Mapping of channel name to unit symbol.
             channel_prefix: Prefix prepended to every channel name ingested from this file.
-            tags: Key-value pairs applied as tags to all data from this file.
+            timestamp_type: How to read the file's numeric timestamps -- an absolute epoch
+                (`ts.Epoch`, or its string literal) or an offset from a start (`ts.Relative`).
+                Defaults to epoch nanoseconds, the canonical schema's reading.
+            tags: Key-value pairs applied as tags to all data from this file. Tags in the records
+                take precedence -- these only fill keys a record does not already set.
 
         Returns:
             This builder, for chaining.
@@ -425,13 +433,15 @@ class IngestBuilder:
         # Avro deliberately omits channel_name_overrides: the backend rejects it for avro
         # ("channel names come from record data").
         # TODO(drake): expose channel_name_overrides here once the backend accepts it for avro.
+
+        # The canonical avro stream schema fixes the timestamps to a `timestamps` field (see
+        # `Dataset.add_avro_stream` for the schema) and the multi-file endpoint requires
+        # timestamp_metadata on every file item, so the canonical epoch-nanosecond reading is sent
+        # whenever the caller declares none.
+        declared_type = Epoch(unit="nanoseconds") if timestamp_type is None else timestamp_type
         options = file_ingest_pb2.FileIngestOptions(
-            # The canonical avro stream schema fixes the timestamp to an epoch-nanosecond
-            # `timestamps` field (see `Dataset.add_avro_stream` for the schema), and the v2
-            # endpoint requires timestamp_metadata on every file item — so avro always sends
-            # this fixed definition.
             timestamp_metadata=common_pb2.TimestampMetadata(
-                column="timestamps", type=_to_typed_timestamp_type(Epoch(unit="nanoseconds"))._to_proto()
+                column="timestamps", type=_to_typed_timestamp_type(declared_type)._to_proto()
             ),
             units=units,
             channel_prefix=channel_prefix,
@@ -527,7 +537,7 @@ class IngestBuilder:
         *,
         channel: str | None = ...,
         timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
+        timestamp_type: _AnyNumericTimestampType,
         tags: Mapping[str, str] | None = ...,
     ) -> Self: ...
     def add_journal_json(
@@ -536,7 +546,7 @@ class IngestBuilder:
         *,
         channel: str | None = None,
         timestamp_column: str | None = None,
-        timestamp_type: _AnyTimestampType | None = None,
+        timestamp_type: _AnyNumericTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register a journald-style .jsonl / .jsonl.gz log file.
@@ -550,26 +560,33 @@ class IngestBuilder:
             channel: Channel name to ingest the logs under. Defaults to 'logs' if omitted.
             timestamp_column: Field holding each record's timestamp. Omit to use the file's
                 default journald timestamp.
-            timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_microseconds'.
+            timestamp_type: How to read the numbers in `timestamp_column` -- an absolute epoch
+                (`ts.Epoch`, or its string literal, e.g. 'epoch_microseconds') or an offset from a
+                start (`ts.Relative`). Log timestamps are read as numbers, so ISO 8601 and custom
+                string formats cannot be used here.
             tags: Key-value pairs applied as tags to all data from this file.
 
         Returns:
             This builder, for chaining.
 
         Raises:
-            ValueError: if only one of `timestamp_column` / `timestamp_type` is given.
+            ValueError: if only one of `timestamp_column` / `timestamp_type` is given, or if
+                `timestamp_type` is not numeric.
         """
-        if (timestamp_column is None) != (timestamp_type is None):
-            raise ValueError("pass both timestamp_column and timestamp_type, or neither")
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
         file_path = Path(path)
         file_type = FileType.from_path_journal_json(file_path)
-        timestamp_meta = (
-            common_pb2.TimestampMetadata(
-                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
+        timestamp_meta = None
+        if timestamp_column is not None and timestamp_type is not None:
+            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+            if not isinstance(typed_timestamp_type, (Epoch, Relative)):
+                raise ValueError(
+                    f"journal json timestamps must be numeric (ts.Epoch or ts.Relative), "
+                    f"received {typed_timestamp_type!r}"
+                )
+            timestamp_meta = common_pb2.TimestampMetadata(
+                column=timestamp_column, type=typed_timestamp_type._to_proto()
             )
-            if timestamp_column is not None and timestamp_type is not None
-            else None
-        )
         self._pending.append(
             _LogItem(
                 file=_PendingFile(file_path, file_type),
@@ -729,8 +746,7 @@ class IngestBuilder:
             ValueError: if `sources` is empty, or if only one of `timestamp_column` /
                 `timestamp_type` is given.
         """
-        if (timestamp_column is None) != (timestamp_type is None):
-            raise ValueError("pass both timestamp_column and timestamp_type, or neither")
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
         if not sources:
             raise ValueError("add_containerized requires at least one source")
         timestamp_meta = (

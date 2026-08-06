@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from nominal.core.dataset import Dataset, DatasetBounds
+from nominal import ts
+from nominal.core.dataset import Dataset, DatasetBounds, _DatasetWrapper
 from nominal.core.exceptions import NominalIngestError
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
@@ -266,3 +267,172 @@ def test_add_avro_stream_uploads_with_the_resolved_file_type(
             mock_dataset.add_avro_stream(path)
 
     assert upload.call_args.kwargs["file_type"].extension == expected_extension
+
+
+def test_add_avro_stream_accepts_tags_and_an_epoch_string_literal(mock_dataset: Dataset, tmp_path) -> None:
+    """The avro request's options carry the merged tags and the converted numeric timestamp type."""
+    path = tmp_path / "records.avro"
+    path.write_bytes(b"avro")
+
+    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path"):
+        with contextlib.suppress(ValueError):
+            mock_dataset.add_avro_stream(path, timestamp_type="epoch_microseconds", tags={"vehicle": "v1"})
+
+    # ingest() is called positionally as (auth_header, request).
+    (_, request) = mock_dataset._clients.ingest.ingest.call_args.args
+    avro_opts = request.options.avro_stream
+    assert avro_opts.additional_file_tags == {"vehicle": "v1"}
+    assert avro_opts.timestamp_type.epoch.time_unit.value == "MICROSECONDS"
+
+
+def test_add_journal_json_without_timestamp_arguments_ingests(mock_dataset: Dataset, tmp_path) -> None:
+    """Omitting both timestamp arguments is the default call, not a half-specified override."""
+    path = tmp_path / "logs.jsonl"
+    path.write_text('{"MESSAGE": "hello"}')
+
+    # The mocked client reports no real ingest status, so a ValueError escapes once the ingest is
+    # triggered. Reaching the upload at all is what is under test. (Verified: the escaping exception
+    # is ValueError("Unknown ingest status: ..."), so do not widen this to Exception.)
+    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path") as upload:
+        with contextlib.suppress(ValueError):
+            mock_dataset.add_journal_json(path)
+
+    upload.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        pytest.param({"timestamp_column": "ts"}, id="column-without-type"),
+        pytest.param({"timestamp_type": ts.Epoch("microseconds")}, id="type-without-column"),
+    ],
+)
+def test_add_journal_json_rejects_half_specified_timestamps(mock_dataset: Dataset, tmp_path, kwargs) -> None:
+    """One half of the timestamp pair is an error, and fails before any bytes are uploaded."""
+    path = tmp_path / "logs.jsonl"
+    path.write_text('{"MESSAGE": "hello"}')
+
+    with patch("nominal.core.dataset.upload_multipart_file") as upload:
+        with pytest.raises(ValueError, match="pass both"):
+            mock_dataset.add_journal_json(path, **kwargs)
+
+    upload.assert_not_called()
+
+
+def test_add_journal_json_accepts_an_epoch_string_literal(mock_dataset: Dataset, tmp_path) -> None:
+    """The string form of an epoch type works here as it does everywhere else in the client."""
+    path = tmp_path / "logs.jsonl"
+    path.write_text('{"ts": 1}')
+
+    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path"):
+        with contextlib.suppress(ValueError):
+            mock_dataset.add_journal_json(path, timestamp_column="ts", timestamp_type="epoch_microseconds")
+
+    # ingest() is called positionally as (auth_header, request).
+    (_, request) = mock_dataset._clients.ingest.ingest.call_args.args
+    metadata = request.options.journal_json.timestamp_metadata
+    assert metadata.field_name == "ts"
+    assert metadata.epoch_of_time_unit.time_unit.value == "MICROSECONDS"
+
+
+@pytest.mark.parametrize(
+    "timestamp_type",
+    [
+        pytest.param("iso_8601", id="string-format-literal"),
+        pytest.param(ts.Relative("seconds", start=0), id="relative"),
+    ],
+)
+def test_add_journal_json_rejects_non_epoch_timestamps_before_uploading(
+    mock_dataset: Dataset, tmp_path, timestamp_type
+) -> None:
+    """A timestamp type journal ingest cannot express fails at the call, not after the file is uploaded."""
+    path = tmp_path / "logs.jsonl"
+    path.write_text('{"ts": 1}')
+
+    with patch("nominal.core.dataset.upload_multipart_file") as upload:
+        with pytest.raises(ValueError, match="epoch"):
+            mock_dataset.add_journal_json(path, timestamp_column="ts", timestamp_type=timestamp_type)
+
+    upload.assert_not_called()
+
+
+class _StubWrapper(_DatasetWrapper):
+    """The wrapper with scope resolution stubbed: what is under test is the delegation, not lookup."""
+
+    def _list_dataset_scopes(self):
+        return []
+
+
+def test_data_scope_avro_stream_merges_scope_tags() -> None:
+    """Avro ingest carries tags now, so a tagged scope no longer blocks the file; caller tags win on collision."""
+    dataset = MagicMock()
+    scope_tags = {"vehicle": "v1", "run": "scope-run"}
+    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, scope_tags)):
+        _StubWrapper().add_avro_stream("scope", "records.avro", tags={"run": "r1"})
+
+    dataset.add_avro_stream.assert_called_once_with(
+        "records.avro", timestamp_type=None, tags={"vehicle": "v1", "run": "r1"}
+    )
+
+
+def test_data_scope_avro_stream_forwards_the_timestamp_type() -> None:
+    """The scope wrapper is a passthrough for the timestamp type, not a second policy layer."""
+    dataset = MagicMock()
+    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {})):
+        _StubWrapper().add_avro_stream("scope", "records.avro", timestamp_type="epoch_microseconds")
+
+    assert dataset.add_avro_stream.call_args.kwargs["timestamp_type"] == "epoch_microseconds"
+
+
+def test_data_scope_journal_json_forwards_the_timestamp_pair() -> None:
+    """The journal wrapper forwards both halves of the pair untouched."""
+    dataset = MagicMock()
+    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {})):
+        _StubWrapper().add_journal_json(
+            "scope", "logs.jsonl", channel="events", timestamp_column="ts", timestamp_type="epoch_microseconds"
+        )
+
+    dataset.add_journal_json.assert_called_once_with(
+        "logs.jsonl", channel="events", timestamp_column="ts", timestamp_type="epoch_microseconds"
+    )
+
+
+def test_data_scope_journal_json_still_refuses_a_tagged_scope() -> None:
+    """Journal ingest carries no tags, so a tagged scope must keep failing rather than lose them."""
+    dataset = MagicMock()
+    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {"vehicle": "v1"})):
+        with pytest.raises(RuntimeError, match="would not get"):
+            _StubWrapper().add_journal_json("scope", "logs.jsonl")
+
+    dataset.add_journal_json.assert_not_called()
+
+
+def test_data_scope_journal_json_default_call_forwards_an_explicit_none_pair() -> None:
+    """The default call shape forwards both halves as None, which is the shape the delegation suppresses.
+
+    The suppressed argument types are only sound while this holds: the delegate must accept a pair of
+    Nones as "no timestamp metadata". If that ever changes, this test is what fails.
+    """
+    dataset = MagicMock()
+    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {})):
+        _StubWrapper().add_journal_json("scope", "logs.jsonl")
+
+    dataset.add_journal_json.assert_called_once_with(
+        "logs.jsonl", channel=None, timestamp_column=None, timestamp_type=None
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        pytest.param({"timestamp_column": "ts"}, id="column-without-type"),
+        pytest.param({"timestamp_type": "epoch_microseconds"}, id="type-without-column"),
+    ],
+)
+def test_data_scope_journal_json_rejects_a_half_pair_before_resolving_the_scope(kwargs) -> None:
+    """A mispaired call fails on its own arguments, without a round trip to resolve the data scope."""
+    with patch.object(_StubWrapper, "_get_dataset_scope") as get_scope:
+        with pytest.raises(ValueError, match="pass both"):
+            _StubWrapper().add_journal_json("scope", "logs.jsonl", **kwargs)
+
+    get_scope.assert_not_called()

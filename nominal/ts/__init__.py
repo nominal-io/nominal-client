@@ -249,6 +249,10 @@ class _ConjureTimestampType(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        pass
+
+    @abc.abstractmethod
     def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
         """Convert to the proto nominal.types.time.TimestampType.
 
@@ -306,6 +310,9 @@ class Iso8601(_ConjureTimestampType):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
 
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        raise ValueError("ISO 8601 timestamps are not supported with .avro files")
+
     def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
         return timestamp_parsers_pb2.TimestampType(
             absolute=timestamp_parsers_pb2.AbsoluteTimestamp(iso8601=timestamp_parsers_pb2.Iso8601Timestamp())
@@ -320,9 +327,16 @@ class Epoch(_ConjureTimestampType):
 
     unit: _LiteralTimeUnit
 
+    def _to_conjure_epoch_timestamp(self) -> ingest_api.EpochTimestamp:
+        return ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
+
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
+        return ingest_api.TimestampType(
+            absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=self._to_conjure_epoch_timestamp())
+        )
+
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        return ingest_api.AvroNumericTimestampType(epoch=self._to_conjure_epoch_timestamp())
 
     def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
         epoch = timestamp_parsers_pb2.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit).value)
@@ -346,6 +360,11 @@ class Relative(_ConjureTimestampType):
     start: datetime | IntegralNanosecondsUTC
     """The starting time to which all relatives times are relative to."""
 
+    def _to_conjure_relative_timestamp(self) -> ingest_api.RelativeTimestamp:
+        return ingest_api.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(self.unit), offset=_SecondsNanos.from_flexible(self.start).to_iso8601()
+        )
+
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         """Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond prec.
         The Python type for the field is just a str.
@@ -353,10 +372,10 @@ class Relative(_ConjureTimestampType):
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        relative = ingest_api.RelativeTimestamp(
-            time_unit=_time_unit_to_conjure(self.unit), offset=_SecondsNanos.from_flexible(self.start).to_iso8601()
-        )
-        return ingest_api.TimestampType(relative=relative)
+        return ingest_api.TimestampType(relative=self._to_conjure_relative_timestamp())
+
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        return ingest_api.AvroNumericTimestampType(relative=self._to_conjure_relative_timestamp())
 
     def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
         sn = _SecondsNanos.from_flexible(self.start)
@@ -390,6 +409,9 @@ class Custom(_ConjureTimestampType):
         )
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
 
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        raise ValueError("Custom timestamps are not supported with .avro files")
+
     def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
         fmt = timestamp_parsers_pb2.CustomTimestamp(
             format=self.format,
@@ -421,8 +443,7 @@ _LiteralTimeUnit: TypeAlias = Literal[
     "days",
 ]
 
-_LiteralAbsolute: TypeAlias = Literal[
-    "iso_8601",
+_LiteralNumericAbsolute: TypeAlias = Literal[
     "epoch_picoseconds",
     "epoch_nanoseconds",
     "epoch_microseconds",
@@ -432,6 +453,7 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_hours",
     "epoch_days",
 ]
+_LiteralAbsolute: TypeAlias = Literal["iso_8601", _LiteralNumericAbsolute]
 
 _ExportableTypedTimestampType: TypeAlias = Iso8601 | Epoch | Relative
 """Type alias for all of the strongly typed timestamp types that can be converted to a native python datetime"""
@@ -444,6 +466,29 @@ _AnyExportableTimestampType: TypeAlias = _ExportableTypedTimestampType | _Litera
 
 _AnyTimestampType: TypeAlias = TypedTimestampType | _LiteralAbsolute
 """Type alias for all of the allowable timestamp types, including string representations."""
+
+_AnyNumericTimestampType: TypeAlias = Epoch | Relative | _LiteralNumericAbsolute
+"""Type alias for all of the allowable numeric timestamp types without string representations."""
+
+_AnyEpochTimestampType: TypeAlias = Epoch | _LiteralNumericAbsolute
+"""Type alias for absolute epoch timestamps, typed or as a string literal.
+
+`Relative` is excluded on purpose: the requests taking this alias carry a time unit and have nowhere to
+put a starting offset, so a relative type would lose its start.
+"""
+
+
+def _validate_timestamp_pair(timestamp_column: str | None, timestamp_type: _AnyTimestampType | None) -> None:
+    """Require a timestamp column and type together, or neither.
+
+    Naming a field without saying how to read it -- or the reverse -- describes nothing, so every
+    method taking the pair rejects a half-specified one. Shared so they all reject it the same way.
+
+    `timestamp_type` is typed to the widest alias, which every narrower one is a subset of, so callers
+    restricted to numeric or epoch types can pass theirs unchanged.
+    """
+    if (timestamp_column is None) != (timestamp_type is None):
+        raise ValueError("pass both timestamp_column and timestamp_type, or neither")
 
 
 def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
