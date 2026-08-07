@@ -83,7 +83,7 @@ from nominal.core.containerized_extractor import (
     _get_containerized_extractor,
     _search_containerized_extractors,
 )
-from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
+from nominal.core.data_review import DataReview, DataReviewBuilder, _get_data_review, _iter_search_data_reviews
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
@@ -1299,8 +1299,7 @@ class NominalClient:
         return DataReviewBuilder([], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
-        response = self._clients.datareview.get(self._clients.auth_header, rid)
-        return DataReview._from_conjure(self._clients, response)
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, rid))
 
     def create_event(
         self,
