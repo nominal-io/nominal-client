@@ -69,3 +69,11 @@ def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
 
     assert result == []
     mock_clients.event.search_events.assert_not_called()
+
+
+def test_nominal_url_identifies_the_run_by_rid(mock_run, mock_clients):
+    """Run pages are addressed by rid: the app no longer serves run-number URLs."""
+    mock_clients.app_base_url = "https://app.nominal.test"
+    mock_clients.resolve_default_workspace_rid.return_value = "ri.workspace.test"
+
+    assert mock_run.nominal_url == "https://app.nominal.test/w/ri.workspace.test/runs/run-rid-1"

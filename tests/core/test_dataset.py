@@ -436,3 +436,11 @@ def test_data_scope_journal_json_rejects_a_half_pair_before_resolving_the_scope(
             _StubWrapper().add_journal_json("scope", "logs.jsonl", **kwargs)
 
     get_scope.assert_not_called()
+
+
+def test_nominal_url_uses_the_current_datasets_route(mock_dataset, mock_clients):
+    """Dataset pages live under /datasets/, not the legacy /data-sources/ route."""
+    mock_clients.app_base_url = "https://app.nominal.test"
+    mock_clients.resolve_default_workspace_rid.return_value = "ri.workspace.test"
+
+    assert mock_dataset.nominal_url == "https://app.nominal.test/w/ri.workspace.test/datasets/test-rid"
