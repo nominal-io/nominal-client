@@ -16,6 +16,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.protos.asset.v2 import asset_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -225,15 +226,15 @@ class TestAssetMigratorDatasets:
 
         scope_active = MagicMock()
         scope_active.data_scope_name = "scope-active"
-        scope_active.data_source.dataset = active_ds.rid
-        scope_active.series_tags = {}
-        scope_archived = MagicMock()
-        scope_archived.data_scope_name = "scope-archived"
-        scope_archived.data_source.dataset = archived_ds.rid
-        scope_archived.series_tags = {}
-
         source_asset = _make_source_asset()
-        source_asset._list_dataset_scopes.return_value = [scope_active, scope_archived]
+        source_asset._dataset_scopes.return_value = [
+            asset_pb2.DataScope(
+                data_scope_name="scope-active", data_source=asset_pb2.DataSource(dataset=active_ds.rid)
+            ),
+            asset_pb2.DataScope(
+                data_scope_name="scope-archived", data_source=asset_pb2.DataSource(dataset=archived_ds.rid)
+            ),
+        ]
         source_asset.list_datasets.return_value = [("scope-active", active_ds), ("scope-archived", archived_ds)]
 
         dest_asset = _make_dest_asset()

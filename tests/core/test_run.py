@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Mapping
+from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import scout_run_api
 
 from nominal.core.run import Run
 from nominal.protos.event.v2 import event_pb2
+
+
+def _conjure_scope(name: str, data_source: scout_run_api.DataSource, series_tags: Mapping[str, str]) -> MagicMock:
+    return MagicMock(data_scope_name=name, data_source=data_source, series_tags=series_tags)
 
 
 @pytest.fixture
@@ -70,6 +76,30 @@ def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
 
     assert result == []
     mock_clients.event.SearchEvents.assert_not_called()
+
+
+def test_lookup_dataset_scope_resolves_conjure_scopes_by_name(make_run):
+    """Runs still read conjure scopes, where the scope kind is a string on the data source."""
+    run = make_run(["asset-rid-1"])
+    enriched_run = MagicMock(
+        assets=["asset-rid-1"],
+        asset_data_scopes=[
+            _conjure_scope("ds", scout_run_api.DataSource(dataset="ri.dataset.1"), {"vehicle": "a"}),
+            _conjure_scope("vid", scout_run_api.DataSource(video="ri.video.1"), {}),
+        ],
+    )
+
+    with patch.object(Run, "_get_latest_api", return_value=enriched_run):
+        assert run._lookup_dataset_scope("ds") == ("ri.dataset.1", {"vehicle": "a"})
+        assert run._lookup_dataset_scope("vid") is None
+        assert run._lookup_dataset_scope("absent") is None
+
+
+def test_lookup_dataset_scope_rejects_multi_asset_runs(mock_run):
+    """A scope name is only unambiguous within one asset, so a multi-asset run cannot resolve one."""
+    with patch.object(Run, "_get_latest_api", return_value=MagicMock(assets=["a", "b"])):
+        with pytest.raises(RuntimeError, match="multi-asset runs"):
+            mock_run._lookup_dataset_scope("ds")
 
 
 def test_nominal_url_identifies_the_run_by_rid(mock_run, mock_clients):

@@ -50,7 +50,7 @@ def _make_asset(rid: str) -> MagicMock:
     asset.labels = [rid]
     asset.list_runs.return_value = []
     asset.search_workbooks.return_value = []
-    asset._list_dataset_scopes.return_value = []
+    asset._dataset_scopes.return_value = []
     asset.list_datasets.return_value = []
     asset.list_videos.return_value = []
     asset.search_events.return_value = []
