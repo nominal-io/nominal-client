@@ -17,6 +17,7 @@ from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
@@ -259,6 +260,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     )
+    assert isinstance(clients.datareview, data_review_pb2_grpc.DataReviewServiceStub)
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
     assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
