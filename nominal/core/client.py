@@ -93,7 +93,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.event import Event, _batch_get_event_protos, _create_event, _get_event_proto, _search_events
 from nominal.core.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalConfigError,
@@ -1326,15 +1326,18 @@ class NominalClient:
         )
 
     def get_event(self, rid: str) -> Event:
-        events = self.get_events([rid])
-        if len(events) != 1:
-            raise RuntimeError(f"Expected to receive exactly one event, received {len(events)}")
+        """Retrieve an event by its RID.
 
-        return events[0]
+        Raises:
+            NominalNotFoundError: If no event has that rid.
+        """
+        return Event._from_proto(self._clients, _get_event_proto(self._clients, rid))
 
     def get_events(self, rids: Sequence[str]) -> Sequence[Event]:
-        responses = self._clients.event.batch_get_events(self._clients.auth_header, list(rids))
-        return [Event._from_conjure(self._clients, response) for response in responses]
+        return [
+            Event._from_proto(self._clients, raw_event)
+            for raw_event in _batch_get_event_protos(self._clients, list(rids))
+        ]
 
     def search_data_reviews(
         self,
