@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
@@ -1226,18 +1226,18 @@ class _DatasetWrapper(abc.ABC):
     - Some formats cannot be safely tagged with scope tags; those wrapper methods raise `RuntimeError` when the selected
       scope requires tags.
 
-    Subclasses must implement `_list_dataset_scopes`, which is used to resolve scopes.
+    Subclasses must implement `_lookup_dataset_scope`, which is used to resolve scopes.
     """
 
     # static typing for required field
     _clients: Dataset._Clients
 
     @abc.abstractmethod
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
-        """Return the data scopes available to this wrapper.
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+        """The backing dataset rid and required series tags of the named scope, or None if there is none.
 
-        Subclasses provide the authoritative list of `scout_asset_api.DataScope` objects used to
-        resolve `data_scope_name` in wrapper methods.
+        Each subclass resolves the name against the data scopes its own transport returns, so this wrapper
+        never sees a wire type.
         """
 
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
@@ -1247,20 +1247,18 @@ class _DatasetWrapper(abc.ABC):
             A tuple of the resolved `Dataset` and the scope's required `series_tags`.
 
         Raises:
-            ValueError: If no scope exists with the given `data_scope_name`, or if the scope is not backed by a dataset.
+            ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
         """
-        dataset_scopes = {scope.data_scope_name: scope for scope in self._list_dataset_scopes()}
-        data_scope = dataset_scopes.get(data_scope_name)
+        data_scope = self._lookup_dataset_scope(data_scope_name)
         if data_scope is None:
             raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
-        elif data_scope.data_source.dataset is None:
-            raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
 
+        dataset_rid, series_tags = data_scope
         dataset = Dataset._from_conjure(
             self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
         )
-        return dataset, data_scope.series_tags
+        return dataset, series_tags
 
     ################
     # Add Data API #

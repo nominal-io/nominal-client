@@ -8,9 +8,6 @@ from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
     scout,
-    scout_asset_api,
-    scout_assets,
-    scout_run_api,
 )
 from typing_extensions import Self, deprecated
 
@@ -21,14 +18,13 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableConjureMixin,
+    RefreshableGrpcMixin,
     ScopeTypeSpecifier,
-    create_links,
-    filter_scope_rids,
-    filter_scopes,
+    create_proto_links,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.frontend_urls import asset_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -36,11 +32,13 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import LegacyVideoDeprecationWarning
+from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalNotFoundError
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
-from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
+from nominal.protos.types import types_pb2
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
 
 ScopeType: TypeAlias = Connection | Dataset | Video
 
@@ -48,13 +46,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Asset]):
+class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     rid: str
     name: str
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    updated_at: IntegralNanosecondsUTC
     is_archived: bool
 
     _clients: _Clients = field(repr=False)
@@ -71,7 +70,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         Protocol,
     ):
         @property
-        def assets(self) -> scout_assets.AssetService: ...
+        def assets(self) -> asset_pb2_grpc.AssetServiceStub: ...
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
@@ -82,20 +81,30 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
 
-    def _get_latest_api(self) -> scout_asset_api.Asset:
-        response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
-        if len(response) == 0 or self.rid not in response:
-            raise ValueError(f"no asset found with RID {self.rid!r}: {response!r}")
-        if len(response) > 1:
-            raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
-        return response[self.rid]
+    def _get_latest_api(self) -> asset_pb2.Asset:
+        return _get_asset(self._clients, self.rid)
 
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
-        return filter_scopes(self._get_latest_api().data_scopes, "dataset")
+    def _apply_update(self, request: asset_pb2.UpdateAssetRequest) -> Self:
+        """Send an update and refresh this instance from the returned asset."""
+        with translate_grpc_errors():
+            response = self._clients.assets.UpdateAsset(request)
+        return self._refresh_from_api(response.asset)
+
+    def _dataset_scopes(self) -> Sequence[asset_pb2.DataScope]:
+        return _filter_proto_scopes(self._get_latest_api().data_scopes, "dataset")
+
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+        for scope in self._dataset_scopes():
+            if scope.data_scope_name == data_scope_name:
+                return scope.data_source.dataset, scope.series_tags
+        return None
 
     def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
         asset = self._get_latest_api()
-        return filter_scope_rids(asset.data_scopes, scope_type)
+        return {
+            scope.data_scope_name: getattr(scope.data_source, scope_type)
+            for scope in _filter_proto_scopes(asset.data_scopes, scope_type)
+        }
 
     def update(
         self,
@@ -120,15 +129,22 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
                 new_labels.append(old_label)
             asset = asset.update(labels=new_labels)
         """
-        request = scout_asset_api.UpdateAssetRequest(
-            description=description,
-            labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
-            title=name,
-            links=None if links is None else create_links(links),
+        # None omits a field, leaving it unchanged; an empty wrapper clears it.
+        updated_labels = None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
+        updated_properties = (
+            None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
         )
-        api_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
-        return self._refresh_from_api(api_asset)
+        updated_links = None if links is None else asset_pb2.LinkList(links=create_proto_links(links))
+
+        request = asset_pb2.UpdateAssetRequest(
+            asset_rid=self.rid,
+            description=description,
+            labels=updated_labels,
+            properties=updated_properties,
+            title=name,
+            links=updated_links,
+        )
+        return self._apply_update(request)
 
     def promote(self) -> Self:
         """Promote this asset to be a standard, searchable, and displayable asset.
@@ -138,9 +154,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         asset (e.g. an asset created by create_asset, or an asset that's already been promoted).
         """
         if self._get_latest_api().is_staged:
-            request = scout_asset_api.UpdateAssetRequest(is_staged=False)
-            updated_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
-            self._refresh_from_api(updated_asset)
+            self._apply_update(asset_pb2.UpdateAssetRequest(asset_rid=self.rid, is_staged=False))
         else:
             logger.warning("Not promoting asset %s-- already promoted!", self.rid)
 
@@ -178,16 +192,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         data_scopes_to_remove = scopes or []
 
         scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove}
-        conjure_asset = self._get_latest_api()
+        latest_asset = self._get_latest_api()
 
         data_scopes_to_keep = [
-            scout_asset_api.CreateAssetDataScope(
+            asset_pb2.CreateAssetDataScope(
                 data_scope_name=ds.data_scope_name,
-                data_source=ds.data_source,
+                data_source=ds.data_source if ds.HasField("data_source") else None,
                 series_tags=ds.series_tags,
-                offset=ds.offset,
+                offset=ds.offset if ds.HasField("offset") else None,
             )
-            for ds in conjure_asset.data_scopes
+            for ds in latest_asset.data_scopes
             if ds.data_scope_name not in scope_names_to_remove
             and all(
                 rid not in scope_rids_to_remove
@@ -195,14 +209,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             )
         ]
 
-        updated_asset = self._clients.assets.update_asset(
-            self._clients.auth_header,
-            scout_asset_api.UpdateAssetRequest(
-                data_scopes=data_scopes_to_keep,
-            ),
-            self.rid,
+        request = asset_pb2.UpdateAssetRequest(
+            asset_rid=self.rid,
+            data_scopes=asset_pb2.CreateAssetDataScopeList(data_scopes=data_scopes_to_keep),
         )
-        self._refresh_from_api(updated_asset)
+        self._apply_update(request)
 
     def add_dataset(
         self,
@@ -222,16 +233,18 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             dataset: dataset to add to the asset
             series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
         """
-        request = scout_asset_api.AddDataScopesToAssetRequest(
+        request = asset_pb2.AddDataScopesToAssetRequest(
+            asset_rid=self.rid,
             data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
+                asset_pb2.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
+                    data_source=asset_pb2.DataSource(dataset=rid_from_instance_or_string(dataset)),
                     series_tags={**series_tags} if series_tags else {},
                 )
             ],
         )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+        with translate_grpc_errors():
+            self._clients.assets.AddDataScopesToAsset(request)
 
     @deprecated(
         "Attaching a standalone `Video` to an asset is deprecated in favor of video channels on a dataset. Attach the "
@@ -245,16 +258,18 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         videos (e.g., files from a given camera) should use the same data scope name across assets, since checklists and
         templates use data scope names to reference videos.
         """
-        request = scout_asset_api.AddDataScopesToAssetRequest(
+        request = asset_pb2.AddDataScopesToAssetRequest(
+            asset_rid=self.rid,
             data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
+                asset_pb2.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+                    data_source=asset_pb2.DataSource(video=rid_from_instance_or_string(video)),
                     series_tags={},
-                ),
-            ]
+                )
+            ],
         )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+        with translate_grpc_errors():
+            self._clients.assets.AddDataScopesToAsset(request)
 
     def add_connection(
         self,
@@ -274,16 +289,18 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             connection: connection to add to the asset
             series_tags: Key-value tags to pre-filter the connection with before adding to the asset.
         """
-        request = scout_asset_api.AddDataScopesToAssetRequest(
+        request = asset_pb2.AddDataScopesToAssetRequest(
+            asset_rid=self.rid,
             data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
+                asset_pb2.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
+                    data_source=asset_pb2.DataSource(connection=rid_from_instance_or_string(connection)),
                     series_tags={**series_tags} if series_tags else {},
                 )
-            ]
+            ],
         )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+        with translate_grpc_errors():
+            self._clients.assets.AddDataScopesToAsset(request)
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this asset.
@@ -291,8 +308,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         `attachments` can be `Attachment` instances, or attachment RIDs.
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
-        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
+        request = asset_pb2.UpdateAssetAttachmentsRequest(
+            asset_rid=self.rid, attachments_to_add=rids, attachments_to_remove=[]
+        )
+        with translate_grpc_errors():
+            self._clients.assets.UpdateAssetAttachments(request)
 
     def get_or_create_dataset(
         self,
@@ -695,8 +715,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         `attachments` can be `Attachment` instances, or attachment RIDs.
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
-        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
+        request = asset_pb2.UpdateAssetAttachmentsRequest(
+            asset_rid=self.rid, attachments_to_add=[], attachments_to_remove=rids
+        )
+        with translate_grpc_errors():
+            self._clients.assets.UpdateAssetAttachments(request)
 
     def archive(self) -> None:
         """Archive this asset.
@@ -704,28 +727,57 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
 
         Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
-        self._clients.assets.archive(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.assets.Archive(asset_pb2.ArchiveRequest(asset_rid=self.rid))
 
     def unarchive(self) -> None:
         """Unarchive this asset, allowing it to be viewed in the UI.
 
         Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
-        self._clients.assets.unarchive(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.assets.Unarchive(asset_pb2.UnarchiveRequest(asset_rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, asset: scout_asset_api.Asset) -> Self:
+    def _from_proto(cls, clients: _Clients, asset: asset_pb2.Asset) -> Self:
         return cls(
             rid=asset.rid,
             name=asset.title,
-            description=asset.description,
-            properties=MappingProxyType(asset.properties),
+            description=asset.description or None,
+            properties=MappingProxyType(dict(asset.properties)),
             labels=tuple(asset.labels),
-            created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
+            created_at=asset.created_at.ToNanoseconds(),
+            updated_at=asset.updated_at.ToNanoseconds(),
             is_archived=asset.is_archived,
             _clients=clients,
-            created_by_rid=asset.created_by,
+            created_by_rid=asset.created_by or None,
         )
+
+
+def _filter_proto_scopes(
+    scopes: Iterable[asset_pb2.DataScope], scope_type: ScopeTypeSpecifier
+) -> Sequence[asset_pb2.DataScope]:
+    """The data scopes whose `data_source` is set to `scope_type`."""
+    return [scope for scope in scopes if scope.data_source.WhichOneof("data_source") == scope_type]
+
+
+def _get_assets(clients: Asset._Clients, rids: Sequence[str]) -> Mapping[str, asset_pb2.Asset]:
+    """The assets with the given rids, keyed by rid. Rids that do not resolve are absent from the result."""
+    with translate_grpc_errors():
+        response = clients.assets.GetAssets(asset_pb2.GetAssetsRequest(rids=list(rids)))
+    return response.responses
+
+
+def _get_asset(clients: Asset._Clients, rid: str) -> asset_pb2.Asset:
+    """The asset with the given rid.
+
+    Raises:
+        NominalNotFoundError: If no asset has that rid.
+    """
+    assets = _get_assets(clients, [rid])
+    if rid not in assets:
+        raise NominalNotFoundError(f"no asset found with RID {rid!r}")
+    return assets[rid]
 
 
 # Moving to bottom to deal with circular dependencies
