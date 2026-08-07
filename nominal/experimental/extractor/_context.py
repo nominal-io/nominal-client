@@ -28,7 +28,12 @@ from nominal.experimental.extractor._env import (
     _ParamSpec,
     _spec_names,
 )
-from nominal.experimental.extractor._manifest import IngestType, _manifest_timestamp_metadata
+from nominal.experimental.extractor._manifest import (
+    _AVRO_TIMESTAMPS_FIELD,
+    IngestType,
+    _manifest_timestamp_metadata,
+    _optional_manifest_timestamp_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +319,24 @@ class ManifestExtractorContext(ExtractorContext):
             )
         return resolved, relative
 
+    @overload
+    def add_tabular(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        tag_columns: Mapping[str, str] | None = ...,
+        channel_prefix: str | None = ...,
+    ) -> Path: ...
+    @overload
+    def add_tabular(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        tag_columns: Mapping[str, str] | None = ...,
+        channel_prefix: str | None = ...,
+        timestamp_column: str,
+        timestamp_type: ts._AnyNumericTimestampType,
+    ) -> Path: ...
     def add_tabular(
         self,
         path: str | os.PathLike[str],
@@ -321,7 +344,7 @@ class ManifestExtractorContext(ExtractorContext):
         tag_columns: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
         timestamp_column: str | None = None,
-        timestamp_type: ts._AnyTimestampType | None = None,
+        timestamp_type: ts._AnyNumericTimestampType | None = None,
     ) -> Path:
         """Declare a CSV or Parquet file you wrote; its columns become channels.
 
@@ -331,7 +354,7 @@ class ManifestExtractorContext(ExtractorContext):
         its own timestamp column; only numeric types work here -- absolute epochs
         (:class:`ts.Epoch`) or offsets from a starting time (:class:`ts.Relative`). Outputs needing
         ISO 8601 or custom formats omit the pair and inherit the job-level metadata, which supports
-        the full range.
+        the full range. The overloads make passing only one of the pair a type error.
         """
         resolved, relative = self._relative_declarable_path(path)
         FileType.from_path_dataset(resolved)
@@ -341,36 +364,70 @@ class ManifestExtractorContext(ExtractorContext):
             IngestType.TABULAR,
             tag_columns=tag_columns,
             channel_prefix=channel_prefix,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
+            timestamp_metadata=_optional_manifest_timestamp_metadata(timestamp_column, timestamp_type),
         )
 
-    def add_avro_stream(self, path: str | os.PathLike[str], *, channel_prefix: str | None = None) -> Path:
+    def add_avro_stream(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        channel_prefix: str | None = None,
+        timestamp_type: ts._AnyNumericTimestampType | None = None,
+    ) -> Path:
         """Declare an avro-stream file you wrote (``.avro`` or ``.avro.gz``).
 
-        Avro records carry their own channel, timestamp, value, and tags, so this takes no tag
-        columns and no timestamp metadata -- the pipeline reads all of that from the records
-        themselves. ``channel_prefix`` is still prepended to every channel from this file.
+        Avro records carry their own channel, values, and tags, so this takes no tag columns and no
+        timestamp column. The schema fixes which field holds the timestamps; ``timestamp_type`` says how
+        to read the numbers in it, overriding the job-level timestamp metadata for this output. Only
+        numeric types work here: absolute epochs (:class:`ts.Epoch`) or offsets from a starting time
+        (:class:`ts.Relative`).
+
+        Omit ``timestamp_type`` to inherit the job-level metadata. That is only correct when the
+        job-level type is numeric too, since avro timestamps are integers and a string format cannot
+        read them.
+
+        ``channel_prefix`` is prepended to every channel from this file.
         """
         resolved, relative = self._relative_declarable_path(path)
         FileType.from_avro_stream(resolved)
-        return self._record_output(resolved, relative, IngestType.AVRO_STREAM, channel_prefix=channel_prefix)
+        return self._record_output(
+            resolved,
+            relative,
+            IngestType.AVRO_STREAM,
+            channel_prefix=channel_prefix,
+            timestamp_metadata=None
+            if timestamp_type is None
+            else _manifest_timestamp_metadata(_AVRO_TIMESTAMPS_FIELD, timestamp_type),
+        )
 
+    @overload
+    def add_journal_json(self, path: str | os.PathLike[str]) -> Path: ...
+    @overload
+    def add_journal_json(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        timestamp_column: str,
+        timestamp_type: ts._AnyNumericTimestampType,
+    ) -> Path: ...
     def add_journal_json(
         self,
         path: str | os.PathLike[str],
         *,
         timestamp_column: str | None = None,
-        timestamp_type: ts._AnyTimestampType | None = None,
+        timestamp_type: ts._AnyNumericTimestampType | None = None,
     ) -> Path:
         """Declare a journal JSONL file you wrote (``.jsonl`` or ``.jsonl.gz``); it is ingested as logs.
 
-        Each line must carry a ``MESSAGE`` field. ``timestamp_column``/``timestamp_type`` (provided
+        Each line must carry a ``MESSAGE`` field and a timestamp field; lines missing either are skipped.
+        Every other top-level field becomes a log arg, with its value converted to a string.
+        ``timestamp_column``/``timestamp_type`` (provided
         together) name the top-level JSON field holding each line's timestamp, overriding the
         job-level metadata; the same numeric-only restriction as :meth:`add_tabular` applies.
 
         Log samples carry no tags and every log point lands on one channel, so this takes neither
-        tag columns nor a channel prefix -- the ingest pipeline ignores both for log outputs.
+        tag columns nor a channel prefix -- the ingest pipeline ignores both for log outputs. The
+        overloads make passing only one of the pair a type error.
         """
         resolved, relative = self._relative_declarable_path(path)
         FileType.from_path_journal_json(resolved)
@@ -378,8 +435,7 @@ class ManifestExtractorContext(ExtractorContext):
             resolved,
             relative,
             IngestType.JSON_L,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
+            timestamp_metadata=_optional_manifest_timestamp_metadata(timestamp_column, timestamp_type),
         )
 
     def _record_output(
@@ -390,19 +446,13 @@ class ManifestExtractorContext(ExtractorContext):
         *,
         tag_columns: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
-        timestamp_column: str | None = None,
-        timestamp_type: ts._AnyTimestampType | None = None,
+        timestamp_metadata: ingest_manifest.ManifestTimestampMetadata | None = None,
     ) -> Path:
         """Record one manifest entry, shared by the per-format declaration methods.
 
-        Each of those exposes only the fields its ingest type actually reads, so this takes the
-        union and trusts its callers not to pass one that would be silently dropped.
+        Each of those exposes only the fields its ingest type reads, and builds its own timestamp
+        metadata before calling here.
         """
-        if (timestamp_column is None) != (timestamp_type is None):
-            raise ExtractorError("timestamp_column and timestamp_type must be provided together")
-        timestamp_metadata = None
-        if timestamp_column is not None and timestamp_type is not None:
-            timestamp_metadata = _manifest_timestamp_metadata(timestamp_column, timestamp_type)
         logger.debug("declared output %s (%s)", relative, ingest_type.value)
         self._outputs.append(
             ingest_manifest.ManifestOutput(

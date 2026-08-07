@@ -54,14 +54,15 @@ format, each exposing only the options that format actually uses. `manifest.json
 | Method | For | Options |
 |---|---|---|
 | `add_tabular` | `.csv` / `.parquet` (and `.gz`) | `tag_columns`, `channel_prefix`, `timestamp_column`/`timestamp_type` |
-| `add_avro_stream` | `.avro` / `.avro.gz` | `channel_prefix` |
+| `add_avro_stream` | `.avro` / `.avro.gz` | `channel_prefix`, `timestamp_type` |
 | `add_journal_json` | `.jsonl` / `.jsonl.gz`, ingested as logs | `timestamp_column`/`timestamp_type` |
 | `add_video` | any supported video container | `channel` (required), `start` or `frame_timestamps` |
 
-The gaps are deliberate. Avro records carry their own channel, timestamp, value, and tags, so there is
-nothing to map. Log samples carry no tags and all land on one channel, so tag columns and a channel
-prefix would be silently dropped. Each method also checks the file extension its format requires, so
-a mismatch fails at the call rather than server-side after upload.
+The gaps are deliberate. Avro records carry their own channel, values, and tags, so there is nothing
+to map — but their timestamps are bare numbers, so `add_avro_stream` still takes a `timestamp_type`
+saying how to read them. Log samples carry no tags and all land on one channel, so tag columns and a
+channel prefix would be silently dropped. Each method also checks the file extension its format
+requires, so a mismatch fails at the call rather than server-side after upload.
 
 ```python
 from nominal.experimental.extractor import ManifestExtractorContext, manifest_extractor
@@ -126,9 +127,18 @@ ctx.add_tabular(part, timestamp_column="ts", timestamp_type="epoch_microseconds"
 ctx.add_tabular(run, timestamp_column="elapsed", timestamp_type=ts.Relative("milliseconds", start=t0))
 ```
 
+`add_avro_stream` takes the type alone — the avro schema fixes which field holds the timestamps, so
+there is no column to name:
+
+```python
+ctx.add_avro_stream(records, timestamp_type="epoch_microseconds")
+```
+
 Only numeric types work here — absolute epochs (`ts.Epoch`) or offsets from a start (`ts.Relative`).
-Outputs needing ISO 8601 or custom string formats omit the pair and inherit the job-level metadata,
-which supports the full range.
+Outputs needing ISO 8601 or custom string formats omit the timestamp arguments and inherit the
+job-level metadata, which supports the full range. For an avro output, inheriting is only correct when
+the job-level type is numeric too, since avro timestamps are integers and a string format cannot read
+them.
 
 ## Inputs and parameters
 
@@ -154,9 +164,10 @@ ctx.job_timestamp_metadata     # what an output falls back to when it declares n
 ## Errors
 
 Rejections come back as `ExtractorError` when they are about the extractor's own contract — a
-reserved file name, an output outside `$OUTPUT_DIR`, no outputs declared — and as the ordinary
-argument errors the rest of the client raises (`ValueError` subclasses) when the arguments themselves
-are malformed, including a file extension the declared format cannot read.
+reserved file name, an output outside `$OUTPUT_DIR`, no outputs declared, a timestamp type the
+manifest cannot express — and as the ordinary argument errors the rest of the client raises
+(`ValueError` subclasses) when the arguments themselves are malformed, including a file extension the
+declared format cannot read, or half of a `timestamp_column` / `timestamp_type` pair.
 
 An undeclared file left in `$OUTPUT_DIR` is a warning, not a failure: the pipeline reads only what the
 manifest names, so it will not be ingested, but a scratch file does not fail the run.
