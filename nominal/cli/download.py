@@ -95,10 +95,7 @@ class DataDownloader(abc.ABC):
                 return None
 
         # Sort by last updated timestamps
-        raw_assets = self._client._clients.assets.get_assets(
-            self._client._clients.auth_header, [asset.rid for asset in assets]
-        )
-        sorted_assets = sorted(assets, key=lambda asset: pd.to_datetime(raw_assets[asset.rid].updated_at), reverse=True)
+        sorted_assets = sorted(assets, key=lambda asset: asset.updated_at, reverse=True)
         table = Table(
             Column("#", style=Style(color="white", bold=True), ratio=1, overflow="fold"),
             Column("Name", style=Style(color="white", bold=True), ratio=2, overflow="fold"),
@@ -418,12 +415,10 @@ class DataDownloader(abc.ABC):
             return
 
         # get tags from dataset & asset combo
-        scope_tags = None
-        raw_asset = self._client._clients.assets.get_assets(self._client._clients.auth_header, [asset.rid])[asset.rid]
-        for raw_datascope in raw_asset.data_scopes:
-            if raw_datascope.data_scope_name == refname:
-                scope_tags = raw_datascope.series_tags
-                break
+        scope_tags = next(
+            (scope.series_tags for scope in asset._list_dataset_scopes() if scope.data_scope_name == refname),
+            None,
+        )
         if scope_tags is None:
             logger.error("Failed to retrieve datascope details for refname %s", refname)
             return
