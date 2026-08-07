@@ -337,6 +337,8 @@ def _numeric_buckets_from_compute_response(
         yield (
             response.numeric_point.timestamp,
             scout_compute_api.NumericBucket(
+                # synthetic bucket over a single point: no server-computed aggregations to carry
+                aggregations={},
                 count=1,
                 first_point=response.numeric_point,
                 max=val,
@@ -354,6 +356,8 @@ def _numeric_buckets_from_compute_response(
             yield (
                 timestamp,
                 scout_compute_api.NumericBucket(
+                    # synthetic bucket over a single raw point: no server-computed aggregations
+                    aggregations={},
                     count=1,
                     first_point=point,
                     max=value,
