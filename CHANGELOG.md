@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.157.1](https://github.com/nominal-io/nominal-client/compare/v1.157.0...v1.157.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* bump nominal-api & nominal-api-protos to 0.1371.0 ([#914](https://github.com/nominal-io/nominal-client/issues/914)) ([a12a4bf](https://github.com/nominal-io/nominal-client/commit/a12a4bfc5aed62ca91c4fa0721e505324015a244))
+
+
+### Documentation
+
+* correct exact_match and search_text semantics in search methods ([#900](https://github.com/nominal-io/nominal-client/issues/900)) ([13995be](https://github.com/nominal-io/nominal-client/commit/13995bef9e7f0174600dd71c0bc2a2aa26906b5f))
+
 ## [1.157.0](https://github.com/nominal-io/nominal-client/compare/v1.156.1...v1.157.0) (2026-08-07)
 
 
