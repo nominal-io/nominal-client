@@ -12,7 +12,6 @@ from nominal_api import (
     scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_datareview_api,
     scout_notebook_api,
     scout_run_api,
     scout_template_api,
@@ -22,6 +21,7 @@ from nominal_api import (
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
@@ -140,25 +140,23 @@ def search_ingest_jobs_paginated(
 
 
 def search_data_reviews_paginated(
-    datareview: scout_datareview_api.DataReviewService,
-    auth_header: str,
+    datareview: data_review_pb2_grpc.DataReviewServiceStub,
     assets: Sequence[str] | None = None,
     runs: Sequence[str] | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[scout_datareview_api.DataReview]:
+) -> Iterable[data_review_pb2.DataReview]:
     """Search for any data reviews present within a collection of runs and assets."""
 
-    def factory(page_token: str | None) -> scout_datareview_api.FindDataReviewsRequest:
-        return scout_datareview_api.FindDataReviewsRequest(
-            asset_rids=[] if assets is None else list(assets),
-            checklist_refs=[],
-            run_rids=[] if runs is None else list(runs),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+    def factory(page_token: str | None) -> data_review_pb2.FindDataReviewsRequest:
+        return data_review_pb2.FindDataReviewsRequest(
+            asset_rids=list(assets or ()),
+            run_rids=list(runs or ()),
+            archived_statuses=data_review_pb2.ArchivedStatusSet(values=archive_status.to_proto_archived_statuses()),
             page_size=DEFAULT_PAGE_SIZE,
             next_page_token=page_token,
         )
 
-    for response in paginate_rpc(datareview.find_data_reviews, auth_header, request_factory=factory):
+    for response in paginate_grpc(datareview.FindDataReviews, request_factory=factory):
         yield from response.data_reviews
 
 

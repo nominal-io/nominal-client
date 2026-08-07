@@ -9,7 +9,6 @@ from nominal_api import (
     scout,
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_datareview_api,
     scout_integrations_api,
 )
 from typing_extensions import Self
@@ -19,7 +18,8 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
-from nominal.core.data_review import DataReview
+from nominal.core.data_review import DataReview, _initiate_data_review
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.ts import _to_api_duration
 
 
@@ -39,7 +39,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
-        def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        def datareview(self) -> data_review_pb2_grpc.DataReviewServiceStub: ...
         @property
         def event(self) -> event.EventService: ...
         @property
@@ -76,26 +76,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         """
         run_rid = rid_from_instance_or_string(run)
 
-        response = self._clients.datareview.batch_initiate(
-            self._clients.auth_header,
-            scout_datareview_api.BatchInitiateDataReviewRequest(
-                notification_configurations=[],
-                requests=[
-                    scout_datareview_api.CreateDataReviewRequest(
-                        checklist_rid=self.rid,
-                        run_rid=run_rid,
-                        commit=commit,
-                    )
-                ],
-            ),
-        )
-        if len(response.rids) != 1:
-            raise RuntimeError(f"Expected exactly one response from batch_initiate, received {len(response.rids)}")
-
-        return DataReview._from_conjure(
-            self._clients,
-            self._clients.datareview.get(self._clients.auth_header, response.rids[0]),
-        )
+        return _initiate_data_review(self._clients, checklist_rid=self.rid, run_rid=run_rid, commit=commit)
 
     def execute_streaming(
         self,
