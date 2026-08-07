@@ -22,10 +22,11 @@ from nominal.core.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalIngestError,
     NominalIngestFailed,
+    NominalIngestTimeout,
     NominalVideoTimestampModeError,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.video_file import VideoFile
+from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT, VideoFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -62,16 +63,29 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         "returned by `Dataset.add_video` or `Dataset.list_video_files` instead.",
         category=LegacyVideoDeprecationWarning,
     )
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
+    def poll_until_ingestion_completed(
+        self,
+        interval: timedelta = timedelta(seconds=1),
+        *,
+        timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+    ) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video on an interval.
+
+        Args:
+            interval: How long to wait between status checks.
+            timeout: Give up after this long and raise `NominalIngestTimeout`. Pass `None` to wait
+                indefinitely — only safe when a human is watching, since a server-side worker that
+                dies mid-ingest leaves the video in `inProgress` and the poll never terminates.
 
         Raises:
         ------
             NominalIngestFailed: if the ingest failed
+            NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known
 
         """
+        deadline = None if timeout is None else time.monotonic() + timeout.total_seconds()
         while True:
             progress = self._clients.video.get_ingest_status(self._clients.auth_header, self.rid)
             if progress.type == "success":
@@ -89,6 +103,12 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
                 )
             else:
                 raise NominalIngestError(f"unhandled ingest status {progress.type!r} for video {self.rid!r}")
+
+            if deadline is not None and time.monotonic() + interval.total_seconds() > deadline:
+                raise NominalIngestTimeout(
+                    f"video {self.rid!r} was still ingesting after {timeout}; giving up waiting for it to finish"
+                )
+
             time.sleep(interval.total_seconds())
 
     def _get_latest_api(self) -> scout_video_api.Video:

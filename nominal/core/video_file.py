@@ -12,10 +12,20 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions, _scale_parameter
-from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestError, NominalIngestFailed
+from nominal.core.exceptions import (
+    LegacyVideoDeprecationWarning,
+    NominalIngestError,
+    NominalIngestFailed,
+    NominalIngestTimeout,
+    NominalVideoFileMetadataError,
+)
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
+
+# Generous enough that a large video ingesting normally is never cut short, short enough that a
+# stalled one does not wedge a caller (or a migration worker) for the rest of the day.
+DEFAULT_INGEST_POLL_TIMEOUT = timedelta(minutes=30)
 
 
 @dataclass(frozen=True)
@@ -110,15 +120,28 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         "`VideoDatasetFile.poll_until_ingestion_completed` instead.",
         category=LegacyVideoDeprecationWarning,
     )
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
+    def poll_until_ingestion_completed(
+        self,
+        interval: timedelta = timedelta(seconds=1),
+        *,
+        timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+    ) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video file on an interval.
+
+        Args:
+            interval: How long to wait between status checks.
+            timeout: Give up after this long and raise `NominalIngestTimeout`. Pass `None` to wait
+                indefinitely — only safe when a human is watching, since a server-side worker that
+                dies mid-ingest leaves the file in `inProgress` and the poll never terminates.
 
         Raises:
         ------
             NominalIngestFailed: if the ingest failed
+            NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known
         """
+        deadline = None if timeout is None else time.monotonic() + timeout.total_seconds()
         while True:
             resp = self._clients.video_file.get_ingest_status(self._clients.auth_header, self.rid)
             status = resp.ingest_status
@@ -139,6 +162,11 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             else:
                 raise NominalIngestError(f"Unhandled ingest status {status.type!r} for video {self.rid!r}")
 
+            if deadline is not None and time.monotonic() + interval.total_seconds() > deadline:
+                raise NominalIngestTimeout(
+                    f"video {self.rid!r} was still ingesting after {timeout}; giving up waiting for it to finish"
+                )
+
             time.sleep(interval.total_seconds())
 
     def _get_file_ingest_options(self) -> Tuple[McapVideoDetails | None, TimestampOptions | None]:
@@ -152,7 +180,9 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             Video file ingest options (either McapVideoFileMetadata or MiscVideoFileMetadata).
 
         Raises:
-            ValueError: If the video file has an unexpected timestamp manifest type.
+            NominalVideoFileMetadataError: If the video file has no segment metadata to derive
+                ingest options from.
+            NotImplementedError: If the video file has an unexpected timestamp manifest type.
         """
         api_video_file = self._get_latest_api()
         if api_video_file.origin_metadata.timestamp_manifest.type == "mcap":
@@ -175,8 +205,9 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
                     f"but got type: {api_video_file._origin_metadata._timestamp_manifest._type}"
                 )
             if api_video_file.segment_metadata is None:
-                raise ValueError(
-                    "Expected segment metadata for non-MCAP video file: %s", api_video_file.segment_metadata
+                raise NominalVideoFileMetadataError(
+                    f"video file {self.rid!r} has no segment metadata, so it cannot be re-ingested elsewhere; "
+                    "it most likely never finished segmenting where it currently lives"
                 )
             if (
                 api_video_file.segment_metadata.max_absolute_timestamp is None

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
@@ -12,6 +13,7 @@ import yaml
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -501,6 +503,16 @@ def migrate_cmd() -> None:
     help="Maximum number of top-level asset/template migrations to run concurrently.",
 )
 @click.option(
+    "--video-ingest-timeout-seconds",
+    default=int(DEFAULT_INGEST_POLL_TIMEOUT.total_seconds()),
+    show_default=True,
+    type=click.IntRange(min=0),
+    help=(
+        "How long to wait for a copied video to finish ingesting before recording it as incomplete "
+        "and moving on. 0 waits indefinitely."
+    ),
+)
+@click.option(
     "--dry-run",
     "dry_run",
     is_flag=True,
@@ -512,6 +524,7 @@ def copy(
     config_path: Path,
     migration_state_path: Path | None,
     max_workers: int,
+    video_ingest_timeout_seconds: int,
     dry_run: bool,
 ) -> None:
     source_client, target_client = clients
@@ -561,6 +574,9 @@ def copy(
         destination_client_resolver=destination_client_resolver,
         migration_state_path=migration_state_path,
         dry_run=dry_run,
+        video_ingest_timeout=(
+            timedelta(seconds=video_ingest_timeout_seconds) if video_ingest_timeout_seconds > 0 else None
+        ),
     )
     run_parallel_migration(runner, max_workers=max_workers)
 

@@ -20,6 +20,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_f
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
+from nominal.core.exceptions import NominalChecklistNotPublishedError
 from nominal.ts import _to_api_duration
 
 
@@ -49,7 +50,9 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
-            raise ValueError("cannot get a checklist that has not been published")
+            raise NominalChecklistNotPublishedError(
+                f"cannot get checklist {checklist.rid!r}: this version has not been published"
+            )
 
         return cls(
             rid=checklist.rid,
