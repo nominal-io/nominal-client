@@ -8,20 +8,19 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import (
     event,
     scout,
-    scout_asset_api,
-    scout_assets,
     scout_run_api,
 )
 from typing_extensions import Self, deprecated
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
+    DatasetScope,
     HasRid,
     Link,
     LinkDict,
     RefreshableConjureMixin,
+    conjure_dataset_scopes,
     create_links,
-    filter_scopes,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.frontend_urls import run_url
@@ -36,6 +35,7 @@ from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -68,7 +68,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Protocol,
     ):
         @property
-        def assets(self) -> scout_assets.AssetService: ...
+        def assets(self) -> asset_pb2_grpc.AssetServiceStub: ...
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
@@ -154,12 +154,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             response = self._clients.comments.CreateComment(request)
         return Comment._from_proto(response.comment)
 
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+    def _list_dataset_scopes(self) -> Sequence[DatasetScope]:
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        return filter_scopes(api_run.asset_data_scopes, "dataset")
+        return conjure_dataset_scopes(api_run.asset_data_scopes)
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
@@ -535,13 +535,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         return list(self._iter_list_attachments())
 
     def _iter_list_assets(self) -> Iterable["Asset"]:
-        from nominal.core.asset import Asset
+        from nominal.core.asset import Asset, _get_assets
 
         clients = cast(Asset._Clients, self._clients)
         run = self._get_latest_api()
-        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
-        for a in assets.values():
-            yield Asset._from_conjure(clients, a)
+        for a in _get_assets(clients, run.assets).values():
+            yield Asset._from_proto(clients, a)
 
     def list_assets(self) -> Sequence["Asset"]:
         """List assets associated with this run."""

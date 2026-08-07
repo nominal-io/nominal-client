@@ -9,7 +9,6 @@ from nominal_api import (
     authentication_api,
     event,
     ingest_api,
-    scout_asset_api,
     scout_catalog,
     scout_checks_api,
     scout_notebook_api,
@@ -20,6 +19,7 @@ from nominal_api import (
 )
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.types import types_pb2
@@ -236,22 +236,25 @@ def create_search_assets_query(
     properties: Mapping[str, str] | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
-) -> scout_asset_api.SearchAssetsQuery:
+) -> asset_pb2.SearchAssetsQuery:
     queries = []
     if search_text is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
+        queries.append(asset_pb2.SearchAssetsQuery(search_text=search_text))
     if exact_substring is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(exact_substring=exact_substring))
+        queries.append(asset_pb2.SearchAssetsQuery(exact_substring=exact_substring))
     if labels is not None:
         for label in labels:
-            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
+            queries.append(asset_pb2.SearchAssetsQuery(label=label))
     if properties:
         for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
+            queries.append(asset_pb2.SearchAssetsQuery(property=types_pb2.Property(name=name, value=value)))
     if workspace_rid is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
+        queries.append(asset_pb2.SearchAssetsQuery(workspace=workspace_rid))
 
-    return scout_asset_api.SearchAssetsQuery(and_=queries)
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return asset_pb2.SearchAssetsQuery(
+        **{"and": asset_pb2.SearchAssetsQueryList(queries=queries)}  # type: ignore[arg-type]
+    )
 
 
 def create_search_ingest_jobs_query(

@@ -9,13 +9,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.api_tools import DatasetScope, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
@@ -1226,11 +1226,11 @@ class _DatasetWrapper(abc.ABC):
     _clients: Dataset._Clients
 
     @abc.abstractmethod
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
-        """Return the data scopes available to this wrapper.
+    def _list_dataset_scopes(self) -> Sequence[DatasetScope]:
+        """Return the dataset-backed data scopes available to this wrapper.
 
-        Subclasses provide the authoritative list of `scout_asset_api.DataScope` objects used to
-        resolve `data_scope_name` in wrapper methods.
+        Subclasses provide the authoritative list of scopes that wrapper methods resolve
+        `data_scope_name` against.
         """
 
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
@@ -1240,18 +1240,16 @@ class _DatasetWrapper(abc.ABC):
             A tuple of the resolved `Dataset` and the scope's required `series_tags`.
 
         Raises:
-            ValueError: If no scope exists with the given `data_scope_name`, or if the scope is not backed by a dataset.
+            ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
         """
         dataset_scopes = {scope.data_scope_name: scope for scope in self._list_dataset_scopes()}
         data_scope = dataset_scopes.get(data_scope_name)
         if data_scope is None:
             raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
-        elif data_scope.data_source.dataset is None:
-            raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
 
         dataset = Dataset._from_conjure(
             self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.dataset_rid),
         )
         return dataset, data_scope.series_tags
 

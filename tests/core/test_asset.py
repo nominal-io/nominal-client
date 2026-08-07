@@ -25,6 +25,7 @@ def mock_asset(mock_clients):
         properties={},
         labels=[],
         created_at=0,
+        updated_at=0,
         _clients=mock_clients,
     )
 
