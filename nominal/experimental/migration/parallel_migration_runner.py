@@ -24,6 +24,7 @@ from nominal.experimental.migration.parallel_migration_executor import (
     validate_max_workers,
 )
 from nominal.experimental.migration.parallel_migration_state import ThreadSafeMigrationState
+from nominal.experimental.migration.resource_type import resource_label
 
 logger = logging.getLogger(__name__)
 
@@ -246,5 +247,22 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         raise
     finally:
         runner.save_state()
+        _log_skipped_resources(ctx)
 
     logger.info("Completed parallel migration")
+
+
+def _log_skipped_resources(context: MigrationContext) -> None:
+    """Report everything the run skipped, grouped by resource type.
+
+    Skips are individually logged as warnings when they happen, but a long migration buries them
+    under thousands of lines. Without this, a run that skipped video files still ends with
+    "Completed parallel migration" and nothing else — which reads as a clean migration.
+    """
+    skipped = context.skipped()
+    if not skipped:
+        return
+
+    logger.warning("Migration completed with %d skipped resource(s):", len(skipped))
+    for skip in skipped:
+        logger.warning("  skipped %s %s — %s", resource_label(skip.resource_type), skip.source_rid, skip.reason)

@@ -42,6 +42,23 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
+class NominalIngestTimeout(NominalIngestError):
+    """Ingest did not reach a terminal state before the caller's deadline.
+
+    Distinct from `NominalIngestFailed`: the server never reported failure, it simply never
+    reported success either. A server-side worker that dies mid-ingest can leave a file in
+    `inProgress` forever, so every poll loop needs a deadline to fall back on.
+    """
+
+
+class NominalChecklistNotPublishedError(NominalError, ValueError):
+    """The requested checklist version has no published content.
+
+    Also a `ValueError`, which is what this call site raised before this type existed, so
+    `except ValueError` keeps working.
+    """
+
+
 class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
@@ -160,6 +177,17 @@ class NominalVideoScaleModeError(NominalError, ValueError):
     ) -> None:
         """Initialize error."""
         super().__init__(message)
+
+
+class NominalVideoFileMetadataError(NominalError, ValueError):
+    """A video file lacks the metadata needed to re-ingest it elsewhere.
+
+    Raised when a non-MCAP video file has no segment metadata, which means it never finished
+    segmenting where it currently lives — there is nothing to derive ingest options from.
+
+    Also a `ValueError`, which is what this call site raised before this type existed, so
+    `except ValueError` keeps working.
+    """
 
 
 class NominalVideoStreamError(NominalError):
