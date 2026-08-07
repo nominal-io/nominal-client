@@ -328,41 +328,35 @@ def _compute_buckets(
     yield from _numeric_buckets_from_compute_response(response)
 
 
+def _single_point_bucket(point: scout_compute_api.NumericPoint) -> scout_compute_api.NumericBucket:
+    """Wrap a single point as a bucket the client invented.
+
+    There are no server-computed aggregations to carry. Real buckets carry an empty map here too:
+    every `SummarizeSeries` the client builds requests `numeric_aggregations={}`.
+    """
+    return scout_compute_api.NumericBucket(
+        aggregations={},
+        count=1,
+        first_point=point,
+        last_point=point,
+        max=point.value,
+        mean=point.value,
+        min=point.value,
+        variance=0,
+    )
+
+
 def _numeric_buckets_from_compute_response(
     response: scout_compute_api.ComputeNodeResponse,
 ) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
     if response.numeric_point is not None:
         # single point would be returned-- create a synthetic bucket
-        val = response.numeric_point.value
-        yield (
-            response.numeric_point.timestamp,
-            scout_compute_api.NumericBucket(
-                count=1,
-                first_point=response.numeric_point,
-                max=val,
-                mean=val,
-                min=val,
-                variance=0,
-                last_point=response.numeric_point,
-            ),
-        )
+        yield (response.numeric_point.timestamp, _single_point_bucket(response.numeric_point))
     elif response.numeric is not None:
         # Not enough points to reach the number of requested bucket count, so
         # gets returned as all of the raw data.
         for timestamp, value in zip(response.numeric.timestamps, response.numeric.values):
-            point = scout_compute_api.NumericPoint(timestamp, value)
-            yield (
-                timestamp,
-                scout_compute_api.NumericBucket(
-                    count=1,
-                    first_point=point,
-                    max=value,
-                    min=value,
-                    mean=value,
-                    variance=0,
-                    last_point=point,
-                ),
-            )
+            yield (timestamp, _single_point_bucket(scout_compute_api.NumericPoint(timestamp, value)))
     elif response.bucketed_numeric is not None:
         # Actually bucketed data
         yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)

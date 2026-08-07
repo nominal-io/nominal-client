@@ -68,3 +68,35 @@ def test_str_to_literal_time_unit_rejects_unknown_units() -> None:
 def test_timestamp_type_proto_round_trip(typed: ts.TypedTimestampType) -> None:
     """Every timestamp type survives a lossless round trip through the proto encoding."""
     assert ts._proto_timestamp_type_to_typed_timestamp_type(typed._to_proto()) == typed
+
+
+def test_epoch_converts_to_a_numeric_avro_timestamp_type() -> None:
+    """An epoch type reaches the avro request as an epoch union arm carrying its unit."""
+    converted = ts.Epoch("microseconds")._to_conjure_ingest_avro_api()
+
+    assert converted.relative is None
+    assert converted.epoch is not None
+    assert converted.epoch.time_unit.value == "MICROSECONDS"
+
+
+def test_relative_converts_to_a_numeric_avro_timestamp_type() -> None:
+    """A relative type reaches the avro request as a relative arm carrying its unit and start."""
+    converted = ts.Relative("seconds", start=1_700_000_000_000_000_000)._to_conjure_ingest_avro_api()
+
+    assert converted.epoch is None
+    assert converted.relative is not None
+    assert converted.relative.time_unit.value == "SECONDS"
+    assert converted.relative.offset == "2023-11-14T22:13:20.000000000Z"
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        pytest.param(ts.Iso8601(), id="iso8601"),
+        pytest.param(ts.Custom("yyyy-DDD HH:mm:ss"), id="custom"),
+    ],
+)
+def test_string_timestamp_types_cannot_describe_avro_timestamps(typed: ts.TypedTimestampType) -> None:
+    """Avro timestamps are integers, so a string-formatted type has no representation there."""
+    with pytest.raises(ValueError, match="not supported with .avro files"):
+        typed._to_conjure_ingest_avro_api()

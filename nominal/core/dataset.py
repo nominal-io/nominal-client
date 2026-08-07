@@ -16,6 +16,7 @@ from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
@@ -30,11 +31,15 @@ from nominal.core.log import LogPoint, _write_logs
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.ts import (
+    Epoch,
     IntegralNanosecondsUTC,
+    _AnyEpochTimestampType,
+    _AnyNumericTimestampType,
     _AnyTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
+    _validate_timestamp_pair,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +58,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        return f"{self._clients.app_base_url}/data-sources/{self.rid}"
+        return dataset_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
@@ -258,69 +263,86 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def add_avro_stream(
         self,
         path: PathLike,
+        *,
+        timestamp_type: _AnyNumericTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
-        """Upload an avro stream file with a specific schema, described below.
+        """Upload an avro-stream file, which must match the schema shown below.
 
         This is a "stream-like" file format to support
         use cases where a columnar/tabular format does not make sense. This closely matches Nominal's streaming
         API, making it useful for use cases where network connection drops during streaming and a backup file needs
         to be created.
 
-        For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
-
-        If this schema is not used, will result in a failed ingestion.
-        {
-            "type": "record",
-            "name": "AvroStream",
-            "namespace": "io.nominal.ingest",
-            "fields": [
-                {
-                    "name": "channel",
-                    "type": "string",
-                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                },
-                {
-                    "name": "timestamps",
-                    "type": {"type": "array", "items": "long"},
-                    "doc": "Array of Unix timestamps in nanoseconds",
-                },
-                {
-                    "name": "values",
-                    "type": {"type": "array", "items": [
-                        "double",
-                        "string",
-                        "long",
-                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                    ]},
-                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                },
-                {
-                    "name": "tags",
-                    "type": {"type": "map", "values": "string"},
-                    "default": {},
-                    "doc": "Key-value metadata tags",
-                },
-            ],
-        }
-
-        Note: The previous schema with only "double" and "string" value types is still fully supported.
-
         Args:
             path: Path to the .avro or .avro.gz file to upload
+            timestamp_type: How to read the numbers in the file's `timestamps` field: an absolute epoch
+                (`ts.Epoch`, or its string literal) or an offset from a start (`ts.Relative`). Defaults to
+                "epoch_nanoseconds".
+            tags: Key-value tags applied to all data in the file. Tags in the records themselves take
+                precedence -- these only fill keys a record does not already set.
 
         Returns:
             Reference to the ingesting DatasetFile
 
         Raises:
-            ValueError: `path` does not end in .avro or .avro.gz.
+            ValueError: `path` does not end in .avro or .avro.gz, or `timestamp_type` has no numeric
+                representation (e.g. an ISO 8601 or custom string format).
+
+        NOTE: For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+
+        NOTE: The previous schema with only "double" and "string" value types is still fully supported.
+
+        NOTE: If this schema is not used, will result in a failed ingestion.
+
+            {
+                "type": "record",
+                "name": "AvroStream",
+                "namespace": "io.nominal.ingest",
+                "fields": [
+                    {
+                        "name": "channel",
+                        "type": "string",
+                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                    },
+                    {
+                        "name": "timestamps",
+                        "type": {"type": "array", "items": "long"},
+                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                    },
+                    {
+                        "name": "values",
+                        "type": {"type": "array", "items": [
+                            "double",
+                            "string",
+                            "long",
+                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                        ]},
+                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                    },
+                    {
+                        "name": "tags",
+                        "type": {"type": "map", "values": "string"},
+                        "default": {},
+                        "doc": "Key-value metadata tags",
+                    },
+                ],
+            }
 
         """
         avro_path = Path(path)
-        # Also resolves .avro vs .avro.gz, which a hardcoded AVRO_STREAM would have described wrongly.
         file_type = FileType.from_avro_stream(avro_path)
+
+        timestamp_req = None
+        if timestamp_type is not None:
+            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+            timestamp_req = typed_timestamp_type._to_conjure_ingest_avro_api()
+
         workspace_rid = self._clients.resolve_default_workspace_rid()
+
+        # Upload to S3
         s3_path = upload_multipart_file(
             self._clients.auth_header,
             workspace_rid,
@@ -329,6 +351,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             file_type=file_type,
             header_provider=self._clients.header_provider,
         )
+
+        # Ingest to Nominal
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
@@ -339,37 +363,87 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                     avro_stream=ingest_api.AvroStreamOpts(
                         source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
                         target=target,
+                        additional_file_tags={**tags} if tags else None,
+                        timestamp_type=timestamp_req,
                     )
                 )
             ),
         )
         return self._handle_ingest_response(resp)
 
+    @overload
     def add_journal_json(
         self,
         path: PathLike,
         *,
         channel: str | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_journal_json(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyEpochTimestampType,
+    ) -> DatasetFile: ...
+    def add_journal_json(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyEpochTimestampType | None = None,
     ) -> DatasetFile:
         """Add a journald jsonl file to an existing dataset.
 
-        Designed to support any valid journald-style jsonl files, there are a few key expectations for journal
-        json files:
-            - They must be .jsonl or .jsonl.gz files, and each line should contain a json payload
-            - Each json line *must* contain an epoch microsecond timestamp (__REALTIME_TIMESTAMP), which is treated
-              as an integer, and a `MESSAGE` field containing the primary log message. All other JSON key value pairs
-              are converted to args, though, except string literals.
+        Supports any journald-style jsonl file, with a few expectations:
+            - The file must be .jsonl or .jsonl.gz, and each line must be a json object.
+            - Each line must hold a timestamp field and a `MESSAGE` field carrying the primary log message.
+              The timestamp field is `__REALTIME_TIMESTAMP` unless `timestamp_column` names another one.
+              Lines missing either field are skipped.
+            - Every other top-level field becomes a log arg, with its value converted to a string.
 
         Args:
             path: Path to journal json file to ingest
             channel: Optionally, a channel name to use for ingested logs (defaults to 'logs')
+            timestamp_column: Optionally, the name of the field in each json payload holding a timestamp.
+                Defaults to __REALTIME_TIMESTAMP.
+            timestamp_type: Optionally, how to read the numbers in that field, given as a `ts.Epoch` or its
+                string literal, e.g. `"epoch_microseconds"`. Defaults to microseconds since the unix epoch.
 
         Returns:
             DatasetFile object which can be used to poll for ingestion completion
+
+        Raises:
+            ValueError: if only one of `timestamp_column` / `timestamp_type` is given, or if
+                `timestamp_type` is not an absolute epoch type.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
+        timestamp_metadata = None
+        if timestamp_column is not None and timestamp_type is not None:
+            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+            # Journal ingest carries an epoch time unit with nowhere to record a starting offset, so a
+            # relative or string-format type cannot be expressed here.
+            # TODO(drake): once this routes through v2 ingest, which can carry a relative timestamp type,
+            # widen this guard and the _AnyEpochTimestampType annotations here and on _DatasetWrapper to
+            # accept ts.Relative. The log pipeline already reads relative timestamps -- only this request
+            # shape blocks it, and IngestBuilder.add_journal_json accepts them today.
+            if not isinstance(typed_timestamp_type, Epoch):
+                raise ValueError(
+                    f"journal json timestamps must be an absolute epoch type, received {typed_timestamp_type!r}"
+                )
+            timestamp_metadata = ingest_api.JournalTimestampMetadata(
+                epoch_of_time_unit=typed_timestamp_type._to_conjure_epoch_timestamp(),
+                field_name=timestamp_column,
+            )
+
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         workspace_rid = self._clients.resolve_default_workspace_rid()
+
+        # Upload to S3
         s3_path = upload_multipart_file(
             self._clients.auth_header,
             workspace_rid,
@@ -378,6 +452,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             file_type=file_type,
             header_provider=self._clients.header_provider,
         )
+
+        # Trigger Ingest
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
@@ -389,6 +465,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                         source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
                         target=target,
                         channel=channel,
+                        timestamp_metadata=timestamp_metadata,
                     )
                 )
             ),
@@ -891,14 +968,14 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Returns:
             An `IngestionJob` handle for the asynchronous containerized ingest.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
             timestamp_metadata = ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             )
-        elif (timestamp_column is None) != (timestamp_type is None):
-            raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
             extractor = _get_containerized_extractor(self._clients, extractor)
@@ -1213,55 +1290,78 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         path: PathLike,
+        *,
+        timestamp_type: _AnyNumericTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Upload an avro stream file to the dataset selected by `data_scope_name`.
 
-        This method behaves like `nominal.core.Dataset.add_avro_stream`, with one important difference:
-        avro stream ingestion does not support applying scope tags. If the selected scope requires tags, this method
-        raises `RuntimeError` rather than ingesting (potentially) untagged data. This file may still be ingested
-        directly on the dataset itself if it is known to contain the correct set of tags.
+        This method behaves like `nominal.core.Dataset.add_avro_stream`, except that the data scope's required
+        tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
+        Tags in the avro records take precedence over both, so a scope tag whose key a record already sets is
+        not applied to that record's data.
 
-        For schema requirements and return value details, see
+        For schema requirements, argument semantics, and return value details, see
         `nominal.core.Dataset.add_avro_stream`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_avro_stream(path, timestamp_type=timestamp_type, tags=_unify_tags(scope_tags, tags))
 
-        # TODO(drake): remove once avro stream supports ingest with tags
-        if scope_tags:
-            raise RuntimeError(
-                f"Cannot add avro files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required tags: {scope_tags}"
-            )
-
-        return dataset.add_avro_stream(path)
-
+    @overload
+    def add_journal_json(self, data_scope_name: str, path: PathLike, *, channel: str | None = ...) -> DatasetFile: ...
+    @overload
+    def add_journal_json(
+        self,
+        data_scope_name: str,
+        path: PathLike,
+        *,
+        channel: str | None = ...,
+        timestamp_column: str,
+        timestamp_type: _AnyEpochTimestampType,
+    ) -> DatasetFile: ...
     def add_journal_json(
         self,
         data_scope_name: str,
         path: PathLike,
         *,
         channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyEpochTimestampType | None = None,
     ) -> DatasetFile:
         """Add a journald json file to the dataset selected by `data_scope_name`.
 
-        This method behaves like `nominal.core.Dataset.add_journal_json`, with one important difference:
-        journal json ingestion does not support applying scope tags as args. If the selected scope requires tags,
-        this method raises `RuntimeError` rather than potentially ingesting untagged data. This file may still be
-        ingested directly on the dataset itself if it is known to contain the correct set of args.
+        This method behaves like `nominal.core.Dataset.add_journal_json`, with one important difference: the
+        journal json ingest request has no field for tags, so a scope's required tags cannot be applied to the
+        ingested logs. If the selected scope requires tags, this method raises `RuntimeError` rather than
+        ingesting logs that would be missing them. The file can still be ingested on the dataset directly, if
+        its own contents already carry what the scope needs.
 
-        For file expectations and return value details, see
+        For file expectations, timestamp argument semantics, and return value details, see
         `nominal.core.Dataset.add_journal_json`.
         """
+        # Checked here as well as in the delegate, so a mispaired call fails on its own arguments rather
+        # than after a round trip to resolve the scope.
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
 
         # TODO(drake): remove once journal json supports ingest with tags
         if scope_tags:
             raise RuntimeError(
-                f"Cannot add journal json files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required arguments: {scope_tags}"
+                f"Cannot add journal json files to datascope {data_scope_name}: journal ingest cannot apply "
+                f"tags, so the logs would not get the scope's required tags {scope_tags}"
             )
 
-        return dataset.add_journal_json(path, channel=channel)
+        # `Dataset.add_journal_json`'s overloads take the timestamp pair together or not at all, but this
+        # pass-through holds each half as its own optional -- a shape no overload can accept, since the two
+        # are only correlated at runtime. Forwarding in one call gives up static checking here; the check
+        # above and the delegate's own conversion enforce the contract.
+        return dataset.add_journal_json(
+            path,
+            channel=channel,
+            timestamp_column=timestamp_column,  # type: ignore[arg-type]
+            timestamp_type=timestamp_type,  # type: ignore[arg-type]
+        )
 
     def add_mcap(
         self,
@@ -1346,21 +1446,16 @@ class _DatasetWrapper(abc.ABC):
         This method behaves like `nominal.core.Dataset.add_containerized`, except that the data scope's required
         tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
 
-        This wrapper also enforces that `timestamp_column` and `timestamp_type` are provided together (or omitted
-        together) before delegating.
+        Pass both `timestamp_column` and `timestamp_type`, or neither; this wrapper enforces that before
+        delegating.
 
         For extractor inputs, tagging semantics, timestamp metadata behavior, and return value details, see
         `nominal.core.Dataset.add_containerized`.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        if timestamp_column is None and timestamp_type is None:
-            return dataset.add_containerized(
-                extractor,
-                sources,
-                arguments=arguments,
-                tags=_unify_tags(scope_tags, tags),
-            )
-        elif timestamp_column is not None and timestamp_type is not None:
+        if timestamp_column is not None and timestamp_type is not None:
             return dataset.add_containerized(
                 extractor,
                 sources,
@@ -1369,11 +1464,12 @@ class _DatasetWrapper(abc.ABC):
                 timestamp_column=timestamp_column,
                 timestamp_type=timestamp_type,
             )
-        else:
-            raise ValueError(
-                "Only one of `timestamp_column` and `timestamp_type` were provided to `add_containerized`, "
-                "either both must or neither must be provided."
-            )
+        return dataset.add_containerized(
+            extractor,
+            sources,
+            arguments=arguments,
+            tags=_unify_tags(scope_tags, tags),
+        )
 
     def add_from_io(
         self,

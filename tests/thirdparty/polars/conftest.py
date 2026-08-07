@@ -24,6 +24,7 @@ def make_numeric_response():
         ]
         response.bucketed_numeric.buckets = [
             scout_compute_api.NumericBucket(
+                aggregations={},
                 count=c,
                 min=0.0,
                 max=1.0,
