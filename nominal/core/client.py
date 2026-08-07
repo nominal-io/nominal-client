@@ -381,16 +381,18 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Dataset]:
-        """Search for datasets the specified filters.
-        Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
+        """Search for datasets meeting the specified filters.
+        Filters are ANDed together, e.g. `(dataset.label == label) AND (dataset.property == property)`
 
         Args:
-            exact_match: Searches for an exact substring of dataset name
-            search_text: Searches for a (case-insensitive) substring across all text fields.
-            labels: A sequence of labels that must ALL be present on a secret to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
-            before: Searches for datasets created before some time (inclusive).
-            after: Searches for datasets created before after time (inclusive).
+            exact_match: Case-insensitive substring of the dataset's name, description, labels, or properties.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
+            labels: A sequence of labels that must ALL be present on a dataset to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
+            before: Searches for datasets ingested before some time (inclusive).
+            after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
             archive_status: Filter results to the given archive status.
 
@@ -509,7 +511,9 @@ class NominalClient:
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
 
         Args:
-            search_text: Searches for a (case-insensitive) substring across all text fields.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             workspace: Filters search to given workspace.
@@ -558,7 +562,9 @@ class NominalClient:
         Filters are ANDed together, e.g. `(video.label == label) AND (video.property == property)`
 
         Args:
-            search_text: Searches for a (case-insensitive) substring across all text fields.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a video to be included.
             properties: A mapping of key-value pairs that must ALL be present on a video to be included.
             workspace: Filters search to given workspace.
@@ -714,11 +720,15 @@ class NominalClient:
         Args:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
-            name_substring: Searches for a (case-insensitive) substring in the name.
+            name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
+                of the run's name, description, labels, or properties. For name-only matching, filter the
+                returned runs on their names.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-            exact_match: A case-insensitive substring that must be matched exactly.
-            search_text: A case-insensitive substring to perform fuzzy-search on all fields with
+            exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
@@ -1190,10 +1200,13 @@ class NominalClient:
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
 
         Args:
-            search_text: case-insensitive search for any of the keywords in all string fields
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            exact_substring: case-insensitive search for exact string match in all string fields
+            exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
+                Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1528,8 +1541,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            exact_match: Searches for a string to match exactly in the workbook's metadata
-            search_text: Fuzzy-searches for a string in the workbook's metadata
+            exact_match: Case-insensitive substring of the workbook's title.
+            search_text: Case-insensitive substring of the workbook's title or description.
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             asset: Searches for workbooks that include the given asset
@@ -1599,8 +1612,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
 
         Args:
-            exact_match: Searches for a string to match exactly in the template's metadata
-            search_text: Fuzzy-searches for a string in the template's metadata
+            exact_match: Case-insensitive substring of the template's title.
+            search_text: Fuzzy (similarity) match against the template's title or description.
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             created_by: Searches for workbook templates with the given creator's rid
