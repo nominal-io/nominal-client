@@ -62,7 +62,7 @@ def _timestamp_options() -> MagicMock:
     return options
 
 
-def test_source_video_without_segment_metadata_is_skipped_not_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_source_video_without_segment_metadata_is_skipped_not_raised() -> None:
     """A video that never finished segmenting at the source is unusable — skip it, don't abort the asset."""
     source_file = _make_source_video_file(_video_file_rid(1))
     source_file._get_file_ingest_options.side_effect = NominalVideoFileMetadataError("no segment metadata")
@@ -88,8 +88,8 @@ def test_skipped_source_video_is_recorded_as_skip_and_not_mapped() -> None:
     VideoFileMigrator(ctx).copy_from(source_file, MagicMock(_clients=MagicMock(workspace_rid="ws-rid")))
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
-    assert [(skip.resource_type, skip.source_rid) for skip in ctx.skipped()] == [
-        (ResourceType.VIDEO_FILE, source_file.rid)
+    assert [(skip.resource_type, skip.source_rid) for skip in ctx.migration_state.skipped_resources] == [
+        (ResourceType.VIDEO_FILE.value, source_file.rid)
     ]
 
 
@@ -112,10 +112,11 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
-    assert len(ctx.skipped()) == 1
-    assert "ingest did not complete" in ctx.skipped()[0].reason
-    # Timing metadata is not applied on top of a file the server never finished ingesting.
-    new_file.update.assert_not_called()
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "ingest did not complete" in ctx.migration_state.skipped_resources[0].reason
+    # Timing metadata is applied even though the wait timed out: it is an independent metadata
+    # write, and since the file is recorded as migrated no rerun will come back to set it.
+    new_file.update.assert_called_once()
 
 
 def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +137,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
-    assert ctx.skipped() == ()
+    assert ctx.migration_state.skipped_resources == []
     new_file.update.assert_called_once()
 
 

@@ -209,7 +209,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_asset.rid,
                     error,
                 )
-                self.ctx.record_skip(
+                self.ctx.migration_state.record_skip(
                     ResourceType.CHECKLIST,
                     source_data_review.checklist_rid,
                     f"checklist version pinned by data review {source_data_review.rid} is not published",
@@ -223,6 +223,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     "Run %s not found in migration state for data review checklist %s — skipping",
                     source_data_review.run_rid,
                     source_checklist.rid,
+                )
+                self.ctx.migration_state.record_skip(
+                    ResourceType.DATA_REVIEW,
+                    source_data_review.rid,
+                    f"run {source_data_review.run_rid} was not migrated, so its data review cannot be executed",
                 )
                 continue
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:

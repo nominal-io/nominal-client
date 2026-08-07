@@ -61,7 +61,7 @@ def copy_video_file_to_video_dataset(
     response = requests.get(old_file_uri, stream=True)
     response.raise_for_status()
 
-    new_file, skip_reason = _create_destination_video_file(
+    outcome = _create_destination_video_file(
         source_video_file,
         destination_video_dataset,
         cast(BinaryIO, response.raw),
@@ -71,11 +71,11 @@ def copy_video_file_to_video_dataset(
     )
     logger.debug(
         "New video file created %s in video dataset: %s (rid: %s)",
-        new_file.name,
+        outcome.file.name if outcome.file else None,
         destination_video_dataset.name,
         destination_video_dataset.rid,
     )
-    return VideoFileCopyOutcome(file=new_file, skip_reason=skip_reason)
+    return outcome
 
 
 def _create_destination_video_file(
@@ -85,7 +85,7 @@ def _create_destination_video_file(
     mcap_video_details: McapVideoDetails | None,
     timestamp_options: TimestampOptions | None,
     poll_timeout: timedelta | None,
-) -> tuple[VideoFile, str | None]:
+) -> VideoFileCopyOutcome:
     file_stem = sanitize_upload_filename(_resolve_destination_file_stem(source_video_file.name))
     if timestamp_options is not None:
         new_file = destination_video_dataset.add_from_io(
@@ -95,15 +95,14 @@ def _create_destination_video_file(
             description=source_video_file.description,
         )
         skip_reason = _await_ingestion(new_file, poll_timeout)
-        if skip_reason is not None:
-            # The timestamps below are metadata on a file the server has not finished ingesting;
-            # applying them now would fail on top of an already-degraded copy.
-            return new_file, skip_reason
+        # Applied even when the wait timed out: this is a metadata update, independent of ingest
+        # state, and the copy is recorded as migrated either way — so a rerun will not come back
+        # to set these, and skipping them would lose the video's timing permanently.
         new_file.update(
             starting_timestamp=timestamp_options.starting_timestamp,
             ending_timestamp=timestamp_options.ending_timestamp,
         )
-        return new_file, None
+        return VideoFileCopyOutcome(file=new_file, skip_reason=skip_reason)
 
     if mcap_video_details is not None:
         new_file = destination_video_dataset.add_mcap_from_io(
@@ -113,7 +112,7 @@ def _create_destination_video_file(
             description=source_video_file.description,
             file_type=FileTypes.MCAP,
         )
-        return new_file, _await_ingestion(new_file, poll_timeout)
+        return VideoFileCopyOutcome(file=new_file, skip_reason=_await_ingestion(new_file, poll_timeout))
 
     raise ValueError(
         "Unsupported video file ingest options for copying video file. "

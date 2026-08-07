@@ -54,15 +54,16 @@ def _make_asset(data_reviews: list[MagicMock]) -> MagicMock:
 
 
 def test_unpublished_checklist_is_skipped_without_raising() -> None:
+    """A draft checklist is recorded and stepped over, not raised out of the asset."""
     ctx = _make_context()
     asset = _make_asset([_make_data_review(1, published=False)])
 
     # Must not raise: the caller goes on to copy videos, attachments, and workbooks.
     AssetMigrator(ctx)._copy_asset_checklists(asset)
 
-    assert [(skip.resource_type, skip.reason) for skip in ctx.skipped()] == [
+    assert [(skip.resource_type, skip.reason) for skip in ctx.migration_state.skipped_resources] == [
         (
-            ResourceType.CHECKLIST,
+            ResourceType.CHECKLIST.value,
             f"checklist version pinned by data review {asset.search_data_reviews.return_value[0].rid} is not published",
         )
     ]
@@ -81,5 +82,9 @@ def test_one_unpublished_checklist_does_not_stop_the_others() -> None:
 
     # The published checklist was still copied.
     checklist_migrator_cls.return_value.copy_from.assert_called_once()
-    assert len(ctx.skipped()) == 1
-    assert ctx.skipped()[0].source_rid == unpublished.checklist_rid
+    # Two distinct skips: the draft checklist, then the published one's data review, whose run was
+    # never migrated in this fixture.
+    assert [(skip.resource_type, skip.source_rid) for skip in ctx.migration_state.skipped_resources] == [
+        (ResourceType.CHECKLIST.value, unpublished.checklist_rid),
+        (ResourceType.DATA_REVIEW.value, published.rid),
+    ]

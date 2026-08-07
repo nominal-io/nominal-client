@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestFailed, NominalIngestTimeout
+from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
 
 
@@ -44,6 +45,7 @@ def _video_file(status_type: str) -> VideoFile:
 
 
 def test_poll_raises_timeout_when_ingest_never_finishes() -> None:
+    """The deadline fires rather than polling forever."""
     video_file = _video_file("inProgress")
 
     with pytest.raises(NominalIngestTimeout, match="still ingesting"):
@@ -54,6 +56,7 @@ def test_poll_raises_timeout_when_ingest_never_finishes() -> None:
 
 
 def test_poll_returns_immediately_on_success() -> None:
+    """A completed ingest costs exactly one status check."""
     video_file = _video_file("success")
 
     video_file.poll_until_ingestion_completed(interval=timedelta(seconds=0), timeout=timedelta(seconds=0))
@@ -85,3 +88,36 @@ def test_poll_eventually_succeeds_within_timeout() -> None:
     video_file.poll_until_ingestion_completed(interval=timedelta(seconds=0), timeout=timedelta(seconds=30))
 
     assert video_file._clients.video_file.get_ingest_status.call_count == 3
+
+
+def _video(status_type: str) -> Video:
+    clients = MagicMock()
+    clients.video.get_ingest_status.return_value.type = status_type
+    return Video(
+        rid="ri.video.cerulean-staging.video.00000001-0000-0000-0000-000000000000",
+        name="video",
+        description=None,
+        properties={},
+        labels=(),
+        created_at=0,
+        _clients=clients,
+    )
+
+
+def test_standalone_video_poll_raises_timeout_when_ingest_never_finishes() -> None:
+    """`Video` has its own loop with a different branch shape, so its deadline needs its own test."""
+    video = _video("inProgress")
+
+    with pytest.raises(NominalIngestTimeout, match="still ingesting"):
+        video.poll_until_ingestion_completed(interval=timedelta(seconds=0), timeout=timedelta(seconds=0))
+
+
+def test_standalone_video_poll_still_raises_ingest_failure_rather_than_timeout() -> None:
+    """A real failure must not be masked by the new deadline."""
+    video = _video("error")
+    error = MagicMock()
+    error.errors = [MagicMock(message="Video failed to segment", error_type="VideoSegmenter:Internal")]
+    video._clients.video.get_ingest_status.return_value.error = error
+
+    with pytest.raises(NominalIngestFailed, match="Video failed to segment"):
+        video.poll_until_ingestion_completed(interval=timedelta(seconds=0), timeout=timedelta(seconds=0))

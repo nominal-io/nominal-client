@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.migration_state import MigrationState, SkippedResource
 from nominal.experimental.migration.resource_type import ResourceType
 
 
@@ -17,14 +17,42 @@ class ThreadSafeMigrationState(MigrationState):
     _lock: threading.RLock
     _persist_hook: Callable[[], None] | None
 
-    def __init__(self, rid_mapping: dict[str, dict[str, str]] | None = None) -> None:
+    @classmethod
+    def from_state(cls, state: MigrationState) -> ThreadSafeMigrationState:
+        """Adopt every field of an existing state, so resuming a run does not silently drop progress.
+
+        Carrying only `rid_mapping` would discard deferred multi-asset/multi-run workbooks and the
+        record of what earlier attempts skipped — both of which are persisted precisely so a resumed
+        run can act on them.
+        """
+        return cls(
+            rid_mapping=state.rid_mapping,
+            pending_multi_asset_workbooks=state.pending_multi_asset_workbooks,
+            pending_multi_run_workbooks=state.pending_multi_run_workbooks,
+            skipped_resources=state.skipped_resources,
+        )
+
+    def __init__(
+        self,
+        rid_mapping: dict[str, dict[str, str]] | None = None,
+        pending_multi_asset_workbooks: dict[str, list[str]] | None = None,
+        pending_multi_run_workbooks: dict[str, list[str]] | None = None,
+        skipped_resources: list[SkippedResource] | None = None,
+    ) -> None:
         """Initialize the shared migration state with an internal lock.
 
         The lock is reentrant: the SIGINT/SIGTERM flush handler runs on the main thread and
         calls save_state -> to_json, which must not deadlock if the signal interrupted the
         main thread while it already held the lock inside an incremental save.
         """
-        super().__init__(rid_mapping=rid_mapping if rid_mapping is not None else {})
+        super().__init__(
+            rid_mapping=rid_mapping if rid_mapping is not None else {},
+            pending_multi_asset_workbooks=pending_multi_asset_workbooks
+            if pending_multi_asset_workbooks is not None
+            else {},
+            pending_multi_run_workbooks=pending_multi_run_workbooks if pending_multi_run_workbooks is not None else {},
+            skipped_resources=skipped_resources if skipped_resources is not None else [],
+        )
         self._lock = threading.RLock()
         self._persist_hook = None
 

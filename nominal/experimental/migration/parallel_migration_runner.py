@@ -13,7 +13,7 @@ from typing import Callable, Iterator
 
 from nominal.core.checklist import Checklist
 from nominal.experimental.migration.config.migration_resources import AssetResources
-from nominal.experimental.migration.migration_runner import MigrationRunner
+from nominal.experimental.migration.migration_runner import MigrationRunner, log_skipped_resources
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -24,7 +24,6 @@ from nominal.experimental.migration.parallel_migration_executor import (
     validate_max_workers,
 )
 from nominal.experimental.migration.parallel_migration_state import ThreadSafeMigrationState
-from nominal.experimental.migration.resource_type import resource_label
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     immediately instead of blocking behind in-flight work until the process is hard-killed.
     """
     max_workers = validate_max_workers(max_workers)
-    thread_safe_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    thread_safe_state = ThreadSafeMigrationState.from_state(runner.migration_state)
     # Persist child-resource mappings (runs, dataset files, workbooks, ...) as they are
     # recorded mid-asset — per-task saves alone would lose everything inside a long-running
     # asset on a hard kill. Debounced; dry runs skip the write inside save_state itself.
@@ -247,22 +246,6 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         raise
     finally:
         runner.save_state()
-        _log_skipped_resources(ctx)
+        log_skipped_resources(runner.migration_state)
 
     logger.info("Completed parallel migration")
-
-
-def _log_skipped_resources(context: MigrationContext) -> None:
-    """Report everything the run skipped, grouped by resource type.
-
-    Skips are individually logged as warnings when they happen, but a long migration buries them
-    under thousands of lines. Without this, a run that skipped video files still ends with
-    "Completed parallel migration" and nothing else — which reads as a clean migration.
-    """
-    skipped = context.skipped()
-    if not skipped:
-        return
-
-    logger.warning("Migration completed with %d skipped resource(s):", len(skipped))
-    for skip in skipped:
-        logger.warning("  skipped %s %s — %s", resource_label(skip.resource_type), skip.source_rid, skip.reason)

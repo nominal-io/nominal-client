@@ -66,6 +66,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     def poll_until_ingestion_completed(
         self,
         interval: timedelta = timedelta(seconds=1),
+        *,
         timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
     ) -> None:
         """Block until video ingestion has completed.

@@ -4,7 +4,7 @@ import concurrent.futures
 import threading
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Callable, Sequence, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 
 from nominal.core import NominalClient
 from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT
@@ -13,20 +13,6 @@ from nominal.experimental.migration.resource_type import ResourceType
 
 DestinationClientResolver = Callable[[Any], NominalClient]
 Resource = TypeVar("Resource")
-
-
-@dataclass(frozen=True)
-class SkippedResource:
-    """One resource the migration deliberately did not copy, or copied without confirming.
-
-    A migration that skips things and still reports success is worse than one that fails, so
-    every skip is collected here and reported together at the end of the run.
-    """
-
-    resource_type: ResourceType
-    source_rid: str
-    reason: str
-    """Human-readable explanation of what was skipped and why."""
 
 
 @dataclass
@@ -46,18 +32,6 @@ class MigrationContext:
         init=False,
         repr=False,
     )
-    _skipped_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
-    _skipped: list[SkippedResource] = field(default_factory=list, init=False, repr=False)
-
-    def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
-        """Record that a resource was skipped, for the end-of-run report. Safe to call from any worker."""
-        with self._skipped_lock:
-            self._skipped.append(SkippedResource(resource_type=resource_type, source_rid=source_rid, reason=reason))
-
-    def skipped(self) -> Sequence[SkippedResource]:
-        """Every resource skipped so far, in the order they were skipped."""
-        with self._skipped_lock:
-            return tuple(self._skipped)
 
     def destination_client_for(self, source_resource: Any) -> NominalClient:
         if self.destination_client_resolver is None:

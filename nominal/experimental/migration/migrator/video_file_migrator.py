@@ -31,6 +31,6 @@ class VideoFileMigrator:
             source_file, destination_video, poll_timeout=self.ctx.video_ingest_timeout
         )
         if outcome.skip_reason is not None:
-            self.ctx.record_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
+            self.ctx.migration_state.record_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
         if outcome.file is not None:
             self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, outcome.file.rid)
