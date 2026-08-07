@@ -385,8 +385,9 @@ class NominalClient:
 
         Args:
             exact_match: Case-insensitive substring of the dataset's name, description, labels, or properties.
-            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
-                on name and description, so results need not contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
             before: Searches for datasets ingested before some time (inclusive).
@@ -509,8 +510,9 @@ class NominalClient:
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
 
         Args:
-            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
-                on name and description, so results need not contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             workspace: Filters search to given workspace.
@@ -554,8 +556,9 @@ class NominalClient:
         Filters are ANDed together, e.g. `(video.label == label) AND (video.property == property)`
 
         Args:
-            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
-                on name and description, so results need not contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a video to be included.
             properties: A mapping of key-value pairs that must ALL be present on a video to be included.
             workspace: Filters search to given workspace.
@@ -717,8 +720,9 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
-            search_text: Fuzzy match: tokenized across name, description, labels, and properties, plus similarity
-                on name and description, so results need not contain the given text verbatim.
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
@@ -1175,10 +1179,12 @@ class NominalClient:
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
 
         Args:
-            search_text: case-insensitive search for any of the keywords in all string fields
+            search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
+                substring and similarity matching on name and description, so results need not contain the given
+                text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            exact_substring: Case-insensitive substring of the asset's name, description, labels or properties.
+            exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
