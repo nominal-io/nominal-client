@@ -42,7 +42,11 @@ class SearchContext:
     """Unique 32-character hex string embedded in all entity names for isolation."""
 
     run: Run
-    """Plain run with search-test label and property."""
+    """Plain run with search-test label and properties.
+
+    Carries a `prop-only` property whose value appears nowhere in the run's name, so a search
+    matching on it can only have matched a non-name field.
+    """
 
     asset: Asset
     """Asset with search-test label and property; all baseline test events are attached here."""
@@ -134,7 +138,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         start,
         end,
         labels=["search-test"],
-        properties={"search-tag": tag},
+        properties={"search-tag": tag, "prop-only": f"proponly{tag}"},
     )
 
     event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
@@ -351,19 +355,24 @@ def archive_search_context(  # noqa: PLR0915
 
 
 def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring narrows results to the run carrying the session tag.
-
-    name_substring is an alias for exact_match, which matches a run's name, description, labels and
-    properties, so this covers narrowing by the tag rather than name-scoped matching.
-    """
+    """Searching runs by name_substring narrows results to the run carrying the session tag."""
     results = client.search_runs(name_substring=search_context.tag)
+    rids = {r.rid for r in results}
+    assert rids == {search_context.run.rid}
+
+
+def test_search_runs_by_name_substring_matches_non_name_fields(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    """name_substring matches a run by a property value absent from its name, so it is not name-scoped."""
+    results = client.search_runs(name_substring=f"proponly{search_context.tag}")
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the run created with that label."""
-    results = client.search_runs(labels=["search-test"], name_substring=search_context.tag)
+    results = client.search_runs(labels=["search-test"], exact_match=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
@@ -383,7 +392,7 @@ def test_search_runs_archive_status(
     """Run search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_runs(
-            name_substring=search_context.tag,
+            exact_match=search_context.tag,
             archive_status=archive_status,
         ),
         active_rids={search_context.run.rid},
@@ -397,7 +406,7 @@ def test_search_runs_archive_status(
 
 
 def test_search_assets_by_name(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching assets by name substring returns only the asset whose name contains the session tag."""
+    """Searching assets by search_text narrows results to the asset carrying the session tag."""
     results = client.search_assets(search_text=search_context.tag)
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}

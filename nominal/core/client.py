@@ -1178,7 +1178,8 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            exact_substring: case-insensitive search for exact string match in all string fields
+            exact_substring: Case-insensitive substring of the asset's name, description, labels or properties.
+                Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
