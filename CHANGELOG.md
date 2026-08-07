@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.157.0](https://github.com/nominal-io/nominal-client/compare/v1.156.1...v1.157.0) (2026-08-07)
+
+
+### Features
+
+* **ingest:** declare how numeric timestamps should be read for avro and journal json ([#911](https://github.com/nominal-io/nominal-client/issues/911)) ([d0db718](https://github.com/nominal-io/nominal-client/commit/d0db718f78e58d87ba2c8d34802f9e6cf5c8f19c))
+
+
+### Bug Fixes
+
+* add workspace prefixes to frontend URLs ([#891](https://github.com/nominal-io/nominal-client/issues/891)) ([83c1e6a](https://github.com/nominal-io/nominal-client/commit/83c1e6a5ef50c7ef1f70c30f83da599476c5e45f))
+
 ## [1.156.1](https://github.com/nominal-io/nominal-client/compare/v1.156.0...v1.156.1) (2026-08-04)
 
 
