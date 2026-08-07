@@ -712,8 +712,10 @@ class NominalClient:
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
 
         Args:
-            start: Inclusive start time for filtering runs.
-            end: Inclusive end time for filtering runs.
+            start: Only runs whose own start time is at or after this (inclusive).
+            end: Only runs whose own end time is at or before this (inclusive).
+                NOTE: `start` and `end` together select runs *contained* by the window, not runs overlapping it.
+                This differs from `search_dataset_files`, whose `start`/`end` use overlap semantics.
             name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
@@ -723,8 +725,8 @@ class NominalClient:
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
-            created_after: Filter runs created after this timestamp (exclusive).
-            created_before: Filter runs created before this timestamp (exclusive).
+            created_after: Filter runs created at or after this timestamp (inclusive).
+            created_before: Filter runs created at or before this timestamp (inclusive).
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
