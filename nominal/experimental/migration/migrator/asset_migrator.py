@@ -4,11 +4,10 @@ import logging
 from dataclasses import dataclass
 from typing import Sequence
 
-from nominal_api import scout_asset_api
-
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
@@ -25,6 +24,7 @@ from nominal.experimental.migration.migrator.video_migrator import VideoCopyOpti
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.retry_utils import is_transient_error
+from nominal.protos.asset.v2 import asset_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +128,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         )
 
         if source_asset._get_latest_api().is_staged:
-            new_asset._clients.assets.update_asset(
-                new_asset._clients.auth_header,
-                scout_asset_api.UpdateAssetRequest(is_staged=True),
-                new_asset.rid,
-            )
+            with translate_grpc_errors():
+                new_asset._clients.assets.UpdateAsset(
+                    asset_pb2.UpdateAssetRequest(asset_rid=new_asset.rid, is_staged=True)
+                )
 
         return new_asset
 

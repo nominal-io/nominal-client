@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from nominal_api import scout_asset_api, scout_run_api
+from nominal_api import scout_run_api
 
 from nominal.core import Asset, Run
-from nominal.core._utils.api_tools import filter_scope_rids, rid_from_instance_or_string
+from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental.spatial._spatial import Spatial, _get_spatial
+from nominal.protos.asset.v2 import asset_pb2
 
 
 def add_spatial_to_asset(asset: Asset, data_scope_name: str, spatial: Spatial | str) -> None:
@@ -29,16 +31,18 @@ def add_spatial_to_asset(asset: Asset, data_scope_name: str, spatial: Spatial | 
         data_scope_name: Name for the data within the asset.
         spatial: Spatial, or spatial rid, to add.
     """
-    request = scout_asset_api.AddDataScopesToAssetRequest(
+    request = asset_pb2.AddDataScopesToAssetRequest(
+        asset_rid=asset.rid,
         data_scopes=[
-            scout_asset_api.CreateAssetDataScope(
+            asset_pb2.CreateAssetDataScope(
                 data_scope_name=data_scope_name,
-                data_source=scout_run_api.DataSource(spatial=rid_from_instance_or_string(spatial)),
+                data_source=asset_pb2.DataSource(spatial=rid_from_instance_or_string(spatial)),
                 series_tags={},
             ),
-        ]
+        ],
     )
-    asset._clients.assets.add_data_scopes_to_asset(asset.rid, asset._clients.auth_header, request)
+    with translate_grpc_errors():
+        asset._clients.assets.AddDataScopesToAsset(request)
 
 
 def get_spatial_from_asset(asset: Asset, data_scope_name: str) -> Spatial:
@@ -124,7 +128,7 @@ def list_spatials_in_run(run: Run) -> Sequence[tuple[str, Spatial]]:
 
 def _spatial_scope_rids(asset: Asset) -> dict[str, str]:
     """Spatial rids by data scope name, read from one fetch of the asset."""
-    return dict(filter_scope_rids(asset._get_latest_api().data_scopes, "spatial"))
+    return dict(asset._scope_rids("spatial"))
 
 
 def _spatial_datasource_rids(run: Run) -> dict[str, str]:

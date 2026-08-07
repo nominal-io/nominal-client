@@ -16,7 +16,6 @@ from nominal_api import (
     attachments_api,
     authentication_api,
     ingest_api,
-    scout_asset_api,
     scout_catalog,
     scout_checks_api,
     scout_datasource_connection_api,
@@ -68,7 +67,7 @@ from nominal.core._utils.query_tools import (
     create_search_videos_query,
     create_search_workbook_templates_query,
 )
-from nominal.core.asset import Asset
+from nominal.core.asset import Asset, _get_asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
@@ -122,6 +121,7 @@ from nominal.exceptions import (
     NominalInvalidArgumentError,
     NominalNotFoundError,
 )
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -1236,29 +1236,32 @@ class NominalClient:
         properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Asset:
-        """Create an asset."""
-        request = scout_asset_api.CreateAssetRequest(
+        """Create an asset.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If the creation request fails.
+        """
+        request = asset_pb2.CreateAssetRequest(
             description=description,
             labels=list(labels),
             properties={} if properties is None else dict(properties),
-            typed_properties={},
             title=name,
-            attachments=[],
-            data_scopes=[],
-            links=[],
             workspace=self._clients.resolve_default_workspace_rid(),
         )
-        response = self._clients.assets.create_asset(self._clients.auth_header, request)
-        return Asset._from_conjure(self._clients, response)
+        with translate_grpc_errors():
+            response = self._clients.assets.CreateAsset(request)
+        return Asset._from_proto(self._clients, response.asset)
 
     def get_asset(self, rid: str) -> Asset:
-        """Retrieve an asset by its RID."""
-        response = self._clients.assets.get_assets(self._clients.auth_header, [rid])
-        if len(response) == 0 or rid not in response:
-            raise ValueError(f"no asset found with RID {rid!r}: {response!r}")
-        if len(response) > 1:
-            raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
-        return Asset._from_conjure(self._clients, response[rid])
+        """Retrieve an asset by its RID.
+
+        Raises:
+            NominalNotFoundError: If no asset has that rid.
+            ValueError: If the backend returns multiple assets for the RID.
+            NominalError: If the retrieval request fails.
+        """
+        return Asset._from_proto(self._clients, _get_asset(self._clients, rid))
 
     def get_or_create_asset_by_properties(
         self, properties: NominalProperties, *, name: str, description: str | None = None, labels: Sequence[str] = ()
@@ -1274,6 +1277,11 @@ class NominalClient:
 
         Returns:
             The existing or newly created asset.
+
+        Raises:
+            ValueError: If multiple assets match the properties.
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If searching for or creating the asset fails.
         """
         assets = self.search_assets(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
 
@@ -1292,11 +1300,11 @@ class NominalClient:
 
     def _iter_search_assets(
         self,
-        query: scout_asset_api.SearchAssetsQuery,
+        query: asset_pb2.SearchAssetsQuery,
         archive_status: ArchiveStatusFilter,
     ) -> Iterable[Asset]:
-        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query, archive_status):
-            yield Asset._from_conjure(self._clients, asset)
+        for asset in search_assets_paginated(self._clients.assets, query, archive_status):
+            yield Asset._from_proto(self._clients, asset)
 
     def search_assets(
         self,
@@ -1331,6 +1339,10 @@ class NominalClient:
 
         Returns:
             All assets which match all of the provided conditions
+
+        Raises:
+            NominalConfigError: If the default workspace is requested but cannot be resolved.
+            NominalError: If a search request fails.
         """
         query = create_search_assets_query(
             search_text=search_text,

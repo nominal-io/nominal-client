@@ -25,6 +25,7 @@ from rich.table import Column, Table
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core.asset import _get_assets
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
@@ -96,10 +97,8 @@ class DataDownloader(abc.ABC):
                 return None
 
         # Sort by last updated timestamps
-        raw_assets = self._client._clients.assets.get_assets(
-            self._client._clients.auth_header, [asset.rid for asset in assets]
-        )
-        sorted_assets = sorted(assets, key=lambda asset: pd.to_datetime(raw_assets[asset.rid].updated_at), reverse=True)
+        raw_assets = _get_assets(self._client._clients, [asset.rid for asset in assets])
+        sorted_assets = sorted(assets, key=lambda asset: raw_assets[asset.rid].updated_at.ToNanoseconds(), reverse=True)
         table = Table(
             Column("#", style=Style(color="white", bold=True), ratio=1, overflow="fold"),
             Column("Name", style=Style(color="white", bold=True), ratio=2, overflow="fold"),
@@ -420,7 +419,7 @@ class DataDownloader(abc.ABC):
 
         # get tags from dataset & asset combo
         scope_tags = None
-        raw_asset = self._client._clients.assets.get_assets(self._client._clients.auth_header, [asset.rid])[asset.rid]
+        raw_asset = _get_assets(self._client._clients, [asset.rid])[asset.rid]
         for raw_datascope in raw_asset.data_scopes:
             if raw_datascope.data_scope_name == refname:
                 scope_tags = raw_datascope.series_tags

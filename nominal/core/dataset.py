@@ -31,6 +31,7 @@ from nominal.core.log import LogPoint, _write_logs
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsUTC,
@@ -1255,10 +1256,10 @@ class _DatasetWrapper(abc.ABC):
     _clients: Dataset._Clients
 
     @abc.abstractmethod
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope | asset_pb2.DataScope]:
         """Return the data scopes available to this wrapper.
 
-        Subclasses provide the authoritative list of `scout_asset_api.DataScope` objects used to
+        Subclasses provide the authoritative list of API data scope objects used to
         resolve `data_scope_name` in wrapper methods.
         """
 
@@ -1282,7 +1283,7 @@ class _DatasetWrapper(abc.ABC):
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
         )
-        return dataset, data_scope.series_tags
+        return dataset, dict(data_scope.series_tags)
 
     ################
     # Add Data API #
