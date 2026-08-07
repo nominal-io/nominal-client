@@ -9,7 +9,6 @@ from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
-    event,
     ingest_api,
     scout,
     scout_assets,
@@ -39,6 +38,7 @@ from nominal.core._utils.networking import (
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
@@ -155,7 +155,6 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datareview: scout_datareview_api.DataReviewService
     datasource: scout_datasource.DataSourceService
-    event: event.EventService
     ingest_jobs: ingest_api.IngestJobService
     ingest: ingest_api.IngestService
     notebook: scout.NotebookService
@@ -172,6 +171,7 @@ class ClientsBunch:
     # GRPC services
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
@@ -319,7 +319,6 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             datasource=client_factory(scout_datasource.DataSourceService),
-            event=client_factory(event.EventService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
             ingest=client_factory(ingest_api.IngestService),
             notebook=client_factory(scout.NotebookService),
@@ -335,6 +334,7 @@ class ClientsBunch:
             # GRPC Service Stubs
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
