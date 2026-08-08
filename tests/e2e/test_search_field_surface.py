@@ -22,6 +22,7 @@ import pytest
 
 from nominal.core import EventType, NominalClient
 from nominal.core._utils.api_tools import HasRid
+from tests.e2e import _create_random_start_end
 
 FIELDS = ("name", "description", "label", "property")
 
@@ -61,10 +62,19 @@ class HasArchive(Protocol):
     def archive(self) -> None: ...
 
 
+def _archive_all(resources: Sequence[HasArchive]) -> None:
+    """Archive every resource, continuing past failures so one bad archive can't orphan the rest."""
+    for resource in resources:
+        try:
+            resource.archive()
+        except Exception as e:
+            print(f"WARNING: failed to archive probe resource {resource!r}: {e!r}")
+
+
 def test_field_tokens_share_no_substring() -> None:
     """Each field's token shares no 8-character substring with any other, so a match names exactly one field."""
     tokens = _field_tokens()
-    assert len(set(tokens)) == len(FIELDS)
+    assert set(tokens) == set(FIELDS)
     kgrams = {field: _kgrams(token) for field, token in tokens.items()}
     for field, grams in kgrams.items():
         others = [other for name, other in kgrams.items() if name != field]
@@ -78,7 +88,6 @@ class Target:
     name: str
     make: Callable[[NominalClient, dict[str, str]], HasRid]
     warm: Callable[[NominalClient, str], Sequence[object]]
-    fields: tuple[str, ...] = FIELDS
 
 
 def _make_dataset(client: NominalClient, tokens: dict[str, str]) -> HasRid:
@@ -91,8 +100,6 @@ def _make_dataset(client: NominalClient, tokens: dict[str, str]) -> HasRid:
 
 
 def _make_run(client: NominalClient, tokens: dict[str, str]) -> HasRid:
-    from tests.e2e import _create_random_start_end
-
     start, end = _create_random_start_end()
     return client.create_run(
         tokens["name"],
@@ -133,11 +140,8 @@ def _make_asset(client: NominalClient, tokens: dict[str, str]) -> HasRid:
 
 
 def _make_event(client: NominalClient, tokens: dict[str, str]) -> HasRid:
-    from tests.e2e import _create_random_start_end
-
-    # The backend rejects event creation without an asset (Scout:MissingAssetRid), even though
-    # `assets` is optional in the client signature. This throwaway asset exists only to satisfy
-    # that requirement; it carries none of the probe's tokens and is archived immediately.
+    # Event creation requires an asset even though `assets` is optional client-side. This
+    # throwaway asset carries none of the probe's tokens and is archived immediately.
     asset = client.create_asset(f"event-asset-{uuid4().hex}")
     try:
         start, _ = _create_random_start_end()
@@ -207,15 +211,12 @@ def probes(client: NominalClient) -> Iterator[dict[str, Probe]]:
             created[target.name] = Probe(tokens=tokens, rid=resource.rid)
         for target in TARGETS:
             probe = created[target.name]
+            # Warming on the name token alone is enough: "name" is in matching_fields for every
+            # SURFACE_CASES case, so each filter still gets its own positive-control cell below.
             _wait_for_indexed(target.warm, client, probe.tokens["name"], probe.rid)
         yield created
     finally:
-        for archivable in resources:
-            try:
-                archivable.archive()
-            except Exception as e:
-                # A failed archive must not orphan the rest; the failure is surfaced, not swallowed.
-                print(f"WARNING: failed to archive probe resource {archivable!r}: {e!r}")
+        _archive_all(resources)
 
 
 # (target name, filter name, search callable, fields the filter is expected to match)
@@ -303,12 +304,13 @@ def test_properties_filter_matches_key_and_value(
     _search_labels: Callable[[NominalClient, list[str]], Sequence[object]],
     search_props: Callable[[NominalClient, dict[str, str]], Sequence[object]],
 ) -> None:
-    """A properties filter matches on key and value, so a wrong value excludes the resource."""
+    """A properties filter matches on key and value, so a wrong key or a wrong value excludes it."""
     probe = probes[target_name]
     value = probe.tokens["property"]
 
     assert probe.rid in _rids(search_props(client, {"probe": value}))
     assert probe.rid not in _rids(search_props(client, {"probe": f"dates{uuid4().hex}"}))
+    assert probe.rid not in _rids(search_props(client, {f"probe{uuid4().hex}": value}))
 
 
 _T1 = datetime(2023, 3, 1, 12, 0, 0)
@@ -318,10 +320,12 @@ _ONE_MICRO = timedelta(microseconds=1)
 
 @dataclass(frozen=True)
 class TimeProbes:
-    """A run and an event both spanning exactly [_T1, _T2]."""
+    """A run and an event both spanning exactly [_T1, _T2], each carrying its own probe token."""
 
     run_rid: str
+    run_token: str
     event_rid: str
+    event_token: str
 
 
 @pytest.fixture(scope="session")
@@ -348,64 +352,77 @@ def time_probes(client: NominalClient) -> Iterator[TimeProbes]:
         _wait_for_indexed(lambda c, t: c.search_runs(search_text=t), client, run_tokens["name"], run.rid)
         _wait_for_indexed(lambda c, t: c.search_events(search_text=t), client, event_tokens["name"], event.rid)
 
-        yield TimeProbes(run_rid=run.rid, event_rid=event.rid)
+        yield TimeProbes(
+            run_rid=run.rid,
+            run_token=run_tokens["property"],
+            event_rid=event.rid,
+            event_token=event_tokens["property"],
+        )
     finally:
-        for archivable in resources:
-            archivable.archive()
+        _archive_all(resources)
+
+
+# Every case below also filters on properties={"probe": <token>}, narrowing the search to the probe
+# resource instead of scanning the whole corpus. Filters are ANDed, and the expected=True cases are
+# same-shape positive controls proving the property conjunct alone doesn't exclude the probe -- so an
+# expected=False result here is attributable solely to the time bound.
+RUN_TIME_BOUND_CASES = (
+    (lambda c, t: c.search_runs(start=_T1, properties={"probe": t}), True),
+    (lambda c, t: c.search_runs(start=_T1 + _ONE_MICRO, properties={"probe": t}), False),
+    (lambda c, t: c.search_runs(end=_T2, properties={"probe": t}), True),
+    (lambda c, t: c.search_runs(end=_T2 - _ONE_MICRO, properties={"probe": t}), False),
+)
 
 
 @pytest.mark.parametrize(
-    ("kwargs_name", "offset", "expected"),
-    (
-        ("start", timedelta(0), True),
-        ("start", _ONE_MICRO, False),
-        ("end", timedelta(0), True),
-        ("end", -_ONE_MICRO, False),
-    ),
+    ("search", "expected"),
+    RUN_TIME_BOUND_CASES,
     ids=["start-at-boundary", "start-past-boundary", "end-at-boundary", "end-past-boundary"],
 )
 def test_search_runs_time_bounds_are_inclusive(
     client: NominalClient,
     time_probes: TimeProbes,
-    kwargs_name: str,
-    offset: timedelta,
+    search: Callable[[NominalClient, str], Sequence[object]],
     expected: bool,
 ) -> None:
     """Run start and end bounds include a run sitting exactly on the boundary."""
-    anchor = _T1 if kwargs_name == "start" else _T2
-    results = client.search_runs(**{kwargs_name: anchor + offset})  # type: ignore[arg-type]
+    results = search(client, time_probes.run_token)
     assert (time_probes.run_rid in _rids(results)) == expected
 
 
 def test_search_runs_time_bounds_select_contained_runs(client: NominalClient, time_probes: TimeProbes) -> None:
     """A window strictly inside the run excludes it, so the bounds are containment not overlap."""
-    results = client.search_runs(start=_T1 + _ONE_MICRO, end=_T2 - _ONE_MICRO)
+    results = client.search_runs(
+        start=_T1 + _ONE_MICRO, end=_T2 - _ONE_MICRO, properties={"probe": time_probes.run_token}
+    )
     assert time_probes.run_rid not in _rids(results)
 
 
 def test_search_runs_exact_window_matches(client: NominalClient, time_probes: TimeProbes) -> None:
     """A window exactly equal to the run's span contains it."""
-    results = client.search_runs(start=_T1, end=_T2)
+    results = client.search_runs(start=_T1, end=_T2, properties={"probe": time_probes.run_token})
     assert time_probes.run_rid in _rids(results)
 
 
+EVENT_TIME_BOUND_CASES = (
+    (lambda c, t: c.search_events(after=_T1, properties={"probe": t}), True),
+    (lambda c, t: c.search_events(after=_T2, properties={"probe": t}), False),
+    (lambda c, t: c.search_events(before=_T2, properties={"probe": t}), True),
+    (lambda c, t: c.search_events(before=_T1, properties={"probe": t}), False),
+)
+
+
 @pytest.mark.parametrize(
-    ("kwargs_name", "anchor", "expected"),
-    (
-        ("after", _T1, True),
-        ("after", _T2, False),
-        ("before", _T2, True),
-        ("before", _T1, False),
-    ),
+    ("search", "expected"),
+    EVENT_TIME_BOUND_CASES,
     ids=["after-overlaps", "after-at-end", "before-overlaps", "before-at-start"],
 )
 def test_search_events_time_bounds_are_exclusive(
     client: NominalClient,
     time_probes: TimeProbes,
-    kwargs_name: str,
-    anchor: datetime,
+    search: Callable[[NominalClient, str], Sequence[object]],
     expected: bool,
 ) -> None:
     """Event bounds are exclusive and overlap based, unlike the containment bounds on runs."""
-    results = client.search_events(**{kwargs_name: anchor})  # type: ignore[arg-type]
+    results = search(client, time_probes.event_token)
     assert (time_probes.event_rid in _rids(results)) == expected
