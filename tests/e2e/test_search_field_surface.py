@@ -254,3 +254,58 @@ def test_field_surface(
     probe = probes[target_name]
     found = probe.rid in _rids(search(client, probe.tokens[field]))
     assert found == (field in matching_fields)
+
+
+# (target name, labels search, properties search) -- one per distinct query construction
+SET_SEMANTICS_CASES = (
+    (
+        "runs",
+        lambda c, labels: c.search_runs(labels=labels),
+        lambda c, props: c.search_runs(properties=props),
+    ),
+    (
+        "datasets",
+        lambda c, labels: c.search_datasets(labels=labels),
+        lambda c, props: c.search_datasets(properties=props),
+    ),
+    (
+        "templates",
+        lambda c, labels: c.search_workbook_templates(labels=labels),
+        lambda c, props: c.search_workbook_templates(properties=props),
+    ),
+)
+
+_SET_IDS = [name for name, _, _ in SET_SEMANTICS_CASES]
+
+
+@pytest.mark.parametrize(("target_name", "search_labels", "_search_props"), SET_SEMANTICS_CASES, ids=_SET_IDS)
+def test_labels_filter_requires_all_labels(
+    client: NominalClient,
+    probes: dict[str, Probe],
+    target_name: str,
+    search_labels: Callable[[NominalClient, list[str]], Sequence[object]],
+    _search_props: Callable[[NominalClient, dict[str, str]], Sequence[object]],
+) -> None:
+    """A labels filter requires every given label, so adding an absent one excludes the resource."""
+    probe = probes[target_name]
+    present = probe.tokens["label"]
+    absent = f"cherries{uuid4().hex}"
+
+    assert probe.rid in _rids(search_labels(client, [present]))
+    assert probe.rid not in _rids(search_labels(client, [present, absent]))
+
+
+@pytest.mark.parametrize(("target_name", "_search_labels", "search_props"), SET_SEMANTICS_CASES, ids=_SET_IDS)
+def test_properties_filter_matches_key_and_value(
+    client: NominalClient,
+    probes: dict[str, Probe],
+    target_name: str,
+    _search_labels: Callable[[NominalClient, list[str]], Sequence[object]],
+    search_props: Callable[[NominalClient, dict[str, str]], Sequence[object]],
+) -> None:
+    """A properties filter matches on key and value, so a wrong value excludes the resource."""
+    probe = probes[target_name]
+    value = probe.tokens["property"]
+
+    assert probe.rid in _rids(search_props(client, {"probe": value}))
+    assert probe.rid not in _rids(search_props(client, {"probe": f"dates{uuid4().hex}"}))
