@@ -42,6 +42,11 @@ def _rids(items: Sequence[object]) -> set[str]:
     return {cast(HasRid, item).rid for item in items}
 
 
+def _kgrams(value: str, k: int = 8) -> set[str]:
+    """Every length-k slice of `value`, for detecting shared substrings between tokens."""
+    return {value[i : i + k] for i in range(len(value) - k + 1)}
+
+
 @dataclass(frozen=True)
 class Probe:
     """A resource whose four fields each carry a distinct, unrelated token."""
@@ -55,12 +60,13 @@ class HasArchive(Protocol):
 
 
 def test_field_tokens_share_no_substring() -> None:
-    """Each field's token is unrelated to every other, so a match names exactly one field."""
+    """Each field's token shares no 8-character substring with any other, so a match names exactly one field."""
     tokens = _field_tokens()
     assert len(set(tokens)) == len(FIELDS)
-    for field, token in tokens.items():
-        others = [other for name, other in tokens.items() if name != field]
-        assert all(token not in other and other not in token for other in others)
+    kgrams = {field: _kgrams(token) for field, token in tokens.items()}
+    for field, grams in kgrams.items():
+        others = [other for name, other in kgrams.items() if name != field]
+        assert all(grams.isdisjoint(other) for other in others)
 
 
 @dataclass(frozen=True)
