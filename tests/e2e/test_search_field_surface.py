@@ -12,6 +12,7 @@ the other -- which would make every negative assertion unreliable.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Callable, Iterator, Protocol, Sequence, cast
 from uuid import uuid4
@@ -75,6 +76,7 @@ class Target:
 
     name: str
     make: Callable[[NominalClient, dict[str, str]], HasRid]
+    warm: Callable[[NominalClient, str], Sequence[object]]
     fields: tuple[str, ...] = FIELDS
 
 
@@ -163,14 +165,33 @@ def _make_template(client: NominalClient, tokens: dict[str, str]) -> HasRid:
 
 
 TARGETS = (
-    Target("datasets", _make_dataset),
-    Target("runs", _make_run),
-    Target("secrets", _make_secret),
-    Target("videos", _make_video),
-    Target("assets", _make_asset),
-    Target("events", _make_event),
-    Target("templates", _make_template),
+    Target("datasets", _make_dataset, lambda c, t: c.search_datasets(search_text=t)),
+    Target("runs", _make_run, lambda c, t: c.search_runs(search_text=t)),
+    Target("secrets", _make_secret, lambda c, t: c.search_secrets(search_text=t)),
+    Target("videos", _make_video, lambda c, t: c.search_videos(search_text=t)),
+    Target("assets", _make_asset, lambda c, t: c.search_assets(search_text=t)),
+    Target("events", _make_event, lambda c, t: c.search_events(search_text=t)),
+    Target("templates", _make_template, lambda c, t: c.search_workbook_templates(search_text=t)),
 )
+
+
+_INDEX_POLL_SECONDS = 5.0
+_INDEX_POLL_ATTEMPTS = 12  # up to a minute
+
+
+def _wait_for_indexed(
+    search: Callable[[NominalClient, str], Sequence[object]],
+    client: NominalClient,
+    token: str,
+    rid: str,
+) -> None:
+    """Block until `rid` is findable by `token`, so later negative assertions are trustworthy."""
+    for attempt in range(_INDEX_POLL_ATTEMPTS):
+        if rid in _rids(search(client, token)):
+            return
+        if attempt < _INDEX_POLL_ATTEMPTS - 1:
+            time.sleep(_INDEX_POLL_SECONDS)
+    raise AssertionError(f"probe {rid} never became searchable by {token!r}")
 
 
 @pytest.fixture(scope="session")
@@ -184,6 +205,9 @@ def probes(client: NominalClient) -> Iterator[dict[str, Probe]]:
             resource = target.make(client, tokens)
             resources.append(cast("HasArchive", resource))
             created[target.name] = Probe(tokens=tokens, rid=resource.rid)
+        for target in TARGETS:
+            probe = created[target.name]
+            _wait_for_indexed(target.warm, client, probe.tokens["name"], probe.rid)
         yield created
     finally:
         for archivable in resources:
