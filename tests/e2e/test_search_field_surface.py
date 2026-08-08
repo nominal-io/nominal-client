@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Callable, Iterator, Protocol, Sequence, cast
 from uuid import uuid4
 
 import pytest
 
-from nominal.core import NominalClient
+from nominal.core import EventType, NominalClient
 from nominal.core._utils.api_tools import HasRid
 
 FIELDS = ("name", "description", "label", "property")
@@ -132,7 +133,6 @@ def _make_asset(client: NominalClient, tokens: dict[str, str]) -> HasRid:
 
 
 def _make_event(client: NominalClient, tokens: dict[str, str]) -> HasRid:
-    from nominal.core import EventType
     from tests.e2e import _create_random_start_end
 
     # The backend rejects event creation without an asset (Scout:MissingAssetRid), even though
@@ -309,3 +309,103 @@ def test_properties_filter_matches_key_and_value(
 
     assert probe.rid in _rids(search_props(client, {"probe": value}))
     assert probe.rid not in _rids(search_props(client, {"probe": f"dates{uuid4().hex}"}))
+
+
+_T1 = datetime(2023, 3, 1, 12, 0, 0)
+_T2 = _T1 + timedelta(hours=1)
+_ONE_MICRO = timedelta(microseconds=1)
+
+
+@dataclass(frozen=True)
+class TimeProbes:
+    """A run and an event both spanning exactly [_T1, _T2]."""
+
+    run_rid: str
+    event_rid: str
+
+
+@pytest.fixture(scope="session")
+def time_probes(client: NominalClient) -> Iterator[TimeProbes]:
+    """A run and an event spanning exactly [_T1, _T2], archived on every exit path."""
+    run_tokens = _field_tokens()
+    event_tokens = _field_tokens()
+    resources: list[HasArchive] = []
+    try:
+        run = client.create_run(run_tokens["name"], _T1, _T2, properties={"probe": run_tokens["property"]})
+        resources.append(run)
+        # Event creation requires an asset even though `assets` is optional client-side.
+        event_asset = client.create_asset(f"event-asset-{uuid4().hex}")
+        resources.append(event_asset)
+        event = client.create_event(
+            event_tokens["name"],
+            EventType.INFO,
+            _T1,
+            _T2 - _T1,
+            assets=[event_asset],
+            properties={"probe": event_tokens["property"]},
+        )
+        resources.append(event)
+        _wait_for_indexed(lambda c, t: c.search_runs(search_text=t), client, run_tokens["name"], run.rid)
+        _wait_for_indexed(lambda c, t: c.search_events(search_text=t), client, event_tokens["name"], event.rid)
+
+        yield TimeProbes(run_rid=run.rid, event_rid=event.rid)
+    finally:
+        for archivable in resources:
+            archivable.archive()
+
+
+@pytest.mark.parametrize(
+    ("kwargs_name", "offset", "expected"),
+    (
+        ("start", timedelta(0), True),
+        ("start", _ONE_MICRO, False),
+        ("end", timedelta(0), True),
+        ("end", -_ONE_MICRO, False),
+    ),
+    ids=["start-at-boundary", "start-past-boundary", "end-at-boundary", "end-past-boundary"],
+)
+def test_search_runs_time_bounds_are_inclusive(
+    client: NominalClient,
+    time_probes: TimeProbes,
+    kwargs_name: str,
+    offset: timedelta,
+    expected: bool,
+) -> None:
+    """Run start and end bounds include a run sitting exactly on the boundary."""
+    anchor = _T1 if kwargs_name == "start" else _T2
+    results = client.search_runs(**{kwargs_name: anchor + offset})  # type: ignore[arg-type]
+    assert (time_probes.run_rid in _rids(results)) == expected
+
+
+def test_search_runs_time_bounds_select_contained_runs(client: NominalClient, time_probes: TimeProbes) -> None:
+    """A window strictly inside the run excludes it, so the bounds are containment not overlap."""
+    results = client.search_runs(start=_T1 + _ONE_MICRO, end=_T2 - _ONE_MICRO)
+    assert time_probes.run_rid not in _rids(results)
+
+
+def test_search_runs_exact_window_matches(client: NominalClient, time_probes: TimeProbes) -> None:
+    """A window exactly equal to the run's span contains it."""
+    results = client.search_runs(start=_T1, end=_T2)
+    assert time_probes.run_rid in _rids(results)
+
+
+@pytest.mark.parametrize(
+    ("kwargs_name", "anchor", "expected"),
+    (
+        ("after", _T1, True),
+        ("after", _T2, False),
+        ("before", _T2, True),
+        ("before", _T1, False),
+    ),
+    ids=["after-overlaps", "after-at-end", "before-overlaps", "before-at-start"],
+)
+def test_search_events_time_bounds_are_exclusive(
+    client: NominalClient,
+    time_probes: TimeProbes,
+    kwargs_name: str,
+    anchor: datetime,
+    expected: bool,
+) -> None:
+    """Event bounds are exclusive and overlap based, unlike the containment bounds on runs."""
+    results = client.search_events(**{kwargs_name: anchor})  # type: ignore[arg-type]
+    assert (time_probes.event_rid in _rids(results)) == expected
