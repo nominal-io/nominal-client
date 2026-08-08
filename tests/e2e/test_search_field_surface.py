@@ -137,17 +137,19 @@ def _make_event(client: NominalClient, tokens: dict[str, str]) -> HasRid:
     # `assets` is optional in the client signature. This throwaway asset exists only to satisfy
     # that requirement; it carries none of the probe's tokens and is archived immediately.
     asset = client.create_asset(f"event-asset-{uuid4().hex}")
-    start, _ = _create_random_start_end()
-    event = client.create_event(
-        tokens["name"],
-        EventType.INFO,
-        start,
-        description=tokens["description"],
-        assets=[asset],
-        labels=[tokens["label"]],
-        properties={"probe": tokens["property"]},
-    )
-    asset.archive()
+    try:
+        start, _ = _create_random_start_end()
+        event = client.create_event(
+            tokens["name"],
+            EventType.INFO,
+            start,
+            description=tokens["description"],
+            assets=[asset],
+            labels=[tokens["label"]],
+            properties={"probe": tokens["property"]},
+        )
+    finally:
+        asset.archive()
     return event
 
 
@@ -175,17 +177,21 @@ TARGETS = (
 def probes(client: NominalClient) -> Iterator[dict[str, Probe]]:
     """One probe resource per target, archived on teardown."""
     created: dict[str, Probe] = {}
-    resources: list[object] = []
-    for target in TARGETS:
-        tokens = _field_tokens()
-        resource = target.make(client, tokens)
-        resources.append(resource)
-        created[target.name] = Probe(tokens=tokens, rid=resource.rid)
-
-    yield created
-
-    for archivable in resources:
-        cast("HasArchive", archivable).archive()
+    resources: list[HasArchive] = []
+    try:
+        for target in TARGETS:
+            tokens = _field_tokens()
+            resource = target.make(client, tokens)
+            resources.append(cast("HasArchive", resource))
+            created[target.name] = Probe(tokens=tokens, rid=resource.rid)
+        yield created
+    finally:
+        for archivable in resources:
+            try:
+                archivable.archive()
+            except Exception as e:
+                # A failed archive must not orphan the rest; the failure is surfaced, not swallowed.
+                print(f"WARNING: failed to archive probe resource {archivable!r}: {e!r}")
 
 
 def test_probes_fixture_builds(probes: dict[str, Probe]) -> None:
