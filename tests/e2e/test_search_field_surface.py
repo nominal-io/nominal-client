@@ -218,7 +218,39 @@ def probes(client: NominalClient) -> Iterator[dict[str, Probe]]:
                 print(f"WARNING: failed to archive probe resource {archivable!r}: {e!r}")
 
 
-def test_probes_fixture_builds(probes: dict[str, Probe]) -> None:
-    """Every target creates a probe resource with a rid."""
-    assert set(probes) == {t.name for t in TARGETS}
-    assert all(p.rid for p in probes.values())
+# (target name, filter name, search callable, fields the filter is expected to match)
+SURFACE_CASES = (
+    ("datasets", "search_text", lambda c, t: c.search_datasets(search_text=t), FIELDS),
+    ("runs", "search_text", lambda c, t: c.search_runs(search_text=t), FIELDS),
+    ("secrets", "search_text", lambda c, t: c.search_secrets(search_text=t), FIELDS),
+    ("videos", "search_text", lambda c, t: c.search_videos(search_text=t), FIELDS),
+    ("assets", "search_text", lambda c, t: c.search_assets(search_text=t), FIELDS),
+    ("events", "search_text", lambda c, t: c.search_events(search_text=t), FIELDS),
+    ("datasets", "exact_match", lambda c, t: c.search_datasets(exact_match=t), FIELDS),
+    ("runs", "exact_match", lambda c, t: c.search_runs(exact_match=t), FIELDS),
+    ("runs", "name_substring", lambda c, t: c.search_runs(name_substring=t), FIELDS),
+    ("assets", "exact_substring", lambda c, t: c.search_assets(exact_substring=t), FIELDS),
+    ("templates", "exact_match", lambda c, t: c.search_workbook_templates(exact_match=t), ("name",)),
+    ("templates", "search_text", lambda c, t: c.search_workbook_templates(search_text=t), ("name", "description")),
+)
+
+
+@pytest.mark.parametrize(
+    ("target_name", "filter_name", "search", "matching_fields"),
+    SURFACE_CASES,
+    ids=[f"{target}-{filter_name}" for target, filter_name, _, _ in SURFACE_CASES],
+)
+@pytest.mark.parametrize("field", FIELDS)
+def test_field_surface(
+    client: NominalClient,
+    probes: dict[str, Probe],
+    target_name: str,
+    filter_name: str,
+    search: Callable[[NominalClient, str], Sequence[object]],
+    matching_fields: tuple[str, ...],
+    field: str,
+) -> None:
+    """The filter matches a token living only in `field` exactly when `field` is in its surface."""
+    probe = probes[target_name]
+    found = probe.rid in _rids(search(client, probe.tokens[field]))
+    assert found == (field in matching_fields)
