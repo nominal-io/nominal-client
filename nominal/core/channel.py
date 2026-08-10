@@ -18,7 +18,7 @@ from nominal_api import (
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, assert_never
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
@@ -79,8 +79,10 @@ class ChannelDataType(enum.Enum):
                 data_type = storage_series_api.NominalDataType.STRUCT
             case ChannelDataType.VIDEO:
                 data_type = storage_series_api.NominalDataType.VIDEO
-            case _:
+            case ChannelDataType.UNKNOWN:
                 data_type = storage_series_api.NominalDataType.UNKNOWN
+            case _:
+                assert_never(self)
         return data_type
 
 
