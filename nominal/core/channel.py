@@ -41,11 +41,14 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelDataType(enum.Enum):
-    # TODO (drake): support DOUBLE_ARRAY and STRING_ARRAY
     DOUBLE = "DOUBLE"
     STRING = "STRING"
     LOG = "LOG"
     INT = "INT"
+    UINT = "UINT"
+    DOUBLE_ARRAY = "DOUBLE_ARRAY"
+    STRING_ARRAY = "STRING_ARRAY"
+    STRUCT = "STRUCT"
     VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
 
@@ -59,17 +62,26 @@ class ChannelDataType(enum.Enum):
     def _to_conjure(self) -> storage_series_api.NominalDataType:
         match self:
             case ChannelDataType.DOUBLE:
-                return storage_series_api.NominalDataType.DOUBLE
+                data_type = storage_series_api.NominalDataType.DOUBLE
             case ChannelDataType.STRING:
-                return storage_series_api.NominalDataType.STRING
+                data_type = storage_series_api.NominalDataType.STRING
             case ChannelDataType.LOG:
-                return storage_series_api.NominalDataType.LOG
+                data_type = storage_series_api.NominalDataType.LOG
             case ChannelDataType.INT:
-                return storage_series_api.NominalDataType.INT64
+                data_type = storage_series_api.NominalDataType.INT64
+            case ChannelDataType.UINT:
+                data_type = storage_series_api.NominalDataType.UINT64
+            case ChannelDataType.DOUBLE_ARRAY:
+                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
+            case ChannelDataType.STRING_ARRAY:
+                data_type = storage_series_api.NominalDataType.STRING_ARRAY
+            case ChannelDataType.STRUCT:
+                data_type = storage_series_api.NominalDataType.STRUCT
             case ChannelDataType.VIDEO:
-                return storage_series_api.NominalDataType.VIDEO
+                data_type = storage_series_api.NominalDataType.VIDEO
             case _:
-                return storage_series_api.NominalDataType.UNKNOWN
+                data_type = storage_series_api.NominalDataType.UNKNOWN
+        return data_type
 
 
 @dataclass
