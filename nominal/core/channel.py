@@ -62,28 +62,27 @@ class ChannelDataType(enum.Enum):
     def _to_conjure(self) -> storage_series_api.NominalDataType:
         match self:
             case ChannelDataType.DOUBLE:
-                data_type = storage_series_api.NominalDataType.DOUBLE
+                return storage_series_api.NominalDataType.DOUBLE
             case ChannelDataType.STRING:
-                data_type = storage_series_api.NominalDataType.STRING
+                return storage_series_api.NominalDataType.STRING
             case ChannelDataType.LOG:
-                data_type = storage_series_api.NominalDataType.LOG
+                return storage_series_api.NominalDataType.LOG
             case ChannelDataType.INT:
-                data_type = storage_series_api.NominalDataType.INT64
+                return storage_series_api.NominalDataType.INT64
             case ChannelDataType.UINT:
-                data_type = storage_series_api.NominalDataType.UINT64
+                return storage_series_api.NominalDataType.UINT64
             case ChannelDataType.DOUBLE_ARRAY:
-                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
+                return storage_series_api.NominalDataType.DOUBLE_ARRAY
             case ChannelDataType.STRING_ARRAY:
-                data_type = storage_series_api.NominalDataType.STRING_ARRAY
+                return storage_series_api.NominalDataType.STRING_ARRAY
             case ChannelDataType.STRUCT:
-                data_type = storage_series_api.NominalDataType.STRUCT
+                return storage_series_api.NominalDataType.STRUCT
             case ChannelDataType.VIDEO:
-                data_type = storage_series_api.NominalDataType.VIDEO
+                return storage_series_api.NominalDataType.VIDEO
             case ChannelDataType.UNKNOWN:
-                data_type = storage_series_api.NominalDataType.UNKNOWN
+                return storage_series_api.NominalDataType.UNKNOWN
             case _:
                 assert_never(self)
-        return data_type
 
 
 @dataclass
