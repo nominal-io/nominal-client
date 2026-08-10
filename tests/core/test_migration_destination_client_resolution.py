@@ -35,6 +35,7 @@ def _make_run(*, rid: str, name: str | None = None) -> MagicMock:
     run.labels = [rid]
     run.assets = []
     run.links = []
+    run.is_archived = False
     run.list_attachments.return_value = []
     run.search_workbooks.return_value = []
     return run

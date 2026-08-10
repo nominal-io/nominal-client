@@ -56,6 +56,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -703,11 +704,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     def archive(self) -> None:
         """Archive this asset.
         Archived assets are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.assets.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this asset, allowing it to be viewed in the UI."""
+        """Unarchive this asset, allowing it to be viewed in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -719,6 +725,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             properties=MappingProxyType(asset.properties),
             labels=tuple(asset.labels),
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
+            is_archived=asset.is_archived,
             _clients=clients,
             created_by_rid=asset.created_by,
         )

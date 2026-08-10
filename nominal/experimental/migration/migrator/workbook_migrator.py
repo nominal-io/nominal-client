@@ -32,6 +32,9 @@ class WorkbookCopyOptions(ResourceCopyOptions):
     source_to_destination_run_rid_mapping: Mapping[str, str] = field(default_factory=dict)
     new_labels: Sequence[str] | None = None
     new_properties: Mapping[str, str] | None = None
+    # source run rids that were intentionally not migrated (archived); the workbook is
+    # migrated with only its remaining runs instead of failing on the missing mapping
+    archived_run_rids: frozenset[str] = frozenset()
 
 
 class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
@@ -63,6 +66,19 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             **options.source_to_destination_asset_rid_mapping,
             **options.source_to_destination_run_rid_mapping,
         }
+
+        archived_scope_run_rids = sorted(r for r in source_run_rids if r in options.archived_run_rids)
+        if archived_scope_run_rids:
+            remaining_run_rids = [r for r in source_run_rids if r not in options.archived_run_rids]
+            if not remaining_run_rids:
+                raise ValueError(f"Workbook {source.rid} references only archived runs: {archived_scope_run_rids}")
+            logger.warning(
+                "Workbook %s references archived run(s) %s — migrating with only its unarchived runs; "
+                "content referencing the archived run(s) will not be preserved",
+                source.rid,
+                archived_scope_run_rids,
+            )
+            source_run_rids = remaining_run_rids
 
         if source_run_rids:
             missing = [r for r in source_run_rids if r not in options.source_to_destination_run_rid_mapping]
@@ -255,7 +271,14 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         if pending_multi_run:
             logger.info("Migrating %d deferred multi-run workbook(s)", len(pending_multi_run))
-            for workbook_rid in pending_multi_run:
+            archived_run_rids = frozenset(self.ctx.migration_state.archived_run_rids)
+            for workbook_rid, source_run_rids in pending_multi_run.items():
+                archived_scope_runs = sorted(set(source_run_rids) & archived_run_rids)
+                if archived_scope_runs and len(archived_scope_runs) == len(set(source_run_rids)):
+                    reason = f"all of its runs are archived: {archived_scope_runs}"
+                    logger.warning("Skipping multi-run workbook %s: %s", workbook_rid, reason)
+                    self.ctx.migration_state.record_workbook_skip_and_clear_pending(workbook_rid, reason)
+                    continue
                 source_clients = next(iter(source_clients_by_asset_rid.values()), None)
                 if source_clients is None:
                     logger.warning("No source assets available to fetch multi-run workbook %s — skipping", workbook_rid)
@@ -267,6 +290,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                     WorkbookCopyOptions(
                         source_to_destination_asset_rid_mapping=asset_rid_map,
                         source_to_destination_run_rid_mapping=run_rid_map,
+                        archived_run_rids=archived_run_rids,
                     ),
                 )
                 self.ctx.migration_state.clear_pending_multi_run_workbook(workbook_rid)

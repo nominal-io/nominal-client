@@ -30,6 +30,7 @@ def mock_run(mock_clients):
         run_number=1,
         assets=[],
         created_at=0,
+        is_archived=False,
         _clients=mock_clients,
     )
 

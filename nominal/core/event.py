@@ -28,6 +28,7 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     type: EventType
+    is_archived: bool
 
     _uuid: str = field(repr=False)
 
@@ -93,11 +94,17 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
         return self._refresh_from_api(batch_updated.events[0])
 
     def archive(self) -> None:
-        """Archives the event, preventing it from showing up in workbooks."""
+        """Archives the event, preventing it from showing up in workbooks.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.event.batch_archive_event(self._clients.auth_header, [self.rid])
 
     def unarchive(self) -> None:
-        """Unarchives the event, allowing it to show up in workbooks."""
+        """Unarchives the event, allowing it to show up in workbooks.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.event.batch_unarchive_event(self._clients.auth_header, [self.rid])
 
     @classmethod
@@ -110,6 +117,7 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=event.duration.seconds * 1_000_000_000 + event.duration.nanos,
             type=EventType.from_api_event_type(event.type),
+            is_archived=event.is_archived,
             properties=event.properties,
             labels=event.labels,
             created_by_rid=event.created_by,

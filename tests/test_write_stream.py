@@ -62,6 +62,7 @@ def mock_dataset(mock_clients):
         properties={},
         labels=[],
         bounds=None,
+        is_archived=False,
     )
 
 

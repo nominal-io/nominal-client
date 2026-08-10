@@ -56,6 +56,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     run_number: int
     assets: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
@@ -586,11 +587,16 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this run, allowing it to appear on the UI."""
+        """Unarchive this run, allowing it to appear on the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -610,6 +616,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             run_number=run.run_number,
             assets=tuple(run.assets),
             created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
+            is_archived=run.is_archived,
             _clients=clients,
             author_rid=run.author_rid,
         )

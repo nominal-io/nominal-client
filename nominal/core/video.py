@@ -42,6 +42,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
 
@@ -137,6 +138,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     def archive(self) -> None:
         """Archive this video.
         Archived videos are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.video.archive(self._clients.auth_header, self.rid)
 
@@ -146,7 +149,10 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         category=LegacyVideoDeprecationWarning,
     )
     def unarchive(self) -> None:
-        """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
+        """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
     @overload
@@ -474,6 +480,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
             properties=MappingProxyType(video.properties),
             labels=tuple(video.labels),
             created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
+            is_archived=video.is_archived,
             _clients=clients,
             created_by_rid=video.created_by,
         )

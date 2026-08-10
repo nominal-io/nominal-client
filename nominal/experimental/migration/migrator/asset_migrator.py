@@ -151,6 +151,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
             source_dataset = source_datasets[source_dataset_rid]
+            if source_dataset.is_archived:
+                logger.info(
+                    "Skipping archived dataset '%s' (rid: %s) on asset %s scope '%s'",
+                    source_dataset.name,
+                    source_dataset.rid,
+                    source_asset.rid,
+                    source_data_scope_name,
+                )
+                continue
             source_series_tags = source_data_scope.series_tags
             # Always delegate to dataset_migrator.copy_from so that file migrations are
             # never skipped on resume. DatasetMigrator._copy_from_impl handles fetch-or-create
@@ -191,6 +200,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> None:
         run_migrator = RunMigrator(self.ctx)
         for source_run in source_asset.list_runs():
+            if source_run.is_archived:
+                logger.info(
+                    "Skipping archived run '%s' (rid: %s) on asset %s",
+                    source_run.name,
+                    source_run.rid,
+                    source_asset.rid,
+                )
+                self.ctx.migration_state.record_archived_run(source_run.rid)
+                continue
             run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
 
     def _copy_asset_checklists(self, source_asset: Asset) -> None:
@@ -229,7 +247,17 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
     def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
         attachment_migrator = AttachmentMigrator(self.ctx)
-        new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
+        new_attachments = []
+        for source_attachment in source_asset.list_attachments():
+            if source_attachment.is_archived:
+                logger.info(
+                    "Skipping archived attachment '%s' (rid: %s) on asset %s",
+                    source_attachment.name,
+                    source_attachment.rid,
+                    source_asset.rid,
+                )
+                continue
+            new_attachments.append(attachment_migrator.copy_from(source_attachment))
         if new_attachments:
             if self.ctx.dry_run:
                 logger.info(
@@ -243,6 +271,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(self.ctx)
         for data_scope, video_dataset in source_asset.list_videos():
+            if video_dataset.is_archived:
+                logger.info(
+                    "Skipping archived video '%s' (rid: %s) on asset %s scope '%s'",
+                    video_dataset.name,
+                    video_dataset.rid,
+                    source_asset.rid,
+                    data_scope,
+                )
+                continue
             new_video_dataset = video_migrator.copy_from(
                 video_dataset,
                 VideoCopyOptions(
@@ -292,6 +329,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
         if include_runs:
             for source_run in source_asset.list_runs():
+                if source_run.is_archived:
+                    continue
                 dest_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
                 if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
