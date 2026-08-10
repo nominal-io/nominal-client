@@ -697,16 +697,14 @@ def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout
 
     The platform reconstructs the value as `seconds * 1e9 + nanos` using signed arithmetic and constrains
     neither field's sign, so the split is floored rather than truncated: `nanos` stays in [0, 1e9) and
-    `seconds` carries the sign. -1.5s therefore encodes as `(seconds=-2, nanos=500_000_000)`, which looks
-    like an overshoot but is the same value. Flooring is also what `divmod` gives, which the
-    integral-nanosecond path has always used, and what the platform's own duration type produces.
+    `seconds` carries the sign. -1.5s therefore encodes as `(seconds=-2, nanos=500_000_000)`.
 
     A `timedelta` is an exact multiple of its microsecond resolution, so dividing by one microsecond
     converts it losslessly.
 
     Note:
-        This is not `google.protobuf.Duration`, which requires both fields to share a sign and would
-        reject a floored split. A duration bound for that type needs its own encoder.
+        This is not valid for `google.protobuf.Duration`, which requires both fields to share a sign
+        and would reject a floored split. A duration bound for that type needs its own encoder.
     """
     total_nanos = duration // _ONE_MICROSECOND * 1_000 if isinstance(duration, timedelta) else duration
     seconds, nanos = divmod(total_nanos, 1_000_000_000)
