@@ -388,7 +388,7 @@ class DataSource(HasRid):
 def _build_series_metadata_request(
     data_source_rid: str, req: CreateChannelRequest
 ) -> timeseries_metadata_api.CreateSeriesMetadataRequest:
-    nominal_data_type = req.data_type._to_nominal_data_type()
+    nominal_data_type = req.data_type._to_conjure()
     locator = timeseries_metadata_api.LocatorTemplate(
         nominal=timeseries_metadata_api.NominalLocatorTemplate(
             channel=req.name,

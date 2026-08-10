@@ -56,19 +56,20 @@ class ChannelDataType(enum.Enum):
         else:
             return cls("UNKNOWN")
 
-    def _to_nominal_data_type(self) -> storage_series_api.NominalDataType:
-        if self == ChannelDataType.DOUBLE:
-            return storage_series_api.NominalDataType.DOUBLE
-        elif self == ChannelDataType.STRING:
-            return storage_series_api.NominalDataType.STRING
-        elif self == ChannelDataType.LOG:
-            return storage_series_api.NominalDataType.LOG
-        elif self == ChannelDataType.INT:
-            return storage_series_api.NominalDataType.INT64
-        elif self == ChannelDataType.VIDEO:
-            return storage_series_api.NominalDataType.VIDEO
-        else:
-            return storage_series_api.NominalDataType.UNKNOWN
+    def _to_conjure(self) -> storage_series_api.NominalDataType:
+        match self:
+            case ChannelDataType.DOUBLE:
+                return storage_series_api.NominalDataType.DOUBLE
+            case ChannelDataType.STRING:
+                return storage_series_api.NominalDataType.STRING
+            case ChannelDataType.LOG:
+                return storage_series_api.NominalDataType.LOG
+            case ChannelDataType.INT:
+                return storage_series_api.NominalDataType.INT64
+            case ChannelDataType.VIDEO:
+                return storage_series_api.NominalDataType.VIDEO
+            case _:
+                return storage_series_api.NominalDataType.UNKNOWN
 
 
 @dataclass
