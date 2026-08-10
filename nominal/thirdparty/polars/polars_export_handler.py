@@ -772,8 +772,8 @@ class PolarsExportHandler:
     ) -> Iterator[pl.DataFrame]:
         """Yield exported data one DataFrame at a time.
 
-        LOG / UNKNOWN channels are filtered out with a warning; only DOUBLE, INT, and STRING
-        channels flow through the export pipeline.
+        Only DOUBLE, INT, and STRING channels flow through the export pipeline; channels of any
+        other data type are filtered out with a warning.
 
         Args:
             channels: Channels to export.

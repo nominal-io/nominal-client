@@ -18,7 +18,7 @@ from nominal_api import (
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, assert_never
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
@@ -41,11 +41,14 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelDataType(enum.Enum):
-    # TODO (drake): support DOUBLE_ARRAY and STRING_ARRAY
     DOUBLE = "DOUBLE"
     STRING = "STRING"
     LOG = "LOG"
     INT = "INT"
+    UINT = "UINT"
+    DOUBLE_ARRAY = "DOUBLE_ARRAY"
+    STRING_ARRAY = "STRING_ARRAY"
+    STRUCT = "STRUCT"
     VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
 
@@ -56,19 +59,31 @@ class ChannelDataType(enum.Enum):
         else:
             return cls("UNKNOWN")
 
-    def _to_nominal_data_type(self) -> storage_series_api.NominalDataType:
-        if self == ChannelDataType.DOUBLE:
-            return storage_series_api.NominalDataType.DOUBLE
-        elif self == ChannelDataType.STRING:
-            return storage_series_api.NominalDataType.STRING
-        elif self == ChannelDataType.LOG:
-            return storage_series_api.NominalDataType.LOG
-        elif self == ChannelDataType.INT:
-            return storage_series_api.NominalDataType.INT64
-        elif self == ChannelDataType.VIDEO:
-            return storage_series_api.NominalDataType.VIDEO
-        else:
-            return storage_series_api.NominalDataType.UNKNOWN
+    def _to_conjure(self) -> storage_series_api.NominalDataType:
+        match self:
+            case ChannelDataType.DOUBLE:
+                data_type = storage_series_api.NominalDataType.DOUBLE
+            case ChannelDataType.STRING:
+                data_type = storage_series_api.NominalDataType.STRING
+            case ChannelDataType.LOG:
+                data_type = storage_series_api.NominalDataType.LOG
+            case ChannelDataType.INT:
+                data_type = storage_series_api.NominalDataType.INT64
+            case ChannelDataType.UINT:
+                data_type = storage_series_api.NominalDataType.UINT64
+            case ChannelDataType.DOUBLE_ARRAY:
+                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
+            case ChannelDataType.STRING_ARRAY:
+                data_type = storage_series_api.NominalDataType.STRING_ARRAY
+            case ChannelDataType.STRUCT:
+                data_type = storage_series_api.NominalDataType.STRUCT
+            case ChannelDataType.VIDEO:
+                data_type = storage_series_api.NominalDataType.VIDEO
+            case ChannelDataType.UNKNOWN:
+                data_type = storage_series_api.NominalDataType.UNKNOWN
+            case _:
+                assert_never(self)
+        return data_type
 
 
 @dataclass
