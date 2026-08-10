@@ -59,7 +59,7 @@ class ChannelDataType(enum.Enum):
         else:
             return cls("UNKNOWN")
 
-    def _to_conjure(self) -> storage_series_api.NominalDataType:
+    def _to_conjure(self) -> storage_series_api.NominalDataType:  # noqa: PLR0911
         match self:
             case ChannelDataType.DOUBLE:
                 return storage_series_api.NominalDataType.DOUBLE
