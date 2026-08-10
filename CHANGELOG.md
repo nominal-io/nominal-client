@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.158.0](https://github.com/nominal-io/nominal-client/compare/v1.157.0...v1.158.0) (2026-08-10)
+
+
+### Features
+
+* expand ChannelDataType with UINT, DOUBLE_ARRAY, STRING_ARRAY, and STRUCT ([#919](https://github.com/nominal-io/nominal-client/issues/919)) ([9b09a9f](https://github.com/nominal-io/nominal-client/commit/9b09a9f0ac599c29e754dd8a1cfd620210ddf9d5))
+* expose is_archived on core resources and skip archived resources in migration ([#921](https://github.com/nominal-io/nominal-client/issues/921)) ([1654e91](https://github.com/nominal-io/nominal-client/commit/1654e91a83fa9c0e63e2d7c3b2592400424c49ff))
+
+
+### Bug Fixes
+
+* bump nominal-api & nominal-api-protos to 0.1371.0 ([#914](https://github.com/nominal-io/nominal-client/issues/914)) ([a12a4bf](https://github.com/nominal-io/nominal-client/commit/a12a4bfc5aed62ca91c4fa0721e505324015a244))
+
+
+### Documentation
+
+* correct exact_match and search_text semantics in search methods ([#900](https://github.com/nominal-io/nominal-client/issues/900)) ([13995be](https://github.com/nominal-io/nominal-client/commit/13995bef9e7f0174600dd71c0bc2a2aa26906b5f))
+
 ## [1.157.0](https://github.com/nominal-io/nominal-client/compare/v1.156.1...v1.157.0) (2026-08-07)
 
 
