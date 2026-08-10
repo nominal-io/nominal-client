@@ -56,6 +56,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -719,6 +720,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             properties=MappingProxyType(asset.properties),
             labels=tuple(asset.labels),
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
+            is_archived=asset.is_archived,
             _clients=clients,
             created_by_rid=asset.created_by,
         )

@@ -56,6 +56,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     run_number: int
     assets: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
@@ -610,6 +611,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             run_number=run.run_number,
             assets=tuple(run.assets),
             created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
+            is_archived=run.is_archived,
             _clients=clients,
             author_rid=run.author_rid,
         )

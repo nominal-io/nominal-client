@@ -55,7 +55,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         attachments = options.new_attachments
         if attachments is None:
             attachment_migrator = AttachmentMigrator(self.ctx)
-            attachments = [attachment_migrator.copy_from(a) for a in source.list_attachments()]
+            attachments = [attachment_migrator.copy_from(a) for a in source.list_attachments() if not a.is_archived]
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)

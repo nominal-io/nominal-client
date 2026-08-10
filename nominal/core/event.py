@@ -28,6 +28,7 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     type: EventType
+    is_archived: bool
 
     _uuid: str = field(repr=False)
 
@@ -110,6 +111,7 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=event.duration.seconds * 1_000_000_000 + event.duration.nanos,
             type=EventType.from_api_event_type(event.type),
+            is_archived=event.is_archived,
             properties=event.properties,
             labels=event.labels,
             created_by_rid=event.created_by,

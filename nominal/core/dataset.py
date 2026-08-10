@@ -54,6 +54,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     properties: Mapping[str, str]
     labels: Sequence[str]
     bounds: DatasetBounds | None
+    is_archived: bool
 
     @property
     def nominal_url(self) -> str:
@@ -1050,6 +1051,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             properties=MappingProxyType(dataset.properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
+            is_archived=dataset.is_archived,
             _clients=clients,
         )
 

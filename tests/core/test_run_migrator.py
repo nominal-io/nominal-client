@@ -48,6 +48,7 @@ def _make_run(rid: str, name: str = "Run", asset_rids: list[str] | None = None) 
     run.properties = {}
     run.labels = []
     run.links = []
+    run.is_archived = False
     run.list_attachments.return_value = []
     # update() returns a new mock with updated assets by default - tests can override
     run.update.return_value = run
@@ -258,7 +259,10 @@ class TestRunMigratorAttachments:
         ctx = _make_context()
         migrator = RunMigrator(ctx)
 
-        src_att_1, src_att_2 = MagicMock(rid=_att_rid(1)), MagicMock(rid=_att_rid(2))
+        src_att_1, src_att_2 = (
+            MagicMock(rid=_att_rid(1), is_archived=False),
+            MagicMock(rid=_att_rid(2), is_archived=False),
+        )
         new_att_1, new_att_2 = MagicMock(rid=_att_rid(101)), MagicMock(rid=_att_rid(102))
 
         mock_att_migrator = mock_att_cls.return_value
@@ -285,6 +289,31 @@ class TestRunMigratorAttachments:
         assert set(a.rid for a in call_kwargs["attachments"]) == {_att_rid(101), _att_rid(102)}
 
     @patch("nominal.experimental.migration.migrator.run_migrator.AttachmentMigrator")
+    def test_archived_attachments_are_skipped(self, mock_att_cls: MagicMock) -> None:
+        """Archived source attachments are not migrated or passed to create_run."""
+        ctx = _make_context()
+        migrator = RunMigrator(ctx)
+
+        active_att = MagicMock(rid=_att_rid(1), is_archived=False)
+        archived_att = MagicMock(rid=_att_rid(2), is_archived=True)
+        new_att = MagicMock(rid=_att_rid(101))
+
+        mock_att_migrator = mock_att_cls.return_value
+        mock_att_migrator.copy_from.return_value = new_att
+
+        source_run = _make_run(_run_rid(1))
+        source_run.list_attachments.return_value = [active_att, archived_att]
+
+        dest_run = _make_run(_run_rid(100))
+        ctx.destination_client.create_run.return_value = dest_run
+
+        migrator.copy_from(source_run, RunCopyOptions())
+
+        mock_att_migrator.copy_from.assert_called_once_with(active_att)
+        call_kwargs = ctx.destination_client.create_run.call_args.kwargs
+        assert [a.rid for a in call_kwargs["attachments"]] == [_att_rid(101)]
+
+    @patch("nominal.experimental.migration.migrator.run_migrator.AttachmentMigrator")
     def test_existing_run_does_not_remigrate_attachments(self, mock_att_cls: MagicMock) -> None:
         """When the run already exists in state, AttachmentMigrator is never instantiated."""
         ctx = _make_context()
@@ -297,7 +326,7 @@ class TestRunMigratorAttachments:
         ctx.destination_client.get_run.return_value = existing_run
 
         source_run = _make_run(source_rid)
-        source_run.list_attachments.return_value = [MagicMock(rid=_att_rid(1))]
+        source_run.list_attachments.return_value = [MagicMock(rid=_att_rid(1), is_archived=False)]
 
         migrator.copy_from(source_run, RunCopyOptions())
 

@@ -42,6 +42,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
 
@@ -474,6 +475,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
             properties=MappingProxyType(video.properties),
             labels=tuple(video.labels),
             created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
+            is_archived=video.is_archived,
             _clients=clients,
             created_by_rid=video.created_by,
         )

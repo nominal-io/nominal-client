@@ -28,6 +28,7 @@ def make_run(mock_clients):
             run_number=1,
             assets=assets,
             created_at=0,
+            is_archived=False,
             _clients=mock_clients,
         )
 

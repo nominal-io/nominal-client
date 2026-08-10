@@ -23,6 +23,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -101,6 +102,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
             created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
+            is_archived=attachment.is_archived,
             _clients=clients,
             created_by_rid=attachment.created_by,
         )
