@@ -587,14 +587,17 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
-        self.refresh()
 
     def unarchive(self) -> None:
-        """Unarchive this run, allowing it to appear on the UI."""
+        """Unarchive this run, allowing it to appear on the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
-        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:

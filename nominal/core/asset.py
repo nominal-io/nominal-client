@@ -704,14 +704,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     def archive(self) -> None:
         """Archive this asset.
         Archived assets are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.assets.archive(self._clients.auth_header, self.rid)
-        self.refresh()
 
     def unarchive(self) -> None:
-        """Unarchive this asset, allowing it to be viewed in the UI."""
+        """Unarchive this asset, allowing it to be viewed in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
-        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, asset: scout_asset_api.Asset) -> Self:

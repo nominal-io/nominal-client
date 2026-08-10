@@ -94,14 +94,18 @@ class Event(HasRid, RefreshableConjureMixin[event.Event]):
         return self._refresh_from_api(batch_updated.events[0])
 
     def archive(self) -> None:
-        """Archives the event, preventing it from showing up in workbooks."""
+        """Archives the event, preventing it from showing up in workbooks.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.event.batch_archive_event(self._clients.auth_header, [self.rid])
-        self.refresh()
 
     def unarchive(self) -> None:
-        """Unarchives the event, allowing it to show up in workbooks."""
+        """Unarchives the event, allowing it to show up in workbooks.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.event.batch_unarchive_event(self._clients.auth_header, [self.rid])
-        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
