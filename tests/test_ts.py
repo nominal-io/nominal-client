@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dateutil.parser
 import pytest
 
 from nominal import ts
+from nominal.ts import _to_api_duration
 
 
 @pytest.mark.parametrize(
@@ -100,3 +101,27 @@ def test_string_timestamp_types_cannot_describe_avro_timestamps(typed: ts.TypedT
     """Avro timestamps are integers, so a string-formatted type has no representation there."""
     with pytest.raises(ValueError, match="not supported with .avro files"):
         typed._to_conjure_ingest_avro_api()
+
+
+@pytest.mark.parametrize(
+    ("duration", "expected"),
+    [
+        pytest.param(timedelta(seconds=1, microseconds=500_000), (1, 500_000_000), id="timedelta-positive"),
+        pytest.param(1_500_000_000, (1, 500_000_000), id="int-positive"),
+        pytest.param(timedelta(seconds=-1, microseconds=-500_000), (-2, 500_000_000), id="timedelta-negative"),
+        pytest.param(-1_500_000_000, (-2, 500_000_000), id="int-negative"),
+        pytest.param(timedelta(microseconds=-1), (-1, 999_999_000), id="timedelta-negative-sub-second"),
+        pytest.param(-1_000, (-1, 999_999_000), id="int-negative-sub-second"),
+        pytest.param(timedelta(days=-1), (-86_400, 0), id="timedelta-negative-whole-day"),
+        pytest.param(timedelta(0), (0, 0), id="zero"),
+    ],
+)
+def test_to_api_duration_encodes_the_same_split_for_both_input_types(duration, expected: tuple[int, int]) -> None:
+    """The same duration must encode to the same (seconds, nanos) split however it is spelled.
+
+    nanos stays in [0, 1e9) and seconds carries the sign, so a negative duration borrows a whole second
+    rather than pairing a negative nanos with it.
+    """
+    api_duration = _to_api_duration(duration)
+
+    assert (api_duration.seconds, api_duration.nanos) == expected
