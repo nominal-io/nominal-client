@@ -177,6 +177,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         migration_state=runner.migration_state,
         source_asset_rids=frozenset(runner.migration_resources.source_assets.keys()),
         dry_run=runner.dry_run,
+        video_ingest_timeout=runner.video_ingest_timeout,
     )
     if getattr(runner, "destination_client_resolver", None) is not None:
         setattr(ctx, "destination_client_resolver", runner.destination_client_resolver)

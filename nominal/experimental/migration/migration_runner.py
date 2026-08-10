@@ -11,7 +11,6 @@ from typing import cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
@@ -22,6 +21,7 @@ from nominal.experimental.migration.migrator.context import DestinationClientRes
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
 logger = logging.getLogger(__name__)
 

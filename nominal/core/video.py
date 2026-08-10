@@ -26,7 +26,7 @@ from nominal.core.exceptions import (
     NominalVideoTimestampModeError,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT, VideoFile
+from nominal.core.video_file import VideoFile
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -67,16 +67,17 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         self,
         interval: timedelta = timedelta(seconds=1),
         *,
-        timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+        timeout: timedelta | None = None,
     ) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video on an interval.
 
         Args:
             interval: How long to wait between status checks.
-            timeout: Give up after this long and raise `NominalIngestTimeout`. Pass `None` to wait
-                indefinitely — only safe when a human is watching, since a server-side worker that
-                dies mid-ingest leaves the video in `inProgress` and the poll never terminates.
+            timeout: Give up after this long and raise `NominalIngestTimeout`. Defaults to `None`,
+                which waits indefinitely — unattended callers should pass a bound, since a
+                server-side worker that dies mid-ingest leaves the video in `inProgress` and the
+                poll never terminates.
 
         Raises:
         ------

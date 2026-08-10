@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -196,3 +197,40 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
     new_file.poll_until_ingestion_completed.assert_called_once_with(timeout=timedelta(seconds=5))
+
+
+def test_parallel_runner_passes_video_ingest_timeout_to_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A configured timeout must reach the parallel path's context, not only the sequential one.
+
+    The parallel runner builds its own MigrationContext; forgetting to carry
+    `runner.video_ingest_timeout` there silently ignores `--video-ingest-timeout-seconds`
+    for every parallel run.
+    """
+    from nominal.experimental.migration import parallel_migration_runner
+    from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+    from nominal.experimental.migration.config.migration_resources import MigrationResources
+    from nominal.experimental.migration.migration_runner import MigrationRunner
+
+    runner = MigrationRunner(
+        migration_resources=MigrationResources(source_assets={}, source_standalone_templates=[]),
+        dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+        destination_client=MagicMock(),
+        migration_state_path=tmp_path / "state.json",
+        video_ingest_timeout=timedelta(seconds=7),
+    )
+
+    captured: list[MigrationContext] = []
+
+    def capture_ctx(ctx: MigrationContext) -> MagicMock:
+        captured.append(ctx)
+        return MagicMock()
+
+    monkeypatch.setattr(parallel_migration_runner, "AssetMigrator", capture_ctx)
+    monkeypatch.setattr(parallel_migration_runner, "WorkbookTemplateMigrator", capture_ctx)
+    monkeypatch.setattr(parallel_migration_runner, "ChecklistMigrator", capture_ctx)
+
+    parallel_migration_runner.run_parallel_migration(runner, max_workers=1)
+
+    assert [ctx.video_ingest_timeout for ctx in captured] == [timedelta(seconds=7)] * 3

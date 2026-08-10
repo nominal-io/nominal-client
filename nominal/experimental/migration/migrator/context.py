@@ -7,9 +7,9 @@ from datetime import timedelta
 from typing import Any, Callable, TypeVar, cast
 
 from nominal.core import NominalClient
-from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
 DestinationClientResolver = Callable[[Any], NominalClient]
 Resource = TypeVar("Resource")

@@ -23,12 +23,6 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
-# Deliberately far longer than any healthy ingest: the deadline exists to stop a *stalled* ingest
-# from wedging a caller forever, not to bound a slow one. Erring long keeps the timeout from firing
-# on a large video that would have finished, which matters because the timeout is reported as
-# something an operator must go check by hand.
-DEFAULT_INGEST_POLL_TIMEOUT = timedelta(hours=2)
-
 
 @dataclass(frozen=True)
 class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
@@ -126,16 +120,17 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         self,
         interval: timedelta = timedelta(seconds=1),
         *,
-        timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+        timeout: timedelta | None = None,
     ) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video file on an interval.
 
         Args:
             interval: How long to wait between status checks.
-            timeout: Give up after this long and raise `NominalIngestTimeout`. Pass `None` to wait
-                indefinitely — only safe when a human is watching, since a server-side worker that
-                dies mid-ingest leaves the file in `inProgress` and the poll never terminates.
+            timeout: Give up after this long and raise `NominalIngestTimeout`. Defaults to `None`,
+                which waits indefinitely — unattended callers should pass a bound, since a
+                server-side worker that dies mid-ingest leaves the file in `inProgress` and the
+                poll never terminates.
 
         Raises:
         ------

@@ -13,9 +13,16 @@ from nominal.core._video_types import McapVideoDetails, TimestampOptions
 from nominal.core.exceptions import NominalIngestTimeout, NominalVideoFileMetadataError
 from nominal.core.filetype import FileTypes
 from nominal.core.video import Video
-from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT, VideoFile
+from nominal.core.video_file import VideoFile
 
 logger = logging.getLogger(__name__)
+
+# Migration's default only — the public poll methods still wait forever unless a caller opts in.
+# Deliberately far longer than any healthy ingest: the deadline exists to stop a *stalled* ingest
+# from wedging the run forever, not to bound a slow one. Erring long keeps the timeout from firing
+# on a large video that would have finished, which matters because the timeout is reported as
+# something an operator must go check by hand.
+DEFAULT_INGEST_POLL_TIMEOUT = timedelta(hours=2)
 
 
 @dataclass(frozen=True)

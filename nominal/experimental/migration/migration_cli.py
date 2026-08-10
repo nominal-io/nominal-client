@@ -13,7 +13,6 @@ import yaml
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.video_file import DEFAULT_INGEST_POLL_TIMEOUT
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -23,6 +22,7 @@ from nominal.experimental.migration.migration_summary import build_summary, load
 from nominal.experimental.migration.migrator.context import DestinationClientResolver
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2
 
 logger = logging.getLogger(__name__)
