@@ -185,6 +185,13 @@ def channel_to_dataframe_decimated(
 
     Enter either the number of buckets or the resolution for the output.
     Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
+
+    Only DOUBLE and INT channels are supported. Any other data type raises, either because the
+    type cannot back a compute series or because the decimated response is not numeric.
+
+    Raises:
+        ValueError: If both `buckets` and `resolution` are given, or if the channel's data type
+            is not DOUBLE or INT.
     """
     if buckets is not None and resolution is not None:
         raise ValueError("Either buckets or resolution should be provided")
