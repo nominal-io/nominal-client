@@ -59,30 +59,31 @@ class ChannelDataType(enum.Enum):
         else:
             return cls("UNKNOWN")
 
-    def _to_conjure(self) -> storage_series_api.NominalDataType:  # noqa: PLR0911
+    def _to_conjure(self) -> storage_series_api.NominalDataType:
         match self:
             case ChannelDataType.DOUBLE:
-                return storage_series_api.NominalDataType.DOUBLE
+                data_type = storage_series_api.NominalDataType.DOUBLE
             case ChannelDataType.STRING:
-                return storage_series_api.NominalDataType.STRING
+                data_type = storage_series_api.NominalDataType.STRING
             case ChannelDataType.LOG:
-                return storage_series_api.NominalDataType.LOG
+                data_type = storage_series_api.NominalDataType.LOG
             case ChannelDataType.INT:
-                return storage_series_api.NominalDataType.INT64
+                data_type = storage_series_api.NominalDataType.INT64
             case ChannelDataType.UINT:
-                return storage_series_api.NominalDataType.UINT64
+                data_type = storage_series_api.NominalDataType.UINT64
             case ChannelDataType.DOUBLE_ARRAY:
-                return storage_series_api.NominalDataType.DOUBLE_ARRAY
+                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
             case ChannelDataType.STRING_ARRAY:
-                return storage_series_api.NominalDataType.STRING_ARRAY
+                data_type = storage_series_api.NominalDataType.STRING_ARRAY
             case ChannelDataType.STRUCT:
-                return storage_series_api.NominalDataType.STRUCT
+                data_type = storage_series_api.NominalDataType.STRUCT
             case ChannelDataType.VIDEO:
-                return storage_series_api.NominalDataType.VIDEO
+                data_type = storage_series_api.NominalDataType.VIDEO
             case ChannelDataType.UNKNOWN:
-                return storage_series_api.NominalDataType.UNKNOWN
+                data_type = storage_series_api.NominalDataType.UNKNOWN
             case _:
                 assert_never(self)
+        return data_type
 
 
 @dataclass
