@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import itertools
 import time
-import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, Iterator, Protocol, Sequence
@@ -67,12 +66,22 @@ class Probe:
 
 
 def _archive_all(resources: Sequence[Archivable]) -> None:
-    """Archive every resource, continuing past failures so one bad archive can't orphan the rest."""
+    """Archive every resource, continuing past failures so one bad archive can't orphan the rest.
+
+    Failures are collected and reported once, after the loop. Reporting from inside the `except`
+    would let the reporting call itself abort the loop -- `pyproject.toml` sets
+    `filterwarnings = ["error"]`, so a `warnings.warn` there raises and orphans every resource
+    that had not been reached yet. An orphaned probe is harmless (unique tokens, no collision),
+    so this must never fail the run either.
+    """
+    failures = []
     for resource in resources:
         try:
             resource.archive()
         except Exception as e:
-            warnings.warn(f"failed to archive probe resource {resource!r}: {e!r}")
+            failures.append(f"{resource!r}: {e!r}")
+    if failures:
+        print(f"WARNING: failed to archive {len(failures)} of {len(resources)} probe resources: {'; '.join(failures)}")
 
 
 def test_field_tokens_share_no_substring() -> None:
