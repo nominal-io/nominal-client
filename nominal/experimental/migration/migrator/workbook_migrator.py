@@ -259,6 +259,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 source_clients = next(iter(source_clients_by_asset_rid.values()), None)
                 if source_clients is None:
                     logger.warning("No source assets available to fetch multi-run workbook %s — skipping", workbook_rid)
+                    self.ctx.migration_state.record_skip(
+                        ResourceType.WORKBOOK,
+                        workbook_rid,
+                        "no source assets available to fetch this multi-run workbook",
+                    )
                     continue
                 raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
                 source_workbook = Workbook._from_conjure(source_clients, raw_notebook)
@@ -286,6 +291,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             "Could not resolve source client for multi-asset workbook %s "
             "(none of its assets are in migration resources) — skipping",
             workbook_rid,
+        )
+        self.ctx.migration_state.record_skip(
+            ResourceType.WORKBOOK,
+            workbook_rid,
+            "none of this multi-asset workbook's assets are in migration resources",
         )
         return None
 

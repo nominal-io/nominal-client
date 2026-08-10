@@ -318,6 +318,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 dest_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
                 if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
+                    self.ctx.migration_state.record_skip(
+                        ResourceType.RUN,
+                        source_run.rid,
+                        "run was not migrated, so its workbooks were not copied",
+                    )
                     continue
                 self._copy_run_workbooks(
                     source_run, source_asset, new_asset, dest_run_rid, workbook_migrator, workbook_rids_allowlist

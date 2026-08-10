@@ -86,9 +86,11 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
 
         if options.preserve_uuid:
             channels_to_add = []
+            untyped_channels: list[str] = []
             for source_channel in source.search_channels():
                 if source_channel.data_type is None:
                     logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
+                    untyped_channels.append(source_channel.name)
                     continue
                 channel_key = f"{source.rid}:{source_channel.name}"
                 if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_CHANNEL, channel_key) is None:
@@ -114,6 +116,11 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                     source.rid,
                     extra=log_extras,
                 )
+            # Recorded per dataset rather than per channel: a wide dataset can carry >100k channels,
+            # and one skip record each would bloat the state file that gets re-serialized on every
+            # debounced save. The count is what an operator acts on; names are a sample to start from.
+            self._record_channel_skips(source.rid, "unknown data type", untyped_channels)
+            self._record_channel_skips(source.rid, "not found after creation", [req.name for req in result.missing])
             for channel in result.channels:
                 channel_key = f"{source.rid}:{channel.name}"
                 self.ctx.migration_state.record_mapping(ResourceType.DATASET_CHANNEL, channel_key, channel.name)
@@ -159,6 +166,22 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
             description=dataset_description,
             properties=dataset_properties,
             labels=dataset_labels,
+        )
+
+    _SKIP_SAMPLE_SIZE = 10
+
+    def _record_channel_skips(self, dataset_rid: str, reason: str, channel_names: list[str]) -> None:
+        """Record one aggregated skip for a set of channels that could not be migrated."""
+        if not channel_names:
+            return
+
+        sample = ", ".join(channel_names[: self._SKIP_SAMPLE_SIZE])
+        if len(channel_names) > self._SKIP_SAMPLE_SIZE:
+            sample += f", … ({len(channel_names) - self._SKIP_SAMPLE_SIZE} more)"
+        self.ctx.migration_state.record_skip(
+            ResourceType.DATASET_CHANNEL,
+            dataset_rid,
+            f"{len(channel_names)} channel(s) skipped — {reason}: {sample}",
         )
 
     def _get_resource_name(self, resource: Dataset) -> str:

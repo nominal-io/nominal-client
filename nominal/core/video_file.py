@@ -23,9 +23,11 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
-# Generous enough that a large video ingesting normally is never cut short, short enough that a
-# stalled one does not wedge a caller (or a migration worker) for the rest of the day.
-DEFAULT_INGEST_POLL_TIMEOUT = timedelta(minutes=30)
+# Deliberately far longer than any healthy ingest: the deadline exists to stop a *stalled* ingest
+# from wedging a caller forever, not to bound a slow one. Erring long keeps the timeout from firing
+# on a large video that would have finished, which matters because the timeout is reported as
+# something an operator must go check by hand.
+DEFAULT_INGEST_POLL_TIMEOUT = timedelta(hours=2)
 
 
 @dataclass(frozen=True)

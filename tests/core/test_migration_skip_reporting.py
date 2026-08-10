@@ -56,14 +56,15 @@ def test_skips_are_reported_at_end_of_run(caplog: pytest.LogCaptureFixture) -> N
     with caplog.at_level(logging.WARNING):
         log_skipped_resources(state)
 
-    assert "1 skipped resource(s)" in caplog.text
+    assert "1 resource(s) were skipped" in caplog.text
     assert _VIDEO_FILE_RID in caplog.text
     assert "ingest did not complete" in caplog.text
 
 
-def test_no_report_when_nothing_was_skipped(caplog: pytest.LogCaptureFixture) -> None:
-    """A clean run stays quiet."""
-    with caplog.at_level(logging.WARNING):
+def test_clean_run_states_so_explicitly_and_warns_about_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    """A clean run says so positively — absence of warnings is not the same as confirmation."""
+    with caplog.at_level(logging.INFO):
         log_skipped_resources(MigrationState())
 
-    assert caplog.text == ""
+    assert "Nothing was skipped" in caplog.text
+    assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
