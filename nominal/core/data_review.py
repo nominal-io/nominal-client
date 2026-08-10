@@ -6,9 +6,6 @@ from time import sleep
 from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
-    event as event_api,
-)
-from nominal_api import (
     scout,
     scout_api,
     scout_checklistexecution_api,
@@ -24,7 +21,8 @@ from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.event import Event
+from nominal.core.event import Event, _get_events
+from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -53,7 +51,7 @@ class DataReview(HasRid):
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
-        def event(self) -> event_api.EventService: ...
+        def event(self) -> event_pb2_grpc.EventServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
 
@@ -91,8 +89,10 @@ class DataReview(HasRid):
             if check.state._generated_alerts
             for event_rid in check.state._generated_alerts.event_rids
         ]
-        event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
-        return [Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
+        return [
+            Event._from_proto(self._clients, data_review_event)
+            for data_review_event in _get_events(self._clients, all_event_rids)
+        ]
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""

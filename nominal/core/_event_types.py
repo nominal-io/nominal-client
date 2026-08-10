@@ -3,7 +3,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import Iterable, NamedTuple
 
-from nominal_api import event
+from typing_extensions import assert_never
+
+from nominal.protos.event.v2 import event_pb2
 
 
 class EventType(Enum):
@@ -24,30 +26,36 @@ class EventType(Enum):
     """
 
     @classmethod
-    def from_api_event_type(cls, event: event.EventType) -> EventType:
-        """Convert a `nominal-api` event type to a `nominal-core` event type."""
-        if event.name == "INFO":
-            return cls.INFO
-        elif event.name == "FLAG":
-            return cls.FLAG
-        elif event.name == "ERROR":
-            return cls.ERROR
-        elif event.name == "SUCCESS":
-            return cls.SUCCESS
-        else:
-            return cls.UNKNOWN
+    def _from_proto(cls, event: event_pb2.EventType.ValueType) -> EventType:
+        """Convert a proto event type to a `nominal-core` event type."""
+        match event:
+            case event_pb2.INFO:
+                result = cls.INFO
+            case event_pb2.FLAG:
+                result = cls.FLAG
+            case event_pb2.ERROR:
+                result = cls.ERROR
+            case event_pb2.SUCCESS:
+                result = cls.SUCCESS
+            case _:
+                result = cls.UNKNOWN
+        return result
 
-    def _to_api_event_type(self) -> event.EventType:
-        if self.name == "INFO":
-            return event.EventType.INFO
-        elif self.name == "FLAG":
-            return event.EventType.FLAG
-        elif self.name == "ERROR":
-            return event.EventType.ERROR
-        elif self.name == "SUCCESS":
-            return event.EventType.SUCCESS
-        else:
-            return event.EventType.UNKNOWN
+    def _to_proto(self) -> event_pb2.EventType.ValueType:
+        match self:
+            case EventType.INFO:
+                result = event_pb2.INFO
+            case EventType.FLAG:
+                result = event_pb2.FLAG
+            case EventType.ERROR:
+                result = event_pb2.ERROR
+            case EventType.SUCCESS:
+                result = event_pb2.SUCCESS
+            case EventType.UNKNOWN:
+                result = event_pb2.EVENT_TYPE_UNSPECIFIED
+            case _:
+                assert_never(self)
+        return result
 
 
 class EventCreationType(Enum):
@@ -59,38 +67,36 @@ class SearchEventOriginType(NamedTuple):
     name: str
     creation_type: EventCreationType
 
-    @classmethod
-    def from_api_origin_type(cls, event: event.SearchEventOriginType) -> SearchEventOriginType:
-        if event.name == "WORKBOOK":
-            return SearchEventOriginTypes.WORKBOOK
-        elif event.name == "TEMPLATE":
-            return SearchEventOriginTypes.TEMPLATE
-        elif event.name == "API":
-            return SearchEventOriginTypes.API
-        elif event.name == "DATA_REVIEW":
-            return SearchEventOriginTypes.DATA_REVIEW
-        elif event.name == "PROCEDURE":
-            return SearchEventOriginTypes.PROCEDURE
-        elif event.name == "STREAMING_CHECKLIST":
-            return SearchEventOriginTypes.STREAMING_CHECKLIST
-        else:
-            raise ValueError(f"Unexpected Event Origin {event.name}")
+    def _to_proto(self) -> event_pb2.SearchEventOriginType.ValueType:
+        """The proto value with this origin type's name.
 
-    def _to_api_search_event_origin_type(self) -> event.SearchEventOriginType:
-        if self.name == "WORKBOOK":
-            return event.SearchEventOriginType.WORKBOOK
-        elif self.name == "TEMPLATE":
-            return event.SearchEventOriginType.TEMPLATE
-        elif self.name == "API":
-            return event.SearchEventOriginType.API
-        elif self.name == "DATA_REVIEW":
-            return event.SearchEventOriginType.DATA_REVIEW
-        elif self.name == "PROCEDURE":
-            return event.SearchEventOriginType.PROCEDURE
-        elif self.name == "STREAMING_CHECKLIST":
-            return event.SearchEventOriginType.STREAMING_CHECKLIST
-        else:
-            raise ValueError(f"Unexpected Event Origin {self.name}")
+        Raises:
+            ValueError: If no proto value has this name.
+        """
+        return event_pb2.SearchEventOriginType.Value(self.name)
+
+    @classmethod
+    def _from_proto(cls, event: event_pb2.SearchEventOriginType.ValueType) -> SearchEventOriginType:
+        """The origin type named by a proto value.
+
+        Raises:
+            ValueError: If the value is unspecified or names an origin type this client does not know.
+        """
+        match event:
+            case event_pb2.WORKBOOK:
+                return SearchEventOriginTypes.WORKBOOK
+            case event_pb2.TEMPLATE:
+                return SearchEventOriginTypes.TEMPLATE
+            case event_pb2.API:
+                return SearchEventOriginTypes.API
+            case event_pb2.DATA_REVIEW:
+                return SearchEventOriginTypes.DATA_REVIEW
+            case event_pb2.PROCEDURE:
+                return SearchEventOriginTypes.PROCEDURE
+            case event_pb2.STREAMING_CHECKLIST:
+                return SearchEventOriginTypes.STREAMING_CHECKLIST
+            case _:
+                raise ValueError(f"Unexpected Event Origin {event}")
 
     @classmethod
     def get_manual_origin_types(cls) -> Iterable[SearchEventOriginType]:

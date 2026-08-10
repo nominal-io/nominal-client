@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    event,
     scout,
     scout_asset_api,
     scout_assets,
@@ -77,8 +76,6 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
-        @property
-        def event(self) -> event.EventService: ...
 
     @property
     def nominal_url(self) -> str:
