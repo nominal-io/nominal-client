@@ -384,6 +384,40 @@ class DataSource(HasRid):
             missing=[req for req in channels if req.name not in created],
         )
 
+    def batch_upsert_channels(
+        self,
+        channels: Sequence[CreateChannelRequest],
+    ) -> BatchAddChannelsResult:
+        """Create or update multiple channels (series metadata) for this data source in batches.
+
+        For each request, creates the channel if it does not already exist. If it does exist,
+        updates the locator and any provided `unit` and `description` fields while preserving
+        existing values for fields left as None.
+
+        Args:
+            channels: Sequence of CreateChannelRequest objects.
+
+        Returns:
+            A BatchAddChannelsResult with the upserted channels and any requests that were
+            not found afterwards (i.e. silently dropped by the server).
+
+        Note:
+            If the same channel name appears more than once within a single batch, the entire
+            batch will fail. Callers are responsible for deduplicating channel names before
+            passing them to this method.
+        """
+        if not channels:
+            return BatchAddChannelsResult(channels=[], missing=[])
+        for batch in batched(channels, _DEFAULT_CHANNEL_BATCH_SIZE):
+            requests = [_build_series_metadata_request(self.rid, req) for req in batch]
+            batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
+            self._clients.series_metadata.batch_create_or_update(self._clients.auth_header, batch_request)
+        created = {ch.name: ch for ch in self.get_channels(names=[req.name for req in channels])}
+        return BatchAddChannelsResult(
+            channels=list(created.values()),
+            missing=[req for req in channels if req.name not in created],
+        )
+
 
 def _build_series_metadata_request(
     data_source_rid: str, req: CreateChannelRequest
