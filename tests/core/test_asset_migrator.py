@@ -10,6 +10,7 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
@@ -208,6 +209,79 @@ class TestAssetMigratorAttachments:
         dest_asset.add_attachments.assert_called_once_with([new_att])
 
 
+class TestAssetMigratorDatasets:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.DatasetMigrator")
+    def test_archived_dataset_scopes_are_skipped(self, mock_ds_cls: MagicMock) -> None:
+        """A data scope whose dataset is archived is not migrated or added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_ds = MagicMock()
+        active_ds.rid = "ri.catalog.cerulean-staging.dataset.00000001"
+        active_ds.is_archived = False
+        archived_ds = MagicMock()
+        archived_ds.rid = "ri.catalog.cerulean-staging.dataset.00000002"
+        archived_ds.is_archived = True
+
+        scope_active = MagicMock()
+        scope_active.data_scope_name = "scope-active"
+        scope_active.data_source.dataset = active_ds.rid
+        scope_active.series_tags = {}
+        scope_archived = MagicMock()
+        scope_archived.data_scope_name = "scope-archived"
+        scope_archived.data_source.dataset = archived_ds.rid
+        scope_archived.series_tags = {}
+
+        source_asset = _make_source_asset()
+        source_asset._list_dataset_scopes.return_value = [scope_active, scope_archived]
+        source_asset.list_datasets.return_value = [("scope-active", active_ds), ("scope-archived", archived_ds)]
+
+        dest_asset = _make_dest_asset()
+        new_ds = MagicMock()
+        new_ds.rid = "ri.catalog.cerulean-staging.dataset.00000101"
+        mock_ds_migrator = mock_ds_cls.return_value
+        mock_ds_migrator.copy_from.return_value = new_ds
+
+        options = AssetCopyOptions(
+            dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=False)
+        )
+        migrator._copy_asset_datasets(source_asset, dest_asset, options)
+
+        assert mock_ds_migrator.copy_from.call_count == 1
+        assert mock_ds_migrator.copy_from.call_args[0][0] is active_ds
+        dest_asset.add_dataset.assert_called_once_with("scope-active", new_ds, series_tags={})
+
+
+class TestAssetMigratorVideos:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.VideoMigrator")
+    def test_archived_videos_are_skipped(self, mock_vm_cls: MagicMock) -> None:
+        """An archived video is not migrated, and its scope is not added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_video = MagicMock()
+        active_video.rid = "ri.video.cerulean-staging.video.00000001"
+        active_video.is_archived = False
+        archived_video = MagicMock()
+        archived_video.rid = "ri.video.cerulean-staging.video.00000002"
+        archived_video.is_archived = True
+
+        source_asset = _make_source_asset()
+        source_asset.list_videos.return_value = [("scope-active", active_video), ("scope-archived", archived_video)]
+
+        dest_asset = _make_dest_asset()
+        new_video = MagicMock()
+        new_video.rid = "ri.video.cerulean-staging.video.00000101"
+        mock_vm_migrator = mock_vm_cls.return_value
+        mock_vm_migrator.copy_from.return_value = new_video
+
+        migrator._copy_asset_videos(source_asset, dest_asset)
+
+        assert mock_vm_migrator.copy_from.call_count == 1
+        assert mock_vm_migrator.copy_from.call_args[0][0] is active_video
+        dest_asset.add_video.assert_called_once_with("scope-active", new_video)
+
+
 class TestAssetMigratorRuns:
     @patch("nominal.experimental.migration.migrator.asset_migrator.RunMigrator")
     def test_archived_runs_are_skipped(self, mock_run_cls: MagicMock) -> None:
@@ -231,6 +305,7 @@ class TestAssetMigratorRuns:
         mock_run_migrator = mock_run_cls.return_value
         assert mock_run_migrator.copy_from.call_count == 1
         assert mock_run_migrator.copy_from.call_args[0][0] is active_run
+        assert ctx.migration_state.archived_run_rids == {archived_run.rid}
 
 
 # ---------------------------------------------------------------------------

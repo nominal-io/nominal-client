@@ -589,10 +589,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Archived runs are not deleted, but are hidden from the UI.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
+        self.refresh()
 
     def unarchive(self) -> None:
         """Unarchive this run, allowing it to appear on the UI."""
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
+        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:

@@ -140,6 +140,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         Archived videos are not deleted, but are hidden from the UI.
         """
         self._clients.video.archive(self._clients.auth_header, self.rid)
+        self.refresh()
 
     @deprecated(
         "Unarchiving a standalone `Video` is deprecated in favor of video channels on a dataset. Unarchive the backing "
@@ -149,6 +150,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
     def unarchive(self) -> None:
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
+        self.refresh()
 
     @overload
     def add_file(

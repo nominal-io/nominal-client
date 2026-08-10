@@ -1037,10 +1037,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Archived datasets are not deleted, but are hidden from the UI.
         """
         self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
+        self.refresh()
 
     def unarchive(self) -> None:
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
+        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:

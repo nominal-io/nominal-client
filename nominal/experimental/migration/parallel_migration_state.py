@@ -86,6 +86,11 @@ class ThreadSafeMigrationState(MigrationState):
             super().clear_pending_multi_run_workbook(workbook_rid)
         self._persist()
 
+    def record_archived_run(self, run_rid: str) -> None:
+        with self._lock:
+            super().record_archived_run(run_rid)
+        self._persist()
+
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         with self._lock:
             super().record_skip(resource_type, source_rid, reason)
@@ -116,5 +121,6 @@ class ThreadSafeMigrationState(MigrationState):
                 pending_multi_asset_workbooks={k: list(v) for k, v in self.pending_multi_asset_workbooks.items()},
                 pending_multi_run_workbooks={k: list(v) for k, v in self.pending_multi_run_workbooks.items()},
                 skipped_resources=list(self.skipped_resources),
+                archived_run_rids=set(self.archived_run_rids),
             )
         return snapshot.to_json()

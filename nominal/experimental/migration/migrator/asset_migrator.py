@@ -207,6 +207,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_run.rid,
                     source_asset.rid,
                 )
+                self.ctx.migration_state.record_archived_run(source_run.rid)
                 continue
             run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
 

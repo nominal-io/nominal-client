@@ -88,10 +88,12 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         Archived attachments are not deleted, but are hidden from the UI.
         """
         self._clients.attachment.archive(self._clients.auth_header, self.rid)
+        self.refresh()
 
     def unarchive(self) -> None:
         """Unarchive this attachment, allowing it to be viewed in the UI."""
         self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
+        self.refresh()
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -290,6 +291,80 @@ class TestCopyFromImpl:
 
         ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    @patch.object(WorkbookMigrator, "_migrate_content_attachments")
+    def test_archived_run_rids_are_dropped_from_scope(
+        self,
+        mock_migrate_attachments: MagicMock,
+        mock_from_conjure: MagicMock,
+        mock_clone: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A workbook referencing an archived run is migrated with only its unarchived runs,
+        with a warning, instead of failing on the missing run mapping.
+        """
+        mock_migrate_attachments.side_effect = lambda source, content: content
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        new_r1 = _run_rid(101)
+        wb_src, wb_dst = _wb_rid(1), _wb_rid(100)
+
+        migrator, ctx = self._make_migrator()
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, new_r1)
+        # old_r2 has no mapping: it was skipped as archived
+
+        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
+        raw_nb = _stub_raw_notebook()
+        raw_nb.metadata.data_scope.run_rids = [old_r1, old_r2]
+        raw_nb.metadata.data_scope.asset_rids = []
+        source._clients.notebook.get.return_value = raw_nb
+
+        new_wb = MagicMock()
+        new_wb.rid = wb_dst
+        mock_clone.return_value = (MagicMock(), MagicMock())
+        mock_from_conjure.return_value = new_wb
+
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        with caplog.at_level(logging.WARNING):
+            result = migrator.copy_from(
+                source,
+                WorkbookCopyOptions(
+                    source_to_destination_run_rid_mapping={old_r1: new_r1},
+                    archived_run_rids=frozenset({old_r2}),
+                ),
+            )
+
+        assert "archived run(s)" in caplog.text
+        assert old_r2 in caplog.text
+
+        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
+        assert create_req.data_scope.run_rids == [new_r1]
+        assert create_req.data_scope.asset_rids is None
+        assert result is new_wb
+
+    def test_workbook_with_only_archived_runs_raises(self) -> None:
+        """If every run in the workbook's scope is archived, copy_from raises instead of
+        creating a workbook with an empty data scope.
+        """
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        wb_src = _wb_rid(1)
+
+        migrator, ctx = self._make_migrator()
+
+        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
+        raw_nb = _stub_raw_notebook()
+        raw_nb.metadata.data_scope.run_rids = [old_r1, old_r2]
+        raw_nb.metadata.data_scope.asset_rids = []
+        source._clients.notebook.get.return_value = raw_nb
+
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        with pytest.raises(ValueError, match="only archived runs"):
+            migrator.copy_from(source, WorkbookCopyOptions(archived_run_rids=frozenset({old_r1, old_r2})))
+
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
+
     def test_idempotent_returns_existing_workbook_without_creating(self) -> None:
         """If the workbook is already in the migration state, the existing destination workbook
         is returned and no new notebook is created.
@@ -375,6 +450,71 @@ class TestMigrateDeferredWorkbooks:
             source_wb_run,
             WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping={}),
         )
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_partially_archived_multi_run_workbook_migrates_with_archived_set(
+        self, mock_from_conjure: MagicMock, mock_copy_from: MagicMock
+    ) -> None:
+        """A pending multi-run workbook with some archived runs is still migrated, passing the
+        archived run set through so the copy drops those runs from the scope.
+        """
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        wb_run = _wb_rid(1)
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        new_r1 = _run_rid(101)
+
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [old_r1, old_r2])
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, new_r1)
+        ctx.migration_state.record_archived_run(old_r2)
+
+        source_clients = MagicMock()
+        source_clients.auth_header = "Bearer src"
+        source_clients.notebook.get.return_value = _stub_raw_notebook()
+        source_wb = MagicMock()
+        mock_from_conjure.return_value = source_wb
+
+        migrator = WorkbookMigrator(ctx)
+        migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        mock_copy_from.assert_called_once_with(
+            source_wb,
+            WorkbookCopyOptions(
+                source_to_destination_asset_rid_mapping={},
+                source_to_destination_run_rid_mapping={old_r1: new_r1},
+                archived_run_rids=frozenset({old_r2}),
+            ),
+        )
+        assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    def test_fully_archived_multi_run_workbook_is_skipped(
+        self, mock_copy_from: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A pending multi-run workbook whose runs are all archived is skipped with a warning
+        and a recorded skip, not migrated and not fetched.
+        """
+        wb_run = _wb_rid(1)
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [old_r1, old_r2])
+        ctx.migration_state.record_archived_run(old_r1)
+        ctx.migration_state.record_archived_run(old_r2)
+
+        source_clients = MagicMock()
+
+        migrator = WorkbookMigrator(ctx)
+        with caplog.at_level(logging.WARNING):
+            migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        mock_copy_from.assert_not_called()
+        source_clients.notebook.get.assert_not_called()
+        assert "all of its runs are archived" in caplog.text
+        assert ctx.migration_state.workbook_was_skipped(wb_run)
+        assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_missing_source_client_for_asset_workbook_skips_gracefully(self, mock_from_conjure: MagicMock) -> None:
