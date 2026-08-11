@@ -32,6 +32,7 @@ from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.run import Run
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -771,7 +772,7 @@ class IngestBuilder:
         )
         return self
 
-    def submit(self, *, allow_partial: bool = False) -> IngestionJob:
+    def submit(self, *, allow_partial: bool = False, expand_runs: Sequence[Run | str] | None = None) -> IngestionJob:
         """Upload all registered files and trigger one ingest job.
 
         Uploads run in parallel, with transient failures (network weather, throttling) retried
@@ -848,6 +849,7 @@ class IngestBuilder:
             dataset_rid=self._dataset_rid,
             items=items,
             tags=self._tags,
+            runs_to_expand=[rid_from_instance_or_string(run) for run in expand_runs] if expand_runs else None,
         )
         with translate_grpc_errors():
             response = self._client._clients.ingest_v2.Ingest(request)
