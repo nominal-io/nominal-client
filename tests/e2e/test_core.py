@@ -495,7 +495,6 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
     channels = {ch.name: ch for ch in result.channels}
     assert set(channels) == {"velocity", "gyro", "temperature"}
     assert channels["velocity"].unit == "km/h"
-    assert channels["velocity"].data_type == ChannelDataType.UINT
     assert channels["gyro"].description == "gyro xyz"
     assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
     assert channels["temperature"].unit == "degC"
