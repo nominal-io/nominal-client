@@ -1,9 +1,4 @@
-"""Tests that video ingest polling always terminates.
-
-A server-side worker that dies mid-ingest leaves a video in `inProgress` forever. Without a
-deadline these loops poll once a second indefinitely — which wedged a real tenant migration for
-hours with no output.
-"""
+"""Video ingest polling terminates: a worker that dies mid-ingest leaves a video in `inProgress` forever."""
 
 from __future__ import annotations
 

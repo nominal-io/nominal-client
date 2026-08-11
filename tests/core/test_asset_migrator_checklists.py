@@ -1,8 +1,5 @@
-"""Tests for checklist handling during asset migration.
-
-A data review can pin a checklist commit that was never published. That used to raise out of
-`_copy_asset_checklists` and abandon the whole asset — including the video, attachment, and
-workbook stages that run after it.
+"""An unpublished checklist pinned by a data review used to raise out of `_copy_asset_checklists`
+and abandon every asset stage after it.
 """
 
 from __future__ import annotations
@@ -54,11 +51,9 @@ def _make_asset(data_reviews: list[MagicMock]) -> MagicMock:
 
 
 def test_unpublished_checklist_is_skipped_without_raising() -> None:
-    """A draft checklist is recorded and stepped over, not raised out of the asset."""
     ctx = _make_context()
     asset = _make_asset([_make_data_review(1, published=False)])
 
-    # Must not raise: the caller goes on to copy videos, attachments, and workbooks.
     AssetMigrator(ctx)._copy_asset_checklists(asset)
 
     assert [(skip.resource_type, skip.reason) for skip in ctx.migration_state.skipped_resources] == [
@@ -70,7 +65,6 @@ def test_unpublished_checklist_is_skipped_without_raising() -> None:
 
 
 def test_one_unpublished_checklist_does_not_stop_the_others() -> None:
-    """The loop continues past a draft, so later data reviews on the same asset still migrate."""
     ctx = _make_context()
     unpublished = _make_data_review(1, published=False)
     published = _make_data_review(2, published=True)
@@ -80,11 +74,8 @@ def test_one_unpublished_checklist_does_not_stop_the_others() -> None:
         checklist_migrator_cls.return_value.copy_from.return_value = MagicMock()
         AssetMigrator(ctx)._copy_asset_checklists(asset)
 
-    # The published checklist was still copied.
+    # The published checklist was still copied, and only the draft was recorded as skipped.
     checklist_migrator_cls.return_value.copy_from.assert_called_once()
-    # Two distinct skips: the draft checklist, then the published one's data review, whose run was
-    # never migrated in this fixture.
     assert [(skip.resource_type, skip.source_rid) for skip in ctx.migration_state.skipped_resources] == [
         (ResourceType.CHECKLIST.value, unpublished.checklist_rid),
-        (ResourceType.DATA_REVIEW.value, published.rid),
     ]

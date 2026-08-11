@@ -127,10 +127,7 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
 
         Args:
             interval: How long to wait between status checks.
-            timeout: Give up after this long and raise `NominalIngestTimeout`. Defaults to `None`,
-                which waits indefinitely — unattended callers should pass a bound, since a
-                server-side worker that dies mid-ingest leaves the file in `inProgress` and the
-                poll never terminates.
+            timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
         ------
@@ -159,10 +156,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             else:
                 raise NominalIngestError(f"Unhandled ingest status {status.type!r} for video {self.rid!r}")
 
-            if deadline is not None and time.monotonic() + interval.total_seconds() > deadline:
-                raise NominalIngestTimeout(
-                    f"video {self.rid!r} was still ingesting after {timeout}; giving up waiting for it to finish"
-                )
+            if deadline is not None and time.monotonic() >= deadline:
+                raise NominalIngestTimeout(f"video {self.rid!r} was still ingesting after {timeout}")
 
             time.sleep(interval.total_seconds())
 
@@ -203,16 +198,15 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
                 )
             if api_video_file.segment_metadata is None:
                 raise NominalVideoFileMetadataError(
-                    f"video file {self.rid!r} has no segment metadata, so it cannot be re-ingested elsewhere; "
-                    "it most likely never finished segmenting where it currently lives"
+                    f"video file {self.rid!r} has no segment metadata, so it cannot be re-ingested elsewhere"
                 )
             if (
                 api_video_file.segment_metadata.max_absolute_timestamp is None
                 or api_video_file.segment_metadata.scale_factor is None
                 or api_video_file.segment_metadata.media_frame_rate is None
             ):
-                raise ValueError(
-                    "Not all timestamp metadata is populated in segment metadata: %s", api_video_file.segment_metadata
+                raise NominalVideoFileMetadataError(
+                    f"video file {self.rid!r} has incomplete segment metadata: {api_video_file.segment_metadata}"
                 )
             video_file_ingest_options = TimestampOptions(
                 starting_timestamp=_SecondsNanos.from_api(

@@ -43,19 +43,13 @@ class NominalIngestFailed(NominalIngestError):
 
 
 class NominalIngestTimeout(NominalIngestError):
-    """Ingest did not reach a terminal state before the caller's deadline.
-
-    Distinct from `NominalIngestFailed`: the server never reported failure, it simply never
-    reported success either. A server-side worker that dies mid-ingest can leave a file in
-    `inProgress` forever, so every poll loop needs a deadline to fall back on.
-    """
+    """Ingest did not reach a terminal state before the caller's deadline."""
 
 
 class NominalChecklistNotPublishedError(NominalError, ValueError):
-    """The requested checklist version has no published content.
+    """The requested checklist version has not been published.
 
-    Also a `ValueError`, which is what this call site raised before this type existed, so
-    `except ValueError` keeps working.
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
     """
 
 
@@ -180,13 +174,9 @@ class NominalVideoScaleModeError(NominalError, ValueError):
 
 
 class NominalVideoFileMetadataError(NominalError, ValueError):
-    """A video file lacks the metadata needed to re-ingest it elsewhere.
+    """A video file lacks the segment metadata needed to re-ingest it elsewhere.
 
-    Raised when a non-MCAP video file has no segment metadata, which means it never finished
-    segmenting where it currently lives — there is nothing to derive ingest options from.
-
-    Also a `ValueError`, which is what this call site raised before this type existed, so
-    `except ValueError` keeps working.
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
     """
 
 

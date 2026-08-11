@@ -75,10 +75,7 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
 
         Args:
             interval: How long to wait between status checks.
-            timeout: Give up after this long and raise `NominalIngestTimeout`. Defaults to `None`,
-                which waits indefinitely — unattended callers should pass a bound, since a
-                server-side worker that dies mid-ingest leaves the video in `inProgress` and the
-                poll never terminates.
+            timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
         ------
@@ -106,10 +103,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
             else:
                 raise NominalIngestError(f"unhandled ingest status {progress.type!r} for video {self.rid!r}")
 
-            if deadline is not None and time.monotonic() + interval.total_seconds() > deadline:
-                raise NominalIngestTimeout(
-                    f"video {self.rid!r} was still ingesting after {timeout}; giving up waiting for it to finish"
-                )
+            if deadline is not None and time.monotonic() >= deadline:
+                raise NominalIngestTimeout(f"video {self.rid!r} was still ingesting after {timeout}")
 
             time.sleep(interval.total_seconds())
 

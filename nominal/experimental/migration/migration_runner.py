@@ -181,19 +181,11 @@ class MigrationRunner:
 
 
 def log_skipped_resources(migration_state: MigrationState) -> None:
-    """Report everything the migration skipped, so a partial run is never mistaken for a complete one.
+    """Summarize skips at the end of a run, so a partial migration is never mistaken for a complete one.
 
-    This block is the run's verdict, and it is deliberately stated either way: an operator should be
-    able to read the last lines and know whether anything needs checking by hand, without counting
-    warnings across the whole log. Warnings alone cannot carry that signal — third-party libraries
-    (urllib3 connection retries, for one) emit plenty during a perfectly healthy migration.
-
-    Skips are logged individually as they happen too, but a long migration buries them under
-    thousands of lines. Sourced from the persisted state, so a resumed run still reports what
-    earlier attempts skipped.
+    Sourced from the persisted state, so a resumed run still reports what earlier attempts skipped.
     """
     if not migration_state.skipped_resources:
-        logger.info("Nothing was skipped: every in-scope resource was copied and confirmed.")
         return
 
     logger.warning(

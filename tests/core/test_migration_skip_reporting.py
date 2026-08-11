@@ -1,11 +1,8 @@
-"""Tests that skipped resources survive persistence and are reported at the end of a run.
-
-Skips are recorded on the persisted migration state rather than in memory, so that a resumed run
-still knows what earlier attempts left behind — and so both runners can report them.
-"""
+"""Skipped resources survive persistence and are reported at the end of a run."""
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import sys
 
@@ -23,7 +20,6 @@ _VIDEO_FILE_RID = "ri.video.cerulean-staging.video-file.00000001-0000-0000-0000-
 
 
 def test_skips_round_trip_through_serialized_state() -> None:
-    """A skip recorded mid-run is still there after the state is written and reloaded."""
     state = MigrationState()
     state.record_skip(ResourceType.VIDEO_FILE, _VIDEO_FILE_RID, "ingest did not complete")
 
@@ -35,21 +31,21 @@ def test_skips_round_trip_through_serialized_state() -> None:
 
 
 def test_parallel_state_adopts_every_field_when_resuming() -> None:
-    """Resuming must not drop skips or deferred workbooks — only `rid_mapping` used to carry over."""
+    """Resuming must not drop any state field — only `rid_mapping` used to carry over."""
     state = MigrationState()
     state.record_skip(ResourceType.VIDEO_FILE, _VIDEO_FILE_RID, "ingest did not complete")
     state.record_mapping(ResourceType.ASSET, "old-asset", "new-asset")
     state.record_pending_multi_asset_workbook("wb-rid", ["asset-a", "asset-b"])
+    state.record_pending_multi_run_workbook("wb-rid-2", ["run-a"])
+    state.record_archived_run("run-b")
 
     resumed = ThreadSafeMigrationState.from_state(state)
 
-    assert resumed.skipped_resources == state.skipped_resources
-    assert resumed.pending_multi_asset_workbooks == {"wb-rid": ["asset-a", "asset-b"]}
-    assert resumed.get_mapped_rid(ResourceType.ASSET, "old-asset") == "new-asset"
+    for state_field in dataclasses.fields(MigrationState):
+        assert getattr(resumed, state_field.name) == getattr(state, state_field.name), state_field.name
 
 
 def test_skips_are_reported_at_end_of_run(caplog: pytest.LogCaptureFixture) -> None:
-    """The report is what stops a partial migration from reading as a complete one."""
     state = MigrationState()
     state.record_skip(ResourceType.VIDEO_FILE, _VIDEO_FILE_RID, "ingest did not complete")
 
@@ -61,10 +57,8 @@ def test_skips_are_reported_at_end_of_run(caplog: pytest.LogCaptureFixture) -> N
     assert "ingest did not complete" in caplog.text
 
 
-def test_clean_run_states_so_explicitly_and_warns_about_nothing(caplog: pytest.LogCaptureFixture) -> None:
-    """A clean run says so positively — absence of warnings is not the same as confirmation."""
+def test_clean_run_reports_nothing(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         log_skipped_resources(MigrationState())
 
-    assert "Nothing was skipped" in caplog.text
-    assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
+    assert caplog.records == []

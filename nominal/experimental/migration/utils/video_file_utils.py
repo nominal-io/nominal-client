@@ -17,22 +17,14 @@ from nominal.core.video_file import VideoFile
 
 logger = logging.getLogger(__name__)
 
-# Migration's default only — the public poll methods still wait forever unless a caller opts in.
-# Deliberately far longer than any healthy ingest: the deadline exists to stop a *stalled* ingest
-# from wedging the run forever, not to bound a slow one. Erring long keeps the timeout from firing
-# on a large video that would have finished, which matters because the timeout is reported as
-# something an operator must go check by hand.
+# Deliberately far longer than any healthy ingest: the deadline exists to catch stalled ingests, not slow ones.
 DEFAULT_INGEST_POLL_TIMEOUT = timedelta(hours=2)
 
 
 @dataclass(frozen=True)
 class VideoFileCopyOutcome:
-    """What happened to one video file.
-
-    The two fields are independent on purpose. `file` is set whenever something was created on
-    the destination and should be recorded in migration state; `skip_reason` is set whenever the
-    copy was less than a clean success. A timed-out ingest sets both: the file exists and must not
-    be uploaded a second time, but the run must still report that we never saw it finish.
+    """`file` is what was created (record it in state); `skip_reason` is set when the copy was
+    less than a clean success. A timed-out ingest sets both.
     """
 
     file: VideoFile | None
@@ -50,8 +42,7 @@ def copy_video_file_to_video_dataset(
     try:
         (mcap_video_details, timestamp_options) = source_video_file._get_file_ingest_options()
     except NominalVideoFileMetadataError as error:
-        # The source file is unusable where it already lives, so there is nothing to copy and no
-        # amount of retrying will change that. Skip it and let the rest of the asset through.
+        # Unusable where it already lives; retrying cannot help. Skip it, not the whole asset.
         logger.warning(
             "Skipping video file %s (rid: %s): %s",
             source_video_file.name,
@@ -65,7 +56,8 @@ def copy_video_file_to_video_dataset(
         source_video_file._clients.auth_header, source_video_file.rid
     ).uri
 
-    response = requests.get(old_file_uri, stream=True)
+    # timeout bounds connect and per-chunk reads — the same stalled-server hang the poll deadline catches.
+    response = requests.get(old_file_uri, stream=True, timeout=60)
     response.raise_for_status()
 
     outcome = _create_destination_video_file(
@@ -102,9 +94,8 @@ def _create_destination_video_file(
             description=source_video_file.description,
         )
         skip_reason = _await_ingestion(new_file, poll_timeout)
-        # Applied even when the wait timed out: this is a metadata update, independent of ingest
-        # state, and the copy is recorded as migrated either way — so a rerun will not come back
-        # to set these, and skipping them would lose the video's timing permanently.
+        # Applied even on timeout: the copy is recorded as migrated either way, so no rerun
+        # will come back to set the video's timing.
         new_file.update(
             starting_timestamp=timestamp_options.starting_timestamp,
             ending_timestamp=timestamp_options.ending_timestamp,
@@ -128,17 +119,15 @@ def _create_destination_video_file(
 
 
 def _await_ingestion(new_file: VideoFile, poll_timeout: timedelta | None) -> str | None:
-    """Wait for a copied video to finish ingesting; return a skip reason if it never did.
-
-    A timeout is not treated as a failure of the asset: the upload itself succeeded, and the
-    destination may well finish on its own. It is reported so nobody mistakes the run for
-    complete, and the caller still records the mapping so a rerun does not upload it twice.
-    """
+    """Wait for a copied video to finish ingesting; return a skip reason on timeout."""
     try:
         new_file.poll_until_ingestion_completed(timeout=poll_timeout)
     except NominalIngestTimeout as error:
         logger.warning("Video file (rid: %s) did not finish ingesting: %s", new_file.rid, error)
-        return f"upload succeeded but ingest did not complete within {poll_timeout}: {new_file.rid}"
+        return (
+            f"upload succeeded but ingest did not complete within {poll_timeout}; "
+            f"a rerun will not retry it — check {new_file.rid} by hand"
+        )
     return None
 
 

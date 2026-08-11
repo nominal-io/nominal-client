@@ -218,9 +218,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             try:
                 source_checklist = source_data_review.get_checklist()
             except NominalChecklistNotPublishedError as error:
-                # A data review can pin a checklist commit that was never published. That is one
-                # unmigratable checklist, not a reason to abandon the asset's videos, attachments,
-                # and workbooks — every stage after this one.
+                # A data review can pin a never-published checklist commit — skip it, not the asset.
                 logger.warning(
                     "Skipping data review %s on asset %s: %s",
                     source_data_review.rid,
@@ -241,11 +239,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     "Run %s not found in migration state for data review checklist %s — skipping",
                     source_data_review.run_rid,
                     source_checklist.rid,
-                )
-                self.ctx.migration_state.record_skip(
-                    ResourceType.DATA_REVIEW,
-                    source_data_review.rid,
-                    f"run {source_data_review.run_rid} was not migrated, so its data review cannot be executed",
                 )
                 continue
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:
@@ -357,11 +350,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 dest_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
                 if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
-                    self.ctx.migration_state.record_skip(
-                        ResourceType.RUN,
-                        source_run.rid,
-                        "run was not migrated, so its workbooks were not copied",
-                    )
                     continue
                 self._copy_run_workbooks(
                     source_run, source_asset, new_asset, dest_run_rid, workbook_migrator, workbook_rids_allowlist

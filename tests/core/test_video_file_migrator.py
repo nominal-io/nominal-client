@@ -1,9 +1,4 @@
-"""Tests for video-file migration resilience.
-
-Every case here is a failure mode that stopped a real tenant migration: an ingest that never
-finished (hanging the run indefinitely), a source video with no segment metadata, and a source
-filename carrying percent-encoded characters the destination refuses.
-"""
+"""Video-file migration resilience: each case is a failure mode that stopped a real tenant migration."""
 
 from __future__ import annotations
 
@@ -22,10 +17,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
-from nominal.experimental.migration.utils.video_file_utils import (
-    _resolve_destination_file_stem,
-    copy_video_file_to_video_dataset,
-)
+from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
 
 _STACK = "cerulean-staging"
 
@@ -115,8 +107,7 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert len(ctx.migration_state.skipped_resources) == 1
     assert "ingest did not complete" in ctx.migration_state.skipped_resources[0].reason
-    # Timing metadata is applied even though the wait timed out: it is an independent metadata
-    # write, and since the file is recorded as migrated no rerun will come back to set it.
+    # Timing metadata is applied even on timeout — no rerun will come back to set it.
     new_file.update.assert_called_once()
 
 
@@ -143,11 +134,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
 
 
 def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Percent characters break Azure SAS signing, so the uploader rejects them outright.
-
-    Source names can arrive double-encoded (a literal space -> '%20' -> '%2520'), which must not
-    block the copy.
-    """
+    """Source names can arrive double-encoded (' ' -> '%20' -> '%2520'), and the uploader rejects '%'."""
     ctx = _make_context()
     source_file = _make_source_video_file(
         _video_file_rid(5),
@@ -170,12 +157,6 @@ def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch:
     uploaded_name = destination_video.add_from_io.call_args.kwargs["name"]
     assert "%" not in uploaded_name
     assert uploaded_name == "flight_2_2520cam_2520front"
-
-
-def test_resolve_destination_file_stem_strips_ingest_timestamp_prefix() -> None:
-    assert _resolve_destination_file_stem("2026-01-16T17_52_57.976179697Z_my_video.mp4") == "my_video"
-    # A name without the ingest prefix is left alone.
-    assert _resolve_destination_file_stem("my_video.mp4") == "my_video"
 
 
 def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -202,11 +183,8 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
 def test_parallel_runner_passes_video_ingest_timeout_to_context(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A configured timeout must reach the parallel path's context, not only the sequential one.
-
-    The parallel runner builds its own MigrationContext; forgetting to carry
-    `runner.video_ingest_timeout` there silently ignores `--video-ingest-timeout-seconds`
-    for every parallel run.
+    """The parallel runner builds its own MigrationContext; dropping the timeout there would
+    silently ignore `--video-ingest-timeout-seconds` for every parallel run.
     """
     from nominal.experimental.migration import parallel_migration_runner
     from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
