@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.159.0](https://github.com/nominal-io/nominal-client/compare/v1.158.0...v1.159.0) (2026-08-11)
+
+
+### Features
+
+* migrate event service to gRPC ([#913](https://github.com/nominal-io/nominal-client/issues/913)) ([a5139f0](https://github.com/nominal-io/nominal-client/commit/a5139f073348d7f253950b2eb17e88571a174fde))
+
+
+### Bug Fixes
+
+* **migration:** bound video ingest polling and skip unmigratable videos ([#918](https://github.com/nominal-io/nominal-client/issues/918)) ([ed2c326](https://github.com/nominal-io/nominal-client/commit/ed2c3268b1655b7464c92c0bc2f35af3a9f0da39))
+* stop truncating negative timedelta durations ([#923](https://github.com/nominal-io/nominal-client/issues/923)) ([dfb6d41](https://github.com/nominal-io/nominal-client/commit/dfb6d41cf1b747c89bfa4c5034ce4c69cf9ab6d3))
+
 ## [1.158.0](https://github.com/nominal-io/nominal-client/compare/v1.157.0...v1.158.0) (2026-08-10)
 
 
