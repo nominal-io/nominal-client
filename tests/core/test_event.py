@@ -10,6 +10,7 @@ from nominal.core.client import NominalClient
 from nominal.core.event import Event
 from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
+from nominal.protos.types import common_pb2
 from nominal.protos.types.time import time_pb2
 
 
@@ -31,7 +32,7 @@ def _proto_event(
         labels=list(labels),
         created_by=created_by,
         timestamp=time_pb2.Timestamp(seconds=seconds, nanos=nanos),
-        duration=event_pb2.Duration(seconds=1, nanos=500),
+        duration=common_pb2.Duration(seconds=1, nanos=500),
     )
 
 

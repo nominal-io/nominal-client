@@ -1130,6 +1130,7 @@ class NominalClient:
             description=description,
             labels=list(labels),
             properties={} if properties is None else dict(properties),
+            typed_properties={},
             title=name,
             attachments=[],
             data_scopes=[],
