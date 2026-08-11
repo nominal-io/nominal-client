@@ -374,7 +374,7 @@ class DataSource(HasRid):
         """
         return self._batch_write_channels(channels, self._clients.series_metadata.batch_create)
 
-    def batch_upsert_channels(
+    def batch_update_or_create_channels(
         self,
         channels: Sequence[CreateChannelRequest],
     ) -> BatchAddChannelsResult:

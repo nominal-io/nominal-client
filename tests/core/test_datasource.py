@@ -11,7 +11,7 @@ from nominal.core.datasource import BatchAddChannelsResult, CreateChannelRequest
 # so every test runs against both to guarantee they can't drift apart.
 BATCH_WRITE_METHODS = [
     ("batch_add_channels", "batch_create"),
-    ("batch_upsert_channels", "batch_create_or_update"),
+    ("batch_update_or_create_channels", "batch_create_or_update"),
 ]
 ENDPOINTS = [endpoint for _, endpoint in BATCH_WRITE_METHODS]
 

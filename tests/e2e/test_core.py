@@ -8,7 +8,7 @@ Covers:
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
   - Creating channels on a datasource via add_channel and batch_add_channels
-  - Upserting channels on a datasource via batch_upsert_channels
+  - Upserting channels on a datasource via batch_update_or_create_channels
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -465,8 +465,8 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
     assert channels["status"].description == "system status"
 
 
-def test_batch_upsert_channels(client: NominalClient, archive: ArchiveFn) -> None:
-    """batch_upsert_channels updates existing channels in place, preserves unsupplied fields,
+def test_batch_update_or_create_channels(client: NominalClient, archive: ArchiveFn) -> None:
+    """batch_update_or_create_channels updates existing channels in place, preserves unsupplied fields,
     and creates new channels in the same call.
     """
     ds = client.create_dataset(f"dataset-{uuid4()}")
@@ -480,7 +480,7 @@ def test_batch_upsert_channels(client: NominalClient, archive: ArchiveFn) -> Non
     )
     assert seed.missing == []
 
-    result = ds.batch_upsert_channels(
+    result = ds.batch_update_or_create_channels(
         [
             # Existing channel: unit changed in place
             CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, unit="km/h"),
