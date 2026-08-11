@@ -3,11 +3,13 @@ from __future__ import annotations
 import concurrent.futures
 import threading
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any, Callable, TypeVar, cast
 
 from nominal.core import NominalClient
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
 DestinationClientResolver = Callable[[Any], NominalClient]
 Resource = TypeVar("Resource")
@@ -22,6 +24,8 @@ class MigrationContext:
     destination_client_resolver: DestinationClientResolver | None = None
     source_asset_rids: frozenset[str] = field(default_factory=frozenset)
     dry_run: bool = False
+    video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT
+    """How long to wait for a copied video to finish ingesting before moving on. `None` waits forever."""
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _singleflight_futures: dict[tuple[str, str], concurrent.futures.Future[Any]] = field(
         default_factory=dict,

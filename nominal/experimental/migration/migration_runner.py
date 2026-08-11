@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import threading
+from datetime import timedelta
 from pathlib import Path
 from typing import cast
 
@@ -19,6 +20,8 @@ from nominal.experimental.migration.migrator.checklist_migrator import Checklist
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
+from nominal.experimental.migration.resource_type import format_resource_label
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ class MigrationRunner:
         destination_client_resolver: DestinationClientResolver | None = None,
         migration_state_path: Path | str | None = None,
         dry_run: bool = False,
+        video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
     ) -> None:
         """Create a migration runner state.
 
@@ -68,6 +72,8 @@ class MigrationRunner:
                 destination client for each source resource. Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
+            video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
+                ingesting before recording it as incomplete and moving on. None waits indefinitely.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
@@ -77,6 +83,7 @@ class MigrationRunner:
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
         self.dry_run = dry_run
+        self.video_ingest_timeout = video_ingest_timeout
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
@@ -111,6 +118,7 @@ class MigrationRunner:
                 destination_client_resolver=self.destination_client_resolver,
                 source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
                 dry_run=self.dry_run,
+                video_ingest_timeout=self.video_ingest_timeout,
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
@@ -151,6 +159,7 @@ class MigrationRunner:
                 WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
         finally:
             self.save_state()
+            log_skipped_resources(self.migration_state)
         logger.info("Completed migration")
 
     def save_state(self) -> None:
@@ -169,3 +178,24 @@ class MigrationRunner:
             )
             tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
             os.replace(tmp_path, self.migration_state_path)
+
+
+def log_skipped_resources(migration_state: MigrationState) -> None:
+    """Summarize skips at the end of a run, so a partial migration is never mistaken for a complete one.
+
+    Sourced from the persisted state, so a resumed run still reports what earlier attempts skipped.
+    """
+    if not migration_state.skipped_resources:
+        return
+
+    logger.warning(
+        "%d resource(s) were skipped or could not be confirmed — each needs checking by hand:",
+        len(migration_state.skipped_resources),
+    )
+    for skipped in migration_state.skipped_resources:
+        logger.warning(
+            "  skipped %s %s — %s",
+            format_resource_label(skipped.resource_type),
+            skipped.source_rid,
+            skipped.reason,
+        )

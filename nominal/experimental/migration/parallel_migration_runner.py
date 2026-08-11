@@ -13,7 +13,7 @@ from typing import Callable, Iterator
 
 from nominal.core.checklist import Checklist
 from nominal.experimental.migration.config.migration_resources import AssetResources
-from nominal.experimental.migration.migration_runner import MigrationRunner
+from nominal.experimental.migration.migration_runner import MigrationRunner, log_skipped_resources
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -164,7 +164,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     immediately instead of blocking behind in-flight work until the process is hard-killed.
     """
     max_workers = validate_max_workers(max_workers)
-    thread_safe_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
+    thread_safe_state = ThreadSafeMigrationState.from_state(runner.migration_state)
     # Persist child-resource mappings (runs, dataset files, workbooks, ...) as they are
     # recorded mid-asset — per-task saves alone would lose everything inside a long-running
     # asset on a hard kill. Debounced; dry runs skip the write inside save_state itself.
@@ -177,6 +177,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         migration_state=runner.migration_state,
         source_asset_rids=frozenset(runner.migration_resources.source_assets.keys()),
         dry_run=runner.dry_run,
+        video_ingest_timeout=runner.video_ingest_timeout,
     )
     if getattr(runner, "destination_client_resolver", None) is not None:
         setattr(ctx, "destination_client_resolver", runner.destination_client_resolver)
@@ -246,5 +247,6 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         raise
     finally:
         runner.save_state()
+        log_skipped_resources(runner.migration_state)
 
     logger.info("Completed parallel migration")

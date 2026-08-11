@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 from typing import Callable
 
@@ -16,6 +17,14 @@ class ThreadSafeMigrationState(MigrationState):
     # out of dataclasses.asdict and therefore out of the serialized state JSON.
     _lock: threading.RLock
     _persist_hook: Callable[[], None] | None
+
+    @classmethod
+    def from_state(cls, state: MigrationState) -> ThreadSafeMigrationState:
+        """Adopt every field of an existing state, so resuming a run does not silently drop progress."""
+        adopted = cls()
+        for state_field in dataclasses.fields(MigrationState):
+            setattr(adopted, state_field.name, getattr(state, state_field.name))
+        return adopted
 
     def __init__(self, rid_mapping: dict[str, dict[str, str]] | None = None) -> None:
         """Initialize the shared migration state with an internal lock.

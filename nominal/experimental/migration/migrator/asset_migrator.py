@@ -9,6 +9,7 @@ from nominal_api import scout_asset_api
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
+from nominal.core.exceptions import NominalChecklistNotPublishedError
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
@@ -214,7 +215,22 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _copy_asset_checklists(self, source_asset: Asset) -> None:
         checklist_migrator = ChecklistMigrator(self.ctx)
         for source_data_review in source_asset.search_data_reviews():
-            source_checklist = source_data_review.get_checklist()
+            try:
+                source_checklist = source_data_review.get_checklist()
+            except NominalChecklistNotPublishedError as error:
+                # A data review can pin a never-published checklist commit — skip it, not the asset.
+                logger.warning(
+                    "Skipping data review %s on asset %s: %s",
+                    source_data_review.rid,
+                    source_asset.rid,
+                    error,
+                )
+                self.ctx.migration_state.record_skip(
+                    ResourceType.CHECKLIST,
+                    source_data_review.checklist_rid,
+                    f"checklist version pinned by data review {source_data_review.rid} is not published",
+                )
+                continue
             logger.debug("Found Data Review %s", source_checklist.rid)
             destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
             destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_data_review.run_rid)

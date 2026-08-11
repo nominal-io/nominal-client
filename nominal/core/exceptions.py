@@ -42,6 +42,17 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
+class NominalIngestTimeout(NominalIngestError):
+    """Ingest did not reach a terminal state before the caller's deadline."""
+
+
+class NominalChecklistNotPublishedError(NominalError, ValueError):
+    """The requested checklist version has not been published.
+
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
+    """
+
+
 class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
@@ -160,6 +171,13 @@ class NominalVideoScaleModeError(NominalError, ValueError):
     ) -> None:
         """Initialize error."""
         super().__init__(message)
+
+
+class NominalVideoFileMetadataError(NominalError, ValueError):
+    """A video file lacks the segment metadata needed to re-ingest it elsewhere.
+
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
+    """
 
 
 class NominalVideoStreamError(NominalError):
