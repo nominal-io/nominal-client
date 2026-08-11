@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Callable, Iterable, Literal, Mapping, Protocol, Sequence, overload
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     api,
@@ -372,7 +372,7 @@ class DataSource(HasRid):
             single batch, the entire batch will fail. Callers are responsible for deduplicating
             channel names before passing them to this method.
         """
-        return self._batch_write_channels(channels, self._clients.series_metadata.batch_create)
+        return self._batch_write_channels(channels, update_existing=False)
 
     def batch_update_or_create_channels(
         self,
@@ -396,19 +396,23 @@ class DataSource(HasRid):
             batch will fail. Callers are responsible for deduplicating channel names before
             passing them to this method.
         """
-        return self._batch_write_channels(channels, self._clients.series_metadata.batch_create_or_update)
+        return self._batch_write_channels(channels, update_existing=True)
 
     def _batch_write_channels(
         self,
         channels: Sequence[CreateChannelRequest],
-        write_batch: Callable[[str, timeseries_metadata_api.BatchCreateSeriesMetadataRequest], None],
+        *,
+        update_existing: bool,
     ) -> BatchAddChannelsResult:
         if not channels:
             return BatchAddChannelsResult(channels=[], missing=[])
         for batch in batched(channels, _DEFAULT_CHANNEL_BATCH_SIZE):
             requests = [_build_series_metadata_request(self.rid, req) for req in batch]
             batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
-            write_batch(self._clients.auth_header, batch_request)
+            if update_existing:
+                self._clients.series_metadata.batch_create_or_update(self._clients.auth_header, batch_request)
+            else:
+                self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
         created = {ch.name: ch for ch in self.get_channels(names=[req.name for req in channels])}
         return BatchAddChannelsResult(
             channels=list(created.values()),
