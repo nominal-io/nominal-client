@@ -474,8 +474,8 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
 
     seed = ds.batch_add_channels(
         [
-            CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, unit="m/s"),
-            CreateChannelRequest(name="status", data_type=ChannelDataType.STRING, description="system status"),
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="m/s"),
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY, description="gyro xyz"),
         ]
     )
     assert seed.missing == []
@@ -483,9 +483,9 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
     result = ds.batch_update_or_create_channels(
         [
             # Existing channel: unit changed in place
-            CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, unit="km/h"),
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="km/h"),
             # Existing channel: description not supplied, so the existing value is preserved
-            CreateChannelRequest(name="status", data_type=ChannelDataType.STRING),
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY),
             # New channel: created fresh
             CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
         ]
@@ -493,9 +493,11 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
 
     assert result.missing == []
     channels = {ch.name: ch for ch in result.channels}
-    assert set(channels) == {"velocity", "status", "temperature"}
+    assert set(channels) == {"velocity", "gyro", "temperature"}
     assert channels["velocity"].unit == "km/h"
-    assert channels["status"].description == "system status"
+    assert channels["velocity"].data_type == ChannelDataType.UINT
+    assert channels["gyro"].description == "gyro xyz"
+    assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
     assert channels["temperature"].unit == "degC"
 
 
