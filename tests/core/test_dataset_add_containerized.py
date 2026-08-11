@@ -21,6 +21,7 @@ def _dataset(clients: MagicMock) -> Dataset:
         properties={},
         labels=(),
         bounds=DatasetBounds(start=0, end=1),
+        is_archived=False,
         _clients=clients,
     )
 

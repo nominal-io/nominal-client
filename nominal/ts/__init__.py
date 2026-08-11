@@ -208,7 +208,8 @@ from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, assert_never
 
-from nominal.protos.types.time import timestamp_parsers_pb2
+from nominal.protos.event.v2 import event_pb2
+from nominal.protos.types.time import time_pb2, timestamp_parsers_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -630,6 +631,13 @@ class _SecondsNanos(NamedTuple):
     def to_api(self) -> api.Timestamp:
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 
+    def to_proto(self) -> time_pb2.Timestamp:
+        return time_pb2.Timestamp(seconds=self.seconds, nanos=self.nanos)
+
+    @classmethod
+    def from_proto(cls, timestamp: time_pb2.Timestamp) -> Self:
+        return cls(seconds=timestamp.seconds, nanos=timestamp.nanos)
+
     def to_iso8601(self) -> str:
         """To an iso8601 string with nanosecond precision.
 
@@ -688,12 +696,41 @@ The backend converts to long nanoseconds, and the maximum long (int64) value is 
 """
 
 
+_ONE_MICROSECOND = timedelta(microseconds=1)
+"""timedelta's resolution, used to convert one losslessly to an integer without re-allocating it per call."""
+
+
+def _to_seconds_nanos_duration(duration: timedelta | IntegralNanosecondsDuration) -> tuple[int, int]:
+    """Split a duration into the seconds/nanos pair the platform APIs carry.
+
+    The platform reconstructs the value as `seconds * 1e9 + nanos` using signed arithmetic and constrains
+    neither field's sign, so the split is floored rather than truncated: `nanos` stays in [0, 1e9) and
+    `seconds` carries the sign. -1.5s therefore splits as `(-2, 500_000_000)`, which looks like an overshoot
+    but is the same value. Both the conjure and proto duration messages take this pair as-is.
+
+    A `timedelta` is an exact multiple of its microsecond resolution, so dividing by one microsecond
+    converts it losslessly.
+
+    Note:
+        This is not valid for `google.protobuf.Duration`, which requires both fields to share a sign
+        and would reject a floored split. A duration bound for that type needs its own encoder.
+    """
+    total_nanos = duration // _ONE_MICROSECOND * 1_000 if isinstance(duration, timedelta) else duration
+    return divmod(total_nanos, 1_000_000_000)
+
+
 def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
-    if isinstance(duration, timedelta):
-        return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
-    else:
-        seconds, nanos = divmod(duration, 1_000_000_000)
-        return scout_run_api.Duration(seconds=seconds, nanos=nanos)
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return scout_run_api.Duration(seconds=seconds, nanos=nanos)
+
+
+def _to_proto_duration(duration: timedelta | IntegralNanosecondsDuration) -> event_pb2.Duration:
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return event_pb2.Duration(seconds=seconds, nanos=nanos)
+
+
+def _from_proto_duration(duration: event_pb2.Duration) -> IntegralNanosecondsDuration:
+    return duration.seconds * 1_000_000_000 + duration.nanos
 
 
 def _to_export_timestamp_format(type_: _AnyExportableTimestampType) -> scout_dataexport_api.TimestampFormat:

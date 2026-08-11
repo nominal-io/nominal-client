@@ -10,6 +10,7 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
@@ -97,6 +98,7 @@ class TestAssetMigratorAttachments:
 
         source_att = MagicMock()
         source_att.rid = _att_rid(1)
+        source_att.is_archived = False
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
@@ -119,8 +121,10 @@ class TestAssetMigratorAttachments:
 
         source_att_1 = MagicMock()
         source_att_1.rid = old_rid_1
+        source_att_1.is_archived = False
         source_att_2 = MagicMock()
         source_att_2.rid = old_rid_2
+        source_att_2.is_archived = False
 
         source_asset = _make_source_asset(attachments=[source_att_1, source_att_2])
 
@@ -161,6 +165,7 @@ class TestAssetMigratorAttachments:
 
         source_att = MagicMock()
         source_att.rid = _att_rid(1)
+        source_att.is_archived = False
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
@@ -175,6 +180,132 @@ class TestAssetMigratorAttachments:
         # AttachmentMigrator was constructed with a context that shares the same migration_state
         init_ctx = mock_att_cls.call_args[0][0]
         assert init_ctx.migration_state is ctx.migration_state
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.AttachmentMigrator")
+    def test_archived_attachments_are_skipped(self, mock_att_cls: MagicMock) -> None:
+        """Archived source attachments are not migrated or added to the destination asset."""
+        migrator, ctx = self._make_migrator()
+
+        active_att = MagicMock()
+        active_att.rid = _att_rid(1)
+        active_att.is_archived = False
+        archived_att = MagicMock()
+        archived_att.rid = _att_rid(2)
+        archived_att.is_archived = True
+
+        source_asset = _make_source_asset(attachments=[active_att, archived_att])
+
+        dest_asset = _make_dest_asset()
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
+
+        new_att = MagicMock()
+        new_att.rid = _att_rid(101)
+        mock_att_migrator = mock_att_cls.return_value
+        mock_att_migrator.copy_from.return_value = new_att
+
+        migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
+
+        mock_att_migrator.copy_from.assert_called_once_with(active_att)
+        dest_asset.add_attachments.assert_called_once_with([new_att])
+
+
+class TestAssetMigratorDatasets:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.DatasetMigrator")
+    def test_archived_dataset_scopes_are_skipped(self, mock_ds_cls: MagicMock) -> None:
+        """A data scope whose dataset is archived is not migrated or added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_ds = MagicMock()
+        active_ds.rid = "ri.catalog.cerulean-staging.dataset.00000001"
+        active_ds.is_archived = False
+        archived_ds = MagicMock()
+        archived_ds.rid = "ri.catalog.cerulean-staging.dataset.00000002"
+        archived_ds.is_archived = True
+
+        scope_active = MagicMock()
+        scope_active.data_scope_name = "scope-active"
+        scope_active.data_source.dataset = active_ds.rid
+        scope_active.series_tags = {}
+        scope_archived = MagicMock()
+        scope_archived.data_scope_name = "scope-archived"
+        scope_archived.data_source.dataset = archived_ds.rid
+        scope_archived.series_tags = {}
+
+        source_asset = _make_source_asset()
+        source_asset._list_dataset_scopes.return_value = [scope_active, scope_archived]
+        source_asset.list_datasets.return_value = [("scope-active", active_ds), ("scope-archived", archived_ds)]
+
+        dest_asset = _make_dest_asset()
+        new_ds = MagicMock()
+        new_ds.rid = "ri.catalog.cerulean-staging.dataset.00000101"
+        mock_ds_migrator = mock_ds_cls.return_value
+        mock_ds_migrator.copy_from.return_value = new_ds
+
+        options = AssetCopyOptions(
+            dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=False)
+        )
+        migrator._copy_asset_datasets(source_asset, dest_asset, options)
+
+        assert mock_ds_migrator.copy_from.call_count == 1
+        assert mock_ds_migrator.copy_from.call_args[0][0] is active_ds
+        dest_asset.add_dataset.assert_called_once_with("scope-active", new_ds, series_tags={})
+
+
+class TestAssetMigratorVideos:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.VideoMigrator")
+    def test_archived_videos_are_skipped(self, mock_vm_cls: MagicMock) -> None:
+        """An archived video is not migrated, and its scope is not added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_video = MagicMock()
+        active_video.rid = "ri.video.cerulean-staging.video.00000001"
+        active_video.is_archived = False
+        archived_video = MagicMock()
+        archived_video.rid = "ri.video.cerulean-staging.video.00000002"
+        archived_video.is_archived = True
+
+        source_asset = _make_source_asset()
+        source_asset.list_videos.return_value = [("scope-active", active_video), ("scope-archived", archived_video)]
+
+        dest_asset = _make_dest_asset()
+        new_video = MagicMock()
+        new_video.rid = "ri.video.cerulean-staging.video.00000101"
+        mock_vm_migrator = mock_vm_cls.return_value
+        mock_vm_migrator.copy_from.return_value = new_video
+
+        migrator._copy_asset_videos(source_asset, dest_asset)
+
+        assert mock_vm_migrator.copy_from.call_count == 1
+        assert mock_vm_migrator.copy_from.call_args[0][0] is active_video
+        dest_asset.add_video.assert_called_once_with("scope-active", new_video)
+
+
+class TestAssetMigratorRuns:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.RunMigrator")
+    def test_archived_runs_are_skipped(self, mock_run_cls: MagicMock) -> None:
+        """Archived runs on the source asset are not migrated."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_run = MagicMock()
+        active_run.rid = _run_rid(1)
+        active_run.is_archived = False
+        archived_run = MagicMock()
+        archived_run.rid = _run_rid(2)
+        archived_run.is_archived = True
+
+        source_asset = _make_source_asset()
+        source_asset.list_runs.return_value = [active_run, archived_run]
+        dest_asset = _make_dest_asset()
+
+        migrator._copy_asset_runs(source_asset, dest_asset)
+
+        mock_run_migrator = mock_run_cls.return_value
+        assert mock_run_migrator.copy_from.call_count == 1
+        assert mock_run_migrator.copy_from.call_args[0][0] is active_run
+        assert ctx.migration_state.archived_run_rids == {archived_run.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +323,22 @@ def _stub_workbook(rid: str, asset_rids: list[str] | None = None, run_rids: list
 
 class TestAssetMigratorWorkbookRouting:
     """Tests for _copy_asset_and_run_workbooks: single vs. multi routing and scope checks."""
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_archived_runs_excluded_from_workbook_pass(self, mock_wm_cls: MagicMock) -> None:
+        """Workbooks of archived runs are not searched or migrated."""
+        ctx = _make_context()
+
+        source_asset = _make_source_asset(rid=_asset_rid(1))
+        archived_run = MagicMock()
+        archived_run.rid = _run_rid(1)
+        archived_run.is_archived = True
+        source_asset.list_runs.return_value = [archived_run]
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(source_asset, _make_dest_asset(), include_runs=True)
+
+        archived_run.search_workbooks.assert_not_called()
+        mock_wm_cls.return_value.copy_from.assert_not_called()
 
     @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
     def test_routing_single_asset_multi_asset_and_out_of_scope(self, mock_wm_cls: MagicMock) -> None:
@@ -329,6 +476,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.is_archived = False
         run1.assets = [a1]
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_run_allowed, run_rids=[r1]),
@@ -371,6 +519,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.is_archived = False
         run1.assets = [a1]  # single owning asset
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_single_run, run_rids=[r1]),
@@ -378,6 +527,7 @@ class TestAssetMigratorWorkbookRouting:
         ]
         run2 = MagicMock()
         run2.rid = r2
+        run2.is_archived = False
         run2.assets = [a1, a2]
         # wb_multi_run found again via run2 — should overwrite pending, not duplicate
         run2.search_workbooks.return_value = [
@@ -427,6 +577,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.is_archived = False
         run1.assets = [a1, a2]  # run is owned by two assets
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_run_scoped, run_rids=[r1]),  # single-run scope on the workbook itself
@@ -461,6 +612,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.is_archived = False
         run1.assets = [a1, a2]
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_run_scoped, run_rids=[r1]),
@@ -496,6 +648,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run_with_missing_owner = MagicMock()
         run_with_missing_owner.rid = r2
+        run_with_missing_owner.is_archived = False
         run_with_missing_owner.assets = [a1, a2]
         run_with_missing_owner.search_workbooks.return_value = [
             _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
@@ -503,6 +656,7 @@ class TestAssetMigratorWorkbookRouting:
 
         run_in_scope = MagicMock()
         run_in_scope.rid = r1
+        run_in_scope.is_archived = False
         run_in_scope.assets = [a1]
         run_in_scope.search_workbooks.return_value = [
             _stub_workbook(wb_multi_run, run_rids=[r1, r2]),

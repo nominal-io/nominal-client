@@ -4,7 +4,6 @@ from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overloa
 
 from nominal_api import (
     authentication_api,
-    event,
     ingest_api,
     scout,
     scout_asset_api,
@@ -22,6 +21,7 @@ from nominal_api import (
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
@@ -34,24 +34,23 @@ T_contra = TypeVar("T_contra", contravariant=True)
 
 
 def search_events_paginated(
-    client: event.EventService,
-    auth_header: str,
-    query: event.SearchQuery,
+    client: event_pb2_grpc.EventServiceStub,
+    query: event_pb2.SearchQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[event.Event]:
-    def factory(page_token: str | None) -> event.SearchEventsRequest:
-        return event.SearchEventsRequest(
+) -> Iterable[event_pb2.Event]:
+    def factory(page_token: str | None) -> event_pb2.SearchEventsRequest:
+        return event_pb2.SearchEventsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=event.SortOptions(
-                field=event.SortField.START_TIME,
+            sort=event_pb2.SortOptions(
+                field=event_pb2.START_TIME,
                 is_descending=True,
             ),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            archived_statuses=archive_status.to_proto_archived_statuses(),
             next_page_token=page_token,
         )
 
-    for response in paginate_rpc(client.search_events, auth_header, request_factory=factory):
+    for response in paginate_grpc(client.SearchEvents, request_factory=factory):
         yield from response.results
 
 

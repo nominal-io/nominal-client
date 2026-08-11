@@ -24,6 +24,9 @@ class MigrationState:
     pending_multi_run_workbooks: dict[str, list[str]] = field(default_factory=dict)
     # log of resources skipped due to missing dependencies or out-of-scope references
     skipped_resources: list[SkippedResource] = field(default_factory=list)
+    # source run_rids skipped because they are archived; lets the deferred-workbook flush
+    # distinguish "run intentionally not migrated" from a genuinely missing mapping
+    archived_run_rids: set[str] = field(default_factory=set)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MigrationState:
@@ -41,6 +44,7 @@ class MigrationState:
                 "pending_multi_run_workbooks", data.get("pendingMultiRunWorkbooks", {})
             ),
             skipped_resources=skipped_resources,
+            archived_run_rids=set(data.get("archived_run_rids", data.get("archivedRunRids", []))),
         )
 
     @classmethod
@@ -54,6 +58,7 @@ class MigrationState:
         # ThreadSafeMigrationState's plain instance attrs (lock, hook), as asdict did.
         payload: dict[str, Any] = {f.name: getattr(self, f.name) for f in fields(self)}
         payload["skipped_resources"] = [asdict(item) for item in self.skipped_resources]
+        payload["archived_run_rids"] = sorted(self.archived_run_rids)
         return json.dumps(payload)
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
@@ -89,6 +94,10 @@ class MigrationState:
 
     def clear_pending_multi_run_workbook(self, workbook_rid: str) -> None:
         self.pending_multi_run_workbooks.pop(workbook_rid, None)
+
+    def record_archived_run(self, run_rid: str) -> None:
+        """Record a source run that was skipped because it is archived."""
+        self.archived_run_rids.add(run_rid)
 
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         self.skipped_resources.append(SkippedResource(resource_type.value, source_rid, reason))

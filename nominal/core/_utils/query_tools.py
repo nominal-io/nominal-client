@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 from nominal_api import (
     api,
     authentication_api,
-    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -19,7 +18,9 @@ from nominal_api import (
     scout_video_api,
 )
 
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.types import types_pb2
@@ -559,45 +560,52 @@ def create_search_events_query(  # noqa: PLR0912
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,
     assignee_rid: str | None = None,
-    event_type: event.EventType | None = None,
-    origin_types: Iterable[event.SearchEventOriginType] | None = None,
+    event_type: EventType | None = None,
+    origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
-) -> event.SearchQuery:
+) -> event_pb2.SearchQuery:
     queries = []
     if search_text is not None:
-        queries.append(event.SearchQuery(search_text=search_text))
+        queries.append(event_pb2.SearchQuery(search_text=search_text))
     if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+        queries.append(event_pb2.SearchQuery(after=_SecondsNanos.from_flexible(after).to_proto()))
     if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+        queries.append(event_pb2.SearchQuery(before=_SecondsNanos.from_flexible(before).to_proto()))
     if asset_rids:
         if asset_match is AssetMatch.ANY:
             queries.append(
-                event.SearchQuery(assets=event.AssetsFilter(assets=list(asset_rids), operator=api.SetOperator.OR))
+                event_pb2.SearchQuery(
+                    assets=event_pb2.AssetsFilter(assets=list(asset_rids), operator=event_pb2.OR),
+                )
             )
         else:
             for asset in asset_rids:
-                queries.append(event.SearchQuery(asset=asset))
+                queries.append(event_pb2.SearchQuery(asset=asset))
     if labels:
         for label in labels:
-            queries.append(event.SearchQuery(label=label))
+            queries.append(event_pb2.SearchQuery(label=label))
     if properties:
         for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+            queries.append(event_pb2.SearchQuery(property=types_pb2.Property(name=name, value=value)))
     if created_by_rid:
-        queries.append(event.SearchQuery(created_by=created_by_rid))
+        queries.append(event_pb2.SearchQuery(created_by=created_by_rid))
     if workbook_rid is not None:
-        queries.append(event.SearchQuery(workbook=workbook_rid))
+        queries.append(event_pb2.SearchQuery(workbook=workbook_rid))
     if data_review_rid is not None:
-        queries.append(event.SearchQuery(data_review=data_review_rid))
+        queries.append(event_pb2.SearchQuery(data_review=data_review_rid))
     if assignee_rid is not None:
-        queries.append(event.SearchQuery(assignee=assignee_rid))
+        queries.append(event_pb2.SearchQuery(assignee=assignee_rid))
     if event_type is not None:
-        queries.append(event.SearchQuery(event_type=event_type))
-    if origin_types is not None:
-        origin_type_filter = event.OriginTypesFilter(api.SetOperator.OR, list(origin_types))
-        queries.append(event.SearchQuery(origin_types=origin_type_filter))
+        queries.append(event_pb2.SearchQuery(event_type=event_type._to_proto()))
+    if origin_types:
+        origin_type_filter = event_pb2.OriginTypesFilter(
+            operator=event_pb2.OR, origin_types=[origin_type._to_proto() for origin_type in origin_types]
+        )
+        queries.append(event_pb2.SearchQuery(origin_types=origin_type_filter))
     if workspace_rid is not None:
-        queries.append(event.SearchQuery(workspace=workspace_rid))
+        queries.append(event_pb2.SearchQuery(workspace=workspace_rid))
 
-    return event.SearchQuery(and_=queries)
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return event_pb2.SearchQuery(
+        **{"and": event_pb2.SearchQueryList(queries=queries)}  # type: ignore[arg-type]
+    )

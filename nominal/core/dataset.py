@@ -54,6 +54,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     properties: Mapping[str, str]
     labels: Sequence[str]
     bounds: DatasetBounds | None
+    is_archived: bool
 
     @property
     def nominal_url(self) -> str:
@@ -1034,11 +1035,16 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     def archive(self) -> None:
         """Archive this dataset.
         Archived datasets are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
+        """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -1050,6 +1056,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             properties=MappingProxyType(dataset.properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
+            is_archived=dataset.is_archived,
             _clients=clients,
         )
 

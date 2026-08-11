@@ -493,7 +493,22 @@ class TestThreadSafeToJson:
             state.record_pending_multi_asset_workbook("wb-a", ["a1", "a2"])
             state.record_pending_multi_run_workbook("wb-r", ["r1"])
             state.record_skip(ResourceType.WORKBOOK, "wb-s", "out of scope")
+            state.record_archived_run("r-archived")
         assert safe.to_json() == plain.to_json()
+
+    def test_archived_run_rids_round_trip(self) -> None:
+        """archived_run_rids survives a to_json/from_json round trip, and older state files
+        without the key load as an empty set.
+        """
+        state = MigrationState()
+        state.record_archived_run("r2")
+        state.record_archived_run("r1")
+
+        restored = MigrationState.from_json(state.to_json())
+        assert restored.archived_run_rids == {"r1", "r2"}
+
+        legacy = MigrationState.from_dict({"rid_mapping": {}})
+        assert legacy.archived_run_rids == set()
 
     def test_snapshot_covers_all_state_fields(self) -> None:
         """ThreadSafeMigrationState.to_json copies each MigrationState field explicitly;
@@ -505,6 +520,7 @@ class TestThreadSafeToJson:
             "pending_multi_asset_workbooks",
             "pending_multi_run_workbooks",
             "skipped_resources",
+            "archived_run_rids",
         }, "MigrationState fields changed: update ThreadSafeMigrationState.to_json's snapshot"
 
     def test_snapshot_is_isolated_from_concurrent_mutation(self, monkeypatch: pytest.MonkeyPatch) -> None:

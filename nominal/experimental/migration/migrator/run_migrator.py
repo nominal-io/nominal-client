@@ -55,7 +55,18 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         attachments = options.new_attachments
         if attachments is None:
             attachment_migrator = AttachmentMigrator(self.ctx)
-            attachments = [attachment_migrator.copy_from(a) for a in source.list_attachments()]
+            migrated_attachments: list[Attachment] = []
+            for source_attachment in source.list_attachments():
+                if source_attachment.is_archived:
+                    logger.info(
+                        "Skipping archived attachment '%s' (rid: %s) on run %s",
+                        source_attachment.name,
+                        source_attachment.rid,
+                        source.rid,
+                    )
+                    continue
+                migrated_attachments.append(attachment_migrator.copy_from(source_attachment))
+            attachments = migrated_attachments
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)

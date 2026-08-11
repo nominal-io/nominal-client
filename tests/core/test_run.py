@@ -3,9 +3,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import api
 
 from nominal.core.run import Run
+from nominal.protos.event.v2 import event_pb2
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ def make_run(mock_clients):
             run_number=1,
             assets=assets,
             created_at=0,
+            is_archived=False,
             _clients=mock_clients,
         )
 
@@ -39,26 +40,26 @@ def mock_run(make_run):
     return make_run(["asset-rid-1", "asset-rid-2"])
 
 
-def _empty_search_response():
-    response = MagicMock()
-    response.results = []
-    response.next_page_token = None
-    return response
-
-
 def test_search_events_ors_run_assets(mock_run, mock_clients):
     """Run.search_events matches events on any of the run's assets (a single OR asset filter)."""
-    mock_clients.event.search_events.return_value = _empty_search_response()
+    mock_clients.event.SearchEvents.return_value = event_pb2.SearchEventsResponse()
 
     result = mock_run.search_events()
 
     assert result == []
-    mock_clients.event.search_events.assert_called_once()
-    _, request = mock_clients.event.search_events.call_args[0]
-    asset_filters = [sub.assets for sub in request.query.and_ if sub.assets is not None]
-    assert len(asset_filters) == 1
-    assert asset_filters[0].assets == ["asset-rid-1", "asset-rid-2"]
-    assert asset_filters[0].operator == api.SetOperator.OR
+    mock_clients.event.SearchEvents.assert_called_once()
+    request = mock_clients.event.SearchEvents.call_args.args[0]
+    assert request.query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[
+                    event_pb2.SearchQuery(
+                        assets=event_pb2.AssetsFilter(assets=["asset-rid-1", "asset-rid-2"], operator=event_pb2.OR)
+                    )
+                ]
+            )
+        }
+    )
 
 
 def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
@@ -68,7 +69,7 @@ def test_search_events_empty_assets_returns_no_events(make_run, mock_clients):
     result = run.search_events()
 
     assert result == []
-    mock_clients.event.search_events.assert_not_called()
+    mock_clients.event.SearchEvents.assert_not_called()
 
 
 def test_nominal_url_identifies_the_run_by_rid(mock_run, mock_clients):

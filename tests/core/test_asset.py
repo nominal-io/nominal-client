@@ -25,6 +25,7 @@ def mock_asset(mock_clients):
         properties={},
         labels=[],
         created_at=0,
+        is_archived=False,
         _clients=mock_clients,
     )
 
@@ -38,6 +39,7 @@ def mock_dataset(mock_clients):
         bounds=DatasetBounds(start=0, end=1),
         properties={},
         labels=[],
+        is_archived=False,
         _clients=mock_clients,
     )
 

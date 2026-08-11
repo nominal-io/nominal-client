@@ -23,6 +23,7 @@ def mock_dataset() -> Dataset:
         bounds=DatasetBounds(start=123455, end=123456),
         properties={},
         labels=[],
+        is_archived=False,
         _clients=clients,
     )
 

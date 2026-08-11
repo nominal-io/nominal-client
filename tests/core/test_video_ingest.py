@@ -70,6 +70,7 @@ def _video() -> Video:
         properties={},
         labels=(),
         created_at=1_753_000_000_000_000_000,
+        is_archived=False,
         _clients=MagicMock(),
     )
 
