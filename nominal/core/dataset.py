@@ -1569,6 +1569,7 @@ def _create_dataset(
         description=description,
         labels=list(labels),
         properties={} if properties is None else dict(properties),
+        typed_properties={},
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
