@@ -11,7 +11,6 @@ from nominal_api import (
     authentication_api,
     ingest_api,
     scout,
-    scout_assets,
     scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
@@ -36,6 +35,7 @@ from nominal.core._utils.networking import (
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
+from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
@@ -143,7 +143,6 @@ class ClientsBunch:
     )
 
     # Conjure services
-    assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
     authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
@@ -169,6 +168,7 @@ class ClientsBunch:
     video: scout_video.VideoService
 
     # GRPC services
+    assets: asset_pb2_grpc.AssetServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     event: event_pb2_grpc.EventServiceStub
@@ -307,7 +307,6 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
-            assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
@@ -332,6 +331,7 @@ class ClientsBunch:
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
