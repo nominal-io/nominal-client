@@ -20,9 +20,8 @@ from nominal.protos.types import types_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _from_proto_duration,
     _SecondsNanos,
-    _to_proto_duration,
+    _to_seconds_nanos_duration,
 )
 
 
@@ -164,6 +163,19 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             _uuid=event.uuid,
             _clients=clients,
         )
+
+
+def _to_proto_duration(duration: timedelta | IntegralNanosecondsDuration) -> event_pb2.Duration:
+    """Encode a duration as `nominal.event.v2.Duration`.
+
+    See `nominal.ts._to_seconds_nanos_duration` for why the split floors.
+    """
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return event_pb2.Duration(seconds=seconds, nanos=nanos)
+
+
+def _from_proto_duration(duration: event_pb2.Duration) -> IntegralNanosecondsDuration:
+    return duration.seconds * 1_000_000_000 + duration.nanos
 
 
 def _get_events(clients: Event._Clients, rids: Sequence[str]) -> Sequence[event_pb2.Event]:

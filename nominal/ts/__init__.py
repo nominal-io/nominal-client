@@ -208,7 +208,6 @@ from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, assert_never
 
-from nominal.protos.event.v2 import event_pb2
 from nominal.protos.types.time import time_pb2, timestamp_parsers_pb2
 
 logger = logging.getLogger(__name__)
@@ -712,6 +711,12 @@ def _to_seconds_nanos_duration(duration: timedelta | IntegralNanosecondsDuration
     converts it losslessly.
 
     Note:
+        Each service declares its own `Duration` message (`nominal.event.v2.Duration`,
+        `nominal.asset.v2.Duration`, ...). They are structurally identical but not interchangeable, so the
+        message is built by the module that owns the service; only the shared `nominal.types.Duration`
+        would be built here.
+
+    Note:
         This is not valid for `google.protobuf.Duration`, which requires both fields to share a sign
         and would reject a floored split. A duration bound for that type needs its own encoder.
     """
@@ -722,15 +727,6 @@ def _to_seconds_nanos_duration(duration: timedelta | IntegralNanosecondsDuration
 def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
     seconds, nanos = _to_seconds_nanos_duration(duration)
     return scout_run_api.Duration(seconds=seconds, nanos=nanos)
-
-
-def _to_proto_duration(duration: timedelta | IntegralNanosecondsDuration) -> event_pb2.Duration:
-    seconds, nanos = _to_seconds_nanos_duration(duration)
-    return event_pb2.Duration(seconds=seconds, nanos=nanos)
-
-
-def _from_proto_duration(duration: event_pb2.Duration) -> IntegralNanosecondsDuration:
-    return duration.seconds * 1_000_000_000 + duration.nanos
 
 
 def _to_export_timestamp_format(type_: _AnyExportableTimestampType) -> scout_dataexport_api.TimestampFormat:
