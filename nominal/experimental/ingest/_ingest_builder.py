@@ -791,6 +791,8 @@ class IngestBuilder:
                 job (each failure logged as an error) instead of failing the whole batch.
                 Deliberately reported through logs, not the return value — the job always
                 covers exactly the items that uploaded.
+            expand_runs: If provided, runs (or their rids) to expand upon successful ingest.
+                This will only expand the bounds of the runs, not contract.
 
         Returns:
             The created ingest job. Track it by polling `job.refresh().status`, or block on its
