@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    event,
     scout,
     scout_asset_api,
     scout_assets,
@@ -64,6 +63,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     class _Clients(
         Attachment._Clients,
         DataSource._Clients,
+        Event._Clients,
         Video._Clients,
         Workbook._Clients,
         Protocol,
@@ -72,8 +72,6 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         def assets(self) -> scout_assets.AssetService: ...
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
-        @property
-        def event(self) -> event.EventService: ...
         @property
         def run(self) -> scout.RunService: ...
 
