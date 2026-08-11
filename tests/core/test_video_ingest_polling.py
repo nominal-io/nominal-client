@@ -100,6 +100,7 @@ def _video(status_type: str) -> Video:
         properties={},
         labels=(),
         created_at=0,
+        is_archived=False,
         _clients=clients,
     )
 
