@@ -17,7 +17,6 @@ from nominal_api import (
     scout_checks_api,
     scout_compute_api,
     scout_dataexport_api,
-    scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
     scout_video,
@@ -38,6 +37,7 @@ from nominal.core._utils.networking import (
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -153,7 +153,6 @@ class ClientsBunch:
     compute: scout_compute_api.ComputeService
     connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
-    datareview: scout_datareview_api.DataReviewService
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
     ingest: ingest_api.IngestService
@@ -171,6 +170,7 @@ class ClientsBunch:
     # GRPC services
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
+    datareview: data_review_pb2_grpc.DataReviewServiceStub
     event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
@@ -317,7 +317,6 @@ class ClientsBunch:
             compute=client_factory(scout_compute_api.ComputeService),
             connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
-            datareview=client_factory(scout_datareview_api.DataReviewService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
             ingest=client_factory(ingest_api.IngestService),
@@ -334,6 +333,7 @@ class ClientsBunch:
             # GRPC Service Stubs
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
+            datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
