@@ -32,6 +32,7 @@ from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.run import Run
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -771,7 +772,7 @@ class IngestBuilder:
         )
         return self
 
-    def submit(self, *, allow_partial: bool = False) -> IngestionJob:
+    def submit(self, *, allow_partial: bool = False, runs_to_expand: Sequence[Run | str] | None = None) -> IngestionJob:
         """Upload all registered files and trigger one ingest job.
 
         Uploads run in parallel, with transient failures (network weather, throttling) retried
@@ -790,6 +791,8 @@ class IngestBuilder:
                 job (each failure logged as an error) instead of failing the whole batch.
                 Deliberately reported through logs, not the return value — the job always
                 covers exactly the items that uploaded.
+            runs_to_expand: If provided, runs (or their rids) to expand upon successful ingest.
+                This will only expand the bounds of the runs, not contract.
 
         Returns:
             The created ingest job. Track it by polling `job.refresh().status`, or block on its
@@ -848,6 +851,7 @@ class IngestBuilder:
             dataset_rid=self._dataset_rid,
             items=items,
             tags=self._tags,
+            runs_to_expand=[rid_from_instance_or_string(run) for run in runs_to_expand] if runs_to_expand else None,
         )
         with translate_grpc_errors():
             response = self._client._clients.ingest_v2.Ingest(request)
