@@ -772,7 +772,7 @@ class IngestBuilder:
         )
         return self
 
-    def submit(self, *, allow_partial: bool = False, expand_runs: Sequence[Run | str] | None = None) -> IngestionJob:
+    def submit(self, *, allow_partial: bool = False, runs_to_expand: Sequence[Run | str] | None = None) -> IngestionJob:
         """Upload all registered files and trigger one ingest job.
 
         Uploads run in parallel, with transient failures (network weather, throttling) retried
@@ -791,7 +791,7 @@ class IngestBuilder:
                 job (each failure logged as an error) instead of failing the whole batch.
                 Deliberately reported through logs, not the return value — the job always
                 covers exactly the items that uploaded.
-            expand_runs: If provided, runs (or their rids) to expand upon successful ingest.
+            runs_to_expand: If provided, runs (or their rids) to expand upon successful ingest.
                 This will only expand the bounds of the runs, not contract.
 
         Returns:
@@ -851,7 +851,7 @@ class IngestBuilder:
             dataset_rid=self._dataset_rid,
             items=items,
             tags=self._tags,
-            runs_to_expand=[rid_from_instance_or_string(run) for run in expand_runs] if expand_runs else None,
+            runs_to_expand=[rid_from_instance_or_string(run) for run in runs_to_expand] if runs_to_expand else None,
         )
         with translate_grpc_errors():
             response = self._client._clients.ingest_v2.Ingest(request)
