@@ -173,8 +173,10 @@ def test_batch_update_or_create_channels_returns_channels_and_no_missing(mock_da
         result = mock_datasource.batch_update_or_create_channels([req1, req2])
 
     assert isinstance(result, BatchAddChannelsResult)
-    assert result.channels == [mock_ch1, mock_ch2]
-    assert result.missing == []
+    assert len(result.channels) == 2
+    assert result.channels[0] == mock_ch1
+    assert result.channels[1] == mock_ch2
+    assert len(result.missing) == 0
 
 
 def test_batch_update_or_create_channels_returns_missing_when_server_drops_channel(mock_datasource: DataSource):
@@ -187,5 +189,7 @@ def test_batch_update_or_create_channels_returns_missing_when_server_drops_chann
     with patch.object(DataSource, "get_channels", return_value=[mock_ch1]):  # ch2 not returned
         result = mock_datasource.batch_update_or_create_channels([req1, req2])
 
-    assert result.channels == [mock_ch1]
-    assert result.missing == [req2]
+    assert len(result.channels) == 1
+    assert result.channels[0] == mock_ch1
+    assert len(result.missing) == 1
+    assert result.missing[0] == req2
