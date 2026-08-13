@@ -3,8 +3,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from nominal_api import scout_compute_api
+from nominal_api import scout_catalog, scout_compute_api, scout_versioning_api
 
+from nominal.core.exceptions import NominalCommitNotPersistedError
 from nominal.experimental.compute_as_code import (
     commit_derived_definition,
     create_derived_dataset,
@@ -21,10 +22,38 @@ def client(mock_clients: MagicMock) -> MagicMock:
     return client
 
 
+DATASET_RID = "ri.catalog.ws.dataset.abc"
+
+
 def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
     return scout_compute_api.Dataset(
         saved=scout_compute_api.SavedDataset(rid=scout_compute_api.StringConstant(literal=rid))
     )
+
+
+def _commit(commit_id: str, *, working_state: bool = True) -> scout_versioning_api.Commit:
+    return scout_versioning_api.Commit(
+        committed_at="2026-01-01T00:00:00Z",
+        committed_by="ri.authn.ws.user.1",
+        id=commit_id,
+        is_working_state=working_state,
+        message=f"commit {commit_id}",
+        resource_rid=DATASET_RID,
+    )
+
+
+def _stub_commit_response(client: MagicMock, commit: scout_versioning_api.Commit) -> scout_catalog.DerivedDefinition:
+    """Make the catalog's commit call return a definition carrying `commit`."""
+    definition = scout_catalog.DerivedDefinition(commit=commit, spec=_conjure_saved(DATASET_RID))
+    client._clients.catalog.commit_derived_definition.return_value = definition
+    return definition
+
+
+def _persisted_ids(client: MagicMock) -> list[str]:
+    """The commit IDs the client passed to persist_commits."""
+    _, request = client._clients.versioning.persist_commits.call_args[0]
+    assert [entry.resource_rid for entry in request] == [DATASET_RID] * len(request)
+    return [entry.commit_id for entry in request]
 
 
 # --- bridge: nominal_compute -> scout_compute_api ---
@@ -108,3 +137,44 @@ def test_commit_derived_definition_builds_request(client: MagicMock) -> None:
     assert request.spec.type == "timeShift"
     assert request.message == "update"
     assert request.latest_commit == "ri.commit.1"
+
+
+# --- commit persistence ---
+
+
+def _commit_spec() -> object:
+    nc = pytest.importorskip("nominal_compute")
+    return nc.Dataset.Saved(DATASET_RID)
+
+
+def test_commit_persists_working_state_commit(client: MagicMock) -> None:
+    """A commit that lands in working state is persisted."""
+    definition = _stub_commit_response(client, _commit("ri.commit.new"))
+
+    result = commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+
+    assert result is definition
+    auth, _ = client._clients.versioning.persist_commits.call_args[0]
+    assert auth == "Bearer test-token"
+    assert _persisted_ids(client) == ["ri.commit.new"]
+
+
+def test_commit_skips_persist_when_commit_already_permanent(client: MagicMock) -> None:
+    """A commit that is already permanent is not persisted again."""
+    _stub_commit_response(client, _commit("ri.commit.new", working_state=False))
+
+    commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+
+    client._clients.versioning.persist_commits.assert_not_called()
+
+
+def test_commit_raises_naming_the_commit_when_persist_fails(client: MagicMock) -> None:
+    """A failed persist raises an error naming the commit that landed."""
+    _stub_commit_response(client, _commit("ri.commit.new"))
+    cause = RuntimeError("boom")
+    client._clients.versioning.persist_commits.side_effect = cause
+
+    with pytest.raises(NominalCommitNotPersistedError, match="ri.commit.new") as excinfo:
+        commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+
+    assert excinfo.value.__cause__ is cause
