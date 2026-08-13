@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from nominal_api import scout_catalog, scout_compute_api, scout_versioning_api
 
-from nominal.core.exceptions import NominalCommitNotPersistedError
 from nominal.experimental.compute_as_code import (
     commit_derived_definition,
     create_derived_dataset,
@@ -166,15 +165,3 @@ def test_commit_skips_persist_when_commit_already_permanent(client: MagicMock) -
     commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
 
     client._clients.versioning.persist_commits.assert_not_called()
-
-
-def test_commit_raises_naming_the_commit_when_persist_fails(client: MagicMock) -> None:
-    """A failed persist raises an error naming the commit that landed."""
-    _stub_commit_response(client, _commit("ri.commit.new"))
-    cause = RuntimeError("boom")
-    client._clients.versioning.persist_commits.side_effect = cause
-
-    with pytest.raises(NominalCommitNotPersistedError, match="ri.commit.new") as excinfo:
-        commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
-
-    assert excinfo.value.__cause__ is cause

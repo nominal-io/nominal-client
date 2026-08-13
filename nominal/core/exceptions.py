@@ -124,14 +124,6 @@ class NominalComputeError(NominalError):
     """An error occurred during a compute request."""
 
 
-class NominalCommitNotPersistedError(NominalError):
-    """A commit was created, but the follow-up call that persists it failed.
-
-    The commit itself landed, so retrying the write would duplicate it. Until it is persisted, it
-    stays hidden from commit history and may be removed by commit compaction.
-    """
-
-
 class NominalContainerImageError(NominalError):
     """A containerized extractor's container image is in a failed or unusable state."""
 

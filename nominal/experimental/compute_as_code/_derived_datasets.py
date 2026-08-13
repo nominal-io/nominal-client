@@ -10,7 +10,6 @@ from nominal_api import scout_catalog, scout_compute_api, scout_versioning_api
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.dataset import Dataset
-from nominal.core.exceptions import NominalCommitNotPersistedError
 
 
 def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:
@@ -18,14 +17,6 @@ def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Data
     wire_json = spec.to_json()  # type: ignore[attr-defined]
     dataset: scout_compute_api.Dataset = ConjureDecoder().decode(json.loads(wire_json), scout_compute_api.Dataset)
     return dataset
-
-
-def _persist_commit(client: NominalClient, rid: str, commit_id: str) -> None:
-    """Persist a commit so it survives commit compaction and appears in commit history."""
-    client._clients.versioning.persist_commits(
-        client._clients.auth_header,
-        [scout_versioning_api.ResourceAndCommitId(commit_id=commit_id, resource_rid=rid)],
-    )
 
 
 def create_derived_dataset(
@@ -116,9 +107,6 @@ def commit_derived_definition(
 
     Returns:
         The newly committed derived definition.
-
-    Raises:
-        NominalCommitNotPersistedError: If the commit was created but persisting it failed.
     """
     rid = rid_from_instance_or_string(dataset)
     request = scout_catalog.CommitDerivedDefinitionRequest(
@@ -128,10 +116,8 @@ def commit_derived_definition(
     )
     definition = client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
     if definition.commit.is_working_state:
-        try:
-            _persist_commit(client, rid, definition.commit.id)
-        except Exception as e:
-            raise NominalCommitNotPersistedError(
-                f"committed {definition.commit.id} to {rid}, but failed to persist it"
-            ) from e
+        client._clients.versioning.persist_commits(
+            client._clients.auth_header,
+            [scout_versioning_api.ResourceAndCommitId(commit_id=definition.commit.id, resource_rid=rid)],
+        )
     return definition
