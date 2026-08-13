@@ -8,6 +8,7 @@ Covers:
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
   - Creating channels on a datasource via add_channel and batch_add_channels
+  - Upserting channels on a datasource via batch_update_or_create_channels
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -462,6 +463,41 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
     assert channels["velocity"].unit == "m/s"
     assert channels["temperature"].unit == "degC"
     assert channels["status"].description == "system status"
+
+
+def test_batch_update_or_create_channels(client: NominalClient, archive: ArchiveFn) -> None:
+    """batch_update_or_create_channels updates existing channels in place, preserves unsupplied fields,
+    and creates new channels in the same call.
+    """
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    seed = ds.batch_add_channels(
+        [
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="m/s"),
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY, description="gyro xyz"),
+        ]
+    )
+    assert seed.missing == []
+
+    result = ds.batch_update_or_create_channels(
+        [
+            # Existing channel: unit changed in place
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="km/h"),
+            # Existing channel: description not supplied, so the existing value is preserved
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY),
+            # New channel: created fresh
+            CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
+        ]
+    )
+
+    assert result.missing == []
+    channels = {ch.name: ch for ch in result.channels}
+    assert set(channels) == {"velocity", "gyro", "temperature"}
+    assert channels["velocity"].unit == "km/h"
+    assert channels["gyro"].description == "gyro xyz"
+    assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
+    assert channels["temperature"].unit == "degC"
 
 
 @pytest.mark.parametrize(
