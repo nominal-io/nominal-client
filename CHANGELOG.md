@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.160.0](https://github.com/nominal-io/nominal-client/compare/v1.159.0...v1.160.0) (2026-08-13)
+
+
+### Features
+
+* add helper for batch create or update channel ([#920](https://github.com/nominal-io/nominal-client/issues/920)) ([8689315](https://github.com/nominal-io/nominal-client/commit/868931551ff3ad07b21e78d1370ec4f48ecf1ac3))
+* allow ingest jobs to expand run bounds ([#926](https://github.com/nominal-io/nominal-client/issues/926)) ([9c0813f](https://github.com/nominal-io/nominal-client/commit/9c0813f9f7b948264ae732a9182a82571070f808))
+
 ## [1.159.0](https://github.com/nominal-io/nominal-client/compare/v1.158.0...v1.159.0) (2026-08-11)
 
 
