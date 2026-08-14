@@ -83,7 +83,10 @@ class Color:
     """
 
     hex_code: str
-    """A lowercase six-digit hex color, e.g. `#cc0000`."""
+    """A lowercase six-digit hex color, e.g. `#cc0000`.
+
+    Validated by `Color.create`; the constructor itself does not check it.
+    """
 
     @classmethod
     def create(cls, hex_code: str) -> Self:

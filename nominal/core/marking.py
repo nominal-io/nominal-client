@@ -12,7 +12,6 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
 from nominal.core.elements import Color, Symbol
-from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -190,20 +189,11 @@ def _get_marking_proto(clients: Marking._Clients, rid: str) -> markings_pb2.Mark
     """The marking with the given rid.
 
     Raises:
-        NominalNotFoundError: If no marking has that rid, or it is not accessible to the user.
+        NominalNotFoundError: If no marking has that rid.
+        NominalPermissionDeniedError: If the user cannot read it.
     """
-    markings = _get_marking_protos(clients, [rid])
-    if not markings:
-        raise NominalNotFoundError(f"no marking found with RID {rid!r}")
-    if len(markings) != 1:
-        raise ValueError(f"Expected exactly one marking with rid {rid!r}, received {len(markings)}")
-    return markings[0]
-
-
-def _get_marking_protos(clients: Marking._Clients, rids: Sequence[str]) -> Sequence[markings_pb2.Marking]:
-    request = markings_pb2.BatchGetMarkingsRequest(marking_rids=list(rids))
     with translate_grpc_errors():
-        return tuple(clients.markings.BatchGetMarkings(request).markings)
+        return clients.markings.GetMarking(markings_pb2.GetMarkingRequest(rid=rid)).marking
 
 
 def _get_marking(clients: Marking._Clients, rid: str) -> Marking:

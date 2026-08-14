@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 
 from nominal.core._utils.pagination_tools import search_markings_paginated
@@ -9,7 +10,7 @@ from nominal.core._utils.query_tools import create_search_markings_query
 from nominal.core.client import NominalClient
 from nominal.core.connection import StreamingConnection
 from nominal.core.elements import Color, Symbol
-from nominal.core.exceptions import NominalNotFoundError
+from nominal.core.exceptions import NominalNotFoundError, NominalPermissionDeniedError
 from nominal.core.marking import (
     MarkableMixin,
     Marking,
@@ -129,13 +130,32 @@ def test_create_sends_symbol_and_color() -> None:
     assert marking.rid == "ri.marking.a"
 
 
-def test_get_marking_raises_when_absent() -> None:
-    """BatchGetMarkings filters out markings the user cannot see, so an empty result means not found."""
+def test_get_marking_fetches_by_rid() -> None:
+    """A single get, not a one-element batch: the service distinguishes missing from unreadable."""
     clients = _clients()
-    clients.markings.BatchGetMarkings.return_value = markings_pb2.BatchGetMarkingsResponse(markings=[])
+    clients.markings.GetMarking.return_value = markings_pb2.GetMarkingResponse(marking=_marking())
+
+    marking = _get_marking(clients, "ri.marking.a")
+
+    assert marking.rid == "ri.marking.a"
+    assert clients.markings.GetMarking.call_args.args[0].rid == "ri.marking.a"
+
+
+def test_get_marking_surfaces_a_missing_marking_as_not_found(fake_rpc_error) -> None:
+    clients = _clients()
+    clients.markings.GetMarking.side_effect = fake_rpc_error(grpc.StatusCode.NOT_FOUND)
 
     with pytest.raises(NominalNotFoundError):
         _get_marking(clients, "ri.marking.missing")
+
+
+def test_get_marking_surfaces_an_unreadable_marking_as_permission_denied(fake_rpc_error) -> None:
+    """Distinct from not-found: a batch get would have conflated the two."""
+    clients = _clients()
+    clients.markings.GetMarking.side_effect = fake_rpc_error(grpc.StatusCode.PERMISSION_DENIED)
+
+    with pytest.raises(NominalPermissionDeniedError):
+        _get_marking(clients, "ri.marking.hidden")
 
 
 def test_update_distinguishes_unchanged_from_cleared_symbol() -> None:
