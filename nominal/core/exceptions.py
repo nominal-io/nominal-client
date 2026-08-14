@@ -1,7 +1,12 @@
+from __future__ import annotations
+
+from enum import Enum
 from typing import Mapping
 
 # Remove this import once the minimum supported Python version is 3.11+.
 from exceptiongroup import ExceptionGroup
+
+from nominal.protos.file_store.v1 import file_store_pb2
 
 
 class NominalError(Exception):
@@ -210,3 +215,51 @@ class NominalParameterRemovedError(NominalError):
             return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
+
+
+class FileStoreErrorCode(Enum):
+    """A File Store error code reported by the backend.
+
+    `UNKNOWN` covers an unset code and any code a newer server sends that this SDK
+    does not yet model.
+    """
+
+    UNKNOWN = "UNKNOWN"
+    DRIVE_NOT_FOUND = "DRIVE_NOT_FOUND"
+    FILE_NOT_FOUND = "FILE_NOT_FOUND"
+    FILE_REVISION_NOT_FOUND = "FILE_REVISION_NOT_FOUND"
+    PATH_ALREADY_EXISTS = "PATH_ALREADY_EXISTS"
+    INVALID_LOGICAL_PATH = "INVALID_LOGICAL_PATH"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    REVISION_PRECONDITION_FAILED = "REVISION_PRECONDITION_FAILED"
+    READ_ONLY_DRIVE = "READ_ONLY_DRIVE"
+    FILE_HISTORY_NOT_AVAILABLE = "FILE_HISTORY_NOT_AVAILABLE"
+    REVISION_BYTES_RECLAIMED = "REVISION_BYTES_RECLAIMED"
+    DRIVE_ID_ALREADY_EXISTS = "DRIVE_ID_ALREADY_EXISTS"
+    UPLOADED_OBJECT_NOT_FOUND = "UPLOADED_OBJECT_NOT_FOUND"
+    INVALID_OBJECT_KEY = "INVALID_OBJECT_KEY"
+
+    @classmethod
+    def _from_proto(cls, value: file_store_pb2.FileStoreError.ValueType) -> FileStoreErrorCode:
+        name = file_store_pb2.FileStoreError.Name(value) if value in file_store_pb2.FileStoreError.values() else ""
+        member = name.removeprefix("FILE_STORE_ERROR_")
+        try:
+            return cls(member)
+        except ValueError:
+            # Unset, or a code a newer server sent that this SDK doesn't model.
+            return cls.UNKNOWN
+
+
+class NominalFileStoreError(NominalError):
+    """A File Store operation failed.
+
+    Raised both for failures the backend reports per-change (which carry no gRPC status of
+    their own) and for capability checks this SDK makes before spending a request, so one
+    `except NominalFileStoreError` covers both.
+    """
+
+    def __init__(self, code: FileStoreErrorCode, message: str) -> None:
+        """Initialize error with the backend's error code and message."""
+        self.code = code
+        self.message = message
+        super().__init__(f"{code.value}: {message}")
