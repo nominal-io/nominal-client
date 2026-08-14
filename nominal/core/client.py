@@ -110,7 +110,6 @@ from nominal.core.marking import (
     _get_marking,
     _get_marking_by_id,
     _get_markings,
-    _iter_search_markings,
     _search_markings,
 )
 from nominal.core.run import Run, _create_run
@@ -122,7 +121,6 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -609,9 +607,6 @@ class NominalClient:
         Markings that do not exist, or that the user cannot read, are omitted from the result.
         """
         return _get_markings(self._clients, rids)
-
-    def _iter_search_markings(self, query: markings_pb2.SearchMarkingsQuery) -> Iterable[Marking]:
-        yield from _iter_search_markings(self._clients, query)
 
     def search_markings(self, id_substring: str | None = None) -> Sequence[Marking]:
         """Search markings in the current organization, oldest first.
