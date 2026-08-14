@@ -40,6 +40,9 @@ class FakeUploadService:
         self.fail_sign_for_key = fail_sign_for_key
         self.aborted: list[str] = []
         self.completed_etags: dict[str, dict[int, str]] = {}  # key -> {part number: etag}
+        # (method name, bucket) for every call carrying a bucket -- the regression guard for
+        # threading the initiate-returned destination handle through the driver.
+        self.buckets: list[tuple[str, str | None]] = []
         self.upload_file_args: list[tuple[str, int | None, int]] = []  # (file name, size_bytes, body length)
         self.upload_file_started = threading.Event()
         self.upload_file_release = threading.Event()
@@ -50,12 +53,18 @@ class FakeUploadService:
         with self.lock:
             self.calls.append(name)
 
+    def _record_bucket(self, name: str, bucket: str | None) -> None:
+        """Record the bucket a follow-up call was handed, so a test can pin it was threaded through."""
+        with self.lock:
+            self.buckets.append((name, bucket))
+
     def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
         self._record("initiate")
         return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}", bucket="fake-bucket")
 
     def sign_part(self, auth: str, key: str, part: int, upload_id: str, bucket: str | None = None) -> Any:
         self._record("sign")
+        self._record_bucket("sign", bucket)
         if self.fail_sign_for_key is not None and key == self.fail_sign_for_key:
             raise ConnectionError(f"sign failed for {key}")
         return SimpleNamespace(url=f"https://s3.example/{key}/{part}", headers={})
@@ -64,12 +73,14 @@ class FakeUploadService:
         self, auth: str, key: str, upload_id: str, parts: Any, bucket: str | None = None
     ) -> Any:
         self._record("complete")
+        self._record_bucket("complete", bucket)
         with self.lock:
             self.completed_etags[key] = {p.part_number: p.etag for p in parts}
         return SimpleNamespace(location=f"s3://bucket/{key}")
 
     def abort_multipart_upload(self, auth: str, key: str, upload_id: str, bucket: str | None = None) -> None:
         self._record("abort")
+        self._record_bucket("abort", bucket)
         with self.lock:
             self.aborted.append(key)
 
@@ -287,7 +298,11 @@ class TestNonBlockingEnqueueAndCancellation:
 
 class TestFailureHandling:
     def test_part_failure_aborts_once_and_surfaces(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
-        """A part that fails every retry fails the file and aborts its multipart upload exactly once."""
+        """A part that fails every retry fails the file and aborts its multipart upload exactly once.
+
+        The abort must carry the same bucket handle `initiate` returned -- an abort against the
+        wrong (or no) destination handle silently fails to release the upload id.
+        """
         up, service, session = make_uploader(max_part_retries=2)
         session.put = MagicMock(side_effect=ConnectionError("boom"))
         path = write_file("f.csv", 100)
@@ -296,6 +311,7 @@ class TestFailureHandling:
             fut.result(timeout=10)
         up.close()
         assert service.calls.count("abort") == 1
+        assert service.buckets.count(("abort", "fake-bucket")) == 1
 
     def test_late_part_failure_does_not_wait_for_earlier_parts(
         self, make_uploader: MakeUploader, write_file: WriteFile
@@ -532,6 +548,29 @@ class TestPartLayout:
 
         assert session.parts == {1: b"A" * part_size, 2: b"B" * part_size, 3: b"C" * 7}
         assert service.completed_etags["three-parts.bin"] == {1: '"etag-1"', 2: '"etag-2"', 3: '"etag-3"'}
+
+    def test_the_initiate_returned_bucket_is_carried_on_every_sign_and_the_complete_call(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        """The destination handle `initiate` returns must ride along on every per-part sign and on
+        the final complete -- not get silently dropped somewhere inside the driver.
+
+        `FakeUploadService.initiate_multipart_upload` always hands back `"fake-bucket"`; this pins
+        that every follow-up call actually receives it rather than defaulting away to `None`.
+        """
+        part_size = 5 * 1024 * 1024  # the provider minimum, so a 2-part plan is legal
+        up, service, _ = make_uploader()
+        session = RecordingPutSession()
+        up._session = session
+        path = write_file("two-parts.bin", part_size + 1)
+
+        with up:
+            up.enqueue_file(path, part_size=part_size).result(timeout=30)
+
+        sign_buckets = [bucket for (method, bucket) in service.buckets if method == "sign"]
+        complete_buckets = [bucket for (method, bucket) in service.buckets if method == "complete"]
+        assert sign_buckets == ["fake-bucket", "fake-bucket"]  # one per part
+        assert complete_buckets == ["fake-bucket"]
 
     def test_an_empty_file_puts_one_zero_byte_part(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """Completion needs at least one part to list, so an empty file still uploads one."""

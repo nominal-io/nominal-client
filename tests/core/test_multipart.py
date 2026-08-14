@@ -159,7 +159,16 @@ def test_put_part_makes_exactly_one_request() -> None:
 
 
 def _upload_client_for_destination(bucket: str) -> MagicMock:
-    client = MagicMock()
+    client = MagicMock(
+        spec=[
+            "initiate_multipart_upload",
+            "sign_part",
+            "list_parts",
+            "complete_multipart_upload",
+            "abort_multipart_upload",
+            "_verify",
+        ]
+    )
     client.initiate_multipart_upload.return_value = ingest_api.InitiateMultipartUploadResponse(
         upload_id="upload-1", key="object-key", bucket=bucket
     )
@@ -172,11 +181,19 @@ def _upload_client_for_destination(bucket: str) -> MagicMock:
     return client
 
 
+def _no_op_session() -> MagicMock:
+    """A session double for tests that patch `_put_part` directly and never touch the socket."""
+    return MagicMock(spec=["put", "close"])
+
+
 def test_file_store_upload_sends_its_destination_and_handle() -> None:
     """A File Store upload must name its destination, and every follow-up call must carry the handle."""
     client = _upload_client_for_destination("FILE_STORE")
 
-    with patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})):
+    with (
+        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
+        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})),
+    ):
         completed = multipart._put_multipart_upload_to(
             "Bearer token",
             "ri.workspace",
@@ -199,7 +216,10 @@ def test_ordinary_upload_passes_back_the_bucket_it_was_given() -> None:
     """The handle is passed back on every path, not only for File Store."""
     client = _upload_client_for_destination("nominal-uploads-prod")
 
-    with patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})):
+    with (
+        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
+        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})),
+    ):
         location = multipart.put_multipart_upload(
             "Bearer token", "ri.workspace", io.BytesIO(b"data"), "run-001.csv", "text/csv", client
         )
@@ -208,3 +228,27 @@ def test_ordinary_upload_passes_back_the_bucket_it_was_given() -> None:
     assert client.initiate_multipart_upload.call_args.args[1].destination is None
     assert client.list_parts.call_args.kwargs["bucket"] == "nominal-uploads-prod"
     assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "nominal-uploads-prod"
+
+
+def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
+    """A failed upload must abort against the same bucket handle initiate returned -- on every
+    destination, not only the default one.
+    """
+    client = _upload_client_for_destination("FILE_STORE")
+
+    with (
+        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
+        patch.object(multipart, "_put_part", side_effect=requests.ConnectionError("boom")),
+    ):
+        with pytest.raises(NominalMultipartUploadFailed):
+            multipart._put_multipart_upload_to(
+                "Bearer token",
+                "ri.workspace",
+                io.BytesIO(b"data"),
+                "run-001.csv",
+                "text/csv",
+                client,
+                destination=ingest_api.UploadDestination.FILE_STORE,
+            )
+
+    assert client.abort_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
