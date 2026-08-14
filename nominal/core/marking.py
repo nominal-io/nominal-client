@@ -210,11 +210,6 @@ def _get_marking(clients: Marking._Clients, rid: str) -> Marking:
     return Marking._from_proto(clients, _get_marking_proto(clients, rid))
 
 
-def _get_markings(clients: Marking._Clients, rids: Iterable[str]) -> Sequence[Marking]:
-    """Markings with the given rids. Markings that do not exist or are not readable are omitted."""
-    return tuple(Marking._from_proto(clients, m) for m in _get_marking_protos(clients, list(rids)))
-
-
 def _get_marking_by_id(clients: Marking._Clients, id: str) -> Marking:
     request = markings_pb2.GetMarkingByIdRequest(id=_validate_marking_id(id))
     with translate_grpc_errors():
@@ -225,7 +220,7 @@ def _get_marking_by_id(clients: Marking._Clients, id: str) -> Marking:
 def _get_marking_metadata(clients: Marking._Clients, rids: Sequence[str]) -> Sequence[Marking]:
     """Markings with the given rids, without their authorized groups.
 
-    Cheaper than `_get_markings` when only the marking's metadata is needed.
+    Cheaper than fetching full markings when only the marking's metadata is needed.
     """
     if not rids:
         return ()

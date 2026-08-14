@@ -109,7 +109,6 @@ from nominal.core.marking import (
     _create_marking,
     _get_marking,
     _get_marking_by_id,
-    _get_markings,
     _search_markings,
 )
 from nominal.core.run import Run, _create_run
@@ -600,13 +599,6 @@ class NominalClient:
             NominalError: If no marking with the given id exists or it is not accessible.
         """
         return _get_marking_by_id(self._clients, id)
-
-    def get_markings(self, rids: Iterable[str]) -> Sequence[Marking]:
-        """Retrieve markings by RID.
-
-        Markings that do not exist, or that the user cannot read, are omitted from the result.
-        """
-        return _get_markings(self._clients, rids)
 
     def search_markings(self, id_substring: str | None = None) -> Sequence[Marking]:
         """Search markings in the current organization, oldest first.
