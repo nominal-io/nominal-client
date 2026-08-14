@@ -92,7 +92,10 @@ def commit_derived_definition(
     message: str,
     latest_commit: str | None = None,
 ) -> scout_catalog.DerivedDefinition:
-    """Replace a derived dataset's definition by creating a new commit.
+    """Replace a derived dataset's definition by creating a new commit. Note that this does not persist
+    the new commit, it simply saves it as a working commit. This means that commits created with this may
+    be lost to compaction. To prevent this, either call :func:`commit_and_persist_derived_definition` instead
+    or use the versioning API directly afterwards to persist the new commit.
 
     Args:
         client: The NominalClient to use for the commit.
@@ -123,9 +126,8 @@ def commit_and_persist_derived_definition(
     latest_commit: str | None = None,
 ) -> scout_catalog.DerivedDefinition:
     """Replace a derived dataset's definition by creating a new commit, then persist that commit.
-
-    Like :func:`commit_derived_definition`, at the cost of one extra request: an unpersisted commit
-    is hidden from commit history and may be removed by commit compaction.
+    Similar to :func:`commit_derived_definition`, but also calls the versioning API to persist the new
+    commit so that it is not lost to compaction.
 
     Args:
         client: The NominalClient to use for the commit.
