@@ -262,6 +262,35 @@ def test_apply_changes_returns_one_result_per_change_in_order() -> None:
     assert sent[1].WhichOneof("change") == "remove"
 
 
+def test_apply_changes_sends_a_restore_change_with_its_revision_and_destination() -> None:
+    """RestoreFile is the third `FileChange` variant; its proto fields need the same coverage as move/remove."""
+    clients = _clients()
+    file = _managed_file(clients)
+    drive = _managed_drive(clients)
+    from nominal.core.file_store.changes import RestoreFile
+
+    clients.drive_files.ListFileRevisions.side_effect = [
+        files_pb2.ListFileRevisionsResponse(
+            file_revisions=[
+                file_store_pb2.ManagedFileRevision(
+                    file_revision_rid="ri.rev.1",
+                    file_rid="ri.drive-file.1",
+                    path=file_store_pb2.LogicalPath(path="data/run-001.csv"),
+                    state=file_store_pb2.FILE_STATE_ACTIVE,
+                )
+            ]
+        )
+    ]
+    revision = file.revisions()[0]
+    clients.drive_files.ApplyFileChanges.return_value = _success(path="data/restored.csv")
+
+    drive.apply_changes([RestoreFile(revision, "data/restored.csv")])
+
+    change = clients.drive_files.ApplyFileChanges.call_args.args[0].changes[0]
+    assert change.restore.restore_revision_rid == "ri.rev.1"
+    assert change.restore.destination.path.path.path == "data/restored.csv"
+
+
 def test_apply_changes_rejects_an_oversized_batch_locally() -> None:
     clients = _clients()
     file = _managed_file(clients)
