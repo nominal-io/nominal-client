@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from typing import Sequence, cast
+from typing import Sequence, TypeAlias, cast
 
 from typing_extensions import Self
 
@@ -83,6 +83,34 @@ class DriveFileRevision(HasRid):
             _clients=clients,
         )
 
+    def restore(self, destination: FileDestination) -> ManagedDriveFile:
+        """Reinstate this revision's content at a destination.
+
+        Args:
+            destination: Where to place the restored content. If the owning file is still
+                active, this must replace that file; if it was removed, a free path works.
+
+        Returns:
+            The file as it now stands.
+
+        Raises:
+            NominalFileStoreError: The restore was rejected — for example the destination
+                path is occupied, or the file it targets has moved on.
+        """
+        change = files_pb2.FileChange(
+            restore=files_pb2.RestoreFile(
+                restore_revision_rid=self.rid,
+                destination=_destination_to_proto(destination, self._drive_rid),
+            )
+        )
+        success = _apply_one(self._clients, self._drive_rid, change)
+        restored = _file_from_proto(self._clients, self._drive_rid, success.file)
+        if not isinstance(restored, ManagedDriveFile):
+            raise NominalFileStoreError(
+                FileStoreErrorCode.UNKNOWN, "restore returned a file that is not a managed file"
+            )
+        return restored
+
 
 @dataclass(frozen=True)
 class DriveFile(DriveEntry, abc.ABC):
@@ -108,6 +136,35 @@ class DriveFile(DriveEntry, abc.ABC):
 
         Raises:
             NominalFileStoreError: This file is in a virtual drive, which has no history.
+        """
+
+    @abc.abstractmethod
+    def move_to(self, destination: FileDestination) -> Self:
+        """Move this file, refreshing it in place.
+
+        Args:
+            destination: Where to move the file. A path must be unoccupied; pass a file or
+                revision to replace what is already there.
+
+        Returns:
+            This instance, updated.
+
+        Raises:
+            NominalFileStoreError: The move was rejected — the path is occupied, this
+                file's revision is no longer current, or the drive is read-only.
+        """
+
+    @abc.abstractmethod
+    def remove(self) -> Self:
+        """Remove this file, refreshing it in place.
+
+        Removal is soft: the file's revisions remain, and any of them can be restored.
+
+        Returns:
+            This instance, updated.
+
+        Raises:
+            NominalFileStoreError: The removal was rejected, or the drive is read-only.
         """
 
 
@@ -151,6 +208,50 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
             for msg in list_file_revisions_paginated(self._clients.drive_files, self._drive_rid, self.rid)
         ]
 
+    def _require_current_revision(self) -> str:
+        if self.current_revision_rid is None:
+            raise NominalFileStoreError(
+                FileStoreErrorCode.FILE_REVISION_NOT_FOUND,
+                f"{self.path!r} has no current revision to act on",
+            )
+        return self.current_revision_rid
+
+    def move_to(self, destination: FileDestination) -> Self:
+        """Move this file, refreshing it in place.
+
+        Args:
+            destination: Where to move the file. A path must be unoccupied; pass a file or
+                revision to replace what is already there.
+
+        Returns:
+            This instance, updated.
+
+        Raises:
+            NominalFileStoreError: The move was rejected — the path is occupied, this
+                file's revision is no longer current, or the drive is read-only.
+        """
+        change = files_pb2.FileChange(
+            move=files_pb2.MoveFile(
+                source_revision_rid=self._require_current_revision(),
+                destination=_destination_to_proto(destination, self._drive_rid),
+            )
+        )
+        return self._refresh_from_api(_apply_one(self._clients, self._drive_rid, change).file)
+
+    def remove(self) -> Self:
+        """Remove this file, refreshing it in place.
+
+        Removal is soft: the file's revisions remain, and any of them can be restored.
+
+        Returns:
+            This instance, updated.
+
+        Raises:
+            NominalFileStoreError: The removal was rejected, or the drive is read-only.
+        """
+        change = files_pb2.FileChange(remove=files_pb2.RemoveFile(revision_rid=self._require_current_revision()))
+        return self._refresh_from_api(_apply_one(self._clients, self._drive_rid, change).file)
+
 
 @dataclass(frozen=True)
 class VirtualDriveFile(DriveFile):
@@ -184,6 +285,28 @@ class VirtualDriveFile(DriveFile):
             FileStoreErrorCode.FILE_HISTORY_NOT_AVAILABLE,
             f"{self.path!r} is in a drive backed by {self.provider.value}, which does not keep file history",
         )
+
+    def _read_only(self) -> NominalFileStoreError:
+        return NominalFileStoreError(
+            FileStoreErrorCode.READ_ONLY_DRIVE,
+            f"{self.path!r} is in a drive backed by {self.provider.value}, which is read-only through Nominal",
+        )
+
+    def move_to(self, destination: FileDestination) -> Self:
+        """Not supported: files mirrored from an external provider cannot be modified.
+
+        Raises:
+            NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
+        """
+        raise self._read_only()
+
+    def remove(self) -> Self:
+        """Not supported: files mirrored from an external provider cannot be modified.
+
+        Raises:
+            NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
+        """
+        raise self._read_only()
 
 
 _VIRTUAL_PROVIDERS = {
@@ -235,3 +358,56 @@ def _entry_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.Fil
     if msg.WhichOneof("entry") == "directory":
         return DriveDirectory(path=msg.directory.path.path)
     return _file_from_proto(clients, drive_rid, msg.file)
+
+
+FileDestination: TypeAlias = str | ManagedDriveFile | DriveFileRevision
+"""Where a change places a file.
+
+- a `str` is a drive-relative path, and the change expects nothing to be there already;
+- a `ManagedDriveFile` means "replace this file", expressed as its current revision;
+- a `DriveFileRevision` means "replace exactly this revision".
+"""
+
+
+def _destination_to_proto(destination: FileDestination, drive_rid: str) -> files_pb2.Destination:
+    if isinstance(destination, str):
+        return files_pb2.Destination(path=files_pb2.PathTarget(path=file_store_pb2.LogicalPath(path=destination)))
+    if destination._drive_rid != drive_rid:
+        raise NominalFileStoreError(
+            FileStoreErrorCode.INVALID_LOGICAL_PATH,
+            f"destination {destination.path!r} belongs to a different drive ({destination._drive_rid})",
+        )
+    if isinstance(destination, DriveFileRevision):
+        return files_pb2.Destination(file_revision_rid=destination.rid)
+    if destination.current_revision_rid is None:
+        raise NominalFileStoreError(
+            FileStoreErrorCode.FILE_REVISION_NOT_FOUND,
+            f"cannot replace {destination.path!r}: it has no current revision",
+        )
+    return files_pb2.Destination(file_revision_rid=destination.current_revision_rid)
+
+
+def _apply(
+    clients: _Clients, drive_rid: str, changes: Sequence[files_pb2.FileChange]
+) -> Sequence[files_pb2.FileChangeResult]:
+    """Send one ApplyFileChanges request and return its per-change results, in order."""
+    request = files_pb2.ApplyFileChangesRequest(drive_rid=drive_rid, changes=list(changes))
+    with translate_grpc_errors():
+        return clients.drive_files.ApplyFileChanges(request).results
+
+
+def _apply_one(clients: _Clients, drive_rid: str, change: files_pb2.FileChange) -> files_pb2.FileChangeSuccess:
+    """Apply a single change, raising the backend's in-band failure as an exception.
+
+    A failure is reported in the response rather than as a gRPC error, so it is decoded
+    here. A stale-revision failure is surfaced rather than retried: it means the caller's
+    view of the file is out of date, which they need to see.
+    """
+    results = _apply(clients, drive_rid, [change])
+    result = results[0]
+    if result.WhichOneof("result") == "failure":
+        raise NominalFileStoreError(
+            FileStoreErrorCode._from_proto(result.failure.code),
+            result.failure.message,
+        )
+    return result.success
