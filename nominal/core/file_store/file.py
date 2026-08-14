@@ -60,11 +60,11 @@ def _download_revision(
                 files_pb2.GetDownloadUrlRequest(file_revision_rid=revision_rid)
             ).url
 
-    provider = PresignedURLProvider(fetch_fn=fetch, ttl_secs=60.0, skew_secs=20.0)
-    # Warm the cache now, so a missing/expired revision is reported here rather than
-    # deep inside a background download thread; later refreshes still go through `fetch`.
-    provider.get_url()
-    item = DownloadItem(provider=provider, destination=directory / filename, part_size=part_size)
+    item = DownloadItem(
+        provider=PresignedURLProvider(fetch_fn=fetch, ttl_secs=60.0, skew_secs=20.0),
+        destination=directory / filename,
+        part_size=part_size,
+    )
     with MultipartFileDownloader.create(
         max_part_retries=num_retries, header_provider=clients.header_provider
     ) as downloader:
