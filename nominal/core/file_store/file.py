@@ -10,13 +10,17 @@ provider-specific tuple and pinned by content rather than by RID.
 from __future__ import annotations
 
 import abc
+import pathlib
 from dataclasses import dataclass, field
 from typing import Sequence, TypeAlias, cast
 
 from typing_extensions import Self
 
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+from nominal.core._utils.multipart_downloader import DownloadItem, MultipartFileDownloader, PresignedURLProvider
 from nominal.core._utils.pagination_tools import list_file_revisions_paginated
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store._clients import _Clients
@@ -30,6 +34,41 @@ def _attribution(msg: file_store_pb2.Attribution) -> tuple[IntegralNanosecondsUT
         msg.time.ToNanoseconds() if msg.HasField("time") else None,
         msg.user_rid or None,
     )
+
+
+def _download_revision(
+    clients: _Clients,
+    revision_rid: str,
+    filename: str,
+    output_directory: PathLike,
+    *,
+    part_size: int,
+    num_retries: int,
+) -> pathlib.Path:
+    """Download a revision's bytes into `output_directory`, named `filename`.
+
+    The presigned URL the backend issues is short-lived, so it is fetched through a provider
+    that refreshes it rather than being resolved once up front.
+    """
+    directory = pathlib.Path(output_directory)
+    if directory.exists() and not directory.is_dir():
+        raise NotADirectoryError(f"Output directory is not a directory: {directory}")
+
+    def fetch() -> str:
+        with translate_grpc_errors():
+            return clients.drive_files.GetDownloadUrl(
+                files_pb2.GetDownloadUrlRequest(file_revision_rid=revision_rid)
+            ).url
+
+    provider = PresignedURLProvider(fetch_fn=fetch, ttl_secs=60.0, skew_secs=20.0)
+    # Warm the cache now, so a missing/expired revision is reported here rather than
+    # deep inside a background download thread; later refreshes still go through `fetch`.
+    provider.get_url()
+    item = DownloadItem(provider=provider, destination=directory / filename, part_size=part_size)
+    with MultipartFileDownloader.create(
+        max_part_retries=num_retries, header_provider=clients.header_provider
+    ) as downloader:
+        return downloader.download_file(item)
 
 
 @dataclass(frozen=True)
@@ -111,6 +150,33 @@ class DriveFileRevision(HasRid):
             )
         return restored
 
+    def download(
+        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
+    ) -> pathlib.Path:
+        """Download this revision's content into a directory.
+
+        Args:
+            output_directory: Directory to write into. The file is named after this
+                revision's path.
+            part_size: Size in bytes of each ranged download request.
+            num_retries: Retries per part.
+
+        Returns:
+            Path the file was written to.
+
+        Raises:
+            NotADirectoryError: `output_directory` exists but is not a directory.
+            NominalFileStoreError: This revision's bytes are no longer retained.
+        """
+        return _download_revision(
+            self._clients,
+            self.rid,
+            self.path.rsplit("/", 1)[-1],
+            output_directory,
+            part_size=part_size,
+            num_retries=num_retries,
+        )
+
 
 @dataclass(frozen=True)
 class DriveFile(DriveEntry, abc.ABC):
@@ -165,6 +231,27 @@ class DriveFile(DriveEntry, abc.ABC):
 
         Raises:
             NominalFileStoreError: The removal was rejected, or the drive is read-only.
+        """
+
+    @abc.abstractmethod
+    def download(
+        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
+    ) -> pathlib.Path:
+        """Download this file's current content into a directory.
+
+        Args:
+            output_directory: Directory to write into. The file is named after its path in
+                the drive.
+            part_size: Size in bytes of each ranged download request.
+            num_retries: Retries per part.
+
+        Returns:
+            Path the file was written to.
+
+        Raises:
+            NotADirectoryError: `output_directory` exists but is not a directory.
+            NominalFileStoreError: This file's content cannot be served — it is in a virtual
+                drive, or its bytes are no longer retained.
         """
 
 
@@ -252,6 +339,18 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
         change = files_pb2.FileChange(remove=files_pb2.RemoveFile(revision_rid=self._require_current_revision()))
         return self._refresh_from_api(_apply_one(self._clients, self._drive_rid, change).file)
 
+    def download(
+        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
+    ) -> pathlib.Path:
+        return _download_revision(
+            self._clients,
+            self._require_current_revision(),
+            self.path.rsplit("/", 1)[-1],
+            output_directory,
+            part_size=part_size,
+            num_retries=num_retries,
+        )
+
 
 @dataclass(frozen=True)
 class VirtualDriveFile(DriveFile):
@@ -307,6 +406,20 @@ class VirtualDriveFile(DriveFile):
             NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
         """
         raise self._read_only()
+
+    def download(
+        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
+    ) -> pathlib.Path:
+        """Not supported: content for a provider-backed file is not served through this API.
+
+        Raises:
+            NominalFileStoreError: Always, with code `FILE_HISTORY_NOT_AVAILABLE`.
+        """
+        raise NominalFileStoreError(
+            FileStoreErrorCode.FILE_HISTORY_NOT_AVAILABLE,
+            f"{self.path!r} is in a drive backed by {self.provider.value}, "
+            "which does not serve file content through this API",
+        )
 
 
 _VIRTUAL_PROVIDERS = {
