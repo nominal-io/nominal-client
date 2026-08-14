@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from typing_extensions import Self
 
@@ -17,9 +17,6 @@ from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_
 from nominal.ts import IntegralNanosecondsUTC
 
 _MARKING_ID = re.compile(r"^[a-z][a-z0-9-]*$")
-
-# Sentinel distinguishing "leave this field alone" from "clear this field" (None) on update.
-_UNCHANGED: Any = object()
 
 
 def _validate_marking_id(id: str) -> str:
@@ -55,6 +52,9 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
         @property
         def markings(self) -> markings_pb2_grpc.MarkingServiceStub: ...
 
+    class _NotProvided:
+        """Sentinel distinguishing "leave this field alone" from "clear this field" (None) on update."""
+
     def _get_latest_api(self) -> markings_pb2.Marking:
         return _get_marking_proto(self._clients, self.rid)
 
@@ -77,8 +77,8 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
         id: str | None = None,
         description: str | None = None,
         authorized_group_rids: Sequence[str] | None = None,
-        symbol: Symbol | None = _UNCHANGED,
-        color: Color | None = _UNCHANGED,
+        symbol: Symbol | None | _NotProvided = _NotProvided(),
+        color: Color | None | _NotProvided = _NotProvided(),
     ) -> Self:
         """Replace marking metadata, updating the current instance and returning it.
 
@@ -112,14 +112,14 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
             ),
             symbol=(
                 None
-                if symbol is _UNCHANGED
+                if isinstance(symbol, self._NotProvided)
                 else markings_pb2.UpdateMarkingRequest.UpdateMarkingSymbolWrapper(
                     value=None if symbol is None else symbol._to_proto()
                 )
             ),
             color=(
                 None
-                if color is _UNCHANGED
+                if isinstance(color, self._NotProvided)
                 else markings_pb2.UpdateMarkingRequest.UpdateMarkingColorWrapper(
                     value=None if color is None else color._to_proto()
                 )

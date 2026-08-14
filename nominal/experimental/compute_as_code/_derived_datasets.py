@@ -44,7 +44,9 @@ def create_derived_dataset(
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
         properties: Key-value properties to apply to the created dataset.
-        markings: If present, markings (or marking RIDs) to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) to apply to the created dataset. Markings are
+            applied in a separate step after the dataset is created, so creation and marking are not
+            atomic; if that matters, verify with `list_markings()`.
 
     Returns:
         Reference to the created derived dataset in Nominal.

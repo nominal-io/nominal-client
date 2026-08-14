@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 
@@ -16,7 +18,7 @@ def test_search_markings_filters_by_id_substring(client: NominalClient) -> None:
     """The substring filter narrows an unfiltered search rather than widening it."""
     all_markings = client.search_markings()
     if not all_markings:
-        return  # organization has no markings; nothing to narrow
+        pytest.skip("organization has no markings to narrow")
 
     target = all_markings[0]
     filtered = client.search_markings(id_substring=target.id)

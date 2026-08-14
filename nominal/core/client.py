@@ -865,7 +865,9 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            markings: If present, markings (or marking RIDs) to apply to the created dataset
+            markings: If present, markings (or marking RIDs) to apply to the created dataset. Markings are
+                applied in a separate step after the dataset is created, so creation and marking are not
+                atomic; if that matters, verify with `list_markings()`.
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -908,7 +910,9 @@ class NominalClient:
             description: Description of the video to create in nominal
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
-            markings: If present, markings (or marking RIDs) to apply to the created video
+            markings: If present, markings (or marking RIDs) to apply to the created video. Markings are
+                applied in a separate step after the video is created, so creation and marking are not
+                atomic; if that matters, verify with `list_markings()`.
 
         Returns:
             Handle to the created video

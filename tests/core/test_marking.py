@@ -6,7 +6,10 @@ import pytest
 
 from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
+from nominal.core.client import NominalClient
+from nominal.core.connection import StreamingConnection
 from nominal.core.elements import Color, Symbol
+from nominal.core.exceptions import NominalNotFoundError
 from nominal.core.marking import (
     MarkableMixin,
     Marking,
@@ -14,11 +17,42 @@ from nominal.core.marking import (
     _get_marking,
     _search_markings,
 )
+from nominal.core.video import Video
 from nominal.protos.authorization.markings.v1 import markings_pb2
 
 
 def _metadata(rid: str, id: str = "itar") -> markings_pb2.MarkingMetadata:
     return markings_pb2.MarkingMetadata(rid=rid, id=id, description="", is_archived=False)
+
+
+def _clients() -> MagicMock:
+    clients = MagicMock()
+    clients.auth_header = "Bearer test-token"
+    return clients
+
+
+def _marking(rid: str = "ri.marking.a", id: str = "itar") -> markings_pb2.Marking:
+    marking = markings_pb2.Marking(rid=rid, id=id, description="controlled", is_archived=False)
+    marking.symbol.emoji = ":lock:"
+    marking.color.hex_code = "#cc0000"
+    marking.created_at.FromNanoseconds(1_000)
+    marking.updated_at.FromNanoseconds(2_000)
+    return marking
+
+
+class _Markable(MarkableMixin):
+    """Minimal stand-in for a data source, exercising the mixin's own behavior."""
+
+    def __init__(self, rid: str, clients: MagicMock) -> None:
+        self.rid = rid
+        self._clients = clients
+
+
+def _applied(clients: MagicMock, resource: str, *marking_rids: str) -> None:
+    response = markings_pb2.GetMarkingsForResourcesResponse()
+    for marking_rid in marking_rids:
+        response.resource_to_markings[resource].applied_markings.add(marking_rid=marking_rid)
+    clients.markings.GetMarkingsForResources.return_value = response
 
 
 def test_empty_query_matches_everything() -> None:
@@ -48,21 +82,6 @@ def test_search_pagination_follows_cursors_until_exhausted() -> None:
     assert [m.rid for m in results] == ["a", "b"]
     assert markings.SearchMarkings.call_count == 2
     assert markings.SearchMarkings.call_args_list[1].args[0].next_page_token == "tok"
-
-
-def _clients() -> MagicMock:
-    clients = MagicMock()
-    clients.auth_header = "Bearer test-token"
-    return clients
-
-
-def _marking(rid: str = "ri.marking.a", id: str = "itar") -> markings_pb2.Marking:
-    marking = markings_pb2.Marking(rid=rid, id=id, description="controlled", is_archived=False)
-    marking.symbol.emoji = ":lock:"
-    marking.color.hex_code = "#cc0000"
-    marking.created_at.FromNanoseconds(1_000)
-    marking.updated_at.FromNanoseconds(2_000)
-    return marking
 
 
 def test_from_proto_reads_both_marking_shapes() -> None:
@@ -114,8 +133,6 @@ def test_get_marking_raises_when_absent() -> None:
     """BatchGetMarkings filters out markings the user cannot see, so an empty result means not found."""
     clients = _clients()
     clients.markings.BatchGetMarkings.return_value = markings_pb2.BatchGetMarkingsResponse(markings=[])
-
-    from nominal.core.exceptions import NominalNotFoundError
 
     with pytest.raises(NominalNotFoundError):
         _get_marking(clients, "ri.marking.missing")
@@ -179,21 +196,6 @@ def test_authorized_group_rids_reads_this_markings_entry() -> None:
     clients.markings.GetAuthorizedGroupsByMarking.return_value = response
 
     assert marking.authorized_group_rids() == ("ri.group.a",)
-
-
-class _Markable(MarkableMixin):
-    """Minimal stand-in for a data source, exercising the mixin's own behavior."""
-
-    def __init__(self, rid: str, clients: MagicMock) -> None:
-        self.rid = rid
-        self._clients = clients
-
-
-def _applied(clients: MagicMock, resource: str, *marking_rids: str) -> None:
-    response = markings_pb2.GetMarkingsForResourcesResponse()
-    for marking_rid in marking_rids:
-        response.resource_to_markings[resource].applied_markings.add(marking_rid=marking_rid)
-    clients.markings.GetMarkingsForResources.return_value = response
 
 
 def test_list_markings_hydrates_applied_rids() -> None:
@@ -265,9 +267,50 @@ def test_markings_accept_instances_as_well_as_rids() -> None:
     assert list(request.markings_to_apply) == ["ri.marking.a"]
 
 
-def test_client_search_markings_passes_the_substring_through() -> None:
-    from nominal.core.client import NominalClient
+def test_video_lists_its_markings() -> None:
+    """Pins that `Video` is actually wired to `MarkableMixin`: it does not inherit `DataSource`, so
+    nothing else in the library would notice if that base were dropped.
+    """
+    clients = _clients()
+    _applied(clients, "ri.video.a", "ri.marking.a")
+    clients.markings.BatchGetMarkingMetadata.return_value = markings_pb2.BatchGetMarkingMetadataResponse(
+        marking_metadatas=[_metadata("ri.marking.a", id="itar")]
+    )
+    video = Video(
+        rid="ri.video.a",
+        name="v",
+        description=None,
+        properties={},
+        labels=[],
+        created_at=0,
+        is_archived=False,
+        _clients=clients,
+    )
 
+    assert [m.id for m in video.list_markings()] == ["itar"]
+
+
+def test_streaming_connection_lists_its_markings() -> None:
+    """Pins that `DataSource` is actually wired to `MarkableMixin`, covering `StreamingConnection` (and by
+    inheritance `Dataset`/`Connection`) via the real class rather than the `_Markable` stand-in.
+    """
+    clients = _clients()
+    _applied(clients, "ri.connection.a", "ri.marking.a")
+    clients.markings.BatchGetMarkingMetadata.return_value = markings_pb2.BatchGetMarkingMetadataResponse(
+        marking_metadatas=[_metadata("ri.marking.a", id="itar")]
+    )
+    connection = StreamingConnection(
+        rid="ri.connection.a",
+        name="c",
+        description=None,
+        _clients=clients,
+        nominal_data_source_rid="ri.connection.a",
+    )
+
+    assert [m.id for m in connection.list_markings()] == ["itar"]
+
+
+def test_client_search_markings_passes_the_substring_through() -> None:
     clients = _clients()
     clients.markings.SearchMarkings.return_value = markings_pb2.SearchMarkingsResponse(
         marking_metadatas=[_metadata("ri.marking.a")], next_page_token=""
@@ -282,8 +325,6 @@ def test_client_search_markings_passes_the_substring_through() -> None:
 
 
 def test_client_create_marking_returns_the_created_marking() -> None:
-    from nominal.core.client import NominalClient
-
     clients = _clients()
     clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
     client = NominalClient(_clients=clients)
@@ -296,8 +337,6 @@ def test_client_create_marking_returns_the_created_marking() -> None:
 
 def test_create_dataset_forwards_marking_rids() -> None:
     """Markings may be given as instances or as RIDs."""
-    from nominal.core.client import NominalClient
-
     clients = _clients()
     client = NominalClient(_clients=clients)
     marking = Marking._from_proto(clients, _marking(rid="ri.marking.a"))
@@ -309,8 +348,6 @@ def test_create_dataset_forwards_marking_rids() -> None:
 
 
 def test_create_dataset_without_markings_sends_an_empty_list() -> None:
-    from nominal.core.client import NominalClient
-
     clients = _clients()
     NominalClient(_clients=clients).create_dataset("ds")
 
@@ -318,8 +355,6 @@ def test_create_dataset_without_markings_sends_an_empty_list() -> None:
 
 
 def test_create_streaming_connection_forwards_marking_rids() -> None:
-    from nominal.core.client import NominalClient
-
     clients = _clients()
     with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
         NominalClient(_clients=clients).create_streaming_connection("ds-id", "conn", markings=["ri.marking.a"])
