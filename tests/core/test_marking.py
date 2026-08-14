@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
+from nominal.core.elements import Color, Symbol
+from nominal.core.marking import (
+    Marking,
+    _create_marking,
+    _get_marking,
+    _search_markings,
+)
 from nominal.protos.authorization.markings.v1 import markings_pb2
 
 
@@ -38,3 +47,134 @@ def test_search_pagination_follows_cursors_until_exhausted() -> None:
     assert [m.rid for m in results] == ["a", "b"]
     assert markings.SearchMarkings.call_count == 2
     assert markings.SearchMarkings.call_args_list[1].args[0].next_page_token == "tok"
+
+
+def _clients() -> MagicMock:
+    clients = MagicMock()
+    clients.auth_header = "Bearer test-token"
+    return clients
+
+
+def _marking(rid: str = "ri.marking.a", id: str = "itar") -> markings_pb2.Marking:
+    marking = markings_pb2.Marking(rid=rid, id=id, description="controlled", is_archived=False)
+    marking.symbol.emoji = ":lock:"
+    marking.color.hex_code = "#cc0000"
+    marking.created_at.FromNanoseconds(1_000)
+    marking.updated_at.FromNanoseconds(2_000)
+    return marking
+
+
+def test_from_proto_reads_both_marking_shapes() -> None:
+    """Search returns MarkingMetadata and gets return Marking; one dataclass covers both."""
+    clients = _clients()
+    metadata = markings_pb2.MarkingMetadata(rid="ri.marking.a", id="itar", description="controlled")
+    metadata.symbol.emoji = ":lock:"
+
+    from_full = Marking._from_proto(clients, _marking())
+    from_metadata = Marking._from_proto(clients, metadata)
+
+    assert from_full.id == from_metadata.id == "itar"
+    assert from_full.symbol == from_metadata.symbol == Symbol.emoji(":lock:")
+    assert from_full.color == Color("#cc0000")
+
+
+def test_create_rejects_ids_the_server_would_reject() -> None:
+    """Guard client-side, before the RPC: users cannot see the backend's validation rule."""
+    clients = _clients()
+
+    with pytest.raises(ValueError, match="lowercase"):
+        _create_marking(clients, id="ITAR", description=None, authorized_group_rids=(), symbol=None, color=None)
+
+    clients.markings.CreateMarking.assert_not_called()
+
+
+def test_create_sends_symbol_and_color() -> None:
+    clients = _clients()
+    clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
+
+    marking = _create_marking(
+        clients,
+        id="itar",
+        description="controlled",
+        authorized_group_rids=["ri.group.a"],
+        symbol=Symbol.emoji(":lock:"),
+        color=Color("#cc0000"),
+    )
+
+    request = clients.markings.CreateMarking.call_args.args[0]
+    assert request.id == "itar"
+    assert request.symbol.emoji == ":lock:"
+    assert request.color.hex_code == "#cc0000"
+    assert list(request.authorized_groups.group_rids) == ["ri.group.a"]
+    assert marking.rid == "ri.marking.a"
+
+
+def test_get_marking_raises_when_absent() -> None:
+    """BatchGetMarkings filters out markings the user cannot see, so an empty result means not found."""
+    clients = _clients()
+    clients.markings.BatchGetMarkings.return_value = markings_pb2.BatchGetMarkingsResponse(markings=[])
+
+    from nominal.core.exceptions import NominalNotFoundError
+
+    with pytest.raises(NominalNotFoundError):
+        _get_marking(clients, "ri.marking.missing")
+
+
+def test_update_distinguishes_unchanged_from_cleared_symbol() -> None:
+    """Omitting symbol leaves it alone; passing None clears it. The wrapper encodes that difference."""
+    clients = _clients()
+    clients.markings.UpdateMarking.return_value = markings_pb2.UpdateMarkingResponse(marking=_marking())
+    marking = Marking._from_proto(clients, _marking())
+
+    marking.update(description="new")
+    unchanged = clients.markings.UpdateMarking.call_args.args[0]
+    assert not unchanged.HasField("symbol")
+    assert unchanged.description == "new"
+
+    marking.update(symbol=None)
+    cleared = clients.markings.UpdateMarking.call_args.args[0]
+    assert cleared.HasField("symbol")
+    assert not cleared.symbol.HasField("value")
+
+    marking.update(symbol=Symbol.icon("castle"))
+    assigned = clients.markings.UpdateMarking.call_args.args[0]
+    assert assigned.symbol.value.icon == "castle"
+
+
+def test_update_clears_authorized_groups_with_an_empty_sequence() -> None:
+    """None leaves groups alone; an empty sequence clears them."""
+    clients = _clients()
+    clients.markings.UpdateMarking.return_value = markings_pb2.UpdateMarkingResponse(marking=_marking())
+    marking = Marking._from_proto(clients, _marking())
+
+    marking.update(description="x")
+    assert not clients.markings.UpdateMarking.call_args.args[0].HasField("authorized_groups")
+
+    marking.update(authorized_group_rids=[])
+    cleared = clients.markings.UpdateMarking.call_args.args[0]
+    assert cleared.HasField("authorized_groups")
+    assert list(cleared.authorized_groups.group_rids) == []
+
+
+def test_search_returns_markings_across_pages() -> None:
+    clients = _clients()
+    clients.markings.SearchMarkings.side_effect = [
+        markings_pb2.SearchMarkingsResponse(marking_metadatas=[_metadata("a")], next_page_token="tok"),
+        markings_pb2.SearchMarkingsResponse(marking_metadatas=[_metadata("b")], next_page_token=""),
+    ]
+
+    results = _search_markings(clients, id_substring="ita")
+
+    assert [m.rid for m in results] == ["a", "b"]
+    query = clients.markings.SearchMarkings.call_args_list[0].args[0].query
+    assert [c.id_exact_substring_search for c in getattr(query, "and").queries] == ["ita"]
+
+
+def test_authorized_group_rids_reads_this_markings_entry() -> None:
+    clients = _clients()
+    marking = Marking._from_proto(clients, _marking())
+    response = markings_pb2.GetAuthorizedGroupsByMarkingResponse()
+    response.authorized_groups_by_marking["ri.marking.a"].group_rids.append("ri.group.a")
+    clients.markings.GetAuthorizedGroupsByMarking.return_value = response
+
+    assert marking.authorized_group_rids() == ("ri.group.a",)
