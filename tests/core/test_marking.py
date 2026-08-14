@@ -9,7 +9,7 @@ from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
 from nominal.core.client import NominalClient
 from nominal.core.connection import StreamingConnection
-from nominal.core.elements import Color, Symbol
+from nominal.core.elements import Symbol
 from nominal.core.exceptions import NominalNotFoundError, NominalPermissionDeniedError
 from nominal.core.marking import (
     MarkableMixin,
@@ -96,7 +96,7 @@ def test_from_proto_reads_both_marking_shapes() -> None:
 
     assert from_full.id == from_metadata.id == "itar"
     assert from_full.symbol == from_metadata.symbol == Symbol.emoji(":lock:")
-    assert from_full.color == Color("#cc0000")
+    assert from_full.color == "#cc0000"
 
 
 def test_create_rejects_ids_the_server_would_reject() -> None:
@@ -119,7 +119,7 @@ def test_create_sends_symbol_and_color() -> None:
         description="controlled",
         authorized_group_rids=["ri.group.a"],
         symbol=Symbol.emoji(":lock:"),
-        color=Color.create("#cc0000"),
+        color="#cc0000",
     )
 
     request = clients.markings.CreateMarking.call_args.args[0]
@@ -349,7 +349,7 @@ def test_client_create_marking_returns_the_created_marking() -> None:
     clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
     client = NominalClient(_clients=clients)
 
-    marking = client.create_marking("itar", description="controlled", color=Color.create("#cc0000"))
+    marking = client.create_marking("itar", description="controlled", color="#cc0000")
 
     assert marking.id == "itar"
     assert clients.markings.CreateMarking.call_args.args[0].color.hex_code == "#cc0000"

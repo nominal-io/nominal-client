@@ -93,7 +93,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
-from nominal.core.elements import Color, Symbol
+from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.exceptions import (
     LegacyVideoDeprecationWarning,
@@ -552,7 +552,7 @@ class NominalClient:
         description: str | None = None,
         authorized_group_rids: Sequence[str] = (),
         symbol: Symbol | None = None,
-        color: Color | None = None,
+        color: str | None = None,
     ) -> Marking:
         """Create a marking in the current organization.
 
@@ -564,13 +564,14 @@ class NominalClient:
             authorized_group_rids: RIDs of the groups authorized to access data sources carrying
                 this marking.
             symbol: Symbol identifying the marking in the Nominal app.
-            color: Color identifying the marking in the Nominal app.
+            color: Lowercase six-digit hex color identifying the marking in the Nominal app,
+                e.g. `#cc0000`.
 
         Returns:
             Reference to the created marking.
 
         Raises:
-            ValueError: If `id` is not a valid marking id.
+            ValueError: If `id` is not a valid marking id, or `color` is not a valid hex color.
             NominalError: If creation fails, including when the caller is not an organization admin
                 or a marking with this id already exists.
         """

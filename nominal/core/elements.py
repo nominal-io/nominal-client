@@ -71,44 +71,28 @@ class Symbol:
                 return None
 
 
+# A color is a bare hex string rather than a type: unlike `Symbol`, its wire representation has a
+# single arm, so there is no tag to carry and a wrapper would only add ceremony.
 _HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
 
 
-@dataclass(frozen=True)
-class Color:
-    """A color used to identify a resource in the Nominal app.
+def _validate_hex_color(hex_code: str) -> str:
+    """The hex code, if Nominal would accept it.
 
-    Construct with `Color.create` rather than calling the constructor directly: only `create`
-    checks that the hex code is one Nominal accepts.
+    Raises:
+        ValueError: If `hex_code` is not a lowercase six-digit hex color, e.g. `#cc0000`.
     """
+    if _HEX_COLOR.match(hex_code) is None:
+        raise ValueError(f"expected a lowercase six-digit hex color such as '#cc0000', got {hex_code!r}")
+    return hex_code
 
-    hex_code: str
-    """A lowercase six-digit hex color, e.g. `#cc0000`.
 
-    Validated by `Color.create`; the constructor itself does not check it.
-    """
+def _color_to_proto(hex_code: str) -> elements_pb2.Color:
+    return elements_pb2.Color(hex_code=hex_code)
 
-    @classmethod
-    def create(cls, hex_code: str) -> Self:
-        """A color from a lowercase six-digit hex code, e.g. `#cc0000`.
 
-        Args:
-            hex_code: The hex code, including the leading `#`.
-
-        Raises:
-            ValueError: If `hex_code` is not a lowercase six-digit hex color, which Nominal
-                would reject.
-        """
-        if _HEX_COLOR.match(hex_code) is None:
-            raise ValueError(f"expected a lowercase six-digit hex color such as '#cc0000', got {hex_code!r}")
-        return cls(hex_code=hex_code)
-
-    def _to_proto(self) -> elements_pb2.Color:
-        return elements_pb2.Color(hex_code=self.hex_code)
-
-    @classmethod
-    def _from_proto(cls, color: elements_pb2.Color) -> Self | None:
-        """The color carried by a proto, or None if the oneof is unset."""
-        if color.WhichOneof("color") != "hex_code":
-            return None
-        return cls(hex_code=color.hex_code)
+def _color_from_proto(color: elements_pb2.Color) -> str | None:
+    """The hex code carried by a proto, or None if the oneof is unset."""
+    if color.WhichOneof("color") != "hex_code":
+        return None
+    return color.hex_code

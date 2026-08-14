@@ -24,7 +24,7 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
-from nominal.core.elements import Color, Symbol, SymbolKind
+from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
@@ -52,7 +52,6 @@ __all__ = [
     "filter_channels_with_data",
     "Checklist",
     "CheckViolation",
-    "Color",
     "Connection",
     "ContainerImage",
     "ContainerImageStatus",
