@@ -7,19 +7,31 @@ it is returned as `VirtualDrive`, whose write methods refuse before spending a r
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass, field
 from typing import Sequence, cast
 
+from nominal_api import ingest_api
 from typing_extensions import Self
 
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE, DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store._clients import _Clients
 from nominal.core.file_store.changes import FileChange, FileChangeResult, _apply_changes
 from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
-from nominal.core.file_store.file import DriveEntry, DriveFile, _entry_from_proto, _file_from_proto
+from nominal.core.file_store.file import (
+    DriveEntry,
+    DriveFile,
+    ManagedDriveFile,
+    _apply_one,
+    _entry_from_proto,
+    _file_from_proto,
+)
+from nominal.core.filetype import FileType
 from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -187,6 +199,76 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         """
         return _apply_changes(self._clients, self.rid, changes)
 
+    def put_file(
+        self,
+        local_path: PathLike,
+        destination_path: str,
+        *,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        max_workers: int = DEFAULT_NUM_WORKERS,
+    ) -> ManagedDriveFile:
+        """Upload a local file into this drive.
+
+        Args:
+            local_path: File on disk to upload.
+            destination_path: Drive-relative path to create. Nothing may exist there
+                already.
+            chunk_size: Size in bytes of each upload part.
+            max_workers: Number of threads uploading parts concurrently.
+
+        Returns:
+            The file as it now exists in the drive.
+
+        Raises:
+            FileNotFoundError: `local_path` does not exist.
+            IsADirectoryError: `local_path` is a directory.
+            ValueError: `local_path` is empty.
+            NominalFileStoreError: This drive is read-only, or a file already exists at
+                `destination_path`.
+        """
+        path = pathlib.Path(local_path)
+        if not path.exists():
+            raise FileNotFoundError(f"no such file: {path}")
+        if path.is_dir():
+            raise IsADirectoryError(f"expected a file, got a directory: {path}")
+        size_bytes = path.stat().st_size
+        if size_bytes == 0:
+            raise ValueError(f"cannot upload an empty file: {path}")
+
+        # The drive path decides the file's identity and its stored suffix, so the upload is
+        # named after the destination rather than the local file.
+        filename = destination_path.rsplit("/", 1)[-1]
+        # `from_path` never raises — it falls back to the default for an unknown extension. The
+        # default is spelled explicitly here because the parameter's own default has a typo.
+        mimetype = FileType.from_path(path, default_mimetype="application/octet-stream").mimetype
+        with path.open("rb") as f:
+            uploaded = _put_multipart_upload_to(
+                self._clients.auth_header,
+                self.workspace_rid,
+                f,
+                filename,
+                mimetype,
+                self._clients.upload,
+                chunk_size=chunk_size,
+                max_workers=max_workers,
+                header_provider=self._clients.header_provider,
+                destination=ingest_api.UploadDestination.FILE_STORE,
+            )
+
+        change = files_pb2.FileChange(
+            put=files_pb2.PutFile(
+                object=files_pb2.UploadedObjectRef(object_key=uploaded.key),
+                size_bytes=size_bytes,
+                destination=files_pb2.Destination(
+                    path=files_pb2.PathTarget(path=file_store_pb2.LogicalPath(path=destination_path))
+                ),
+            )
+        )
+        file = _file_from_proto(self._clients, self.rid, _apply_one(self._clients, self.rid, change).file)
+        if not isinstance(file, ManagedDriveFile):
+            raise NominalFileStoreError(FileStoreErrorCode.UNKNOWN, "put returned a file that is not a managed file")
+        return file
+
     @classmethod
     def _from_proto(cls, clients: _Clients, msg: file_store_pb2.Drive) -> Drive:
         source = DriveSource._from_proto(msg.source)
@@ -232,6 +314,25 @@ class VirtualDrive(Drive):
 
         Raises:
             NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
+        """
+        raise NominalFileStoreError(
+            FileStoreErrorCode.READ_ONLY_DRIVE,
+            f"drive {self.id!r} is backed by {self.source.value} and is read-only through Nominal",
+        )
+
+    def put_file(
+        self,
+        local_path: PathLike,
+        destination_path: str,
+        *,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        max_workers: int = DEFAULT_NUM_WORKERS,
+    ) -> ManagedDriveFile:
+        """Not supported: a drive backed by an external provider is read-only.
+
+        Raises:
+            NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`. Raised before any
+                bytes are uploaded.
         """
         raise NominalFileStoreError(
             FileStoreErrorCode.READ_ONLY_DRIVE,
