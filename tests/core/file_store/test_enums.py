@@ -43,6 +43,7 @@ def test_file_store_error_code_maps_known_backend_codes() -> None:
         FileStoreErrorCode._from_proto(file_store_pb2.FILE_STORE_ERROR_READ_ONLY_DRIVE)
         is FileStoreErrorCode.READ_ONLY_DRIVE
     )
+    assert FileStoreErrorCode._from_proto(file_store_pb2.FILE_STORE_ERROR_UNSPECIFIED) is FileStoreErrorCode.UNKNOWN
 
 
 def test_file_store_error_carries_code_and_message() -> None:

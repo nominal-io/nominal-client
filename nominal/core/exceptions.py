@@ -240,14 +240,38 @@ class FileStoreErrorCode(Enum):
     INVALID_OBJECT_KEY = "INVALID_OBJECT_KEY"
 
     @classmethod
-    def _from_proto(cls, value: file_store_pb2.FileStoreError.ValueType) -> FileStoreErrorCode:
-        name = file_store_pb2.FileStoreError.Name(value) if value in file_store_pb2.FileStoreError.values() else ""
-        member = name.removeprefix("FILE_STORE_ERROR_")
-        try:
-            return cls(member)
-        except ValueError:
-            # Unset, or a code a newer server sent that this SDK doesn't model.
-            return cls.UNKNOWN
+    def _from_proto(cls, value: file_store_pb2.FileStoreError.ValueType) -> FileStoreErrorCode:  # noqa: PLR0912
+        match value:
+            case file_store_pb2.FILE_STORE_ERROR_DRIVE_NOT_FOUND:
+                result = cls.DRIVE_NOT_FOUND
+            case file_store_pb2.FILE_STORE_ERROR_FILE_NOT_FOUND:
+                result = cls.FILE_NOT_FOUND
+            case file_store_pb2.FILE_STORE_ERROR_FILE_REVISION_NOT_FOUND:
+                result = cls.FILE_REVISION_NOT_FOUND
+            case file_store_pb2.FILE_STORE_ERROR_PATH_ALREADY_EXISTS:
+                result = cls.PATH_ALREADY_EXISTS
+            case file_store_pb2.FILE_STORE_ERROR_INVALID_LOGICAL_PATH:
+                result = cls.INVALID_LOGICAL_PATH
+            case file_store_pb2.FILE_STORE_ERROR_PERMISSION_DENIED:
+                result = cls.PERMISSION_DENIED
+            case file_store_pb2.FILE_STORE_ERROR_REVISION_PRECONDITION_FAILED:
+                result = cls.REVISION_PRECONDITION_FAILED
+            case file_store_pb2.FILE_STORE_ERROR_READ_ONLY_DRIVE:
+                result = cls.READ_ONLY_DRIVE
+            case file_store_pb2.FILE_STORE_ERROR_FILE_HISTORY_NOT_AVAILABLE:
+                result = cls.FILE_HISTORY_NOT_AVAILABLE
+            case file_store_pb2.FILE_STORE_ERROR_REVISION_BYTES_RECLAIMED:
+                result = cls.REVISION_BYTES_RECLAIMED
+            case file_store_pb2.FILE_STORE_ERROR_DRIVE_ID_ALREADY_EXISTS:
+                result = cls.DRIVE_ID_ALREADY_EXISTS
+            case file_store_pb2.FILE_STORE_ERROR_UPLOADED_OBJECT_NOT_FOUND:
+                result = cls.UPLOADED_OBJECT_NOT_FOUND
+            case file_store_pb2.FILE_STORE_ERROR_INVALID_OBJECT_KEY:
+                result = cls.INVALID_OBJECT_KEY
+            case _:
+                # Unset, or a code a newer server sent that this SDK doesn't model.
+                result = cls.UNKNOWN
+        return result
 
 
 class NominalFileStoreError(NominalError):
