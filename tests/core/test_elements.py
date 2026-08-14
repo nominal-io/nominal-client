@@ -29,7 +29,7 @@ def test_symbol_from_unset_proto_is_none() -> None:
 
 
 def test_color_round_trips_through_proto() -> None:
-    color = Color("#cc0000")
+    color = Color.create("#cc0000")
 
     assert color._to_proto().hex_code == "#cc0000"
     assert Color._from_proto(color._to_proto()) == color
@@ -39,13 +39,13 @@ def test_color_from_unset_proto_is_none() -> None:
     assert Color._from_proto(elements_pb2.Color()) is None
 
 
-def test_color_normalizes_server_casing() -> None:
-    """The server's pattern is lowercase-only; tolerate case drift on read rather than raising."""
-    assert Color._from_proto(elements_pb2.Color(hex_code="#CC0000")) == Color("#cc0000")
+def test_color_reads_back_what_the_server_sent() -> None:
+    """Reads are faithful: validation guards user input, so it must not reject stored values."""
+    assert Color._from_proto(elements_pb2.Color(hex_code="#CC0000")) == Color("#CC0000")
 
 
 @pytest.mark.parametrize("bad", ["cc0000", "#ccc", "#gg0000", "#cc00000", "red", ""])
-def test_color_rejects_values_the_server_would_reject(bad: str) -> None:
+def test_create_color_rejects_values_the_server_would_reject(bad: str) -> None:
     """Guard client-side: users cannot see the backend's validation rule."""
     with pytest.raises(ValueError, match="hex color"):
-        Color(bad)
+        Color.create(bad)

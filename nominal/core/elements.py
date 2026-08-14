@@ -76,26 +76,36 @@ _HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
 
 @dataclass(frozen=True)
 class Color:
-    """A color used to identify a resource in the Nominal app."""
+    """A color used to identify a resource in the Nominal app.
+
+    Construct with `Color.create` rather than calling the constructor directly: only `create`
+    checks that the hex code is one Nominal accepts.
+    """
 
     hex_code: str
     """A lowercase six-digit hex color, e.g. `#cc0000`."""
 
-    def __post_init__(self) -> None:
-        """Validate the hex code at construction time."""
-        if _HEX_COLOR.match(self.hex_code) is None:
-            raise ValueError(f"expected a lowercase six-digit hex color such as '#cc0000', got {self.hex_code!r}")
+    @classmethod
+    def create(cls, hex_code: str) -> Self:
+        """A color from a lowercase six-digit hex code, e.g. `#cc0000`.
+
+        Args:
+            hex_code: The hex code, including the leading `#`.
+
+        Raises:
+            ValueError: If `hex_code` is not a lowercase six-digit hex color, which Nominal
+                would reject.
+        """
+        if _HEX_COLOR.match(hex_code) is None:
+            raise ValueError(f"expected a lowercase six-digit hex color such as '#cc0000', got {hex_code!r}")
+        return cls(hex_code=hex_code)
 
     def _to_proto(self) -> elements_pb2.Color:
         return elements_pb2.Color(hex_code=self.hex_code)
 
     @classmethod
     def _from_proto(cls, color: elements_pb2.Color) -> Self | None:
-        """The color carried by a proto, or None if the oneof is unset.
-
-        Values are lowercased on the way in: the backend only accepts lowercase, but tolerating
-        case drift here keeps read paths from raising on historical data.
-        """
+        """The color carried by a proto, or None if the oneof is unset."""
         if color.WhichOneof("color") != "hex_code":
             return None
-        return cls(hex_code=color.hex_code.lower())
+        return cls(hex_code=color.hex_code)
