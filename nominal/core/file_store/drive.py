@@ -15,7 +15,9 @@ from typing_extensions import Self
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
+from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store._clients import _Clients
+from nominal.core.file_store.changes import FileChange, FileChangeResult, _apply_changes
 from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
 from nominal.core.file_store.file import DriveEntry, DriveFile, _entry_from_proto, _file_from_proto
 from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2, files_pb2
@@ -165,6 +167,26 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
             )
         ]
 
+    def apply_changes(self, changes: Sequence[FileChange]) -> Sequence[FileChangeResult]:
+        """Apply several file changes to this drive in one request.
+
+        Changes are applied in order, and each one sees the effect of the ones before it. A
+        change that fails does not stop the rest, so every change gets a result rather than
+        the call raising on the first failure.
+
+        Args:
+            changes: The changes to apply — at most 1000.
+
+        Returns:
+            One result per change, in the same order: a `FileChangeSuccess` or a
+            `FileChangeFailure`.
+
+        Raises:
+            ValueError: More than 1000 changes were supplied.
+            NominalFileStoreError: This drive is read-only.
+        """
+        return _apply_changes(self._clients, self.rid, changes)
+
     @classmethod
     def _from_proto(cls, clients: _Clients, msg: file_store_pb2.Drive) -> Drive:
         source = DriveSource._from_proto(msg.source)
@@ -204,6 +226,17 @@ class VirtualDrive(Drive):
                 drives_pb2.GetVirtualDriveStatusRequest(drive_rid=self.rid)
             )
         return VirtualDriveStatus._from_proto(response.status)
+
+    def apply_changes(self, changes: Sequence[FileChange]) -> Sequence[FileChangeResult]:
+        """Not supported: a drive backed by an external provider is read-only.
+
+        Raises:
+            NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
+        """
+        raise NominalFileStoreError(
+            FileStoreErrorCode.READ_ONLY_DRIVE,
+            f"drive {self.id!r} is backed by {self.source.value} and is read-only through Nominal",
+        )
 
 
 def _create_drive(clients: _Clients, id: str, *, workspace_rid: str | None = None) -> Drive:

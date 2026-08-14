@@ -230,3 +230,62 @@ def test_virtual_files_refuse_mutations_without_a_request() -> None:
         assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
 
     clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_apply_changes_returns_one_result_per_change_in_order() -> None:
+    """Failures are reported per change and do not stop the batch, so results are returned, not raised."""
+    clients = _clients()
+    file = _managed_file(clients)
+    drive = _managed_drive(clients)
+    from nominal.core.file_store.changes import FileChangeFailure, FileChangeSuccess, MoveFile, RemoveFile
+
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+        results=[
+            _success(path="archive/run-001.csv").results[0],
+            files_pb2.FileChangeResult(
+                failure=files_pb2.FileChangeFailure(
+                    code=file_store_pb2.FILE_STORE_ERROR_PATH_ALREADY_EXISTS, message="Path already exists"
+                )
+            ),
+        ]
+    )
+
+    results = drive.apply_changes([MoveFile(file, "archive/run-001.csv"), RemoveFile(file)])
+
+    assert isinstance(results[0], FileChangeSuccess)
+    assert results[0].file.path == "archive/run-001.csv"
+    assert results[0].revision.rid == "ri.rev.2"
+    assert isinstance(results[1], FileChangeFailure)
+    assert results[1].code is FileStoreErrorCode.PATH_ALREADY_EXISTS
+    sent = clients.drive_files.ApplyFileChanges.call_args.args[0].changes
+    assert sent[0].WhichOneof("change") == "move"
+    assert sent[1].WhichOneof("change") == "remove"
+
+
+def test_apply_changes_rejects_an_oversized_batch_locally() -> None:
+    clients = _clients()
+    file = _managed_file(clients)
+    drive = _managed_drive(clients)
+    from nominal.core.file_store.changes import MAX_CHANGES_PER_REQUEST, RemoveFile
+
+    clients.drive_files.ApplyFileChanges.reset_mock()
+
+    with pytest.raises(ValueError, match=str(MAX_CHANGES_PER_REQUEST)):
+        drive.apply_changes([RemoveFile(file)] * (MAX_CHANGES_PER_REQUEST + 1))
+
+    clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_a_virtual_drive_refuses_a_batch_without_a_request() -> None:
+    clients = _clients()
+    file = _managed_file(clients)
+    drive = _virtual_drive(clients)
+    from nominal.core.file_store.changes import RemoveFile
+
+    clients.drive_files.ApplyFileChanges.reset_mock()
+
+    with pytest.raises(NominalFileStoreError) as excinfo:
+        drive.apply_changes([RemoveFile(file)])
+
+    assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
+    clients.drive_files.ApplyFileChanges.assert_not_called()
