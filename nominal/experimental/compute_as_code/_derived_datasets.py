@@ -94,9 +94,6 @@ def commit_derived_definition(
 ) -> scout_catalog.DerivedDefinition:
     """Replace a derived dataset's definition by creating a new commit.
 
-    The new commit is persisted, without which it would be hidden from commit history and could be
-    removed by commit compaction.
-
     Args:
         client: The NominalClient to use for the commit.
         dataset: The derived dataset, or its RID, whose definition to replace.
@@ -114,10 +111,41 @@ def commit_derived_definition(
         message=message,
         latest_commit=latest_commit,
     )
-    definition = client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
+    return client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
+
+
+def commit_and_persist_derived_definition(
+    client: NominalClient,
+    dataset: Dataset | str,
+    spec: nominal_compute.Dataset,
+    *,
+    message: str,
+    latest_commit: str | None = None,
+) -> scout_catalog.DerivedDefinition:
+    """Replace a derived dataset's definition by creating a new commit, then persist that commit.
+
+    Like :func:`commit_derived_definition`, at the cost of one extra request: an unpersisted commit
+    is hidden from commit history and may be removed by commit compaction.
+
+    Args:
+        client: The NominalClient to use for the commit.
+        dataset: The derived dataset, or its RID, whose definition to replace.
+        spec: ``nominal_compute`` graph defining the new derived definition.
+        message: Commit message describing the change.
+        latest_commit: If provided, the dataset's expected current commit, used for optimistic
+            concurrency control.
+
+    Returns:
+        The newly committed derived definition.
+    """
+    definition = commit_derived_definition(client, dataset, spec, message=message, latest_commit=latest_commit)
     if definition.commit.is_working_state:
         client._clients.versioning.persist_commits(
             client._clients.auth_header,
-            [scout_versioning_api.ResourceAndCommitId(commit_id=definition.commit.id, resource_rid=rid)],
+            [
+                scout_versioning_api.ResourceAndCommitId(
+                    commit_id=definition.commit.id, resource_rid=rid_from_instance_or_string(dataset)
+                )
+            ],
         )
     return definition

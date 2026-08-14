@@ -6,6 +6,7 @@ import pytest
 from nominal_api import scout_catalog, scout_compute_api, scout_versioning_api
 
 from nominal.experimental.compute_as_code import (
+    commit_and_persist_derived_definition,
     commit_derived_definition,
     create_derived_dataset,
     get_derived_definition,
@@ -146,11 +147,11 @@ def _commit_spec() -> object:
     return nc.Dataset.Saved(DATASET_RID)
 
 
-def test_commit_persists_working_state_commit(client: MagicMock) -> None:
-    """A commit that lands in working state is persisted."""
+def test_commit_and_persist_persists_working_state_commit(client: MagicMock) -> None:
+    """The new commit is persisted, and the definition returned unchanged."""
     definition = _stub_commit_response(client, _commit("ri.commit.new"))
 
-    result = commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+    result = commit_and_persist_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
 
     assert result is definition
     auth, _ = client._clients.versioning.persist_commits.call_args[0]
@@ -158,9 +159,32 @@ def test_commit_persists_working_state_commit(client: MagicMock) -> None:
     assert _persisted_ids(client) == ["ri.commit.new"]
 
 
-def test_commit_skips_persist_when_commit_already_permanent(client: MagicMock) -> None:
+def test_commit_and_persist_forwards_the_commit_request(client: MagicMock) -> None:
+    """The commit itself goes through commit_derived_definition, latest_commit and all."""
+    _stub_commit_response(client, _commit("ri.commit.new"))
+
+    commit_and_persist_derived_definition(
+        client, DATASET_RID, _commit_spec(), message="update", latest_commit="ri.commit.1"
+    )
+
+    _, rid, request = client._clients.catalog.commit_derived_definition.call_args[0]
+    assert rid == DATASET_RID
+    assert request.message == "update"
+    assert request.latest_commit == "ri.commit.1"
+
+
+def test_commit_and_persist_skips_persist_when_commit_already_permanent(client: MagicMock) -> None:
     """A commit that is already permanent is not persisted again."""
     _stub_commit_response(client, _commit("ri.commit.new", working_state=False))
+
+    commit_and_persist_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+
+    client._clients.versioning.persist_commits.assert_not_called()
+
+
+def test_commit_derived_definition_does_not_persist(client: MagicMock) -> None:
+    """The plain commit function is unchanged: it makes no versioning request."""
+    _stub_commit_response(client, _commit("ri.commit.new"))
 
     commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
 
