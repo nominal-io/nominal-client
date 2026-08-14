@@ -105,7 +105,7 @@ def commit_and_persist_derived_definition(
         message: Commit message describing the change.
         latest_commit: If provided, the dataset's expected current commit, used for optimistic
             concurrency control.
-        persist: Whether to persist the new commit. When False, the commit is saved as a working commit, 
+        persist: Whether to persist the new commit. When False, the commit is saved as a working commit,
             which is hidden from commit history and may be lost to compaction.
 
     Returns:
