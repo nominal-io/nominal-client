@@ -133,11 +133,12 @@ class _PartResult:
 
 @dataclass(frozen=True)
 class _PlannedUpload:
-    """A file whose upload has been initiated: object key, upload id, and part layout."""
+    """A file whose upload has been initiated: object key, upload id, destination handle, and part layout."""
 
     path: pathlib.Path
     key: str
     upload_id: str
+    bucket: str
     total_size: int
     part_size: int
     # Set by this file's driver when the file fails: every sibling part short-circuits at its
@@ -609,16 +610,18 @@ class MultipartUploader:
             raise CancelledError("uploader is closing")
         safe_filename = f"{pending.name}{pending.file_type.extension}"
         started = time.monotonic()
-        key, upload_id = self._gate.call(
+        initiated = self._gate.call(
             lambda: _initiate_multipart_upload(
                 self._upload_client, self._auth_header, safe_filename, pending.file_type.mimetype, self._workspace_rid
             )
         )
+        key, upload_id, bucket = initiated.key, initiated.upload_id, initiated.bucket
         logger.debug("initiated multipart upload for %s: key=%s upload_id=%s", safe_filename, key, upload_id)
         plan = _PlannedUpload(
             path=pending.path,
             key=key,
             upload_id=upload_id,
+            bucket=bucket,
             total_size=pending.total_size,
             part_size=pending.part_size,
         )
@@ -646,7 +649,9 @@ class MultipartUploader:
             results = [f.result() for f in futs]
             etags = {r.part_number: r.etag for r in results}
             location = self._gate.call(
-                lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, etags)
+                lambda: _complete_multipart_upload(
+                    self._upload_client, self._auth_header, key, upload_id, etags, bucket=bucket
+                )
             )
             logger.debug(
                 "completed multipart upload for %s (%d bytes, %d parts) in %.2fs",
@@ -671,7 +676,7 @@ class MultipartUploader:
             plan.revoked.set()
             for f in futs:
                 f.cancel()  # queued siblings dequeue; running ones stop at their next boundary
-            self._safe_abort(key, upload_id, e)
+            self._safe_abort(key, upload_id, bucket, e)
             raise
 
     def _upload_part(self, plan: _PlannedUpload, bounds: _PartBounds) -> _PartResult:
@@ -707,7 +712,7 @@ class MultipartUploader:
             try:
                 sign_response = self._gate.call(
                     lambda: self._upload_client.sign_part(
-                        self._auth_header, plan.key, bounds.part_number, plan.upload_id
+                        self._auth_header, plan.key, bounds.part_number, plan.upload_id, bucket=plan.bucket
                     )
                 )
                 put_response = _put_part(
@@ -753,12 +758,12 @@ class MultipartUploader:
             attempt_errors,
         )
 
-    def _safe_abort(self, key: str, upload_id: str, exc: BaseException) -> None:
+    def _safe_abort(self, key: str, upload_id: str, bucket: str, exc: BaseException) -> None:
         # Short budget on purpose: best-effort rollback must not compete for request budget with
         # the uploads still trying to succeed, and must not delay the caller's failure.
         try:
             self._gate.call(
-                lambda: _abort(self._upload_client, self._auth_header, key, upload_id, exc),
+                lambda: _abort(self._upload_client, self._auth_header, key, upload_id, exc, bucket=bucket),
                 deadline_seconds=_ABORT_THROTTLE_DEADLINE_S,
             )
         except Exception:

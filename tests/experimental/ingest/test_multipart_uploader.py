@@ -52,26 +52,28 @@ class FakeUploadService:
 
     def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
         self._record("initiate")
-        return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}")
+        return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}", bucket="fake-bucket")
 
-    def sign_part(self, auth: str, key: str, part: int, upload_id: str) -> Any:
+    def sign_part(self, auth: str, key: str, part: int, upload_id: str, bucket: str | None = None) -> Any:
         self._record("sign")
         if self.fail_sign_for_key is not None and key == self.fail_sign_for_key:
             raise ConnectionError(f"sign failed for {key}")
         return SimpleNamespace(url=f"https://s3.example/{key}/{part}", headers={})
 
-    def complete_multipart_upload(self, auth: str, key: str, upload_id: str, parts: Any) -> Any:
+    def complete_multipart_upload(
+        self, auth: str, key: str, upload_id: str, parts: Any, bucket: str | None = None
+    ) -> Any:
         self._record("complete")
         with self.lock:
             self.completed_etags[key] = {p.part_number: p.etag for p in parts}
         return SimpleNamespace(location=f"s3://bucket/{key}")
 
-    def abort_multipart_upload(self, auth: str, key: str, upload_id: str) -> None:
+    def abort_multipart_upload(self, auth: str, key: str, upload_id: str, bucket: str | None = None) -> None:
         self._record("abort")
         with self.lock:
             self.aborted.append(key)
 
-    def list_parts(self, auth: str, key: str, upload_id: str) -> None:
+    def list_parts(self, auth: str, key: str, upload_id: str, bucket: str | None = None) -> None:
         raise AssertionError("list_parts must not be called: etags come from the PUT responses")
 
     def upload_file(

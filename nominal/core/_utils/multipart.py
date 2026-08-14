@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import pathlib
+from dataclasses import dataclass
 from functools import partial
 from queue import Queue
 from typing import BinaryIO, Iterable, Mapping
@@ -19,6 +20,25 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
+
+
+@dataclass(frozen=True)
+class _InitiatedUpload:
+    """An opened multipart upload: the object's key, its upload id, and its destination handle."""
+
+    key: str
+    upload_id: str
+    bucket: str
+    """Opaque handle naming the upload's destination. Passed back on every follow-up call."""
+
+
+@dataclass(frozen=True)
+class _CompletedUpload:
+    """A finished multipart upload."""
+
+    key: str
+    bucket: str
+    location: str
 
 
 def _wrap_multipart_retry_exception(
@@ -80,6 +100,7 @@ def _sign_and_put_part(
     part: int,
     data: bytes,
     num_retries: int = 3,
+    bucket: str | None = None,
 ) -> requests.Response:
     """Sign and PUT a single in-memory part to S3, retrying transient failures.
 
@@ -91,7 +112,7 @@ def _sign_and_put_part(
         log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
         try:
             logger.debug("Signing part %d for upload", part, extra=log_extras)
-            sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+            sign_response = upload_client.sign_part(auth_header, key, part, upload_id, bucket=bucket)
             logger.debug(
                 "Successfully signed part %d for upload",
                 part,
@@ -131,11 +152,12 @@ def _sign_and_upload_part_job(
     q: Queue[bytes],
     part: int,
     num_retries: int = 3,
+    bucket: str | None = None,
 ) -> requests.Response:
     data = q.get()
     try:
         return _sign_and_put_part(
-            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries
+            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries, bucket=bucket
         )
     finally:
         q.task_done()
@@ -147,11 +169,14 @@ def _initiate_multipart_upload(
     filename: str,
     mimetype: str,
     workspace_rid: str | None,
-) -> tuple[str, str]:
-    """Initiate a multipart upload. Returns (key, upload_id)."""
-    request = ingest_api.InitiateMultipartUploadRequest(filename=filename, filetype=mimetype, workspace=workspace_rid)
+    destination: ingest_api.UploadDestination | None = None,
+) -> _InitiatedUpload:
+    """Open a multipart upload, optionally against a non-default destination."""
+    request = ingest_api.InitiateMultipartUploadRequest(
+        filename=filename, filetype=mimetype, workspace=workspace_rid, destination=destination
+    )
     response = upload_client.initiate_multipart_upload(auth_header, request)
-    return response.key, response.upload_id
+    return _InitiatedUpload(key=response.key, upload_id=response.upload_id, bucket=response.bucket)
 
 
 def _complete_multipart_upload(
@@ -160,6 +185,7 @@ def _complete_multipart_upload(
     key: str,
     upload_id: str,
     etags: Mapping[int, str],
+    bucket: str | None = None,
 ) -> str:
     """Complete an upload from a caller-supplied {part_number: etag} mapping.
 
@@ -167,7 +193,7 @@ def _complete_multipart_upload(
     Returns the object location, or raises if the response carries none.
     """
     parts = [ingest_api.Part(etag=etags[number], part_number=number) for number in sorted(etags)]
-    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
+    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts, bucket=bucket)
     if response.location is None:
         raise NominalMultipartUploadFailed(
             "completing multipart upload failed: no location on response",
@@ -193,7 +219,7 @@ def path_upload_name(path: pathlib.Path, file_type: FileType) -> str:
     return path.stem.split(".")[0]
 
 
-def put_multipart_upload(
+def _put_multipart_upload_to(
     auth_header: str,
     workspace_rid: str | None,
     f: BinaryIO,
@@ -203,11 +229,16 @@ def put_multipart_upload(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
-) -> str:
-    """Execute a multipart upload to S3.
+    destination: ingest_api.UploadDestination | None = None,
+) -> _CompletedUpload:
+    """Execute a multipart upload to S3, optionally against a non-default destination.
 
     All metadata-style requests (init, sign, complete) proxy through Nominal servers, while the upload PUT requests for
     each part go to a pre-signed URL to the storage provider.
+
+    The destination handle that initiate returns (`bucket`) is passed back on every follow-up
+    call (sign, list, complete) — this is required regardless of whether `destination` was
+    given, since it is what tells the server which namespace the key lives in.
 
     Args:
         auth_header: Nominal authorization token
@@ -219,8 +250,10 @@ def put_multipart_upload(
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
         header_provider: Optional provider for headers to include in all requests to object store
+        destination: Optional non-default namespace to upload into. Defaults to the server's
+            default uploads destination when omitted.
 
-    Returns: Path to the uploaded object in S3
+    Returns: The object's key, its destination handle, and its location in S3.
 
     See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
 
@@ -236,7 +269,10 @@ def put_multipart_upload(
 
     q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    key, upload_id = _initiate_multipart_upload(upload_client, auth_header, filename, mimetype, workspace_rid)
+    initiated = _initiate_multipart_upload(
+        upload_client, auth_header, filename, mimetype, workspace_rid, destination=destination
+    )
+    key, upload_id, bucket = initiated.key, initiated.upload_id, initiated.bucket
 
     # One session shared across all part jobs for this upload.
     session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
@@ -249,7 +285,7 @@ def put_multipart_upload(
     try:
         for part, chunk in enumerate(_iter_chunks(f, chunk_size), start=1):
             q.put(chunk)
-            fut = pool.submit(_sign_and_upload_part, part)
+            fut = pool.submit(_sign_and_upload_part, part, bucket=bucket)
             jobs.append(fut)
             logger.debug("submitted sign and upload job", extra={"part": part})
 
@@ -271,13 +307,47 @@ def put_multipart_upload(
 
         # Mark the upload as completed. This single-stream path tracks no ETags of its own, so it
         # asks the server which parts landed — one extra request vs supplying the ETags directly.
-        parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
-        return _complete_multipart_upload(
-            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts_with_size}
+        parts_with_size = upload_client.list_parts(auth_header, key, upload_id, bucket=bucket)
+        location = _complete_multipart_upload(
+            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts_with_size}, bucket=bucket
         )
+        return _CompletedUpload(key=key, bucket=bucket, location=location)
     except Exception as e:
-        _abort(upload_client, auth_header, key, upload_id, e)
+        # Aborting is a server-side no-op for File Store uploads: an abandoned object is reclaimed
+        # on its own, and a commit refuses an object whose bytes never fully landed. This call
+        # still matters for the default destination, whose abort actively releases the upload id.
+        _abort(upload_client, auth_header, key, upload_id, e, bucket=bucket)
         raise e
+
+
+def put_multipart_upload(
+    auth_header: str,
+    workspace_rid: str | None,
+    f: BinaryIO,
+    filename: str,
+    mimetype: str,
+    upload_client: upload_api.UploadService,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
+    header_provider: HeaderProvider | None = None,
+) -> str:
+    """Execute a multipart upload to the default uploads destination.
+
+    Returns: Path to the uploaded object in S3
+
+    Note: see _put_multipart_upload_to for the full mechanics.
+    """
+    return _put_multipart_upload_to(
+        auth_header,
+        workspace_rid,
+        f,
+        filename,
+        mimetype,
+        upload_client,
+        chunk_size=chunk_size,
+        max_workers=max_workers,
+        header_provider=header_provider,
+    ).location
 
 
 def upload_multipart_io(
@@ -371,13 +441,18 @@ def upload_multipart_file(
 
 
 def _abort(
-    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: BaseException
+    upload_client: upload_api.UploadService,
+    auth_header: str,
+    key: str,
+    upload_id: str,
+    e: BaseException,
+    bucket: str | None = None,
 ) -> None:
     logger.error(
         "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}
     )
     try:
-        upload_client.abort_multipart_upload(auth_header, key, upload_id)
+        upload_client.abort_multipart_upload(auth_header, key, upload_id, bucket=bucket)
     except Exception as exc:
         logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
         raise exc from e

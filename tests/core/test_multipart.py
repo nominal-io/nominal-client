@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from nominal_api import ingest_api
 
 from nominal.core._utils import multipart
 from nominal.core._utils.multipart import (
@@ -109,12 +110,17 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
     """Regression lock: `put_multipart_upload` (the legacy path) never collects per-part ETags of
     its own, so its completion must still ask the server for them via list_parts -- not the
     ETag-based primitive the newer MultipartUploader uses.
+
+    Also pins that the destination handle `initiate` returns is passed back to list_parts, since
+    every follow-up call must carry it regardless of whether a non-default destination was asked for.
     """
     upload_client = MagicMock(
         spec=["initiate_multipart_upload", "sign_part", "list_parts", "complete_multipart_upload", "_verify"]
     )
     upload_client._verify = False
-    upload_client.initiate_multipart_upload.return_value = MagicMock(key="key", upload_id="uid")
+    upload_client.initiate_multipart_upload.return_value = MagicMock(
+        key="key", upload_id="uid", bucket="uploads-bucket"
+    )
     upload_client.sign_part.return_value = _sign_response()
     upload_client.list_parts.return_value = [MagicMock(etag='"a"', part_number=1)]
     upload_client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
@@ -135,9 +141,11 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
         )
 
     assert location == "s3://bucket/key"
-    upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid")
-    _, _, _, parts = upload_client.complete_multipart_upload.call_args[0]
+    upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid", bucket="uploads-bucket")
+    args, kwargs = upload_client.complete_multipart_upload.call_args
+    _, _, _, parts = args
     assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"')]
+    assert kwargs["bucket"] == "uploads-bucket"
 
 
 def test_put_part_makes_exactly_one_request() -> None:
@@ -148,3 +156,55 @@ def test_put_part_makes_exactly_one_request() -> None:
     with pytest.raises(requests.ConnectionError):
         _put_part(session, _sign_response(), b"chunk", verify=False, timeout=9.0)
     assert session.put.call_count == 1  # exactly one PUT; retrying is the caller's job
+
+
+def _upload_client_for_destination(bucket: str) -> MagicMock:
+    client = MagicMock()
+    client.initiate_multipart_upload.return_value = ingest_api.InitiateMultipartUploadResponse(
+        upload_id="upload-1", key="object-key", bucket=bucket
+    )
+    client.sign_part.return_value = MagicMock(url="https://s3.example.com/signed", headers={})
+    client.list_parts.return_value = [ingest_api.PartWithSize(part_number=1, etag="etag-1", size=4)]
+    client.complete_multipart_upload.return_value = ingest_api.CompleteMultipartUploadResponse(
+        location="s3://bucket/object-key"
+    )
+    client._verify = True
+    return client
+
+
+def test_file_store_upload_sends_its_destination_and_handle() -> None:
+    """A File Store upload must name its destination, and every follow-up call must carry the handle."""
+    client = _upload_client_for_destination("FILE_STORE")
+
+    with patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})):
+        completed = multipart._put_multipart_upload_to(
+            "Bearer token",
+            "ri.workspace",
+            io.BytesIO(b"data"),
+            "run-001.csv",
+            "text/csv",
+            client,
+            destination=ingest_api.UploadDestination.FILE_STORE,
+        )
+
+    assert completed.key == "object-key"
+    assert completed.bucket == "FILE_STORE"
+    assert client.initiate_multipart_upload.call_args.args[1].destination == ingest_api.UploadDestination.FILE_STORE
+    assert client.sign_part.call_args.kwargs["bucket"] == "FILE_STORE"
+    assert client.list_parts.call_args.kwargs["bucket"] == "FILE_STORE"
+    assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
+
+
+def test_ordinary_upload_passes_back_the_bucket_it_was_given() -> None:
+    """The handle is passed back on every path, not only for File Store."""
+    client = _upload_client_for_destination("nominal-uploads-prod")
+
+    with patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})):
+        location = multipart.put_multipart_upload(
+            "Bearer token", "ri.workspace", io.BytesIO(b"data"), "run-001.csv", "text/csv", client
+        )
+
+    assert location == "s3://bucket/object-key"
+    assert client.initiate_multipart_upload.call_args.args[1].destination is None
+    assert client.list_parts.call_args.kwargs["bucket"] == "nominal-uploads-prod"
+    assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "nominal-uploads-prod"
