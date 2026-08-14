@@ -93,6 +93,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.elements import Color, Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.exceptions import (
     LegacyVideoDeprecationWarning,
@@ -103,6 +104,15 @@ from nominal.core.exceptions import (
 )
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.core.marking import (
+    Marking,
+    _create_marking,
+    _get_marking,
+    _get_marking_by_id,
+    _get_markings,
+    _iter_search_markings,
+    _search_markings,
+)
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -112,6 +122,7 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -536,6 +547,87 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_secrets(query, archive_status))
+
+    def create_marking(
+        self,
+        id: str,
+        *,
+        description: str | None = None,
+        authorized_group_rids: Sequence[str] = (),
+        symbol: Symbol | None = None,
+        color: Color | None = None,
+    ) -> Marking:
+        """Create a marking in the current organization.
+
+        Args:
+            id: Human-readable identifier for the marking, unique within the organization. Must be
+                lowercase alphanumeric characters optionally separated by hyphens, starting with a
+                letter, e.g. `export-controlled`.
+            description: Human readable description of the marking.
+            authorized_group_rids: RIDs of the groups authorized to access data sources carrying
+                this marking.
+            symbol: Symbol identifying the marking in the Nominal app.
+            color: Color identifying the marking in the Nominal app.
+
+        Returns:
+            Reference to the created marking.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id.
+            NominalError: If creation fails, including when the caller is not an organization admin
+                or a marking with this id already exists.
+        """
+        return _create_marking(
+            self._clients,
+            id=id,
+            description=description,
+            authorized_group_rids=authorized_group_rids,
+            symbol=symbol,
+            color=color,
+        )
+
+    def get_marking(self, rid: str) -> Marking:
+        """Retrieve a marking by RID.
+
+        Raises:
+            NominalNotFoundError: If no marking with the given RID exists or it is not accessible.
+        """
+        return _get_marking(self._clients, rid)
+
+    def get_marking_by_id(self, id: str) -> Marking:
+        """Retrieve a marking by its human-readable id, unique within the organization.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id.
+            NominalError: If no marking with the given id exists or it is not accessible.
+        """
+        return _get_marking_by_id(self._clients, id)
+
+    def get_markings(self, rids: Iterable[str]) -> Sequence[Marking]:
+        """Retrieve markings by RID.
+
+        Markings that do not exist, or that the user cannot read, are omitted from the result.
+        """
+        return _get_markings(self._clients, rids)
+
+    def _iter_search_markings(self, query: markings_pb2.SearchMarkingsQuery) -> Iterable[Marking]:
+        yield from _iter_search_markings(self._clients, query)
+
+    def search_markings(self, id_substring: str | None = None) -> Sequence[Marking]:
+        """Search markings in the current organization, oldest first.
+
+        Args:
+            id_substring: Case-insensitive substring that a marking's id must contain to be included.
+
+        Returns:
+            All markings matching the given conditions.
+
+        Note:
+            Markings are scoped to an organization rather than a workspace, so this search takes no
+            workspace filter. Archived markings are never returned; fetch them by RID with
+            `get_marking` instead.
+        """
+        return _search_markings(self._clients, id_substring=id_substring)
 
     def _iter_search_videos(
         self,

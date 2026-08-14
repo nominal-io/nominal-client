@@ -263,3 +263,32 @@ def test_markings_accept_instances_as_well_as_rids() -> None:
 
     request = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
     assert list(request.markings_to_apply) == ["ri.marking.a"]
+
+
+def test_client_search_markings_passes_the_substring_through() -> None:
+    from nominal.core.client import NominalClient
+
+    clients = _clients()
+    clients.markings.SearchMarkings.return_value = markings_pb2.SearchMarkingsResponse(
+        marking_metadatas=[_metadata("ri.marking.a")], next_page_token=""
+    )
+    client = NominalClient(_clients=clients)
+
+    results = client.search_markings(id_substring="ita")
+
+    assert [m.rid for m in results] == ["ri.marking.a"]
+    query = clients.markings.SearchMarkings.call_args.args[0].query
+    assert [c.id_exact_substring_search for c in getattr(query, "and").queries] == ["ita"]
+
+
+def test_client_create_marking_returns_the_created_marking() -> None:
+    from nominal.core.client import NominalClient
+
+    clients = _clients()
+    clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
+    client = NominalClient(_clients=clients)
+
+    marking = client.create_marking("itar", description="controlled", color=Color("#cc0000"))
+
+    assert marking.id == "itar"
+    assert clients.markings.CreateMarking.call_args.args[0].color.hex_code == "#cc0000"
