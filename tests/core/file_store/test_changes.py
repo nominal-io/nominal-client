@@ -75,6 +75,31 @@ def test_move_onto_a_file_replaces_that_file_by_its_current_revision() -> None:
     assert change.move.destination.file_revision_rid == "ri.rev.9"
 
 
+def test_move_onto_a_revision_replaces_exactly_that_revision() -> None:
+    """A revision destination means 'replace exactly this revision', not its file's current head."""
+    clients = _clients()
+    file = _managed_file(clients)
+    clients.drive_files.ListFileRevisions.side_effect = [
+        files_pb2.ListFileRevisionsResponse(
+            file_revisions=[
+                file_store_pb2.ManagedFileRevision(
+                    file_revision_rid="ri.rev.pinned",
+                    file_rid="ri.drive-file.1",
+                    path=file_store_pb2.LogicalPath(path="data/run-001.csv"),
+                    state=file_store_pb2.FILE_STATE_ACTIVE,
+                )
+            ]
+        )
+    ]
+    destination = file.revisions()[0]
+    clients.drive_files.ApplyFileChanges.return_value = _success()
+
+    file.move_to(destination)
+
+    change = clients.drive_files.ApplyFileChanges.call_args.args[0].changes[0]
+    assert change.move.destination.file_revision_rid == "ri.rev.pinned"
+
+
 def test_move_onto_a_file_with_no_current_revision_is_rejected_locally() -> None:
     clients = _clients()
     file = _managed_file(clients)
@@ -86,6 +111,23 @@ def test_move_onto_a_file_with_no_current_revision_is_rejected_locally() -> None
 
     with pytest.raises(NominalFileStoreError):
         file.move_to(destination)
+
+    clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_a_file_with_no_current_revision_refuses_move_and_remove_locally() -> None:
+    """The source-side guard must run before any request, same as the destination-side check."""
+    clients = _clients()
+    headless = files_pb2.GetFileResponse(file=_managed_file_proto(path="data/headless.csv"))
+    headless.file.ClearField("current_revision")
+    clients.drive_files.GetFile.return_value = headless
+    file = _managed_drive(clients).get_file("data/headless.csv")
+    assert isinstance(file, ManagedDriveFile)
+    assert file.current_revision_rid is None
+
+    for operation in (file.remove, lambda: file.move_to("somewhere.csv")):
+        with pytest.raises(NominalFileStoreError):
+            operation()
 
     clients.drive_files.ApplyFileChanges.assert_not_called()
 
