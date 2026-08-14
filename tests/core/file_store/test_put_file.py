@@ -3,6 +3,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
+from nominal_api import ingest_api
 
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import ManagedDriveFile
@@ -38,13 +39,16 @@ def test_put_file_uploads_then_commits_the_returned_key(tmp_path: pathlib.Path, 
 
     monkeypatch.setattr("nominal.core.file_store.drive._put_multipart_upload_to", fake_upload)
 
-    file = drive.put_file(local, "data/run-001.csv")
+    file = drive.put_file(local, "data/run-001.csv", chunk_size=1234, max_workers=3)
 
     assert isinstance(file, ManagedDriveFile)
     change = clients.drive_files.ApplyFileChanges.call_args.args[0].changes[0]
     assert change.put.object.object_key == "0f9a5c2e-0000-4000-8000-000000000000"
     assert change.put.size_bytes == local.stat().st_size
     assert change.put.destination.path.path.path == "data/run-001.csv"
+    assert captured["kwargs"]["destination"] is ingest_api.UploadDestination.FILE_STORE
+    assert captured["kwargs"]["chunk_size"] == 1234
+    assert captured["kwargs"]["max_workers"] == 3
 
 
 def test_put_file_names_the_upload_after_the_destination(tmp_path: pathlib.Path, monkeypatch) -> None:
@@ -96,5 +100,17 @@ def test_put_file_rejects_a_missing_path_a_directory_and_an_empty_file(tmp_path:
         drive.put_file(tmp_path, "data/x.csv")
     with pytest.raises(ValueError, match="empty"):
         drive.put_file(empty, "data/x.csv")
+
+    clients.upload.initiate_multipart_upload.assert_not_called()
+
+
+def test_put_file_rejects_a_destination_with_no_filename(tmp_path: pathlib.Path) -> None:
+    """A trailing-slash destination must fail locally, not after the whole file has uploaded."""
+    clients = _clients()
+    drive = _managed_drive(clients)
+    local = _local_file(tmp_path)
+
+    with pytest.raises(ValueError, match="data/"):
+        drive.put_file(local, "data/")
 
     clients.upload.initiate_multipart_upload.assert_not_called()

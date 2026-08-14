@@ -222,7 +222,8 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         Raises:
             FileNotFoundError: `local_path` does not exist.
             IsADirectoryError: `local_path` is a directory.
-            ValueError: `local_path` is empty.
+            ValueError: `local_path` is empty, or `destination_path` has no filename (for
+                example it ends in `/`).
             NominalFileStoreError: This drive is read-only, or a file already exists at
                 `destination_path`.
         """
@@ -238,6 +239,8 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         # The drive path decides the file's identity and its stored suffix, so the upload is
         # named after the destination rather than the local file.
         filename = destination_path.rsplit("/", 1)[-1]
+        if not filename:
+            raise ValueError(f"destination path {destination_path!r} has no filename")
         # `from_path` never raises — it falls back to the default for an unknown extension. The
         # default is spelled explicitly here because the parameter's own default has a typo.
         mimetype = FileType.from_path(path, default_mimetype="application/octet-stream").mimetype
