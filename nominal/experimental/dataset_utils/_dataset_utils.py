@@ -2,7 +2,8 @@ from collections.abc import Mapping, Sequence
 
 from nominal_api import scout_catalog
 
-from nominal.core import Dataset, NominalClient, User
+from nominal.core import Dataset, Marking, NominalClient, User
+from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
@@ -15,6 +16,7 @@ def create_dataset_with_uuid(
     description: str | None = None,
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
+    markings: Sequence[Marking | str] | None = None,
 ) -> Dataset:
     """Create a dataset with a specific UUID.
 
@@ -31,6 +33,7 @@ def create_dataset_with_uuid(
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
         properties: Key-value properties to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) to apply to the created dataset.
 
     Returns:
         Reference to the created dataset in Nominal.
@@ -45,7 +48,7 @@ def create_dataset_with_uuid(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=client._clients.resolve_default_workspace_rid(),
-        marking_rids=[],
+        marking_rids=[] if markings is None else [rid_from_instance_or_string(m) for m in markings],
     )
     request = scout_catalog.CreateDatasetWithUuidRequest(
         create_dataset=create_dataset_request,

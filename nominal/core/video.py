@@ -583,6 +583,7 @@ def _create_video(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
+    marking_rids: Sequence[str] | None = None,
 ) -> scout_video_api.Video:
     request = scout_video_api.CreateVideoRequest(
         title=name,
@@ -590,6 +591,6 @@ def _create_video(
         properties={} if properties is None else {**properties},
         description=description,
         workspace=workspace_rid,
-        marking_rids=[],
+        marking_rids=list(marking_rids or []),
     )
     return client.create(auth_header, request)

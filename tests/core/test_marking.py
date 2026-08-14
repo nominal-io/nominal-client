@@ -292,3 +292,63 @@ def test_client_create_marking_returns_the_created_marking() -> None:
 
     assert marking.id == "itar"
     assert clients.markings.CreateMarking.call_args.args[0].color.hex_code == "#cc0000"
+
+
+def test_create_dataset_forwards_marking_rids() -> None:
+    """Markings may be given as instances or as RIDs."""
+    from nominal.core.client import NominalClient
+
+    clients = _clients()
+    client = NominalClient(_clients=clients)
+    marking = Marking._from_proto(clients, _marking(rid="ri.marking.a"))
+
+    client.create_dataset("ds", markings=[marking, "ri.marking.b"])
+
+    request = clients.catalog.create_dataset.call_args.args[1]
+    assert request.marking_rids == ["ri.marking.a", "ri.marking.b"]
+
+
+def test_create_dataset_without_markings_sends_an_empty_list() -> None:
+    from nominal.core.client import NominalClient
+
+    clients = _clients()
+    NominalClient(_clients=clients).create_dataset("ds")
+
+    assert clients.catalog.create_dataset.call_args.args[1].marking_rids == []
+
+
+def test_create_streaming_connection_forwards_marking_rids() -> None:
+    from nominal.core.client import NominalClient
+
+    clients = _clients()
+    with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
+        NominalClient(_clients=clients).create_streaming_connection("ds-id", "conn", markings=["ri.marking.a"])
+
+    request = clients.connection.create_connection.call_args.args[1]
+    assert request.marking_rids == ["ri.marking.a"]
+
+
+def test_new_ingest_destination_carries_marking_rids() -> None:
+    """Called directly: this builder has no callers yet, but must not drop markings when it gains one."""
+    from nominal.core.dataset import _construct_new_ingest_options
+    from nominal.core.filetype import FileTypes
+    from nominal.ts import Iso8601
+
+    options = _construct_new_ingest_options(
+        name="ds",
+        timestamp_column="ts",
+        timestamp_type=Iso8601(),
+        file_type=FileTypes.CSV,
+        description=None,
+        labels=[],
+        properties={},
+        prefix_tree_delimiter=None,
+        channel_prefix=None,
+        tag_columns=None,
+        s3_path="s3://bucket/key.csv",
+        workspace_rid="ri.workspace.a",
+        tags=None,
+        marking_rids=["ri.marking.a"],
+    )
+
+    assert options.csv.target.new.marking_rids == ["ri.marking.a"]
