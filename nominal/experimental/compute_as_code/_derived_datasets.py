@@ -111,11 +111,10 @@ def commit_and_persist_derived_definition(
     Returns:
         The newly committed derived definition.
 
-    Raises:
-        Exception: If the commit landed but persisting it failed. The two are separate requests, so
-            the commit still exists and is the dataset's current definition, but stays hidden from
-            history and eligible for compaction until persisted. Retrying this call creates a second
-            commit, so persist the existing one via the versioning API instead.
+    Note:
+        Committing and persisting are separate requests. If persisting fails, the commit still
+        exists and is the dataset's current definition, but stays hidden from commit history and
+        may be lost to compaction. Retrying this call creates a second commit.
     """
     rid = rid_from_instance_or_string(dataset)
     request = scout_catalog.CommitDerivedDefinitionRequest(
@@ -124,7 +123,7 @@ def commit_and_persist_derived_definition(
         latest_commit=latest_commit,
     )
     definition = client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
-    if persist and definition.commit.is_working_state:
+    if persist:
         client._clients.versioning.persist_commits(
             client._clients.auth_header,
             [scout_versioning_api.ResourceAndCommitId(commit_id=definition.commit.id, resource_rid=rid)],

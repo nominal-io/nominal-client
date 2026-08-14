@@ -31,12 +31,12 @@ def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
     )
 
 
-def _commit(commit_id: str, *, working_state: bool = True) -> scout_versioning_api.Commit:
+def _commit(commit_id: str) -> scout_versioning_api.Commit:
     return scout_versioning_api.Commit(
         committed_at="2026-01-01T00:00:00Z",
         committed_by="ri.authn.ws.user.1",
         id=commit_id,
-        is_working_state=working_state,
+        is_working_state=True,
         message=f"commit {commit_id}",
         resource_rid=DATASET_RID,
     )
@@ -49,11 +49,10 @@ def _stub_commit_response(client: MagicMock, commit: scout_versioning_api.Commit
     return definition
 
 
-def _persisted_ids(client: MagicMock) -> list[str]:
-    """The commit IDs the client passed to persist_commits."""
+def _persisted(client: MagicMock) -> list[scout_versioning_api.ResourceAndCommitId]:
+    """The entries the client passed to persist_commits."""
     _, request = client._clients.versioning.persist_commits.call_args[0]
-    assert [entry.resource_rid for entry in request] == [DATASET_RID] * len(request)
-    return [entry.commit_id for entry in request]
+    return request
 
 
 # --- bridge: nominal_compute -> scout_compute_api ---
@@ -148,7 +147,7 @@ def _commit_spec() -> object:
     return nc.Dataset.Saved(DATASET_RID)
 
 
-def test_commit_and_persist_persists_working_state_commit(client: MagicMock) -> None:
+def test_commit_and_persist_persists_the_new_commit(client: MagicMock) -> None:
     """The new commit is persisted, and the definition returned unchanged."""
     definition = _stub_commit_response(client, _commit("ri.commit.new"))
 
@@ -157,7 +156,7 @@ def test_commit_and_persist_persists_working_state_commit(client: MagicMock) -> 
     assert result is definition
     auth, _ = client._clients.versioning.persist_commits.call_args[0]
     assert auth == "Bearer test-token"
-    assert _persisted_ids(client) == ["ri.commit.new"]
+    assert [entry.commit_id for entry in _persisted(client)] == ["ri.commit.new"]
 
 
 def test_commit_and_persist_persists_against_the_resolved_rid(client: MagicMock) -> None:
@@ -168,17 +167,7 @@ def test_commit_and_persist_persists_against_the_resolved_rid(client: MagicMock)
 
     commit_and_persist_derived_definition(client, dataset, _commit_spec(), message="update")
 
-    # _persisted_ids asserts the resource_rid of every entry.
-    assert _persisted_ids(client) == ["ri.commit.new"]
-
-
-def test_commit_and_persist_skips_persist_when_commit_already_permanent(client: MagicMock) -> None:
-    """A commit that is already permanent is not persisted again."""
-    _stub_commit_response(client, _commit("ri.commit.new", working_state=False))
-
-    commit_and_persist_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
-
-    client._clients.versioning.persist_commits.assert_not_called()
+    assert [entry.resource_rid for entry in _persisted(client)] == [DATASET_RID]
 
 
 def test_commit_and_persist_skips_persist_when_opted_out(client: MagicMock) -> None:
