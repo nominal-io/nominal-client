@@ -165,6 +165,7 @@ class ClientsBunch:
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
     upload: upload_api.UploadService
+    versioning: scout.VersioningService
     video_file: scout_video.VideoFileService
     video: scout_video.VideoService
 
@@ -329,6 +330,7 @@ class ClientsBunch:
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
             upload=client_factory(upload_api.UploadService),
+            versioning=client_factory(scout.VersioningService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs

@@ -5,7 +5,8 @@ from typing import Mapping, Sequence
 
 import nominal_compute
 from conjure_python_client import ConjureDecoder
-from nominal_api import scout_catalog, scout_compute_api
+from nominal_api import scout_catalog, scout_compute_api, scout_versioning_api
+from typing_extensions import deprecated
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
@@ -84,6 +85,57 @@ def get_derived_definition(
     return client._clients.catalog.get_dataset_derived_definition(client._clients.auth_header, rid, commit)
 
 
+def commit_and_persist_derived_definition(
+    client: NominalClient,
+    dataset: Dataset | str,
+    spec: nominal_compute.Dataset,
+    *,
+    message: str,
+    latest_commit: str | None = None,
+    persist: bool = True,
+) -> scout_catalog.DerivedDefinition:
+    """Replace a derived dataset's definition by creating a new commit, then persist that commit.
+    Persisting calls the versioning API so that the new commit appears in commit history and is not
+    lost to compaction.
+
+    Args:
+        client: The NominalClient to use for the commit.
+        dataset: The derived dataset, or its RID, whose definition to replace.
+        spec: ``nominal_compute`` graph defining the new derived definition.
+        message: Commit message describing the change.
+        latest_commit: If provided, the dataset's expected current commit, used for optimistic
+            concurrency control.
+        persist: Whether to persist the new commit. When False, the commit is saved as a working commit,
+            which is hidden from commit history and may be lost to compaction.
+
+    Returns:
+        The newly committed derived definition.
+
+    Raises:
+        Exception: If the commit landed but persisting it failed. The two are separate requests, so
+            the commit still exists and is the dataset's current definition, but stays hidden from
+            history and eligible for compaction until persisted. Retrying this call creates a second
+            commit, so persist the existing one via the versioning API instead.
+    """
+    rid = rid_from_instance_or_string(dataset)
+    request = scout_catalog.CommitDerivedDefinitionRequest(
+        spec=_to_conjure_dataset(spec),
+        message=message,
+        latest_commit=latest_commit,
+    )
+    definition = client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
+    if persist and definition.commit.is_working_state:
+        client._clients.versioning.persist_commits(
+            client._clients.auth_header,
+            [scout_versioning_api.ResourceAndCommitId(commit_id=definition.commit.id, resource_rid=rid)],
+        )
+    return definition
+
+
+@deprecated(
+    "`commit_derived_definition` is deprecated in favor of `commit_and_persist_derived_definition`, which persists "
+    "the new commit so that it appears in commit history and is not lost to compaction."
+)
 def commit_derived_definition(
     client: NominalClient,
     dataset: Dataset | str,
@@ -92,7 +144,10 @@ def commit_derived_definition(
     message: str,
     latest_commit: str | None = None,
 ) -> scout_catalog.DerivedDefinition:
-    """Replace a derived dataset's definition by creating a new commit.
+    """Replace a derived dataset's definition by creating a new commit, without persisting it.
+
+    Deprecated in favor of :func:`commit_and_persist_derived_definition`. This saves the new commit
+    as a working commit, which is hidden from commit history and may be lost to compaction.
 
     Args:
         client: The NominalClient to use for the commit.
@@ -105,10 +160,6 @@ def commit_derived_definition(
     Returns:
         The newly committed derived definition.
     """
-    rid = rid_from_instance_or_string(dataset)
-    request = scout_catalog.CommitDerivedDefinitionRequest(
-        spec=_to_conjure_dataset(spec),
-        message=message,
-        latest_commit=latest_commit,
+    return commit_and_persist_derived_definition(
+        client, dataset, spec, message=message, latest_commit=latest_commit, persist=False
     )
-    return client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)
