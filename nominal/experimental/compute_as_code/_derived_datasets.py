@@ -7,7 +7,7 @@ import nominal_compute
 from conjure_python_client import ConjureDecoder
 from nominal_api import scout_catalog, scout_compute_api
 
-from nominal.core import NominalClient
+from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.dataset import Dataset
 
@@ -28,6 +28,7 @@ def create_derived_dataset(
     description: str | None = None,
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
+    markings: Sequence[Marking | str] | None = None,
 ) -> Dataset:
     """Create a derived dataset defined by a ``nominal_compute`` graph.
 
@@ -43,6 +44,9 @@ def create_derived_dataset(
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
         properties: Key-value properties to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) to apply to the created dataset. Markings are
+            applied in a separate step after the dataset is created, so creation and marking are not
+            atomic; if that matters, verify with `list_markings()`.
 
     Returns:
         Reference to the created derived dataset in Nominal.
@@ -57,7 +61,7 @@ def create_derived_dataset(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=client._clients.resolve_default_workspace_rid(),
-        marking_rids=[],
+        marking_rids=[] if markings is None else [rid_from_instance_or_string(m) for m in markings],
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),
     )
     response = client._clients.catalog.create_dataset(client._clients.auth_header, request)
