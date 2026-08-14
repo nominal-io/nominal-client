@@ -14,10 +14,11 @@ from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import list_drives_paginated
+from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
 from nominal.core.file_store._clients import _Clients
 from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
-from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2
+from nominal.core.file_store.file import DriveEntry, DriveFile, _entry_from_proto, _file_from_proto
+from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -120,6 +121,49 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         with translate_grpc_errors():
             response = self._clients.drives.UnarchiveDrive(drives_pb2.UnarchiveDriveRequest(drive_rid=self.rid))
         return self._refresh_from_api(response.drive)
+
+    def get_file(self, path: str, *, include_removed: bool = False) -> DriveFile:
+        """Retrieve the file at a path in this drive.
+
+        Args:
+            path: Drive-relative path, with no leading or trailing slash and no `.` or
+                `..` segments.
+            include_removed: Also match a file that has been removed from this path.
+
+        Returns:
+            The file. This is a `ManagedDriveFile` in a managed drive and a
+            `VirtualDriveFile` in a provider-backed one.
+
+        Raises:
+            NominalNotFoundError: No file exists at that path.
+        """
+        request = files_pb2.GetFileRequest(
+            drive_rid=self.rid,
+            path=file_store_pb2.LogicalPath(path=path),
+            include_removed=include_removed,
+        )
+        with translate_grpc_errors():
+            response = self._clients.drive_files.GetFile(request)
+        return _file_from_proto(self._clients, self.rid, response.file)
+
+    def list_files(self, parent_path: str = "", *, include_removed: bool = False) -> Sequence[DriveEntry]:
+        """List the immediate children of a path in this drive.
+
+        Args:
+            parent_path: Directory to list. The default lists the drive root. Listing is
+                not recursive.
+            include_removed: Include files that have been removed.
+
+        Returns:
+            The directories and files directly beneath `parent_path`, in the order the
+            backend returns them, with every page collected.
+        """
+        return [
+            _entry_from_proto(self._clients, self.rid, msg)
+            for msg in list_files_paginated(
+                self._clients.drive_files, self.rid, parent_path, include_removed=include_removed
+            )
+        ]
 
     @classmethod
     def _from_proto(cls, clients: _Clients, msg: file_store_pb2.Drive) -> Drive:

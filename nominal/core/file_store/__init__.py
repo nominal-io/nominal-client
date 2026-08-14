@@ -6,14 +6,28 @@ from nominal.core.file_store.enums import (
     DriveState,
     VirtualDriveState,
 )
+from nominal.core.file_store.file import (
+    DriveDirectory,
+    DriveEntry,
+    DriveFile,
+    DriveFileRevision,
+    ManagedDriveFile,
+    VirtualDriveFile,
+)
 
 __all__ = [
     "Drive",
+    "DriveDirectory",
+    "DriveEntry",
+    "DriveFile",
+    "DriveFileRevision",
     "DriveFileState",
     "DriveMutability",
     "DriveSource",
     "DriveState",
+    "ManagedDriveFile",
     "VirtualDrive",
+    "VirtualDriveFile",
     "VirtualDriveState",
     "VirtualDriveStatus",
 ]
