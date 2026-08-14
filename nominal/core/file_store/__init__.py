@@ -1,3 +1,4 @@
+from nominal.core.file_store.drive import Drive, VirtualDrive, VirtualDriveStatus
 from nominal.core.file_store.enums import (
     DriveFileState,
     DriveMutability,
@@ -7,9 +8,12 @@ from nominal.core.file_store.enums import (
 )
 
 __all__ = [
+    "Drive",
     "DriveFileState",
     "DriveMutability",
     "DriveSource",
     "DriveState",
+    "VirtualDrive",
     "VirtualDriveState",
+    "VirtualDriveStatus",
 ]

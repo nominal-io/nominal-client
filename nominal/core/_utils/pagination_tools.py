@@ -22,6 +22,7 @@ from nominal_api import (
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
+from nominal.protos.file_store.v1 import drives_pb2, drives_pb2_grpc, file_store_pb2
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
@@ -365,6 +366,23 @@ def search_container_images_paginated(
 
     for response in paginate_grpc(registry_service.SearchImages, request_factory=factory):
         yield from response.images
+
+
+def list_drives_paginated(
+    drives: drives_pb2_grpc.DrivesServiceStub,
+    workspace_rid: str,
+    include_archived: bool = False,
+) -> Iterable[file_store_pb2.Drive]:
+    def factory(page_token: str | None) -> drives_pb2.ListDrivesRequest:
+        return drives_pb2.ListDrivesRequest(
+            workspace_rid=workspace_rid,
+            include_archived=include_archived,
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+        )
+
+    for response in paginate_grpc(drives.ListDrives, request_factory=factory):
+        yield from response.drives
 
 
 #########################
