@@ -26,7 +26,9 @@ from nominal.core.exceptions import (
     NominalVideoTimestampModeError,
 )
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.marking import MarkableMixin
 from nominal.core.video_file import VideoFile
+from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ _ONE_OF_THREE_MODES_ERROR = "exactly one of 'start', 'frame_timestamps', or 'mca
 
 
 @dataclass(frozen=True)
-class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
+class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video]):
     rid: str
     name: str
     description: str | None
@@ -58,6 +60,8 @@ class Video(HasRid, RefreshableConjureMixin[scout_video_api.Video]):
         def video_file(self) -> scout_video.VideoFileService: ...
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
+        @property
+        def markings(self) -> markings_pb2_grpc.MarkingServiceStub: ...
 
     @deprecated(
         "Polling a standalone `Video` is deprecated in favor of video channels on a dataset. Poll the individual files "

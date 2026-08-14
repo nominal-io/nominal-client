@@ -8,6 +8,7 @@ from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
 from nominal.core.elements import Color, Symbol
 from nominal.core.marking import (
+    MarkableMixin,
     Marking,
     _create_marking,
     _get_marking,
@@ -178,3 +179,87 @@ def test_authorized_group_rids_reads_this_markings_entry() -> None:
     clients.markings.GetAuthorizedGroupsByMarking.return_value = response
 
     assert marking.authorized_group_rids() == ("ri.group.a",)
+
+
+class _Markable(MarkableMixin):
+    """Minimal stand-in for a data source, exercising the mixin's own behavior."""
+
+    def __init__(self, rid: str, clients: MagicMock) -> None:
+        self.rid = rid
+        self._clients = clients
+
+
+def _applied(clients: MagicMock, resource: str, *marking_rids: str) -> None:
+    response = markings_pb2.GetMarkingsForResourcesResponse()
+    for marking_rid in marking_rids:
+        response.resource_to_markings[resource].applied_markings.add(marking_rid=marking_rid)
+    clients.markings.GetMarkingsForResources.return_value = response
+
+
+def test_list_markings_hydrates_applied_rids() -> None:
+    clients = _clients()
+    _applied(clients, "ri.dataset.a", "ri.marking.a")
+    clients.markings.BatchGetMarkingMetadata.return_value = markings_pb2.BatchGetMarkingMetadataResponse(
+        marking_metadatas=[_metadata("ri.marking.a", id="itar")]
+    )
+
+    markings = _Markable("ri.dataset.a", clients).list_markings()
+
+    assert [m.id for m in markings] == ["itar"]
+    assert list(clients.markings.BatchGetMarkingMetadata.call_args.args[0].marking_rids) == ["ri.marking.a"]
+
+
+def test_list_markings_on_unmarked_resource_is_empty_without_a_second_call() -> None:
+    clients = _clients()
+    _applied(clients, "ri.dataset.a")
+
+    assert _Markable("ri.dataset.a", clients).list_markings() == ()
+    clients.markings.BatchGetMarkingMetadata.assert_not_called()
+
+
+def test_apply_and_remove_send_one_sided_updates() -> None:
+    clients = _clients()
+    markable = _Markable("ri.dataset.a", clients)
+
+    markable.apply_markings(["ri.marking.a"])
+    applied = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
+    assert applied.resource == "ri.dataset.a"
+    assert list(applied.markings_to_apply) == ["ri.marking.a"]
+    assert list(applied.markings_to_remove) == []
+
+    markable.remove_markings(["ri.marking.a"])
+    removed = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
+    assert list(removed.markings_to_apply) == []
+    assert list(removed.markings_to_remove) == ["ri.marking.a"]
+
+
+def test_set_markings_sends_the_diff_in_one_call() -> None:
+    """Replacing the set adds what is missing and removes what is no longer wanted, atomically."""
+    clients = _clients()
+    _applied(clients, "ri.dataset.a", "ri.marking.keep", "ri.marking.drop")
+
+    _Markable("ri.dataset.a", clients).set_markings(["ri.marking.keep", "ri.marking.add"])
+
+    assert clients.markings.UpdateMarkingsOnResource.call_count == 1
+    request = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
+    assert sorted(request.markings_to_apply) == ["ri.marking.add"]
+    assert sorted(request.markings_to_remove) == ["ri.marking.drop"]
+
+
+def test_set_markings_skips_the_call_when_nothing_changes() -> None:
+    clients = _clients()
+    _applied(clients, "ri.dataset.a", "ri.marking.keep")
+
+    _Markable("ri.dataset.a", clients).set_markings(["ri.marking.keep"])
+
+    clients.markings.UpdateMarkingsOnResource.assert_not_called()
+
+
+def test_markings_accept_instances_as_well_as_rids() -> None:
+    clients = _clients()
+    marking = Marking._from_proto(clients, _marking(rid="ri.marking.a"))
+
+    _Markable("ri.dataset.a", clients).apply_markings([marking])
+
+    request = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
+    assert list(request.markings_to_apply) == ["ri.marking.a"]

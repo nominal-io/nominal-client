@@ -7,7 +7,7 @@ from typing import Any, Iterable, Protocol, Sequence
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
@@ -242,3 +242,95 @@ def _iter_search_markings(clients: Marking._Clients, query: markings_pb2.SearchM
 
 def _search_markings(clients: Marking._Clients, *, id_substring: str | None = None) -> Sequence[Marking]:
     return tuple(_iter_search_markings(clients, create_search_markings_query(id_substring=id_substring)))
+
+
+class MarkableMixin:
+    """Markings applied to a data source.
+
+    Concrete: classes gain these methods by listing this mixin as a base and exposing a `markings`
+    client. Markings can only be applied to data sources — datasets, connections, and videos.
+    """
+
+    rid: str
+    _clients: Marking._Clients
+
+    def list_markings(self) -> Sequence[Marking]:
+        """The markings currently applied to this resource.
+
+        Markings the user does not have permission to read are omitted.
+
+        Raises:
+            NominalError: If the request fails.
+        """
+        return _get_marking_metadata(self._clients, _applied_marking_rids(self._clients, self.rid))
+
+    def apply_markings(self, markings: Iterable[Marking | str]) -> None:
+        """Apply markings to this resource, leaving any already-applied markings in place.
+
+        Applying a marking that is already applied is a no-op rather than an error.
+
+        Args:
+            markings: Markings, or marking RIDs, to apply.
+
+        Raises:
+            NominalError: If the request fails, including when a marking is archived or the user
+                lacks permission to change markings on this resource.
+        """
+        _update_markings_on_resource(self._clients, self.rid, apply=markings, remove=())
+
+    def remove_markings(self, markings: Iterable[Marking | str]) -> None:
+        """Remove markings from this resource.
+
+        Removing a marking that is not applied is a no-op rather than an error.
+
+        Args:
+            markings: Markings, or marking RIDs, to remove.
+
+        Raises:
+            NominalError: If the request fails.
+        """
+        _update_markings_on_resource(self._clients, self.rid, apply=(), remove=markings)
+
+    def set_markings(self, markings: Iterable[Marking | str]) -> None:
+        """Replace the markings on this resource with exactly the given markings.
+
+        The difference against the currently-applied markings is computed and sent as a single
+        atomic update. An empty sequence removes every marking from the resource.
+
+        Args:
+            markings: Markings, or marking RIDs, the resource should carry.
+
+        Raises:
+            NominalError: If the request fails.
+        """
+        desired = {rid_from_instance_or_string(marking) for marking in markings}
+        current = set(_applied_marking_rids(self._clients, self.rid))
+        to_apply = desired - current
+        to_remove = current - desired
+        if not to_apply and not to_remove:
+            return
+        _update_markings_on_resource(self._clients, self.rid, apply=to_apply, remove=to_remove)
+
+
+def _applied_marking_rids(clients: Marking._Clients, resource_rid: str) -> Sequence[str]:
+    request = markings_pb2.GetMarkingsForResourcesRequest(resources=[resource_rid])
+    with translate_grpc_errors():
+        response = clients.markings.GetMarkingsForResources(request)
+    applied = response.resource_to_markings[resource_rid].applied_markings
+    return tuple(marking.marking_rid for marking in applied)
+
+
+def _update_markings_on_resource(
+    clients: Marking._Clients,
+    resource_rid: str,
+    *,
+    apply: Iterable[Marking | str],
+    remove: Iterable[Marking | str],
+) -> None:
+    request = markings_pb2.UpdateMarkingsOnResourceRequest(
+        resource=resource_rid,
+        markings_to_apply=[rid_from_instance_or_string(marking) for marking in apply],
+        markings_to_remove=[rid_from_instance_or_string(marking) for marking in remove],
+    )
+    with translate_grpc_errors():
+        clients.markings.UpdateMarkingsOnResource(request)
