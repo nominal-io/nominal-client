@@ -126,9 +126,10 @@ def test_commit_derived_definition_builds_request(client: MagicMock) -> None:
     """commit_derived_definition builds the request with the bridged spec, message, and latest commit."""
     nc = pytest.importorskip("nominal_compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5))
-    result = commit_derived_definition(
-        client, "ri.catalog.ws.dataset.abc", spec, message="update", latest_commit="ri.commit.1"
-    )
+    with pytest.warns(DeprecationWarning):
+        result = commit_derived_definition(
+            client, "ri.catalog.ws.dataset.abc", spec, message="update", latest_commit="ri.commit.1"
+        )
     assert result is client._clients.catalog.commit_derived_definition.return_value
     auth, rid, request = client._clients.catalog.commit_derived_definition.call_args[0]
     assert auth == "Bearer test-token"
@@ -159,18 +160,16 @@ def test_commit_and_persist_persists_working_state_commit(client: MagicMock) -> 
     assert _persisted_ids(client) == ["ri.commit.new"]
 
 
-def test_commit_and_persist_forwards_the_commit_request(client: MagicMock) -> None:
-    """The commit itself goes through commit_derived_definition, latest_commit and all."""
+def test_commit_and_persist_persists_against_the_resolved_rid(client: MagicMock) -> None:
+    """A Dataset instance resolves to its RID, which is what the commit is persisted against."""
+    dataset = MagicMock()
+    dataset.rid = DATASET_RID
     _stub_commit_response(client, _commit("ri.commit.new"))
 
-    commit_and_persist_derived_definition(
-        client, DATASET_RID, _commit_spec(), message="update", latest_commit="ri.commit.1"
-    )
+    commit_and_persist_derived_definition(client, dataset, _commit_spec(), message="update")
 
-    _, rid, request = client._clients.catalog.commit_derived_definition.call_args[0]
-    assert rid == DATASET_RID
-    assert request.message == "update"
-    assert request.latest_commit == "ri.commit.1"
+    # _persisted_ids asserts the resource_rid of every entry.
+    assert _persisted_ids(client) == ["ri.commit.new"]
 
 
 def test_commit_and_persist_skips_persist_when_commit_already_permanent(client: MagicMock) -> None:
@@ -182,10 +181,32 @@ def test_commit_and_persist_skips_persist_when_commit_already_permanent(client: 
     client._clients.versioning.persist_commits.assert_not_called()
 
 
-def test_commit_derived_definition_does_not_persist(client: MagicMock) -> None:
-    """The plain commit function is unchanged: it makes no versioning request."""
+def test_commit_and_persist_skips_persist_when_opted_out(client: MagicMock) -> None:
+    """persist=False commits without the extra versioning request."""
     _stub_commit_response(client, _commit("ri.commit.new"))
 
-    commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+    commit_and_persist_derived_definition(client, DATASET_RID, _commit_spec(), message="update", persist=False)
+
+    client._clients.catalog.commit_derived_definition.assert_called_once()
+    client._clients.versioning.persist_commits.assert_not_called()
+
+
+def test_commit_and_persist_propagates_a_failed_persist(client: MagicMock) -> None:
+    """A failed persist surfaces to the caller, with the commit already landed."""
+    _stub_commit_response(client, _commit("ri.commit.new"))
+    client._clients.versioning.persist_commits.side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        commit_and_persist_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
+
+    client._clients.catalog.commit_derived_definition.assert_called_once()
+
+
+def test_commit_derived_definition_is_deprecated_and_does_not_persist(client: MagicMock) -> None:
+    """The old function warns, and delegates with persistence off, so it makes no versioning request."""
+    _stub_commit_response(client, _commit("ri.commit.new"))
+
+    with pytest.warns(DeprecationWarning, match="commit_and_persist_derived_definition"):
+        commit_derived_definition(client, DATASET_RID, _commit_spec(), message="update")
 
     client._clients.versioning.persist_commits.assert_not_called()
