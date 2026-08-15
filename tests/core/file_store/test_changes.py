@@ -318,3 +318,23 @@ def test_a_virtual_drive_refuses_a_batch_without_a_request() -> None:
 
     assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
     clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_a_read_only_managed_drive_refuses_a_batch_without_a_request() -> None:
+    """A managed (NOMINAL-sourced) drive can also be read-only, in which case it is a base
+    `Drive`, not a `VirtualDrive` — the `content_mutability` check must fire on its own.
+    """
+    clients = _clients()
+    file = _managed_file(clients)
+    from nominal.core.file_store.changes import RemoveFile
+    from nominal.core.file_store.drive import Drive
+
+    drive = Drive._from_proto(clients, _drive_proto(mutability=file_store_pb2.DRIVE_MUTABILITY_READ_ONLY))
+    assert type(drive) is Drive
+    clients.drive_files.ApplyFileChanges.reset_mock()
+
+    with pytest.raises(NominalFileStoreError) as excinfo:
+        drive.apply_changes([RemoveFile(file)])
+
+    assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
+    clients.drive_files.ApplyFileChanges.assert_not_called()

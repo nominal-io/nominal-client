@@ -98,6 +98,64 @@ def test_virtual_files_refuse_download_without_a_request(tmp_path: pathlib.Path)
     clients.drive_files.GetDownloadUrl.assert_not_called()
 
 
+def test_download_rejects_a_basename_containing_a_backslash(tmp_path: pathlib.Path) -> None:
+    """A single legal path segment can still carry a backslash — `directory / filename` would
+    treat that as a separator on Windows and escape `output_directory`.
+    """
+    clients = _clients()
+    clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(
+        file=_managed_file_proto(path=r"data/..\..\evil.csv")
+    )
+    file = _managed_drive(clients).get_file(r"data/..\..\evil.csv")
+    assert isinstance(file, ManagedDriveFile)
+
+    with pytest.raises(ValueError):
+        file.download(tmp_path)
+
+    clients.drive_files.GetDownloadUrl.assert_not_called()
+
+
+def test_revision_download_rejects_a_basename_containing_a_backslash(tmp_path: pathlib.Path) -> None:
+    clients = _clients()
+    revision = DriveFileRevision._from_proto(
+        clients,
+        "ri.drive.1",
+        file_store_pb2.ManagedFileRevision(
+            file_revision_rid="ri.drive-file-revision.old",
+            file_rid="ri.drive-file.1",
+            path=file_store_pb2.LogicalPath(path=r"archive/..\..\evil.csv"),
+            size_bytes=2048,
+            state=file_store_pb2.FILE_STATE_ACTIVE,
+        ),
+    )
+
+    with pytest.raises(ValueError):
+        revision.download(tmp_path)
+
+    clients.drive_files.GetDownloadUrl.assert_not_called()
+
+
+def test_download_uses_a_sixty_second_presign_ttl_with_a_twenty_second_refresh_skew(
+    tmp_path: pathlib.Path, monkeypatch
+) -> None:
+    """Load-bearing, not a guess: the server presigns for exactly one minute, and a long ranged
+    download only survives because the provider refreshes on this schedule before it expires.
+    """
+    clients = _clients()
+    clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(file=_managed_file_proto())
+    file = _managed_drive(clients).get_file("data/run-001.csv")
+    clients.drive_files.GetDownloadUrl.return_value = files_pb2.GetDownloadUrlResponse(
+        url="https://s3.example.com/signed"
+    )
+    downloader = _mock_downloader(monkeypatch)
+
+    file.download(tmp_path)
+
+    item = downloader.__enter__.return_value.download_file.call_args.args[0]
+    assert item.provider.ttl_secs == 60.0
+    assert item.provider.skew_secs == 20.0
+
+
 def test_download_rejects_a_non_directory_destination(tmp_path: pathlib.Path) -> None:
     clients = _clients()
     clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(file=_managed_file_proto())

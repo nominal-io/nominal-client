@@ -6,9 +6,11 @@ import pytest
 from nominal_api import ingest_api
 
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.file_store.drive import Drive
 from nominal.core.file_store.file import ManagedDriveFile
+from nominal.protos.file_store.v1 import file_store_pb2
 from tests.core.file_store.test_changes import _success
-from tests.core.file_store.test_drive import _clients
+from tests.core.file_store.test_drive import _clients, _drive_proto
 from tests.core.file_store.test_file import _managed_drive, _virtual_drive
 
 
@@ -80,6 +82,23 @@ def test_put_file_rejects_a_virtual_drive_before_uploading(tmp_path: pathlib.Pat
     """The guard must fire before the transfer — this is the whole point of checking locally."""
     clients = _clients()
     drive = _virtual_drive(clients)
+
+    with pytest.raises(NominalFileStoreError) as excinfo:
+        drive.put_file(_local_file(tmp_path), "data/run-001.csv")
+
+    assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
+    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_put_file_rejects_a_read_only_managed_drive_before_uploading(tmp_path: pathlib.Path) -> None:
+    """A managed (NOMINAL-sourced) drive can also be read-only, in which case it is a base `Drive`,
+    not a `VirtualDrive` — the `content_mutability` check must fire on its own, not rely on the
+    `VirtualDrive` override.
+    """
+    clients = _clients()
+    drive = Drive._from_proto(clients, _drive_proto(mutability=file_store_pb2.DRIVE_MUTABILITY_READ_ONLY))
+    assert type(drive) is Drive
 
     with pytest.raises(NominalFileStoreError) as excinfo:
         drive.put_file(_local_file(tmp_path), "data/run-001.csv")

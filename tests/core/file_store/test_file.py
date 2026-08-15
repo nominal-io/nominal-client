@@ -87,6 +87,15 @@ def test_get_file_returns_a_managed_file_with_its_identity() -> None:
     assert request.include_removed is False
 
 
+def test_get_file_passes_include_removed_through_to_the_request() -> None:
+    clients = _clients()
+    clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(file=_managed_file_proto())
+
+    _managed_drive(clients).get_file("data/run-001.csv", include_removed=True)
+
+    assert clients.drive_files.GetFile.call_args.args[0].include_removed is True
+
+
 def test_get_file_on_a_virtual_drive_returns_a_virtual_file() -> None:
     """Listing a provider-backed drive from Python must work, not raise."""
     clients = _clients()
@@ -132,6 +141,15 @@ def test_list_files_defaults_to_the_drive_root() -> None:
     _managed_drive(clients).list_files()
 
     assert clients.drive_files.ListFiles.call_args.args[0].parent_path.path == ""
+
+
+def test_list_files_passes_include_removed_through_to_the_request() -> None:
+    clients = _clients()
+    clients.drive_files.ListFiles.side_effect = [files_pb2.ListFilesResponse(entries=[])]
+
+    _managed_drive(clients).list_files(include_removed=True)
+
+    assert clients.drive_files.ListFiles.call_args.args[0].include_removed is True
 
 
 def test_unknown_file_state_survives_as_unknown() -> None:

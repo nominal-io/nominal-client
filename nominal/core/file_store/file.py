@@ -23,17 +23,10 @@ from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import DownloadItem, MultipartFileDownloader, PresignedURLProvider
 from nominal.core._utils.pagination_tools import list_file_revisions_paginated
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store._clients import _Clients
+from nominal.core.file_store._clients import _attribution, _basename, _Clients
 from nominal.core.file_store.enums import DriveFileState, DriveSource
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
-
-
-def _attribution(msg: file_store_pb2.Attribution) -> tuple[IntegralNanosecondsUTC | None, str | None]:
-    return (
-        msg.time.ToNanoseconds() if msg.HasField("time") else None,
-        msg.user_rid or None,
-    )
 
 
 def _download_revision(
@@ -50,6 +43,12 @@ def _download_revision(
     The presigned URL the backend issues is short-lived, so it is fetched through a provider
     that refreshes it rather than being resolved once up front.
     """
+    if "/" in filename or "\\" in filename:
+        # The backend rejects `.`/`..` as path *segments*, but a single legal segment can still
+        # carry a separator (e.g. a path of `data/..\..\evil.csv` has one legal-looking last
+        # segment, `..\..\evil.csv`) — and `directory / filename` would follow it off a Windows
+        # machine's filesystem right out of `output_directory`.
+        raise ValueError(f"refusing to download to {filename!r}: a filename must not contain a path separator")
     directory = pathlib.Path(output_directory)
     if directory.exists() and not directory.is_dir():
         raise NotADirectoryError(f"Output directory is not a directory: {directory}")
@@ -171,7 +170,7 @@ class DriveFileRevision(HasRid):
         return _download_revision(
             self._clients,
             self.rid,
-            self.path.rsplit("/", 1)[-1],
+            _basename(self.path),
             output_directory,
             part_size=part_size,
             num_retries=num_retries,
@@ -342,10 +341,26 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
     def download(
         self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
     ) -> pathlib.Path:
+        """Download this file's current content into a directory.
+
+        Args:
+            output_directory: Directory to write into. The file is named after its path in
+                the drive.
+            part_size: Size in bytes of each ranged download request.
+            num_retries: Retries per part.
+
+        Returns:
+            Path the file was written to.
+
+        Raises:
+            NotADirectoryError: `output_directory` exists but is not a directory.
+            NominalFileStoreError: This file has no current revision, or its bytes are no
+                longer retained.
+        """
         return _download_revision(
             self._clients,
             self._require_current_revision(),
-            self.path.rsplit("/", 1)[-1],
+            _basename(self.path),
             output_directory,
             part_size=part_size,
             num_retries=num_retries,

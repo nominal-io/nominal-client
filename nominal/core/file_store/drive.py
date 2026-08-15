@@ -20,7 +20,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE, DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
 from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store._clients import _Clients
+from nominal.core.file_store._clients import _attribution, _basename, _Clients
 from nominal.core.file_store.changes import FileChange, FileChangeResult, _apply_changes
 from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
 from nominal.core.file_store.file import (
@@ -54,14 +54,6 @@ class VirtualDriveStatus:
                 msg.last_successful_check_time.ToNanoseconds() if msg.HasField("last_successful_check_time") else None
             ),
         )
-
-
-def _attribution(msg: file_store_pb2.Attribution) -> tuple[IntegralNanosecondsUTC | None, str | None]:
-    """Split an attribution into (time, user rid), tolerating either being unset."""
-    return (
-        msg.time.ToNanoseconds() if msg.HasField("time") else None,
-        msg.user_rid or None,
-    )
 
 
 @dataclass(frozen=True)
@@ -187,7 +179,11 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         the call raising on the first failure.
 
         Args:
-            changes: The changes to apply — at most 1000.
+            changes: The changes to apply — at most 1000. Each change must reference files
+                belonging to this drive. That is only enforced for a change's destination,
+                which raises up front; a change whose *source* file belongs to another
+                drive is sent as-is and comes back as that change's own `FileChangeFailure`
+                rather than raising.
 
         Returns:
             One result per change, in the same order: a `FileChangeSuccess` or a
@@ -197,6 +193,10 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
             ValueError: More than 1000 changes were supplied.
             NominalFileStoreError: This drive is read-only.
         """
+        if self.content_mutability is not DriveMutability.WRITABLE:
+            raise NominalFileStoreError(
+                FileStoreErrorCode.READ_ONLY_DRIVE, f"drive {self.id!r} is read-only through Nominal"
+            )
         return _apply_changes(self._clients, self.rid, changes)
 
     def put_file(
@@ -227,6 +227,10 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
             NominalFileStoreError: This drive is read-only, or a file already exists at
                 `destination_path`.
         """
+        if self.content_mutability is not DriveMutability.WRITABLE:
+            raise NominalFileStoreError(
+                FileStoreErrorCode.READ_ONLY_DRIVE, f"drive {self.id!r} is read-only through Nominal"
+            )
         path = pathlib.Path(local_path)
         if not path.exists():
             raise FileNotFoundError(f"no such file: {path}")
@@ -238,7 +242,7 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
 
         # The drive path decides the file's identity and its stored suffix, so the upload is
         # named after the destination rather than the local file.
-        filename = destination_path.rsplit("/", 1)[-1]
+        filename = _basename(destination_path)
         if not filename:
             raise ValueError(f"destination path {destination_path!r} has no filename")
         # `from_path` never raises — it falls back to the default for an unknown extension. The

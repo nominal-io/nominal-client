@@ -237,8 +237,8 @@ def _put_multipart_upload_to(
     each part go to a pre-signed URL to the storage provider.
 
     The destination handle that initiate returns (`bucket`) is passed back on every follow-up
-    call (sign, list, complete) — this is required regardless of whether `destination` was
-    given, since it is what tells the server which namespace the key lives in.
+    call (sign, list, complete, abort) — this is required regardless of whether `destination`
+    was given, since it is what tells the server which namespace the key lives in.
 
     Args:
         auth_header: Nominal authorization token
@@ -313,9 +313,8 @@ def _put_multipart_upload_to(
         )
         return _CompletedUpload(key=key, bucket=bucket, location=location)
     except Exception as e:
-        # Aborting is a server-side no-op for File Store uploads: an abandoned object is reclaimed
-        # on its own, and a commit refuses an object whose bytes never fully landed. This call
-        # still matters for the default destination, whose abort actively releases the upload id.
+        # Abort releases the upload id and any parts already stored, for every destination —
+        # including File Store, where skipping it would strand uploaded parts.
         _abort(upload_client, auth_header, key, upload_id, e, bucket=bucket)
         raise e
 
