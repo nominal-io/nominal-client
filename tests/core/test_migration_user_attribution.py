@@ -91,6 +91,26 @@ def test_checklist_assignee_falls_back_to_creating_user_when_unmapped() -> None:
     assert create_checklist.call_args.kwargs["assignee_rid"] is None
 
 
+def test_map_user_rid_warns_only_when_a_configured_mapping_misses(caplog: pytest.LogCaptureFixture) -> None:
+    with_mapping = MigrationContext(
+        destination_client=_make_client("destination"),
+        migration_state=MigrationState(),
+        user_rid_mapping={"other-user-rid": "dest-user-rid"},
+    )
+    without_mapping = MigrationContext(
+        destination_client=_make_client("destination"),
+        migration_state=MigrationState(),
+    )
+
+    with caplog.at_level("WARNING", logger="nominal.experimental.migration.migrator.context"):
+        assert without_mapping.map_user_rid("source-user-rid") is None
+        assert not caplog.records
+        assert with_mapping.map_user_rid("source-user-rid") is None
+
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert "source-user-rid" in caplog.records[0].getMessage()
+
+
 def test_checklist_assignee_option_overrides_mapping() -> None:
     ctx = MigrationContext(
         destination_client=_make_client("destination"),
@@ -167,6 +187,38 @@ def test_data_review_is_executed_via_client_resolved_from_source_data_review() -
     # The checklist copied on the destination must not be executed with its own (author-bound) client.
     destination_checklist.execute.assert_not_called()
     default_client.get_checklist.assert_not_called()
+    assert (
+        ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) == "dest-data-review-rid"
+    )
+
+
+def test_data_review_execution_skips_refetch_when_clients_match() -> None:
+    default_client = _make_client("default")
+
+    source_data_review = MagicMock()
+    source_data_review.rid = f"ri.scout.{_STACK}.data-review.00000002-0000-0000-0000-000000000000"
+    source_data_review.run_rid = f"ri.scout.{_STACK}.run.00000002-0000-0000-0000-000000000000"
+    source_data_review.get_checklist.return_value = MagicMock(
+        rid=f"ri.scout.{_STACK}.checklist.00000002-0000-0000-0000-000000000000"
+    )
+
+    source_asset = MagicMock()
+    source_asset.rid = f"ri.scout.{_STACK}.asset.00000002-0000-0000-0000-000000000000"
+    source_asset.search_data_reviews.return_value = [source_data_review]
+
+    ctx = MigrationContext(destination_client=default_client, migration_state=MigrationState())
+    ctx.migration_state.record_mapping(ResourceType.RUN, source_data_review.run_rid, "dest-run-rid")
+
+    destination_checklist = MagicMock(rid="dest-checklist-rid")
+    destination_checklist._clients = default_client._clients
+    destination_checklist.execute.return_value.rid = "dest-data-review-rid"
+
+    with patch("nominal.experimental.migration.migrator.asset_migrator.ChecklistMigrator") as checklist_migrator_cls:
+        checklist_migrator_cls.return_value.copy_from.return_value = destination_checklist
+        AssetMigrator(ctx)._copy_asset_checklists(source_asset)
+
+    default_client.get_checklist.assert_not_called()
+    destination_checklist.execute.assert_called_once_with("dest-run-rid")
     assert (
         ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) == "dest-data-review-rid"
     )

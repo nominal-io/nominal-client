@@ -254,10 +254,16 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 else:
                     # Execute via a client resolved from the source data review so the new data
                     # review's created_by reflects the mapped executor, not the checklist author.
+                    # The refetch exists only to rebind credentials — skip it when the checklist
+                    # is already bound to the same clients bundle (no resolver, or the executor
+                    # maps to the same cached impersonated client as the author).
                     executing_client = self.ctx.destination_client_for(source_data_review)
-                    new_data_review = executing_client.get_checklist(destination_checklist.rid).execute(
-                        destination_run_rid
+                    executing_checklist = (
+                        destination_checklist
+                        if executing_client._clients is destination_checklist._clients
+                        else executing_client.get_checklist(destination_checklist.rid)
                     )
+                    new_data_review = executing_checklist.execute(destination_run_rid)
                     self.ctx.migration_state.record_mapping(
                         ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
                     )

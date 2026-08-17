@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -13,6 +14,8 @@ from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST
 
 DestinationClientResolver = Callable[[Any], NominalClient]
 Resource = TypeVar("Resource")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,7 +48,12 @@ class MigrationContext:
         """Translate a source user RID to its destination equivalent, or None if unmapped."""
         if source_user_rid is None:
             return None
-        return self.user_rid_mapping.get(source_user_rid)
+        destination_user_rid = self.user_rid_mapping.get(source_user_rid)
+        # Only warn when a mapping is configured — an empty mapping is the normal
+        # non-impersonation case, not a misconfigured one.
+        if destination_user_rid is None and self.user_rid_mapping:
+            logger.warning("No mapped destination user RID for source user %s.", source_user_rid)
+        return destination_user_rid
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.migration_state.record_mapping(resource_type=resource_type, old_rid=old_rid, new_rid=new_rid)
