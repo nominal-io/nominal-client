@@ -252,7 +252,12 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                         ResourceType.DATA_REVIEW, source_data_review.rid, source_data_review.rid
                     )
                 else:
-                    new_data_review = destination_checklist.execute(destination_run_rid)
+                    # Execute via a client resolved from the source data review so the new data
+                    # review's created_by reflects the mapped executor, not the checklist author.
+                    executing_client = self.ctx.destination_client_for(source_data_review)
+                    new_data_review = executing_client.get_checklist(destination_checklist.rid).execute(
+                        destination_run_rid
+                    )
                     self.ctx.migration_state.record_mapping(
                         ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
                     )

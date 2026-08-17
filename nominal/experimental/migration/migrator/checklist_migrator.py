@@ -79,6 +79,14 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             if options.new_is_published is not None
             else api_source_checklist.metadata.is_published
         )
+        # The assignee is a request field, not a calling identity, so impersonation headers can't
+        # set it — translate the source assignee through the user RID mapping instead. An unmapped
+        # assignee falls back to the creating user (the impersonated author or the service user).
+        assignee_rid = (
+            options.new_assignee_rid
+            if options.new_assignee_rid is not None
+            else self.ctx.map_user_rid(api_source_checklist.metadata.assignee_rid)
+        )
         workspace_rid = destination_client.get_workspace(destination_client._clients.workspace_rid).rid
 
         if self.ctx.dry_run:
@@ -89,6 +97,7 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         new_checklist = _create_checklist_with_content(
             client=destination_client,
             commit_message=commit_message,
+            assignee_rid=assignee_rid,
             title=title,
             description=description,
             checks=checks,

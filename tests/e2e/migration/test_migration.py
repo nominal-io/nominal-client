@@ -979,15 +979,25 @@ def test_migrate_with_impersonation(
 
     Verifies that the migration completes without error and that assets and datasets are
     correctly reflected in the migration state, confirming the resolver is wired through the
-    full MigrationRunner path.
+    full MigrationRunner path.  Also verifies user attribution on the destination:
+    - The migrated checklist's assignee is translated through the user RID mapping.
+    - The re-executed data review's created_by is the mapped destination user.
     """
     source_user_rid = pytestconfig.getoption("impersonation_source_user_rid")
     dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
     if not source_user_rid or not dest_user_rid:
         pytest.skip("--impersonation-source-user-rid and --impersonation-dest-user-rid required")
 
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
     source_asset = _create_source_asset(source_client, register_cleanup)
     source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    # Created (and therefore assigned and executed) by the source user, so both the checklist
+    # assignee and the data review creator should map to dest_user_rid on the destination.
+    source_checklist, source_data_review = _create_source_checklist_and_review(
+        source_client, register_cleanup, source_run
+    )
 
     impersonation_config = ImpersonationConfig(
         enabled=True,
@@ -1000,6 +1010,7 @@ def test_migrate_with_impersonation(
         dataset_config=_no_files_config(),
         destination_client=dest_client,
         destination_client_resolver=resolver,
+        user_rid_mapping=impersonation_config.source_to_destination_user_rids,
         migration_state_path=tmp_path / "state.json",
     )
     runner.run_migration()
@@ -1014,3 +1025,25 @@ def test_migrate_with_impersonation(
     dest_ds = dest_client.get_dataset(dest_ds_rid)
     register_cleanup(dest_ds.archive)
     _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+
+    dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+    assert dest_run_rid is not None
+    register_cleanup(dest_client.get_run(dest_run_rid).archive)
+
+    # --- checklist assignee is translated through the user RID mapping ---
+    dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    _assert_checklist_migrated(source_checklist, dest_checklist)
+    assert dest_checklist._get_latest_api().metadata.assignee_rid == dest_user_rid
+
+    # --- data review is executed as the mapped destination user ---
+    dest_review_rid = state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid)
+    assert dest_review_rid is not None
+    dest_review = DataReview._from_conjure(
+        dest_client._clients,
+        dest_client._clients.datareview.get(dest_client._clients.auth_header, dest_review_rid),
+    )
+    register_cleanup(dest_review.archive)
+    assert dest_review.created_by_rid == dest_user_rid
