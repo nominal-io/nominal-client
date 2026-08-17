@@ -972,10 +972,10 @@ def test_migrate_with_impersonation(
 ):
     """Migration succeeds end-to-end when an ImpersonatingDestinationClientResolver is in use.
 
-    Requires --impersonation-source-user-rid and --impersonation-dest-user-rid.  The source
-    user RID must be the creator of resources on the source environment (i.e. the RID of the
-    service account or user whose token is passed via --source-profile / --source-auth-token).
-    The dest user RID must be a valid, active user on the destination environment.
+    Requires --impersonation-dest-user-rid: a valid, active user on the destination
+    environment.  The source side of the mapping defaults to the source client's own user
+    (the creator of every resource this test makes); --impersonation-source-user-rid
+    overrides it, but a mismatched override makes every mapping lookup miss.
 
     Verifies that the migration completes without error and that assets and datasets are
     correctly reflected in the migration state, confirming the resolver is wired through the
@@ -983,10 +983,10 @@ def test_migrate_with_impersonation(
     - The migrated checklist's assignee is translated through the user RID mapping.
     - The re-executed data review's created_by is the mapped destination user.
     """
-    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid")
     dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
-    if not source_user_rid or not dest_user_rid:
-        pytest.skip("--impersonation-source-user-rid and --impersonation-dest-user-rid required")
+    if not dest_user_rid:
+        pytest.skip("--impersonation-dest-user-rid required")
+    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid") or source_client.get_user().rid
 
     start = datetime(2024, 1, 1)
     end = start + timedelta(hours=1)

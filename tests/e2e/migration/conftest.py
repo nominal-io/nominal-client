@@ -56,7 +56,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--impersonation-source-user-rid",
         default=None,
-        help="Source user RID for impersonation e2e test (must match the creator of source resources)",
+        help="Source user RID override for the impersonation e2e test. Defaults to the source client's "
+        "own user, which is the creator of the test's source resources — only override with a RID that "
+        "matches the source token's user, otherwise every mapping lookup misses.",
     )
     parser.addoption(
         "--impersonation-dest-user-rid",
