@@ -76,10 +76,14 @@ def pytest_addoption(parser):
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """With --fail-on-skip, convert skipped outcomes in this suite into failures."""
+    """With --fail-on-skip, convert skipped outcomes in this suite into failures.
+
+    Expected failures are exempt: pytest reports xfail as a skipped outcome (with `wasxfail`
+    set), but an xfail marker is a deliberate, visible expectation — not a silent gap.
+    """
     outcome = yield
     report = outcome.get_result()
-    if report.skipped and item.config.getoption("--fail-on-skip"):
+    if report.skipped and not hasattr(report, "wasxfail") and item.config.getoption("--fail-on-skip"):
         reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
         report.outcome = "failed"
         report.longrepr = (

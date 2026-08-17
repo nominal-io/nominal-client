@@ -25,6 +25,7 @@ from typing import Callable
 from uuid import uuid4
 
 import pytest
+from conjure_python_client import ConjureHTTPError
 from nominal_api import scout_notebook_api
 
 from nominal.core import NominalClient
@@ -963,6 +964,73 @@ def test_dry_run_creates_nothing(
             )
 
 
+def test_migrate_maps_checklist_assignee_without_impersonation(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+    pytestconfig,
+):
+    """The checklist assignee is translated through user_rid_mapping with no impersonation involved.
+
+    The assignee is a plain request field — any caller may set it — so this covers the
+    assignee-mapping feature end-to-end using only the service account's own privileges,
+    unlike created_by attribution, which requires impersonation (org admin) rights.
+    Requires --impersonation-dest-user-rid: a valid, active user on the destination.
+    """
+    dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
+    if not dest_user_rid:
+        pytest.skip("--impersonation-dest-user-rid required")
+    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid") or source_client.get_user().rid
+
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    # Created by the source user, so the source checklist's assignee defaults to source_user_rid.
+    source_checklist, source_data_review = _create_source_checklist_and_review(
+        source_client, register_cleanup, source_run
+    )
+
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        user_rid_mapping={source_user_rid: dest_user_rid},
+        migration_state_path=tmp_path / "state.json",
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+    dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+    assert dest_run_rid is not None
+    register_cleanup(dest_client.get_run(dest_run_rid).archive)
+
+    dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    assert dest_checklist._get_latest_api().metadata.assignee_rid == dest_user_rid
+
+    dest_review_rid = state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid)
+    assert dest_review_rid is not None
+    dest_review = DataReview._from_conjure(
+        dest_client._clients,
+        dest_client._clients.datareview.get(dest_client._clients.auth_header, dest_review_rid),
+    )
+    register_cleanup(dest_review.archive)
+
+
+@pytest.mark.xfail(
+    raises=ConjureHTTPError,
+    strict=True,
+    reason="The staging e2e service account lacks impersonation (org admin) rights, so on-behalf-of "
+    "writes 403 with Authorization:NotAuthorizedAdmin. Grant: add the service account's email to the "
+    "org's adminCondition in gatekeeper-orgs/gs-284986962550-cluster-0/orgs-values.yaml. strict=True "
+    "makes this XPASS-fail once the grant lands, forcing removal of this marker.",
+)
 def test_migrate_with_impersonation(
     source_client: NominalClient,
     dest_client: NominalClient,
