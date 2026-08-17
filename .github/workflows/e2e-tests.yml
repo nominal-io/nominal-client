@@ -131,10 +131,18 @@ jobs:
             -vv
 
       - name: Run migration e2e tests
+        # --fail-on-skip: a skipped migration test is a coverage gap, not a pass — missing
+        # prerequisites (e.g. unset impersonation secrets) must fail the job, not hide.
+        env:
+          IMPERSONATION_SOURCE_USER_RID: ${{ secrets.E2E_IMPERSONATION_SOURCE_USER_RID }}
+          IMPERSONATION_DEST_USER_RID: ${{ secrets.E2E_IMPERSONATION_DEST_USER_RID }}
         run: |
           uv run pytest tests/e2e/migration \
             --dest-profile staging-e2e \
             --source-profile production-e2e \
+            --impersonation-source-user-rid "${IMPERSONATION_SOURCE_USER_RID}" \
+            --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
+            --fail-on-skip \
             --no-cov \
             -v
 
