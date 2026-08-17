@@ -16,10 +16,14 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_resources import MigrationResources
+from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
+from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
 
 _STACK = "cerulean-staging"
@@ -100,6 +104,31 @@ def test_checklist_assignee_option_overrides_mapping() -> None:
     )
 
     assert create_checklist.call_args.kwargs["assignee_rid"] == "override-user-rid"
+
+
+def test_parallel_migration_passes_user_rid_mapping_to_context(tmp_path) -> None:
+    # The CLI always runs through run_parallel_migration, which builds its own MigrationContext —
+    # the mapping must survive that path, not just MigrationRunner.run_migration.
+    source_checklist = _make_source_checklist(assignee_rid="source-user-rid")
+    runner = MigrationRunner(
+        migration_resources=MigrationResources(
+            source_assets={},
+            source_standalone_templates=[],
+            source_standalone_checklists=[source_checklist],
+        ),
+        dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+        destination_client=_make_client("destination"),
+        user_rid_mapping={"source-user-rid": "dest-user-rid"},
+        migration_state_path=tmp_path / "state.json",
+    )
+
+    with patch(
+        "nominal.experimental.migration.migrator.checklist_migrator._create_checklist_with_content"
+    ) as create_checklist:
+        create_checklist.return_value = MagicMock(rid="dest-checklist-rid")
+        run_parallel_migration(runner, max_workers=1)
+
+    assert create_checklist.call_args.kwargs["assignee_rid"] == "dest-user-rid"
 
 
 def test_data_review_is_executed_via_client_resolved_from_source_data_review() -> None:
