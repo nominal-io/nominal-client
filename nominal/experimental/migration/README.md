@@ -115,6 +115,8 @@ Misc. configs:
    - `source_to_destination_user_rids` maps source user RIDs to destination user RIDs.
    - The destination profile should be a service user with permission to impersonate destination users.
    - Resources whose source user has no mapping are created as the destination service user.
+   - Checklist executions (data reviews) are re-executed as the mapped creator of the source data review, so `created_by` on the destination reflects the original executor.
+   - The checklist assignee is translated through the same user mapping; an unmapped assignee falls back to the user creating the checklist (the impersonated author or the service user).
 
 ## Resumable Migrations
 

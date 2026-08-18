@@ -7,7 +7,7 @@ import re
 import threading
 from datetime import timedelta
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
@@ -48,6 +48,7 @@ class MigrationRunner:
     asset_inclusion_config: AssetInclusionConfig
     destination_client: NominalClient
     destination_client_resolver: DestinationClientResolver | None
+    user_rid_mapping: dict[str, str]
 
     def __init__(
         self,
@@ -56,6 +57,7 @@ class MigrationRunner:
         destination_client: NominalClient,
         asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
+        user_rid_mapping: Mapping[str, str] | None = None,
         migration_state_path: Path | str | None = None,
         dry_run: bool = False,
         video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
@@ -70,6 +72,8 @@ class MigrationRunner:
                 asset. Defaults to including all resource types.
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
                 destination client for each source resource. Defaults to None.
+            user_rid_mapping (Mapping[str, str] | None): Optional source-to-destination user RID mapping used
+                to translate user-valued request fields (e.g. checklist assignee). Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
             video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
@@ -82,6 +86,7 @@ class MigrationRunner:
         )
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
+        self.user_rid_mapping = dict(user_rid_mapping) if user_rid_mapping is not None else {}
         self.dry_run = dry_run
         self.video_ingest_timeout = video_ingest_timeout
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
@@ -116,6 +121,7 @@ class MigrationRunner:
                 destination_client=self.destination_client,
                 migration_state=self.migration_state,
                 destination_client_resolver=self.destination_client_resolver,
+                user_rid_mapping=self.user_rid_mapping,
                 source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
                 dry_run=self.dry_run,
                 video_ingest_timeout=self.video_ingest_timeout,

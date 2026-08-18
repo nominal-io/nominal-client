@@ -572,6 +572,9 @@ def copy(
         asset_inclusion_config=asset_inclusion_config,
         destination_client=target_client,
         destination_client_resolver=destination_client_resolver,
+        user_rid_mapping=impersonation_config.source_to_destination_user_rids
+        if impersonation_config is not None
+        else None,
         migration_state_path=migration_state_path,
         dry_run=dry_run,
         video_ingest_timeout=(
