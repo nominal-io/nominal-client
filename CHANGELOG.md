@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.161.0](https://github.com/nominal-io/nominal-client/compare/v1.160.0...v1.161.0) (2026-08-18)
+
+
+### Features
+
+* map checklist assignee and data review creator during migration ([#931](https://github.com/nominal-io/nominal-client/issues/931)) ([8de7ae0](https://github.com/nominal-io/nominal-client/commit/8de7ae047a2aca958d54d923f9c717ecca8de6b5))
+
 ## [1.160.0](https://github.com/nominal-io/nominal-client/compare/v1.159.0...v1.160.0) (2026-08-13)
 
 
