@@ -53,6 +53,11 @@ def is_transient_error(error: BaseException) -> bool:
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,
             requests.exceptions.ChunkedEncodingError,
+            # Raised when a session's own urllib3 Retry exhausts its status_forcelist budget
+            # (e.g. sustained S3 503s on multipart part PUTs); requests raises it without
+            # `from`, so there is no __cause__ to follow.
+            requests.exceptions.RetryError,
+            urllib3.exceptions.MaxRetryError,
             urllib3.exceptions.ProtocolError,
             urllib3.exceptions.TimeoutError,
             ConnectionError,

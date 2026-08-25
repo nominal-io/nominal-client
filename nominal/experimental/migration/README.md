@@ -143,7 +143,7 @@ migrating. Whether a rerun re-attempts the file depends on the failure:
   re-attempt it — check the file by hand as the summary line instructs.
 
 A video file appears in the summary at most once, with its latest outcome: a rerun that succeeds
-clears the stale skip entry from the earlier attempt. Other resource types keep one entry per
+clears the stale skip entry from the earlier attempt. Checklist skips are still appended per
 attempt.
 
 Example — run with an explicit state path:

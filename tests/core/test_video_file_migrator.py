@@ -65,6 +65,27 @@ def _timestamp_options() -> MagicMock:
     return options
 
 
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _seconds: None)
+
+
+def _mock_stream_response(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stub the streamed source download as the context manager the code enters; returns the
+    context-manager mock so tests can assert per-attempt open/close.
+    """
+    stream = MagicMock()
+    stream.__enter__.return_value = MagicMock(raw=MagicMock())
+    monkeypatch.setattr(
+        "nominal.experimental.migration.utils.video_file_utils.requests.get",
+        lambda *args, **kwargs: stream,
+    )
+    return stream
+
+
+def _http_error(status_code: int) -> requests.exceptions.HTTPError:
+    return requests.exceptions.HTTPError(f"{status_code} error", response=MagicMock(status_code=status_code))
+
+
 def test_source_video_without_segment_metadata_is_skipped_not_raised() -> None:
     """A video that never finished segmenting at the source is unusable — skip it, don't abort the asset."""
     source_file = _make_source_video_file(_video_file_rid(1))
@@ -107,10 +128,7 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     new_file.poll_until_ingestion_completed.side_effect = NominalIngestTimeout("still ingesting")
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -131,10 +149,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
     new_file.poll_until_ingestion_completed.return_value = None
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -157,10 +172,7 @@ def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch:
     new_file.poll_until_ingestion_completed.return_value = None
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -180,10 +192,7 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
     new_file.rid = _video_file_rid(60)
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -192,27 +201,6 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
     new_file.poll_until_ingestion_completed.assert_called_once()
     passed_timeout = new_file.poll_until_ingestion_completed.call_args.kwargs["timeout"]
     assert timedelta(0) < passed_timeout <= timedelta(seconds=5)
-
-
-def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _seconds: None)
-
-
-def _mock_stream_response(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Stub the streamed source download as the context manager the code enters; returns the
-    context-manager mock so tests can assert per-attempt open/close.
-    """
-    stream = MagicMock()
-    stream.__enter__.return_value = MagicMock(raw=MagicMock())
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: stream,
-    )
-    return stream
-
-
-def _http_error(status_code: int) -> requests.exceptions.HTTPError:
-    return requests.exceptions.HTTPError(f"{status_code} error", response=MagicMock(status_code=status_code))
 
 
 def test_connection_broken_mid_transfer_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -372,7 +360,11 @@ def test_rejected_timestamp_update_records_mapping_and_skip(monkeypatch: pytest.
     new_file.update.assert_called_once()
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert len(ctx.migration_state.skipped_resources) == 1
-    assert "timestamp update was rejected" in ctx.migration_state.skipped_resources[0].reason
+    reason = ctx.migration_state.skipped_resources[0].reason
+    assert "timestamp update was rejected" in reason
+    # The sent values are recorded — often the only way to diagnose a destination-side 400.
+    assert "starting_timestamp=0" in reason
+    assert "ending_timestamp=1" in reason
 
 
 def test_unexpected_copy_failure_is_recorded_and_does_not_abort(monkeypatch: pytest.MonkeyPatch) -> None:

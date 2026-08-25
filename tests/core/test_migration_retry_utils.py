@@ -64,12 +64,12 @@ def _grpc_translated_error(code: grpc.StatusCode, exc_type: type[NominalError] =
     return error
 
 
-def _multipart_upload_failed(status_code: int) -> NominalMultipartUploadFailed:
+def _multipart_upload_failed(root_cause: BaseException) -> NominalMultipartUploadFailed:
     """Build the shape put_multipart_upload raises: an ExceptionGroup of per-attempt wrappers,
     each chaining the real failure via __cause__; the group itself has no __cause__.
     """
-    attempt_error = NominalMultipartUploadError(f"part 1, attempt 3: {status_code} error")
-    attempt_error.__cause__ = _conjure_http_error(status_code)
+    attempt_error = NominalMultipartUploadError(f"part 1, attempt 3: {root_cause}")
+    attempt_error.__cause__ = root_cause
     return NominalMultipartUploadFailed("Multipart upload failed after 3 attempts", [attempt_error])
 
 
@@ -94,7 +94,12 @@ def _multipart_upload_failed(status_code: int) -> NominalMultipartUploadFailed:
         _grpc_translated_error(grpc.StatusCode.DEADLINE_EXCEEDED),
         _FakeRpcError(grpc.StatusCode.UNAVAILABLE),
         # A 502 on sign_part surfaces as an ExceptionGroup with the real error two levels down.
-        _multipart_upload_failed(502),
+        _multipart_upload_failed(_conjure_http_error(502)),
+        # The multipart session's own urllib3 Retry exhausting its budget on sustained S3 5xx
+        # raises RetryError with no __cause__ — it must be transient by type alone.
+        requests.exceptions.RetryError("too many 503 error responses"),
+        urllib3.exceptions.MaxRetryError(MagicMock(), "https://s3.example.com/part"),
+        _multipart_upload_failed(requests.exceptions.RetryError("too many 503 error responses")),
     ],
 )
 def test_transient_errors_are_classified_transient(error: BaseException) -> None:
@@ -110,7 +115,7 @@ def test_transient_errors_are_classified_transient(error: BaseException) -> None
         _conjure_http_error(400, body={"errorCode": "INVALID_ARGUMENT", "errorName": "Default:InvalidArgument"}),
         _grpc_translated_error(grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
         _grpc_translated_error(grpc.StatusCode.NOT_FOUND),
-        _multipart_upload_failed(403),
+        _multipart_upload_failed(_conjure_http_error(403)),
         NominalIngestFailed("Video failed to segment. (VideoSegmenter:Internal)"),
         ValueError("bad ingest options"),
     ],

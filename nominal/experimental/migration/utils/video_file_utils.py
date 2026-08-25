@@ -42,7 +42,11 @@ def copy_video_file_to_video_dataset(
     logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
 
     try:
-        (mcap_video_details, timestamp_options) = source_video_file._get_file_ingest_options()
+        # NominalVideoFileMetadataError is permanent, so it still raises on the first attempt.
+        (mcap_video_details, timestamp_options) = retry_transient(
+            source_video_file._get_file_ingest_options,
+            description=f"ingest options for video file {source_video_file.rid}",
+        )
     except NominalVideoFileMetadataError as error:
         # Unusable where it already lives; retrying cannot help. Skip it, not the whole asset.
         logger.warning(
@@ -168,9 +172,20 @@ def _finish_copy(
                 description=f"timestamp update for video file {new_file.rid}",
             )
         except Exception as error:
-            logger.warning("Timestamp update failed for video file (rid: %s): %s", new_file.rid, error)
+            # The sent values come from the source's segment metadata; recording them here is
+            # often the only way to diagnose a destination-side rejection (the server may not
+            # say which argument it refused).
+            logger.warning(
+                "Timestamp update failed for video file (rid: %s), sent starting_timestamp=%s ending_timestamp=%s: %s",
+                new_file.rid,
+                timestamp_options.starting_timestamp,
+                timestamp_options.ending_timestamp,
+                error,
+            )
             skip_reasons.append(
-                f"the timestamp update was rejected: {error}; "
+                f"the timestamp update was rejected: {error} "
+                f"(sent starting_timestamp={timestamp_options.starting_timestamp}, "
+                f"ending_timestamp={timestamp_options.ending_timestamp}); "
                 f"a rerun will not retry it — set timing on {new_file.rid} by hand"
             )
 
