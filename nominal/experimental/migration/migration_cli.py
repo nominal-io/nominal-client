@@ -11,9 +11,10 @@ import click
 import yaml
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
+from nominal.core import ArchiveStatusFilter, Asset, Checklist, Dataset, NominalClient, Workbook
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental import as_user
+from nominal.experimental.dataset_utils import get_dataset_owner_rid
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
@@ -237,20 +238,21 @@ def get_source_user_rid(source_resource: Any) -> str | None:
         return user_rid
 
     latest_api_getter = getattr(source_resource, "_get_latest_api", None)
-    if not callable(latest_api_getter):
-        return None
+    if callable(latest_api_getter):
+        try:
+            latest_api = latest_api_getter()
+        except Exception:
+            logger.debug("Unable to fetch latest API object while resolving source user RID.", exc_info=True)
+        else:
+            user_rid = _extract_user_rid_from_object(latest_api)
+            if user_rid is not None:
+                return user_rid
 
-    try:
-        latest_api = latest_api_getter()
-    except Exception:
-        logger.debug("Unable to fetch latest API object while resolving source user RID.", exc_info=True)
-        return None
+            user_rid = _extract_user_rid_from_object(getattr(latest_api, "metadata", None))
+            if user_rid is not None:
+                return user_rid
 
-    user_rid = _extract_user_rid_from_object(latest_api)
-    if user_rid is not None:
-        return user_rid
-
-    return _extract_user_rid_from_object(getattr(latest_api, "metadata", None))
+    return _get_dataset_owner_user_rid(source_resource)
 
 
 def build_destination_client_resolver(
@@ -345,6 +347,21 @@ def _extract_user_rid_from_identity(value: Any) -> str | None:
             return nested_value
 
     return None
+
+
+def _get_dataset_owner_user_rid(source_resource: Any) -> str | None:
+    if not isinstance(source_resource, Dataset):
+        return None
+
+    try:
+        return get_dataset_owner_rid(source_resource)
+    except Exception:
+        logger.debug(
+            "Dataset owner lookup failed while resolving source user RID for dataset %s.",
+            source_resource.rid,
+            exc_info=True,
+        )
+        return None
 
 
 def _load_migration_config(
