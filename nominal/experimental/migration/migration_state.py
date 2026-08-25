@@ -102,6 +102,25 @@ class MigrationState:
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         self.skipped_resources.append(SkippedResource(resource_type.value, source_rid, reason))
 
+    def clear_skips(self, resource_type: ResourceType, source_rid: str) -> bool:
+        """Drop skip records for a resource, returning whether any were removed.
+
+        Some skips (a transient copy failure, an unusable source file) are re-attempted on the
+        next run because no mapping was recorded; clearing before recording that attempt's
+        outcome keeps the end-of-run summary reporting each resource's latest state once,
+        rather than accumulating stale entries across reruns.
+        """
+        remaining = [
+            skipped
+            for skipped in self.skipped_resources
+            if not (skipped.resource_type == resource_type.value and skipped.source_rid == source_rid)
+        ]
+        changed = len(remaining) != len(self.skipped_resources)
+        # In place, so ThreadSafeMigrationState's to_json snapshot (which copies this list
+        # under its lock) and any other holder of the list reference stay consistent.
+        self.skipped_resources[:] = remaining
+        return changed
+
     def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
         """Record a workbook skip as a terminal state and clear any stale pending entries."""
         changed = workbook_rid in self.pending_multi_asset_workbooks or workbook_rid in self.pending_multi_run_workbooks

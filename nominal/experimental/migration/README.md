@@ -126,6 +126,25 @@ The `nom migrate copy` command supports resumable migrations via the optional `-
 - If the state file already exists from a previous run, already-migrated resources are automatically skipped, so it is safe to re-run after a failure without duplicating resources.
 - Previous state files are automatically versioned (e.g. `migration_state.json` → `migration_state_v2.json`) so no history is lost.
 
+## Failure handling
+
+Transient network failures (connection resets, read timeouts, 429/5xx responses) during video file
+transfer are retried automatically with exponential backoff, including status-poll failures after an
+upload has already succeeded — so a single dropped request does not abandon a finished upload.
+
+A video file that still cannot be copied is recorded in the end-of-run skip summary
+(`N resource(s) were skipped or could not be confirmed`) and the rest of its asset continues
+migrating. Whether a rerun re-attempts the file depends on the failure:
+
+- **Copy failed** (network failure that outlasted retries): no mapping is recorded, so a rerun
+  re-attempts the file.
+- **Unusable at source / ingest failed at destination / ingest timed out / timestamp update
+  rejected**: retrying cannot help (or the copy is already recorded), so a rerun does not
+  re-attempt it — check the file by hand as the summary line instructs.
+
+Each resource appears in the summary at most once with its latest outcome: a rerun that succeeds
+clears the stale skip entry from the earlier attempt.
+
 Example — run with an explicit state path:
 
 ```sh
