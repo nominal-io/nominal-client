@@ -102,13 +102,14 @@ class MigrationState:
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         self.skipped_resources.append(SkippedResource(resource_type.value, source_rid, reason))
 
-    def clear_skips(self, resource_type: ResourceType, source_rid: str) -> bool:
-        """Drop skip records for a resource, returning whether any were removed.
+    def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
+        """Record a resource's latest skip outcome, replacing any earlier entries for it;
+        ``None`` clears them. Returns whether anything changed.
 
         Some skips (a transient copy failure, an unusable source file) are re-attempted on the
-        next run because no mapping was recorded; clearing before recording that attempt's
-        outcome keeps the end-of-run summary reporting each resource's latest state once,
-        rather than accumulating stale entries across reruns.
+        next run because no mapping was recorded; an upsert keeps the end-of-run summary
+        reporting each such resource's latest state once, rather than accumulating one stale
+        entry per attempt.
         """
         remaining = [
             skipped
@@ -116,6 +117,9 @@ class MigrationState:
             if not (skipped.resource_type == resource_type.value and skipped.source_rid == source_rid)
         ]
         changed = len(remaining) != len(self.skipped_resources)
+        if reason is not None:
+            remaining.append(SkippedResource(resource_type.value, source_rid, reason))
+            changed = True
         # In place, so ThreadSafeMigrationState's to_json snapshot (which copies this list
         # under its lock) and any other holder of the list reference stay consistent.
         self.skipped_resources[:] = remaining

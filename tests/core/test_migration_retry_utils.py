@@ -17,12 +17,45 @@ import urllib3.exceptions
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
-from nominal.core.exceptions import NominalIngestFailed
+import grpc
+from conjure_python_client import ConjureHTTPError
+
+from nominal.core.exceptions import NominalError, NominalIngestFailed, NominalInvalidArgumentError
 from nominal.experimental.migration.utils.retry_utils import is_transient_error, retry_transient
 
 
 def _http_error(status_code: int) -> requests.exceptions.HTTPError:
     return requests.exceptions.HTTPError(f"{status_code} error", response=MagicMock(status_code=status_code))
+
+
+def _conjure_http_error(status_code: int, body: dict | None = None) -> ConjureHTTPError:
+    """Build a ConjureHTTPError the way the conjure client raises it, so the classification
+    test exercises the real class rather than a mock stand-in.
+    """
+    response = MagicMock()
+    response.status_code = status_code
+    response.headers = {"X-B3-TraceId": "abc123"}
+    if body is None:
+        response.json.side_effect = ValueError("no json body")
+        response.text = "gateway error"
+    else:
+        response.json.return_value = body
+    return ConjureHTTPError(requests.exceptions.HTTPError(f"{status_code} error", response=response))
+
+
+class _FakeRpcError(grpc.RpcError):
+    def __init__(self, code: grpc.StatusCode) -> None:
+        self._code = code
+
+    def code(self) -> grpc.StatusCode:
+        return self._code
+
+
+def _grpc_translated_error(code: grpc.StatusCode, exc_type: type[NominalError] = NominalError) -> NominalError:
+    """Build the shape translate_grpc_errors raises: a NominalError chaining the grpc.RpcError."""
+    error = exc_type(f"{code}: boom")
+    error.__cause__ = _FakeRpcError(code)
+    return error
 
 
 @pytest.mark.parametrize(
@@ -36,6 +69,15 @@ def _http_error(status_code: int) -> requests.exceptions.HTTPError:
         _http_error(502),
         _http_error(503),
         _http_error(429),
+        # The ingest status poll goes through conjure — if ConjureHTTPError ever stops carrying
+        # `.response`, 502s during polling silently become permanent. Pin the real class.
+        _conjure_http_error(502),
+        _conjure_http_error(503, body={"errorCode": "UNAVAILABLE", "errorName": "Default:Unavailable"}),
+        # The multipart upload leg is gRPC: connection refused arrives as a NominalError
+        # chaining an UNAVAILABLE grpc.RpcError (via translate_grpc_errors).
+        _grpc_translated_error(grpc.StatusCode.UNAVAILABLE),
+        _grpc_translated_error(grpc.StatusCode.DEADLINE_EXCEEDED),
+        _FakeRpcError(grpc.StatusCode.UNAVAILABLE),
     ],
 )
 def test_transient_errors_are_classified_transient(error: BaseException) -> None:
@@ -48,6 +90,9 @@ def test_transient_errors_are_classified_transient(error: BaseException) -> None
         _http_error(400),
         _http_error(403),
         _http_error(404),
+        _conjure_http_error(400, body={"errorCode": "INVALID_ARGUMENT", "errorName": "Default:InvalidArgument"}),
+        _grpc_translated_error(grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
+        _grpc_translated_error(grpc.StatusCode.NOT_FOUND),
         NominalIngestFailed("Video failed to segment. (VideoSegmenter:Internal)"),
         ValueError("bad ingest options"),
     ],

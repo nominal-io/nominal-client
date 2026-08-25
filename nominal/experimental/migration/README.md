@@ -142,8 +142,9 @@ migrating. Whether a rerun re-attempts the file depends on the failure:
   rejected**: retrying cannot help (or the copy is already recorded), so a rerun does not
   re-attempt it — check the file by hand as the summary line instructs.
 
-Each resource appears in the summary at most once with its latest outcome: a rerun that succeeds
-clears the stale skip entry from the earlier attempt.
+A video file appears in the summary at most once, with its latest outcome: a rerun that succeeds
+clears the stale skip entry from the earlier attempt. Other resource types keep one entry per
+attempt.
 
 Example — run with an explicit state path:
 

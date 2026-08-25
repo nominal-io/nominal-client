@@ -15,7 +15,12 @@ if sys.version_info < (3, 13):
 import requests
 import urllib3.exceptions
 
-from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout, NominalVideoFileMetadataError
+from nominal.core.exceptions import (
+    NominalIngestError,
+    NominalIngestFailed,
+    NominalIngestTimeout,
+    NominalVideoFileMetadataError,
+)
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
@@ -180,7 +185,11 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
-    new_file.poll_until_ingestion_completed.assert_called_once_with(timeout=timedelta(seconds=5))
+    # The poll timeout is measured against a shared deadline, so assert the bound rather than
+    # an exact value.
+    new_file.poll_until_ingestion_completed.assert_called_once()
+    passed_timeout = new_file.poll_until_ingestion_completed.call_args.kwargs["timeout"]
+    assert timedelta(0) < passed_timeout <= timedelta(seconds=5)
 
 
 def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -264,6 +273,46 @@ def test_destination_ingest_failure_records_mapping_and_skip(monkeypatch: pytest
     assert "ingest failed at destination" in ctx.migration_state.skipped_resources[0].reason
     # The file needs hand-checking anyway; don't push timing metadata onto a failed ingest.
     new_file.update.assert_not_called()
+
+
+def test_unknown_ingest_status_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any post-upload failure — even an unexpected one — must map the copy, or a rerun duplicates it."""
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(13))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(130)
+    new_file.poll_until_ingestion_completed.side_effect = NominalIngestError("unhandled ingest status 'mystery'")
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "could not be confirmed" in ctx.migration_state.skipped_resources[0].reason
+
+
+def test_exhausted_poll_retries_record_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 502 that outlasts the retry budget after a successful upload maps the copy — no rerun re-upload."""
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(14))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(140)
+    new_file.poll_until_ingestion_completed.side_effect = _http_error(502)
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 1
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "could not be confirmed" in ctx.migration_state.skipped_resources[0].reason
 
 
 def test_rejected_timestamp_update_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -14,6 +14,7 @@ import random
 import time
 from typing import Callable, TypeVar
 
+import grpc
 import requests
 import urllib3.exceptions
 
@@ -28,6 +29,11 @@ DEFAULT_BACKOFF_CAP_SECONDS = 60.0
 # 429 is throttling; the 5xx set covers transient server-side failures. 4xx (other than 429)
 # means the request itself is wrong and will fail identically on every attempt.
 _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+# The standard retryable gRPC statuses: server unreachable/overloaded or the deadline hit.
+_RETRYABLE_GRPC_STATUS_CODES = frozenset(
+    {grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.RESOURCE_EXHAUSTED}
+)
 
 
 def is_transient_error(error: BaseException) -> bool:
@@ -51,6 +57,11 @@ def is_transient_error(error: BaseException) -> bool:
         (urllib3.exceptions.ProtocolError, urllib3.exceptions.TimeoutError, ConnectionError, TimeoutError),
     ):
         return True
+    # gRPC legs (e.g. the multipart upload) surface as NominalError subclasses via
+    # translate_grpc_errors, which chains the original grpc.RpcError — classify by its status.
+    rpc_error = error if isinstance(error, grpc.RpcError) else error.__cause__
+    if isinstance(rpc_error, grpc.RpcError):
+        return rpc_error.code() in _RETRYABLE_GRPC_STATUS_CODES
     return False
 
 
@@ -61,7 +72,7 @@ def retry_transient(
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS,
     backoff_cap_seconds: float = DEFAULT_BACKOFF_CAP_SECONDS,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> T:
     """Run ``fn``, retrying transient failures with jittered exponential backoff.
 
@@ -73,8 +84,10 @@ def retry_transient(
         max_attempts: Total attempts including the first.
         backoff_base_seconds: Backoff before the second attempt; doubles per attempt.
         backoff_cap_seconds: Upper bound on the backoff window.
-        sleep: Injectable for tests.
+        sleep: Injectable for tests; defaults to time.sleep, resolved at call time so
+            monkeypatching the time module works for callers that can't pass this through.
     """
+    sleep_fn = time.sleep if sleep is None else sleep
     for attempt in range(1, max_attempts + 1):
         try:
             return fn()
@@ -91,5 +104,5 @@ def retry_transient(
                 delay,
                 error,
             )
-            sleep(delay)
+            sleep_fn(delay)
     raise AssertionError("unreachable: loop either returns or raises")

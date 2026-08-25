@@ -35,13 +35,10 @@ class VideoFileMigrator:
             # One bad file must not abort the whole asset task (and every sibling resource
             # behind it). With no mapping recorded, a rerun re-attempts this file.
             logger.exception("Failed to copy video file (rid: %s)", source_file.rid)
-            self.ctx.migration_state.clear_skips(ResourceType.VIDEO_FILE, source_file.rid)
-            self.ctx.migration_state.record_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy failed: {error}")
+            self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy failed: {error}")
             return
 
         # This attempt's outcome supersedes any skip recorded by an earlier run's attempt.
-        self.ctx.migration_state.clear_skips(ResourceType.VIDEO_FILE, source_file.rid)
-        if outcome.skip_reason is not None:
-            self.ctx.migration_state.record_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
+        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
         if outcome.file is not None:
             self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, outcome.file.rid)
