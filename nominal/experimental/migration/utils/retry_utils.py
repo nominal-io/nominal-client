@@ -18,6 +18,9 @@ import grpc
 import requests
 import urllib3.exceptions
 
+# Remove this import once the minimum supported Python version is 3.11+.
+from exceptiongroup import BaseExceptionGroup
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -41,27 +44,33 @@ def is_transient_error(error: BaseException) -> bool:
     # Covers ConjureHTTPError too: it subclasses HTTPError and keeps `.response`.
     if isinstance(error, requests.exceptions.HTTPError):
         return error.response is not None and error.response.status_code in _RETRYABLE_STATUS_CODES
+    # Requests-level connection/timeout failures, plus the urllib3/socket errors that
+    # streaming a source download straight into an upload surfaces without the requests
+    # wrappers (e.g. ProtocolError(ConnectionResetError(104, ...))).
     if isinstance(
         error,
         (
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,
             requests.exceptions.ChunkedEncodingError,
+            urllib3.exceptions.ProtocolError,
+            urllib3.exceptions.TimeoutError,
+            ConnectionError,
+            TimeoutError,
         ),
     ):
         return True
-    # Streaming a source download straight into an upload surfaces urllib3/socket errors
-    # without the requests wrappers (e.g. ProtocolError(ConnectionResetError(104, ...))).
-    if isinstance(
-        error,
-        (urllib3.exceptions.ProtocolError, urllib3.exceptions.TimeoutError, ConnectionError, TimeoutError),
-    ):
-        return True
-    # gRPC legs (e.g. the multipart upload) surface as NominalError subclasses via
-    # translate_grpc_errors, which chains the original grpc.RpcError — classify by its status.
-    rpc_error = error if isinstance(error, grpc.RpcError) else error.__cause__
-    if isinstance(rpc_error, grpc.RpcError):
-        return rpc_error.code() in _RETRYABLE_GRPC_STATUS_CODES
+    # gRPC legs surface either raw or as NominalError subclasses via translate_grpc_errors,
+    # which chains the original grpc.RpcError — classify by its status.
+    if isinstance(error, grpc.RpcError):
+        return error.code() in _RETRYABLE_GRPC_STATUS_CODES
+    # Wrapper shapes: multipart upload failures arrive as an ExceptionGroup of per-attempt
+    # errors (the group itself has no __cause__), and each member — like translate_grpc_errors'
+    # output — chains the real failure via __cause__. Classify by what's underneath.
+    if isinstance(error, BaseExceptionGroup):
+        return any(is_transient_error(inner) for inner in error.exceptions)
+    if error.__cause__ is not None:
+        return is_transient_error(error.__cause__)
     return False
 
 

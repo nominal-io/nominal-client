@@ -19,6 +19,8 @@ from nominal.core.exceptions import (
     NominalIngestError,
     NominalIngestFailed,
     NominalIngestTimeout,
+    NominalMultipartUploadError,
+    NominalMultipartUploadFailed,
     NominalVideoFileMetadataError,
 )
 from nominal.experimental.migration.migration_state import MigrationState
@@ -196,11 +198,17 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _seconds: None)
 
 
-def _mock_stream_response(monkeypatch: pytest.MonkeyPatch) -> None:
+def _mock_stream_response(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stub the streamed source download as the context manager the code enters; returns the
+    context-manager mock so tests can assert per-attempt open/close.
+    """
+    stream = MagicMock()
+    stream.__enter__.return_value = MagicMock(raw=MagicMock())
     monkeypatch.setattr(
         "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
+        lambda *args, **kwargs: stream,
     )
+    return stream
 
 
 def _http_error(status_code: int) -> requests.exceptions.HTTPError:
@@ -210,7 +218,7 @@ def _http_error(status_code: int) -> requests.exceptions.HTTPError:
 def test_connection_broken_mid_transfer_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     """A connection reset while streaming source bytes into the upload restarts the transfer."""
     _no_sleep(monkeypatch)
-    _mock_stream_response(monkeypatch)
+    stream = _mock_stream_response(monkeypatch)
     ctx = _make_context()
     source_file = _make_source_video_file(_video_file_rid(7))
     source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
@@ -221,6 +229,36 @@ def test_connection_broken_mid_transfer_is_retried(monkeypatch: pytest.MonkeyPat
     destination_video = _make_destination_video(new_file)
     destination_video.add_from_io.side_effect = [
         urllib3.exceptions.ProtocolError("Connection broken: ConnectionResetError(104, 'Connection reset by peer')"),
+        new_file,
+    ]
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 2
+    # The download connection is closed once per attempt — retries must not stack open sockets.
+    assert stream.__exit__.call_count == 2
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
+
+
+def test_multipart_upload_failure_wrapping_transient_error_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """put_multipart_upload raises an ExceptionGroup of per-attempt wrappers (no __cause__ on the
+    group itself) — a transient root cause inside it must still be retried.
+    """
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(15))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    attempt_error = NominalMultipartUploadError("part 1, attempt 3: 502 Server Error")
+    attempt_error.__cause__ = _http_error(502)
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(150)
+    new_file.poll_until_ingestion_completed.return_value = None
+    destination_video = _make_destination_video(new_file)
+    destination_video.add_from_io.side_effect = [
+        NominalMultipartUploadFailed("upload failed after retries", [attempt_error]),
         new_file,
     ]
 

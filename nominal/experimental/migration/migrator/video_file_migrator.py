@@ -38,7 +38,9 @@ class VideoFileMigrator:
             self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy failed: {error}")
             return
 
-        # This attempt's outcome supersedes any skip recorded by an earlier run's attempt.
-        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
         if outcome.file is not None:
             self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, outcome.file.rid)
+        # This attempt's outcome supersedes any skip recorded by an earlier run's attempt.
+        # Ordered after record_mapping — each call persists separately, so a crash between the
+        # two can only lose the summary line, never the mapping that stops a rerun re-uploading.
+        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
