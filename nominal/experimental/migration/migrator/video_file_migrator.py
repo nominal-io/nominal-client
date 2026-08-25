@@ -27,10 +27,20 @@ class VideoFileMigrator:
             logger.info(f"{DRY_RUN_PREFIX} Would copy video file %s to destination", source_file.rid)
             return
 
-        outcome = copy_video_file_to_video_dataset(
-            source_file, destination_video, poll_timeout=self.ctx.video_ingest_timeout
-        )
-        if outcome.skip_reason is not None:
-            self.ctx.migration_state.record_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
+        try:
+            outcome = copy_video_file_to_video_dataset(
+                source_file, destination_video, poll_timeout=self.ctx.video_ingest_timeout
+            )
+        except Exception as error:
+            # One bad file must not abort the whole asset task (and every sibling resource
+            # behind it). With no mapping recorded, a rerun re-attempts this file.
+            logger.exception("Failed to copy video file (rid: %s)", source_file.rid)
+            self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy failed: {error}")
+            return
+
         if outcome.file is not None:
             self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, outcome.file.rid)
+        # This attempt's outcome supersedes any skip recorded by an earlier run's attempt.
+        # Ordered after record_mapping — each call persists separately, so a crash between the
+        # two can only lose the summary line, never the mapping that stops a rerun re-uploading.
+        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)

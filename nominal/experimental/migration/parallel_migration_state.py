@@ -105,6 +105,13 @@ class ThreadSafeMigrationState(MigrationState):
             super().record_skip(resource_type, source_rid, reason)
         self._persist()
 
+    def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
+        with self._lock:
+            changed = super().set_skip(resource_type, source_rid, reason)
+        if changed:
+            self._persist()
+        return changed
+
     def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
         with self._lock:
             changed = super().record_workbook_skip_and_clear_pending(workbook_rid, reason)
@@ -121,8 +128,9 @@ class ThreadSafeMigrationState(MigrationState):
         # seconds, and holding the lock that long blocks every worker's record_mapping /
         # get_mapped_rid — collapsing parallel workers to a single thread. The snapshot uses
         # C-level container copies, which are orders of magnitude cheaper than serialization.
-        # SkippedResource entries are append-only and never mutated, so sharing them with the
-        # snapshot is safe. If MigrationState gains a field, it must be copied here too
+        # SkippedResource entries themselves are never mutated (the list gains and drops
+        # entries under the lock, via record_skip/set_skip), so sharing the items with
+        # the snapshot is safe. If MigrationState gains a field, it must be copied here too
         # (guarded by a test asserting the expected field set).
         with self._lock:
             snapshot = MigrationState(

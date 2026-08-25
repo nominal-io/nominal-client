@@ -12,11 +12,22 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
-from nominal.core.exceptions import NominalIngestTimeout, NominalVideoFileMetadataError
+import requests
+import urllib3.exceptions
+
+from nominal.core.exceptions import (
+    NominalIngestError,
+    NominalIngestFailed,
+    NominalIngestTimeout,
+    NominalMultipartUploadError,
+    NominalMultipartUploadFailed,
+    NominalVideoFileMetadataError,
+)
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.retry_utils import DEFAULT_MAX_ATTEMPTS
 from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
 
 _STACK = "cerulean-staging"
@@ -53,6 +64,27 @@ def _timestamp_options() -> MagicMock:
     options.starting_timestamp = 0
     options.ending_timestamp = 1
     return options
+
+
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _seconds: None)
+
+
+def _mock_stream_response(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stub the streamed source download as the context manager the code enters; returns the
+    context-manager mock so tests can assert per-attempt open/close.
+    """
+    stream = MagicMock()
+    stream.__enter__.return_value = MagicMock(raw=MagicMock())
+    monkeypatch.setattr(
+        "nominal.experimental.migration.utils.video_file_utils.requests.get",
+        lambda *args, **kwargs: stream,
+    )
+    return stream
+
+
+def _http_error(status_code: int) -> requests.exceptions.HTTPError:
+    return requests.exceptions.HTTPError(f"{status_code} error", response=MagicMock(status_code=status_code))
 
 
 def test_source_video_without_segment_metadata_is_skipped_not_raised() -> None:
@@ -97,10 +129,7 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     new_file.poll_until_ingestion_completed.side_effect = NominalIngestTimeout("still ingesting")
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -121,10 +150,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
     new_file.poll_until_ingestion_completed.return_value = None
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -147,10 +173,7 @@ def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch:
     new_file.poll_until_ingestion_completed.return_value = None
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
-    )
+    _mock_stream_response(monkeypatch)
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
@@ -170,14 +193,221 @@ def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pyte
     new_file.rid = _video_file_rid(60)
     destination_video = _make_destination_video(new_file)
 
-    monkeypatch.setattr(
-        "nominal.experimental.migration.utils.video_file_utils.requests.get",
-        lambda *args, **kwargs: MagicMock(raw=MagicMock()),
+    _mock_stream_response(monkeypatch)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    # The poll timeout is measured against a shared deadline, so assert the bound rather than
+    # an exact value.
+    new_file.poll_until_ingestion_completed.assert_called_once()
+    passed_timeout = new_file.poll_until_ingestion_completed.call_args.kwargs["timeout"]
+    assert timedelta(0) < passed_timeout <= timedelta(seconds=5)
+
+
+def test_connection_broken_mid_transfer_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A connection reset while streaming source bytes into the upload restarts the transfer."""
+    _no_sleep(monkeypatch)
+    stream = _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(7))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(70)
+    new_file.poll_until_ingestion_completed.return_value = None
+    destination_video = _make_destination_video(new_file)
+    destination_video.add_from_io.side_effect = [
+        urllib3.exceptions.ProtocolError("Connection broken: ConnectionResetError(104, 'Connection reset by peer')"),
+        new_file,
+    ]
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 2
+    # The download connection is closed once per attempt — retries must not stack open sockets.
+    assert stream.__exit__.call_count == 2
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
+
+
+def test_multipart_upload_failure_wrapping_transient_error_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """put_multipart_upload raises an ExceptionGroup of per-attempt wrappers (no __cause__ on the
+    group itself) — a transient root cause inside it must still be retried.
+    """
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(15))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    attempt_error = NominalMultipartUploadError("part 1, attempt 3: 502 Server Error")
+    attempt_error.__cause__ = _http_error(502)
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(150)
+    new_file.poll_until_ingestion_completed.return_value = None
+    destination_video = _make_destination_video(new_file)
+    destination_video.add_from_io.side_effect = [
+        NominalMultipartUploadFailed("upload failed after retries", [attempt_error]),
+        new_file,
+    ]
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 2
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
+
+
+def test_transient_error_during_ingest_poll_does_not_reupload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 502 on a single status check must not abandon a finished upload — polling resumes instead."""
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(8))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(80)
+    new_file.poll_until_ingestion_completed.side_effect = [_http_error(502), None]
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 1
+    assert new_file.poll_until_ingestion_completed.call_count == 2
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
+
+
+def test_destination_ingest_failure_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A terminal destination-side ingest error (e.g. segmentation failure) is a skip, not an abort."""
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(9))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(90)
+    new_file.poll_until_ingestion_completed.side_effect = NominalIngestFailed(
+        "ingest failed for video: Video failed to segment. (VideoSegmenter:Internal)"
+    )
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "ingest failed at destination" in ctx.migration_state.skipped_resources[0].reason
+    # The file needs hand-checking anyway; don't push timing metadata onto a failed ingest.
+    new_file.update.assert_not_called()
+
+
+def test_unknown_ingest_status_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any post-upload failure — even an unexpected one — must map the copy, or a rerun duplicates it."""
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(13))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(130)
+    new_file.poll_until_ingestion_completed.side_effect = NominalIngestError("unhandled ingest status 'mystery'")
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "could not be confirmed" in ctx.migration_state.skipped_resources[0].reason
+
+
+def test_exhausted_poll_retries_record_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 502 that outlasts the retry budget after a successful upload maps the copy — no rerun re-upload."""
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(14))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(140)
+    new_file.poll_until_ingestion_completed.side_effect = _http_error(502)
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert destination_video.add_from_io.call_count == 1
+    # The full budget was spent before giving up — otherwise this test passes with retries off.
+    assert new_file.poll_until_ingestion_completed.call_count == DEFAULT_MAX_ATTEMPTS
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "could not be confirmed" in ctx.migration_state.skipped_resources[0].reason
+
+
+def test_rejected_timestamp_update_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 400 on the post-ingest timestamp update must not abort the asset or orphan the ingested copy."""
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(10))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(100)
+    new_file.poll_until_ingestion_completed.return_value = None
+    new_file.update.side_effect = _http_error(400)
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    # 400 is not transient: exactly one attempt.
+    new_file.update.assert_called_once()
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert len(ctx.migration_state.skipped_resources) == 1
+    reason = ctx.migration_state.skipped_resources[0].reason
+    assert "timestamp update was rejected" in reason
+    # The sent values are recorded — often the only way to diagnose a destination-side 400.
+    assert "starting_timestamp=0" in reason
+    assert "ending_timestamp=1" in reason
+
+
+def test_unexpected_copy_failure_is_recorded_and_does_not_abort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any copy failure logs-and-continues: the asset task survives, and a rerun re-attempts the file."""
+    _no_sleep(monkeypatch)
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(11))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+    destination_video.add_from_io.side_effect = requests.exceptions.ReadTimeout(
+        "HTTPSConnectionPool(host='example.invalid', port=443): Read timed out."
     )
 
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
-    new_file.poll_until_ingestion_completed.assert_called_once_with(timeout=timedelta(seconds=5))
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "copy failed" in ctx.migration_state.skipped_resources[0].reason
+
+
+def test_rerun_success_clears_stale_skip_from_earlier_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A resource that failed transiently last run and succeeds this run is not still reported as skipped."""
+    _mock_stream_response(monkeypatch)
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(12))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+    ctx.migration_state.record_skip(ResourceType.VIDEO_FILE, source_file.rid, "copy failed: transient")
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(120)
+    new_file.poll_until_ingestion_completed.return_value = None
+    destination_video = _make_destination_video(new_file)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
 
 
 def test_parallel_runner_passes_video_ingest_timeout_to_context(

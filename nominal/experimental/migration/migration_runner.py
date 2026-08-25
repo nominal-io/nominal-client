@@ -189,7 +189,9 @@ class MigrationRunner:
 def log_skipped_resources(migration_state: MigrationState) -> None:
     """Summarize skips at the end of a run, so a partial migration is never mistaken for a complete one.
 
-    Sourced from the persisted state, so a resumed run still reports what earlier attempts skipped.
+    Sourced from the persisted state, so a resumed run still reports what earlier attempts
+    skipped — except entries superseded via set_skip (video files report only their latest
+    outcome).
     """
     if not migration_state.skipped_resources:
         return
