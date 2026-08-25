@@ -202,14 +202,12 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
                 )
             if (
                 api_video_file.segment_metadata.min_absolute_timestamp is None
-                or api_video_file.segment_metadata.max_absolute_timestamp is None
                 or api_video_file.segment_metadata.scale_factor is None
-                or api_video_file.segment_metadata.media_frame_rate is None
             ):
                 raise NominalVideoFileMetadataError(
                     f"video file {self.rid!r} has incomplete segment metadata: {api_video_file.segment_metadata}"
                 )
-            # Everything comes from segment metadata, never from the origin manifest's declared
+            # Both values come from segment metadata, never from the origin manifest's declared
             # start: origin metadata is frozen at original ingest, while start-time and scale
             # edits rewrite the segments — so the segments are the file's current timing truth,
             # and mixing the two sources produces inconsistent options for any file whose start
@@ -218,11 +216,7 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
                 starting_timestamp=_SecondsNanos.from_api(
                     api_video_file.segment_metadata.min_absolute_timestamp
                 ).to_nanoseconds(),
-                ending_timestamp=_SecondsNanos.from_api(
-                    api_video_file.segment_metadata.max_absolute_timestamp
-                ).to_nanoseconds(),
                 scaling_factor=api_video_file.segment_metadata.scale_factor,
-                true_framerate=api_video_file.segment_metadata.media_frame_rate,
             )
             return (None, video_file_ingest_options)
 
