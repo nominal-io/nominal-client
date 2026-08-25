@@ -14,6 +14,13 @@ Tests cover:
 Run with:
     uv run pytest tests/e2e/migration/ \
         --source-profile=<prod> --dest-profile=<staging> -v
+
+Run the dataset-owner impersonation check with:
+    uv run pytest tests/e2e/migration/test_migration.py \
+        -k dataset_owner_with_impersonation \
+        --source-profile=<source> --dest-profile=<destination> \
+        --impersonation-dest-user-rid=<destination-user-rid> \
+        --fail-on-skip -v
 """
 
 from __future__ import annotations
@@ -39,8 +46,13 @@ from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
+from nominal.experimental.dataset_utils import get_dataset_owner_rid
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+from nominal.experimental.migration.migration_cli import (
+    ImpersonationConfig,
+    build_destination_client_resolver,
+)
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
@@ -1019,3 +1031,54 @@ def test_migrate_maps_checklist_assignee_without_impersonation(
         dest_client._clients.datareview.get(dest_client._clients.auth_header, dest_review_rid),
     )
     register_cleanup(dest_review.archive)
+
+
+def test_migrate_preserves_dataset_owner_with_impersonation(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+    pytestconfig,
+):
+    """A migrated dataset is owned by the mapped destination user, not the migration caller.
+
+    Requires --impersonation-dest-user-rid to name an active destination user and a
+    destination profile whose caller may impersonate that user.
+    """
+    dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
+    if not dest_user_rid:
+        pytest.skip("--impersonation-dest-user-rid required")
+
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_dataset = _create_source_dataset(source_client, register_cleanup, source_asset)
+    actual_source_owner_rid = get_dataset_owner_rid(source_dataset)
+    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid") or actual_source_owner_rid
+    assert actual_source_owner_rid == source_user_rid, (
+        "--impersonation-source-user-rid must match the owner of the source dataset"
+    )
+
+    destination_client_resolver = build_destination_client_resolver(
+        dest_client,
+        ImpersonationConfig(
+            enabled=True,
+            source_to_destination_user_rids={source_user_rid: dest_user_rid},
+        ),
+    )
+    assert destination_client_resolver is not None
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        destination_client_resolver=destination_client_resolver,
+        migration_state_path=tmp_path / "state.json",
+    )
+    runner.run_migration()
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+    dest_dataset_rid = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid)
+    assert dest_dataset_rid is not None
+    dest_dataset = dest_client.get_dataset(dest_dataset_rid)
+    register_cleanup(dest_dataset.archive)
+
+    assert get_dataset_owner_rid(dest_dataset) == dest_user_rid
