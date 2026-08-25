@@ -63,6 +63,7 @@ def _timestamp_options() -> MagicMock:
     options = MagicMock()
     options.starting_timestamp = 0
     options.ending_timestamp = 1
+    options.scaling_factor = 2.0
     return options
 
 
@@ -156,7 +157,10 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert ctx.migration_state.skipped_resources == []
-    new_file.update.assert_called_once()
+    # Timing is set from the source's defining pair (start + scale), never the segment-derived
+    # ending: segment absolutes go stale if the source's declared start was edited after
+    # segmentation, producing an inverted start/end pair the destination rejects.
+    new_file.update.assert_called_once_with(starting_timestamp=0, scale_factor=2.0)
 
 
 def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -367,7 +371,7 @@ def test_rejected_timestamp_update_records_mapping_and_skip(monkeypatch: pytest.
     assert "timestamp update was rejected" in reason
     # The sent values are recorded — often the only way to diagnose a destination-side 400.
     assert "starting_timestamp=0" in reason
-    assert "ending_timestamp=1" in reason
+    assert "scale_factor=2.0" in reason
 
 
 def test_unexpected_copy_failure_is_recorded_and_does_not_abort(monkeypatch: pytest.MonkeyPatch) -> None:
