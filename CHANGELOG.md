@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.162.0](https://github.com/nominal-io/nominal-client/compare/v1.161.0...v1.162.0) (2026-08-25)
+
+
+### Features
+
+* retry transient failures and log-and-continue in video file migration ([#934](https://github.com/nominal-io/nominal-client/issues/934)) ([6b73f89](https://github.com/nominal-io/nominal-client/commit/6b73f89c9619e271e1590cb5a55a279499ef494d))
+
+
+### Bug Fixes
+
+* **migration:** preserve dataset owners during impersonation ([#935](https://github.com/nominal-io/nominal-client/issues/935)) ([73d2a7e](https://github.com/nominal-io/nominal-client/commit/73d2a7ede58e0249e4b3b6a54f33990a0f44632c))
+
 ## [1.161.0](https://github.com/nominal-io/nominal-client/compare/v1.160.0...v1.161.0) (2026-08-18)
 
 
