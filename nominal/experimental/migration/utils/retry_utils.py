@@ -29,11 +29,15 @@ DEFAULT_MAX_ATTEMPTS = 5
 DEFAULT_BACKOFF_BASE_SECONDS = 1.0
 DEFAULT_BACKOFF_CAP_SECONDS = 60.0
 
-# 429 is throttling; the 5xx set covers transient server-side failures. 4xx (other than 429)
-# means the request itself is wrong and will fail identically on every attempt.
-_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+# 408/429 are timeout and throttling; every 5xx is server-side, including codes proxies invent
+# (e.g. CDN 520–524). Enumerating specific 5xx codes is what left 502 unretried in the conjure
+# client's forcelist — match on the class instead. Any other 4xx means the request itself is
+# wrong and will fail identically on every attempt. Mirrors _is_transient_upload_error in
+# nominal/experimental/ingest/_multipart_uploader.py.
+_RETRYABLE_EXACT_STATUS_CODES = frozenset({408, 429})
 
-# The standard retryable gRPC statuses: server unreachable/overloaded or the deadline hit.
+# The standard retryable gRPC statuses: server unreachable, quota/throttle exhausted, or the
+# deadline hit.
 _RETRYABLE_GRPC_STATUS_CODES = frozenset(
     {grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.RESOURCE_EXHAUSTED}
 )
@@ -43,7 +47,9 @@ def is_transient_error(error: BaseException) -> bool:
     """Whether an exception is a transient network/server failure worth retrying."""
     # Covers ConjureHTTPError too: it subclasses HTTPError and keeps `.response`.
     if isinstance(error, requests.exceptions.HTTPError):
-        return error.response is not None and error.response.status_code in _RETRYABLE_STATUS_CODES
+        return error.response is not None and (
+            error.response.status_code in _RETRYABLE_EXACT_STATUS_CODES or error.response.status_code >= 500
+        )
     # Requests-level connection/timeout failures, plus the urllib3/socket errors that
     # streaming a source download straight into an upload surfaces without the requests
     # wrappers (e.g. ProtocolError(ConnectionResetError(104, ...))).
@@ -73,7 +79,10 @@ def is_transient_error(error: BaseException) -> bool:
     # errors (the group itself has no __cause__), and each member — like translate_grpc_errors'
     # output — chains the real failure via __cause__. Classify by what's underneath.
     if isinstance(error, BaseExceptionGroup):
-        return any(is_transient_error(inner) for inner in error.exceptions)
+        # A group is a set of failed attempts: transient only if every attempt was, matching
+        # _is_transient_upload_error — a permanent failure anywhere (e.g. a 403 from rotated
+        # credentials) means a retry would spend the whole transfer to fail the same way.
+        return all(is_transient_error(inner) for inner in error.exceptions)
     if error.__cause__ is not None:
         return is_transient_error(error.__cause__)
     return False

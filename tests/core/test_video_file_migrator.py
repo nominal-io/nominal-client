@@ -27,6 +27,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.retry_utils import DEFAULT_MAX_ATTEMPTS
 from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
 
 _STACK = "cerulean-staging"
@@ -336,6 +337,8 @@ def test_exhausted_poll_retries_record_mapping_and_skip(monkeypatch: pytest.Monk
     VideoFileMigrator(ctx).copy_from(source_file, destination_video)
 
     assert destination_video.add_from_io.call_count == 1
+    # The full budget was spent before giving up — otherwise this test passes with retries off.
+    assert new_file.poll_until_ingestion_completed.call_count == DEFAULT_MAX_ATTEMPTS
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert len(ctx.migration_state.skipped_resources) == 1
     assert "could not be confirmed" in ctx.migration_state.skipped_resources[0].reason

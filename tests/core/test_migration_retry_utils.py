@@ -64,13 +64,16 @@ def _grpc_translated_error(code: grpc.StatusCode, exc_type: type[NominalError] =
     return error
 
 
-def _multipart_upload_failed(root_cause: BaseException) -> NominalMultipartUploadFailed:
+def _multipart_upload_failed(*root_causes: BaseException) -> NominalMultipartUploadFailed:
     """Build the shape put_multipart_upload raises: an ExceptionGroup of per-attempt wrappers,
     each chaining the real failure via __cause__; the group itself has no __cause__.
     """
-    attempt_error = NominalMultipartUploadError(f"part 1, attempt 3: {root_cause}")
-    attempt_error.__cause__ = root_cause
-    return NominalMultipartUploadFailed("Multipart upload failed after 3 attempts", [attempt_error])
+    attempt_errors = []
+    for attempt, root_cause in enumerate(root_causes, start=1):
+        attempt_error = NominalMultipartUploadError(f"part 1, attempt {attempt}: {root_cause}")
+        attempt_error.__cause__ = root_cause
+        attempt_errors.append(attempt_error)
+    return NominalMultipartUploadFailed("Multipart upload failed after retries", attempt_errors)
 
 
 @pytest.mark.parametrize(
@@ -84,12 +87,17 @@ def _multipart_upload_failed(root_cause: BaseException) -> NominalMultipartUploa
         _http_error(502),
         _http_error(503),
         _http_error(429),
+        _http_error(408),
+        # 5xx match on the class, not an enumeration — proxies invent codes (CDN 520-524).
+        _http_error(520),
         # The ingest status poll goes through conjure — if ConjureHTTPError ever stops carrying
         # `.response`, 502s during polling silently become permanent. Pin the real class.
         _conjure_http_error(502),
         _conjure_http_error(503, body={"errorCode": "UNAVAILABLE", "errorName": "Default:Unavailable"}),
-        # The multipart upload leg is gRPC: connection refused arrives as a NominalError
-        # chaining an UNAVAILABLE grpc.RpcError (via translate_grpc_errors).
+        # The upload leg's first destination call (workspace resolution in add_from_io) is
+        # gRPC: the live e2e test (test_retry_e2e.py) hit exactly this shape — connection
+        # refused arriving as a NominalError chaining an UNAVAILABLE grpc.RpcError via
+        # translate_grpc_errors.
         _grpc_translated_error(grpc.StatusCode.UNAVAILABLE),
         _grpc_translated_error(grpc.StatusCode.DEADLINE_EXCEEDED),
         _FakeRpcError(grpc.StatusCode.UNAVAILABLE),
@@ -116,6 +124,9 @@ def test_transient_errors_are_classified_transient(error: BaseException) -> None
         _grpc_translated_error(grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
         _grpc_translated_error(grpc.StatusCode.NOT_FOUND),
         _multipart_upload_failed(_conjure_http_error(403)),
+        # A permanent failure anywhere in the attempt group decides: retrying the whole
+        # transfer would fail the same way (e.g. rotated credentials after one 502).
+        _multipart_upload_failed(_conjure_http_error(502), _conjure_http_error(403)),
         NominalIngestFailed("Video failed to segment. (VideoSegmenter:Internal)"),
         ValueError("bad ingest options"),
     ],
