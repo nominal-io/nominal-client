@@ -33,6 +33,26 @@ class VideoFileCopyOutcome:
     skip_reason: str | None = None
 
 
+def _source_ingest_error(source_video_file: VideoFile) -> str | None:
+    """The source file's own ingest error, if it has one.
+
+    A file whose ingest failed at the source is made of bytes the platform already refused
+    to process once — re-ingesting them at a destination fails the same way (observed in
+    production as a destination-side segmentation failure whose source file turned out to
+    have failed ingestion itself).
+    """
+    ingest_status = retry_transient(
+        lambda: source_video_file._clients.video_file.get_ingest_status(
+            source_video_file._clients.auth_header, source_video_file.rid
+        ),
+        description=f"source ingest status for video file {source_video_file.rid}",
+    ).ingest_status
+    if ingest_status.type != "error":
+        return None
+    error = ingest_status.error
+    return f"{error.message} ({error.error_type})" if error is not None else "no error details"
+
+
 def copy_video_file_to_video_dataset(
     source_video_file: VideoFile,
     destination_video_dataset: Video,
@@ -40,6 +60,23 @@ def copy_video_file_to_video_dataset(
 ) -> VideoFileCopyOutcome:
     log_extras = {"destination_client_workspace": destination_video_dataset._clients.workspace_rid}
     logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
+
+    ingest_error = _source_ingest_error(source_video_file)
+    if ingest_error is not None:
+        logger.warning(
+            "Skipping video file %s (rid: %s): its own ingest failed at the source: %s",
+            source_video_file.name,
+            source_video_file.rid,
+            ingest_error,
+            extra=log_extras,
+        )
+        return VideoFileCopyOutcome(
+            file=None,
+            skip_reason=(
+                f"unusable at source: its own ingest failed there: {ingest_error} — "
+                f"re-ingesting it elsewhere would fail the same way"
+            ),
+        )
 
     try:
         # NominalVideoFileMetadataError is permanent, so it still raises on the first attempt.

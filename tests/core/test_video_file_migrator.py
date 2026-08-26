@@ -49,7 +49,15 @@ def _make_source_video_file(rid: str, name: str = "video.mp4") -> MagicMock:
     source_file.name = name
     source_file.description = None
     source_file._clients.catalog.get_video_file_uri.return_value.uri = "https://example.invalid/video.mp4"
+    source_file._clients.video_file.get_ingest_status.return_value.ingest_status.type = "success"
     return source_file
+
+
+def _mark_source_ingest_failed(source_file: MagicMock, message: str, error_type: str) -> None:
+    status = source_file._clients.video_file.get_ingest_status.return_value.ingest_status
+    status.type = "error"
+    status.error.message = message
+    status.error.error_type = error_type
 
 
 def _make_destination_video(new_file: MagicMock) -> MagicMock:
@@ -116,6 +124,42 @@ def test_skipped_source_video_is_recorded_as_skip_and_not_mapped() -> None:
     assert [(skip.resource_type, skip.source_rid) for skip in ctx.migration_state.skipped_resources] == [
         (ResourceType.VIDEO_FILE.value, source_file.rid)
     ]
+
+
+def test_source_with_failed_ingest_is_skipped_before_transfer() -> None:
+    """A file whose ingest failed at the source is bytes the platform already refused once —
+    re-ingesting them elsewhere fails the same way, so skip before moving anything.
+    """
+    source_file = _make_source_video_file(_video_file_rid(19))
+    _mark_source_ingest_failed(
+        source_file, "Video failed to segment. Please contact support for assistance.", "VideoSegmenter:Internal"
+    )
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    outcome = copy_video_file_to_video_dataset(source_file, destination_video)
+
+    assert outcome.file is None
+    assert outcome.skip_reason is not None
+    assert "its own ingest failed there" in outcome.skip_reason
+    assert "VideoSegmenter:Internal" in outcome.skip_reason
+    # Nothing was read beyond the status, and nothing was transferred or created.
+    source_file._get_file_ingest_options.assert_not_called()
+    source_file._clients.catalog.get_video_file_uri.assert_not_called()
+    destination_video.add_from_io.assert_not_called()
+
+
+def test_source_with_failed_ingest_records_skip_and_no_mapping() -> None:
+    """The failed-at-source file lands in the end-of-run summary and a rerun re-checks it cheaply."""
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(20))
+    _mark_source_ingest_failed(source_file, "Video failed to segment.", "VideoSegmenter:Internal")
+
+    VideoFileMigrator(ctx).copy_from(source_file, MagicMock(_clients=MagicMock(workspace_rid="ws-rid")))
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "unusable at source" in ctx.migration_state.skipped_resources[0].reason
 
 
 def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
