@@ -62,8 +62,8 @@ def _source_ingest_error(source_video_file: VideoFile) -> str | None:
         return None
     if ingest_status.type != "error":
         return None
-    error = ingest_status.error
-    return f"{error.message} ({error.error_type})" if error is not None else "no error details"
+    status_error = ingest_status.error
+    return f"{status_error.message} ({status_error.error_type})" if status_error is not None else "no error details"
 
 
 def copy_video_file_to_video_dataset(
