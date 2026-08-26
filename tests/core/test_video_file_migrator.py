@@ -480,6 +480,28 @@ def test_rerun_success_clears_stale_skip_from_earlier_attempt(monkeypatch: pytes
     assert ctx.migration_state.skipped_resources == []
 
 
+def test_dry_run_predicts_skip_for_failed_source_ingest() -> None:
+    """The failed-at-source gate lives in the shared planner, so a dry run predicts the skip
+    with the source's real ingest error — before any real run wastes a transfer on it.
+    """
+    ctx = _make_context()
+    ctx.dry_run = True
+    source_file = _make_source_video_file(_video_file_rid(22))
+    _mark_source_ingest_failed(source_file, "Video failed to segment.", "VideoSegmenter:Internal")
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert len(ctx.migration_state.skipped_resources) == 1
+    reason = ctx.migration_state.skipped_resources[0].reason
+    assert "its own ingest failed there" in reason
+    assert "VideoSegmenter:Internal" in reason
+    source_file._get_file_ingest_options.assert_not_called()
+    destination_video.add_from_io.assert_not_called()
+
+
 def test_dry_run_predicts_skip_for_unusable_source() -> None:
     """A dry run records the same skip a real run would, so its summary forecasts the real one."""
     ctx = _make_context()
