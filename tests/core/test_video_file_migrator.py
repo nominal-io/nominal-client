@@ -62,7 +62,7 @@ def _make_destination_video(new_file: MagicMock) -> MagicMock:
 def _timestamp_options() -> MagicMock:
     options = MagicMock()
     options.starting_timestamp = 0
-    options.ending_timestamp = 1
+    options.scaling_factor = 2.0
     return options
 
 
@@ -141,6 +141,10 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
 
 
 def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A clean copy records the mapping and sets timing from the source's defining pair —
+    start + scale, never a segment-derived absolute ending, which goes stale if the source's
+    declared start was edited after segmentation (the inverted-bounds production failure).
+    """
     ctx = _make_context()
     source_file = _make_source_video_file(_video_file_rid(4))
     source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
@@ -156,7 +160,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert ctx.migration_state.skipped_resources == []
-    new_file.update.assert_called_once()
+    new_file.update.assert_called_once_with(starting_timestamp=0, scale_factor=2.0)
 
 
 def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -367,7 +371,7 @@ def test_rejected_timestamp_update_records_mapping_and_skip(monkeypatch: pytest.
     assert "timestamp update was rejected" in reason
     # The sent values are recorded — often the only way to diagnose a destination-side 400.
     assert "starting_timestamp=0" in reason
-    assert "ending_timestamp=1" in reason
+    assert "scale_factor=2.0" in reason
 
 
 def test_unexpected_copy_failure_is_recorded_and_does_not_abort(monkeypatch: pytest.MonkeyPatch) -> None:

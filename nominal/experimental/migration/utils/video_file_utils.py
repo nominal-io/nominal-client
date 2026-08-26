@@ -163,29 +163,35 @@ def _finish_copy(
         # Applied even on timeout: the copy is recorded as migrated either way, so no rerun
         # will come back to set the video's timing. Skipped when ingest failed outright —
         # the file needs hand-checking anyway.
+        #
+        # The scale factor, not the segment-derived ending timestamp, is sent: segment
+        # absolutes are computed at ingest and go stale if the declared start is later edited
+        # (observed in production as an inverted start/end pair the destination rejected with
+        # "Invalid bounds"). start + scale is the source's self-consistent defining pair, and
+        # yields the segment ending whenever the source is healthy.
         try:
             retry_transient(
                 lambda: new_file.update(
                     starting_timestamp=timestamp_options.starting_timestamp,
-                    ending_timestamp=timestamp_options.ending_timestamp,
+                    scale_factor=timestamp_options.scaling_factor,
                 ),
                 description=f"timestamp update for video file {new_file.rid}",
             )
         except Exception as error:
-            # The sent values come from the source's segment metadata; recording them here is
-            # often the only way to diagnose a destination-side rejection (the server may not
-            # say which argument it refused).
+            # The sent values come from the source's metadata; recording them here is often
+            # the only way to diagnose a destination-side rejection (the server may not say
+            # which argument it refused).
             logger.warning(
-                "Timestamp update failed for video file (rid: %s), sent starting_timestamp=%s ending_timestamp=%s: %s",
+                "Timestamp update failed for video file (rid: %s), sent starting_timestamp=%s scale_factor=%s: %s",
                 new_file.rid,
                 timestamp_options.starting_timestamp,
-                timestamp_options.ending_timestamp,
+                timestamp_options.scaling_factor,
                 error,
             )
             skip_reasons.append(
                 f"the timestamp update was rejected: {error} "
                 f"(sent starting_timestamp={timestamp_options.starting_timestamp}, "
-                f"ending_timestamp={timestamp_options.ending_timestamp}); "
+                f"scale_factor={timestamp_options.scaling_factor}); "
                 f"a rerun will not retry it — set timing on {new_file.rid} by hand"
             )
 

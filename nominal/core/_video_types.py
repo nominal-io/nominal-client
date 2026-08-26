@@ -15,10 +15,15 @@ class McapVideoDetails:
 
 @dataclass(init=True, repr=False, eq=False, order=False, unsafe_hash=False)
 class TimestampOptions:
+    """A video file's current timing, as (start, scale) — the pair a re-ingest applies directly.
+
+    Both values come from segment metadata; an absolute ending is deliberately not carried,
+    since it is derivable (start + media duration x scale) and a second absolute invites the
+    mixed-source inconsistency that motivated this shape.
+    """
+
     starting_timestamp: IntegralNanosecondsUTC
-    ending_timestamp: IntegralNanosecondsUTC
     scaling_factor: float
-    true_framerate: float
 
 
 def _scale_parameter(
