@@ -61,6 +61,8 @@ Optional flags:
 - `--max-workers <n>` — number of assets/templates to migrate concurrently (default: 1). Start with 2–4
   workers and adjust based on performance and API rate limits.
 - `--dry-run` — log what would be created without writing anything to the destination tenant or state file.
+  Video files are evaluated through the real read path, so the end-of-run skip summary predicts what a
+  real run would flag (unusable files, timing payloads) before any bytes move.
 
 **`nom migrate summary`** — summarize a migration as a markdown table. Fully offline: no profiles or
 tokens required. Provide exactly one source:
