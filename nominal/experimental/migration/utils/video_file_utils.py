@@ -40,13 +40,26 @@ def _source_ingest_error(source_video_file: VideoFile) -> str | None:
     to process once — re-ingesting them at a destination fails the same way (observed in
     production as a destination-side segmentation failure whose source file turned out to
     have failed ingestion itself).
+
+    A failed lookup is swallowed: this gate exists to avoid wasting a transfer, not as a
+    prerequisite for one. If the status endpoint is unavailable — or the file predates
+    ingest-status tracking — the copy proceeds, and a genuinely bad file still surfaces
+    through the destination-ingest skip path.
     """
-    ingest_status = retry_transient(
-        lambda: source_video_file._clients.video_file.get_ingest_status(
-            source_video_file._clients.auth_header, source_video_file.rid
-        ),
-        description=f"source ingest status for video file {source_video_file.rid}",
-    ).ingest_status
+    try:
+        ingest_status = retry_transient(
+            lambda: source_video_file._clients.video_file.get_ingest_status(
+                source_video_file._clients.auth_header, source_video_file.rid
+            ),
+            description=f"source ingest status for video file {source_video_file.rid}",
+        ).ingest_status
+    except Exception as error:
+        logger.warning(
+            "Could not check source ingest status for video file (rid: %s); proceeding with the copy: %s",
+            source_video_file.rid,
+            error,
+        )
+        return None
     if ingest_status.type != "error":
         return None
     error = ingest_status.error
@@ -61,6 +74,10 @@ def copy_video_file_to_video_dataset(
     log_extras = {"destination_client_workspace": destination_video_dataset._clients.workspace_rid}
     logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
 
+    # Deliberately ahead of the metadata gate below: a failed source ingest can leave
+    # (partial) segment metadata behind that passes that gate — the production incident file
+    # did, transferred cleanly, and only failed at the destination. Folding this check into
+    # the metadata handler would silently lose the fix.
     ingest_error = _source_ingest_error(source_video_file)
     if ingest_error is not None:
         logger.warning(

@@ -162,6 +162,28 @@ def test_source_with_failed_ingest_records_skip_and_no_mapping() -> None:
     assert "unusable at source" in ctx.migration_state.skipped_resources[0].reason
 
 
+def test_unavailable_source_ingest_status_does_not_block_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The status gate avoids wasted transfer; its own lookup failing (e.g. a legacy file with
+    no ingest-status record) must degrade to copying, not block a healthy file.
+    """
+    ctx = _make_context()
+    source_file = _make_source_video_file(_video_file_rid(21))
+    source_file._clients.video_file.get_ingest_status.side_effect = _http_error(404)
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+
+    new_file = MagicMock()
+    new_file.rid = _video_file_rid(210)
+    new_file.poll_until_ingestion_completed.return_value = None
+    destination_video = _make_destination_video(new_file)
+
+    _mock_stream_response(monkeypatch)
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
+    assert ctx.migration_state.skipped_resources == []
+
+
 def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
     """A timed-out ingest is mapped (so a rerun does not re-upload) *and* reported as incomplete."""
     ctx = _make_context()
