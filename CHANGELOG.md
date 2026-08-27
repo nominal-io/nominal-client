@@ -5,7 +5,10 @@
 
 ### Features
 
-* bump nominal streaming version ([#941](https://github.com/nominal-io/nominal-client/issues/941)) ([4db1efc](https://github.com/nominal-io/nominal-client/commit/4db1efc71f76b13ea0286d2ee7070b9a5d9a3b41))
+* bump nominal streaming version used by "rust_experimental" streaming ([#941](https://github.com/nominal-io/nominal-client/issues/941)) ([4db1efc](https://github.com/nominal-io/nominal-client/commit/4db1efc71f76b13ea0286d2ee7070b9a5d9a3b41))
+  * This provides significant clientside speedups when enqueueing many points from dictionaries at a time, or when enqueueing single points.
+  * Users that were previously network-bound or input-bound will not see changes in overall throughput, but will see less CPU utilization.
+  * Ctrl+C used to immediately exit and dump any enqueued-but-not-sent data, will now wait until all data is flushed.
 
 ## [1.163.0](https://github.com/nominal-io/nominal-client/compare/v1.162.0...v1.163.0) (2026-08-27)
 
