@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.163.0](https://github.com/nominal-io/nominal-client/compare/v1.162.0...v1.163.0) (2026-08-27)
+
+
+### Features
+
+* predict video file outcomes in migration dry run ([#939](https://github.com/nominal-io/nominal-client/issues/939)) ([fe85d13](https://github.com/nominal-io/nominal-client/commit/fe85d137c48d391abd8fe560ae7466466a919064))
+* skip migrating video files whose source ingest failed ([#940](https://github.com/nominal-io/nominal-client/issues/940)) ([145c413](https://github.com/nominal-io/nominal-client/commit/145c413039433f952c73c7c2765951d6d8e1fd2e))
+
+
+### Bug Fixes
+
+* source video copy timing from segment metadata, not the as-ingested origin start ([#937](https://github.com/nominal-io/nominal-client/issues/937)) ([6b07d23](https://github.com/nominal-io/nominal-client/commit/6b07d23b7d5a0073d3cd296365539b5f51ee9efb))
+
 ## [1.162.0](https://github.com/nominal-io/nominal-client/compare/v1.161.0...v1.162.0) (2026-08-25)
 
 
