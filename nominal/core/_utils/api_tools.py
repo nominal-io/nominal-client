@@ -5,12 +5,24 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Any, Generic, Literal, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import (
+    Any,
+    Generic,
+    Literal,
+    Mapping,
+    Protocol,
+    Sequence,
+    TypeAlias,
+    TypedDict,
+    TypeVar,
+    runtime_checkable,
+)
 
 from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.protos.asset.v2 import asset_pb2
 
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
 
@@ -108,17 +120,31 @@ class LinkDict(TypedDict):
     title: NotRequired[str]
 
 
-def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
-    links_conjure = []
+def normalize_links(links: Sequence[str | Link | LinkDict]) -> list[tuple[str, str | None]]:
+    """Reduce every accepted link spelling -- url, (url, title), or dict -- to (url, title) pairs."""
+    normalized: list[tuple[str, str | None]] = []
     for link in links:
         if isinstance(link, tuple):
             url, title = link
-            links_conjure.append(scout_run_api.Link(url=url, title=title))
+            normalized.append((url, title))
         elif isinstance(link, dict):
-            links_conjure.append(scout_run_api.Link(url=link["url"], title=link.get("title")))
+            normalized.append((link["url"], link.get("title")))
         else:
-            links_conjure.append(scout_run_api.Link(url=link))
-    return links_conjure
+            normalized.append((link, None))
+    return normalized
+
+
+def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
+    return [scout_run_api.Link(url=url, title=title) for url, title in normalize_links(links)]
+
+
+def create_proto_links(links: Sequence[str | Link | LinkDict]) -> list[asset_pb2.Link]:
+    """The proto peer of `create_links`.
+
+    `Link` is currently declared per service and only the asset service has migrated, so this builds the
+    asset spelling. It collapses into `create_links` once `Link` becomes a shared type.
+    """
+    return [asset_pb2.Link(url=url, title=title) for url, title in normalize_links(links)]
 
 
 def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_compute_api.StringConstant]:
@@ -157,9 +183,3 @@ def filter_scopes(
     scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
 ) -> Sequence[scout_asset_api.DataScope]:
     return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
-
-
-def filter_scope_rids(scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in filter_scopes(scopes, scope_type)
-    }
