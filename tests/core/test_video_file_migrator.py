@@ -480,6 +480,83 @@ def test_rerun_success_clears_stale_skip_from_earlier_attempt(monkeypatch: pytes
     assert ctx.migration_state.skipped_resources == []
 
 
+def test_dry_run_predicts_skip_for_failed_source_ingest() -> None:
+    """The failed-at-source gate lives in the shared planner, so a dry run predicts the skip
+    with the source's real ingest error — before any real run wastes a transfer on it.
+    """
+    ctx = _make_context()
+    ctx.dry_run = True
+    source_file = _make_source_video_file(_video_file_rid(22))
+    _mark_source_ingest_failed(source_file, "Video failed to segment.", "VideoSegmenter:Internal")
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert len(ctx.migration_state.skipped_resources) == 1
+    reason = ctx.migration_state.skipped_resources[0].reason
+    assert "its own ingest failed there" in reason
+    assert "VideoSegmenter:Internal" in reason
+    source_file._get_file_ingest_options.assert_not_called()
+    destination_video.add_from_io.assert_not_called()
+
+
+def test_dry_run_predicts_skip_for_unusable_source() -> None:
+    """A dry run records the same skip a real run would, so its summary forecasts the real one."""
+    ctx = _make_context()
+    ctx.dry_run = True
+    source_file = _make_source_video_file(_video_file_rid(16))
+    source_file._get_file_ingest_options.side_effect = NominalVideoFileMetadataError("no segment metadata")
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert [skipped.reason for skipped in ctx.migration_state.skipped_resources] == [
+        "unusable at source: no segment metadata"
+    ]
+    destination_video.add_from_io.assert_not_called()
+
+
+def test_dry_run_predicts_clean_copy_without_transfer() -> None:
+    """A healthy file predicts a clean copy with no download, upload, or destination call.
+
+    The streamed download is deliberately not stubbed: if the dry run ever transferred, the
+    real requests.get against the fake URI would fail this test loudly.
+    """
+    ctx = _make_context()
+    ctx.dry_run = True
+    source_file = _make_source_video_file(_video_file_rid(17))
+    source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert ctx.migration_state.skipped_resources == []
+    destination_video.add_from_io.assert_not_called()
+    source_file._clients.catalog.get_video_file_uri.assert_not_called()
+
+
+def test_dry_run_prediction_failure_records_skip_not_abort() -> None:
+    """An unexpected read failure during prediction is flagged, not raised — the dry run continues."""
+    ctx = _make_context()
+    ctx.dry_run = True
+    source_file = _make_source_video_file(_video_file_rid(18))
+    source_file._get_file_ingest_options.side_effect = RuntimeError("unexpected manifest shape")
+    destination_video = MagicMock()
+    destination_video._clients.workspace_rid = "ws-rid"
+
+    VideoFileMigrator(ctx).copy_from(source_file, destination_video)
+
+    assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) is None
+    assert len(ctx.migration_state.skipped_resources) == 1
+    assert "copy would fail" in ctx.migration_state.skipped_resources[0].reason
+
+
 def test_parallel_runner_passes_video_ingest_timeout_to_context(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

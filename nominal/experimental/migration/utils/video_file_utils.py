@@ -66,14 +66,33 @@ def _source_ingest_error(source_video_file: VideoFile) -> str | None:
     return f"{status_error.message} ({status_error.error_type})" if status_error is not None else "no error details"
 
 
-def copy_video_file_to_video_dataset(
-    source_video_file: VideoFile,
-    destination_video_dataset: Video,
-    poll_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
-) -> VideoFileCopyOutcome:
-    log_extras = {"destination_client_workspace": destination_video_dataset._clients.workspace_rid}
-    logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
+@dataclass(frozen=True)
+class VideoFileCopyPlan:
+    """What copying a video file would do, computed from source reads alone.
 
+    Either `skip_reason` is set (the copy would be skipped and flagged), or the ingest
+    options carry the timing the copy would apply. Shared by the real copy and dry run,
+    so a dry run's predictions come from the same code path a real run executes.
+    """
+
+    mcap_video_details: McapVideoDetails | None = None
+    timestamp_options: TimestampOptions | None = None
+    skip_reason: str | None = None
+
+    def describe(self) -> str:
+        if self.skip_reason is not None:
+            return self.skip_reason
+        if self.mcap_video_details is not None:
+            return f"as mcap (topic {self.mcap_video_details.mcap_channel_locator_topic!r})"
+        assert self.timestamp_options is not None
+        return (
+            f"with starting_timestamp={self.timestamp_options.starting_timestamp} "
+            f"scale_factor={self.timestamp_options.scaling_factor}"
+        )
+
+
+def plan_video_file_copy(source_video_file: VideoFile) -> VideoFileCopyPlan:
+    """Resolve what a copy of this file would do, from source reads alone (no writes)."""
     # Deliberately ahead of the metadata gate below: a failed source ingest can leave
     # (partial) segment metadata behind that passes that gate — the production incident file
     # did, transferred cleanly, and only failed at the destination. Folding this check into
@@ -85,14 +104,12 @@ def copy_video_file_to_video_dataset(
             source_video_file.name,
             source_video_file.rid,
             ingest_error,
-            extra=log_extras,
         )
-        return VideoFileCopyOutcome(
-            file=None,
+        return VideoFileCopyPlan(
             skip_reason=(
                 f"unusable at source: its own ingest failed there: {ingest_error} — "
                 f"re-ingesting it elsewhere would fail the same way"
-            ),
+            )
         )
 
     try:
@@ -108,9 +125,24 @@ def copy_video_file_to_video_dataset(
             source_video_file.name,
             source_video_file.rid,
             error,
-            extra=log_extras,
         )
-        return VideoFileCopyOutcome(file=None, skip_reason=f"unusable at source: {error}")
+        return VideoFileCopyPlan(skip_reason=f"unusable at source: {error}")
+    return VideoFileCopyPlan(mcap_video_details=mcap_video_details, timestamp_options=timestamp_options)
+
+
+def copy_video_file_to_video_dataset(
+    source_video_file: VideoFile,
+    destination_video_dataset: Video,
+    poll_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+) -> VideoFileCopyOutcome:
+    log_extras = {"destination_client_workspace": destination_video_dataset._clients.workspace_rid}
+    logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
+
+    plan = plan_video_file_copy(source_video_file)
+    if plan.skip_reason is not None:
+        return VideoFileCopyOutcome(file=None, skip_reason=plan.skip_reason)
+    mcap_video_details = plan.mcap_video_details
+    timestamp_options = plan.timestamp_options
 
     # Download + upload retry as one unit: the source download is streamed straight into the
     # upload, so a connection broken in either leg restarts from a fresh presigned URI. A
