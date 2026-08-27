@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.164.0](https://github.com/nominal-io/nominal-client/compare/v1.163.0...v1.164.0) (2026-08-27)
+
+
+### Features
+
+* bump nominal streaming version ([#941](https://github.com/nominal-io/nominal-client/issues/941)) ([4db1efc](https://github.com/nominal-io/nominal-client/commit/4db1efc71f76b13ea0286d2ee7070b9a5d9a3b41))
+
 ## [1.163.0](https://github.com/nominal-io/nominal-client/compare/v1.162.0...v1.163.0) (2026-08-27)
 
 
