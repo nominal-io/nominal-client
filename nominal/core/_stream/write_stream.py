@@ -363,7 +363,7 @@ class WriteStream(WriteStreamBase[StreamType]):
             now = time.monotonic()
 
             last_batch_time = self._thread_safe_batch.last_time
-            timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
+            timeout = max(self.max_wait.total_seconds() - (now - last_batch_time), 0)
             self._stop.wait(timeout=timeout)
 
             # check if flush has been called in the mean time

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -7,7 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.core._stream.batch_processor_proto import process_batch
-from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, WriteStream, infer_point_type
+from nominal.core._stream.write_stream import (
+    BatchItem,
+    DataItem,
+    PointType,
+    ThreadSafeBatch,
+    WriteStream,
+    infer_point_type,
+)
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.protos.write.nominal_write_pb2 import (
@@ -1014,3 +1022,34 @@ def test_infer_point_type_dict():
     assert infer_point_type({"key": "value"}) == PointType.STRUCT
     assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
     assert infer_point_type({}) == PointType.STRUCT
+
+
+@pytest.mark.parametrize(
+    "max_wait, expected_timeout",
+    [
+        (timedelta(milliseconds=500), 0.5),
+        (timedelta(milliseconds=1500), 1.5),
+        (timedelta(seconds=5), 5.0),
+        (timedelta(minutes=2), 120.0),
+        (timedelta(days=1), 86400.0),
+    ],
+)
+def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_timeout):
+    """max_wait converts to seconds in full: days scale up, fractions are preserved."""
+    stop = threading.Event()
+
+    # Stop after one iteration, and record what that iteration asked to wait for.
+    with patch.object(stop, "wait", side_effect=lambda timeout: stop.set()) as mock_wait:
+        stream = WriteStream(
+            batch_size=10,
+            max_wait=max_wait,
+            _process_batch=MagicMock(),
+            _executor=MagicMock(),
+            _thread_safe_batch=ThreadSafeBatch(),
+            _stop=stop,
+            _pending_jobs=threading.BoundedSemaphore(3),
+        )
+        stream._process_timeout_batches()
+
+    mock_wait.assert_called_once()
+    assert mock_wait.call_args.kwargs["timeout"] == pytest.approx(expected_timeout, abs=0.05)
