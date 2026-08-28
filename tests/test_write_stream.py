@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -1014,3 +1015,41 @@ def test_infer_point_type_dict():
     assert infer_point_type({"key": "value"}) == PointType.STRUCT
     assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
     assert infer_point_type({}) == PointType.STRUCT
+
+
+@pytest.mark.parametrize(
+    "max_wait, expected_timeout",
+    [
+        (timedelta(milliseconds=500), 0.5),
+        (timedelta(milliseconds=1500), 1.5),
+        (timedelta(minutes=2), 120.0),
+        (timedelta(days=1), 86400.0),
+    ],
+)
+def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_timeout):
+    """max_wait converts to seconds in full: days scale up, fractions are preserved."""
+    # Freeze the clock at the batch's last swap: no elapsed time to subtract, so the
+    # computed wait is exactly the converted max_wait rather than a wall-clock race.
+    now = 1000.0
+
+    batch = MagicMock()
+    batch.last_time = now
+    batch.swap.return_value = []
+
+    stop = MagicMock(spec=threading.Event)
+    stop.is_set.side_effect = [False, True]  # run exactly one iteration
+
+    stream = WriteStream(
+        batch_size=10,
+        max_wait=max_wait,
+        _process_batch=MagicMock(),
+        _executor=MagicMock(),
+        _thread_safe_batch=batch,
+        _stop=stop,
+        _pending_jobs=threading.BoundedSemaphore(3),
+    )
+    with patch("nominal.core._stream.write_stream.time.monotonic", return_value=now):
+        stream._process_timeout_batches()
+
+    stop.wait.assert_called_once()
+    assert stop.wait.call_args.kwargs["timeout"] == expected_timeout
