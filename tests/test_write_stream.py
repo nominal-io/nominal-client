@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -1029,8 +1028,12 @@ def test_infer_point_type_dict():
 )
 def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_timeout):
     """max_wait converts to seconds in full: days scale up, fractions are preserved."""
+    # Freeze the clock at the batch's last swap: no elapsed time to subtract, so the
+    # computed wait is exactly the converted max_wait rather than a wall-clock race.
+    now = 1000.0
+
     batch = MagicMock()
-    batch.last_time = time.monotonic()
+    batch.last_time = now
     batch.swap.return_value = []
 
     stop = MagicMock(spec=threading.Event)
@@ -1045,7 +1048,8 @@ def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_tim
         _stop=stop,
         _pending_jobs=threading.BoundedSemaphore(3),
     )
-    stream._process_timeout_batches()
+    with patch("nominal.core._stream.write_stream.time.monotonic", return_value=now):
+        stream._process_timeout_batches()
 
     stop.wait.assert_called_once()
-    assert stop.wait.call_args.kwargs["timeout"] == pytest.approx(expected_timeout, abs=1e-3)
+    assert stop.wait.call_args.kwargs["timeout"] == expected_timeout
