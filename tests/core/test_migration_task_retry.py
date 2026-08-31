@@ -2,12 +2,13 @@
 
 A production migration lost two whole asset tasks to a connection reset on a single workbook
 read — a call outside every per-operation retry. The executor is the safety net: transient
-task failures resubmit (copies resume from migration state), everything else still fails.
+task failures retry in place (copies resume from migration state), everything else still fails.
 """
 
 from __future__ import annotations
 
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -19,17 +20,15 @@ import urllib3.exceptions
 
 from nominal.experimental.migration.parallel_migration_executor import TASK_ATTEMPTS, MigrationTask, run_concurrent
 
-
-def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nominal.experimental.migration.parallel_migration_executor.time.sleep", lambda _seconds: None)
+_NO_SLEEP = lambda _delay: None  # noqa: E731
 
 
 def _reset() -> urllib3.exceptions.ProtocolError:
     return urllib3.exceptions.ProtocolError("Connection broken: ConnectionResetError(104, 'Connection reset by peer')")
 
 
-def test_transient_task_failure_is_retried_to_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    _no_sleep(monkeypatch)
+def test_transient_task_failure_is_retried_to_success() -> None:
+    """A transient failure retries the task, and the second attempt's success settles it cleanly."""
     calls = {"n": 0}
 
     def flaky() -> None:
@@ -38,13 +37,13 @@ def test_transient_task_failure_is_retried_to_success(monkeypatch: pytest.Monkey
             raise _reset()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=flaky)])
+        run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=flaky)], sleep=_NO_SLEEP)
 
     assert calls["n"] == 2
 
 
-def test_transient_task_failure_exhausts_budget_then_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    _no_sleep(monkeypatch)
+def test_transient_task_failure_exhausts_budget_then_raises() -> None:
+    """A transient failure that outlasts the whole budget surfaces as a task failure."""
     calls = {"n": 0}
 
     def always_reset() -> None:
@@ -53,13 +52,13 @@ def test_transient_task_failure_exhausts_budget_then_raises(monkeypatch: pytest.
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         with pytest.raises(RuntimeError, match="1 failure"):
-            run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=always_reset)])
+            run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=always_reset)], sleep=_NO_SLEEP)
 
     assert calls["n"] == TASK_ATTEMPTS
 
 
-def test_non_transient_task_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
-    _no_sleep(monkeypatch)
+def test_non_transient_task_failure_is_not_retried() -> None:
+    """A permanent failure spends exactly one attempt — retrying cannot help."""
     calls = {"n": 0}
 
     def broken() -> None:
@@ -68,18 +67,49 @@ def test_non_transient_task_failure_is_not_retried(monkeypatch: pytest.MonkeyPat
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         with pytest.raises(RuntimeError, match="1 failure"):
-            run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=broken)])
+            run_concurrent(executor, [MigrationTask(rid="rid-1", label="asset", fn=broken)], sleep=_NO_SLEEP)
 
     assert calls["n"] == 1
 
 
-def test_retries_do_not_block_other_tasks_and_all_failures_are_collected(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """One retrying task and one permanent failure: the healthy task completes, the permanent
-    one is reported once, and the summary counts each task's terminal outcome exactly once.
+def test_retrying_task_does_not_block_other_tasks() -> None:
+    """While one task is parked in its retry backoff, other tasks keep completing.
+
+    The backoff sleep is gated on the healthy task's completion event: if a retry blocked the
+    pool, the healthy task could never finish and the gate would time out the test.
     """
-    _no_sleep(monkeypatch)
+    healthy_done = threading.Event()
+    calls = {"flaky": 0, "ok": 0}
+
+    def gated_sleep(_delay: float) -> None:
+        assert healthy_done.wait(timeout=10), "healthy task did not complete while the retry was parked"
+
+    def flaky() -> None:
+        calls["flaky"] += 1
+        if calls["flaky"] == 1:
+            raise _reset()
+
+    def ok() -> None:
+        calls["ok"] += 1
+        healthy_done.set()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        run_concurrent(
+            executor,
+            [
+                MigrationTask(rid="rid-flaky", label="asset", fn=flaky),
+                MigrationTask(rid="rid-ok", label="asset", fn=ok),
+            ],
+            sleep=gated_sleep,
+        )
+
+    assert calls == {"flaky": 2, "ok": 1}
+
+
+def test_all_terminal_failures_are_collected_and_hook_fires_per_task() -> None:
+    """Mixed outcomes: the retried task recovers, the permanent one is reported exactly once,
+    and the persist hook fires once per settled task.
+    """
     calls = {"flaky": 0, "ok": 0, "broken": 0}
     settled = {"n": 0}
 
@@ -105,11 +135,11 @@ def test_retries_do_not_block_other_tasks_and_all_failures_are_collected(
                     MigrationTask(rid="rid-broken", label="asset", fn=broken),
                 ],
                 on_task_complete=lambda: settled.__setitem__("n", settled["n"] + 1),
+                sleep=_NO_SLEEP,
             )
 
     assert calls == {"flaky": TASK_ATTEMPTS, "ok": 1, "broken": 1}
-    # Every attempt settles the persist hook: flaky's retries included.
-    assert settled["n"] == TASK_ATTEMPTS + 2
+    assert settled["n"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +191,7 @@ def test_transient_workbook_failure_propagates_for_task_retry() -> None:
 
 
 def test_workbook_success_clears_stale_copy_failure_skip() -> None:
+    """A workbook that failed transiently in an earlier run stops being reported once it copies."""
     migrator, workbook_migrator, workbook = _asset_migrator_fixture()
     migrator.ctx.migration_state.set_skip(ResourceType.WORKBOOK, _WORKBOOK_RID, "copy failed: transient")
 

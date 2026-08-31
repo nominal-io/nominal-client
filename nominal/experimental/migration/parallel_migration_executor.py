@@ -5,12 +5,10 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
-import random
-import time
 from dataclasses import dataclass
 from typing import Callable
 
-from nominal.experimental.migration.utils.retry_utils import DEFAULT_BACKOFF_CAP_SECONDS, is_transient_error
+from nominal.experimental.migration.utils.retry_utils import retry_transient
 
 logger = logging.getLogger(__name__)
 
@@ -39,68 +37,50 @@ def run_concurrent(
     executor: concurrent.futures.ThreadPoolExecutor,
     tasks: list[MigrationTask],
     on_task_complete: Callable[[], None] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> None:
     """Submit tasks concurrently and raise a RuntimeError listing all failures.
 
-    A task that fails with a transient network error is resubmitted with jittered backoff, up
-    to ``TASK_ATTEMPTS`` total attempts — copies are state-resumable, so a retried task skips
-    children the failed attempt already migrated. Non-transient failures, and transient ones
-    that exhaust the budget, are collected and raised together at the end.
+    Each task runs under ``retry_transient``: a transient network failure retries the whole
+    task in place with jittered backoff, up to ``TASK_ATTEMPTS`` total attempts. Copies are
+    state-resumable, so a retry re-runs only what the failed attempt did not complete. The
+    backoff holds that task's worker slot; other tasks keep running on theirs. Non-transient
+    failures, and transient ones that exhaust the budget, are collected and raised together.
 
     Args:
         executor: The thread pool to submit tasks to.
         tasks: The migration tasks to run.
-        on_task_complete: Called after every task attempt settles (success or failure) — used
-            to persist migration state incrementally. The parallel runner passes a debounced
+        on_task_complete: Called after every task settles (success or failure) — used to
+            persist migration state incrementally. The parallel runner passes a debounced
             save, so persistence may lag by up to one debounce interval; unconditional
             saves happen at the signal flush and the runner's final `finally`.
+        sleep: Injectable backoff sleep for tests; defaults to time.sleep.
     """
     if not tasks:
         return
 
     errors: list[Exception] = []
-    attempts_by_task_id: dict[int, int] = {}
-    pending: dict[concurrent.futures.Future[None], MigrationTask] = {executor.submit(task.fn): task for task in tasks}
-    while pending:
-        done, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
-        for future in done:
-            task = pending.pop(future)
-            try:
-                future.result()
-                logger.info("Completed migration for %s (rid: %s)", task.label, task.rid)
-            except Exception as exc:
-                attempt = attempts_by_task_id.get(id(task), 1)
-                if is_transient_error(exc) and attempt < TASK_ATTEMPTS:
-                    attempts_by_task_id[id(task)] = attempt + 1
-                    # Full jitter over a doubling window, matching the per-operation retries.
-                    delay = random.uniform(
-                        0, min(DEFAULT_BACKOFF_CAP_SECONDS, _TASK_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
-                    )
-                    logger.warning(
-                        "Transient failure migrating %s (rid: %s) on attempt %d/%d — retrying in %.1fs, "
-                        "resuming from migration state: %s",
-                        task.label,
-                        task.rid,
-                        attempt,
-                        TASK_ATTEMPTS,
-                        delay,
-                        exc,
-                    )
-                    # The delay runs inside the worker so this loop never blocks other tasks.
-                    pending[executor.submit(_delayed(task.fn, delay))] = task
-                else:
-                    logger.error("Failed to migrate %s (rid: %s)", task.label, task.rid, exc_info=exc)
-                    errors.append(exc)
-            if on_task_complete is not None:
-                on_task_complete()
+    futures = {
+        executor.submit(
+            retry_transient,
+            task.fn,
+            description=f"migration of {task.label} (rid: {task.rid})",
+            max_attempts=TASK_ATTEMPTS,
+            backoff_base_seconds=_TASK_BACKOFF_BASE_SECONDS,
+            sleep=sleep,
+        ): task
+        for task in tasks
+    }
+    for future in concurrent.futures.as_completed(futures):
+        task = futures[future]
+        try:
+            future.result()
+            logger.info("Completed migration for %s (rid: %s)", task.label, task.rid)
+        except Exception as exc:
+            logger.error("Failed to migrate %s (rid: %s)", task.label, task.rid, exc_info=exc)
+            errors.append(exc)
+        if on_task_complete is not None:
+            on_task_complete()
     if errors:
         error_summary = "; ".join(str(e) for e in errors)
         raise RuntimeError(f"Parallel migration had {len(errors)} failure(s): {error_summary}")
-
-
-def _delayed(fn: Callable[[], None], delay_seconds: float) -> Callable[[], None]:
-    def run() -> None:
-        time.sleep(delay_seconds)
-        fn()
-
-    return run
