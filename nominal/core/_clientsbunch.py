@@ -36,6 +36,7 @@ from nominal.core._utils.networking import (
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
+from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
@@ -173,6 +174,7 @@ class ClientsBunch:
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
+    markings: markings_pb2_grpc.MarkingServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
@@ -336,6 +338,7 @@ class ClientsBunch:
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
+            markings=grpc_factory(markings_pb2_grpc.MarkingServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),

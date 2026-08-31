@@ -31,7 +31,9 @@ from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.marking import MarkableMixin
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -61,7 +63,7 @@ class BatchAddChannelsResult:
 
 
 @dataclass(frozen=True)
-class DataSource(HasRid):
+class DataSource(HasRid, MarkableMixin):
     rid: str
     _clients: _Clients = field(repr=False)
 
@@ -102,6 +104,8 @@ class DataSource(HasRid):
         def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
         @property
         def roles(self) -> roles_pb2_grpc.RoleServiceStub: ...
+        @property
+        def markings(self) -> markings_pb2_grpc.MarkingServiceStub: ...
 
     def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):

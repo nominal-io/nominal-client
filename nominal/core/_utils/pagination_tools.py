@@ -21,6 +21,7 @@ from nominal_api import (
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
@@ -241,6 +242,27 @@ def search_runs_by_asset_paginated(
 
     for response in paginate_rpc(run.get_runs_by_asset, auth_header, request_factory=factory):
         yield from response.results
+
+
+def search_markings_paginated(
+    markings: markings_pb2_grpc.MarkingServiceStub,
+    query: markings_pb2.SearchMarkingsQuery,
+) -> Iterable[markings_pb2.MarkingMetadata]:
+    """Yield markings matching a query, oldest first.
+
+    Unlike its neighbours, the request type carries no sort options: the service always orders by
+    creation time ascending. Archived markings are excluded by the service and never appear here.
+    """
+
+    def factory(page_token: str | None) -> markings_pb2.SearchMarkingsRequest:
+        return markings_pb2.SearchMarkingsRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            query=query,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_grpc(markings.SearchMarkings, request_factory=factory):
+        yield from response.marking_metadatas
 
 
 def search_secrets_paginated(
