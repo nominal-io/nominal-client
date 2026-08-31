@@ -9,9 +9,15 @@ from nominal.experimental.video_processing.resolution import (
     VideoResolution,
     scale_factor_from_resolution,
 )
-from nominal.experimental.video_processing.video_conversion import frame_count, has_audio_track, normalize_video
+from nominal.experimental.video_processing.video_conversion import (
+    NormalizationError,
+    frame_count,
+    has_audio_track,
+    normalize_video,
+)
 
 __all__ = [
+    "NormalizationError",
     "frame_count",
     "has_audio_track",
     "normalize_video",
