@@ -110,3 +110,60 @@ def test_retries_do_not_block_other_tasks_and_all_failures_are_collected(
     assert calls == {"flaky": TASK_ATTEMPTS, "ok": 1, "broken": 1}
     # Every attempt settles the persist hook: flaky's retries included.
     assert settled["n"] == TASK_ATTEMPTS + 2
+
+
+# ---------------------------------------------------------------------------
+# Workbook failure containment inside an asset task
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+from nominal.experimental.migration.migration_state import MigrationState  # noqa: E402
+from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator  # noqa: E402
+from nominal.experimental.migration.migrator.context import MigrationContext  # noqa: E402
+from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions  # noqa: E402
+from nominal.experimental.migration.resource_type import ResourceType  # noqa: E402
+
+_WORKBOOK_RID = "ri.scout.cerulean-staging.notebook.00000001-0000-0000-0000-000000000000"
+
+
+def _asset_migrator_fixture() -> tuple[AssetMigrator, MagicMock, MagicMock]:
+    ctx = MigrationContext(destination_client=MagicMock(), migration_state=MigrationState())
+    workbook = MagicMock()
+    workbook.rid = _WORKBOOK_RID
+    return AssetMigrator(ctx), MagicMock(), workbook
+
+
+def test_non_transient_workbook_failure_is_contained_as_skip() -> None:
+    """A broken workbook records a skip and the asset task lives on; a rerun re-attempts it."""
+    migrator, workbook_migrator, workbook = _asset_migrator_fixture()
+    workbook_migrator.copy_from.side_effect = ValueError("corrupt workbook content")
+
+    migrator._copy_workbook_containing_failures(workbook_migrator, workbook, WorkbookCopyOptions())
+
+    assert migrator.ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, _WORKBOOK_RID) is None
+    assert [skip.reason for skip in migrator.ctx.migration_state.skipped_resources] == [
+        "copy failed: corrupt workbook content"
+    ]
+
+
+def test_transient_workbook_failure_propagates_for_task_retry() -> None:
+    """A connection reset must reach the executor, whose task-level retry resumes from state —
+    converting it to a skip here would leave a healthy workbook behind for no reason.
+    """
+    migrator, workbook_migrator, workbook = _asset_migrator_fixture()
+    workbook_migrator.copy_from.side_effect = _reset()
+
+    with pytest.raises(urllib3.exceptions.ProtocolError):
+        migrator._copy_workbook_containing_failures(workbook_migrator, workbook, WorkbookCopyOptions())
+
+    assert migrator.ctx.migration_state.skipped_resources == []
+
+
+def test_workbook_success_clears_stale_copy_failure_skip() -> None:
+    migrator, workbook_migrator, workbook = _asset_migrator_fixture()
+    migrator.ctx.migration_state.set_skip(ResourceType.WORKBOOK, _WORKBOOK_RID, "copy failed: transient")
+
+    migrator._copy_workbook_containing_failures(workbook_migrator, workbook, WorkbookCopyOptions())
+
+    assert migrator.ctx.migration_state.skipped_resources == []
