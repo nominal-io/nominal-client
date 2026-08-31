@@ -23,6 +23,7 @@ from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions,
 from nominal.experimental.migration.migrator.video_migrator import VideoCopyOptions, VideoMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.retry_utils import is_transient_error
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if not workbook.asset_rids:
                 continue
             if len(workbook.asset_rids) == 1:
-                workbook_migrator.copy_from(
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
                     workbook,
                     WorkbookCopyOptions(source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid}),
                 )
@@ -389,7 +391,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             # every reference to those other assets instead of waiting for a complete mapping.
             source_run_asset_rids = list(source_run.assets)
             if len(workbook.run_rids) == 1 and len(source_run_asset_rids) <= 1:
-                workbook_migrator.copy_from(
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
                     workbook,
                     WorkbookCopyOptions(
                         source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
@@ -398,6 +401,34 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
             else:
                 self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids), source_run_asset_rids)
+
+    def _copy_workbook_containing_failures(
+        self,
+        workbook_migrator: WorkbookMigrator,
+        workbook: Workbook,
+        options: WorkbookCopyOptions,
+    ) -> None:
+        """One bad workbook must not abort the whole asset task (observed in production: a
+        connection reset on a single workbook read killed the asset task and every sibling
+        resource behind it).
+
+        Transient errors propagate — the executor retries the whole task, which resumes
+        cheaply from migration state — while anything else records a skip for the end-of-run
+        summary and lets the asset's remaining resources migrate. With no mapping recorded,
+        a rerun re-attempts the workbook.
+        """
+        try:
+            workbook_migrator.copy_from(workbook, options)
+        except Exception as error:
+            if is_transient_error(error):
+                raise
+            logger.exception("Failed to copy workbook (rid: %s)", workbook.rid)
+            self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, f"copy failed: {error}")
+            return
+        # This attempt's outcome supersedes any copy-failure skip from an earlier run. Safe to
+        # clear unconditionally: terminal workbook skips are recorded only in the deferred
+        # multi-asset/multi-run flush, never on this single-scope path.
+        self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, None)
 
     def _enqueue_multi_asset_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> None:
         if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):
