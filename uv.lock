@@ -735,7 +735,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.164.0"
+version = "1.165.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
