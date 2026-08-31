@@ -18,4 +18,5 @@ def as_user(client: NominalClient, user_rid: str) -> NominalClient:
         connect_timeout=client._clients._service_config.connect_timeout,
         extra_headers={ON_BEHALF_OF_USER_RID_HEADER: user_rid},
         _profile=client._profile,
+        _workspace_warning_emitted=True,
     )
