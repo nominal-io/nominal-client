@@ -28,8 +28,10 @@ from nominal.core.event import Event
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
+from nominal.core.point_cloud import ColumnDataType
 from nominal.core.run import Run
 from nominal.core.secret import Secret
+from nominal.core.spatial_asset import PointCloudMetadata, ScanPattern, SpatialAsset, SpatialMetadata
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
@@ -50,6 +52,7 @@ __all__ = [
     "filter_channels_with_data",
     "Checklist",
     "CheckViolation",
+    "ColumnDataType",
     "Connection",
     "ContainerImage",
     "ContainerImageStatus",
@@ -77,9 +80,13 @@ __all__ = [
     "LogStream",
     "Comment",
     "NominalClient",
+    "PointCloudMetadata",
     "Run",
+    "ScanPattern",
     "SearchEventOriginType",
     "Secret",
+    "SpatialAsset",
+    "SpatialMetadata",
     "TimestampMetadata",
     "Unit",
     "UnitLike",
