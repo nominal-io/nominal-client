@@ -3,8 +3,7 @@ from __future__ import annotations
 import ibis
 from ibis import _
 
-from nominal.ibis import Backend
-from nominal.ibis.functions import derivative
+from nominal.ibis import Backend, derivative
 
 POINTS = ibis.table(
     {

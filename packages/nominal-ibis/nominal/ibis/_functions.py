@@ -3,7 +3,7 @@
 These are declared as "builtin" UDFs: Ibis compiles the call by name and the
 server does the work. Both are window aggregates, so call them with .over():
 
-    from nominal.ibis.functions import derivative, integral
+    from nominal.ibis import derivative, integral
 
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
     pts.select(rate=derivative(_.value).over(w))
