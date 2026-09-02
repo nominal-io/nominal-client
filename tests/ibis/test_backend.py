@@ -85,7 +85,7 @@ def make_session(query_result: pa.Table = QUERY_RESULT) -> MagicMock:
 @pytest.fixture
 def session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock = make_session()
-    monkeypatch.setattr("nominal.ibis.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     return mock
 
 
@@ -109,7 +109,7 @@ def test_no_default_workspace_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty default-workspace response asks the caller to pass workspace_rid."""
     mock = make_session()
     mock.get.side_effect = lambda url, **kwargs: fake_response(status=204)
-    monkeypatch.setattr("nominal.ibis.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     with pytest.raises(nibis.NominalSqlError, match="workspace_rid"):
         nibis.connect(token="test-token", base_url="https://api.test/api")
 
@@ -167,7 +167,7 @@ def test_execute_drops_leaked_sort_key_columns(backend: nibis.Backend) -> None:
 def test_fewer_columns_than_requested_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """A response missing requested columns raises a diagnosable error, not an index error."""
     mock = make_session(query_result=pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"]}))
-    monkeypatch.setattr("nominal.ibis.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     con = nibis.connect(token="test-token", base_url="https://api.test/api")
     with pytest.raises(nibis.NominalSqlError, match="expected"):
         con.table("datasets").select("dataset_rid", "name").to_pandas()
@@ -194,7 +194,7 @@ def test_http_errors_surface_details(monkeypatch: pytest.MonkeyPatch) -> None:
     mock.get.side_effect = lambda url, **kwargs: fake_response(
         json_data={"errorName": "SqlErrorInvalidQuery"}, status=400
     )
-    monkeypatch.setattr("nominal.ibis.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     with pytest.raises(nibis.NominalSqlError, match="SqlErrorInvalidQuery"):
         nibis.connect(token="test-token", base_url="https://api.test/api")
 
