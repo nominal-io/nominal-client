@@ -84,11 +84,13 @@ dev = [
 
 [tool.uv.sources]
 nominal = { workspace = true }
+nominal-ibis = { workspace = true }
 nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
 tdms = ["nominal-tdms>=1.143.0"]
+ibis = ["nominal-ibis>=0.1.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 compute = [
     "nominal-compute==0.1315.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
@@ -164,7 +166,7 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.tdms"]
+packages = ["nominal", "nominal.tdms", "nominal.ibis"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
@@ -175,6 +177,16 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 [[tool.mypy.overrides]]
 module = "nptdms"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["ibis", "ibis.*", "pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nominal.ibis.*"
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+disable_error_code = ["no-any-return", "empty-body"]
 
 [[tool.mypy.overrides]]
 module = "ffmpeg"
