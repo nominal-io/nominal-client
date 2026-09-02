@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.165.0](https://github.com/nominal-io/nominal-client/compare/v1.164.0...v1.165.0) (2026-08-31)
+
+
+### Features
+
+* retry transient asset task failures in the parallel executor ([#947](https://github.com/nominal-io/nominal-client/issues/947)) ([fa9146d](https://github.com/nominal-io/nominal-client/commit/fa9146db75e3cb0c75a895e5070e2cb181e13992))
+
+
+### Bug Fixes
+
+* use total_seconds instead of seconds for max_wait ([#945](https://github.com/nominal-io/nominal-client/issues/945)) ([cf535b4](https://github.com/nominal-io/nominal-client/commit/cf535b4f47f5e62aa0c872f7e6bf41337b33ba03))
+
 ## [1.164.0](https://github.com/nominal-io/nominal-client/compare/v1.163.0...v1.164.0) (2026-08-27)
 
 
