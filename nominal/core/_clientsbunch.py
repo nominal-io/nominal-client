@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, cast
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -124,6 +124,65 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
+class SqlService(Service):
+    """HTTP client for `nominal.sql.v1.SqlService`, the read-only SQL interface over Nominal telemetry.
+
+    The generated bindings in `nominal-api-protos` do not include this service yet, so its endpoints are
+    called through the gRPC-JSON transcoder directly, like `ProtoWriteService` above. Request and response
+    fields therefore use proto3 JSON naming (lowerCamelCase).
+    """
+
+    ARROW_STREAM_FORMAT = "SQL_SERVICE_QUERY_RESULT_FORMAT_ARROW_STREAM"
+
+    def query(
+        self,
+        auth_header: str,
+        query: str,
+        workspace_rid: str,
+        max_rows: int | None = None,
+        result_format: str = ARROW_STREAM_FORMAT,
+    ) -> bytes:
+        """Execute a bounded SQL query, returning the result encoded per `result_format`.
+
+        The endpoint is a server-streaming RPC whose chunks the transcoder concatenates into the response
+        body, so for the default Arrow format the returned bytes are a single Arrow IPC stream.
+        """
+        _headers = {
+            "Accept": "application/octet-stream",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+        _request: dict[str, Any] = {
+            "query": query,
+            "workspaceRid": workspace_rid,
+            "resultFormat": result_format,
+        }
+        if max_rows is not None:
+            _request["maxRows"] = max_rows
+        response = self._request("POST", self._uri + "/sql/v1/query", json=_request, headers=_headers)
+        return response.content
+
+    def export(self, auth_header: str, query: str, workspace_rid: str) -> dict[str, Any]:
+        """Execute an unbounded SQL query, returning a presigned URL to the full result as CSV."""
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+        _request = {"query": query, "workspaceRid": workspace_rid}
+        response = self._request("POST", self._uri + "/sql/v1/query/export", json=_request, headers=_headers)
+        return cast(dict[str, Any], response.json())
+
+    def get_sql_catalog(self, auth_header: str) -> dict[str, Any]:
+        """Get the queryable SQL surface: tables, columns, and allowed functions."""
+        _headers = {
+            "Accept": "application/json",
+            "Authorization": auth_header,
+        }
+        response = self._request("GET", self._uri + "/sql/v1/catalog", headers=_headers)
+        return cast(dict[str, Any], response.json())
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -161,6 +220,7 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
+    sql: SqlService
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
@@ -325,6 +385,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             run=client_factory(scout.RunService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
+            sql=client_factory(SqlService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),

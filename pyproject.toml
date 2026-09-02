@@ -87,6 +87,7 @@ nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
+ibis = ["ibis-framework[duckdb]>=10,<13", "pyarrow>=17"]
 mis = ["openpyxl>=3.1.0"]
 tdms = ["nominal-tdms>=1.143.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
@@ -157,6 +158,10 @@ ignore = [
     "PLW0603", # globals
 ]
 
+[tool.ruff.lint.isort]
+# `nominal/thirdparty/ibis` otherwise makes isort read the ibis library itself as first-party.
+known-third-party = ["ibis"]
+
 [tool.ruff.lint.per-file-ignores]
 "nominal/core/dataset.py" = [
     "E501", # allow long lines for avro schema in docstring
@@ -174,6 +179,11 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = "nptdms"
+ignore_missing_imports = true
+
+# Neither ibis nor pyarrow ships a py.typed marker, so their types are unavailable to mypy.
+[[tool.mypy.overrides]]
+module = ["ibis.*", "pyarrow.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
