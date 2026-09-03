@@ -17,8 +17,8 @@ Example:
     )
 """
 
-from nominal.ibis._backend import Backend, NominalSqlError, connect
-from nominal.ibis._functions import derivative, integral
+from nominal.sql._backend import Backend, NominalSqlError, connect
+from nominal.sql._functions import derivative, integral
 
 __all__ = [
     "Backend",
