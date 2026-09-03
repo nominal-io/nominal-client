@@ -8,20 +8,19 @@ import os
 from typing import Any, Iterator, Mapping
 from urllib.parse import ParseResult
 
-import pyarrow as pa
-import requests
-import sqlglot.expressions as sge
-from requests.adapters import HTTPAdapter, Retry
-
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.schema as sch
 import ibis.expr.types as ir
+import pyarrow as pa
+import requests
+import sqlglot.expressions as sge
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
+from requests.adapters import HTTPAdapter, Retry
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
