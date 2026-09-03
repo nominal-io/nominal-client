@@ -22,7 +22,7 @@ resolution-markers = [
 [manifest]
 members = [
     "nominal",
-    "nominal-ibis",
+    "nominal-sql",
     "nominal-tdms",
 ]
 
@@ -789,11 +789,11 @@ dependencies = [
 compute = [
     { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
 ]
-ibis = [
-    { name = "nominal-ibis" },
-]
 mis = [
     { name = "openpyxl" },
+]
+sql = [
+    { name = "nominal-sql" },
 ]
 tdms = [
     { name = "nominal-tdms" },
@@ -832,7 +832,7 @@ requires-dist = [
     { name = "nominal-api", specifier = "==0.1379.0" },
     { name = "nominal-api-protos", specifier = "==0.1379.0" },
     { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1315.0" },
-    { name = "nominal-ibis", marker = "extra == 'ibis'", editable = "packages/nominal-ibis" },
+    { name = "nominal-sql", marker = "extra == 'sql'", editable = "packages/nominal-sql" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.9.5" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
     { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
@@ -848,7 +848,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4,<5" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
-provides-extras = ["mis", "tdms", "ibis", "compute", "video"]
+provides-extras = ["mis", "tdms", "sql", "compute", "video"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -910,9 +910,9 @@ wheels = [
 ]
 
 [[package]]
-name = "nominal-ibis"
+name = "nominal-sql"
 version = "0.1.0"
-source = { editable = "packages/nominal-ibis" }
+source = { editable = "packages/nominal-sql" }
 dependencies = [
     { name = "ibis-framework" },
     { name = "nominal" },
