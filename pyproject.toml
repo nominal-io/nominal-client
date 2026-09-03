@@ -27,7 +27,13 @@ requires-python = ">=3.10,<4"
 dependencies = [
     "conjure-python-client>=3.1.0,<4",
     "exceptiongroup>=1.3.0",
-    "nominal-api==0.1379.0",
+    # NOTE(spatial): 0.1379.0 already carries PointCloudOpts and scout_spatial, but NOT
+    # PointCloudOpts.daggerImportConfig, which point-cloud ingest requires. That field lives
+    # only on the unmerged scout branch duncan/ingest-point-cloud as of 2026-09-01; the latest
+    # release (0.1420.0) tracks scout main, whose ingestPointCloud still throws "not yet
+    # implemented". Left unpinned while the [tool.uv.sources] override below supplies a locally
+    # built wheel; restore the "==" pin and delete that override once the field ships.
+    "nominal-api",
     "nominal-api-protos==0.1379.0",
     "truststore>=0.10.4",
     "typing-extensions>=4,<5",
@@ -83,6 +89,10 @@ dev = [
 ]
 
 [tool.uv.sources]
+# LOCAL DEV ONLY - do not release with this entry. Build the wheel from a scout
+# checkout on duncan/ingest-point-cloud with:
+#   ./bazelw build //scout-service-api/scout-service-api-python:nominal-api-wheel
+nominal-api = { path = "../scout/bazel-bin/scout-service-api/scout-service-api-python/nominal_api-0.0.0-py3-none-any.whl" }
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 
@@ -116,6 +126,10 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
+# One shared lint/format config covers the core package (nominal/**), every
+# workspace sub-package source + co-located tests (packages/**), and the root
+# tests (tests/**). Sub-packages intentionally do not define their own ruff
+# config so style stays uniform across the workspace.
 include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
@@ -164,6 +178,13 @@ ignore = [
 
 [tool.mypy]
 strict = true
+# These are checked as *installed* namespace packages (one shared `nominal`
+# namespace split across distributions). Two consequences for sub-packages:
+#   1. Each `nominal.*` sub-package must be listed here explicitly - mypy does
+#      not auto-discover namespace sub-packages from the top-level entry.
+#   2. Each sub-package must ship a `py.typed` marker (PEP 561) in its build
+#      `include`, or mypy aborts with "cannot be type checked due to missing
+#      py.typed marker" (see packages/nominal-*/pyproject.toml).
 packages = ["nominal", "nominal.tdms"]
 
 [[tool.mypy.overrides]]

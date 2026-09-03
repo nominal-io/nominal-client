@@ -105,6 +105,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
+from nominal.core.spatial_asset import SpatialAsset, SpatialMetadata, _create_spatial_asset
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -836,6 +837,53 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     create_empty_video = create_video
+
+    def create_spatial_asset(
+        self,
+        name: str,
+        *,
+        metadata: SpatialMetadata,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+        end_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+    ) -> SpatialAsset:
+        """Create an empty spatial asset, ready to have data ingested into it.
+
+        The asset reserves the Dagger model that will hold its data; ingest the data
+        with `SpatialAsset.ingest_point_cloud_csv`.
+
+        Args:
+            name: Human-readable name for the spatial asset.
+            metadata: Type-specific metadata, e.g. `PointCloudMetadata(...)`.
+            description: Optional description.
+            labels: Labels to apply.
+            properties: Key-value properties to apply.
+            start_timestamp: Start of the time range this asset covers.
+            end_timestamp: End of the time range this asset covers.
+
+        Returns:
+            The created spatial asset.
+        """
+        response = _create_spatial_asset(
+            self._clients.auth_header,
+            self._clients.spatial,
+            name,
+            metadata=metadata,
+            description=description,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+        )
+        return SpatialAsset._from_conjure(self._clients, response)
+
+    def get_spatial_asset(self, rid: str) -> SpatialAsset:
+        """Retrieve a spatial asset by its RID."""
+        response = self._clients.spatial.get(self._clients.auth_header, rid)
+        return SpatialAsset._from_conjure(self._clients, response)
 
     @deprecated(
         "`NominalClient.get_video` is deprecated in favor of video channels on a dataset. Fetch the dataset with "

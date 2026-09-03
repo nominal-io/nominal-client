@@ -12,7 +12,7 @@ from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 
-ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
+ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
 
 logger = logging.getLogger(__name__)
 
