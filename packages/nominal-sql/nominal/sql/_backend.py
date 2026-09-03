@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import os
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 from urllib.parse import ParseResult
 
 import ibis.common.exceptions as com
@@ -21,6 +21,8 @@ from ibis.backends.sql.compilers.postgres import PostgresCompiler
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 from requests.adapters import HTTPAdapter, Retry
+
+from nominal.sql._functions import Functions
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
@@ -86,12 +88,27 @@ class NominalCompiler(PostgresCompiler):
     def visit_RegexSearch(self, op: ops.RegexSearch, *, arg: Any, pattern: Any) -> Any:
         return self.f.anon.regexp_like(arg, pattern)
 
+    # Render catalog functions verbatim: sqlglot's own date_bin/regexp_like classes have
+    # different argument rules. Omitted optional arguments arrive as NULL and are dropped.
+    def visit_ScalarUDF(self, op: ops.ScalarUDF, **kw: Any) -> Any:
+        return self.f.anon[op.__func_name__](*_without_trailing_nulls(kw.values()))
+
+    def visit_AggUDF(self, op: ops.AggUDF, *, where: Any, **kw: Any) -> Any:
+        return self._anon_agg(op.__func_name__, *_without_trailing_nulls(kw.values()), where=where)
+
     @staticmethod
     def _minimize_spec(op: ops.WindowFunction, spec: Any) -> Any:
         # The API rejects ROW/RANGE frames on RANK/ROW_NUMBER/LAG/LEAD.
         if isinstance(op.func, ops.Analytic) and not isinstance(op.func, (ops.First, ops.Last, ops.NthValue)):
             return None
         return spec
+
+
+def _without_trailing_nulls(args: Iterable[Any]) -> list[Any]:
+    trimmed = list(args)
+    while trimmed and isinstance(trimmed[-1], sge.Null):
+        trimmed.pop()
+    return trimmed
 
 
 class Backend(SQLBackend):
@@ -153,6 +170,8 @@ class Backend(SQLBackend):
         )
         self._session.mount("https://", HTTPAdapter(max_retries=retries))
         self._catalog_cache: dict[str, sch.Schema] | None = None
+        self._catalog_functions: list[dict[str, Any]] = []
+        self._fn: Functions | None = None
         self.workspace_rid = workspace_rid or self._default_workspace_rid()
 
     def _from_url(self, url: ParseResult, **kwargs: Any) -> "Backend":
@@ -181,7 +200,9 @@ class Backend(SQLBackend):
         if self._catalog_cache is None:
             response = self._session.get(f"{self.base_url}/sql/v1/catalog", timeout=self._timeout)
             self._raise_for_error(response)
-            tables = (response.json().get("sqlCatalog") or {}).get("tables") or []
+            sql_catalog = response.json().get("sqlCatalog") or {}
+            tables = sql_catalog.get("tables") or []
+            self._catalog_functions = list(sql_catalog.get("functions") or [])
             catalog: dict[str, sch.Schema] = {}
             for table in tables:
                 fields: dict[str, dt.DataType] = {}
@@ -218,6 +239,14 @@ class Backend(SQLBackend):
     def _get_schema_using_query(self, query: str) -> sch.Schema:
         table = self._execute_sql(query, max_rows=1)
         return PyArrowSchema.to_ibis(table.schema)
+
+    @property
+    def fn(self) -> Functions:
+        """Server functions from the SQL catalog, e.g. `con.fn.derivative(_.value).over(w)`."""
+        if self._fn is None:
+            self._fetch_catalog()
+            self._fn = Functions(self._catalog_functions)
+        return self._fn
 
     @property
     def version(self) -> str:

@@ -3,7 +3,8 @@ from __future__ import annotations
 import ibis
 from ibis import _
 
-from nominal.sql import Backend, derivative
+from nominal.sql import Backend
+from nominal.sql._functions import build_function
 
 POINTS = ibis.table(
     {
@@ -73,8 +74,55 @@ def test_regex_search_renders_as_regexp_like_function() -> None:
     assert "~" not in sql
 
 
-def test_builtin_window_udf_renders_by_name() -> None:
-    """Declared server functions compile by name for server-side execution."""
+def catalog_function(
+    name: str, kind: str, families: list[str], return_family: str | None = None, **extra: object
+) -> object:
+    entry: dict[str, object] = {
+        "name": name,
+        "kind": f"SQL_CATALOG_FUNCTION_KIND_{kind}",
+        "minArgs": len(families),
+        "maxArgs": len(families),
+        "argumentTypeFamilies": families,
+        **extra,
+    }
+    if return_family is not None:
+        entry["returnTypeFamily"] = return_family
+    function = build_function(entry)
+    assert function is not None
+    return function
+
+
+def test_catalog_window_function_renders_by_name() -> None:
+    """Catalog functions compile by name for server-side execution."""
+    derivative = catalog_function("DERIVATIVE", "WINDOW", ["NUMERIC"], "NUMERIC")
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
     sql = compile_sql(POINTS.select(rate=derivative(_.value).over(w)))
-    assert "DERIVATIVE" in sql.upper()
+    assert "derivative(" in sql.lower()
+    assert "OVER (PARTITION BY" in sql
+
+
+def test_catalog_function_bypasses_sqlglot_builtins() -> None:
+    """Names sqlglot knows (date_bin, regexp_like) render verbatim rather than through sqlglot's own rules."""
+    date_bin = catalog_function("DATE_BIN", "SCALAR", ["ANY", "DATETIME", "DATETIME"], "TIMESTAMP")
+    origin = ibis.timestamp("2020-01-01 00:00:00")
+    sql = compile_sql(POINTS.select(bucket=date_bin("1m", _.ts, origin)))
+    assert "date_bin('1m'" in sql.lower()
+
+
+def test_catalog_function_drops_omitted_optional_arguments() -> None:
+    """Optional trailing arguments left out by the caller are not rendered as NULL."""
+    integral = catalog_function("INTEGRAL", "WINDOW", ["NUMERIC", "ANY"], "NUMERIC", minArgs=1)
+    w = ibis.cumulative_window(group_by="channel", order_by="ts")
+    assert 'integral("t0"."value") over' in compile_sql(POINTS.select(total=integral(_.value).over(w))).lower()
+    assert (
+        'integral("t0"."value", \'trapezoid\')'
+        in compile_sql(POINTS.select(total=integral(_.value, "trapezoid").over(w))).lower()
+    )
+
+
+def test_catalog_aggregate_supports_filter() -> None:
+    """Aggregate catalog functions honor Ibis's `where=` (with concrete columns, as for any builtin UDF)."""
+    bit_or = catalog_function("BIT_OR", "AGGREGATE", ["NUMERIC"], "NUMERIC")
+    sql = compile_sql(POINTS.group_by("channel").agg(flags=bit_or(POINTS.value, where=POINTS.value > 0)))
+    assert "bit_or(" in sql.lower()
+    assert "FILTER(WHERE" in sql

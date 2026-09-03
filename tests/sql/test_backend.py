@@ -4,9 +4,12 @@ import io
 from typing import Any
 from unittest.mock import MagicMock
 
+import ibis
 import ibis.common.exceptions as com
 import pyarrow as pa
 import pytest
+from ibis import _
+from ibis.common.annotations import SignatureValidationError
 
 import nominal.sql as nsql
 
@@ -31,7 +34,51 @@ CATALOG_JSON = {
                 ],
             },
         ],
-        "functions": [{"name": "AVG"}],
+        "functions": [
+            {
+                "name": "AVG",
+                "kind": "SQL_CATALOG_FUNCTION_KIND_AGGREGATE",
+                "supportsOver": True,
+                "minArgs": 1,
+                "maxArgs": 1,
+                "argumentTypeFamilies": ["NUMERIC"],
+                "returnTypeFamily": "NUMERIC",
+            },
+            {"name": "COALESCE", "kind": "SQL_CATALOG_FUNCTION_KIND_SCALAR", "minArgs": 1},
+            {
+                "name": "DATE_BIN",
+                "kind": "SQL_CATALOG_FUNCTION_KIND_SCALAR",
+                "minArgs": 3,
+                "maxArgs": 3,
+                "argumentTypeFamilies": ["ANY", "DATETIME", "DATETIME"],
+                "returnTypeFamily": "TIMESTAMP",
+            },
+            {
+                "name": "DERIVATIVE",
+                "kind": "SQL_CATALOG_FUNCTION_KIND_WINDOW",
+                "supportsOver": True,
+                "minArgs": 1,
+                "maxArgs": 1,
+                "argumentTypeFamilies": ["NUMERIC"],
+                "returnTypeFamily": "NUMERIC",
+            },
+            {"name": "LEGACY_NAME_ONLY"},
+            {
+                "name": "MAX",
+                "kind": "SQL_CATALOG_FUNCTION_KIND_AGGREGATE",
+                "supportsOver": True,
+                "minArgs": 1,
+                "maxArgs": 1,
+            },
+            {
+                "name": "REGEXP_LIKE",
+                "kind": "SQL_CATALOG_FUNCTION_KIND_SCALAR",
+                "minArgs": 2,
+                "maxArgs": 2,
+                "argumentTypeFamilies": ["CHARACTER", "CHARACTER"],
+                "returnTypeFamily": "BOOLEAN",
+            },
+        ],
     }
 }
 
@@ -134,6 +181,57 @@ def test_schema_types_from_catalog(backend: nsql.Backend) -> None:
     assert schema["value"].nullable
     assert not schema["channel"].nullable
     assert schema["tags"].is_map()
+
+
+def test_functions_generated_from_catalog(backend: nsql.Backend, session: MagicMock) -> None:
+    """Every expressible catalog function is exposed on con.fn; variadic and kind-less entries are skipped."""
+    assert list(backend.fn) == ["avg", "date_bin", "derivative", "max", "regexp_like"]
+    assert "DERIVATIVE" in backend.fn
+    assert "derivative" in dir(backend.fn)
+    assert session.get.call_count == 2, "the catalog is fetched once and shared with table schemas"
+    with pytest.raises(AttributeError, match="no function named 'nope'"):
+        backend.fn.nope
+
+
+def test_catalog_function_types_follow_type_families(backend: nsql.Backend) -> None:
+    """Argument and return types come from the catalog's type families."""
+    pts = backend.table("points_double")
+    w = ibis.cumulative_window(group_by="channel", order_by="ts")
+    rate = pts.select(rate=backend.fn.derivative(_.value).over(w))
+    assert rate.schema()["rate"].is_float64()
+    origin = ibis.timestamp("2020-01-01 00:00:00")
+    assert pts.select(b=backend.fn.date_bin("1m", _.ts, origin)).schema()["b"].is_timestamp()
+    assert pts.select(m=backend.fn.regexp_like(_.channel, "^temp")).schema()["m"].is_boolean()
+    assert pts.select(m=backend.fn.max(_.value)).schema()["m"].is_unknown()
+    with pytest.raises(SignatureValidationError):
+        backend.fn.derivative(pts.channel)
+
+
+def test_catalog_function_executes_through_query_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A generated function compiles into the query body and its result is typed from the catalog."""
+    mock = make_session(query_result=pa.table({"rate": pa.array([1.5], pa.float64())}))
+    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
+    con = nsql.connect(token="test-token", base_url="https://api.test/api")
+    pts = con.table("points_double")
+    w = ibis.cumulative_window(group_by="channel", order_by="ts")
+    df = pts.select(rate=con.fn.derivative(_.value).over(w)).to_pandas()
+    assert "derivative(" in mock.post.call_args.kwargs["json"]["query"].lower()
+    assert df["rate"][0] == 1.5
+
+
+def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, backend: nsql.Backend) -> None:
+    """`from nominal.sql.fn import derivative` resolves against a lazily created default connection."""
+    import nominal.sql.fn as fn_module
+
+    monkeypatch.setattr(fn_module, "_connection", None)
+    monkeypatch.setattr(fn_module, "connect", MagicMock(return_value=backend))
+    from nominal.sql.fn import derivative
+
+    assert derivative is backend.fn.derivative
+    assert "derivative" in dir(fn_module)
+    fn_module.connect.assert_called_once_with()
 
 
 def test_unknown_table_raises(backend: nsql.Backend) -> None:
