@@ -15,15 +15,18 @@ Example:
         .agg(n=_.count(), avg=_.value.mean())
         .to_pandas()
     )
+
+    # Server functions come from the SQL catalog; nothing is declared client-side.
+    w = ibis.cumulative_window(group_by="channel", order_by="ts")
+    pts.select(rate=con.fn.derivative(_.value).over(w)).to_pandas()
 """
 
 from nominal.sql._backend import Backend, NominalSqlError, connect
-from nominal.sql._functions import derivative, integral
+from nominal.sql._functions import Functions
 
 __all__ = [
     "Backend",
+    "Functions",
     "NominalSqlError",
     "connect",
-    "derivative",
-    "integral",
 ]
