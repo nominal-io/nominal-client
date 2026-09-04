@@ -355,8 +355,17 @@ def archive_search_context(  # noqa: PLR0915
 
 
 def test_search_runs_by_substring_match(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by substring_match returns only runs whose name contains the session tag."""
+    """Searching runs by substring_match returns runs whose name contains the session tag."""
     results = client.search_runs(substring_match=search_context.tag)
+    rids = {r.rid for r in results}
+    assert rids == {search_context.run.rid}
+
+
+def test_search_runs_by_substring_match_matches_non_name_fields(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    """substring_match includes matches in run properties, not only names."""
+    results = client.search_runs(substring_match=f"proponly{search_context.tag}")
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 

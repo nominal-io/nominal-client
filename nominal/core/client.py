@@ -126,10 +126,6 @@ DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 MAX_ASSETS_SHOWN = 10
 
 
-def _matches_name_substring(name: str, substring_match: str | None) -> bool:
-    return substring_match is None or substring_match.casefold() in name.casefold()
-
-
 class WorkspaceSearchType(enum.Enum):
     ALL = "ALL"
     DEFAULT = "DEFAULT"
@@ -353,18 +349,14 @@ class NominalClient:
         Filters are ANDed together, e.g., if substring_match and search_text are both provided, then both must match.
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the user's display name.
+            substring_match: Searches for a case-insensitive substring across the user's display name and email.
             search_text: Searches for a (case-insensitive) substring across display name and email
 
         Returns:
             All users which match all of the provided conditions
         """
         query = create_search_users_query(substring_match=substring_match, search_text=search_text)
-        return [
-            user
-            for user in self._iter_search_users(query)
-            if _matches_name_substring(user.display_name, substring_match)
-        ]
+        return list(self._iter_search_users(query))
 
     def _iter_search_datasets(
         self,
@@ -393,7 +385,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(dataset.label == label) AND (dataset.property == property)`
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the dataset name.
+            substring_match: Case-insensitive substring match across a dataset's name, description, labels, and
+                properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
@@ -423,11 +416,7 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
             archive_status=archive_status,
         )
-        return [
-            dataset
-            for dataset in self._iter_search_datasets(query)
-            if _matches_name_substring(dataset.name, substring_match)
-        ]
+        return list(self._iter_search_datasets(query))
 
     def search_dataset_files(
         self,
@@ -731,7 +720,8 @@ class NominalClient:
             end: Inclusive end time for filtering runs.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-            substring_match: Searches for a case-insensitive substring in the run name.
+            substring_match: Case-insensitive substring match across a run's name, description, labels, and
+                properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
@@ -1211,7 +1201,8 @@ class NominalClient:
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            substring_match: Searches for a case-insensitive substring in the asset name.
+            substring_match: Case-insensitive substring match across an asset's name, description, labels, and
+                properties.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1231,11 +1222,7 @@ class NominalClient:
             substring_match=substring_match,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return [
-            asset
-            for asset in self._iter_search_assets(query, archive_status)
-            if _matches_name_substring(asset.name, substring_match)
-        ]
+        return list(self._iter_search_assets(query, archive_status))
 
     def get_ingestion_job(self, rid: str) -> IngestionJob:
         """Retrieve an ingest job by its RID."""
@@ -1560,7 +1547,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the workbook title.
+            substring_match: Case-insensitive substring match across a workbook's title, description, labels, and
+                properties.
             search_text: Case-insensitive substring of the workbook's title or description.
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
@@ -1631,7 +1619,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the template title.
+            substring_match: Case-insensitive substring match across a template's title, description, labels, and
+                properties.
             search_text: Fuzzy (similarity) match against the template's title or description.
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
@@ -1659,11 +1648,7 @@ class NominalClient:
             archive_status=archive_status,
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
-        return [
-            template
-            for template in self._iter_search_workbook_templates(query)
-            if _matches_name_substring(template.title, substring_match)
-        ]
+        return list(self._iter_search_workbook_templates(query))
 
     def create_workbook_template(
         self,

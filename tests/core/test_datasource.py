@@ -103,9 +103,7 @@ def test_search_channels_rejects_string_substring_matches(mock_datasource: DataS
         list(mock_datasource.search_channels(substring_matches="asdf"))  # type: ignore[arg-type]
 
 
-def test_search_channels_filters_substring_matches_by_channel_name(
-    mock_datasource: DataSource, mock_clients: MagicMock
-):
+def test_search_channels_preserves_backend_substring_matches(mock_datasource: DataSource, mock_clients: MagicMock):
     engine_temperature = MagicMock(name="engine_temperature")
     engine_temperature.name = "engine_temperature"
     engine_temperature.data_source = "test-datasource-rid"
@@ -123,7 +121,7 @@ def test_search_channels_filters_substring_matches_by_channel_name(
 
     channels = list(mock_datasource.search_channels(substring_matches=["engine", "temperature"]))
 
-    assert [channel.name for channel in channels] == ["engine_temperature"]
+    assert [channel.name for channel in channels] == ["engine_temperature", "ambient_temperature"]
 
 
 def test_batch_update_or_create_channels_single_batch(mock_datasource: DataSource, mock_clients: MagicMock):

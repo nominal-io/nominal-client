@@ -217,7 +217,7 @@ class DataSource(HasRid):
         """Look up channels associated with a datasource.
 
         Args:
-            substring_matches: Filter the returned channels to those whose names match all provided strings
+            substring_matches: Filter the returned channels to those matching all provided strings
                 (case insensitive).
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
             data_types: Filter the returned channels to those that match any of the provided types
@@ -254,11 +254,7 @@ class DataSource(HasRid):
                     if data_type not in allowable_types:
                         continue
 
-                channel = Channel._from_conjure_datasource_api(self._clients, channel_metadata)
-                if not all(match.casefold() in channel.name.casefold() for match in effective_substring_matches):
-                    continue
-
-                yield channel
+                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
             if response.next_page_token is None:
                 break
             next_page_token = response.next_page_token
