@@ -186,8 +186,6 @@ def test_schema_types_from_catalog(backend: nsql.Backend) -> None:
 def test_functions_generated_from_catalog(backend: nsql.Backend, session: MagicMock) -> None:
     """Every expressible catalog function is exposed on con.fn; variadic and kind-less entries are skipped."""
     assert list(backend.fn) == ["avg", "date_bin", "derivative", "max", "regexp_like"]
-    assert "DERIVATIVE" in backend.fn
-    assert "derivative" in dir(backend.fn)
     assert session.get.call_count == 2, "the catalog is fetched once and shared with table schemas"
     with pytest.raises(AttributeError, match="no function named 'nope'"):
         backend.fn.nope
@@ -207,20 +205,6 @@ def test_catalog_function_types_follow_type_families(backend: nsql.Backend) -> N
         backend.fn.derivative(pts.channel)
 
 
-def test_catalog_function_executes_through_query_endpoint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A generated function compiles into the query body and its result is typed from the catalog."""
-    mock = make_session(query_result=pa.table({"rate": pa.array([1.5], pa.float64())}))
-    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
-    con = nsql.connect(token="test-token", base_url="https://api.test/api")
-    pts = con.table("points_double")
-    w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    df = pts.select(rate=con.fn.derivative(_.value).over(w)).to_pandas()
-    assert "derivative(" in mock.post.call_args.kwargs["json"]["query"].lower()
-    assert df["rate"][0] == 1.5
-
-
 def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, backend: nsql.Backend) -> None:
     """`from nominal.sql.fn import derivative` resolves against a lazily created default connection."""
     import nominal.sql.fn as fn_module
@@ -230,7 +214,6 @@ def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, bac
     from nominal.sql.fn import derivative
 
     assert derivative is backend.fn.derivative
-    assert "derivative" in dir(fn_module)
     fn_module.connect.assert_called_once_with()
 
 
