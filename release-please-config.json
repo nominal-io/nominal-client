@@ -4,6 +4,10 @@
     ".": {
       "release-type": "python"
     },
+    "packages/nominal-sql": {
+      "release-type": "python",
+      "component": "nominal-sql"
+    },
     "packages/nominal-tdms": {
       "release-type": "python",
       "component": "nominal-tdms"
