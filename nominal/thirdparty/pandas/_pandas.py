@@ -11,6 +11,7 @@ from nominal_api.api import Timestamp
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal.core._utils.type_tools import SequenceNotStr
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -261,7 +262,7 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
 
 def datasource_to_dataframe(
     datasource: DataSource,
-    channel_substring_matches: Sequence[str] | None = None,
+    channel_substring_matches: SequenceNotStr[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
