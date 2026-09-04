@@ -4,9 +4,6 @@ Connection setup
 ----------------
 The `client` fixture builds a NominalClient from either a named profile
 (``--profile``) or a raw token+URL pair (``--auth-token`` / ``--base-url``).
-The `set_connection` fixture patches `nominal.nominal.get_default_client` so
-that any code path relying on the module-level default client also uses the
-same authenticated instance.
 
 Shared data fixtures
 --------------------
@@ -32,7 +29,6 @@ import gzip
 from io import BytesIO
 from pathlib import Path
 from typing import Iterator
-from unittest import mock
 from uuid import uuid4
 
 import pytest
@@ -68,13 +64,6 @@ def client(pytestconfig) -> NominalClient:
     base_url = pytestconfig.getoption("base_url")
     print(f"Using NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_connection(client) -> Iterator[None]:
-    """Patch the module-level default client so top-level `nominal.*` calls use the test client."""
-    with mock.patch("nominal.nominal.get_default_client", return_value=client):
-        yield
 
 
 @pytest.fixture

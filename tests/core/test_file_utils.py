@@ -164,6 +164,66 @@ class TestCopyFileToDataset:
         assert result is new_file
 
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_percent_encoded_source_key_is_decoded(self, mock_get: MagicMock) -> None:
+        """Legacy percent-encoded source keys are URL-decoded before re-upload.
+
+        Files uploaded before the encoding fix have keys like ``...Z_paren%28reduced%29.csv``.
+        Re-uploading the literal ``%28`` breaks Azure Blob, so the destination name must be
+        decoded back to ``paren(reduced)``.
+        """
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_paren%28reduced%29.csv",
+            timestamp_channel="timestamp",
+            timestamp_type="iso_8601",
+        )
+        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
+
+        destination_dataset = MagicMock()
+        destination_dataset.add_from_io.return_value = MagicMock()
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "paren(reduced)"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_space_encoded_source_key_is_decoded(self, mock_get: MagicMock) -> None:
+        """Spaces were stored as '+' by the old quote_plus encoder, so decode with unquote_plus.
+
+        A plain unquote would leave the literal '+' (e.g. 'my+file'); unquote_plus restores the space.
+        """
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_my+file.csv",
+            timestamp_channel="timestamp",
+            timestamp_type="iso_8601",
+        )
+        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
+
+        destination_dataset = MagicMock()
+        destination_dataset.add_from_io.return_value = MagicMock()
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "my file"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_unsafe_chars_in_source_key_are_sanitized(self, mock_get: MagicMock) -> None:
+        """Unsafe characters in a source filename are replaced (migration never blocks on one file)."""
+        # %7B/%7D decode to { } which are unsafe and must be sanitized to underscores.
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_weird%7Bname%7D.csv",
+            timestamp_channel="timestamp",
+            timestamp_type="iso_8601",
+        )
+        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
+
+        destination_dataset = MagicMock()
+        destination_dataset.add_from_io.return_value = MagicMock()
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "weird_name_"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_missing_timestamp_metadata_raises(self, mock_get: MagicMock) -> None:
         """Non-journal files with no timestamp metadata raise ValueError."""
         source_file = _make_source_file(

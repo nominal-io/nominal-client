@@ -7,15 +7,13 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    event,
     scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
-from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -23,22 +21,25 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableMixin,
+    RefreshableConjureMixin,
     ScopeTypeSpecifier,
     create_links,
     filter_scope_rids,
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
-from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
+from nominal.core.connection import Connection, _get_connection, _get_connections
+from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -47,15 +48,17 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
+class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Asset]):
     rid: str
     name: str
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(
         DataSource._Clients,
@@ -70,14 +73,14 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
-        def event(self) -> event.EventService: ...
+        def run(self) -> scout.RunService: ...
 
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
-        return f"{self._clients.app_base_url}/assets/{self.rid}"
+        return asset_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_asset_api.Asset:
         response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
@@ -230,6 +233,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
+    @deprecated(
+        "Attaching a standalone `Video` to an asset is deprecated in favor of video channels on a dataset. Attach the "
+        "dataset that carries the video channels with `Asset.add_dataset` instead.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def add_video(self, data_scope_name: str, video: Video | str) -> None:
         """Add a video to this asset.
 
@@ -357,6 +365,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
         return dataset
 
+    @deprecated(
+        "`Asset.get_or_create_video` is deprecated in favor of video channels on a dataset. Use "
+        "`Asset.get_or_create_dataset`, then `Dataset.add_video` to upload video to a channel on it.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def get_or_create_video(
         self,
         data_scope_name: str,
@@ -461,28 +474,69 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
 
     def get_dataset(self, data_scope_name: str) -> Dataset:
-        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
-        dataset = self.get_data_scope(data_scope_name)
-        if isinstance(dataset, Dataset):
-            return dataset
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a dataset")
+        """Retrieve a dataset by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Dataset associated with the data scope name.
+
+        Raises:
+            ValueError: If no dataset data scope exists with the provided name.
+        """
+        dataset_rids_by_scope_name = self._scope_rids("dataset")
+        dataset_rid = dataset_rids_by_scope_name.get(data_scope_name)
+        if dataset_rid is None:
+            raise ValueError(f"No dataset with data scope name '{data_scope_name}' found for this asset")
+
+        return Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+        )
 
     def get_connection(self, data_scope_name: str) -> Connection:
-        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
-        connection = self.get_data_scope(data_scope_name)
-        if isinstance(connection, Connection):
-            return connection
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a connection")
+        """Retrieve a connection by data scope name.
 
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Connection associated with the data scope name.
+
+        Raises:
+            ValueError: If no connection data scope exists with the provided name.
+        """
+        connection_rids_by_scope_name = self._scope_rids("connection")
+        connection_rid = connection_rids_by_scope_name.get(data_scope_name)
+        if connection_rid is None:
+            raise ValueError(f"No connection with data scope name '{data_scope_name}' found for this asset")
+
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+
+    @deprecated(
+        "Resolving a standalone `Video` data scope is deprecated in favor of video channels on a dataset. Use "
+        "`Asset.get_dataset` with the data scope name, then `Dataset.list_video_files` to reach the video files.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def get_video(self, data_scope_name: str) -> Video:
-        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
-        video = self.get_data_scope(data_scope_name)
-        if isinstance(video, Video):
-            return video
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a video")
+        """Retrieve a video by data scope name.
+
+        Args:
+            data_scope_name: Name of the asset data scope to resolve.
+
+        Returns:
+            Video associated with the data scope name.
+
+        Raises:
+            ValueError: If no video data scope exists with the provided name.
+        """
+        video_rids = self._scope_rids("video")
+        video_rid = video_rids.get(data_scope_name)
+        if video_rid is None:
+            raise ValueError(f"No video with data scope name '{data_scope_name}' found for this asset")
+
+        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
@@ -594,42 +648,25 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             )
         )
 
-    @warn_on_deprecated_argument(
-        "include_archived",
-        "The 'include_archived' parameter for asset.search_workbooks is deprecated and will be removed in a future "
-        "version of Nominal. Please use 'archive_status' instead!",
-    )
-    @warn_on_deprecated_argument(
-        "exact_match",
-        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
-        "Use 'substring_match' instead.",
-    )
     def search_workbooks(
         self,
         *,
         substring_match: str | None = None,
-        exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
-        include_archived: bool | _NotProvided = _NotProvided(),
-        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Asset.
 
         See ``nominal.core.NominalClient.search_workbooks`` for details.
         """
-        effective_archive_status = resolve_effective_archive_status(
-            archive_status,
-            include_archived=include_archived,
-        )
-
         return _search_workbooks(
             self._clients,
-            substring_match=substring_match if substring_match is not None else exact_match,
+            substring_match=substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -637,7 +674,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             author_rid=created_by_rid,
             run_rid=run_rid,
             include_drafts=include_drafts,
-            archive_status=effective_archive_status,
+            archive_status=archive_status,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:
@@ -664,11 +701,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def archive(self) -> None:
         """Archive this asset.
         Archived assets are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.assets.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this asset, allowing it to be viewed in the UI."""
+        """Unarchive this asset, allowing it to be viewed in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -680,7 +722,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             properties=MappingProxyType(asset.properties),
             labels=tuple(asset.labels),
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
+            is_archived=asset.is_archived,
             _clients=clients,
+            created_by_rid=asset.created_by,
         )
 
 

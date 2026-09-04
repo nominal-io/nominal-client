@@ -359,11 +359,13 @@ class WriteStream(WriteStreamBase[StreamType]):
                 logger.warning("Upload task still pending after flushing batch... increase timeout or setting to None")
 
     def _process_timeout_batches(self) -> None:
+        max_wait_seconds = self.max_wait.total_seconds()
+
         while not self._stop.is_set():
             now = time.monotonic()
 
             last_batch_time = self._thread_safe_batch.last_time
-            timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
+            timeout = max(max_wait_seconds - (now - last_batch_time), 0)
             self._stop.wait(timeout=timeout)
 
             # check if flush has been called in the mean time

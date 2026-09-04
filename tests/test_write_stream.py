@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api_protos.nominal_write_pb2 import (
-    Series,
-    StructPoints,
-    WriteRequestNominal,
-)
 
 from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, WriteStream, infer_point_type
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
+from nominal.protos.write.nominal_write_pb2 import (
+    Series,
+    StructPoints,
+    WriteRequestNominal,
+)
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DataBatch = list[DataItem]
@@ -26,7 +27,7 @@ def dt_to_nano(dt: datetime) -> IntegralNanosecondsUTC:
 
 @pytest.fixture(autouse=True)
 def mock_channel():
-    with patch("nominal_api_protos.nominal_write_pb2.Channel", autospec=True) as mock:
+    with patch("nominal.protos.write.nominal_write_pb2.Channel", autospec=True) as mock:
         mock.return_value = MagicMock()
         mock.return_value.name = ""
         yield mock
@@ -62,6 +63,7 @@ def mock_dataset(mock_clients):
         properties={},
         labels=[],
         bounds=None,
+        is_archived=False,
     )
 
 
@@ -1013,3 +1015,41 @@ def test_infer_point_type_dict():
     assert infer_point_type({"key": "value"}) == PointType.STRUCT
     assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
     assert infer_point_type({}) == PointType.STRUCT
+
+
+@pytest.mark.parametrize(
+    "max_wait, expected_timeout",
+    [
+        (timedelta(milliseconds=500), 0.5),
+        (timedelta(milliseconds=1500), 1.5),
+        (timedelta(minutes=2), 120.0),
+        (timedelta(days=1), 86400.0),
+    ],
+)
+def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_timeout):
+    """max_wait converts to seconds in full: days scale up, fractions are preserved."""
+    # Freeze the clock at the batch's last swap: no elapsed time to subtract, so the
+    # computed wait is exactly the converted max_wait rather than a wall-clock race.
+    now = 1000.0
+
+    batch = MagicMock()
+    batch.last_time = now
+    batch.swap.return_value = []
+
+    stop = MagicMock(spec=threading.Event)
+    stop.is_set.side_effect = [False, True]  # run exactly one iteration
+
+    stream = WriteStream(
+        batch_size=10,
+        max_wait=max_wait,
+        _process_batch=MagicMock(),
+        _executor=MagicMock(),
+        _thread_safe_batch=batch,
+        _stop=stop,
+        _pending_jobs=threading.BoundedSemaphore(3),
+    )
+    with patch("nominal.core._stream.write_stream.time.monotonic", return_value=now):
+        stream._process_timeout_batches()
+
+    stop.wait.assert_called_once()
+    assert stop.wait.call_args.kwargs["timeout"] == expected_timeout

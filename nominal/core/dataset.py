@@ -9,29 +9,37 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
-from typing_extensions import Self, deprecated
+from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
+from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableMixin
+from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
-from nominal.core.containerized_extractors import ContainerizedExtractor
-from nominal.core.dataset_file import DatasetFile
+from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
+from nominal.core.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.video import _build_video_file_timestamp_manifest
+from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.ts import (
+    Epoch,
     IntegralNanosecondsUTC,
+    _AnyEpochTimestampType,
+    _AnyNumericTimestampType,
     _AnyTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
+    _validate_timestamp_pair,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,33 +48,21 @@ DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
-class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
+class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
     bounds: DatasetBounds | None
+    is_archived: bool
 
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        return f"{self._clients.app_base_url}/data-sources/{self.rid}"
+        return dataset_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
-
-    @deprecated(
-        "Calling `poll_until_ingestion_completed()` on a `nominal.Dataset` is deprecated and will be removed in "
-        "a future release. Poll for ingestion completion instead on individual `nominal.DatasetFile`s, which are "
-        "obtained when ingesting files or by calling `dataset.list_files()`."
-    )
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        raise NominalMethodRemovedError(
-            "nominal.core.Dataset.poll_until_ingestion_completed",
-            "poll for ingestion completion on individual 'nominal.core.DatasetFile's, "
-            "which are obtained when ingesting files or by calling "
-            "'nominal.core.Dataset.list_files()' etc.",
-        )
 
     def update(
         self,
@@ -141,6 +137,33 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 response.details.dataset.dataset_file_id,
             ),
         )
+
+    def _resolve_ingested_video_file(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
+        details = response.details.dataset
+        if details is not None and details.dataset_file_id is not None:
+            # The backend writes `metadata.video` when it creates the dataset-file row, before segmentation is
+            # dispatched — so a video ingest's row is video-typed from the moment it exists. A non-video result
+            # here means the id points at a genuinely non-video file, not a not-yet-populated one.
+            raw = self._clients.catalog.get_dataset_file(
+                self._clients.auth_header, details.dataset_rid, details.dataset_file_id
+            )
+            file = _dataset_file_from_conjure(self._clients, raw)
+            if isinstance(file, VideoDatasetFile):
+                return file
+            raise NominalIngestError(f"ingested file {details.dataset_file_id!r} is not a video dataset file")
+
+        # Backend compatibility: VideoOptsV2 may return a dataset RID without a dataset-file id.
+        # Fall back to the ingest job and require exactly one produced video file.
+        if response.ingest_job_rid is None:
+            raise NominalIngestError("video ingest returned neither a dataset-file id nor an ingest job to track")
+        job_conjure = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, response.ingest_job_rid)
+        job = IngestionJob._from_conjure(self._clients, job_conjure)
+        video_files = [f for f in job.dataset_files() if isinstance(f, VideoDatasetFile)]
+        if len(video_files) != 1:
+            raise NominalIngestError(
+                f"expected exactly one video file from ingest job {response.ingest_job_rid!r}, found {len(video_files)}"
+            )
+        return video_files[0]
 
     def add_tabular_data(
         self,
@@ -218,6 +241,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type,
             self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
 
         request = ingest_api.IngestRequest(
@@ -240,71 +264,96 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_avro_stream(
         self,
         path: PathLike,
+        *,
+        timestamp_type: _AnyNumericTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
-        """Upload an avro stream file with a specific schema, described below.
+        """Upload an avro-stream file, which must match the schema shown below.
 
         This is a "stream-like" file format to support
         use cases where a columnar/tabular format does not make sense. This closely matches Nominal's streaming
         API, making it useful for use cases where network connection drops during streaming and a backup file needs
         to be created.
 
-        For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
-
-        If this schema is not used, will result in a failed ingestion.
-        {
-            "type": "record",
-            "name": "AvroStream",
-            "namespace": "io.nominal.ingest",
-            "fields": [
-                {
-                    "name": "channel",
-                    "type": "string",
-                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                },
-                {
-                    "name": "timestamps",
-                    "type": {"type": "array", "items": "long"},
-                    "doc": "Array of Unix timestamps in nanoseconds",
-                },
-                {
-                    "name": "values",
-                    "type": {"type": "array", "items": [
-                        "double",
-                        "string",
-                        "long",
-                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                    ]},
-                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                },
-                {
-                    "name": "tags",
-                    "type": {"type": "map", "values": "string"},
-                    "default": {},
-                    "doc": "Key-value metadata tags",
-                },
-            ],
-        }
-
-        Note: The previous schema with only "double" and "string" value types is still fully supported.
-
         Args:
-            path: Path to the .avro file to upload
+            path: Path to the .avro or .avro.gz file to upload
+            timestamp_type: How to read the numbers in the file's `timestamps` field: an absolute epoch
+                (`ts.Epoch`, or its string literal) or an offset from a start (`ts.Relative`). Defaults to
+                "epoch_nanoseconds".
+            tags: Key-value tags applied to all data in the file. Tags in the records themselves take
+                precedence -- these only fill keys a record does not already set.
 
         Returns:
             Reference to the ingesting DatasetFile
 
+        Raises:
+            ValueError: `path` does not end in .avro or .avro.gz, or `timestamp_type` has no numeric
+                representation (e.g. an ISO 8601 or custom string format).
+
+        NOTE: For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+
+        NOTE: The previous schema with only "double" and "string" value types is still fully supported.
+
+        NOTE: If this schema is not used, will result in a failed ingestion.
+
+            {
+                "type": "record",
+                "name": "AvroStream",
+                "namespace": "io.nominal.ingest",
+                "fields": [
+                    {
+                        "name": "channel",
+                        "type": "string",
+                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                    },
+                    {
+                        "name": "timestamps",
+                        "type": {"type": "array", "items": "long"},
+                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                    },
+                    {
+                        "name": "values",
+                        "type": {"type": "array", "items": [
+                            "double",
+                            "string",
+                            "long",
+                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                        ]},
+                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                    },
+                    {
+                        "name": "tags",
+                        "type": {"type": "map", "values": "string"},
+                        "default": {},
+                        "doc": "Key-value metadata tags",
+                    },
+                ],
+            }
+
         """
         avro_path = Path(path)
+        file_type = FileType.from_avro_stream(avro_path)
+
+        timestamp_req = None
+        if timestamp_type is not None:
+            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+            timestamp_req = typed_timestamp_type._to_conjure_ingest_avro_api()
+
         workspace_rid = self._clients.resolve_default_workspace_rid()
+
+        # Upload to S3
         s3_path = upload_multipart_file(
             self._clients.auth_header,
             workspace_rid,
             avro_path,
             self._clients.upload,
-            file_type=FileTypes.AVRO_STREAM,
+            file_type=file_type,
+            header_provider=self._clients.header_provider,
         )
+
+        # Ingest to Nominal
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
@@ -315,44 +364,97 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                     avro_stream=ingest_api.AvroStreamOpts(
                         source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
                         target=target,
+                        additional_file_tags={**tags} if tags else None,
+                        timestamp_type=timestamp_req,
                     )
                 )
             ),
         )
         return self._handle_ingest_response(resp)
 
+    @overload
     def add_journal_json(
         self,
         path: PathLike,
         *,
         channel: str | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_journal_json(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyEpochTimestampType,
+    ) -> DatasetFile: ...
+    def add_journal_json(
+        self,
+        path: PathLike,
+        *,
+        channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyEpochTimestampType | None = None,
     ) -> DatasetFile:
         """Add a journald jsonl file to an existing dataset.
 
-        Designed to support any valid journald-style jsonl files, there are a few key expectations for journal
-        json files:
-            - They must be .jsonl or .jsonl.gz files, and each line should contain a json payload
-            - Each json line *must* contain an epoch microsecond timestamp (__REALTIME_TIMESTAMP), which is treated
-              as an integer, and a `MESSAGE` field containing the primary log message. All other JSON key value pairs
-              are converted to args, though, except string literals.
+        Supports any journald-style jsonl file, with a few expectations:
+            - The file must be .jsonl or .jsonl.gz, and each line must be a json object.
+            - Each line must hold a timestamp field and a `MESSAGE` field carrying the primary log message.
+              The timestamp field is `__REALTIME_TIMESTAMP` unless `timestamp_column` names another one.
+              Lines missing either field are skipped.
+            - Every other top-level field becomes a log arg, with its value converted to a string.
 
         Args:
             path: Path to journal json file to ingest
             channel: Optionally, a channel name to use for ingested logs (defaults to 'logs')
+            timestamp_column: Optionally, the name of the field in each json payload holding a timestamp.
+                Defaults to __REALTIME_TIMESTAMP.
+            timestamp_type: Optionally, how to read the numbers in that field, given as a `ts.Epoch` or its
+                string literal, e.g. `"epoch_microseconds"`. Defaults to microseconds since the unix epoch.
 
         Returns:
             DatasetFile object which can be used to poll for ingestion completion
+
+        Raises:
+            ValueError: if only one of `timestamp_column` / `timestamp_type` is given, or if
+                `timestamp_type` is not an absolute epoch type.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
+        timestamp_metadata = None
+        if timestamp_column is not None and timestamp_type is not None:
+            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+            # Journal ingest carries an epoch time unit with nowhere to record a starting offset, so a
+            # relative or string-format type cannot be expressed here.
+            # TODO(drake): once this routes through v2 ingest, which can carry a relative timestamp type,
+            # widen this guard and the _AnyEpochTimestampType annotations here and on _DatasetWrapper to
+            # accept ts.Relative. The log pipeline already reads relative timestamps -- only this request
+            # shape blocks it, and IngestBuilder.add_journal_json accepts them today.
+            if not isinstance(typed_timestamp_type, Epoch):
+                raise ValueError(
+                    f"journal json timestamps must be an absolute epoch type, received {typed_timestamp_type!r}"
+                )
+            timestamp_metadata = ingest_api.JournalTimestampMetadata(
+                epoch_of_time_unit=typed_timestamp_type._to_conjure_epoch_timestamp(),
+                field_name=timestamp_column,
+            )
+
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         workspace_rid = self._clients.resolve_default_workspace_rid()
+
+        # Upload to S3
         s3_path = upload_multipart_file(
             self._clients.auth_header,
             workspace_rid,
             log_path,
             self._clients.upload,
             file_type=file_type,
+            header_provider=self._clients.header_provider,
         )
+
+        # Trigger Ingest
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
@@ -364,6 +466,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                         source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
                         target=target,
                         channel=channel,
+                        timestamp_metadata=timestamp_metadata,
                     )
                 )
             ),
@@ -445,6 +548,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
 
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -465,6 +569,320 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     # Backward compatibility
     add_mcap_to_dataset_from_io = add_mcap_from_io
 
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    @overload
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    def add_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload a video file to this dataset as a channel.
+
+        Args:
+            path: Path to the H264/H265-encoded video file to add to this dataset.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
+                Exactly one of `start` or `frame_timestamps` must be provided.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            ValueError: neither or both of `start` and `frame_timestamps` were provided.
+        """
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
+
+        path = Path(path)
+        file_type = FileType.from_video(path)
+        with path.open("rb") as video:
+            if start is not None:
+                return self.add_video_from_io(
+                    video,
+                    path_upload_name(path, file_type),
+                    channel=channel,
+                    start=start,
+                    file_type=file_type,
+                    tags=tags,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            elif frame_timestamps is not None:
+                return self.add_video_from_io(
+                    video,
+                    path_upload_name(path, file_type),
+                    channel=channel,
+                    frame_timestamps=frame_timestamps,
+                    file_type=file_type,
+                    tags=tags,
+                    overwrite_overlapping=overwrite_overlapping,
+                )
+            else:  # unreachable: the check at the top of this method admits exactly one mode
+                raise NominalVideoTimestampModeError()
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        file_name: str,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    @overload
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        file_name: str,
+        *,
+        channel: str,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile: ...
+
+    def add_video_from_io(
+        self,
+        video: BinaryIO,
+        file_name: str,
+        *,
+        channel: str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from a binary file-like object to this dataset as a channel.
+
+        The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO,
+        containing H264 or H265-encoded video data.
+
+        Args:
+            video: File-like object containing video data encoded in H264 or H265.
+            file_name: Name of the file to use when uploading.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
+                Exactly one of `start` or `frame_timestamps` must be provided.
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the
+                'start' parameter, unless precise per-frame metadata is available and desired.
+            file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            TypeError: `video` is open in text mode rather than binary mode.
+            ValueError: neither or both of `start` and `frame_timestamps` were provided.
+        """
+        if isinstance(video, TextIOBase):
+            raise TypeError(f"video {video!r} must be open in binary mode, rather than text mode")
+        # Checked here as well as in the manifest builder _ingest_video reaches, so bad arguments
+        # fail before the upload and the message names only this method's two modes.
+        if (start is None) == (frame_timestamps is None):
+            raise NominalVideoTimestampModeError()
+
+        return self._ingest_video(
+            video,
+            file_name,
+            channel=channel,
+            file_type=FileType(*file_type),
+            tags=tags,
+            overwrite_overlapping=overwrite_overlapping,
+            start=start,
+            frame_timestamps=frame_timestamps,
+        )
+
+    def add_mcap_video(
+        self,
+        path: PathLike,
+        *,
+        channel: str,
+        topic: str,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from an MCAP file to this dataset as a channel.
+
+        Args:
+            path: Path to the MCAP file (must end in `.mcap`) containing H264/H265 video data.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            ValueError: `path` does not end in `.mcap`.
+        """
+        path = Path(path)
+        file_type = FileType.from_path(path)
+        if file_type != FileTypes.MCAP:
+            raise ValueError(f"mcap path '{path}' must end in `{FileTypes.MCAP.extension}`")
+
+        with path.open("rb") as mcap:
+            return self.add_mcap_video_from_io(
+                mcap,
+                path_upload_name(path, file_type),
+                channel=channel,
+                topic=topic,
+                file_type=file_type,
+                tags=tags,
+                overwrite_overlapping=overwrite_overlapping,
+            )
+
+    def add_mcap_video_from_io(
+        self,
+        mcap: BinaryIO,
+        file_name: str,
+        *,
+        channel: str,
+        topic: str,
+        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
+        tags: Mapping[str, str] | None = None,
+        overwrite_overlapping: bool = False,
+    ) -> VideoDatasetFile:
+        """Upload video data from a binary MCAP file-like object to this dataset as a channel.
+
+        The mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        Args:
+            mcap: File-like binary object containing MCAP data with H264/H265 video.
+            file_name: Name of the file to use when uploading.
+            channel: Name of the video channel within this dataset that the file's frames belong to.
+            topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
+            file_type: Metadata about the type of file (e.g. MCAP).
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+            overwrite_overlapping: If True, segments from other files on this channel that overlap with the
+                newly added file will be deleted before inserting the new segments.
+
+        Returns:
+            Reference to the created (still-ingesting) video dataset file.
+
+        Raises:
+            TypeError: `mcap` is open in text mode rather than binary mode.
+        """
+        if isinstance(mcap, TextIOBase):
+            raise TypeError(f"mcap {mcap!r} must be open in binary mode, rather than text mode")
+
+        return self._ingest_video(
+            mcap,
+            file_name,
+            channel=channel,
+            file_type=FileType(*file_type),
+            tags=tags,
+            overwrite_overlapping=overwrite_overlapping,
+            mcap_topic=topic,
+        )
+
+    def _ingest_video(
+        self,
+        video: BinaryIO,
+        file_name: str,
+        *,
+        channel: str,
+        file_type: FileType,
+        tags: Mapping[str, str] | None,
+        overwrite_overlapping: bool,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        mcap_topic: str | None = None,
+    ) -> VideoDatasetFile:
+        """Upload a video stream and submit the VideoOptsV2 ingest shared by all add-video methods."""
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            start=start,
+            frame_timestamps=frame_timestamps,
+            mcap_topic=mcap_topic,
+            header_provider=self._clients.header_provider,
+        )
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            video,
+            file_name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
+        )
+        request = ingest_api.IngestRequest(
+            options=self._build_video_ingest_options(
+                channel=channel,
+                tags=tags,
+                s3_path=s3_path,
+                timestamp_manifest=timestamp_manifest,
+                overwrite_overlapping=overwrite_overlapping,
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._resolve_ingested_video_file(response)
+
+    def _build_video_ingest_options(
+        self,
+        *,
+        channel: str,
+        tags: Mapping[str, str] | None,
+        s3_path: str,
+        timestamp_manifest: scout_video_api.VideoFileTimestampManifest,
+        overwrite_overlapping: bool,
+    ) -> ingest_api.IngestOptions:
+        """Build IngestOptions for a VideoOptsV2 ingest into a channel on this dataset."""
+        return ingest_api.IngestOptions(
+            video_v2=ingest_api.VideoOptsV2(
+                source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                target=ingest_api.DatasetIngestTarget(
+                    existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+                ),
+                timestamp_manifest=timestamp_manifest,
+                channel=channel,
+                tags={**(tags or {})},
+                over_write_segments=overwrite_overlapping or None,
+            )
+        )
+
     def add_ardupilot_dataflash(
         self,
         path: PathLike,
@@ -484,6 +902,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
+            header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -500,73 +919,74 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     @overload
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
-        tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
-    ) -> DatasetFile:
+    ) -> IngestionJob:
         """Add data from proprietary data formats using a pre-registered custom extractor.
+
+        A containerized extraction runs asynchronously and may emit multiple output files, so this returns
+        the tracking `IngestionJob` immediately rather than a single file. Use `job.as_files_ingested()` or
+        `job.dataset_files()` to pull the produced files, `job.status` to poll, and `job.cancel()` to cancel.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
-                NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Tag of the Docker container which hosts the extractor.
-                NOTE: if not provided, the default registered docker tag will be used.
+                NOTE: these must match the registered inputs of the active container image exactly
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
-            timestamp_column: the column in the dataset that contains the timestamp data.
+            timestamp_column: the column in the extractor's output that contains the timestamp data.
+                Provided together with `timestamp_type`, overrides the active container image's
+                `default_timestamp_metadata` for this ingest; if omitted, the image's default is
+                used. See `ContainerImage.default_timestamp_metadata` for the full resolution order.
                 NOTE: this is applied uniformly to all output files
                 NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
-            timestamp_type: the type of timestamp data in the dataset.
+            timestamp_type: the type of timestamp data in the extractor's output.
                 NOTE: this is applied uniformly to all output files
                 NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
+
+        Returns:
+            An `IngestionJob` handle for the asynchronous containerized ingest.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
             timestamp_metadata = ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             )
-        elif (timestamp_column is None) != (timestamp_type is None):
-            raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
-            extractor = ContainerizedExtractor._from_conjure(
-                self._clients,
-                self._clients.containerized_extractors.get_containerized_extractor(
-                    self._clients.auth_header, extractor
-                ),
+            extractor = _get_containerized_extractor(self._clients, extractor)
+        if extractor.active_image is None:
+            raise ValueError(
+                f"Extractor '{extractor.name}' has no active container image; register and activate one first."
             )
-        # Ensure all required inputs are present
-        registered_inputs = set()
-        for extractor_input in extractor.inputs:
-            registered_inputs.add(extractor_input.environment_variable)
-            if extractor_input.required and extractor_input.environment_variable not in sources:
-                raise ValueError(f"Required input '{extractor_input.environment_variable}' not present in sources!")
+        for image_input in extractor.active_image.inputs:
+            if image_input.required and image_input.environment_variable not in sources:
+                raise ValueError(f"Required input '{image_input.environment_variable}' not present in sources!")
 
         # Upload all inputs to s3 before ingestion
         s3_inputs = {}
@@ -578,11 +998,12 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 workspace_rid,
                 Path(source_path),
                 self._clients.upload,
+                header_provider=self._clients.header_provider,
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
 
-        logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
+        logger.info("Triggering custom extractor %s with %s", extractor.name, s3_inputs)
         resp = self._clients.ingest.ingest(
             self._clients.auth_header,
             trigger_ingest=ingest_api.IngestRequest(
@@ -597,7 +1018,6 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                         target=ingest_api.DatasetIngestTarget(
                             existing=ingest_api.ExistingDatasetIngestDestination(self.rid)
                         ),
-                        tag=tag,
                         additional_file_tags={**(tags or {})},
                         timestamp_metadata=timestamp_metadata,
                     )
@@ -605,16 +1025,26 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ),
         )
 
-        return self._handle_ingest_response(resp)
+        # A containerized extraction is asynchronous and multi-file, so the response carries an ingest job
+        # handle (not a single dataset file). Return the job; callers pull outputs via `IngestionJob`.
+        if resp.ingest_job_rid is None:
+            raise NominalIngestError("Containerized ingest did not return an ingest job to track.")
+        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, resp.ingest_job_rid)
+        return IngestionJob._from_conjure(self._clients, job)
 
     def archive(self) -> None:
         """Archive this dataset.
         Archived datasets are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
+        """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -626,6 +1056,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             properties=MappingProxyType(dataset.properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
+            is_archived=dataset.is_archived,
             _clients=clients,
         )
 
@@ -647,7 +1078,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         if successful_only:
             files = filter(lambda f: f.ingest_status.type == "success", files)
         for file in files:
-            yield DatasetFile._from_conjure(self._clients, file)
+            yield _dataset_file_from_conjure(self._clients, file)
 
     def get_dataset_file(self, dataset_file_id: str) -> DatasetFile:
         """Retrieve the given dataset file by ID
@@ -663,7 +1094,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         """
         try:
             raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.rid, dataset_file_id)
-            return DatasetFile._from_conjure(self._clients, raw_file)
+            return _dataset_file_from_conjure(self._clients, raw_file)
         except Exception as ex:
             raise FileNotFoundError(
                 f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
@@ -695,6 +1126,28 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             All dataset files within this dataset which match all of the provided conditions
         """
         return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
+
+    def list_video_files(self, *, successful_only: bool = True) -> Iterable[VideoDatasetFile]:
+        """List video files ingested to this dataset.
+
+        If successful_only, yields successfully-ingested video files only; otherwise also
+        yields queued, ingesting, failed, and deletion-state video files.
+        """
+        for file in self.list_files(successful_only=successful_only):
+            if isinstance(file, VideoDatasetFile):
+                yield file
+
+    def get_video_file(self, dataset_file_id: str) -> VideoDatasetFile:
+        """Retrieve a video dataset file by ID.
+
+        Raises:
+            FileNotFoundError: the file does not exist in this dataset.
+            TypeError: the ID identifies a non-video dataset file.
+        """
+        file = self.get_dataset_file(dataset_file_id)
+        if not isinstance(file, VideoDatasetFile):
+            raise TypeError(f"dataset file {dataset_file_id!r} is not a video dataset file")
+        return file
 
     def get_log_stream(
         self,
@@ -844,55 +1297,78 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         path: PathLike,
+        *,
+        timestamp_type: _AnyNumericTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Upload an avro stream file to the dataset selected by `data_scope_name`.
 
-        This method behaves like `nominal.core.Dataset.add_avro_stream`, with one important difference:
-        avro stream ingestion does not support applying scope tags. If the selected scope requires tags, this method
-        raises `RuntimeError` rather than ingesting (potentially) untagged data. This file may still be ingested
-        directly on the dataset itself if it is known to contain the correct set of tags.
+        This method behaves like `nominal.core.Dataset.add_avro_stream`, except that the data scope's required
+        tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
+        Tags in the avro records take precedence over both, so a scope tag whose key a record already sets is
+        not applied to that record's data.
 
-        For schema requirements and return value details, see
+        For schema requirements, argument semantics, and return value details, see
         `nominal.core.Dataset.add_avro_stream`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_avro_stream(path, timestamp_type=timestamp_type, tags=_unify_tags(scope_tags, tags))
 
-        # TODO(drake): remove once avro stream supports ingest with tags
-        if scope_tags:
-            raise RuntimeError(
-                f"Cannot add avro files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required tags: {scope_tags}"
-            )
-
-        return dataset.add_avro_stream(path)
-
+    @overload
+    def add_journal_json(self, data_scope_name: str, path: PathLike, *, channel: str | None = ...) -> DatasetFile: ...
+    @overload
+    def add_journal_json(
+        self,
+        data_scope_name: str,
+        path: PathLike,
+        *,
+        channel: str | None = ...,
+        timestamp_column: str,
+        timestamp_type: _AnyEpochTimestampType,
+    ) -> DatasetFile: ...
     def add_journal_json(
         self,
         data_scope_name: str,
         path: PathLike,
         *,
         channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyEpochTimestampType | None = None,
     ) -> DatasetFile:
         """Add a journald json file to the dataset selected by `data_scope_name`.
 
-        This method behaves like `nominal.core.Dataset.add_journal_json`, with one important difference:
-        journal json ingestion does not support applying scope tags as args. If the selected scope requires tags,
-        this method raises `RuntimeError` rather than potentially ingesting untagged data. This file may still be
-        ingested directly on the dataset itself if it is known to contain the correct set of args.
+        This method behaves like `nominal.core.Dataset.add_journal_json`, with one important difference: the
+        journal json ingest request has no field for tags, so a scope's required tags cannot be applied to the
+        ingested logs. If the selected scope requires tags, this method raises `RuntimeError` rather than
+        ingesting logs that would be missing them. The file can still be ingested on the dataset directly, if
+        its own contents already carry what the scope needs.
 
-        For file expectations and return value details, see
+        For file expectations, timestamp argument semantics, and return value details, see
         `nominal.core.Dataset.add_journal_json`.
         """
+        # Checked here as well as in the delegate, so a mispaired call fails on its own arguments rather
+        # than after a round trip to resolve the scope.
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
 
         # TODO(drake): remove once journal json supports ingest with tags
         if scope_tags:
             raise RuntimeError(
-                f"Cannot add journal json files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required arguments: {scope_tags}"
+                f"Cannot add journal json files to datascope {data_scope_name}: journal ingest cannot apply "
+                f"tags, so the logs would not get the scope's required tags {scope_tags}"
             )
 
-        return dataset.add_journal_json(path, channel=channel)
+        # `Dataset.add_journal_json`'s overloads take the timestamp pair together or not at all, but this
+        # pass-through holds each half as its own optional -- a shape no overload can accept, since the two
+        # are only correlated at runtime. Forwarding in one call gives up static checking here; the check
+        # above and the delegate's own conversion enforce the contract.
+        return dataset.add_journal_json(
+            path,
+            channel=channel,
+            timestamp_column=timestamp_column,  # type: ignore[arg-type]
+            timestamp_type=timestamp_type,  # type: ignore[arg-type]
+        )
 
     def add_mcap(
         self,
@@ -946,9 +1422,9 @@ class _DatasetWrapper(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     @overload
     def add_containerized(
         self,
@@ -956,55 +1432,51 @@ class _DatasetWrapper(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-    ) -> DatasetFile: ...
+    ) -> IngestionJob: ...
     def add_containerized(
         self,
         data_scope_name: str,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        tag: str | None = None,
+        arguments: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
-    ) -> DatasetFile:
+    ) -> IngestionJob:
         """Add data from proprietary formats using a pre-registered custom extractor.
 
         This method behaves like `nominal.core.Dataset.add_containerized`, except that the data scope's required
         tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
 
-        This wrapper also enforces that `timestamp_column` and `timestamp_type` are provided together (or omitted
-        together) before delegating.
+        Pass both `timestamp_column` and `timestamp_type`, or neither; this wrapper enforces that before
+        delegating.
 
         For extractor inputs, tagging semantics, timestamp metadata behavior, and return value details, see
         `nominal.core.Dataset.add_containerized`.
         """
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
+
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        if timestamp_column is None and timestamp_type is None:
+        if timestamp_column is not None and timestamp_type is not None:
             return dataset.add_containerized(
                 extractor,
                 sources,
-                tag=tag,
-                tags=_unify_tags(scope_tags, tags),
-            )
-        elif timestamp_column is not None and timestamp_type is not None:
-            return dataset.add_containerized(
-                extractor,
-                sources,
-                tag=tag,
+                arguments=arguments,
                 tags=_unify_tags(scope_tags, tags),
                 timestamp_column=timestamp_column,
                 timestamp_type=timestamp_type,
             )
-        else:
-            raise ValueError(
-                "Only one of `timestamp_column` and `timestamp_type` were provided to `add_containerized`, "
-                "either both must or neither must be provided."
-            )
+        return dataset.add_containerized(
+            extractor,
+            sources,
+            arguments=arguments,
+            tags=_unify_tags(scope_tags, tags),
+        )
 
     def add_from_io(
         self,
@@ -1044,7 +1516,7 @@ def _iter_search_dataset_files(
     query: scout_catalog.SearchDatasetFilesQuery,
 ) -> Iterable[DatasetFile]:
     for raw_file in search_dataset_files_paginated(clients.catalog, clients.auth_header, dataset_rid, query):
-        yield DatasetFile._from_conjure(clients, raw_file)
+        yield _dataset_file_from_conjure(clients, raw_file)
 
 
 def _search_dataset_files(
@@ -1061,32 +1533,6 @@ def _search_dataset_files(
 
 def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
     return {**datascope_tags, **(provided_tags or {})}
-
-
-@deprecated(
-    "poll_until_ingestion_completed() is deprecated and will be removed in a future release. "
-    "Instead, call poll_until_ingestion_completed() on individual DatasetFiles."
-)
-def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
-    """Block until all dataset ingestions have completed (succeeded or failed).
-
-    This method polls Nominal for ingest status on each of the datasets on an interval.
-    No specific ordering is guaranteed, but all datasets will be checked at least once.
-
-    Raises:
-    ------
-        NominalIngestMultiError: if any of the datasets failed to ingest
-
-    """
-    errors = {}
-    for dataset in datasets:
-        try:
-            for dataset_file in dataset.list_files():
-                dataset_file.poll_until_ingestion_completed(interval=interval)
-        except NominalIngestError as e:
-            errors[dataset.rid] = e
-    if errors:
-        raise NominalIngestMultiError(errors)
 
 
 def _get_datasets(
@@ -1116,17 +1562,19 @@ def _create_dataset(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
+    marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
     request = scout_catalog.CreateDataset(
         name=name,
         description=description,
         labels=list(labels),
         properties={} if properties is None else dict(properties),
+        typed_properties={},
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
-        marking_rids=[],
+        marking_rids=list(marking_rids or []),
     )
     return client.create_dataset(auth_header, request)
 
@@ -1233,6 +1681,7 @@ def _construct_new_ingest_options(
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
                 exclude_columns=[],
+                channel_name_overrides={},
             )
         )
     else:
@@ -1248,6 +1697,7 @@ def _construct_new_ingest_options(
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
                 exclude_columns=[],
+                channel_name_overrides={},
             )
         )
 
@@ -1281,6 +1731,7 @@ def _construct_existing_ingest_options(
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
                 exclude_columns=[],
+                channel_name_overrides={},
             )
         )
     else:
@@ -1295,5 +1746,6 @@ def _construct_existing_ingest_options(
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
                 exclude_columns=[],
+                channel_name_overrides={},
             )
         )

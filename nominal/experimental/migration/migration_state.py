@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from dataclass_wizard import JSONWizard
+import json
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any
 
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -15,7 +15,7 @@ class SkippedResource:
 
 
 @dataclass
-class MigrationState(JSONWizard):
+class MigrationState:
     # resource_type -> old_rid -> new_rid
     rid_mapping: dict[str, dict[str, str]] = field(default_factory=dict)
     # source workbook_rid -> list of source asset_rids (for deferred multi-asset migration)
@@ -24,6 +24,42 @@ class MigrationState(JSONWizard):
     pending_multi_run_workbooks: dict[str, list[str]] = field(default_factory=dict)
     # log of resources skipped due to missing dependencies or out-of-scope references
     skipped_resources: list[SkippedResource] = field(default_factory=list)
+    # source run_rids skipped because they are archived; lets the deferred-workbook flush
+    # distinguish "run intentionally not migrated" from a genuinely missing mapping
+    archived_run_rids: set[str] = field(default_factory=set)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MigrationState:
+        skipped_resources = [
+            SkippedResource(**item)
+            for item in data.get("skipped_resources", data.get("skippedResources", []))
+            if isinstance(item, dict)
+        ]
+        return cls(
+            rid_mapping=data.get("rid_mapping", data.get("ridMapping", {})),
+            pending_multi_asset_workbooks=data.get(
+                "pending_multi_asset_workbooks", data.get("pendingMultiAssetWorkbooks", {})
+            ),
+            pending_multi_run_workbooks=data.get(
+                "pending_multi_run_workbooks", data.get("pendingMultiRunWorkbooks", {})
+            ),
+            skipped_resources=skipped_resources,
+            archived_run_rids=set(data.get("archived_run_rids", data.get("archivedRunRids", []))),
+        )
+
+    @classmethod
+    def from_json(cls, data: str) -> MigrationState:
+        return cls.from_dict(json.loads(data))
+
+    def to_json(self) -> str:
+        # Not dataclasses.asdict(self): it deep-copies the whole O(state size) mapping tree
+        # only to feed json.dumps, which serializes the containers directly. Only
+        # skipped_resources holds dataclasses that need converting. fields() excludes
+        # ThreadSafeMigrationState's plain instance attrs (lock, hook), as asdict did.
+        payload: dict[str, Any] = {f.name: getattr(self, f.name) for f in fields(self)}
+        payload["skipped_resources"] = [asdict(item) for item in self.skipped_resources]
+        payload["archived_run_rids"] = sorted(self.archived_run_rids)
+        return json.dumps(payload)
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.rid_mapping.setdefault(resource_type.value, {})[old_rid] = new_rid
@@ -39,11 +75,68 @@ class MigrationState(JSONWizard):
         """Record a multi-run workbook for deferred migration. Overwrites any prior entry for idempotency."""
         self.pending_multi_run_workbooks[workbook_rid] = run_rids
 
+    def record_pending_multi_asset_workbook_unless_skipped(self, workbook_rid: str, asset_rids: list[str]) -> bool:
+        """Record a pending multi-asset workbook unless the workbook has already been skipped."""
+        if self.workbook_was_skipped(workbook_rid):
+            return False
+        self.pending_multi_asset_workbooks[workbook_rid] = asset_rids
+        return True
+
+    def record_pending_multi_run_workbook_unless_skipped(self, workbook_rid: str, run_rids: list[str]) -> bool:
+        """Record a pending multi-run workbook unless the workbook has already been skipped."""
+        if self.workbook_was_skipped(workbook_rid):
+            return False
+        self.pending_multi_run_workbooks[workbook_rid] = run_rids
+        return True
+
     def clear_pending_multi_asset_workbook(self, workbook_rid: str) -> None:
         self.pending_multi_asset_workbooks.pop(workbook_rid, None)
 
     def clear_pending_multi_run_workbook(self, workbook_rid: str) -> None:
         self.pending_multi_run_workbooks.pop(workbook_rid, None)
 
+    def record_archived_run(self, run_rid: str) -> None:
+        """Record a source run that was skipped because it is archived."""
+        self.archived_run_rids.add(run_rid)
+
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         self.skipped_resources.append(SkippedResource(resource_type.value, source_rid, reason))
+
+    def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
+        """Record a resource's latest skip outcome, replacing any earlier entries for it;
+        ``None`` clears them. Returns whether anything changed.
+
+        Some skips (a transient copy failure, an unusable source file) are re-attempted on the
+        next run because no mapping was recorded; an upsert keeps the end-of-run summary
+        reporting each such resource's latest state once, rather than accumulating one stale
+        entry per attempt.
+        """
+        remaining = [
+            skipped
+            for skipped in self.skipped_resources
+            if not (skipped.resource_type == resource_type.value and skipped.source_rid == source_rid)
+        ]
+        changed = len(remaining) != len(self.skipped_resources)
+        if reason is not None:
+            remaining.append(SkippedResource(resource_type.value, source_rid, reason))
+            changed = True
+        # In place, so ThreadSafeMigrationState's to_json snapshot (which copies this list
+        # under its lock) and any other holder of the list reference stay consistent.
+        self.skipped_resources[:] = remaining
+        return changed
+
+    def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
+        """Record a workbook skip as a terminal state and clear any stale pending entries."""
+        changed = workbook_rid in self.pending_multi_asset_workbooks or workbook_rid in self.pending_multi_run_workbooks
+        self.pending_multi_asset_workbooks.pop(workbook_rid, None)
+        self.pending_multi_run_workbooks.pop(workbook_rid, None)
+        if self.workbook_was_skipped(workbook_rid):
+            return changed
+        self.skipped_resources.append(SkippedResource(ResourceType.WORKBOOK.value, workbook_rid, reason))
+        return True
+
+    def workbook_was_skipped(self, workbook_rid: str) -> bool:
+        return any(
+            skipped.resource_type == ResourceType.WORKBOOK.value and skipped.source_rid == workbook_rid
+            for skipped in self.skipped_resources
+        )

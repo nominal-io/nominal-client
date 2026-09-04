@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
-    event,
+    ingest_api,
     scout,
     scout_asset_api,
     scout_assets,
@@ -17,10 +17,14 @@ from nominal_api import (
     scout_template_api,
     scout_video,
     scout_video_api,
-    secrets_api,
 )
 
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
+from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -30,24 +34,23 @@ T_contra = TypeVar("T_contra", contravariant=True)
 
 
 def search_events_paginated(
-    client: event.EventService,
-    auth_header: str,
-    query: event.SearchQuery,
+    client: event_pb2_grpc.EventServiceStub,
+    query: event_pb2.SearchQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[event.Event]:
-    def factory(page_token: str | None) -> event.SearchEventsRequest:
-        return event.SearchEventsRequest(
+) -> Iterable[event_pb2.Event]:
+    def factory(page_token: str | None) -> event_pb2.SearchEventsRequest:
+        return event_pb2.SearchEventsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=event.SortOptions(
-                field=event.SortField.START_TIME,
+            sort=event_pb2.SortOptions(
+                field=event_pb2.START_TIME,
                 is_descending=True,
             ),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            archived_statuses=archive_status.to_proto_archived_statuses(),
             next_page_token=page_token,
         )
 
-    for response in paginate_rpc(client.search_events, auth_header, request_factory=factory):
+    for response in paginate_grpc(client.SearchEvents, request_factory=factory):
         yield from response.results
 
 
@@ -113,6 +116,26 @@ def search_assets_paginated(
 
     for response in paginate_rpc(client.search_assets, auth_header, request_factory=factory):
         yield from response.results
+
+
+def search_ingest_jobs_paginated(
+    client: ingest_api.IngestJobService,
+    auth_header: str,
+    filter: ingest_api.IngestJobSearchFilter,
+) -> Iterable[ingest_api.IngestJob]:
+    def factory(page_token: str | None) -> ingest_api.SearchIngestJobsRequest:
+        return ingest_api.SearchIngestJobsRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            filter=filter,
+            sort=ingest_api.IngestJobSortOptions(
+                is_descending=True,
+                sort_key=ingest_api.IngestJobSortKey.CREATED_AT,
+            ),
+            next_page_token=page_token,
+        )
+
+    for response in paginate_rpc(client.search_ingest_jobs, auth_header, request_factory=factory):
+        yield from response.ingest_jobs
 
 
 def search_data_reviews_paginated(
@@ -221,21 +244,20 @@ def search_runs_by_asset_paginated(
 
 
 def search_secrets_paginated(
-    secrets: secrets_api.SecretService,
-    auth_header: str,
-    query: secrets_api.SearchSecretsQuery,
+    secrets: secrets_pb2_grpc.SecretServiceStub,
+    query: secrets_pb2.SearchSecretsQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[secrets_api.Secret]:
-    def factory(page_token: str | None) -> secrets_api.SearchSecretsRequest:
-        return secrets_api.SearchSecretsRequest(
+) -> Iterable[secrets_pb2.Secret]:
+    def factory(page_token: str | None) -> secrets_pb2.SearchSecretsRequest:
+        return secrets_pb2.SearchSecretsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=secrets_api.SortOptions(field=secrets_api.SortField.CREATED_AT, is_descending=True),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            sort=secrets_pb2.SortOptions(field=secrets_pb2.SortField.CREATED_AT, is_descending=True),
+            archived_statuses=archive_status.to_proto_archived_statuses(),
             token=page_token,
         )
 
-    for response in paginate_rpc(secrets.search, auth_header, request_factory=factory):
+    for response in paginate_grpc(secrets.Search, request_factory=factory):
         yield from response.results
 
 
@@ -305,6 +327,44 @@ def search_workbook_templates_paginated(
 
     for response in paginate_rpc(template.search_templates, auth_header, request_factory=factory):
         yield from response.results
+
+
+def search_containerized_extractors_paginated(
+    extractor_service: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub,
+    workspace_rid: str,
+    include_archived: bool = False,
+    file_extension: str | None = None,
+) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
+    # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
+    # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.
+    def factory(page_token: str | None) -> containerized_extractor_pb2.SearchContainerizedExtractorsRequest:
+        return containerized_extractor_pb2.SearchContainerizedExtractorsRequest(
+            workspace_rid=workspace_rid,
+            include_archived=include_archived,
+            file_extension=file_extension,
+            page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_grpc(extractor_service.SearchContainerizedExtractors, request_factory=factory):
+        yield from response.extractors
+
+
+def search_container_images_paginated(
+    registry_service: registry_pb2_grpc.RegistryServiceStub,
+    workspace_rid: str,
+    search_filter: registry_pb2.SearchFilter | None,
+) -> Iterable[registry_pb2.ContainerImage]:
+    def factory(page_token: str | None) -> registry_pb2.SearchImagesRequest:
+        return registry_pb2.SearchImagesRequest(
+            filter=search_filter,
+            workspace_rid=workspace_rid,
+            page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_grpc(registry_service.SearchImages, request_factory=factory):
+        yield from response.images
 
 
 #########################
@@ -383,3 +443,27 @@ def paginate_rpc(
         next_page_token = token_factory(response)
         if next_page_token is None:
             break
+
+
+_GrpcRequestT = TypeVar("_GrpcRequestT")
+
+
+def paginate_grpc(
+    rpc: Callable[[_GrpcRequestT], Any],
+    *,
+    request_factory: Callable[[str | None], _GrpcRequestT],
+) -> Iterable[Any]:
+    """Yield successive responses from a v2 gRPC search RPC, following next_page_token cursors.
+
+    The gRPC sibling of `paginate_rpc`: `request_factory(token)` builds a fresh request for each page
+    (`None` for the first page), and `rpc` is called as `rpc(request)` (auth rides the channel).
+    Stops when a response has an empty `next_page_token` (proto3's encoding of "no more pages").
+    """
+    token: str | None = None
+    while True:
+        with translate_grpc_errors():
+            response = rpc(request_factory(token))
+        yield response
+        token = response.next_page_token or None
+        if token is None:
+            return

@@ -10,13 +10,13 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog, scout_video
 from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableMixin
+from nominal.core._utils.api_tools import RefreshableConjureMixin
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -40,7 +40,7 @@ def filename_from_uri(uri: str) -> str:
 
 
 @dataclass(frozen=True)
-class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
+class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
     id: str
     dataset_rid: str
     name: str
@@ -63,6 +63,10 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        # Used by the VideoDatasetFile subtype for video-channel timing updates (see
+        # DataSource._Clients for the same one-protocol-per-hierarchy convention).
+        @property
+        def video(self) -> scout_video.VideoService: ...
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
@@ -107,14 +111,17 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                         f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset "
                         f"'{self.dataset_rid!r}': {self._ingest_error_message or 'no error details available'}"
                     )
-                case IngestStatus.IN_PROGRESS:
+                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
                     # Ingestion still proceeding
                     pass
                 case _:
-                    raise NominalIngestError(
-                        f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
-                        f"dataset_rid={self.dataset_rid!r}"
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                        self.id,
+                        self.dataset_rid,
+                        self.ingest_status,
                     )
+                    break
 
             # Sleep for specified interval
             logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
@@ -170,7 +177,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
         destination = output_directory / filename_from_uri(file_uri)
         item = DownloadItem(provider=self._presigned_url_provider(), destination=destination, part_size=part_size)
-        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
+        with MultipartFileDownloader.create(
+            max_part_retries=num_retries, header_provider=self._clients.header_provider
+        ) as dl:
             return dl.download_file(item)
 
     def download_original_files(
@@ -223,7 +232,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             )
             return []
 
-        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
+        with MultipartFileDownloader.create(
+            max_part_retries=num_retries, header_provider=self._clients.header_provider
+        ) as dl:
             results = dl.download_files(items)
 
         for failed_path, ex in results.failed.items():
@@ -239,7 +250,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
               self-hosted environments-- a RuntimeError will be thrown in this case.
         """
         # TODO(drake): pull out functionality in a more re-usable way without requiring the downloader class
-        with MultipartFileDownloader.create(max_workers=1) as downloader:
+        with MultipartFileDownloader.create(max_workers=1, header_provider=self._clients.header_provider) as downloader:
             size, _ = downloader._head_or_probe(self._presigned_url_provider())
             return size
 
@@ -292,6 +303,21 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         )
 
 
+def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> DatasetFile:
+    """Build the correct DatasetFile subtype for a Catalog row.
+
+    Returns a VideoDatasetFile when the row carries video metadata, otherwise a plain DatasetFile.
+    This is the only place that knows about both types; the class factories stay type-specific.
+    """
+    # Local import avoids an import cycle (video_dataset_file imports this module).
+    from nominal.core.video_dataset_file import VideoDatasetFile
+
+    metadata = dataset_file.metadata
+    if metadata is not None and metadata.video is not None:
+        return VideoDatasetFile._from_conjure(clients, dataset_file)
+    return DatasetFile._from_conjure(clients, dataset_file)
+
+
 # TODO(drake): rename to something more dataset-file specific, expose in nominal.core __init__.py
 class IngestStatus(Enum):
     SUCCESS = "SUCCESS"
@@ -299,20 +325,32 @@ class IngestStatus(Enum):
     FAILED = "FAILED"
     DELETION_IN_PROGRESS = "DELETION_IN_PROGRESS"
     DELETED = "DELETED"
+    QUEUED = "QUEUED"
+    PARSING = "PARSING"
+    INGESTING = "INGESTING"
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
-        if status.success is not None:
-            return cls.SUCCESS
-        elif status.in_progress is not None:
-            return cls.IN_PROGRESS
-        elif status.error is not None:
-            return cls.FAILED
-        elif status.deletion_in_progress is not None:
-            return cls.DELETION_IN_PROGRESS
-        elif status.deleted is not None:
-            return cls.DELETED
-        raise ValueError(f"Unknown ingest status: {status.type}")
+        match status.type:
+            case "success":
+                ingest_status = cls.SUCCESS
+            case "inProgress":
+                ingest_status = cls.IN_PROGRESS
+            case "error":
+                ingest_status = cls.FAILED
+            case "deletionInProgress":
+                ingest_status = cls.DELETION_IN_PROGRESS
+            case "deleted":
+                ingest_status = cls.DELETED
+            case "queued":
+                ingest_status = cls.QUEUED
+            case "parsing":
+                ingest_status = cls.PARSING
+            case "ingesting":
+                ingest_status = cls.INGESTING
+            case _:
+                raise ValueError(f"Unknown ingest status: {status.type}")
+        return ingest_status
 
 
 class IngestWaitType(Enum):
@@ -405,8 +443,16 @@ def wait_for_files_to_ingest(
                     )
                     done.append(file)
                     has_failed = True
-                case IngestStatus.IN_PROGRESS:
+                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
                     next_not_done.append(file)
+                case _:
+                    logger.warning(
+                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                        file.id,
+                        file.dataset_rid,
+                        file.ingest_status,
+                    )
+                    done.append(file)
 
         not_done = next_not_done
 

@@ -42,7 +42,11 @@ class SearchContext:
     """Unique 32-character hex string embedded in all entity names for isolation."""
 
     run: Run
-    """Plain run with search-test label and property."""
+    """Plain run with search-test label and properties.
+
+    Carries a `prop-only` property whose value appears nowhere in the run's name, so a search
+    matching on it can only have matched a non-name field.
+    """
 
     asset: Asset
     """Asset with search-test label and property; all baseline test events are attached here."""
@@ -69,6 +73,8 @@ class ArchiveSearchContext:
 
     archived_run: Run
     archived_asset: Asset
+    dataset_tag: str
+    active_dataset: Dataset
     archived_dataset: Dataset
     active_secret: Secret
     archived_secret: Secret
@@ -105,18 +111,6 @@ def _assert_archive_status_behavior(
     assert _rids(search_fn(ArchiveStatusFilter.ANY)) == active_rids | archived_rids
 
 
-def _assert_include_archived_behavior(
-    search_fn: Callable[[bool], Sequence[object]],
-    *,
-    active_rids: set[str],
-    archived_rids: set[str],
-) -> None:
-    with pytest.warns(UserWarning, match="include_archived"):
-        assert _rids(search_fn(False)) == active_rids
-    with pytest.warns(UserWarning, match="include_archived"):
-        assert _rids(search_fn(True)) == active_rids | archived_rids
-
-
 def _assert_include_drafts_behavior(
     search_fn: Callable[[bool], Sequence[object]],
     *,
@@ -144,7 +138,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         start,
         end,
         labels=["search-test"],
-        properties={"search-tag": tag},
+        properties={"search-tag": tag, "prop-only": f"proponly{tag}"},
     )
 
     event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
@@ -227,7 +221,11 @@ def archive_search_context(  # noqa: PLR0915
     )
     archived_asset.archive()
 
-    archived_dataset = client.create_dataset(f"dataset-archived-{search_context.tag}")
+    # Videos are dual-written as datasets sharing the video's name, so the session tag alone matches
+    # the fixture's videos too: dataset search needs a tag that only its own datasets carry.
+    dataset_tag = f"archive-dataset-{search_context.tag}"
+    active_dataset = client.create_dataset(f"{dataset_tag}-active")
+    archived_dataset = client.create_dataset(f"{dataset_tag}-archived")
     archived_dataset.archive()
 
     active_secret = client.create_secret(f"secret-active-{search_context.tag}", "active secret value")
@@ -307,6 +305,8 @@ def archive_search_context(  # noqa: PLR0915
     ctx = ArchiveSearchContext(
         archived_run=archived_run,
         archived_asset=archived_asset,
+        dataset_tag=dataset_tag,
+        active_dataset=active_dataset,
         archived_dataset=archived_dataset,
         active_secret=active_secret,
         archived_secret=archived_secret,
@@ -343,6 +343,7 @@ def archive_search_context(  # noqa: PLR0915
     active_secret.archive()
     archived_secret.archive()
     archived_video.archive()
+    active_dataset.archive()
     archived_dataset.archive()
     archived_asset.archive()
     archived_run.archive()
@@ -396,7 +397,7 @@ def test_search_runs_archive_status(
 
 
 def test_search_assets_by_name(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching assets by name substring returns only the asset whose name contains the session tag."""
+    """Searching assets by search_text narrows results to the asset carrying the session tag."""
     results = client.search_assets(search_text=search_context.tag)
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}
@@ -514,16 +515,17 @@ def test_search_videos_archive_status(
 
 def test_search_datasets_archive_status(
     client: NominalClient,
-    search_context: SearchContext,
     archive_search_context: ArchiveSearchContext,
 ) -> None:
     """Dataset search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_datasets(
-            search_text=search_context.tag,
+            # substring_match, not search_text: dataset search_text is tokenized, so even this compound
+            # tag matches every resource carrying the session tag.
+            substring_match=archive_search_context.dataset_tag,
             archive_status=archive_status,
         ),
-        active_rids={search_context.dataset.rid},
+        active_rids={archive_search_context.active_dataset.rid},
         archived_rids={archive_search_context.archived_dataset.rid},
     )
 
@@ -589,15 +591,6 @@ def test_client_search_workbooks_archive_filters(
         active_rids={archive_search_context.active_run_workbook.rid},
         archived_rids={archive_search_context.archived_run_workbook.rid},
     )
-    _assert_include_archived_behavior(
-        lambda include_archived: client.search_workbooks(
-            run=search_context.run,
-            search_text=archive_search_context.run_workbook_tag,
-            include_archived=include_archived,
-        ),
-        active_rids={archive_search_context.active_run_workbook.rid},
-        archived_rids={archive_search_context.archived_run_workbook.rid},
-    )
 
 
 def test_client_search_workbooks_include_drafts(
@@ -630,14 +623,6 @@ def test_asset_search_workbooks_archive_filters(
         active_rids={archive_search_context.active_asset_workbook.rid},
         archived_rids={archive_search_context.archived_asset_workbook.rid},
     )
-    _assert_include_archived_behavior(
-        lambda include_archived: search_context.asset.search_workbooks(
-            search_text=archive_search_context.asset_workbook_tag,
-            include_archived=include_archived,
-        ),
-        active_rids={archive_search_context.active_asset_workbook.rid},
-        archived_rids={archive_search_context.archived_asset_workbook.rid},
-    )
 
 
 def test_asset_search_workbooks_include_drafts(
@@ -664,14 +649,6 @@ def test_run_search_workbooks_archive_filters(
         lambda archive_status: search_context.run.search_workbooks(
             search_text=archive_search_context.run_workbook_tag,
             archive_status=archive_status,
-        ),
-        active_rids={archive_search_context.active_run_workbook.rid},
-        archived_rids={archive_search_context.archived_run_workbook.rid},
-    )
-    _assert_include_archived_behavior(
-        lambda include_archived: search_context.run.search_workbooks(
-            search_text=archive_search_context.run_workbook_tag,
-            include_archived=include_archived,
         ),
         active_rids={archive_search_context.active_run_workbook.rid},
         archived_rids={archive_search_context.archived_run_workbook.rid},

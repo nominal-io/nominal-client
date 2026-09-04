@@ -6,6 +6,7 @@ from typing import Any, Sequence
 
 from nominal.core import NominalClient
 from nominal.core.video import Video
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.video_file_migrator import VideoFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
@@ -47,6 +48,11 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
         existing_video = self.get_existing_destination_resource(source)
         if existing_video is not None:
             return existing_video
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         new_video = self.destination_client_for(source).create_video(
             name=options.new_video_name if options.new_video_name is not None else source.name,

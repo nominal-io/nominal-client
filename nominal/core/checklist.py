@@ -5,8 +5,6 @@ from datetime import timedelta
 from typing import Mapping, Protocol, Sequence
 
 from nominal_api import (
-    event,
-    scout,
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
@@ -15,39 +13,39 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core import run as core_run
-from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
+from nominal.core.exceptions import NominalChecklistNotPublishedError
 from nominal.ts import _to_api_duration
 
 
 @dataclass(frozen=True)
-class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
+class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedChecklist]):
     rid: str
     name: str
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
+    author_rid: str | None = field(default=None, repr=False)
 
-    class _Clients(HasScoutParams, Protocol):
+    class _Clients(DataReview._Clients, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
-        @property
-        def event(self) -> event.EventService: ...
-        @property
-        def run(self) -> scout.RunService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
-            raise ValueError("cannot get a checklist that has not been published")
+            raise NominalChecklistNotPublishedError(
+                f"cannot get checklist {checklist.rid!r}: this version has not been published"
+            )
 
         return cls(
             rid=checklist.rid,
@@ -56,6 +54,7 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
             properties=checklist.metadata.properties,
             labels=checklist.metadata.labels,
             _clients=clients,
+            author_rid=checklist.metadata.author_rid,
         )
 
     def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
@@ -163,9 +162,9 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this checklist in the Nominal app"""
-        return f"{self._clients.app_base_url}/checklists/{self.rid}"
+        return checklist_url(self._clients, self.rid)
 
     def preview_for_run_url(self, run: core_run.Run | str) -> str:
         """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
         run_rid = rid_from_instance_or_string(run)
-        return f"{self.nominal_url}?previewRunRid={run_rid}"
+        return checklist_preview_url(self._clients, self.rid, run_rid)

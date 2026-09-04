@@ -3,23 +3,28 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
 import click
 import yaml
-from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import Asset, NominalClient
+from nominal.core import ArchiveStatusFilter, Asset, Checklist, Dataset, NominalClient, Workbook
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental import as_user
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.dataset_utils import get_dataset_owner_rid
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
 from nominal.experimental.migration.migration_runner import MigrationRunner
+from nominal.experimental.migration.migration_summary import build_summary, load_migration_block
 from nominal.experimental.migration.migrator.context import DestinationClientResolver
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
+from nominal.protos.sandbox.v1 import sandbox_workspace_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -73,17 +78,6 @@ def _parse_asset_entry(
     return AssetResources(asset=asset_resource, source_workbook_templates=templates)
 
 
-def _load_migration_block(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict) or "migration" not in raw:
-        raise click.UsageError("Config must be a mapping with a top-level 'migration' key.")
-
-    m = raw["migration"]
-    if not isinstance(m, dict):
-        raise click.UsageError("'migration' must be a mapping.")
-
-    return m
-
-
 def _require_non_empty_string(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise click.UsageError(f"'{label}' must be a non-empty string.")
@@ -91,6 +85,14 @@ def _require_non_empty_string(value: Any, label: str) -> str:
 
 
 def _require_bool(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise click.UsageError(f"'{label}' must be a boolean.")
+    return value
+
+
+def _optional_bool(value: Any, label: str, default: bool) -> bool:
+    if value is None:
+        return default
     if not isinstance(value, bool):
         raise click.UsageError(f"'{label}' must be a boolean.")
     return value
@@ -105,8 +107,12 @@ def _load_asset_resources(
         raise click.UsageError("Provide only one of 'migration.source_asset_rids' or 'migration.source_assets'.")
 
     if source_assets is None:
-        if not isinstance(asset_rids, list) or not asset_rids:
-            raise click.UsageError("'migration.source_asset_rids' must be a non-empty list.")
+        # An absent or empty source_asset_rids means no assets to migrate; skip straight to
+        # standalone_workbook_template_rids rather than failing.
+        if asset_rids is None or asset_rids == []:
+            return {}
+        if not isinstance(asset_rids, list):
+            raise click.UsageError("'migration.source_asset_rids' must be a list.")
         return _load_asset_resources_from_list(source_client, asset_rids)
 
     if not isinstance(source_assets, dict) or not source_assets:
@@ -163,6 +169,23 @@ def _load_standalone_templates(source_client: NominalClient, template_rids: Any)
     return templates
 
 
+def _load_standalone_checklists(source_client: NominalClient, checklist_rids: Any) -> list[Checklist]:
+    if checklist_rids is None:
+        return []
+
+    if not isinstance(checklist_rids, list) or not all(isinstance(c, str) and c.strip() for c in checklist_rids):
+        raise click.UsageError("'migration.standalone_checklist_rids' must be a list of strings.")
+
+    checklists = []
+    for c in checklist_rids:
+        try:
+            checklist_resource = source_client.get_checklist(c)
+        except Exception as exc:
+            raise click.UsageError(f"Checklist with RID '{c}' not found in source client.") from exc
+        checklists.append(checklist_resource)
+    return checklists
+
+
 def load_impersonation_config(raw: Any) -> ImpersonationConfig | None:
     if raw is None:
         return None
@@ -215,20 +238,21 @@ def get_source_user_rid(source_resource: Any) -> str | None:
         return user_rid
 
     latest_api_getter = getattr(source_resource, "_get_latest_api", None)
-    if not callable(latest_api_getter):
-        return None
+    if callable(latest_api_getter):
+        try:
+            latest_api = latest_api_getter()
+        except Exception:
+            logger.debug("Unable to fetch latest API object while resolving source user RID.", exc_info=True)
+        else:
+            user_rid = _extract_user_rid_from_object(latest_api)
+            if user_rid is not None:
+                return user_rid
 
-    try:
-        latest_api = latest_api_getter()
-    except Exception:
-        logger.debug("Unable to fetch latest API object while resolving source user RID.", exc_info=True)
-        return None
+            user_rid = _extract_user_rid_from_object(getattr(latest_api, "metadata", None))
+            if user_rid is not None:
+                return user_rid
 
-    user_rid = _extract_user_rid_from_object(latest_api)
-    if user_rid is not None:
-        return user_rid
-
-    return _extract_user_rid_from_object(getattr(latest_api, "metadata", None))
+    return _get_dataset_owner_user_rid(source_resource)
 
 
 def build_destination_client_resolver(
@@ -325,13 +349,28 @@ def _extract_user_rid_from_identity(value: Any) -> str | None:
     return None
 
 
+def _get_dataset_owner_user_rid(source_resource: Any) -> str | None:
+    if not isinstance(source_resource, Dataset):
+        return None
+
+    try:
+        return get_dataset_owner_rid(source_resource)
+    except Exception:
+        logger.debug(
+            "Dataset owner lookup failed while resolving source user RID for dataset %s.",
+            source_resource.rid,
+            exc_info=True,
+        )
+        return None
+
+
 def _load_migration_config(
     source_client: NominalClient, config_path: Path
-) -> tuple[str, MigrationResources, MigrationDatasetConfig, bool, ImpersonationConfig | None]:
+) -> tuple[str, MigrationResources, MigrationDatasetConfig, AssetInclusionConfig, bool, ImpersonationConfig | None]:
     with config_path.open("r", encoding="utf-8") as f:
         raw: Any = yaml.safe_load(f)
 
-    m = _load_migration_block(raw)
+    m = load_migration_block(raw)
 
     name = _require_non_empty_string(m.get("name"), "migration.name")
     include_dataset_files = _require_bool(m.get("include_dataset_files"), "migration.include_dataset_files")
@@ -342,6 +381,15 @@ def _load_migration_config(
         raise click.UsageError("'migration.set_to_demo_workbook' must be a boolean.")
     set_to_demo_workbook: bool = set_to_demo_workbook_raw
 
+    asset_inclusion_config = AssetInclusionConfig(
+        include_video=_optional_bool(m.get("include_video"), "migration.include_video", default=True),
+        include_runs=_optional_bool(m.get("include_runs"), "migration.include_runs", default=True),
+        include_events=_optional_bool(m.get("include_events"), "migration.include_events", default=True),
+        include_attachments=_optional_bool(m.get("include_attachments"), "migration.include_attachments", default=True),
+        include_checklists=_optional_bool(m.get("include_checklists"), "migration.include_checklists", default=True),
+        include_workbooks=_optional_bool(m.get("include_workbooks"), "migration.include_workbooks", default=True),
+    )
+
     asset_resources_by_rid = _load_asset_resources(
         source_client,
         m.get("source_asset_rids"),
@@ -351,6 +399,10 @@ def _load_migration_config(
     standalone_workbook_templates = _load_standalone_templates(
         source_client,
         m.get("standalone_workbook_template_rids"),
+    )
+    standalone_checklists = _load_standalone_checklists(
+        source_client,
+        m.get("standalone_checklist_rids"),
     )
     impersonation_config = load_impersonation_config(m.get("impersonation"))
 
@@ -364,8 +416,10 @@ def _load_migration_config(
         MigrationResources(
             source_assets=asset_resources_by_rid,
             source_standalone_templates=standalone_workbook_templates,
+            source_standalone_checklists=standalone_checklists,
         ),
         dataset_config,
+        asset_inclusion_config,
         set_to_demo_workbook,
         impersonation_config,
     )
@@ -403,18 +457,6 @@ def _validate_demo_workbook_metadata(source_client: NominalClient, migration_res
     return True
 
 
-def _create_sandbox_workspace_service(target_client: NominalClient) -> SandboxWorkspaceService:
-    """Create a SandboxWorkspaceService by reusing the connection details from the target client."""
-    existing_service = target_client._clients.workspace
-    return SandboxWorkspaceService(
-        requests_session=existing_service._requests_session,
-        uris=existing_service._uris,
-        _connect_timeout=existing_service._connect_timeout,
-        _read_timeout=existing_service._read_timeout,
-        _verify=existing_service._verify,
-    )
-
-
 def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner) -> None:
     """After migration, append newly created workbook RIDs to the sandbox demo workbooks list."""
     new_workbook_rids = list(runner.migration_state.rid_mapping.get(ResourceType.WORKBOOK.value, {}).values())
@@ -423,17 +465,25 @@ def _update_demo_workbooks(target_client: NominalClient, runner: MigrationRunner
         return
 
     workspace_rid = target_client.get_workspace().rid
-    auth_header = target_client._clients.auth_header
-    sandbox_service = _create_sandbox_workspace_service(target_client)
+    sandbox_service = target_client._clients.sandbox_workspace
 
-    existing_response = sandbox_service.get_demo_workbooks(auth_header, workspace_rid)
-    existing_rids = existing_response.notebook_rids
+    # TODO: collapse the get-merge-set below into the atomic AddDemoWorkbooks RPC (the server already implements it)
+    with translate_grpc_errors():
+        existing_response = sandbox_service.GetDemoWorkbooks(
+            sandbox_workspace_pb2.GetDemoWorkbooksRequest(workspace_rid=workspace_rid)
+        )
 
-    combined_rids = list(dict.fromkeys(existing_rids + new_workbook_rids))
-    sandbox_service.set_demo_workbooks(auth_header, SetDemoWorkbooksRequest(notebook_rids=combined_rids), workspace_rid)
+    combined_rids = list(dict.fromkeys([*existing_response.notebook_rids, *new_workbook_rids]))
+    with translate_grpc_errors():
+        sandbox_service.SetDemoWorkbooks(
+            sandbox_workspace_pb2.SetDemoWorkbooksRequestWrapper(
+                workspace_rid=workspace_rid,
+                request=sandbox_workspace_pb2.SetDemoWorkbooksRequest(notebook_rids=combined_rids),
+            )
+        )
     logger.info(
         "Updated demo workbooks: %d existing + %d new = %d total",
-        len(existing_rids),
+        len(existing_response.notebook_rids),
         len(new_workbook_rids),
         len(combined_rids),
     )
@@ -469,17 +519,41 @@ def migrate_cmd() -> None:
     type=click.IntRange(min=1),
     help="Maximum number of top-level asset/template migrations to run concurrently.",
 )
+@click.option(
+    "--video-ingest-timeout-seconds",
+    default=int(DEFAULT_INGEST_POLL_TIMEOUT.total_seconds()),
+    show_default=True,
+    type=click.IntRange(min=0),
+    help=(
+        "How long to wait for a copied video to finish ingesting before recording it as incomplete "
+        "and moving on. 0 waits indefinitely."
+    ),
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Log what would be created without writing anything to the destination tenant or state file.",
+)
 def copy(
     clients: tuple[NominalClient, NominalClient],
     config_path: Path,
     migration_state_path: Path | None,
     max_workers: int,
+    video_ingest_timeout_seconds: int,
+    dry_run: bool,
 ) -> None:
     source_client, target_client = clients
     logger.info("Loading migration config from: %s", config_path)
-    name, migration_resources, dataset_config, set_to_demo_workbook, impersonation_config = _load_migration_config(
-        source_client, config_path
-    )
+    (
+        name,
+        migration_resources,
+        dataset_config,
+        asset_inclusion_config,
+        set_to_demo_workbook,
+        impersonation_config,
+    ) = _load_migration_config(source_client, config_path)
 
     if set_to_demo_workbook:
         workspace = target_client.get_workspace()
@@ -495,26 +569,49 @@ def copy(
             return
 
     logger.info(
-        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d)",
+        "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d, "
+        "source_standalone_checklists=%d)",
         name,
         len(migration_resources.source_assets),
         len(migration_resources.source_standalone_templates),
+        len(migration_resources.source_standalone_checklists),
     )
     destination_client_resolver = build_destination_client_resolver(target_client, impersonation_config)
     if destination_client_resolver is not None:
         logger.info("Destination impersonation is enabled for this migration config.")
 
+    if dry_run:
+        logger.info("DRY RUN mode enabled — no resources will be created on the destination tenant")
+
     runner = MigrationRunner(
         migration_resources=migration_resources,
         dataset_config=dataset_config,
+        asset_inclusion_config=asset_inclusion_config,
         destination_client=target_client,
         destination_client_resolver=destination_client_resolver,
+        user_rid_mapping=impersonation_config.source_to_destination_user_rids
+        if impersonation_config is not None
+        else None,
         migration_state_path=migration_state_path,
+        dry_run=dry_run,
+        video_ingest_timeout=(
+            timedelta(seconds=video_ingest_timeout_seconds) if video_ingest_timeout_seconds > 0 else None
+        ),
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
-    if set_to_demo_workbook:
+    if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
+
+
+def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[str]]:
+    single: set[str] = set()
+    multi: set[str] = set()
+    for workbook in workbooks:
+        rids = workbook.run_rids or workbook.asset_rids
+        if rids:
+            (single if len(rids) == 1 else multi).add(workbook.rid)
+    return single, multi
 
 
 @migrate_cmd.command(name="prep", help="Count in-scope and out-of-scope resources and generate a migration config.")
@@ -541,20 +638,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     logger.info("  Total runs: %d", len(runs))
 
     workbooks = client.search_workbooks(include_drafts=True)
-    workbooks_with_single_asset_run: set[str] = set()
-    workbooks_with_multi_asset_run: set[str] = set()
-
-    for workbook in workbooks:
-        if workbook.run_rids:
-            if len(workbook.run_rids) == 1:
-                workbooks_with_single_asset_run.add(workbook.rid)
-            else:
-                workbooks_with_multi_asset_run.add(workbook.rid)
-        elif workbook.asset_rids:
-            if len(workbook.asset_rids) == 1:
-                workbooks_with_single_asset_run.add(workbook.rid)
-            else:
-                workbooks_with_multi_asset_run.add(workbook.rid)
+    workbooks_with_single_asset_run, workbooks_with_multi_asset_run = _categorize_workbooks(workbooks)
 
     logger.info("  Workbooks with single asset/run: %d", len(workbooks_with_single_asset_run))
 
@@ -572,6 +656,8 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             all_assets.add(asset_rid)
 
     logger.info("  Auto-created assets: %d", len(auto_created_assets))
+    for rid in sorted(auto_created_assets)[:3]:
+        logger.info("    e.g. %s", rid)
     logger.info("  All assets: %d", len(all_assets))
 
     datasets = client.search_datasets()
@@ -589,11 +675,16 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
 
+    workbook_templates = client.search_workbook_templates(archive_status=ArchiveStatusFilter.NOT_ARCHIVED)
+    logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
+    logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
+
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
     logger.info("Out-of-scope migration numbers:")
-    logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
     logger.info("  Orphaned datasets: %d", len(orphaned_datasets))
+    for rid in sorted(orphaned_datasets)[:3]:
+        logger.info("    e.g. %s", rid)
 
     streaming_checklists = client.list_streaming_checklists()
     logger.info("  Streaming checklists: %d", len(streaming_checklists))
@@ -606,11 +697,63 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             "name": migration_name,
             "include_dataset_files": False,
             "preserve_dataset_uuid": True,
+            "include_video": True,
+            "include_runs": True,
+            "include_events": True,
+            "include_attachments": True,
+            "include_checklists": True,
+            "include_workbooks": True,
             "set_to_demo_workbook": False,
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
+            "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
+            "standalone_checklist_rids": [],
         }
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     logger.info("Wrote migration config to %s", output_path)
+
+
+@migrate_cmd.command(
+    name="summary",
+    help="Summarize a migration as a markdown table. Fully offline: no profiles or tokens required.",
+)
+@global_options
+@click.option(
+    "--from-config",
+    "config_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Migration config YAML for an offline size check. Repeat the flag to summarize several configs.",
+)
+@click.option(
+    "--from-log",
+    "log_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Captured 'nom migrate copy --dry-run' log to tally would-create lines from.",
+)
+@click.option(
+    "--from-state",
+    "state_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Migration-state JSON to count created resources from.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="File to append the markdown summary to, e.g. $GITHUB_STEP_SUMMARY.",
+)
+def summary(
+    config_paths: tuple[Path, ...],
+    log_path: Path | None,
+    state_path: Path | None,
+    output_path: Path | None,
+) -> None:
+    """Emit a markdown summary of a migration from a config, dry-run log, or state file."""
+    rendered = build_summary(config_paths, log_path, state_path)
+    click.echo(rendered)
+    if output_path is not None:
+        with output_path.open("a", encoding="utf-8") as f:
+            f.write(rendered + "\n")

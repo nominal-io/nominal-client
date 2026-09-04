@@ -1,0 +1,12 @@
+{
+  "separate-pull-requests": false,
+  "packages": {
+    ".": {
+      "release-type": "python"
+    },
+    "packages/nominal-tdms": {
+      "release-type": "python",
+      "component": "nominal-tdms"
+    }
+  }
+}

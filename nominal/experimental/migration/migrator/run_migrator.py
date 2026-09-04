@@ -10,6 +10,7 @@ from nominal.core._utils.api_tools import Link, LinkDict, rid_from_instance_or_s
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
@@ -54,7 +55,23 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         attachments = options.new_attachments
         if attachments is None:
             attachment_migrator = AttachmentMigrator(self.ctx)
-            attachments = [attachment_migrator.copy_from(a) for a in source.list_attachments()]
+            migrated_attachments: list[Attachment] = []
+            for source_attachment in source.list_attachments():
+                if source_attachment.is_archived:
+                    logger.info(
+                        "Skipping archived attachment '%s' (rid: %s) on run %s",
+                        source_attachment.name,
+                        source_attachment.rid,
+                        source.rid,
+                    )
+                    continue
+                migrated_attachments.append(attachment_migrator.copy_from(source_attachment))
+            attachments = migrated_attachments
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
@@ -83,6 +100,9 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             rid_from_instance_or_string(a) for a in new_assets if rid_from_instance_or_string(a) not in existing_rids
         ]
         if not missing_rids:
+            return run
+        if self.ctx.dry_run:
+            logger.info(f"{DRY_RUN_PREFIX} Would add %d asset(s) to existing run %s", len(missing_rids), run.rid)
             return run
         logger.debug("Adding %d missing asset(s) to existing run %s", len(missing_rids), run.rid)
         return run.update(assets=[*existing_rids, *missing_rids])

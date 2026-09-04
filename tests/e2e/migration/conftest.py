@@ -25,8 +25,7 @@ underlying pytest ``request`` fixture.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Callable, Iterator
-from unittest import mock
+from typing import Callable
 from uuid import uuid4
 
 import pytest
@@ -57,13 +56,40 @@ def pytest_addoption(parser):
     parser.addoption(
         "--impersonation-source-user-rid",
         default=None,
-        help="Source user RID for impersonation e2e test (must match the creator of source resources)",
+        help="Source user RID override for the impersonation e2e test. Defaults to the source client's "
+        "own user, which is the creator of the test's source resources — only override with a RID that "
+        "matches the source token's user, otherwise every mapping lookup misses.",
     )
     parser.addoption(
         "--impersonation-dest-user-rid",
         default=None,
         help="Destination user RID to impersonate in impersonation e2e test",
     )
+    parser.addoption(
+        "--fail-on-skip",
+        action="store_true",
+        default=False,
+        help="Treat skipped migration e2e tests as failures so missing prerequisites (e.g. impersonation "
+        "user RIDs) surface as red CI instead of silently shrinking coverage.",
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """With --fail-on-skip, convert skipped outcomes in this suite into failures.
+
+    Expected failures are exempt: pytest reports xfail as a skipped outcome (with `wasxfail`
+    set), but an xfail marker is a deliberate, visible expectation — not a silent gap.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.skipped and not hasattr(report, "wasxfail") and item.config.getoption("--fail-on-skip"):
+        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        report.outcome = "failed"
+        report.longrepr = (
+            f"Skipped, but --fail-on-skip is set for the migration e2e suite: {reason}\n"
+            "Provide the missing prerequisite (or drop --fail-on-skip for local runs)."
+        )
 
 
 @pytest.fixture(scope="session")
@@ -102,17 +128,6 @@ def dest_client(pytestconfig) -> NominalClient:
     base_url = pytestconfig.getoption("dest_base_url") or pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_connection(dest_client: NominalClient) -> Iterator[None]:
-    """Override the parent conftest's set_connection to use dest_client.
-
-    The parent fixture requires ``--profile`` which migration tests don't supply;
-    this shadows it so the module-level default client points at the destination env.
-    """
-    with mock.patch("nominal.nominal.get_default_client", return_value=dest_client):
-        yield
 
 
 @pytest.fixture

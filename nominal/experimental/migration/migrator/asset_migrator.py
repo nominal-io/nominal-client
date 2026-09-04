@@ -9,8 +9,11 @@ from nominal_api import scout_asset_api
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
+from nominal.core.exceptions import NominalChecklistNotPublishedError
+from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
@@ -20,6 +23,7 @@ from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions,
 from nominal.experimental.migration.migrator.video_migrator import VideoCopyOptions, VideoMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.retry_utils import is_transient_error
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,8 @@ class AssetCopyOptions(ResourceCopyOptions):
     include_runs: bool = False
     include_video: bool = False
     include_checklists: bool = False
+    include_workbooks: bool = True
+    workbook_rids_allowlist: frozenset[str] | None = None
 
 
 class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
@@ -50,6 +56,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             include_events=True,
             include_runs=True,
             include_video=True,
+            include_workbooks=True,
         )
 
     def _copy_from_impl(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
@@ -59,7 +66,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         new_asset = self._resolve_destination_asset(source_asset, options)
         # Record immediately so a crash during child migrations doesn't duplicate the asset on resume.
         # base.copy_from will call record_mapping again after this returns, which is idempotent.
-        self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, new_asset.rid)
+        # In dry_run, new_asset is always a stand-in for source, so skip to avoid overwriting a real prior mapping.
+        if not (self.ctx.dry_run and new_asset.rid == source_asset.rid):
+            self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, new_asset.rid)
 
         if options.dataset_config is not None:
             self._copy_asset_datasets(source_asset, new_asset, options)
@@ -84,7 +93,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             logger.info("Copying attachments for asset %s (rid: %s)", source_asset.name, source_asset.rid)
             self._copy_asset_attachments(source_asset, new_asset)
 
-        self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
+        if options.include_workbooks:
+            self._copy_asset_and_run_workbooks(
+                source_asset, new_asset, options.include_runs, options.workbook_rids_allowlist
+            )
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -97,6 +109,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         existing_asset = self.get_existing_destination_resource(source_asset)
         if existing_asset is not None:
             return existing_asset
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source_asset.name, source_asset.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, source_asset.rid)
+            return source_asset
 
         new_asset = self.destination_client_for(source_asset).create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
@@ -136,6 +153,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
             source_dataset = source_datasets[source_dataset_rid]
+            if source_dataset.is_archived:
+                logger.info(
+                    "Skipping archived dataset '%s' (rid: %s) on asset %s scope '%s'",
+                    source_dataset.name,
+                    source_dataset.rid,
+                    source_asset.rid,
+                    source_data_scope_name,
+                )
+                continue
             source_series_tags = source_data_scope.series_tags
             # Always delegate to dataset_migrator.copy_from so that file migrations are
             # never skipped on resume. DatasetMigrator._copy_from_impl handles fetch-or-create
@@ -150,7 +176,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             scope_key = f"{source_asset.rid}:{source_data_scope_name}"
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
-                destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
+                if self.ctx.dry_run:
+                    logger.info(
+                        f"{DRY_RUN_PREFIX} Would add dataset '%s' to asset '%s' scope '%s'",
+                        new_dataset.name,
+                        destination_asset.name,
+                        source_data_scope_name,
+                    )
+                else:
+                    destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
                 self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_dataset.rid)
             else:
                 logger.debug(
@@ -168,12 +202,36 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> None:
         run_migrator = RunMigrator(self.ctx)
         for source_run in source_asset.list_runs():
+            if source_run.is_archived:
+                logger.info(
+                    "Skipping archived run '%s' (rid: %s) on asset %s",
+                    source_run.name,
+                    source_run.rid,
+                    source_asset.rid,
+                )
+                self.ctx.migration_state.record_archived_run(source_run.rid)
+                continue
             run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
 
     def _copy_asset_checklists(self, source_asset: Asset) -> None:
         checklist_migrator = ChecklistMigrator(self.ctx)
         for source_data_review in source_asset.search_data_reviews():
-            source_checklist = source_data_review.get_checklist()
+            try:
+                source_checklist = source_data_review.get_checklist()
+            except NominalChecklistNotPublishedError as error:
+                # A data review can pin a never-published checklist commit — skip it, not the asset.
+                logger.warning(
+                    "Skipping data review %s on asset %s: %s",
+                    source_data_review.rid,
+                    source_asset.rid,
+                    error,
+                )
+                self.ctx.migration_state.record_skip(
+                    ResourceType.CHECKLIST,
+                    source_data_review.checklist_rid,
+                    f"checklist version pinned by data review {source_data_review.rid} is not published",
+                )
+                continue
             logger.debug("Found Data Review %s", source_checklist.rid)
             destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
             destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_data_review.run_rid)
@@ -185,10 +243,31 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
                 continue
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:
-                new_data_review = destination_checklist.execute(destination_run_rid)
-                self.ctx.migration_state.record_mapping(
-                    ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
-                )
+                if self.ctx.dry_run:
+                    logger.info(
+                        f"{DRY_RUN_PREFIX} Would execute checklist '%s' against run %s",
+                        destination_checklist.name,
+                        destination_run_rid,
+                    )
+                    self.ctx.migration_state.record_mapping(
+                        ResourceType.DATA_REVIEW, source_data_review.rid, source_data_review.rid
+                    )
+                else:
+                    # Execute via a client resolved from the source data review so the new data
+                    # review's created_by reflects the mapped executor, not the checklist author.
+                    # The refetch exists only to rebind credentials — skip it when the checklist
+                    # is already bound to the same clients bundle (no resolver, or the executor
+                    # maps to the same cached impersonated client as the author).
+                    executing_client = self.ctx.destination_client_for(source_data_review)
+                    executing_checklist = (
+                        destination_checklist
+                        if executing_client._clients is destination_checklist._clients
+                        else executing_client.get_checklist(destination_checklist.rid)
+                    )
+                    new_data_review = executing_checklist.execute(destination_run_rid)
+                    self.ctx.migration_state.record_mapping(
+                        ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
+                    )
             else:
                 logger.debug(
                     "Skipping data review execution for %s: already in migration state", source_data_review.rid
@@ -196,13 +275,39 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
     def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
         attachment_migrator = AttachmentMigrator(self.ctx)
-        new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
+        new_attachments = []
+        for source_attachment in source_asset.list_attachments():
+            if source_attachment.is_archived:
+                logger.info(
+                    "Skipping archived attachment '%s' (rid: %s) on asset %s",
+                    source_attachment.name,
+                    source_attachment.rid,
+                    source_asset.rid,
+                )
+                continue
+            new_attachments.append(attachment_migrator.copy_from(source_attachment))
         if new_attachments:
-            destination_asset.add_attachments(new_attachments)
+            if self.ctx.dry_run:
+                logger.info(
+                    f"{DRY_RUN_PREFIX} Would add %d attachment(s) to asset '%s'",
+                    len(new_attachments),
+                    destination_asset.name,
+                )
+            else:
+                destination_asset.add_attachments(new_attachments)
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(self.ctx)
         for data_scope, video_dataset in source_asset.list_videos():
+            if video_dataset.is_archived:
+                logger.info(
+                    "Skipping archived video '%s' (rid: %s) on asset %s scope '%s'",
+                    video_dataset.name,
+                    video_dataset.rid,
+                    source_asset.rid,
+                    data_scope,
+                )
+                continue
             new_video_dataset = video_migrator.copy_from(
                 video_dataset,
                 VideoCopyOptions(
@@ -211,7 +316,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             )
             scope_key = f"{source_asset.rid}:{data_scope}"
             if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
-                new_asset.add_video(data_scope, new_video_dataset)
+                if self.ctx.dry_run:
+                    logger.info(
+                        f"{DRY_RUN_PREFIX} Would add video '%s' to asset '%s' scope '%s'",
+                        new_video_dataset.name,
+                        new_asset.name,
+                        data_scope,
+                    )
+                else:
+                    new_asset.add_video(data_scope, new_video_dataset)
                 self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_video_dataset.rid)
             else:
                 logger.debug(
@@ -220,47 +333,141 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_asset.rid,
                 )
 
-    def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset, include_runs: bool) -> None:
+    def _copy_asset_and_run_workbooks(
+        self,
+        source_asset: Asset,
+        new_asset: Asset,
+        include_runs: bool,
+        workbook_rids_allowlist: frozenset[str] | None = None,
+    ) -> None:
         workbook_migrator = WorkbookMigrator(self.ctx)
-        asset_workbooks = source_asset.search_workbooks(include_drafts=True)
-        for workbook in asset_workbooks:
+        for workbook in source_asset.search_workbooks(include_drafts=True):
+            if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
+                logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
+                continue
             if not workbook.asset_rids:
                 continue
             if len(workbook.asset_rids) == 1:
-                workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_asset=new_asset))
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
+                    workbook,
+                    WorkbookCopyOptions(source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid}),
+                )
             else:
                 self._enqueue_multi_asset_workbook(workbook, list(workbook.asset_rids))
 
         if include_runs:
             for source_run in source_asset.list_runs():
-                destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
-                if destination_run_rid is None:
+                if source_run.is_archived:
+                    continue
+                dest_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+                if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
                     continue
-                destination_run = self.ctx.destination_client_for(source_run).get_run(destination_run_rid)
-                for workbook in source_run.search_workbooks(include_drafts=True):
-                    if not workbook.run_rids:
-                        continue
-                    if len(workbook.run_rids) == 1:
-                        workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
-                    else:
-                        self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids))
+                self._copy_run_workbooks(
+                    source_run, source_asset, new_asset, dest_run_rid, workbook_migrator, workbook_rids_allowlist
+                )
+
+    def _copy_run_workbooks(
+        self,
+        source_run: Run,
+        source_asset: Asset,
+        new_asset: Asset,
+        dest_run_rid: str,
+        workbook_migrator: WorkbookMigrator,
+        workbook_rids_allowlist: frozenset[str] | None,
+    ) -> None:
+        for workbook in source_run.search_workbooks(include_drafts=True):
+            if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
+                logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
+                continue
+            if not workbook.run_rids:
+                continue
+            # A workbook scoped to a single run must still be deferred if that run is itself
+            # owned by more than one asset: copying it now would only carry a RID mapping for
+            # `source_asset`, leaving the run's other owning asset(s) unmapped. The RID-clone
+            # step used by the copy can't tell "unmapped resource RID" apart from "internal id
+            # that should get a fresh UUID", so it would silently regenerate a bogus RID for
+            # every reference to those other assets instead of waiting for a complete mapping.
+            source_run_asset_rids = list(source_run.assets)
+            if len(workbook.run_rids) == 1 and len(source_run_asset_rids) <= 1:
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
+                    workbook,
+                    WorkbookCopyOptions(
+                        source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
+                        source_to_destination_run_rid_mapping={source_run.rid: dest_run_rid},
+                    ),
+                )
+            else:
+                self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids), source_run_asset_rids)
+
+    def _copy_workbook_containing_failures(
+        self,
+        workbook_migrator: WorkbookMigrator,
+        workbook: Workbook,
+        options: WorkbookCopyOptions,
+    ) -> None:
+        """One bad workbook must not abort the whole asset task (observed in production: a
+        connection reset on a single workbook read killed the asset task and every sibling
+        resource behind it).
+
+        Transient errors propagate — the executor retries the whole task, which resumes
+        cheaply from migration state — while anything else records a skip for the end-of-run
+        summary and lets the asset's remaining resources migrate. With no mapping recorded,
+        a rerun re-attempts the workbook.
+        """
+        try:
+            workbook_migrator.copy_from(workbook, options)
+        except Exception as error:
+            if is_transient_error(error):
+                raise
+            logger.exception("Failed to copy workbook (rid: %s)", workbook.rid)
+            self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, f"copy failed: {error}")
+            return
+        # This attempt's outcome supersedes any copy-failure skip from an earlier run. Safe to
+        # clear unconditionally: terminal workbook skips are recorded only in the deferred
+        # multi-asset/multi-run flush, never on this single-scope path.
+        self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, None)
 
     def _enqueue_multi_asset_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> None:
-        missing = [
+        if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):
+            return
+        logger.debug("Queuing multi-asset workbook %s for deferred migration", workbook.rid)
+        queued = self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(
+            workbook.rid, source_asset_rids
+        )
+        if not queued:
+            logger.debug("Not queuing multi-asset workbook %s: already skipped", workbook.rid)
+
+    def _enqueue_multi_run_workbook(
+        self, workbook: Workbook, source_run_rids: list[str], source_asset_rids: list[str]
+    ) -> None:
+        if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):
+            return
+        logger.debug("Queuing multi-run workbook %s for deferred migration", workbook.rid)
+        queued = self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(
+            workbook.rid, source_run_rids
+        )
+        if not queued:
+            logger.debug("Not queuing multi-run workbook %s: already skipped", workbook.rid)
+
+    def _should_enqueue_deferred_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> bool:
+        missing = self._find_assets_outside_migration_scope(source_asset_rids)
+        if missing:
+            reason = f"assets not in migration scope: {missing}"
+            logger.warning("Skipping deferred workbook %s: %s", workbook.rid, reason)
+            self.ctx.migration_state.record_workbook_skip_and_clear_pending(workbook.rid, reason)
+            return False
+        if self.ctx.migration_state.workbook_was_skipped(workbook.rid):
+            logger.debug("Not queuing deferred workbook %s: already skipped", workbook.rid)
+            return False
+        return True
+
+    def _find_assets_outside_migration_scope(self, source_asset_rids: Sequence[str]) -> list[str]:
+        return [
             rid
             for rid in source_asset_rids
             if rid not in self.ctx.source_asset_rids
             and self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET, rid) is None
         ]
-        if missing:
-            reason = f"assets not in migration scope: {missing}"
-            logger.warning("Skipping multi-asset workbook %s: %s", workbook.rid, reason)
-            self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, workbook.rid, reason)
-        else:
-            logger.debug("Queuing multi-asset workbook %s for deferred migration", workbook.rid)
-            self.ctx.migration_state.record_pending_multi_asset_workbook(workbook.rid, source_asset_rids)
-
-    def _enqueue_multi_run_workbook(self, workbook: Workbook, source_run_rids: list[str]) -> None:
-        logger.debug("Queuing multi-run workbook %s for deferred migration", workbook.rid)
-        self.ctx.migration_state.record_pending_multi_run_workbook(workbook.rid, source_run_rids)

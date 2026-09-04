@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Iterable, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 from nominal_api import (
     api,
     authentication_api,
-    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -17,11 +16,32 @@ from nominal_api import (
     scout_run_api,
     scout_template_api,
     scout_video_api,
-    secrets_api,
 )
 
-from nominal._utils.deprecation_tools import _NotProvided
+from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.protos.event.v2 import event_pb2
+from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.secrets.v1 import secrets_pb2
+from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    from nominal.core.container_image import ContainerImageStatus
+    from nominal.core.dataset import Dataset
+    from nominal.core.ingestion_job import IngestionJobStatus
+    from nominal.core.user import User
+
+
+class AssetMatch(Enum):
+    """How a set of asset rids should be matched when searching for events.
+
+    Use ALL to require an event to reference every given asset (rids ANDed together),
+    or ANY to match events referencing at least one of the given assets (rids ORed together).
+    """
+
+    ALL = "ALL"
+    ANY = "ANY"
 
 
 class ArchiveStatusFilter(Enum):
@@ -36,7 +56,11 @@ class ArchiveStatusFilter(Enum):
     ANY = "ANY"
 
     def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
-        """Convert to a list of ArchivedStatus values for use in search requests."""
+        """Convert to a list of conjure ArchivedStatus values for use in search requests.
+
+        TODO: delete once the remaining conjure search paths migrate to gRPC
+        (to_proto_archived_statuses is the successor).
+        """
         if self == ArchiveStatusFilter.ARCHIVED:
             return [api.ArchivedStatus.ARCHIVED]
         elif self == ArchiveStatusFilter.NOT_ARCHIVED:
@@ -44,38 +68,14 @@ class ArchiveStatusFilter(Enum):
         else:  # ANY
             return [api.ArchivedStatus.ARCHIVED, api.ArchivedStatus.NOT_ARCHIVED]
 
-
-def resolve_effective_archive_status(
-    archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
-    *,
-    archived: bool | None | _NotProvided = _NotProvided(),
-    include_archived: bool | _NotProvided = _NotProvided(),
-) -> ArchiveStatusFilter:
-    """Resolve deprecated archive filter arguments into a single ArchiveStatusFilter."""
-    has_archive_status = isinstance(archive_status, ArchiveStatusFilter)
-    has_archived = isinstance(archived, bool)
-    has_include_archived = isinstance(include_archived, bool)
-
-    if has_archive_status and (has_archived or has_include_archived):
-        legacy_args = []
-        if has_archived:
-            legacy_args.append("`archived`")
-        if has_include_archived:
-            legacy_args.append("`include_archived`")
-
-        raise ValueError(
-            f"Cannot provide `archive_status` alongside deprecated {' or '.join(legacy_args)}. "
-            "Use only `archive_status`."
-        )
-
-    if has_archived and archived:
-        return ArchiveStatusFilter.ARCHIVED
-    elif has_include_archived and include_archived:
-        return ArchiveStatusFilter.ANY
-    elif has_archive_status:
-        return cast(ArchiveStatusFilter, archive_status)
-    else:
-        return ArchiveStatusFilter.NOT_ARCHIVED
+    def to_proto_archived_statuses(self) -> list[types_pb2.ArchivedStatus.ValueType]:
+        """Convert to a list of proto ArchivedStatus values for use in gRPC search requests."""
+        if self == ArchiveStatusFilter.ARCHIVED:
+            return [types_pb2.ArchivedStatus.ARCHIVED]
+        elif self == ArchiveStatusFilter.NOT_ARCHIVED:
+            return [types_pb2.ArchivedStatus.NOT_ARCHIVED]
+        else:  # ANY
+            return [types_pb2.ArchivedStatus.ARCHIVED, types_pb2.ArchivedStatus.NOT_ARCHIVED]
 
 
 def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> scout_catalog.SearchDatasetsQuery:
@@ -157,19 +157,20 @@ def create_search_secrets_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
-) -> secrets_api.SearchSecretsQuery:
+) -> secrets_pb2.SearchSecretsQuery:
     queries = []
     if search_text is not None:
-        queries.append(secrets_api.SearchSecretsQuery(search_text=search_text))
+        queries.append(secrets_pb2.SearchSecretsQuery(search_text=search_text))
     if labels is not None:
         for label in labels:
-            queries.append(secrets_api.SearchSecretsQuery(label=label))
+            queries.append(secrets_pb2.SearchSecretsQuery(label=label))
     if properties is not None:
         for name, value in properties.items():
-            queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
+            queries.append(secrets_pb2.SearchSecretsQuery(property=types_pb2.Property(name=name, value=value)))
     if workspace_rid is not None:
-        queries.append(secrets_api.SearchSecretsQuery(workspace=workspace_rid))
-    return secrets_api.SearchSecretsQuery(and_=queries)
+        queries.append(secrets_pb2.SearchSecretsQuery(workspace=workspace_rid))
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return secrets_pb2.SearchSecretsQuery(**{"and": queries})  # type: ignore[arg-type]
 
 
 def create_search_videos_query(
@@ -205,28 +206,29 @@ def create_search_users_query(
     return authentication_api.SearchUsersQuery(and_=queries)
 
 
-def create_search_containerized_extractors_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    workspace_rid: str | None = None,
-) -> ingest_api.SearchContainerizedExtractorsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
+def create_search_container_images_query(
+    tag: str | None = None,
+    status: ContainerImageStatus | None = None,
+    extractor_rid: str | None = None,
+) -> registry_pb2.SearchFilter | None:
+    """Build a v2 registry SearchFilter for searching for nominal-hosted container images."""
+    filters = []
+    if tag is not None:
+        filters.append(registry_pb2.SearchFilter(tag=registry_pb2.TagFilter(tag=tag)))
+    if status is not None:
+        filters.append(registry_pb2.SearchFilter(status=registry_pb2.StatusFilter(status=status._to_proto())))
+    if extractor_rid is not None:
+        filters.append(registry_pb2.SearchFilter(extractor=registry_pb2.ExtractorFilter(extractor_rid=extractor_rid)))
 
-    if workspace_rid is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=workspace_rid))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
-
-    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
+    if len(filters) == 0:
+        return None
+    elif len(filters) == 1:
+        return filters[0]
+    else:
+        # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+        return registry_pb2.SearchFilter(
+            **{"and": registry_pb2.AndFilter(clauses=filters)}  # type: ignore[arg-type]
+        )
 
 
 def create_search_assets_query(
@@ -251,6 +253,51 @@ def create_search_assets_query(
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def create_search_ingest_jobs_query(
+    *,
+    datasets: Sequence[Dataset | str] | None = None,
+    created_by: Sequence[User | str] | None = None,
+    statuses: Sequence[IngestionJobStatus] | None = None,
+    search_text: str | None = None,
+    start_time_after: str | datetime | IntegralNanosecondsUTC | None = None,
+    start_time_before: str | datetime | IntegralNanosecondsUTC | None = None,
+    workspace_rid: str | None = None,
+) -> ingest_api.IngestJobSearchFilter:
+    queries: list[ingest_api.IngestJobSearchFilter] = []
+    if datasets:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(dataset_rids=[rid_from_instance_or_string(d) for d in datasets])
+        )
+    if created_by:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(
+                created_by_rids=[rid_from_instance_or_string(actor) for actor in created_by]
+            )
+        )
+    if statuses:
+        queries.append(ingest_api.IngestJobSearchFilter(statuses=[status._to_conjure() for status in statuses]))
+    if search_text is not None:
+        queries.append(ingest_api.IngestJobSearchFilter(search_text=search_text))
+    if start_time_after is not None or start_time_before is not None:
+        queries.append(
+            ingest_api.IngestJobSearchFilter(
+                start_time_range=ingest_api.IngestJobStartTimeRange(
+                    start_time_after=(
+                        None if start_time_after is None else _SecondsNanos.from_flexible(start_time_after).to_iso8601()
+                    ),
+                    start_time_before=(
+                        None
+                        if start_time_before is None
+                        else _SecondsNanos.from_flexible(start_time_before).to_iso8601()
+                    ),
+                )
+            )
+        )
+    if workspace_rid is not None:
+        queries.append(ingest_api.IngestJobSearchFilter(workspace=workspace_rid))
+    return ingest_api.IngestJobSearchFilter(and_=queries)
 
 
 def create_search_checklists_query(
@@ -467,6 +514,7 @@ def create_search_workbook_templates_query(
     properties: Mapping[str, str] | None = None,
     created_by: str | None = None,
     published: bool | None = None,
+    workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = [_backfill_workbook_template_archive_query_clause(archive_status)]
@@ -491,6 +539,9 @@ def create_search_workbook_templates_query(
     if published is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(is_published=published))
 
+    if workspace_rid is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(workspace=workspace_rid))
+
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
 
@@ -499,46 +550,59 @@ def create_search_events_query(  # noqa: PLR0912
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
     asset_rids: Iterable[str] | None = None,
+    asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,
     assignee_rid: str | None = None,
-    event_type: event.EventType | None = None,
-    origin_types: Iterable[event.SearchEventOriginType] | None = None,
+    event_type: EventType | None = None,
+    origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
-) -> event.SearchQuery:
+) -> event_pb2.SearchQuery:
     queries = []
     if search_text is not None:
-        queries.append(event.SearchQuery(search_text=search_text))
+        queries.append(event_pb2.SearchQuery(search_text=search_text))
     if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+        queries.append(event_pb2.SearchQuery(after=_SecondsNanos.from_flexible(after).to_proto()))
     if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+        queries.append(event_pb2.SearchQuery(before=_SecondsNanos.from_flexible(before).to_proto()))
     if asset_rids:
-        for asset in asset_rids:
-            queries.append(event.SearchQuery(asset=asset))
+        if asset_match is AssetMatch.ANY:
+            queries.append(
+                event_pb2.SearchQuery(
+                    assets=event_pb2.AssetsFilter(assets=list(asset_rids), operator=event_pb2.OR),
+                )
+            )
+        else:
+            for asset in asset_rids:
+                queries.append(event_pb2.SearchQuery(asset=asset))
     if labels:
         for label in labels:
-            queries.append(event.SearchQuery(label=label))
+            queries.append(event_pb2.SearchQuery(label=label))
     if properties:
         for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+            queries.append(event_pb2.SearchQuery(property=types_pb2.Property(name=name, value=value)))
     if created_by_rid:
-        queries.append(event.SearchQuery(created_by=created_by_rid))
+        queries.append(event_pb2.SearchQuery(created_by=created_by_rid))
     if workbook_rid is not None:
-        queries.append(event.SearchQuery(workbook=workbook_rid))
+        queries.append(event_pb2.SearchQuery(workbook=workbook_rid))
     if data_review_rid is not None:
-        queries.append(event.SearchQuery(data_review=data_review_rid))
+        queries.append(event_pb2.SearchQuery(data_review=data_review_rid))
     if assignee_rid is not None:
-        queries.append(event.SearchQuery(assignee=assignee_rid))
+        queries.append(event_pb2.SearchQuery(assignee=assignee_rid))
     if event_type is not None:
-        queries.append(event.SearchQuery(event_type=event_type))
-    if origin_types is not None:
-        origin_type_filter = event.OriginTypesFilter(api.SetOperator.OR, list(origin_types))
-        queries.append(event.SearchQuery(origin_types=origin_type_filter))
+        queries.append(event_pb2.SearchQuery(event_type=event_type._to_proto()))
+    if origin_types:
+        origin_type_filter = event_pb2.OriginTypesFilter(
+            operator=event_pb2.OR, origin_types=[origin_type._to_proto() for origin_type in origin_types]
+        )
+        queries.append(event_pb2.SearchQuery(origin_types=origin_type_filter))
     if workspace_rid is not None:
-        queries.append(event.SearchQuery(workspace=workspace_rid))
+        queries.append(event_pb2.SearchQuery(workspace=workspace_rid))
 
-    return event.SearchQuery(and_=queries)
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return event_pb2.SearchQuery(
+        **{"and": event_pb2.SearchQueryList(queries=queries)}  # type: ignore[arg-type]
+    )

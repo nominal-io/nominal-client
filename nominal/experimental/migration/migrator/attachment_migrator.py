@@ -7,6 +7,7 @@ from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.attachment import Attachment
 from nominal.core.filetype import FileType, FileTypes
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -43,6 +44,11 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         existing_attachment = self.get_existing_destination_resource(source)
         if existing_attachment is not None:
             return existing_attachment
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         destination_client = self.destination_client_for(source)
         source_clients = cast(ClientsBunch, source._clients)

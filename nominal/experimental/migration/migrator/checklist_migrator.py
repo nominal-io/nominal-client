@@ -12,6 +12,7 @@ from nominal.experimental.checklist_utils.checklist_utils import (
     _to_create_checklist_entries,
     _to_unresolved_checklist_variables,
 )
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -23,6 +24,7 @@ class ChecklistCopyOptions(ResourceCopyOptions):
     new_title: str | None = None
     new_commit_message: str | None = None
     new_assignee_rid: str | None = None
+    """Destination-side user RID; bypasses the context's source→destination user mapping."""
     new_description: str | None = None
     new_checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None
     new_properties: dict[str, str] | None = None
@@ -78,11 +80,31 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             if options.new_is_published is not None
             else api_source_checklist.metadata.is_published
         )
+        # The assignee is a request field, not a calling identity, so impersonation headers can't
+        # set it — translate the source assignee through the user RID mapping instead. An unmapped
+        # assignee falls back to the creating user (the impersonated author or the service user).
+        assignee_rid = options.new_assignee_rid
+        if assignee_rid is None:
+            source_assignee_rid = api_source_checklist.metadata.assignee_rid
+            assignee_rid = self.ctx.map_user_rid(source_assignee_rid)
+            if assignee_rid is None and source_assignee_rid:
+                logger.debug(
+                    "No destination mapping for source assignee %s on checklist %s; "
+                    "the destination assignee will default to the creating user.",
+                    source_assignee_rid,
+                    source.rid,
+                )
         workspace_rid = destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         new_checklist = _create_checklist_with_content(
             client=destination_client,
             commit_message=commit_message,
+            assignee_rid=assignee_rid,
             title=title,
             description=description,
             checks=checks,

@@ -4,10 +4,11 @@ Covers:
   - Updating metadata (name, description, properties, labels) on datasets, runs, and attachments
   - Updating a run's time window (start/end)
   - Uploading multiple CSV files to a single dataset
-  - Linking datasets and attachments to a run, then listing them back
+  - Linking datasources and attachments to runs/assets, then reading them back
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
   - Creating channels on a datasource via add_channel and batch_add_channels
+  - Upserting channels on a datasource via batch_update_or_create_channels
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -27,6 +28,7 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
+from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
 from nominal.core.datasource import CreateChannelRequest
@@ -35,6 +37,27 @@ from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
 ArchiveFn = Callable[[object], None]
+
+DATASET_REF = "dataset-ref"
+CONNECTION_REF = "connection-ref"
+VIDEO_REF = "video-ref"
+
+
+def _create_test_connection(client: NominalClient, tag: str) -> Connection:
+    """Create a streaming connection for datasource getter e2e tests.
+
+    Args:
+        client: Authenticated Nominal client used to create the connection.
+        tag: Unique suffix used to keep e2e resource names isolated.
+
+    Returns:
+        The newly created streaming connection.
+    """
+    with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
+        return client.create_streaming_connection(
+            f"datasource-{tag}",
+            f"connection-{tag}",
+        )
 
 
 def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
@@ -116,6 +139,72 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     ref_name2, ds2 = ds_list[0]
     assert ref_name2 == ref_name
     assert ds2.rid == ds.rid
+
+
+def test_add_dataset_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a dataset to a run and retrieve it by ref name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    dataset = client.create_dataset(f"dataset-{tag}")
+    archive(dataset)
+
+    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    archive(run)
+
+    run.add_dataset(DATASET_REF, dataset)
+
+    assert run.get_dataset(DATASET_REF).rid == dataset.rid
+
+
+def test_add_connection_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a streaming connection to a run and retrieve it by ref name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    connection = _create_test_connection(client, tag)
+    archive(connection)
+
+    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    archive(run)
+
+    run.add_connection(CONNECTION_REF, connection)
+
+    assert run.get_connection(CONNECTION_REF).rid == connection.rid
+
+
+def test_add_video_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a video to a run and retrieve it by ref name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    video = client.create_video(f"video-{tag}")
+    archive(video)
+
+    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    archive(run)
+
+    run.add_video(VIDEO_REF, video)
+
+    assert run.get_video(VIDEO_REF).rid == video.rid
 
 
 def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: ArchiveFn):
@@ -264,6 +353,69 @@ def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, arc
         asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
 
 
+def test_add_dataset_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a dataset to an asset and retrieve it by data-scope name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    asset = client.create_asset(f"asset-{tag}")
+    archive(asset)
+    dataset = client.create_dataset(f"dataset-{tag}")
+    archive(dataset)
+
+    asset.add_dataset(DATASET_REF, dataset)
+
+    assert asset.get_dataset(DATASET_REF).rid == dataset.rid
+
+
+def test_add_connection_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a streaming connection to an asset and retrieve it by data-scope name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    asset = client.create_asset(f"asset-{tag}")
+    archive(asset)
+    connection = _create_test_connection(client, tag)
+    archive(connection)
+
+    asset.add_connection(CONNECTION_REF, connection)
+
+    assert asset.get_connection(CONNECTION_REF).rid == connection.rid
+
+
+def test_add_video_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:
+    """Link a video to an asset and retrieve it by data-scope name.
+
+    Args:
+        client: Authenticated Nominal client used to create e2e resources.
+        archive: Cleanup helper that archives created resources after the test.
+
+    Returns:
+        None.
+    """
+    tag = uuid4().hex
+    asset = client.create_asset(f"asset-{tag}")
+    archive(asset)
+    video = client.create_video(f"video-{tag}")
+    archive(video)
+
+    asset.add_video(VIDEO_REF, video)
+
+    assert asset.get_video(VIDEO_REF).rid == video.rid
+
+
 def test_download_dataset_file_roundtrips_to_disk(
     client: NominalClient, csv_data: bytes, tmp_path: Path, archive: Callable[..., None]
 ) -> None:
@@ -311,3 +463,87 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
     assert channels["velocity"].unit == "m/s"
     assert channels["temperature"].unit == "degC"
     assert channels["status"].description == "system status"
+
+
+def test_batch_update_or_create_channels(client: NominalClient, archive: ArchiveFn) -> None:
+    """batch_update_or_create_channels updates existing channels in place, preserves unsupplied fields,
+    and creates new channels in the same call.
+    """
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    seed = ds.batch_add_channels(
+        [
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="m/s"),
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY, description="gyro xyz"),
+        ]
+    )
+    assert seed.missing == []
+
+    result = ds.batch_update_or_create_channels(
+        [
+            # Existing channel: unit changed in place
+            CreateChannelRequest(name="velocity", data_type=ChannelDataType.UINT, unit="km/h"),
+            # Existing channel: description not supplied, so the existing value is preserved
+            CreateChannelRequest(name="gyro", data_type=ChannelDataType.DOUBLE_ARRAY),
+            # New channel: created fresh
+            CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
+        ]
+    )
+
+    assert result.missing == []
+    channels = {ch.name: ch for ch in result.channels}
+    assert set(channels) == {"velocity", "gyro", "temperature"}
+    assert channels["velocity"].unit == "km/h"
+    assert channels["gyro"].description == "gyro xyz"
+    assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
+    assert channels["temperature"].unit == "degC"
+
+
+@pytest.mark.parametrize(
+    "stem",
+    [
+        # A representative set of special characters the client allows (see UNSAFE_UPLOAD_CHARS for
+        # the rejected ones). Each is uploaded for real against every backend in this job's matrix, so
+        # if any character that passes our client-side validation starts failing server-side — in
+        # scout or the cloud storage layer — this test goes red and we hear about it immediately.
+        "paren(reduced)",  # the original Azure bug — was stored as paren%28reduced%29.csv
+        "with space",
+        "amp&ersand",
+        "plus+plus",
+        "hash#tag",
+        "bracket[1]",
+        "at@sign",
+        "equals=sign",
+        "comma,comma",
+        "semi;colon",
+        "tilde~caret^",
+        "dollar$sign",
+        "unicode_résumé",
+    ],
+)
+def test_special_char_filename_round_trips(
+    client: NominalClient, csv_data: bytes, archive: ArchiveFn, stem: str
+) -> None:
+    """Filenames with safe special characters upload, ingest, and keep their name intact.
+
+    Regression test for the filename-encoding fix. This runs against S3 (gov staging), which
+    tolerates the *upload* of any character — so the load-bearing assertion is the stored NAME:
+    before the fix the client quote_plus'd the name (``paren%28reduced%29.csv``); after it, the
+    literal name round-trips.
+    """
+    ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
+    archive(ds)
+    dataset_file = ds.add_from_io(
+        BytesIO(csv_data), "timestamp", "iso_8601", file_name=stem
+    ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+
+    assert dataset_file.name == f"{stem}.csv"
+
+
+def test_unsafe_char_filename_raises_before_upload(client: NominalClient, archive: ArchiveFn) -> None:
+    """A filename with an unsafe character is rejected client-side, before any upload."""
+    ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
+    archive(ds)
+    with pytest.raises(ValueError, match="unsafe for storage"):
+        ds.add_from_io(BytesIO(b"timestamp,v\n2024-01-01T00:00:00Z,1\n"), "timestamp", "iso_8601", file_name="bad?name")

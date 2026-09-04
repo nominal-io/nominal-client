@@ -10,6 +10,8 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -96,6 +98,7 @@ class TestAssetMigratorAttachments:
 
         source_att = MagicMock()
         source_att.rid = _att_rid(1)
+        source_att.is_archived = False
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
@@ -118,8 +121,10 @@ class TestAssetMigratorAttachments:
 
         source_att_1 = MagicMock()
         source_att_1.rid = old_rid_1
+        source_att_1.is_archived = False
         source_att_2 = MagicMock()
         source_att_2.rid = old_rid_2
+        source_att_2.is_archived = False
 
         source_asset = _make_source_asset(attachments=[source_att_1, source_att_2])
 
@@ -160,6 +165,7 @@ class TestAssetMigratorAttachments:
 
         source_att = MagicMock()
         source_att.rid = _att_rid(1)
+        source_att.is_archived = False
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
@@ -174,6 +180,132 @@ class TestAssetMigratorAttachments:
         # AttachmentMigrator was constructed with a context that shares the same migration_state
         init_ctx = mock_att_cls.call_args[0][0]
         assert init_ctx.migration_state is ctx.migration_state
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.AttachmentMigrator")
+    def test_archived_attachments_are_skipped(self, mock_att_cls: MagicMock) -> None:
+        """Archived source attachments are not migrated or added to the destination asset."""
+        migrator, ctx = self._make_migrator()
+
+        active_att = MagicMock()
+        active_att.rid = _att_rid(1)
+        active_att.is_archived = False
+        archived_att = MagicMock()
+        archived_att.rid = _att_rid(2)
+        archived_att.is_archived = True
+
+        source_asset = _make_source_asset(attachments=[active_att, archived_att])
+
+        dest_asset = _make_dest_asset()
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
+
+        new_att = MagicMock()
+        new_att.rid = _att_rid(101)
+        mock_att_migrator = mock_att_cls.return_value
+        mock_att_migrator.copy_from.return_value = new_att
+
+        migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
+
+        mock_att_migrator.copy_from.assert_called_once_with(active_att)
+        dest_asset.add_attachments.assert_called_once_with([new_att])
+
+
+class TestAssetMigratorDatasets:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.DatasetMigrator")
+    def test_archived_dataset_scopes_are_skipped(self, mock_ds_cls: MagicMock) -> None:
+        """A data scope whose dataset is archived is not migrated or added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_ds = MagicMock()
+        active_ds.rid = "ri.catalog.cerulean-staging.dataset.00000001"
+        active_ds.is_archived = False
+        archived_ds = MagicMock()
+        archived_ds.rid = "ri.catalog.cerulean-staging.dataset.00000002"
+        archived_ds.is_archived = True
+
+        scope_active = MagicMock()
+        scope_active.data_scope_name = "scope-active"
+        scope_active.data_source.dataset = active_ds.rid
+        scope_active.series_tags = {}
+        scope_archived = MagicMock()
+        scope_archived.data_scope_name = "scope-archived"
+        scope_archived.data_source.dataset = archived_ds.rid
+        scope_archived.series_tags = {}
+
+        source_asset = _make_source_asset()
+        source_asset._list_dataset_scopes.return_value = [scope_active, scope_archived]
+        source_asset.list_datasets.return_value = [("scope-active", active_ds), ("scope-archived", archived_ds)]
+
+        dest_asset = _make_dest_asset()
+        new_ds = MagicMock()
+        new_ds.rid = "ri.catalog.cerulean-staging.dataset.00000101"
+        mock_ds_migrator = mock_ds_cls.return_value
+        mock_ds_migrator.copy_from.return_value = new_ds
+
+        options = AssetCopyOptions(
+            dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=False)
+        )
+        migrator._copy_asset_datasets(source_asset, dest_asset, options)
+
+        assert mock_ds_migrator.copy_from.call_count == 1
+        assert mock_ds_migrator.copy_from.call_args[0][0] is active_ds
+        dest_asset.add_dataset.assert_called_once_with("scope-active", new_ds, series_tags={})
+
+
+class TestAssetMigratorVideos:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.VideoMigrator")
+    def test_archived_videos_are_skipped(self, mock_vm_cls: MagicMock) -> None:
+        """An archived video is not migrated, and its scope is not added to the destination asset."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_video = MagicMock()
+        active_video.rid = "ri.video.cerulean-staging.video.00000001"
+        active_video.is_archived = False
+        archived_video = MagicMock()
+        archived_video.rid = "ri.video.cerulean-staging.video.00000002"
+        archived_video.is_archived = True
+
+        source_asset = _make_source_asset()
+        source_asset.list_videos.return_value = [("scope-active", active_video), ("scope-archived", archived_video)]
+
+        dest_asset = _make_dest_asset()
+        new_video = MagicMock()
+        new_video.rid = "ri.video.cerulean-staging.video.00000101"
+        mock_vm_migrator = mock_vm_cls.return_value
+        mock_vm_migrator.copy_from.return_value = new_video
+
+        migrator._copy_asset_videos(source_asset, dest_asset)
+
+        assert mock_vm_migrator.copy_from.call_count == 1
+        assert mock_vm_migrator.copy_from.call_args[0][0] is active_video
+        dest_asset.add_video.assert_called_once_with("scope-active", new_video)
+
+
+class TestAssetMigratorRuns:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.RunMigrator")
+    def test_archived_runs_are_skipped(self, mock_run_cls: MagicMock) -> None:
+        """Archived runs on the source asset are not migrated."""
+        ctx = _make_context()
+        migrator = AssetMigrator(ctx)
+
+        active_run = MagicMock()
+        active_run.rid = _run_rid(1)
+        active_run.is_archived = False
+        archived_run = MagicMock()
+        archived_run.rid = _run_rid(2)
+        archived_run.is_archived = True
+
+        source_asset = _make_source_asset()
+        source_asset.list_runs.return_value = [active_run, archived_run]
+        dest_asset = _make_dest_asset()
+
+        migrator._copy_asset_runs(source_asset, dest_asset)
+
+        mock_run_migrator = mock_run_cls.return_value
+        assert mock_run_migrator.copy_from.call_count == 1
+        assert mock_run_migrator.copy_from.call_args[0][0] is active_run
+        assert ctx.migration_state.archived_run_rids == {archived_run.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +323,22 @@ def _stub_workbook(rid: str, asset_rids: list[str] | None = None, run_rids: list
 
 class TestAssetMigratorWorkbookRouting:
     """Tests for _copy_asset_and_run_workbooks: single vs. multi routing and scope checks."""
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_archived_runs_excluded_from_workbook_pass(self, mock_wm_cls: MagicMock) -> None:
+        """Workbooks of archived runs are not searched or migrated."""
+        ctx = _make_context()
+
+        source_asset = _make_source_asset(rid=_asset_rid(1))
+        archived_run = MagicMock()
+        archived_run.rid = _run_rid(1)
+        archived_run.is_archived = True
+        source_asset.list_runs.return_value = [archived_run]
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(source_asset, _make_dest_asset(), include_runs=True)
+
+        archived_run.search_workbooks.assert_not_called()
+        mock_wm_cls.return_value.copy_from.assert_not_called()
 
     @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
     def test_routing_single_asset_multi_asset_and_out_of_scope(self, mock_wm_cls: MagicMock) -> None:
@@ -241,34 +389,146 @@ class TestAssetMigratorWorkbookRouting:
         assert len(state.skipped_resources) == 1
         assert a_out in state.skipped_resources[0].reason
 
+    # ---------------------------------------------------------------------------
+    # Workbook allowlist
+    # ---------------------------------------------------------------------------
+
     @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
-    def test_multi_run_workbook_always_enqueued_single_run_uses_copy_from(self, mock_wm_cls: MagicMock) -> None:
-        """Single-run workbooks go to copy_from; multi-run workbooks are always enqueued
-        for deferred migration without an upfront scope check. Also verifies that finding
-        the same multi-run workbook via two different runs overwrites the pending entry
-        idempotently.
+    def test_allowlist_none_copies_all_asset_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """When allowlist is None, all single-asset workbooks are copied (default behaviour preserved)."""
+        a1 = _asset_rid(1)
+        wb1, wb2 = _wb_rid(1), _wb_rid(2)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(wb1, asset_rids=[a1]),
+            _stub_workbook(wb2, asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=None
+        )
+
+        assert mock_wm_cls.return_value.copy_from.call_count == 2
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_skips_non_allowlisted_asset_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """Only workbooks whose RID is in the allowlist are copied; others are silently skipped."""
+        a1 = _asset_rid(1)
+        wb1, wb2 = _wb_rid(1), _wb_rid(2)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(wb1, asset_rids=[a1]),
+            _stub_workbook(wb2, asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=frozenset([wb1])
+        )
+
+        mock_wm = mock_wm_cls.return_value
+        assert mock_wm.copy_from.call_count == 1
+        assert mock_wm.copy_from.call_args[0][0].rid == wb1
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_empty_skips_all_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """An empty frozenset allowlist causes all workbooks to be skipped."""
+        a1 = _asset_rid(1)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(_wb_rid(1), asset_rids=[a1]),
+            _stub_workbook(_wb_rid(2), asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=frozenset()
+        )
+
+        mock_wm_cls.return_value.copy_from.assert_not_called()
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_applies_to_run_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """Allowlist filters run-level workbooks with the same logic as asset-level workbooks."""
+        a1 = _asset_rid(1)
+        r1 = _run_rid(1)
+        new_r1 = _run_rid(101)
+        wb_asset = _wb_rid(1)  # allowlisted
+        wb_run_allowed = _wb_rid(2)  # allowlisted
+        wb_run_blocked = _wb_rid(3)  # not allowlisted
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [_stub_workbook(wb_asset, asset_rids=[a1])]
+
+        run1 = MagicMock()
+        run1.rid = r1
+        run1.is_archived = False
+        run1.assets = [a1]
+        run1.search_workbooks.return_value = [
+            _stub_workbook(wb_run_allowed, run_rids=[r1]),
+            _stub_workbook(wb_run_blocked, run_rids=[r1]),
+        ]
+        source_asset.list_runs.return_value = [run1]
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset,
+            new_asset,
+            include_runs=True,
+            workbook_rids_allowlist=frozenset([wb_asset, wb_run_allowed]),
+        )
+
+        mock_wm = mock_wm_cls.return_value
+        assert mock_wm.copy_from.call_count == 2
+        copied_rids = {c[0][0].rid for c in mock_wm.copy_from.call_args_list}
+        assert copied_rids == {wb_asset, wb_run_allowed}
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_multi_run_workbook_enqueued_single_run_uses_copy_from(self, mock_wm_cls: MagicMock) -> None:
+        """Single-run workbooks (run owned by exactly one asset) go to copy_from; multi-run
+        workbooks are enqueued for deferred migration when all observed owning assets are in
+        scope. Also verifies that finding the same multi-run workbook via two different runs
+        overwrites the pending entry idempotently.
         """
+        a1, a2 = _asset_rid(1), _asset_rid(2)
         r1, r2 = _run_rid(1), _run_rid(2)
         new_r1, new_r2 = _run_rid(101), _run_rid(102)
         wb_single_run = _wb_rid(1)
         wb_multi_run = _wb_rid(2)
 
-        ctx = _make_context()
+        ctx = _make_context(source_asset_rids=frozenset([a1, a2]))
         ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
         ctx.migration_state.record_mapping(ResourceType.RUN, r2, new_r2)
 
-        source_asset = _make_source_asset()
+        source_asset = _make_source_asset(rid=a1)
         new_asset = _make_dest_asset()
         source_asset.search_workbooks.return_value = []
 
         run1 = MagicMock()
         run1.rid = r1
+        run1.is_archived = False
+        run1.assets = [a1]  # single owning asset
         run1.search_workbooks.return_value = [
             _stub_workbook(wb_single_run, run_rids=[r1]),
             _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
         ]
         run2 = MagicMock()
         run2.rid = r2
+        run2.is_archived = False
+        run2.assets = [a1, a2]
         # wb_multi_run found again via run2 — should overwrite pending, not duplicate
         run2.search_workbooks.return_value = [
             _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
@@ -288,3 +548,192 @@ class TestAssetMigratorWorkbookRouting:
         assert wb_multi_run in state.pending_multi_run_workbooks
         assert state.pending_multi_run_workbooks[wb_multi_run] == [r1, r2]
         assert len(state.pending_multi_run_workbooks) == 1  # not duplicated
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_single_run_workbook_owned_by_multiple_assets_is_deferred(self, mock_wm_cls: MagicMock) -> None:
+        """A workbook scoped to a *single* run (NotebookDataScope.run_rids == [X]) must still be
+        deferred if run X itself is owned by more than one asset. Copying it immediately — using
+        only the one asset mapping known at this point in the migration — would build an
+        incomplete RID override map: everywhere the workbook's content/layout/state references
+        the *other* owning asset(s), the RID-clone step has no override for them and silently
+        regenerates a fresh, unmapped UUID (same stack prefix) instead of leaving them for a
+        later, complete pass. Deferring (like the already-handled multi-asset and multi-run
+        cases) ensures the workbook is only copied once every asset it depends on is mapped.
+        """
+        a1, a2 = _asset_rid(1), _asset_rid(2)
+        new_a1 = _asset_rid(101)
+        r1 = _run_rid(1)
+        new_r1 = _run_rid(101)
+        wb_run_scoped = _wb_rid(1)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1, a2]))
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+        # Only a1 has been mapped so far; a2 (the run's other owning asset) has not.
+        ctx.migration_state.record_mapping(ResourceType.ASSET, a1, new_a1)
+
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset(rid=new_a1)
+        source_asset.search_workbooks.return_value = []
+
+        run1 = MagicMock()
+        run1.rid = r1
+        run1.is_archived = False
+        run1.assets = [a1, a2]  # run is owned by two assets
+        run1.search_workbooks.return_value = [
+            _stub_workbook(wb_run_scoped, run_rids=[r1]),  # single-run scope on the workbook itself
+        ]
+        source_asset.list_runs.return_value = [run1]
+
+        migrator = AssetMigrator(ctx)
+        migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=True)
+
+        mock_wm = mock_wm_cls.return_value
+        mock_wm.copy_from.assert_not_called()
+
+        state = ctx.migration_state
+        assert wb_run_scoped in state.pending_multi_run_workbooks
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_single_run_workbook_with_out_of_scope_owning_asset_is_skipped(self, mock_wm_cls: MagicMock) -> None:
+        """A deferred run-scoped workbook is skipped if any owning asset is outside migration scope."""
+        a1, a2 = _asset_rid(1), _asset_rid(2)
+        new_a1 = _asset_rid(101)
+        r1 = _run_rid(1)
+        new_r1 = _run_rid(101)
+        wb_run_scoped = _wb_rid(1)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+        ctx.migration_state.record_mapping(ResourceType.ASSET, a1, new_a1)
+
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset(rid=new_a1)
+        source_asset.search_workbooks.return_value = []
+
+        run1 = MagicMock()
+        run1.rid = r1
+        run1.is_archived = False
+        run1.assets = [a1, a2]
+        run1.search_workbooks.return_value = [
+            _stub_workbook(wb_run_scoped, run_rids=[r1]),
+        ]
+        source_asset.list_runs.return_value = [run1]
+
+        migrator = AssetMigrator(ctx)
+        migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=True)
+
+        mock_wm_cls.return_value.copy_from.assert_not_called()
+
+        state = ctx.migration_state
+        assert wb_run_scoped not in state.pending_multi_run_workbooks
+        assert len(state.skipped_resources) == 1
+        assert state.skipped_resources[0].source_rid == wb_run_scoped
+        assert a2 in state.skipped_resources[0].reason
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_multi_run_workbook_with_out_of_scope_owning_asset_is_not_requeued(self, mock_wm_cls: MagicMock) -> None:
+        """If any observed run owner is out of scope, later sightings must not re-queue the workbook."""
+        a1, a2 = _asset_rid(1), _asset_rid(2)
+        r1, r2 = _run_rid(1), _run_rid(2)
+        new_r1, new_r2 = _run_rid(101), _run_rid(102)
+        wb_multi_run = _wb_rid(1)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+        ctx.migration_state.record_mapping(ResourceType.RUN, r2, new_r2)
+
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = []
+
+        run_with_missing_owner = MagicMock()
+        run_with_missing_owner.rid = r2
+        run_with_missing_owner.is_archived = False
+        run_with_missing_owner.assets = [a1, a2]
+        run_with_missing_owner.search_workbooks.return_value = [
+            _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
+        ]
+
+        run_in_scope = MagicMock()
+        run_in_scope.rid = r1
+        run_in_scope.is_archived = False
+        run_in_scope.assets = [a1]
+        run_in_scope.search_workbooks.return_value = [
+            _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
+        ]
+
+        source_asset.list_runs.return_value = [run_with_missing_owner, run_in_scope]
+
+        migrator = AssetMigrator(ctx)
+        migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=True)
+
+        mock_wm_cls.return_value.copy_from.assert_not_called()
+
+        state = ctx.migration_state
+        assert wb_multi_run not in state.pending_multi_run_workbooks
+        assert len(state.skipped_resources) == 1
+        assert state.skipped_resources[0].source_rid == wb_multi_run
+        assert a2 in state.skipped_resources[0].reason
+
+
+# ---------------------------------------------------------------------------
+# Dry-run behavior
+# ---------------------------------------------------------------------------
+
+
+def _make_dry_run_context(source_asset_rids: frozenset[str] = frozenset()) -> MigrationContext:
+    mock_client = MagicMock()
+    mock_client._clients.workspace_rid = "ws-rid"
+    mock_workspace = MagicMock()
+    mock_workspace.rid = "ws-rid"
+    mock_client.get_workspace.return_value = mock_workspace
+    return MigrationContext(
+        destination_client=mock_client,
+        migration_state=MigrationState(),
+        source_asset_rids=source_asset_rids,
+        dry_run=True,
+    )
+
+
+_NO_CHILD_OPTIONS = AssetCopyOptions(
+    dataset_config=None,
+    include_attachments=False,
+    include_events=False,
+    include_runs=False,
+    include_video=False,
+    include_checklists=False,
+    include_workbooks=False,
+)
+
+
+class TestAssetMigratorDryRun:
+    def test_dry_run_preserves_real_prior_mapping(self) -> None:
+        """_copy_from_impl must not overwrite a real prior asset mapping with a placeholder in dry_run."""
+        src_rid = _asset_rid(1)
+        dest_rid = _asset_rid(100)
+        ctx = _make_dry_run_context()
+        ctx.migration_state.record_mapping(ResourceType.ASSET, src_rid, dest_rid)
+
+        migrator = AssetMigrator(ctx)
+        migrator.copy_from(_make_source_asset(rid=src_rid), _NO_CHILD_OPTIONS)
+
+        assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, src_rid) == dest_rid
+
+    def test_dry_run_does_not_call_create_asset(self) -> None:
+        """In dry_run, destination_client.create_asset must never be called."""
+        ctx = _make_dry_run_context()
+        migrator = AssetMigrator(ctx)
+        migrator.copy_from(_make_source_asset(), _NO_CHILD_OPTIONS)
+        ctx.destination_client.create_asset.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_dry_run_logs_would_create_for_new_asset(self, caplog: pytest.LogCaptureFixture) -> None:
+        """New assets in dry_run should produce a '[DRY RUN] Would create asset' log line."""
+        import logging
+
+        ctx = _make_dry_run_context()
+        migrator = AssetMigrator(ctx)
+        source_asset = _make_source_asset(name="MyNewAsset")
+        with caplog.at_level(logging.INFO):
+            migrator.copy_from(source_asset, _NO_CHILD_OPTIONS)
+        expected = would_create_message(ResourceType.ASSET) % (source_asset.name, source_asset.rid)
+        assert any(expected in r.getMessage() for r in caplog.records)

@@ -15,6 +15,7 @@ from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
 from nominal.experimental.id_utils.id_utils import UUID_RE
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
@@ -54,6 +55,12 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
 
         destination_client = self.destination_client_for(source)
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.title, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
+
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
             raw_source_template,
             options,

@@ -6,13 +6,13 @@ from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
-from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class WorkbookType(Enum):
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
+class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
     rid: str
     title: str
     description: str
@@ -108,6 +108,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     """
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -120,17 +121,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
-        return f"{self._clients.app_base_url}/workbooks/{self.rid}"
-
-    @property
-    @deprecated(
-        "`Workbook.run_rid` is deprecated and will be removed in a future release: use Workbook.run_rids instead"
-    )
-    def run_rid(self) -> str | None:
-        raise NominalMethodRemovedError(
-            "nominal.core.Workbook.run_rid",
-            "use 'nominal.core.Workbook.run_rids' instead",
-        )
+        return workbook_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_notebook_api.Notebook:
         return self._clients.notebook.get(self._clients.auth_header, self.rid)
@@ -342,6 +333,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             asset_rids=notebook.metadata.data_scope.asset_rids,
             workbook_type=workbook_type,
             _clients=clients,
+            created_by_rid=notebook.metadata.created_by_rid,
         )
 
 

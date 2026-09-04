@@ -14,7 +14,8 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
@@ -64,7 +65,7 @@ def _rebind_video_datasources(
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
+class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Template]):
     rid: str
     title: str
     description: str
@@ -72,6 +73,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
     properties: Mapping[str, str]
     workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -84,7 +86,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook Template in the Nominal app"""
-        return f"{self._clients.app_base_url}/workbooks/templates/{self.rid}"
+        return workbook_template_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_template_api.Template:
         return self._clients.template.get(self._clients.auth_header, self.rid)
@@ -255,6 +257,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
             properties=template.metadata.properties,
             workbook_type=WorkbookType.COMPARISON_WORKBOOK,
             _clients=clients,
+            created_by_rid=template.metadata.created_by,
         )
 
 

@@ -6,33 +6,36 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    event,
     scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
-from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
-from nominal.core._event_types import EventType
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableMixin,
+    RefreshableConjureMixin,
     create_links,
     filter_scopes,
     rid_from_instance_or_string,
 )
-from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
+from nominal.core._utils.frontend_urls import run_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.comment import Comment
+from nominal.core.connection import Connection, _get_connection, _get_connections
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, _create_event
+from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -40,7 +43,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
@@ -52,12 +55,15 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     run_number: int
     assets: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
+    author_rid: str | None = field(default=None, repr=False)
 
     class _Clients(
         Attachment._Clients,
         DataSource._Clients,
+        Event._Clients,
         Video._Clients,
         Workbook._Clients,
         Protocol,
@@ -65,14 +71,14 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def event(self) -> event.EventService: ...
+        def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
 
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
-        return f"{self._clients.app_base_url}/runs/{self.run_number}"
+        return run_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> scout_run_api.Run:
         return self._clients.run.get_run(self._clients.auth_header, self.rid)
@@ -120,6 +126,32 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         )
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
+
+    def add_comment(self, content: str) -> Comment:
+        """Post a markdown comment to this run's discussion.
+
+        Args:
+            content: Markdown content for the comment.
+
+        Returns:
+            The created `Comment`.
+
+        Raises:
+            NominalError: If the comments service request fails.
+        """
+        request = comments_pb2.CreateCommentRequest(
+            parent=comments_pb2.CommentParent(
+                resource=comments_pb2.CommentParentResource(
+                    resource_type=comments_pb2.ResourceType.RUN,
+                    resource_rid=self.rid,
+                )
+            ),
+            content=content,
+            attachments=[],
+        )
+        with translate_grpc_errors():
+            response = self._clients.comments.CreateComment(request)
+        return Comment._from_proto(response.comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()
@@ -217,6 +249,66 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             labels=labels,
         )
 
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by_rid: str | None = None,
+        workbook_rid: str | None = None,
+        data_review_rid: str | None = None,
+        assignee_rid: str | None = None,
+        event_type: EventType | None = None,
+        origin_types: Iterable[SearchEventOriginType] | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    ) -> Sequence[Event]:
+        """Search for events associated with any of the assets of this run.
+
+        The run's assets are matched as a union: an event is included if it is associated with at
+        least one of the run's assets. The remaining filters are ANDed together with that asset
+        filter and with each other.
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by_rid: Rid of the author that must be present on an event to be included.
+            workbook_rid: Search for events on the given workbook.
+            data_review_rid: Search for events from the given data review.
+            assignee_rid: Search for events with the given assignee.
+            event_type: Search for events of the given type.
+            origin_types: Search for events created by any of the given origin types.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
+
+        Returns:
+            Events associated with any of this run's assets that match all of the provided filters.
+            Returns an empty sequence if the run has no associated assets.
+        """
+        if not self.assets:
+            return []
+        return _search_events(
+            self._clients,
+            search_text=search_text,
+            after=after,
+            before=before,
+            asset_rids=list(self.assets),
+            asset_match=AssetMatch.ANY,
+            labels=labels,
+            properties=properties,
+            created_by_rid=created_by_rid,
+            workbook_rid=workbook_rid,
+            data_review_rid=data_review_rid,
+            assignee_rid=assignee_rid,
+            event_type=event_type,
+            origin_types=origin_types,
+            archive_status=archive_status,
+        )
+
     def add_dataset(
         self,
         ref_name: str,
@@ -294,6 +386,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
+    @deprecated(
+        "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
+        "dataset that carries the video channels with `Run.add_dataset` instead.",
+        category=LegacyVideoDeprecationWarning,
+    )
     def add_video(self, ref_name: str, video: Video | str) -> None:
         """Add a video to a run via video object or RID."""
         request = scout_run_api.CreateRunDataSource(
@@ -362,6 +459,71 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
 
+    def get_dataset(self, ref_name: str) -> Dataset:
+        """Get a dataset for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Dataset associated with the ref name.
+
+        Raises:
+            ValueError: If no dataset reference exists with the provided name.
+        """
+        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        dataset_rid = dataset_rids_by_ref_name.get(ref_name)
+        if dataset_rid is None:
+            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
+
+        return Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+        )
+
+    def get_connection(self, ref_name: str) -> Connection:
+        """Get a connection for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Connection associated with the ref name.
+
+        Raises:
+            ValueError: If no connection reference exists with the provided name.
+        """
+        connection_rids_by_ref_name = self._list_datasource_rids("connection")
+        connection_rid = connection_rids_by_ref_name.get(ref_name)
+        if connection_rid is None:
+            raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
+
+        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+
+    @deprecated(
+        "Resolving a standalone `Video` ref is deprecated in favor of video channels on a dataset. Use "
+        "`Run.get_dataset` with the ref name, then `Dataset.list_video_files` to reach the video files.",
+        category=LegacyVideoDeprecationWarning,
+    )
+    def get_video(self, ref_name: str) -> Video:
+        """Get a video for this run by its ref name.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Video associated with the ref name.
+
+        Raises:
+            ValueError: If no video reference exists with the provided name.
+        """
+        video_rids_by_ref_name = self._list_datasource_rids("video")
+        video_rid = video_rids_by_ref_name.get(ref_name)
+        if video_rid is None:
+            raise ValueError(f"No video with ref name '{ref_name}' found for this run")
+
+        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
+
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
         for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
@@ -394,39 +556,22 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
-    @warn_on_deprecated_argument(
-        "include_archived",
-        "The 'include_archived' parameter for run.search_workbooks is deprecated and will be removed in a future "
-        "version of Nominal. Please use 'archive_status' instead!",
-    )
-    @warn_on_deprecated_argument(
-        "exact_match",
-        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
-        "Use 'substring_match' instead.",
-    )
     def search_workbooks(
         self,
         *,
         substring_match: str | None = None,
-        exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
         include_drafts: bool = False,
-        include_archived: bool | _NotProvided = _NotProvided(),
-        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Run. See nominal.core.NominalClient.search_workbooks for details"""
-        effective_archive_status = resolve_effective_archive_status(
-            archive_status,
-            include_archived=include_archived,
-        )
-
         return _search_workbooks(
             self._clients,
-            substring_match=substring_match if substring_match is not None else exact_match,
+            substring_match=substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -434,17 +579,22 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             asset_rid=asset_rid,
             author_rid=created_by_rid,
             include_drafts=include_drafts,
-            archive_status=effective_archive_status,
+            archive_status=archive_status,
         )
 
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this run, allowing it to appear on the UI."""
+        """Unarchive this run, allowing it to appear on the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -464,7 +614,9 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             run_number=run.run_number,
             assets=tuple(run.assets),
             created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
+            is_archived=run.is_archived,
             _clients=clients,
+            author_rid=run.author_rid,
         )
 
 
@@ -489,6 +641,7 @@ def _create_run(
         labels=[] if labels is None else list(labels),
         links=[] if links is None else create_links(links),
         properties={} if properties is None else dict(properties),
+        typed_properties={},
         start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
         title=name,
         end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),

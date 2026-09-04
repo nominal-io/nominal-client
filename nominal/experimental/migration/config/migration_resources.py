@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from nominal.core.asset import Asset
+from nominal.core.checklist import Checklist
 from nominal.core.workbook_template import WorkbookTemplate
 
 
@@ -11,9 +12,11 @@ from nominal.core.workbook_template import WorkbookTemplate
 class AssetResources:
     asset: Asset
     source_workbook_templates: Sequence[WorkbookTemplate]
+    source_workbook_rids: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
 class MigrationResources:
     source_assets: Mapping[str, AssetResources]
     source_standalone_templates: Sequence[WorkbookTemplate]
+    source_standalone_checklists: Sequence[Checklist] = ()

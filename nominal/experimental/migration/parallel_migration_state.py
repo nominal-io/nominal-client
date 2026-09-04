@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import threading
+from typing import Callable
 
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
@@ -11,14 +13,49 @@ from nominal.experimental.migration.resource_type import ResourceType
 class ThreadSafeMigrationState(MigrationState):
     """Thread-safe wrapper around MigrationState for parallel migrations."""
 
+    # Plain instance attributes (this subclass is not itself a @dataclass), so they stay
+    # out of dataclasses.asdict and therefore out of the serialized state JSON.
+    _lock: threading.RLock
+    _persist_hook: Callable[[], None] | None
+
+    @classmethod
+    def from_state(cls, state: MigrationState) -> ThreadSafeMigrationState:
+        """Adopt every field of an existing state, so resuming a run does not silently drop progress."""
+        adopted = cls()
+        for state_field in dataclasses.fields(MigrationState):
+            setattr(adopted, state_field.name, getattr(state, state_field.name))
+        return adopted
+
     def __init__(self, rid_mapping: dict[str, dict[str, str]] | None = None) -> None:
-        """Initialize the shared migration state with an internal lock."""
+        """Initialize the shared migration state with an internal lock.
+
+        The lock is reentrant: the SIGINT/SIGTERM flush handler runs on the main thread and
+        calls save_state -> to_json, which must not deadlock if the signal interrupted the
+        main thread while it already held the lock inside an incremental save.
+        """
         super().__init__(rid_mapping=rid_mapping if rid_mapping is not None else {})
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._persist_hook = None
+
+    def set_persist_hook(self, hook: Callable[[], None]) -> None:
+        """Invoke ``hook`` after every state mutation.
+
+        Mutations are the single choke point for migration progress — hooking here persists
+        child-resource mappings (runs, dataset files, workbooks, ...) recorded mid-asset,
+        not just completed top-level tasks.
+        """
+        self._persist_hook = hook
+
+    def _persist(self) -> None:
+        # Called after the mutator releases the lock: the hook serializes state (re-taking
+        # the lock itself) and does file IO, which must not block other workers' mutations.
+        if self._persist_hook is not None:
+            self._persist_hook()
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         with self._lock:
             super().record_mapping(resource_type, old_rid, new_rid)
+        self._persist()
 
     def get_mapped_rid(self, resource_type: ResourceType, old_rid: str) -> str | None:
         with self._lock:
@@ -27,30 +64,80 @@ class ThreadSafeMigrationState(MigrationState):
     def record_pending_multi_asset_workbook(self, workbook_rid: str, asset_rids: list[str]) -> None:
         with self._lock:
             super().record_pending_multi_asset_workbook(workbook_rid, asset_rids)
+        self._persist()
 
     def record_pending_multi_run_workbook(self, workbook_rid: str, run_rids: list[str]) -> None:
         with self._lock:
             super().record_pending_multi_run_workbook(workbook_rid, run_rids)
+        self._persist()
+
+    def record_pending_multi_asset_workbook_unless_skipped(self, workbook_rid: str, asset_rids: list[str]) -> bool:
+        with self._lock:
+            recorded = super().record_pending_multi_asset_workbook_unless_skipped(workbook_rid, asset_rids)
+        if recorded:
+            self._persist()
+        return recorded
+
+    def record_pending_multi_run_workbook_unless_skipped(self, workbook_rid: str, run_rids: list[str]) -> bool:
+        with self._lock:
+            recorded = super().record_pending_multi_run_workbook_unless_skipped(workbook_rid, run_rids)
+        if recorded:
+            self._persist()
+        return recorded
 
     def clear_pending_multi_asset_workbook(self, workbook_rid: str) -> None:
         with self._lock:
             super().clear_pending_multi_asset_workbook(workbook_rid)
+        self._persist()
 
     def clear_pending_multi_run_workbook(self, workbook_rid: str) -> None:
         with self._lock:
             super().clear_pending_multi_run_workbook(workbook_rid)
+        self._persist()
+
+    def record_archived_run(self, run_rid: str) -> None:
+        with self._lock:
+            super().record_archived_run(run_rid)
+        self._persist()
 
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         with self._lock:
             super().record_skip(resource_type, source_rid, reason)
+        self._persist()
 
-    def to_json(self, **encoder_kwargs: object) -> str:
-        # dataclass_wizard cannot resolve forward references from migration_state.py when
-        # introspecting this subclass, so serialize as a plain MigrationState instead.
-        base = MigrationState(
-            rid_mapping=self.rid_mapping,
-            pending_multi_asset_workbooks=self.pending_multi_asset_workbooks,
-            pending_multi_run_workbooks=self.pending_multi_run_workbooks,
-            skipped_resources=self.skipped_resources,
-        )
-        return base.to_json(**encoder_kwargs)  # type: ignore[arg-type]
+    def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
+        with self._lock:
+            changed = super().set_skip(resource_type, source_rid, reason)
+        if changed:
+            self._persist()
+        return changed
+
+    def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
+        with self._lock:
+            changed = super().record_workbook_skip_and_clear_pending(workbook_rid, reason)
+        if changed:
+            self._persist()
+        return changed
+
+    def workbook_was_skipped(self, workbook_rid: str) -> bool:
+        with self._lock:
+            return super().workbook_was_skipped(workbook_rid)
+
+    def to_json(self) -> str:
+        # Snapshot under the lock, serialize outside it: json.dumps over a large state takes
+        # seconds, and holding the lock that long blocks every worker's record_mapping /
+        # get_mapped_rid — collapsing parallel workers to a single thread. The snapshot uses
+        # C-level container copies, which are orders of magnitude cheaper than serialization.
+        # SkippedResource entries themselves are never mutated (the list gains and drops
+        # entries under the lock, via record_skip/set_skip), so sharing the items with
+        # the snapshot is safe. If MigrationState gains a field, it must be copied here too
+        # (guarded by a test asserting the expected field set).
+        with self._lock:
+            snapshot = MigrationState(
+                rid_mapping={k: dict(v) for k, v in self.rid_mapping.items()},
+                pending_multi_asset_workbooks={k: list(v) for k, v in self.pending_multi_asset_workbooks.items()},
+                pending_multi_run_workbooks={k: list(v) for k, v in self.pending_multi_run_workbooks.items()},
+                skipped_resources=list(self.skipped_resources),
+                archived_run_rids=set(self.archived_run_rids),
+            )
+        return snapshot.to_json()

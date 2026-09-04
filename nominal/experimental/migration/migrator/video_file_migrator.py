@@ -4,9 +4,13 @@ import logging
 
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
-from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
+from nominal.experimental.migration.utils.video_file_utils import (
+    copy_video_file_to_video_dataset,
+    plan_video_file_copy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,44 @@ class VideoFileMigrator:
             logger.debug("Skipping video file (rid: %s): already in migration state", source_file.rid)
             return
 
-        new_file = copy_video_file_to_video_dataset(source_file, destination_video)
-        if new_file is not None:
-            self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, new_file.rid)
+        if self.ctx.dry_run:
+            self._dry_run_predict(source_file)
+            return
+
+        try:
+            outcome = copy_video_file_to_video_dataset(
+                source_file, destination_video, poll_timeout=self.ctx.video_ingest_timeout
+            )
+        except Exception as error:
+            # One bad file must not abort the whole asset task (and every sibling resource
+            # behind it). With no mapping recorded, a rerun re-attempts this file.
+            logger.exception("Failed to copy video file (rid: %s)", source_file.rid)
+            self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy failed: {error}")
+            return
+
+        if outcome.file is not None:
+            self.ctx.migration_state.record_mapping(ResourceType.VIDEO_FILE, source_file.rid, outcome.file.rid)
+        # This attempt's outcome supersedes any skip recorded by an earlier run's attempt.
+        # Ordered after record_mapping — each call persists separately, so a crash between the
+        # two can only lose the summary line, never the mapping that stops a rerun re-uploading.
+        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, outcome.skip_reason)
+
+    def _dry_run_predict(self, source_file: VideoFile) -> None:
+        """Predict this file's copy outcome from source reads alone, so a dry run's end-of-run
+        summary forecasts the real run's — the plan comes from the same code path a real copy
+        executes, only the transfer is skipped.
+        """
+        try:
+            plan = plan_video_file_copy(source_file)
+        except Exception as error:
+            logger.exception("Failed to plan video file copy (rid: %s)", source_file.rid)
+            self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, f"copy would fail: {error}")
+            return
+
+        self.ctx.migration_state.set_skip(ResourceType.VIDEO_FILE, source_file.rid, plan.skip_reason)
+        if plan.skip_reason is not None:
+            logger.info(f"{DRY_RUN_PREFIX} Would skip video file %s — %s", source_file.rid, plan.skip_reason)
+        else:
+            logger.info(
+                f"{DRY_RUN_PREFIX} Would copy video file %s to destination %s", source_file.rid, plan.describe()
+            )

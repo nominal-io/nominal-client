@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import concurrent.futures
 import enum
+import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Sequence, cast, overload
 
 from nominal_api import (
     api,
@@ -16,11 +18,11 @@ from nominal_api import (
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, assert_never
 
-from nominal._utils.deprecation_tools import warn_on_deprecated_argument
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
+from nominal.core._utils.api_tools import RefreshableConjureMixin, build_compute_tag_filter, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
@@ -39,11 +41,15 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelDataType(enum.Enum):
-    # TODO (drake): support DOUBLE_ARRAY and STRING_ARRAY
     DOUBLE = "DOUBLE"
     STRING = "STRING"
     LOG = "LOG"
     INT = "INT"
+    UINT = "UINT"
+    DOUBLE_ARRAY = "DOUBLE_ARRAY"
+    STRING_ARRAY = "STRING_ARRAY"
+    STRUCT = "STRUCT"
+    VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
 
     @classmethod
@@ -53,21 +59,35 @@ class ChannelDataType(enum.Enum):
         else:
             return cls("UNKNOWN")
 
-    def _to_nominal_data_type(self) -> storage_series_api.NominalDataType:
-        if self == ChannelDataType.DOUBLE:
-            return storage_series_api.NominalDataType.DOUBLE
-        elif self == ChannelDataType.STRING:
-            return storage_series_api.NominalDataType.STRING
-        elif self == ChannelDataType.LOG:
-            return storage_series_api.NominalDataType.LOG
-        elif self == ChannelDataType.INT:
-            return storage_series_api.NominalDataType.INT64
-        else:
-            return storage_series_api.NominalDataType.UNKNOWN
+    def _to_conjure(self) -> storage_series_api.NominalDataType:
+        match self:
+            case ChannelDataType.DOUBLE:
+                data_type = storage_series_api.NominalDataType.DOUBLE
+            case ChannelDataType.STRING:
+                data_type = storage_series_api.NominalDataType.STRING
+            case ChannelDataType.LOG:
+                data_type = storage_series_api.NominalDataType.LOG
+            case ChannelDataType.INT:
+                data_type = storage_series_api.NominalDataType.INT64
+            case ChannelDataType.UINT:
+                data_type = storage_series_api.NominalDataType.UINT64
+            case ChannelDataType.DOUBLE_ARRAY:
+                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
+            case ChannelDataType.STRING_ARRAY:
+                data_type = storage_series_api.NominalDataType.STRING_ARRAY
+            case ChannelDataType.STRUCT:
+                data_type = storage_series_api.NominalDataType.STRUCT
+            case ChannelDataType.VIDEO:
+                data_type = storage_series_api.NominalDataType.VIDEO
+            case ChannelDataType.UNKNOWN:
+                data_type = storage_series_api.NominalDataType.UNKNOWN
+            case _:
+                assert_never(self)
+        return data_type
 
 
 @dataclass
-class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
+class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMetadata]):
     """Metadata for working with channels."""
 
     name: str
@@ -157,17 +177,11 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         end: _InferrableTimestampType | None = None,
     ) -> Iterable[LogPoint]: ...
 
-    @warn_on_deprecated_argument(
-        "insensitive_match",
-        "'insensitive_match' is deprecated and will be removed in a future version of Nominal. "
-        "Use 'substring_match' instead.",
-    )
     def search_logs(
         self,
         *,
         regex_match: str | None = None,
         substring_match: str | None = None,
-        insensitive_match: str | None = None,
         tags: Mapping[str, str] | None = None,
         start: _InferrableTimestampType | None = None,
         end: _InferrableTimestampType | None = None,
@@ -179,7 +193,6 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                 NOTE: must not be present with `substring_match`
             substring_match: If provided, a case-insensitive substring that yielded log messages must contain
                 NOTE: must not be present with `regex_match`
-            insensitive_match: Deprecated. Use ``substring_match`` instead.
             tags: Tags to filter logs from the channel with
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
@@ -193,18 +206,17 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
         api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
 
-        effective_substring_match = substring_match if substring_match is not None else insensitive_match
         filtered_series = scout_compute_api.LogSeries(
             filter=scout_compute_api.LogFilterSeries(
                 input=scout_compute_api.LogSeries(channel=self._to_channel_series(tags=tags)),
-                operator=_log_filter_operator(regex_match=regex_match, substring_match=effective_substring_match),
+                operator=_log_filter_operator(regex_match=regex_match, substring_match=substring_match),
             )
         )
         compute_series = scout_compute_api.Series(log=filtered_series)
 
         def request_factory(page_token: scout_compute_api.PageToken | None) -> scout_compute_api.ComputeNodeRequest:
             return scout_compute_api.ComputeNodeRequest(
-                context=scout_compute_api.Context(function_variables={}, variables={}),
+                context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
                 start=api_start,
                 end=api_end,
                 node=scout_compute_api.ComputableNode(
@@ -366,8 +378,9 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                 )
             ),
             context=scout_compute_api.Context(
-                function_variables={},
+                dataset_references={},
                 variables={},
+                function_variables={},
             ),
         )
         response = self._clients.compute.compute(self._clients.auth_header, request)
@@ -413,8 +426,9 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             start_time=start,
             end_time=end,
             context=scout_compute_api.Context(
-                function_variables={},
+                dataset_references={},
                 variables={},
+                function_variables={},
             ),
             format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
             resolution=scout_dataexport_api.ResolutionOption(
@@ -451,3 +465,152 @@ def _create_series_from_channel(
         return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
+
+
+def _batch_check_channels_have_data(
+    clients: Channel._Clients,
+    channels: Sequence[Channel],
+    tag_filters: scout_compute_api.TagFilters | None,
+    start: api.Timestamp,
+    end: api.Timestamp,
+) -> tuple[list[Channel], list[str]]:
+    """Check a batch of channels for data presence via a single batchGetSeriesCount call.
+
+    Returns a tuple of:
+        - channels confirmed to have data (series_count > 0)
+        - names of channels with underconstrained tags (series_count > 1)
+
+    NOTE: request may fail if rate limits are breached, too many series are queried, bounds are invalid
+        (such as end < start), timeouts are reached, or otherwise if tag filters are invalid or contradictory.
+        This will raise various ConjureHttpError exceptions.
+    """
+    time_range = api.Range(start=start, end=end)
+    request = datasource_api.BatchGetSeriesCountRequest(
+        requests=[
+            datasource_api.GetSeriesCountRequest(
+                data_source_rid=channel.data_source,
+                channel=channel.name,
+                range=time_range,
+                tag_filters=tag_filters,
+            )
+            for channel in channels
+        ]
+    )
+    response = clients.datasource.batch_get_series_count(clients.auth_header, request)
+
+    channels_with_data: list[Channel] = []
+    underconstrained: list[str] = []
+    for channel, result in zip(channels, response.responses, strict=True):
+        count = result.series_count
+        if count is not None and count > 0:
+            channels_with_data.append(channel)
+            # Multiple series for a single channel+tags means the tags don't fully
+            # constrain the data — results may contain duplicate timestamps.
+            if count > 1:
+                underconstrained.append(channel.name)
+
+    return channels_with_data, underconstrained
+
+
+def filter_channels_with_data(
+    channels: Sequence[Channel],
+    *,
+    tags: Mapping[str, str] | None = None,
+    start_time: datetime | IntegralNanosecondsUTC,
+    end_time: datetime | IntegralNanosecondsUTC,
+    num_workers: int = 8,
+    batch_size: int = 200,
+) -> Iterator[Channel]:
+    """Yield channels that have data in the given time range, optionally filtered by tags.
+
+    Uses batchGetSeriesCount to query data presence server-side in batched API calls. If a
+    batch call fails, its channels are re-submitted individually into the same pool; a
+    single-channel call that fails is treated as having no data and excluded.
+
+    Args:
+        channels: Channels to check for data presence.
+        tags: If provided, only yield channels matching these tag key-value pairs.
+        start_time: Start of the time range to check for data.
+        end_time: End of the time range to check for data.
+        num_workers: Number of concurrent API requests.
+        batch_size: Max channels per API call.
+
+    Yields:
+        Channel objects for each input channel confirmed to have data in the range.
+    """
+    if not channels:
+        return
+
+    clients = channels[0]._clients
+    api_start = _SecondsNanos.from_flexible(start_time).to_api()
+    api_end = _SecondsNanos.from_flexible(end_time).to_api()
+    tag_filters = build_compute_tag_filter(tags)
+
+    matched_keys: set[tuple[str, str]] = set()
+    all_underconstrained: list[str] = []
+    still_failing: list[Channel] = []
+
+    check_batch = functools.partial(
+        _batch_check_channels_have_data,
+        clients,
+        tag_filters=tag_filters,
+        start=api_start,
+        end=api_end,
+    )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
+        pending: dict[concurrent.futures.Future[tuple[list[Channel], list[str]]], Sequence[Channel]] = {
+            pool.submit(check_batch, batch): batch for batch in batched(channels, batch_size)
+        }
+
+        while pending:
+            done, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                batch = pending.pop(future)
+                try:
+                    matched, underconstrained = future.result()
+                except Exception:
+                    # Series count calculations may fail for a myriad of reasons, such as
+                    # A single-channel request that failed is already a retry (or was submitted
+                    # that way by the caller via batch_size=1); don't retry indefinitely.
+                    if len(batch) == 1:
+                        still_failing.extend(batch)
+                        continue
+                    logger.warning(
+                        "Batch data-presence check failed for %d channels; retrying individually",
+                        len(batch),
+                    )
+                    for ch in batch:
+                        pending[pool.submit(check_batch, [ch])] = [ch]
+                    continue
+
+                for ch in matched:
+                    matched_keys.add((ch.data_source, ch.name))
+                all_underconstrained.extend(underconstrained)
+
+    if still_failing:
+        # Both the batch and the individual retry failed — we can't verify data exists, so
+        # exclude these channels rather than admitting. Admitting would run expensive PPS
+        # compute downstream on channels the export would likely fail on anyway.
+        logger.warning(
+            "Data-presence check failed for %d channels even after individual retry; "
+            "treating as having no data and excluding from export: %s",
+            len(still_failing),
+            ", ".join(ch.name for ch in still_failing),
+        )
+
+    if all_underconstrained:
+        sample = all_underconstrained[:10]
+        joined = ", ".join(sample)
+        suffix = f", ... ({len(all_underconstrained) - 10} more)" if len(all_underconstrained) > 10 else ""
+        logger.warning(
+            "%d channels have underconstrained tags (multiple series matched): %s%s",
+            len(all_underconstrained),
+            joined,
+            suffix,
+        )
+
+    # Yield in original input order
+    for channel in channels:
+        if (channel.data_source, channel.name) in matched_keys:
+            yield channel

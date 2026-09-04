@@ -204,8 +204,12 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 
 import dateutil.parser
+from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
-from typing_extensions import Self
+from typing_extensions import Self, assert_never
+
+from nominal.protos.types import common_pb2
+from nominal.protos.types.time import time_pb2, timestamp_parsers_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +249,18 @@ class _ConjureTimestampType(abc.ABC):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         pass
 
+    @abc.abstractmethod
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        pass
+
+    @abc.abstractmethod
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        """Convert to the proto nominal.types.time.TimestampType.
+
+        The proto's `time_unit` fields are strings aliased server-side to the conjure `api.TimeUnit`
+        enum, so implementations encode units via `_time_unit_to_conjure(...).value`.
+        """
+
     @classmethod
     def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> TypedTimestampType:
         if conjure_type.absolute is not None:
@@ -275,11 +291,15 @@ class _ConjureTimestampType(abc.ABC):
             raise ValueError(f"Unknown timestamp type: {conjure_type.type}")
 
 
+def _str_to_literal_time_unit(value: str) -> _LiteralTimeUnit:
+    lowered = value.lower()
+    if lowered in get_args(_LiteralTimeUnit):
+        return cast(_LiteralTimeUnit, lowered)
+    raise ValueError(f"Unknown time unit: {value!r}")
+
+
 def _api_time_unit_to_literal_time_unit(time_unit: api.TimeUnit) -> _LiteralTimeUnit:
-    if time_unit.value.lower() in get_args(_LiteralTimeUnit):
-        return cast(_LiteralTimeUnit, time_unit.value.lower())
-    else:
-        raise ValueError(f"Unknown api time unit: {time_unit}")
+    return _str_to_literal_time_unit(time_unit.value)
 
 
 @dataclass(frozen=True)
@@ -291,6 +311,14 @@ class Iso8601(_ConjureTimestampType):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
 
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        raise ValueError("ISO 8601 timestamps are not supported with .avro files")
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        return timestamp_parsers_pb2.TimestampType(
+            absolute=timestamp_parsers_pb2.AbsoluteTimestamp(iso8601=timestamp_parsers_pb2.Iso8601Timestamp())
+        )
+
 
 @dataclass(frozen=True)
 class Epoch(_ConjureTimestampType):
@@ -300,9 +328,22 @@ class Epoch(_ConjureTimestampType):
 
     unit: _LiteralTimeUnit
 
+    def _to_conjure_epoch_timestamp(self) -> ingest_api.EpochTimestamp:
+        return ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
+
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
+        return ingest_api.TimestampType(
+            absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=self._to_conjure_epoch_timestamp())
+        )
+
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        return ingest_api.AvroNumericTimestampType(epoch=self._to_conjure_epoch_timestamp())
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        epoch = timestamp_parsers_pb2.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit).value)
+        return timestamp_parsers_pb2.TimestampType(
+            absolute=timestamp_parsers_pb2.AbsoluteTimestamp(epoch_of_time_unit=epoch)
+        )
 
     @classmethod
     def _from_time_unit(cls, time_unit: api.TimeUnit) -> Self:
@@ -320,6 +361,11 @@ class Relative(_ConjureTimestampType):
     start: datetime | IntegralNanosecondsUTC
     """The starting time to which all relatives times are relative to."""
 
+    def _to_conjure_relative_timestamp(self) -> ingest_api.RelativeTimestamp:
+        return ingest_api.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(self.unit), offset=_SecondsNanos.from_flexible(self.start).to_iso8601()
+        )
+
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         """Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond prec.
         The Python type for the field is just a str.
@@ -327,10 +373,18 @@ class Relative(_ConjureTimestampType):
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        relative = ingest_api.RelativeTimestamp(
-            time_unit=_time_unit_to_conjure(self.unit), offset=_SecondsNanos.from_flexible(self.start).to_iso8601()
+        return ingest_api.TimestampType(relative=self._to_conjure_relative_timestamp())
+
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        return ingest_api.AvroNumericTimestampType(relative=self._to_conjure_relative_timestamp())
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        sn = _SecondsNanos.from_flexible(self.start)
+        relative = timestamp_parsers_pb2.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(self.unit).value,
+            offset=timestamp_pb2.Timestamp(seconds=sn.seconds, nanos=sn.nanos),
         )
-        return ingest_api.TimestampType(relative=relative)
+        return timestamp_parsers_pb2.TimestampType(relative=relative)
 
 
 @dataclass(frozen=True)
@@ -356,6 +410,17 @@ class Custom(_ConjureTimestampType):
         )
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
 
+    def _to_conjure_ingest_avro_api(self) -> ingest_api.AvroNumericTimestampType:
+        raise ValueError("Custom timestamps are not supported with .avro files")
+
+    def _to_proto(self) -> timestamp_parsers_pb2.TimestampType:
+        fmt = timestamp_parsers_pb2.CustomTimestamp(
+            format=self.format,
+            default_year=self.default_year,
+            default_day_of_year=self.default_day_of_year,
+        )
+        return timestamp_parsers_pb2.TimestampType(absolute=timestamp_parsers_pb2.AbsoluteTimestamp(custom_format=fmt))
+
 
 # constants for pedagogy, documentation, default arguments, etc.
 ISO_8601 = Iso8601()
@@ -379,8 +444,7 @@ _LiteralTimeUnit: TypeAlias = Literal[
     "days",
 ]
 
-_LiteralAbsolute: TypeAlias = Literal[
-    "iso_8601",
+_LiteralNumericAbsolute: TypeAlias = Literal[
     "epoch_picoseconds",
     "epoch_nanoseconds",
     "epoch_microseconds",
@@ -390,6 +454,7 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_hours",
     "epoch_days",
 ]
+_LiteralAbsolute: TypeAlias = Literal["iso_8601", _LiteralNumericAbsolute]
 
 _ExportableTypedTimestampType: TypeAlias = Iso8601 | Epoch | Relative
 """Type alias for all of the strongly typed timestamp types that can be converted to a native python datetime"""
@@ -403,6 +468,29 @@ _AnyExportableTimestampType: TypeAlias = _ExportableTypedTimestampType | _Litera
 _AnyTimestampType: TypeAlias = TypedTimestampType | _LiteralAbsolute
 """Type alias for all of the allowable timestamp types, including string representations."""
 
+_AnyNumericTimestampType: TypeAlias = Epoch | Relative | _LiteralNumericAbsolute
+"""Type alias for all of the allowable numeric timestamp types without string representations."""
+
+_AnyEpochTimestampType: TypeAlias = Epoch | _LiteralNumericAbsolute
+"""Type alias for absolute epoch timestamps, typed or as a string literal.
+
+`Relative` is excluded on purpose: the requests taking this alias carry a time unit and have nowhere to
+put a starting offset, so a relative type would lose its start.
+"""
+
+
+def _validate_timestamp_pair(timestamp_column: str | None, timestamp_type: _AnyTimestampType | None) -> None:
+    """Require a timestamp column and type together, or neither.
+
+    Naming a field without saying how to read it -- or the reverse -- describes nothing, so every
+    method taking the pair rejects a half-specified one. Shared so they all reject it the same way.
+
+    `timestamp_type` is typed to the widest alias, which every narrower one is a subset of, so callers
+    restricted to numeric or epoch types can pass theirs unchanged.
+    """
+    if (timestamp_column is None) != (timestamp_type is None):
+        raise ValueError("pass both timestamp_column and timestamp_type, or neither")
+
 
 def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if isinstance(type_, (Iso8601, Epoch, Relative, Custom)):
@@ -412,6 +500,51 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _proto_timestamp_type_to_typed_timestamp_type(proto: timestamp_parsers_pb2.TimestampType) -> TypedTimestampType:
+    """Convert a proto nominal.types.time.TimestampType to an SDK TypedTimestampType.
+
+    The reverse of `_ConjureTimestampType._to_proto`: the proto `time_unit` strings carry conjure
+    `api.TimeUnit` names, which `_str_to_literal_time_unit` validates and normalizes back to the
+    SDK literal (raising on an unrecognized unit).
+
+    `WhichOneof` returns a mypy-protobuf `Literal`, so the `assert_never` fallbacks make these
+    matches exhaustive at type-check time: a typo'd case or a newly added oneof member fails mypy.
+    """
+    which = proto.WhichOneof("option")
+    match which:
+        case "absolute":
+            absolute = proto.absolute
+            which_absolute = absolute.WhichOneof("option")
+            match which_absolute:
+                case "iso8601":
+                    return Iso8601()
+                case "epoch_of_time_unit":
+                    return Epoch(unit=_str_to_literal_time_unit(absolute.epoch_of_time_unit.time_unit))
+                case "custom_format":
+                    custom = absolute.custom_format
+                    return Custom(
+                        format=custom.format,
+                        default_year=custom.default_year if custom.HasField("default_year") else None,
+                        default_day_of_year=(
+                            custom.default_day_of_year if custom.HasField("default_day_of_year") else None
+                        ),
+                    )
+                case None:
+                    raise ValueError("Absolute timestamp type has no option set")
+                case _:
+                    assert_never(which_absolute)
+        case "relative":
+            relative = proto.relative
+            return Relative(
+                unit=_str_to_literal_time_unit(relative.time_unit),
+                start=relative.offset.ToNanoseconds(),
+            )
+        case None:
+            raise ValueError("Timestamp type has no option set")
+        case _:
+            assert_never(which)
 
 
 def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.TimestampType) -> TypedTimestampType:
@@ -498,6 +631,13 @@ class _SecondsNanos(NamedTuple):
     def to_api(self) -> api.Timestamp:
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 
+    def to_proto(self) -> time_pb2.Timestamp:
+        return time_pb2.Timestamp(seconds=self.seconds, nanos=self.nanos)
+
+    @classmethod
+    def from_proto(cls, timestamp: time_pb2.Timestamp) -> Self:
+        return cls(seconds=timestamp.seconds, nanos=timestamp.nanos)
+
     def to_iso8601(self) -> str:
         """To an iso8601 string with nanosecond precision.
 
@@ -556,12 +696,41 @@ The backend converts to long nanoseconds, and the maximum long (int64) value is 
 """
 
 
+_ONE_MICROSECOND = timedelta(microseconds=1)
+"""timedelta's resolution, used to convert one losslessly to an integer without re-allocating it per call."""
+
+
+def _to_seconds_nanos_duration(duration: timedelta | IntegralNanosecondsDuration) -> tuple[int, int]:
+    """Split a duration into the seconds/nanos pair the platform APIs carry.
+
+    The platform reconstructs the value as `seconds * 1e9 + nanos` using signed arithmetic and constrains
+    neither field's sign, so the split is floored rather than truncated: `nanos` stays in [0, 1e9) and
+    `seconds` carries the sign. -1.5s therefore splits as `(-2, 500_000_000)`, which looks like an overshoot
+    but is the same value. Both the conjure and proto duration messages take this pair as-is.
+
+    A `timedelta` is an exact multiple of its microsecond resolution, so dividing by one microsecond
+    converts it losslessly.
+
+    Note:
+        This is not valid for `google.protobuf.Duration`, which requires both fields to share a sign
+        and would reject a floored split. A duration bound for that type needs its own encoder.
+    """
+    total_nanos = duration // _ONE_MICROSECOND * 1_000 if isinstance(duration, timedelta) else duration
+    return divmod(total_nanos, 1_000_000_000)
+
+
 def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
-    if isinstance(duration, timedelta):
-        return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
-    else:
-        seconds, nanos = divmod(duration, 1_000_000_000)
-        return scout_run_api.Duration(seconds=seconds, nanos=nanos)
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return scout_run_api.Duration(seconds=seconds, nanos=nanos)
+
+
+def _to_proto_duration(duration: timedelta | IntegralNanosecondsDuration) -> common_pb2.Duration:
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return common_pb2.Duration(seconds=seconds, nanos=nanos)
+
+
+def _from_proto_duration(duration: common_pb2.Duration) -> IntegralNanosecondsDuration:
+    return duration.seconds * 1_000_000_000 + duration.nanos
 
 
 def _to_export_timestamp_format(type_: _AnyExportableTimestampType) -> scout_dataexport_api.TimestampFormat:

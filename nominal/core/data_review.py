@@ -6,9 +6,6 @@ from time import sleep
 from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
-    event as event_api,
-)
-from nominal_api import (
     scout,
     scout_api,
     scout_checklistexecution_api,
@@ -16,15 +13,16 @@ from nominal_api import (
     scout_datareview_api,
     scout_integrations_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.event import Event
-from nominal.core.exceptions import NominalMethodRemovedError
+from nominal.core.event import Event, _get_events
+from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -43,6 +41,7 @@ class DataReview(HasRid):
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -52,7 +51,7 @@ class DataReview(HasRid):
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
-        def event(self) -> event_api.EventService: ...
+        def event(self) -> event_pb2_grpc.EventServiceStub: ...
         @property
         def run(self) -> scout.RunService: ...
 
@@ -70,6 +69,7 @@ class DataReview(HasRid):
             completed=completed,
             created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
             _clients=clients,
+            created_by_rid=data_review.created_by,
         )
 
     def get_checklist(self) -> "Checklist":
@@ -78,17 +78,6 @@ class DataReview(HasRid):
         return Checklist._from_conjure(
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
-        )
-
-    @deprecated(
-        "CheckViolations are deprecated and will be removed in a future version. "
-        "Checklists now produce Events. Use get_events() instead."
-    )
-    def get_violations(self) -> Sequence[CheckViolation]:
-        """Retrieves the list of check violations for the data review."""
-        raise NominalMethodRemovedError(
-            "nominal.core.DataReview.get_violations",
-            "use 'nominal.core.DataReview.get_events()' instead",
         )
 
     def get_events(self) -> Sequence[Event]:
@@ -100,8 +89,10 @@ class DataReview(HasRid):
             if check.state._generated_alerts
             for event_rid in check.state._generated_alerts.event_rids
         ]
-        event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
-        return [Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
+        return [
+            Event._from_proto(self._clients, data_review_event)
+            for data_review_event in _get_events(self._clients, all_event_rids)
+        ]
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
@@ -128,14 +119,12 @@ class DataReview(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklistExecution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+        return data_review_url(self._clients, self.run_rid, self.rid)
 
     @property
     def events_url(self) -> str:
         """Returns a link to the page for events for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
+        return data_review_events_url(self._clients, self.run_rid, self.rid)
 
 
 @dataclass(frozen=True)
@@ -171,31 +160,6 @@ class DataReviewBuilder:
     def add_integration(self, integration_rid: str) -> DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
-
-    @deprecated(
-        "`DataReviewBuilder.add_request` is deprecated and will be removed in a future release of the Nominal SDK. "
-        "Please use `DataReviewBuilder.execute_checklist` instead."
-    )
-    def add_request(
-        self,
-        run_rid: str,
-        checklist_rid: str,
-        commit: str | None = None,
-        *,
-        asset_rid: str | None = None,
-    ) -> DataReviewBuilder:
-        """Add a request to create a data review for the given checklist and run.
-
-        Args:
-            run_rid: RID of the Run to run the Checklist on
-            checklist_rid: RID of the checklist to execute on the Run
-            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
-            asset_rid: RID of the asset to run the checklist on within the Run (only required for multi-asset runs)
-
-        Returns:
-            DataReviewBuilder instance to continue building a data review with
-        """
-        return self.execute_checklist(run_rid, checklist_rid, commit=commit, asset=asset_rid)
 
     def execute_checklist(
         self,

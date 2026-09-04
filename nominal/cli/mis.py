@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 import pandas as pd
-import tabulate
 
+from nominal.cli.util.format import table_data_to_string
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import NominalClient
 
@@ -23,7 +23,10 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
     is_csv = str.lower(mis_path.suffix) == ".csv"
     if is_excel:
-        excel_file = pd.ExcelFile(mis_path)
+        try:
+            excel_file = pd.ExcelFile(mis_path)
+        except ImportError as e:
+            raise ImportError("Excel MIS files require the 'mis' extra: pip install 'nominal[mis]'") from e
         if sheet is None:
             if len(excel_file.sheet_names) > 1:
                 sheet_names_str = [str(name) for name in excel_file.sheet_names]
@@ -229,11 +232,11 @@ def list_units(output: Path | None, format: str, client: NominalClient) -> None:
     units = client.get_all_units()
     sorted_units = sorted(units, key=lambda u: u.symbol)
 
-    # Convert Unit objects to DataFrame
-    units_data = [{"UCUM": unit.symbol, "Unit Name": unit.name} for unit in sorted_units]
-    df = pd.DataFrame(units_data)
-
-    output_str = _data_to_string(df, format)
+    units_data = {
+        "UCUM": [unit.symbol for unit in sorted_units],
+        "Unit Name": [unit.name for unit in sorted_units],
+    }
+    output_str = table_data_to_string(units_data, format)
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -241,12 +244,3 @@ def list_units(output: Path | None, format: str, client: NominalClient) -> None:
         click.secho(f"Unit list successfully written to {output}", fg="cyan")
     else:
         click.echo(output_str)
-
-
-def _data_to_string(data: pd.DataFrame, format: str) -> str:
-    if format == "csv":
-        return data.to_csv(index=False)
-    elif format == "table":
-        return tabulate.tabulate(data.values.tolist(), headers=data.columns.tolist())
-    else:
-        raise ValueError(f"Expected format to be one of csv, table, received {format}")

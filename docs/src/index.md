@@ -5,7 +5,7 @@ The main components of the SDK are:
 - An object-oriented client interface (`nominal.core.NominalClient`)
   for interacting with the Nominal platform
 - The `nom` CLI for performing common operations from the terminal
-- Extensions for working with thirdparty components (`nominal.thirdparty.pandas`, etc.)
+- Extensions for working with thirdparty components (`nominal.thirdparty.pandas`, etc.). Pandas and polars are included by default; TDMS is available with the `tdms` extra.
 
 Use the navigation bar above to see examples and reference documentation.
 

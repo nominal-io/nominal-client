@@ -1,49 +1,15 @@
-import pytest
-
-from nominal.core import ArchiveStatusFilter
+from nominal.core._event_types import EventType, SearchEventOriginTypes
 from nominal.core._utils.query_tools import (
+    AssetMatch,
     create_search_assets_query,
     create_search_datasets_query,
+    create_search_events_query,
     create_search_runs_query,
     create_search_users_query,
     create_search_workbook_templates_query,
     create_search_workbooks_query,
-    resolve_effective_archive_status,
 )
-
-
-def test_resolve_effective_archive_status_prefers_archived_over_include_archived():
-    """Legacy archived=True should win over include_archived=True."""
-    assert (
-        resolve_effective_archive_status(
-            archived=True,
-            include_archived=True,
-        )
-        == ArchiveStatusFilter.ARCHIVED
-    )
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "expected"),
-    [
-        ({"archived": True}, ArchiveStatusFilter.ARCHIVED),
-        ({"include_archived": True}, ArchiveStatusFilter.ANY),
-        ({"archived": False, "include_archived": True}, ArchiveStatusFilter.ANY),
-        ({}, ArchiveStatusFilter.NOT_ARCHIVED),
-    ],
-)
-def test_resolve_effective_archive_status_legacy_matrix(kwargs, expected):
-    """Legacy archive flags resolve to the intended effective status."""
-    assert resolve_effective_archive_status(**kwargs) == expected
-
-
-def test_resolve_effective_archive_status_rejects_mixing_modern_and_legacy_flags():
-    """archive_status cannot be mixed with deprecated archive arguments."""
-    with pytest.raises(ValueError, match="Cannot provide `archive_status` alongside deprecated"):
-        resolve_effective_archive_status(
-            ArchiveStatusFilter.ANY,
-            archived=True,
-        )
+from nominal.protos.event.v2 import event_pb2
 
 
 def test_create_search_users_query_uses_substring_match_for_exact_match_backend_field():
@@ -86,3 +52,58 @@ def test_create_search_workbook_templates_query_uses_substring_match_for_exact_m
 
     assert query.and_ is not None
     assert query.and_[1].exact_match == "template"
+
+
+def test_create_search_events_query_asset_match_all_ands_per_asset_clauses():
+    """AssetMatch.ALL (default) emits one ANDed asset clause per rid."""
+    query = create_search_events_query(asset_rids=["a", "b"])
+
+    assert query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[event_pb2.SearchQuery(asset="a"), event_pb2.SearchQuery(asset="b")]
+            )
+        }
+    )
+
+
+def test_create_search_events_query_asset_match_any_ors_assets():
+    """AssetMatch.ANY emits a single OR AssetsFilter over all rids."""
+    query = create_search_events_query(asset_rids=["a", "b", "c"], asset_match=AssetMatch.ANY)
+
+    assert query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[
+                    event_pb2.SearchQuery(assets=event_pb2.AssetsFilter(assets=["a", "b", "c"], operator=event_pb2.OR))
+                ]
+            )
+        }
+    )
+
+
+def test_create_search_events_query_converts_domain_enums() -> None:
+    """event_type and origin_types arrive as domain values and are converted here, not by the caller."""
+    query = create_search_events_query(event_type=EventType.FLAG, origin_types=[SearchEventOriginTypes.WORKBOOK])
+
+    assert query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[
+                    event_pb2.SearchQuery(event_type=event_pb2.FLAG),
+                    event_pb2.SearchQuery(
+                        origin_types=event_pb2.OriginTypesFilter(
+                            operator=event_pb2.OR, origin_types=[event_pb2.WORKBOOK]
+                        )
+                    ),
+                ]
+            )
+        }
+    )
+
+
+def test_create_search_events_query_drops_an_empty_origin_types() -> None:
+    """An empty sequence must drop the clause; an OR over no origin types would match nothing."""
+    assert create_search_events_query(origin_types=[]) == event_pb2.SearchQuery(
+        **{"and": event_pb2.SearchQueryList(queries=[])}
+    )

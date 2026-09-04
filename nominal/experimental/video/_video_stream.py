@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import logging
 import urllib.parse
+import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import TracebackType
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Mapping, Type
 
 from conjure_python_client import ConjureHTTPError
+from nominal_api import scout_video_api
 from nominal_video import Sink, Src, Stream, StreamOptions
 
-from nominal.core.exceptions import NominalVideoStreamError, NominalVideoStreamNotOpenError
+from nominal.core.exceptions import (
+    LegacyVideoDeprecationWarning,
+    NominalVideoStreamError,
+    NominalVideoStreamNotOpenError,
+)
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
+    from nominal.core.dataset import Dataset
     from nominal.core.video import Video
 
 logger = logging.getLogger(__name__)
@@ -21,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VideoStream:
-    """A live video stream from any source to a Nominal video via WHIP.
+    """A live video stream from any source to a video channel on a Nominal dataset via WHIP.
 
     Use ``VideoStream.create()`` to construct — it resolves the WHIP endpoint
     from the Nominal video and prepares the pipeline configuration. The pipeline
@@ -33,10 +40,10 @@ class VideoStream:
 
         from nominal.experimental.video import VideoStream, Src, StreamOptions
 
-        video = client.create_video("my stream")
+        dataset = client.create_dataset("my stream")
 
         # Context manager — open/close handled automatically:
-        with VideoStream.create(video, Src.camera()) as stream:
+        with VideoStream.create(dataset, Src.camera(), channel="camera/front") as stream:
             stream.run()
 
         # Timed stream — run for a fixed timeout then exit:
@@ -73,17 +80,21 @@ class VideoStream:
     @classmethod
     def create(
         cls,
-        video: Video,
+        target: Dataset | Video,
         src: Src,
         options: StreamOptions | None = None,
+        *,
+        channel: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> VideoStream:
-        """Create a VideoStream for a Nominal video.
+        """Create a VideoStream for a video channel on a dataset.
 
         Resolves the WHIP endpoint from Nominal and configures the pipeline.
         The pipeline is not started until ``open()`` is called.
 
         Args:
-            video: The Nominal video to stream to.
+            target: The dataset owning the video channel to stream to. Passing a legacy standalone
+                `Video` is deprecated.
             src: Video source. Common options:
 
                 - ``Src.camera()`` — local webcam
@@ -95,14 +106,18 @@ class VideoStream:
 
             options: Encoding options — codec, bitrate, resolution, overlay, fps, etc.
                 Defaults to H264 at 4 Mbps with no overlay.
+            channel: Name of the video channel on the dataset to stream to. Required when streaming to a
+                dataset; unused when streaming to a legacy `Video`.
+            tags: Tags identifying the channel's series. Defaults to none.
 
         Returns:
             A configured VideoStream, ready to open.
+
+        Raises:
+            ValueError: `channel` was omitted for a dataset target, or supplied for a `Video` target.
+            NominalVideoStreamError: Nominal rejected the request for a WHIP endpoint.
         """
-        try:
-            resp = video._clients.video.generate_whip_stream(video._clients.auth_header, video.rid)
-        except ConjureHTTPError as e:
-            raise NominalVideoStreamError(f"failed to create WHIP stream for video {video.rid!r}: {e}") from e
+        resp = cls._request_whip_stream(target, channel=channel, tags=tags)
 
         whip_url = resp.whip_url
         parsed = urllib.parse.urlparse(whip_url)
@@ -123,7 +138,52 @@ class VideoStream:
                 stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
         whip_sink = Sink.whip(endpoint=endpoint, token=token, stun_server=stun_url)
-        return cls(rid=video.rid, src=src, options=options, whip_sink=whip_sink)
+        return cls(rid=target.rid, src=src, options=options, whip_sink=whip_sink)
+
+    @staticmethod
+    def _request_whip_stream(
+        target: Dataset | Video,
+        *,
+        channel: str | None,
+        tags: Mapping[str, str] | None,
+    ) -> scout_video_api.GenerateWhipStreamResponse:
+        """Resolve a WHIP endpoint for a dataset channel, or for a legacy video (deprecated)."""
+        # Imported here rather than at module scope: nominal.core.video imports this package lazily,
+        # and a top-level import would close that cycle.
+        from nominal.core.video import Video
+
+        clients = target._clients
+        if isinstance(target, Video):
+            if channel is not None:
+                raise ValueError("'channel' does not apply when streaming to a legacy `Video`")
+            warnings.warn(
+                "Streaming to a standalone `Video` is deprecated in favor of video channels on a dataset. "
+                "Pass a `Dataset` with `channel=...` instead.",
+                LegacyVideoDeprecationWarning,
+                stacklevel=3,
+            )
+            try:
+                return clients.video.generate_whip_stream(clients.auth_header, target.rid)
+            except ConjureHTTPError as e:
+                raise NominalVideoStreamError(f"failed to create WHIP stream for video {target.rid!r}: {e}") from e
+
+        if channel is None:
+            raise ValueError("'channel' is required when streaming to a dataset")
+        request = scout_video_api.GenerateWhipStreamV2Request(
+            channel_series=scout_video_api.VideoChannelSeries(
+                data_source=scout_video_api.VideoDataSourceChannel(
+                    channel=channel,
+                    data_source_rid=target.rid,
+                    tags={**(tags or {})},
+                )
+            )
+        )
+        try:
+            return clients.video.generate_whip_stream_v2(clients.auth_header, request)
+        except ConjureHTTPError as e:
+            raise NominalVideoStreamError(
+                f"failed to create WHIP stream for channel {channel!r} on dataset {target.rid!r}: {e}"
+            ) from e
 
     def open(self) -> None:
         """Build and start the GStreamer pipeline. Idempotent — safe to call multiple times.

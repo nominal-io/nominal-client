@@ -9,6 +9,7 @@ from nominal.core import NominalClient
 from nominal.core._event_types import EventType
 from nominal.core.asset import Asset
 from nominal.core.event import Event
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
@@ -43,6 +44,11 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
         existing_event = self.get_existing_destination_resource(source)
         if existing_event is not None:
             return existing_event
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         destination_client = self.destination_client_for(source)
         new_event = destination_client.create_event(

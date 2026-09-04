@@ -4,6 +4,7 @@ import logging
 
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
@@ -20,6 +21,10 @@ class DatasetFileMigrator:
         mapped_id = self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_FILE, source_file.id)
         if mapped_id is not None:
             logger.debug("Skipping dataset file (id: %s): already in migration state", source_file.id)
+            return
+
+        if self.ctx.dry_run:
+            logger.info(f"{DRY_RUN_PREFIX} Would copy dataset file %s to destination", source_file.id)
             return
 
         new_file = copy_file_to_dataset(source_file, destination_dataset)

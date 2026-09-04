@@ -1,5 +1,7 @@
 # End-to-end tests against Nominal staging.
 # Requires the E2E_NOMINAL_STAGING_API_KEY repository secret.
+# The file-upload-e2e Azure leg additionally requires E2E_NOMINAL_AZURE_STAGING_API_KEY /
+# E2E_NOMINAL_AZURE_STAGING_WORKSPACE_RID.
 
 name: E2E Tests (Staging)
 
@@ -129,9 +131,86 @@ jobs:
             -vv
 
       - name: Run migration e2e tests
+        # --fail-on-skip: a skipped migration test is a coverage gap, not a pass — missing
+        # prerequisites (e.g. unset impersonation secrets) must fail the job, not hide.
+        env:
+          # The source side of the impersonation mapping is derived from the source token's
+          # own user inside the test; only the destination user RID needs configuring.
+          IMPERSONATION_DEST_USER_RID: ${{ secrets.E2E_IMPERSONATION_DEST_USER_RID }}
         run: |
           uv run pytest tests/e2e/migration \
             --dest-profile staging-e2e \
             --source-profile production-e2e \
+            --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
+            --fail-on-skip \
+            --no-cov \
+            -v
+
+  # Runs the special-character filename tests against each object-store backend. These guard the
+  # filename-encoding fix (PR #877): S3 tolerates every character on upload, so it can only catch a
+  # stored-name regression, while Azure Blob is where the original SAS bug lived and must be
+  # exercised directly. Scope is intentionally narrow — Azure staging's broader e2e suite is flaky
+  # (unrelated failures), so only these tests run here; broaden later if that changes.
+  file-upload-e2e:
+    name: File Upload E2E (${{ matrix.env.name }})
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 15
+
+    # Fork PRs don't have access to secrets — skip gracefully.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - name: aws
+            base_url: https://api-staging.gov.nominal.io/api
+            token_secret: E2E_NOMINAL_STAGING_API_KEY
+            workspace_secret: E2E_NOMINAL_STAGING_WORKSPACE_RID
+          - name: azure
+            base_url: https://api-staging.azure.nominal.io/api
+            token_secret: E2E_NOMINAL_AZURE_STAGING_API_KEY
+            workspace_secret: E2E_NOMINAL_AZURE_STAGING_WORKSPACE_RID
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.8.x"
+          enable-cache: false
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.13"
+
+      - name: Install just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+
+      - name: Install dependencies
+        run: just install
+
+      - name: Write ${{ matrix.env.name }} staging profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets[matrix.env.token_secret] }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets[matrix.env.workspace_secret] }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::${{ matrix.env.token_secret }} secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add file-upload-e2e \
+            --base-url ${{ matrix.env.base_url }} \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
+
+      - name: Run file upload e2e tests
+        run: |
+          uv run pytest tests/e2e/test_core.py \
+            -k "special_char or unsafe_char" \
+            --profile file-upload-e2e \
             --no-cov \
             -v

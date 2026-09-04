@@ -8,6 +8,14 @@ class NominalError(Exception):
     """Base class for Nominal exceptions."""
 
 
+class LegacyVideoDeprecationWarning(DeprecationWarning):
+    """Emitted by the legacy standalone-video API, superseded by video channels on a dataset.
+
+    Subclasses DeprecationWarning so it can be filtered on its own without muting every other
+    deprecation, e.g. `warnings.filterwarnings("ignore", category=LegacyVideoDeprecationWarning)`.
+    """
+
+
 class NominalIngestError(NominalError):
     """An error occurred during ingest."""
 
@@ -34,7 +42,18 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
-class NominalMultipartUploadError(Exception):
+class NominalIngestTimeout(NominalIngestError):
+    """Ingest did not reach a terminal state before the caller's deadline."""
+
+
+class NominalChecklistNotPublishedError(NominalError, ValueError):
+    """The requested checklist version has not been published.
+
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
+    """
+
+
+class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
 
@@ -42,8 +61,44 @@ class NominalMultipartUploadFailed(NominalError, ExceptionGroup):
     """The multipart upload failed after retries."""
 
 
+class NominalRequestThrottledError(NominalError):
+    """The server throttled a request for longer than the caller's retry budget allowed."""
+
+
+class NominalIngestUploadFailed(NominalError, ExceptionGroup):
+    """One or more files in an ingest batch failed to upload; nothing was ingested.
+
+    Each member exception names the file it belongs to and carries the underlying failure as
+    its `__cause__`.
+    """
+
+
 class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
+
+
+class NominalPermissionDeniedError(NominalError):
+    """The caller is authenticated but not authorized for the requested resource."""
+
+
+class NominalAuthenticationError(NominalError):
+    """The request was not authenticated (missing, expired, or invalid credentials)."""
+
+
+class NominalNotFoundError(NominalError):
+    """The requested resource does not exist."""
+
+
+class NominalAlreadyExistsError(NominalError):
+    """The resource being created already exists (e.g. a container image tag already registered)."""
+
+
+class NominalInvalidArgumentError(NominalError):
+    """The server rejected the request as malformed or invalid."""
+
+
+class HeaderConflictError(NominalError):
+    """A header provider attempted to override an explicit request header."""
 
 
 class NominalMethodRemovedError(NominalError):
@@ -63,6 +118,66 @@ class NominalMethodRemovedError(NominalError):
             return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
+
+
+class NominalComputeError(NominalError):
+    """An error occurred during a compute request."""
+
+
+class NominalContainerImageError(NominalError):
+    """A containerized extractor's container image is in a failed or unusable state."""
+
+
+class ExtractorError(NominalError):
+    """Raised when the extractor contract is violated (missing input, wrong output count, ...).
+
+    Exported as `nominal.experimental.extractor.ExtractorError`, which is where authors meet it.
+    """
+
+
+# Every surface that anchors a video offers the same choice under different names -- an absolute
+# start, per-frame timestamps -- and accepts exactly one. Shared so the wording cannot drift between
+# them, and used as the default message below.
+ONE_TIMESTAMP_MODE_ERROR = "exactly one of 'start' or 'frame_timestamps' must be provided"
+
+
+class NominalVideoTimestampModeError(NominalError, ValueError):
+    """Neither or both of a video's timestamp modes were provided; exactly one is required.
+
+    Also a `ValueError`, which is what these call sites raised before this type existed, so
+    `except ValueError` keeps working.
+
+    The default message names the two modes every video surface offers. The one surface that accepts
+    a third, `_build_video_file_timestamp_manifest`, passes its own.
+    """
+
+    def __init__(self, message: str = ONE_TIMESTAMP_MODE_ERROR) -> None:
+        """Initialize error."""
+        super().__init__(message)
+
+
+class NominalVideoScaleModeError(NominalError, ValueError):
+    """More than one way of scaling a video's playback rate was given; at most one is allowed.
+
+    `ending_timestamp`, `true_frame_rate`, and `scale_factor` express the same quantity three ways.
+    Also a `ValueError`, which is what this raised before the type existed.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "Expected at most one of 'ending_timestamp', 'true_frame_rate', and 'scale_factor' to be present"
+        ),
+    ) -> None:
+        """Initialize error."""
+        super().__init__(message)
+
+
+class NominalVideoFileMetadataError(NominalError, ValueError):
+    """A video file lacks the segment metadata needed to re-ingest it elsewhere.
+
+    Also a `ValueError` so pre-existing `except ValueError` callers keep working.
+    """
 
 
 class NominalVideoStreamError(NominalError):

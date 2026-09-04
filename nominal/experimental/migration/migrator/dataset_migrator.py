@@ -10,6 +10,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
+from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.dataset_file_migrator import DatasetFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
@@ -67,6 +68,11 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
             options.new_dataset_properties if options.new_dataset_properties is not None else source.properties
         )
         dataset_labels = options.new_dataset_labels if options.new_dataset_labels is not None else source.labels
+
+        if self.ctx.dry_run:
+            logger.info(would_create_message(self.resource_type), source.name, source.rid)
+            self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            return source
 
         new_dataset = self._create_destination_dataset(
             source,

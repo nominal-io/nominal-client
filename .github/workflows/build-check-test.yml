@@ -47,3 +47,42 @@ jobs:
       - name: Run unit tests
         run: |
           just test
+
+  build-packages:
+    runs-on: depot-ubuntu-24.04-small
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.x"
+          enable-cache: false
+          cache-dependency-glob: "uv.lock"
+      - name: Build all packages
+        run: uv build --all-packages
+
+  validate-release-config:
+    runs-on: depot-ubuntu-24.04-small
+    steps:
+      # fetch-depth: 0 required — release-please walks the full commit history to compute version bumps
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release config JSON
+        run: |
+          python3 -m json.tool release-please-config.json
+          python3 -m json.tool .release-please-manifest.json
+      # Validates config structure only — targets the PR branch, not main,
+      # so the computed version bump is not meaningful here.
+      - name: Dry-run release-please
+        run: |
+          TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          npx release-please release-pr \
+            --dry-run \
+            --local \
+            --local-path . \
+            --repo-url nominal-io/nominal-client \
+            --config-file release-please-config.json \
+            --manifest-file .release-please-manifest.json \
+            --target-branch "$TARGET" \
+            --token ${{ github.token }}

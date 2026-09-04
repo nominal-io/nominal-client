@@ -14,6 +14,13 @@ Tests cover:
 Run with:
     uv run pytest tests/e2e/migration/ \
         --source-profile=<prod> --dest-profile=<staging> -v
+
+Run the dataset-owner impersonation check with:
+    uv run pytest tests/e2e/migration/test_migration.py \
+        -k dataset_owner_with_impersonation \
+        --source-profile=<source> --dest-profile=<destination> \
+        --impersonation-dest-user-rid=<destination-user-rid> \
+        --fail-on-skip -v
 """
 
 from __future__ import annotations
@@ -39,9 +46,13 @@ from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.dataset_utils import get_dataset_owner_rid
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
-from nominal.experimental.migration.migration_cli import ImpersonatingDestinationClientResolver, ImpersonationConfig
+from nominal.experimental.migration.migration_cli import (
+    ImpersonationConfig,
+    build_destination_client_resolver,
+)
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
@@ -76,11 +87,13 @@ def _make_runner(
     config: MigrationDatasetConfig,
     dest_client: NominalClient,
     state_path: Path,
+    asset_inclusion_config: AssetInclusionConfig | None = None,
 ) -> MigrationRunner:
     return MigrationRunner(
         migration_resources=resources,
         dataset_config=config,
         destination_client=dest_client,
+        asset_inclusion_config=asset_inclusion_config,
         migration_state_path=state_path,
     )
 
@@ -426,19 +439,22 @@ def _assert_run_migrated_multi_asset(source: Run, dest: Run, dest_assets: list[A
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_asset(  # noqa: PLR0915
+def test_migrate_asset_maximal(  # noqa: PLR0915
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     mp4_data: bytes,
     tmp_path: Path,
 ):
-    """Full migration of an asset covering all resource types: dataset, events, run, checklist, video, and workbook.
+    """Full (maximal) migration of an asset covering all resource types.
+
+    Resource types covered: dataset, events, run, checklist, video, and workbook.
 
     Verifies:
     - All child resources exist on the destination with RID mappings in state
     - Metadata (name, description, labels, properties) is preserved for each resource
     - Resources are correctly linked to the migrated destination asset
+    - Workbooks not in source_workbook_rids are excluded from migration
     """
     # --- source setup ---
     start = datetime(2024, 1, 1)
@@ -455,9 +471,21 @@ def test_migrate_asset(  # noqa: PLR0915
     source_workbook = _create_source_workbook(source_client, register_cleanup, source_asset)
     source_run_b = _create_source_run(source_client, register_cleanup, source_asset, start, end)
     source_multi_run_wb = _create_multi_run_workbook(source_client, register_cleanup, source_run, source_run_b)
+    wb_excluded = _create_source_workbook(source_client, register_cleanup, source_asset)
 
     # --- migrate ---
-    runner = _make_runner(_make_resources(source_asset), _no_files_config(), dest_client, tmp_path / "state.json")
+    # source_workbook_rids restricts migration to the two intended workbooks; wb_excluded is omitted.
+    resources = MigrationResources(
+        source_assets={
+            source_asset.rid: AssetResources(
+                asset=source_asset,
+                source_workbook_templates=[],
+                source_workbook_rids=frozenset([source_workbook.rid, source_multi_run_wb.rid]),
+            )
+        },
+        source_standalone_templates=[],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
     runner.run_migration()
     state = runner.migration_state
 
@@ -535,6 +563,64 @@ def test_migrate_asset(  # noqa: PLR0915
     register_cleanup(dest_multi_run_wb.archive)
     _assert_workbook_migrated_multi_run(source_multi_run_wb, dest_multi_run_wb, [dest_run, dest_run_b])
 
+    # --- workbook allowlist: excluded workbook is absent from migration state ---
+    assert state.get_mapped_rid(ResourceType.WORKBOOK, wb_excluded.rid) is None
+
+
+def test_migrate_asset_minimal(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Minimal migration: only the asset and its datasets are copied; all other resource types are excluded.
+
+    Sets every AssetInclusionConfig flag to False and verifies that events, runs, and workbooks
+    are absent from the migration state while the asset and dataset are still migrated.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    event_a, _ = _create_source_events(source_client, register_cleanup, source_asset, start)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    source_workbook = _create_source_workbook(source_client, register_cleanup, source_asset)
+
+    runner = _make_runner(
+        _make_resources(source_asset),
+        _no_files_config(),
+        dest_client,
+        tmp_path / "state.json",
+        asset_inclusion_config=AssetInclusionConfig(
+            include_video=False,
+            include_runs=False,
+            include_events=False,
+            include_attachments=False,
+            include_checklists=False,
+            include_workbooks=False,
+        ),
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+
+    # Asset is always migrated.
+    _assert_asset_migrated(source_asset, dest_asset)
+
+    # Dataset is always migrated (controlled by dataset_config, not inclusion flags).
+    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    assert dest_ds_rid is not None
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+
+    # All excluded resource types must be absent from the migration state.
+    assert state.get_mapped_rid(ResourceType.EVENT, event_a.rid) is None
+    assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) is None
+    assert state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid) is None
+
 
 def test_migrate_asset_with_dataset_files(
     source_client: NominalClient,
@@ -604,6 +690,41 @@ def test_migrate_standalone_template(
     assert dest_template.description == source_template.description
     assert set(dest_template.labels) == set(source_template.labels)
     assert dest_template.properties == source_template.properties
+
+
+def test_migrate_standalone_checklist(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Standalone checklists are cloned to the destination client without any run or execution."""
+    source_checklist = _create_checklist_with_content(
+        source_client,
+        title=f"migration-e2e-standalone-checklist-{uuid4()}",
+        description="standalone checklist description",
+        labels=["migration-e2e"],
+        properties={"checklist-prop": "checklist-val"},
+        is_published=True,
+    )
+    register_cleanup(source_checklist.archive)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[],
+        source_standalone_checklists=[source_checklist],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner.run_migration()
+
+    dest_checklist_rid = runner.migration_state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    assert dest_checklist.name == source_checklist.name
+    assert dest_checklist.description == source_checklist.description
+    assert set(dest_checklist.labels) == set(source_checklist.labels)
+    assert dest_checklist.properties == source_checklist.properties
 
 
 def test_migration_idempotency(
@@ -799,43 +920,93 @@ def test_migrate_multi_asset_scenario(
     assert source_multi_asset_wb.rid not in state.pending_multi_asset_workbooks
 
 
-def test_migrate_with_impersonation(
+def test_dry_run_creates_nothing(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Dry-run mode traverses all source resources but writes nothing to the destination.
+
+    Verifies:
+    - The state file is not written to disk.
+    - Every in-memory RID mapping is a self-mapping (source_rid → source_rid), confirming
+      that no real destination resources were created and that child resources were visited.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+
+    state_file = tmp_path / "dry_run_state.json"
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        migration_state_path=state_file,
+        dry_run=True,
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    # State file must not be written in dry-run mode.
+    assert not state_file.exists(), "Dry-run must not write a state file"
+
+    # All in-memory mappings must be self-mappings (source → source placeholder).
+    # This also confirms child resources were visited (otherwise they'd be absent from state).
+    assert state.get_mapped_rid(ResourceType.ASSET, source_asset.rid) == source_asset.rid
+    assert state.get_mapped_rid(ResourceType.DATASET, source_ds.rid) == source_ds.rid
+    assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) == source_run.rid
+
+    # ASSET_DATA_SCOPE uses a composite key ("{asset_rid}:{scope_name}") → dataset_rid, not a
+    # simple rid → rid mapping, so it must be checked separately.
+    scope_key = f"{source_asset.rid}:primary"
+    assert state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) == source_ds.rid
+
+    for resource_type_str, mappings in state.rid_mapping.items():
+        if resource_type_str == ResourceType.ASSET_DATA_SCOPE.value:
+            continue
+        for source_rid, mapped_rid in mappings.items():
+            assert source_rid == mapped_rid, (
+                f"Dry-run produced a real destination mapping for {resource_type_str}: {source_rid} → {mapped_rid}"
+            )
+
+
+def test_migrate_maps_checklist_assignee_without_impersonation(
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     tmp_path: Path,
     pytestconfig,
 ):
-    """Migration succeeds end-to-end when an ImpersonatingDestinationClientResolver is in use.
+    """The checklist assignee is translated through user_rid_mapping with no impersonation involved.
 
-    Requires --impersonation-source-user-rid and --impersonation-dest-user-rid.  The source
-    user RID must be the creator of resources on the source environment (i.e. the RID of the
-    service account or user whose token is passed via --source-profile / --source-auth-token).
-    The dest user RID must be a valid, active user on the destination environment.
-
-    Verifies that the migration completes without error and that assets and datasets are
-    correctly reflected in the migration state, confirming the resolver is wired through the
-    full MigrationRunner path.
+    The assignee is a plain request field — any caller may set it — so this covers the
+    assignee-mapping feature end-to-end using only the service account's own privileges,
+    unlike created_by attribution, which requires impersonation (org admin) rights.
+    Requires --impersonation-dest-user-rid: a valid, active user on the destination.
     """
-    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid")
     dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
-    if not source_user_rid or not dest_user_rid:
-        pytest.skip("--impersonation-source-user-rid and --impersonation-dest-user-rid required")
+    if not dest_user_rid:
+        pytest.skip("--impersonation-dest-user-rid required")
+    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid") or source_client.get_user().rid
 
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
     source_asset = _create_source_asset(source_client, register_cleanup)
-    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
-
-    impersonation_config = ImpersonationConfig(
-        enabled=True,
-        source_to_destination_user_rids={source_user_rid: dest_user_rid},
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    # Created by the source user, so the source checklist's assignee defaults to source_user_rid.
+    source_checklist, source_data_review = _create_source_checklist_and_review(
+        source_client, register_cleanup, source_run
     )
-    resolver = ImpersonatingDestinationClientResolver(dest_client, impersonation_config)
 
     runner = MigrationRunner(
         migration_resources=_make_resources(source_asset),
         dataset_config=_no_files_config(),
         destination_client=dest_client,
-        destination_client_resolver=resolver,
+        user_rid_mapping={source_user_rid: dest_user_rid},
         migration_state_path=tmp_path / "state.json",
     )
     runner.run_migration()
@@ -843,10 +1014,71 @@ def test_migrate_with_impersonation(
 
     dest_asset = _dest_asset(runner, source_asset, dest_client)
     register_cleanup(dest_asset.archive)
-    _assert_asset_migrated(source_asset, dest_asset)
+    dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+    assert dest_run_rid is not None
+    register_cleanup(dest_client.get_run(dest_run_rid).archive)
 
-    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
-    assert dest_ds_rid is not None
-    dest_ds = dest_client.get_dataset(dest_ds_rid)
-    register_cleanup(dest_ds.archive)
-    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+    dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
+    assert dest_checklist_rid is not None
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    register_cleanup(dest_checklist.archive)
+    assert dest_checklist._get_latest_api().metadata.assignee_rid == dest_user_rid
+
+    dest_review_rid = state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid)
+    assert dest_review_rid is not None
+    dest_review = DataReview._from_conjure(
+        dest_client._clients,
+        dest_client._clients.datareview.get(dest_client._clients.auth_header, dest_review_rid),
+    )
+    register_cleanup(dest_review.archive)
+
+
+def test_migrate_preserves_dataset_owner_with_impersonation(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+    pytestconfig,
+):
+    """A migrated dataset is owned by the mapped destination user, not the migration caller.
+
+    Requires --impersonation-dest-user-rid to name an active destination user and a
+    destination profile whose caller may impersonate that user.
+    """
+    dest_user_rid = pytestconfig.getoption("impersonation_dest_user_rid")
+    if not dest_user_rid:
+        pytest.skip("--impersonation-dest-user-rid required")
+
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_dataset = _create_source_dataset(source_client, register_cleanup, source_asset)
+    actual_source_owner_rid = get_dataset_owner_rid(source_dataset)
+    source_user_rid = pytestconfig.getoption("impersonation_source_user_rid") or actual_source_owner_rid
+    assert actual_source_owner_rid == source_user_rid, (
+        "--impersonation-source-user-rid must match the owner of the source dataset"
+    )
+
+    destination_client_resolver = build_destination_client_resolver(
+        dest_client,
+        ImpersonationConfig(
+            enabled=True,
+            source_to_destination_user_rids={source_user_rid: dest_user_rid},
+        ),
+    )
+    assert destination_client_resolver is not None
+    runner = MigrationRunner(
+        migration_resources=_make_resources(source_asset),
+        dataset_config=_no_files_config(),
+        destination_client=dest_client,
+        destination_client_resolver=destination_client_resolver,
+        migration_state_path=tmp_path / "state.json",
+    )
+    runner.run_migration()
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+    dest_dataset_rid = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid)
+    assert dest_dataset_rid is not None
+    dest_dataset = dest_client.get_dataset(dest_dataset_rid)
+    register_cleanup(dest_dataset.archive)
+
+    assert get_dataset_owner_rid(dest_dataset) == dest_user_rid

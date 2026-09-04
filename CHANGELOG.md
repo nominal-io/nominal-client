@@ -1,5 +1,367 @@
 # Changelog
 
+## [1.165.0](https://github.com/nominal-io/nominal-client/compare/v1.164.0...v1.165.0) (2026-08-31)
+
+
+### Features
+
+* retry transient asset task failures in the parallel executor ([#947](https://github.com/nominal-io/nominal-client/issues/947)) ([fa9146d](https://github.com/nominal-io/nominal-client/commit/fa9146db75e3cb0c75a895e5070e2cb181e13992))
+
+
+### Bug Fixes
+
+* use total_seconds instead of seconds for max_wait ([#945](https://github.com/nominal-io/nominal-client/issues/945)) ([cf535b4](https://github.com/nominal-io/nominal-client/commit/cf535b4f47f5e62aa0c872f7e6bf41337b33ba03))
+
+## [1.164.0](https://github.com/nominal-io/nominal-client/compare/v1.163.0...v1.164.0) (2026-08-27)
+
+
+### Features
+
+* bump nominal streaming version used by "rust_experimental" streaming ([#941](https://github.com/nominal-io/nominal-client/issues/941)) ([4db1efc](https://github.com/nominal-io/nominal-client/commit/4db1efc71f76b13ea0286d2ee7070b9a5d9a3b41))
+  * This provides significant clientside speedups when enqueueing many points from dictionaries at a time, or when enqueueing single points.
+  * Users that were previously network-bound or input-bound will not see changes in overall throughput, but will see less CPU utilization.
+  * Ctrl+C used to immediately exit and dump any enqueued-but-not-sent data, will now wait until all data is flushed.
+
+## [1.163.0](https://github.com/nominal-io/nominal-client/compare/v1.162.0...v1.163.0) (2026-08-27)
+
+
+### Features
+
+* predict video file outcomes in migration dry run ([#939](https://github.com/nominal-io/nominal-client/issues/939)) ([fe85d13](https://github.com/nominal-io/nominal-client/commit/fe85d137c48d391abd8fe560ae7466466a919064))
+* skip migrating video files whose source ingest failed ([#940](https://github.com/nominal-io/nominal-client/issues/940)) ([145c413](https://github.com/nominal-io/nominal-client/commit/145c413039433f952c73c7c2765951d6d8e1fd2e))
+
+
+### Bug Fixes
+
+* source video copy timing from segment metadata, not the as-ingested origin start ([#937](https://github.com/nominal-io/nominal-client/issues/937)) ([6b07d23](https://github.com/nominal-io/nominal-client/commit/6b07d23b7d5a0073d3cd296365539b5f51ee9efb))
+
+## [1.162.0](https://github.com/nominal-io/nominal-client/compare/v1.161.0...v1.162.0) (2026-08-25)
+
+
+### Features
+
+* retry transient failures and log-and-continue in video file migration ([#934](https://github.com/nominal-io/nominal-client/issues/934)) ([6b73f89](https://github.com/nominal-io/nominal-client/commit/6b73f89c9619e271e1590cb5a55a279499ef494d))
+
+
+### Bug Fixes
+
+* **migration:** preserve dataset owners during impersonation ([#935](https://github.com/nominal-io/nominal-client/issues/935)) ([73d2a7e](https://github.com/nominal-io/nominal-client/commit/73d2a7ede58e0249e4b3b6a54f33990a0f44632c))
+
+## [1.161.0](https://github.com/nominal-io/nominal-client/compare/v1.160.0...v1.161.0) (2026-08-18)
+
+
+### Features
+
+* map checklist assignee and data review creator during migration ([#931](https://github.com/nominal-io/nominal-client/issues/931)) ([8de7ae0](https://github.com/nominal-io/nominal-client/commit/8de7ae047a2aca958d54d923f9c717ecca8de6b5))
+
+## [1.160.0](https://github.com/nominal-io/nominal-client/compare/v1.159.0...v1.160.0) (2026-08-13)
+
+
+### Features
+
+* add helper for batch create or update channel ([#920](https://github.com/nominal-io/nominal-client/issues/920)) ([8689315](https://github.com/nominal-io/nominal-client/commit/868931551ff3ad07b21e78d1370ec4f48ecf1ac3))
+* allow ingest jobs to expand run bounds ([#926](https://github.com/nominal-io/nominal-client/issues/926)) ([9c0813f](https://github.com/nominal-io/nominal-client/commit/9c0813f9f7b948264ae732a9182a82571070f808))
+
+## [1.159.0](https://github.com/nominal-io/nominal-client/compare/v1.158.0...v1.159.0) (2026-08-11)
+
+
+### Features
+
+* migrate event service to gRPC ([#913](https://github.com/nominal-io/nominal-client/issues/913)) ([a5139f0](https://github.com/nominal-io/nominal-client/commit/a5139f073348d7f253950b2eb17e88571a174fde))
+
+
+### Bug Fixes
+
+* **migration:** bound video ingest polling and skip unmigratable videos ([#918](https://github.com/nominal-io/nominal-client/issues/918)) ([ed2c326](https://github.com/nominal-io/nominal-client/commit/ed2c3268b1655b7464c92c0bc2f35af3a9f0da39))
+* stop truncating negative timedelta durations ([#923](https://github.com/nominal-io/nominal-client/issues/923)) ([dfb6d41](https://github.com/nominal-io/nominal-client/commit/dfb6d41cf1b747c89bfa4c5034ce4c69cf9ab6d3))
+
+## [1.158.0](https://github.com/nominal-io/nominal-client/compare/v1.157.0...v1.158.0) (2026-08-10)
+
+
+### Features
+
+* expand ChannelDataType with UINT, DOUBLE_ARRAY, STRING_ARRAY, and STRUCT ([#919](https://github.com/nominal-io/nominal-client/issues/919)) ([9b09a9f](https://github.com/nominal-io/nominal-client/commit/9b09a9f0ac599c29e754dd8a1cfd620210ddf9d5))
+* expose is_archived on core resources and skip archived resources in migration ([#921](https://github.com/nominal-io/nominal-client/issues/921)) ([1654e91](https://github.com/nominal-io/nominal-client/commit/1654e91a83fa9c0e63e2d7c3b2592400424c49ff))
+
+
+### Bug Fixes
+
+* bump nominal-api & nominal-api-protos to 0.1371.0 ([#914](https://github.com/nominal-io/nominal-client/issues/914)) ([a12a4bf](https://github.com/nominal-io/nominal-client/commit/a12a4bfc5aed62ca91c4fa0721e505324015a244))
+
+
+### Documentation
+
+* correct exact_match and search_text semantics in search methods ([#900](https://github.com/nominal-io/nominal-client/issues/900)) ([13995be](https://github.com/nominal-io/nominal-client/commit/13995bef9e7f0174600dd71c0bc2a2aa26906b5f))
+
+## [1.157.0](https://github.com/nominal-io/nominal-client/compare/v1.156.1...v1.157.0) (2026-08-07)
+
+
+### Features
+
+* **ingest:** declare how numeric timestamps should be read for avro and journal json ([#911](https://github.com/nominal-io/nominal-client/issues/911)) ([d0db718](https://github.com/nominal-io/nominal-client/commit/d0db718f78e58d87ba2c8d34802f9e6cf5c8f19c))
+
+
+### Bug Fixes
+
+* add workspace prefixes to frontend URLs ([#891](https://github.com/nominal-io/nominal-client/issues/891)) ([83c1e6a](https://github.com/nominal-io/nominal-client/commit/83c1e6a5ef50c7ef1f70c30f83da599476c5e45f))
+
+## [1.156.1](https://github.com/nominal-io/nominal-client/compare/v1.156.0...v1.156.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **migration:** stop incremental state saves from stalling parallel workers ([#907](https://github.com/nominal-io/nominal-client/issues/907)) ([efe4483](https://github.com/nominal-io/nominal-client/commit/efe4483c097221892c2f9bea8b6fdc5ee3e2db93))
+
+## [1.156.0](https://github.com/nominal-io/nominal-client/compare/v1.155.0...v1.156.0) (2026-08-03)
+
+
+### Features
+
+* **extractor:** declare extractor-produced videos with ctx.add_video ([#902](https://github.com/nominal-io/nominal-client/issues/902)) ([e5d91f7](https://github.com/nominal-io/nominal-client/commit/e5d91f74b6ae356b9302fb4f5ea2896604a1a62c))
+* **video:** add dataset video ingest and typed video dataset files ([#896](https://github.com/nominal-io/nominal-client/issues/896)) ([89e360c](https://github.com/nominal-io/nominal-client/commit/89e360c3de5675dd2fe310ce754f46d450470074))
+* **video:** channel-based live streaming, deprecate legacy video api ([#906](https://github.com/nominal-io/nominal-client/issues/906)) ([0123967](https://github.com/nominal-io/nominal-client/commit/01239673857ab18678d67512dce05996d21cde52))
+
+
+### Bug Fixes
+
+* **ci:** mint the app token in-repo for release-please ([#904](https://github.com/nominal-io/nominal-client/issues/904)) ([8158719](https://github.com/nominal-io/nominal-client/commit/815871917c2c223babfd29938102b1574b48611f))
+* **ci:** use shared release-please wrapper with app token ([#901](https://github.com/nominal-io/nominal-client/issues/901)) ([739db3c](https://github.com/nominal-io/nominal-client/commit/739db3c2395a8685a029302ea33a2d820628d15a))
+* **ci:** use the org's app-token action for release-please ([#905](https://github.com/nominal-io/nominal-client/issues/905)) ([c8b1008](https://github.com/nominal-io/nominal-client/commit/c8b10088f83af3377977f8a54da8ad8181e95287))
+
+## [1.155.0](https://github.com/nominal-io/nominal-client/compare/v1.154.0...v1.155.0) (2026-07-30)
+
+
+### Features
+
+* **experimental:** multi-file ingest jobs — IngestBuilder over a throughput-tuned uploader ([#848](https://github.com/nominal-io/nominal-client/issues/848)) ([501971c](https://github.com/nominal-io/nominal-client/commit/501971c928fd51c9d18b8f2b113f79bef7beeefd))
+* make search default to the configured workspace of the profile, not all workspaces ([#892](https://github.com/nominal-io/nominal-client/issues/892)) ([98e95fa](https://github.com/nominal-io/nominal-client/commit/98e95faede711aebe95ab8ac1fef4f3a8c8df200))
+* remove deprecated methods / arguments across client ([#893](https://github.com/nominal-io/nominal-client/issues/893)) ([81e3d77](https://github.com/nominal-io/nominal-client/commit/81e3d779b5f17a1bea51f7e7eaec5bfef820e8e4))
+
+
+### Bug Fixes
+
+* **tests:** scope dataset archive-status search to its own datasets ([#899](https://github.com/nominal-io/nominal-client/issues/899)) ([fe37181](https://github.com/nominal-io/nominal-client/commit/fe3718114c3d11f095db8179fd9da2d82475efef))
+
+## [1.154.0](https://github.com/nominal-io/nominal-client/compare/v1.153.0...v1.154.0) (2026-07-21)
+
+
+### Features
+
+* experimental derived datasets ([#832](https://github.com/nominal-io/nominal-client/issues/832)) ([e7f2756](https://github.com/nominal-io/nominal-client/commit/e7f2756e097b02ba397370dee16b6e579619b20f))
+* **experimental:** relative timestamps for manifest extractor outputs ([#889](https://github.com/nominal-io/nominal-client/issues/889)) ([9669cd9](https://github.com/nominal-io/nominal-client/commit/9669cd91a3215442701f6d50c6e6de0c4edff701))
+
+
+### Bug Fixes
+
+* **migration:** defer run-scoped workbooks whose run spans multiple assets ([#886](https://github.com/nominal-io/nominal-client/issues/886)) ([bf42496](https://github.com/nominal-io/nominal-client/commit/bf42496ce36a4db25916fd17f5fde55d2f4bf341))
+* **migration:** skip run workbooks with out-of-scope owners ([#887](https://github.com/nominal-io/nominal-client/issues/887)) ([aa5fadb](https://github.com/nominal-io/nominal-client/commit/aa5fadba6ad819b7457ec04f1883652a348bb737))
+* **upload:** send filenames literally instead of URL-encoding them ([#877](https://github.com/nominal-io/nominal-client/issues/877)) ([8d46a3b](https://github.com/nominal-io/nominal-client/commit/8d46a3bdd4bdcc1721965f2bf40ef61e707a3b5e))
+
+## [1.153.0](https://github.com/nominal-io/nominal-client/compare/v1.152.1...v1.153.0) (2026-07-14)
+
+
+### Features
+
+* **experimental:** runtime decorators for authoring containerized extractors ([#867](https://github.com/nominal-io/nominal-client/issues/867)) ([f9bc44d](https://github.com/nominal-io/nominal-client/commit/f9bc44d60eea1b79da2f2df52c96442d18adfee0))
+* migrate sandbox workspace service to gRPC ([#868](https://github.com/nominal-io/nominal-client/issues/868)) ([1f0f2d0](https://github.com/nominal-io/nominal-client/commit/1f0f2d050b2fd3afaf5979901ed24044088268ce))
+* migrate secrets service to gRPC ([#870](https://github.com/nominal-io/nominal-client/issues/870)) ([8a4321e](https://github.com/nominal-io/nominal-client/commit/8a4321eefd100a6ba2c0c9be3b4ba2e3e4506108))
+
+## [1.152.1](https://github.com/nominal-io/nominal-client/compare/v1.152.0...v1.152.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **migration:** persist migration state incrementally and flush it on SIGINT/SIGTERM ([#873](https://github.com/nominal-io/nominal-client/issues/873)) ([e46a95d](https://github.com/nominal-io/nominal-client/commit/e46a95dbd72775adf17c95d69795859ae384cc7a))
+
+## [1.152.0](https://github.com/nominal-io/nominal-client/compare/v1.151.0...v1.152.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** container extractor and image commands ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **cli:** containerized extractor and container registry commands ([#862](https://github.com/nominal-io/nominal-client/issues/862)) ([173ff1e](https://github.com/nominal-io/nominal-client/commit/173ff1e9b282e464affcab25eed61905144ab2b4))
+* **migration:** offline `nom migrate summary` command + shared dry-run log constants ([#872](https://github.com/nominal-io/nominal-client/issues/872)) ([1519162](https://github.com/nominal-io/nominal-client/commit/1519162925367ac0400b305c0d89c7e706fd70ca))
+* raise NominalAlreadyExistsError for ALREADY_EXISTS gRPC failures ([#865](https://github.com/nominal-io/nominal-client/issues/865)) ([c274fcc](https://github.com/nominal-io/nominal-client/commit/c274fcc769ad7ecfada91b876624bbb7910a17cd))
+
+## [1.151.0](https://github.com/nominal-io/nominal-client/compare/v1.150.1...v1.151.0) (2026-07-02)
+
+
+### Features
+
+* added m2ts video format ([#858](https://github.com/nominal-io/nominal-client/issues/858)) ([925ab1b](https://github.com/nominal-io/nominal-client/commit/925ab1b73ce7c4129ef6c8a8dae473b446a24a07))
+* allow searching for container images by containerized extractor ([#861](https://github.com/nominal-io/nominal-client/issues/861)) ([839b782](https://github.com/nominal-io/nominal-client/commit/839b78243c32ca01dfe09fbc0c366dec64ae8b71))
+* v2 hosted containerized extractors + image upload/registration ([#842](https://github.com/nominal-io/nominal-client/issues/842)) ([e4e915b](https://github.com/nominal-io/nominal-client/commit/e4e915bd497b613e2052105007d2f92a642a0900))
+
+
+### Bug Fixes
+
+* prevent .zip files from being uploaded as .pyz files ([#856](https://github.com/nominal-io/nominal-client/issues/856)) ([a14a3ee](https://github.com/nominal-io/nominal-client/commit/a14a3eee361bfe8952c0e364d6bdebccf9a97dc8))
+
+## [1.150.1](https://github.com/nominal-io/nominal-client/compare/v1.150.0...v1.150.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **migration:** allow empty/absent source_asset_rids ([#853](https://github.com/nominal-io/nominal-client/issues/853)) ([5b38827](https://github.com/nominal-io/nominal-client/commit/5b38827dce2420bd450e41a428a9560726008944))
+
+## [1.150.0](https://github.com/nominal-io/nominal-client/compare/v1.149.0...v1.150.0) (2026-06-29)
+
+
+### Features
+
+* **migration:** support migrating standalone checklists ([#846](https://github.com/nominal-io/nominal-client/issues/846)) ([c94fde4](https://github.com/nominal-io/nominal-client/commit/c94fde4c622d7e2ffdf33f7a2573586ebe87e5e5))
+
+## [1.149.0](https://github.com/nominal-io/nominal-client/compare/v1.148.0...v1.149.0) (2026-06-26)
+
+
+### Features
+
+* **core:** add IngestionJob resource for tracking ingest jobs ([#845](https://github.com/nominal-io/nominal-client/issues/845)) ([4c062cd](https://github.com/nominal-io/nominal-client/commit/4c062cd9f71b873424a71dfec19fa00add4175c3))
+* **grpc:** migrate comments, units, and workspace services to gRPC ([#839](https://github.com/nominal-io/nominal-client/issues/839)) ([a5a6e92](https://github.com/nominal-io/nominal-client/commit/a5a6e92ecba608c8cbef992745c6c0aed09fc261))
+* **migration:** add --dry-run flag to nom migrate copy ([#824](https://github.com/nominal-io/nominal-client/issues/824)) ([38b4b58](https://github.com/nominal-io/nominal-client/commit/38b4b586fd8c16b2131f4a011bcd0d09658bdea5))
+
+## [1.148.0](https://github.com/nominal-io/nominal-client/compare/v1.147.0...v1.148.0) (2026-06-23)
+
+
+### Features
+
+* add Run.search_events method ([#834](https://github.com/nominal-io/nominal-client/issues/834)) ([abdd391](https://github.com/nominal-io/nominal-client/commit/abdd391e4002ef4b25a477460bff0f1eace4dba7))
+* **grpc:** expose Role Service via a shared-channel ClientsBunch gRPC pattern ([#809](https://github.com/nominal-io/nominal-client/issues/809)) ([f3f1572](https://github.com/nominal-io/nominal-client/commit/f3f15726b03c43b16fa7bde0adf9c4a4e6f9cc99))
+
+
+### Bug Fixes
+
+* handle new ingest status enum members ([#838](https://github.com/nominal-io/nominal-client/issues/838)) ([1ddbd94](https://github.com/nominal-io/nominal-client/commit/1ddbd9408907a353e4db9d91f07d80e46c8c377e))
+
+## [1.147.0](https://github.com/nominal-io/nominal-client/compare/v1.146.0...v1.147.0) (2026-06-18)
+
+
+### Features
+
+* adding/updating dataset/video/connection getters for run.py and asset.py ([#830](https://github.com/nominal-io/nominal-client/issues/830)) ([b47b728](https://github.com/nominal-io/nominal-client/commit/b47b72803aadfcadd57eccf2cc5385aa9cb22d7d))
+
+
+### Bug Fixes
+
+* **migration:** handle camelCase keys in legacy migration state files ([#823](https://github.com/nominal-io/nominal-client/issues/823)) ([96cd804](https://github.com/nominal-io/nominal-client/commit/96cd804a1798d4807959d88eca992268f3d33ce5))
+
+## [1.146.0](https://github.com/nominal-io/nominal-client/compare/v1.145.1...v1.146.0) (2026-06-16)
+
+
+### Features
+
+* cleanup dependencies ([#803](https://github.com/nominal-io/nominal-client/issues/803)) ([48791aa](https://github.com/nominal-io/nominal-client/commit/48791aa8d66f97332e947824fec234f19ab457a3))
+* improve export batch calculations in polars export handler ([#699](https://github.com/nominal-io/nominal-client/issues/699)) ([cb2b303](https://github.com/nominal-io/nominal-client/commit/cb2b3031bc3356bf163096ac777637d4052697b6))
+* independent version bumping for release namespaces ([#813](https://github.com/nominal-io/nominal-client/issues/813)) ([dc3e571](https://github.com/nominal-io/nominal-client/commit/dc3e5710d355a0131368b5b66b8d258364104223))
+
+## [1.145.1](https://github.com/nominal-io/nominal-client/compare/v1.145.0...v1.145.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* add missing allowlist link for parallel migration ([#812](https://github.com/nominal-io/nominal-client/issues/812)) ([61e334c](https://github.com/nominal-io/nominal-client/commit/61e334c1843cf4570e70be87a47a67fef652dba6))
+* some minor bugs in migration prep cli ([#810](https://github.com/nominal-io/nominal-client/issues/810)) ([13b1ce4](https://github.com/nominal-io/nominal-client/commit/13b1ce4c390250f5f5d5cd1243bc417335ad4848))
+
+## [1.145.0](https://github.com/nominal-io/nominal-client/compare/v1.144.1...v1.145.0) (2026-06-02)
+
+
+### Features
+
+* allow for excluded workbooks in asset migration ([#804](https://github.com/nominal-io/nominal-client/issues/804)) ([568136b](https://github.com/nominal-io/nominal-client/commit/568136b90486be19e454dc011cc838dc8314065f))
+
+## [1.144.1](https://github.com/nominal-io/nominal-client/compare/v1.144.0...v1.144.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* add Apache 2.0 license and NOTICE file ([#714](https://github.com/nominal-io/nominal-client/issues/714)) ([324c8ca](https://github.com/nominal-io/nominal-client/commit/324c8ca6ff866094725c9ff89bd404011e56980e))
+* apache 2.0 the package metadata and subproject ([#793](https://github.com/nominal-io/nominal-client/issues/793)) ([c39d98d](https://github.com/nominal-io/nominal-client/commit/c39d98d5de3496610bfd063e61728ee9ccf72ea4))
+
+## [1.144.0](https://github.com/nominal-io/nominal-client/compare/v1.143.0...v1.144.0) (2026-05-19)
+
+
+### Features
+
+* split tdms namespace package to separate packages ([#789](https://github.com/nominal-io/nominal-client/issues/789)) ([95d7e85](https://github.com/nominal-io/nominal-client/commit/95d7e85fa5c5da8edb3dca91dc2c4a9718ae8277))
+
+## [1.143.0](https://github.com/nominal-io/nominal-client/compare/v1.142.0...v1.143.0) (2026-05-11)
+
+
+### Features
+
+* remove top-level code for namespace packaging ([d2c5935](https://github.com/nominal-io/nominal-client/commit/d2c59350189af0ed917ac539b0003ae59002638a))
+* remove top-level code to allow for namespace packaging ([#738](https://github.com/nominal-io/nominal-client/issues/738)) ([d2c5935](https://github.com/nominal-io/nominal-client/commit/d2c59350189af0ed917ac539b0003ae59002638a))
+
+## [1.142.0](https://github.com/nominal-io/nominal-client/compare/v1.141.0...v1.142.0) (2026-05-11)
+
+
+### Features
+
+* allow specifying marking rids when creating a dataset from the NominalClient ([#780](https://github.com/nominal-io/nominal-client/issues/780)) ([be70788](https://github.com/nominal-io/nominal-client/commit/be707885f26e74166ddabf0f6b840861820505ab))
+
+## [1.141.0](https://github.com/nominal-io/nominal-client/compare/v1.140.0...v1.141.0) (2026-05-11)
+
+
+### Features
+
+* add file extraction parameter to containerized extractors ([#776](https://github.com/nominal-io/nominal-client/issues/776)) ([30d91ab](https://github.com/nominal-io/nominal-client/commit/30d91abb8450aa50e9ac29b3647a8d3e51a1dc59))
+* consolidate workbook migration between single and multi asset/run ([#775](https://github.com/nominal-io/nominal-client/issues/775)) ([c3099e6](https://github.com/nominal-io/nominal-client/commit/c3099e6cf5024b4e9c8724dcc203cf539e43c170))
+
+## [1.140.0](https://github.com/nominal-io/nominal-client/compare/v1.139.0...v1.140.0) (2026-05-07)
+
+
+### Features
+
+* add poll until ingestion completed for file uploads in migration ([#773](https://github.com/nominal-io/nominal-client/issues/773)) ([0a5d959](https://github.com/nominal-io/nominal-client/commit/0a5d959485e1305ab53fd31bbee9fbef12d35506))
+
+## [1.139.0](https://github.com/nominal-io/nominal-client/compare/v1.138.0...v1.139.0) (2026-05-07)
+
+
+### Features
+
+* add Run.add_comment to post to a run's discussion ([#758](https://github.com/nominal-io/nominal-client/issues/758)) ([8dab1b0](https://github.com/nominal-io/nominal-client/commit/8dab1b03aaf6ff73a84554382d9cd75acae19d59))
+* add templates to migration_prep ([#756](https://github.com/nominal-io/nominal-client/issues/756)) ([ad7dd6f](https://github.com/nominal-io/nominal-client/commit/ad7dd6fae34e26f06dfc41762747845b0e0ba0e6))
+
+## [1.138.0](https://github.com/nominal-io/nominal-client/compare/v1.137.0...v1.138.0) (2026-05-06)
+
+
+### Features
+
+* preserve creator rids on migrated resources ([#754](https://github.com/nominal-io/nominal-client/issues/754)) ([1ab0d68](https://github.com/nominal-io/nominal-client/commit/1ab0d6861583871868594a13e496d47bad1f910e))
+
+## [1.137.0](https://github.com/nominal-io/nominal-client/compare/v1.136.1...v1.137.0) (2026-05-06)
+
+
+### Features
+
+* allow additional header passthru ([#744](https://github.com/nominal-io/nominal-client/issues/744)) ([20bb4d8](https://github.com/nominal-io/nominal-client/commit/20bb4d8ebb9cb78b8f59e50012a00257326be3ce))
+* preserve workbook creator RID ([#753](https://github.com/nominal-io/nominal-client/issues/753)) ([bfb12e5](https://github.com/nominal-io/nominal-client/commit/bfb12e52433a03278b18296da57ef262df559e69))
+
+## [1.136.1](https://github.com/nominal-io/nominal-client/compare/v1.136.0...v1.136.1) (2026-05-04)
+
+
+### Miscellaneous Chores
+
+* force release ([b57721f](https://github.com/nominal-io/nominal-client/commit/b57721fa6cfc563c20e5c69f06463be38169d9a8))
+
+## [1.136.0](https://github.com/nominal-io/nominal-client/compare/v1.135.0...v1.136.0) (2026-04-30)
+
+
+### Features
+
+* add channel count to migration prep ([#739](https://github.com/nominal-io/nominal-client/issues/739)) ([6ffbf92](https://github.com/nominal-io/nominal-client/commit/6ffbf9245d8bebbc90c9365bf0e2984c93a1e196))
+* add parameters to include/exclude child resources to migrate ([#740](https://github.com/nominal-io/nominal-client/issues/740)) ([fa2cfb4](https://github.com/nominal-io/nominal-client/commit/fa2cfb4cc55fc77b1b96bb96ef6d07b8e644f8b6))
+* deprecate streaming connection creation ([#741](https://github.com/nominal-io/nominal-client/issues/741)) ([5b28a7b](https://github.com/nominal-io/nominal-client/commit/5b28a7b892418de931f7ddde8ebbb03dd941ef02))
+
+## [1.135.0](https://github.com/nominal-io/nominal-client/compare/v1.134.0...v1.135.0) (2026-04-27)
+
+
+### Features
+
+* add PUT response headers in S3 multipart upload exception ([#731](https://github.com/nominal-io/nominal-client/issues/731)) ([a2f8346](https://github.com/nominal-io/nominal-client/commit/a2f83461344fd34e9f9274cf7686fbcd52c07001))
+* enable streaming arrays and structs with rust_experimental streaming ([#729](https://github.com/nominal-io/nominal-client/issues/729)) ([1cd45d7](https://github.com/nominal-io/nominal-client/commit/1cd45d7dd116120ef44e23f8e82a3d92097fb7e3))
+* update e2e testing for new migration features ([#734](https://github.com/nominal-io/nominal-client/issues/734)) ([e77e76a](https://github.com/nominal-io/nominal-client/commit/e77e76ab04ce2111bbecf625ffdd3f684ed45351))
+
 ## [1.134.0](https://github.com/nominal-io/nominal-client/compare/v1.133.0...v1.134.0) (2026-04-23)
 
 

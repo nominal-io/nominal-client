@@ -7,14 +7,15 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     api,
+    authentication_api,
     datasource_api,
     ingest_api,
-    scout,
     scout_catalog,
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
+    scout_video,
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
@@ -24,7 +25,6 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
-from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
@@ -32,6 +32,10 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
     _to_export_timestamp_format,
@@ -69,9 +73,13 @@ class DataSource(HasRid):
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
-        def units(self) -> scout.UnitsService: ...
+        def video(self) -> scout_video.VideoService: ...
+        @property
+        def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def ingest_jobs(self) -> ingest_api.IngestJobService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
         @property
@@ -85,7 +93,15 @@ class DataSource(HasRid):
         @property
         def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
-        def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
+        def containerized_extractor(
+            self,
+        ) -> containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub: ...
+        @property
+        def registry(self) -> registry_pb2_grpc.RegistryServiceStub: ...
+        @property
+        def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
+        @property
+        def roles(self) -> roles_pb2_grpc.RoleServiceStub: ...
 
     def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):
@@ -192,17 +208,10 @@ class DataSource(HasRid):
             clients=self._clients,
         )
 
-    @warn_on_deprecated_argument(
-        "exact_match",
-        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
-        "Use 'substring_matches' instead.",
-    )
     def search_channels(
         self,
         substring_matches: Sequence[str] | None = None,
         fuzzy_search_text: str = "",
-        *,
-        exact_match: Sequence[str] | None = None,
         data_types: Sequence[ChannelDataType] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
@@ -210,18 +219,15 @@ class DataSource(HasRid):
         Args:
             substring_matches: Filter the returned channels to those whose names match all provided strings
                 (case insensitive).
-            exact_match: Deprecated. Use ``substring_matches`` instead.
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
             data_types: Filter the returned channels to those that match any of the provided types
 
         Yields:
             Channel objects for each matching channel
         """
-        effective_substring_matches = substring_matches if substring_matches is not None else exact_match
-        if isinstance(effective_substring_matches, str):
-            argument_name = "substring_matches" if substring_matches is not None else "exact_match"
-            raise TypeError(f"{argument_name} must be a sequence of strings, not a single string.")
-        effective_substring_matches = tuple(effective_substring_matches or ())
+        if isinstance(substring_matches, str):
+            raise TypeError("substring_matches must be a sequence of strings, not a single string.")
+        effective_substring_matches = tuple(substring_matches or ())
         allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
@@ -276,6 +282,7 @@ class DataSource(HasRid):
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
+            NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
         channel_names = set(channel.name for channel in self.get_channels())
@@ -294,7 +301,7 @@ class DataSource(HasRid):
             return
 
         if not allow_display_only_units:
-            _error_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
+            _error_on_invalid_units(channels_to_units, self._clients.units)
 
         # For each channel / unit combination, create an update request
         update_requests = [
@@ -371,12 +378,47 @@ class DataSource(HasRid):
             single batch, the entire batch will fail. Callers are responsible for deduplicating
             channel names before passing them to this method.
         """
+        return self._batch_write_channels(channels, update_existing=False)
+
+    def batch_update_or_create_channels(
+        self,
+        channels: Sequence[CreateChannelRequest],
+    ) -> BatchAddChannelsResult:
+        """Create or update multiple channels (series metadata) for this data source in batches.
+
+        For each request, creates the channel if it does not already exist. If it does exist,
+        updates the locator and any provided `unit` and `description` fields while preserving
+        existing values for fields left as None.
+
+        Args:
+            channels: Sequence of CreateChannelRequest objects.
+
+        Returns:
+            A BatchAddChannelsResult with the upserted channels and any requests that were
+            not found afterwards (i.e. silently dropped by the server).
+
+        Note:
+            If the same channel name appears more than once within a single batch, the entire
+            batch will fail. Callers are responsible for deduplicating channel names before
+            passing them to this method.
+        """
+        return self._batch_write_channels(channels, update_existing=True)
+
+    def _batch_write_channels(
+        self,
+        channels: Sequence[CreateChannelRequest],
+        *,
+        update_existing: bool,
+    ) -> BatchAddChannelsResult:
         if not channels:
             return BatchAddChannelsResult(channels=[], missing=[])
         for batch in batched(channels, _DEFAULT_CHANNEL_BATCH_SIZE):
             requests = [_build_series_metadata_request(self.rid, req) for req in batch]
             batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
-            self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
+            if update_existing:
+                self._clients.series_metadata.batch_create_or_update(self._clients.auth_header, batch_request)
+            else:
+                self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
         created = {ch.name: ch for ch in self.get_channels(names=[req.name for req in channels])}
         return BatchAddChannelsResult(
             channels=list(created.values()),
@@ -387,7 +429,7 @@ class DataSource(HasRid):
 def _build_series_metadata_request(
     data_source_rid: str, req: CreateChannelRequest
 ) -> timeseries_metadata_api.CreateSeriesMetadataRequest:
-    nominal_data_type = req.data_type._to_nominal_data_type()
+    nominal_data_type = req.data_type._to_conjure()
     locator = timeseries_metadata_api.LocatorTemplate(
         nominal=timeseries_metadata_api.NominalLocatorTemplate(
             channel=req.name,
@@ -427,8 +469,9 @@ def _construct_export_request(
         start_time=start,
         end_time=end,
         context=scout_compute_api.Context(
-            function_variables={},
+            dataset_references={},
             variables={},
+            function_variables={},
         ),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(

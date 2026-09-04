@@ -22,7 +22,11 @@ class FileType(NamedTuple):
         #       and lowercase to handle files with mixed capitalization on extensions
         ext_str = "".join(path.suffixes).lower()
 
-        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
+        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes.
+        # When multiple registered extensions match (e.g. both ".zip" and ".parquet.zip" match
+        # "foo.parquet.zip"), prefer the longest/most-specific match so classification does not
+        # depend on the declaration order of FileTypes members.
+        best_match: FileType | None = None
         for file_type in FileTypes.__dict__.values():
             if not isinstance(file_type, cls):
                 # Skip any member variables which are not actually FileTypes
@@ -33,9 +37,13 @@ class FileType(NamedTuple):
                 continue
 
             # If the file ends with the given file extension, regardless of other suffixes it may have
-            # preceeding, then return the file type.
+            # preceeding, then it's a candidate; keep the longest matching extension.
             if ext_str.endswith(file_type.extension):
-                return file_type
+                if best_match is None or len(file_type.extension) > len(best_match.extension):
+                    best_match = file_type
+
+        if best_match is not None:
+            return best_match
 
         # Infer mimetype from filepath
         mimetype, _encoding = mimetypes.guess_type(path)
@@ -64,6 +72,9 @@ class FileType(NamedTuple):
 
     def is_parquet(self) -> bool:
         return self.is_parquet_file() or self.is_parquet_archive()
+
+    def is_avro_stream(self) -> bool:
+        return self in FileTypes._AVRO_STREAM_TYPES
 
     def is_journal(self) -> bool:
         return self in FileTypes._JOURNAL_TYPES
@@ -94,6 +105,16 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
+    def from_avro_stream(cls, path: PathLike) -> FileType:
+        file_type = cls.from_path(path)
+        if not file_type.is_avro_stream():
+            raise ValueError(
+                f"avro-stream path '{path}' must end in one of {[f.extension for f in FileTypes._AVRO_STREAM_TYPES]}"
+            )
+
+        return file_type
+
+    @classmethod
     def from_path_journal_json(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_journal():
@@ -115,11 +136,13 @@ class FileType(NamedTuple):
 class FileTypes:
     AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
+    AVRO_STREAM_GZ: FileType = FileType(".avro.gz", "application/avro")
     BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
     DATAFLASH: FileType = FileType(".bin", "application/octet-stream")
     JSON: FileType = FileType(".json", "application/json")
+    M2TS: FileType = FileType(".m2ts", "video/mp2t")
     MKV: FileType = FileType(".mkv", "video/x-matroska")
     MP4: FileType = FileType(".mp4", "video/mp4")
     MCAP: FileType = FileType(".mcap", "application/octet-stream")
@@ -129,12 +152,15 @@ class FileTypes:
     PARQUET_TAR_GZ: FileType = FileType(".parquet.tar.gz", "application/x-tar")
     PARQUET_TAR: FileType = FileType(".parquet.tar", "application/x-tar")
     PARQUET_ZIP: FileType = FileType(".parquet.zip", "application/zip")
+    TAR: FileType = FileType(".tar", "application/x-tar")
     TS: FileType = FileType(".ts", "video/mp2t")
     JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
+    ZIP: FileType = FileType(".zip", "application/zip")
 
+    _AVRO_STREAM_TYPES = (AVRO_STREAM, AVRO_STREAM_GZ)
     _CSV_TYPES = (CSV, CSV_GZ)
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
     _PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
     _JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
-    _VIDEO_TYPES = (AVI, MKV, MP4, TS)
+    _VIDEO_TYPES = (AVI, M2TS, MKV, MP4, TS)

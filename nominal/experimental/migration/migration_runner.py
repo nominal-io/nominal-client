@@ -1,22 +1,34 @@
 from __future__ import annotations
 
-import json
+import itertools
 import logging
+import os
 import re
+import threading
+from datetime import timedelta
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
+from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
+from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
+from nominal.experimental.migration.resource_type import format_resource_label
+from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
+# Uniquifies temp file names: the signal handler can re-enter save_state on a main thread
+# already mid-save (the save lock is reentrant), and a shared temp name would let one save
+# consume another's file out from under its os.replace.
+_TMP_COUNTER = itertools.count()
 
 
 def _next_state_path(path: Path) -> Path:
@@ -33,16 +45,22 @@ class MigrationRunner:
     migration_state: MigrationState
     migration_resources: MigrationResources
     dataset_config: MigrationDatasetConfig
+    asset_inclusion_config: AssetInclusionConfig
     destination_client: NominalClient
     destination_client_resolver: DestinationClientResolver | None
+    user_rid_mapping: dict[str, str]
 
     def __init__(
         self,
         migration_resources: MigrationResources,
         dataset_config: MigrationDatasetConfig,
         destination_client: NominalClient,
+        asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
+        user_rid_mapping: Mapping[str, str] | None = None,
         migration_state_path: Path | str | None = None,
+        dry_run: bool = False,
+        video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
     ) -> None:
         """Create a migration runner state.
 
@@ -50,18 +68,31 @@ class MigrationRunner:
             migration_resources (MigrationResources): _description_
             dataset_config (MigrationDatasetConfig): _description_
             destination_client (NominalClient): _description_
+            asset_inclusion_config (AssetInclusionConfig | None): Controls which resource types are copied per
+                asset. Defaults to including all resource types.
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
                 destination client for each source resource. Defaults to None.
+            user_rid_mapping (Mapping[str, str] | None): Optional source-to-destination user RID mapping used
+                to translate user-valued request fields (e.g. checklist assignee). Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
+            dry_run (bool): If True, read source resources but skip all destination writes and state saves.
+            video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
+                ingesting before recording it as incomplete and moving on. None waits indefinitely.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
+        self.asset_inclusion_config = (
+            asset_inclusion_config if asset_inclusion_config is not None else AssetInclusionConfig()
+        )
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
+        self.user_rid_mapping = dict(user_rid_mapping) if user_rid_mapping is not None else {}
+        self.dry_run = dry_run
+        self.video_ingest_timeout = video_ingest_timeout
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
-            self.migration_state = MigrationState.from_dict(json.loads(resolved_path.read_text(encoding="utf-8")))
+            self.migration_state = MigrationState.from_json(resolved_path.read_text(encoding="utf-8"))
             if self.migration_state.rid_mapping:
                 self.migration_state_path = _next_state_path(resolved_path)
             else:
@@ -69,6 +100,11 @@ class MigrationRunner:
         else:
             self.migration_state = MigrationState(rid_mapping={})
             self.migration_state_path = resolved_path
+        # Serializes concurrent save_state calls (worker persist hooks, the signal flush,
+        # the final save) so their os.replace calls land in snapshot order — an in-flight
+        # save holding an older snapshot must not overwrite a newer one. Reentrant because
+        # the signal handler may re-enter save_state on a main thread already mid-save.
+        self._save_lock = threading.RLock()
 
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
@@ -85,36 +121,89 @@ class MigrationRunner:
                 destination_client=self.destination_client,
                 migration_state=self.migration_state,
                 destination_client_resolver=self.destination_client_resolver,
+                user_rid_mapping=self.user_rid_mapping,
                 source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
+                dry_run=self.dry_run,
+                video_ingest_timeout=self.video_ingest_timeout,
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
+            checklist_migrator = ChecklistMigrator(migration_context)
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
                 asset_migrator.copy_from(
                     source_asset,
                     AssetCopyOptions(
                         dataset_config=self.dataset_config,
-                        include_attachments=True,
-                        include_events=True,
-                        include_runs=True,
-                        include_video=True,
-                        include_checklists=True,
+                        include_attachments=self.asset_inclusion_config.include_attachments,
+                        include_events=self.asset_inclusion_config.include_events,
+                        include_runs=self.asset_inclusion_config.include_runs,
+                        include_video=self.asset_inclusion_config.include_video,
+                        include_checklists=self.asset_inclusion_config.include_checklists,
+                        include_workbooks=self.asset_inclusion_config.include_workbooks,
+                        workbook_rids_allowlist=asset_resources.source_workbook_rids,
                     ),
                 )
+                self.save_state()
 
             for source_template in self.migration_resources.source_standalone_templates:
                 template_migrator.clone(source_template)
+                self.save_state()
+
+            for source_checklist in self.migration_resources.source_standalone_checklists:
+                # ChecklistMigrator.clone() raises NotImplementedError; use copy_from() to clone the
+                # checklist definition. No run/execution is involved — series resolve at execution time
+                # against whatever run the checklist is later run against.
+                checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
+                self.save_state()
 
             source_clients_by_asset_rid: dict[str, ClientsBunch] = {
                 asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
                 for asset_rid, asset_resources in self.migration_resources.source_assets.items()
             }
-            WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
+            if self.asset_inclusion_config.include_workbooks:
+                WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
         finally:
             self.save_state()
+            log_skipped_resources(self.migration_state)
         logger.info("Completed migration")
 
     def save_state(self) -> None:
-        self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.migration_state_path.write_text(self.migration_state.to_json(), encoding="utf-8")
+        if self.dry_run:
+            logger.info(f"{DRY_RUN_PREFIX} Skipping migration state write to %s", self.migration_state_path)
+            return
+        # The whole snapshot -> write -> replace sequence runs under the save lock: a save
+        # that started earlier holds an older snapshot, and letting its os.replace land
+        # after a newer save's (e.g. the SIGINT/SIGTERM flush) would regress the file.
+        with self._save_lock:
+            self.migration_state_path.parent.mkdir(parents=True, exist_ok=True)
+            # Write-then-rename so a process killed mid-write can never leave a truncated state
+            # file behind — state is saved incrementally and a corrupt file would break resume.
+            tmp_path = self.migration_state_path.with_name(
+                f"{self.migration_state_path.name}.{os.getpid()}.{next(_TMP_COUNTER)}.tmp"
+            )
+            tmp_path.write_text(self.migration_state.to_json(), encoding="utf-8")
+            os.replace(tmp_path, self.migration_state_path)
+
+
+def log_skipped_resources(migration_state: MigrationState) -> None:
+    """Summarize skips at the end of a run, so a partial migration is never mistaken for a complete one.
+
+    Sourced from the persisted state, so a resumed run still reports what earlier attempts
+    skipped — except entries superseded via set_skip (video files report only their latest
+    outcome).
+    """
+    if not migration_state.skipped_resources:
+        return
+
+    logger.warning(
+        "%d resource(s) were skipped or could not be confirmed — each needs checking by hand:",
+        len(migration_state.skipped_resources),
+    )
+    for skipped in migration_state.skipped_resources:
+        logger.warning(
+            "  skipped %s %s — %s",
+            format_resource_label(skipped.resource_type),
+            skipped.source_rid,
+            skipped.reason,
+        )

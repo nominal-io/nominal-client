@@ -11,20 +11,22 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
+class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
+    is_archived: bool
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -84,11 +86,16 @@ class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
     def archive(self) -> None:
         """Archive this attachment.
         Archived attachments are not deleted, but are hidden from the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.attachment.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this attachment, allowing it to be viewed in the UI."""
+        """Unarchive this attachment, allowing it to be viewed in the UI.
+
+        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        """
         self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod
@@ -100,7 +107,9 @@ class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
             created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
+            is_archived=attachment.is_archived,
             _clients=clients,
+            created_by_rid=attachment.created_by,
         )
 
 

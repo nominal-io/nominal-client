@@ -1,3 +1,16 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class AssetInclusionConfig:
+    include_video: bool = True
+    include_runs: bool = True
+    include_events: bool = True
+    include_attachments: bool = True
+    include_checklists: bool = True
+    include_workbooks: bool = True
+
+
 class MigrationDatasetConfig:
     preserve_dataset_uuid: bool
     include_dataset_files: bool
