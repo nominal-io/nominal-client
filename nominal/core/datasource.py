@@ -25,6 +25,7 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
@@ -209,15 +210,19 @@ class DataSource(HasRid):
             clients=self._clients,
         )
 
+    @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_matches' instead.")
     def search_channels(
         self,
-        substring_matches: SequenceNotStr[str] | None = None,
+        exact_match: SequenceNotStr[str] | None = None,
         fuzzy_search_text: str = "",
         data_types: Sequence[ChannelDataType] | None = None,
+        *,
+        substring_matches: SequenceNotStr[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
         Args:
+            exact_match: Deprecated alias for ``substring_matches``.
             substring_matches: Filter the returned channels to those matching all provided strings
                 (case insensitive).
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
@@ -226,6 +231,7 @@ class DataSource(HasRid):
         Yields:
             Channel objects for each matching channel
         """
+        substring_matches = substring_matches if substring_matches is not None else exact_match
         if isinstance(substring_matches, str):
             raise TypeError("substring_matches must be a sequence of strings, not a single string.")
         effective_substring_matches = tuple(substring_matches or ())

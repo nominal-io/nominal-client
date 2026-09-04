@@ -11,6 +11,7 @@ from nominal_api.api import Timestamp
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._utils.type_tools import SequenceNotStr
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
@@ -260,9 +261,12 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
     return renamed_timestamp_col
 
 
+@warn_on_deprecated_argument(
+    "channel_exact_match", "'channel_exact_match' is deprecated. Use 'channel_substring_matches' instead."
+)
 def datasource_to_dataframe(
     datasource: DataSource,
-    channel_substring_matches: SequenceNotStr[str] | None = None,
+    channel_exact_match: SequenceNotStr[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -270,6 +274,7 @@ def datasource_to_dataframe(
     enable_gzip: bool = True,
     *,
     channels: Sequence[Channel] | None = None,
+    channel_substring_matches: SequenceNotStr[str] | None = None,
     num_workers: int = 1,
     channel_batch_size: int = 20,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -280,6 +285,7 @@ def datasource_to_dataframe(
     Args:
     ----
         datasource: The datasource to download data from
+        channel_exact_match: Deprecated alias for ``channel_substring_matches``.
         channel_substring_matches: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
             For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
@@ -323,6 +329,9 @@ def datasource_to_dataframe(
     start_time = ts._SecondsNanos.from_flexible(start).to_api() if start else ts._MIN_TIMESTAMP.to_api()
     end_time = ts._SecondsNanos.from_flexible(end).to_api() if end else ts._MAX_TIMESTAMP.to_api()
 
+    channel_substring_matches = (
+        channel_substring_matches if channel_substring_matches is not None else channel_exact_match
+    )
     # Get all channels from the datasource
     if channels is None:
         channels = list(

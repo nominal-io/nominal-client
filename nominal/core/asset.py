@@ -14,6 +14,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -648,10 +649,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             )
         )
 
+    @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_match' instead.")
     def search_workbooks(
         self,
         *,
         substring_match: str | None = None,
+        exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -664,9 +667,10 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
 
         See ``nominal.core.NominalClient.search_workbooks`` for details.
         """
+        # The new argument takes precedence over its deprecated alias.
         return _search_workbooks(
             self._clients,
-            substring_match=substring_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
