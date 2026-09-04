@@ -1,11 +1,3 @@
-"""Server-side functions generated from the SQL catalog.
-
-Every function the catalog advertises becomes an Ibis "builtin" UDF: Ibis compiles
-the call by name and the server does the work. Wrappers are typed from the
-catalog's argument and return type families, so nothing is declared by hand and
-new server functions appear without a client release.
-"""
-
 from __future__ import annotations
 
 import inspect
