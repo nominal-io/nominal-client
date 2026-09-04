@@ -142,18 +142,15 @@ def backend(session: MagicMock) -> nsql.Backend:
 
 
 def test_connect_sets_auth_and_user_agent_headers(backend: nsql.Backend, session: MagicMock) -> None:
-    """The session authenticates with the bearer token and identifies the client."""
     assert session.headers["Authorization"] == "Bearer test-token"
     assert session.headers["User-Agent"].startswith("nominal-python/")
 
 
 def test_default_workspace_resolved_from_api(backend: nsql.Backend) -> None:
-    """Without an explicit workspace, the tenant default-workspace endpoint decides."""
     assert backend.workspace_rid == "ri.security.x.workspace.1"
 
 
 def test_no_default_workspace_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An empty default-workspace response asks the caller to pass workspace_rid."""
     mock = make_session()
     mock.get.side_effect = lambda url, **kwargs: fake_response(status=204)
     monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
@@ -162,19 +159,16 @@ def test_no_default_workspace_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_explicit_workspace_skips_lookup(session: MagicMock) -> None:
-    """A caller-supplied workspace_rid is used without calling the workspace endpoint."""
     con = nsql.connect(token="test-token", base_url="https://api.test/api", workspace_rid="ri.security.x.workspace.9")
     assert con.workspace_rid == "ri.security.x.workspace.9"
     session.get.assert_not_called()
 
 
 def test_list_tables_from_catalog(backend: nsql.Backend) -> None:
-    """Table names come from the SQL catalog endpoint."""
     assert backend.list_tables() == ["datasets", "points_double"]
 
 
 def test_schema_types_from_catalog(backend: nsql.Backend) -> None:
-    """Catalog logical types map onto Ibis types, keeping per-column nullability."""
     schema = backend.table("points_double").schema()
     assert schema["ts"].is_timestamp()
     assert schema["value"].is_float64()
@@ -192,7 +186,6 @@ def test_functions_generated_from_catalog(backend: nsql.Backend, session: MagicM
 
 
 def test_catalog_function_types_follow_type_families(backend: nsql.Backend) -> None:
-    """Argument and return types come from the catalog's type families."""
     pts = backend.table("points_double")
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
     rate = pts.select(rate=backend.fn.derivative(_.value).over(w))
@@ -206,7 +199,6 @@ def test_catalog_function_types_follow_type_families(backend: nsql.Backend) -> N
 
 
 def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, backend: nsql.Backend) -> None:
-    """`from nominal.sql.fn import derivative` resolves against a lazily created default connection."""
     import nominal.sql.fn as fn_module
 
     monkeypatch.setattr(fn_module, "_connection", None)
@@ -218,13 +210,11 @@ def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, bac
 
 
 def test_unknown_table_raises(backend: nsql.Backend) -> None:
-    """Tables absent from the catalog raise TableNotFound."""
     with pytest.raises(com.TableNotFound):
         backend.table("nope")
 
 
 def test_query_request_carries_workspace_and_format(backend: nsql.Backend, session: MagicMock) -> None:
-    """Query requests send the workspace RID and ask for the Arrow stream format."""
     backend.table("datasets").select("dataset_rid", "name").to_pandas()
     body = session.post.call_args.kwargs["json"]
     assert body["workspaceRid"] == "ri.security.x.workspace.1"
@@ -232,7 +222,6 @@ def test_query_request_carries_workspace_and_format(backend: nsql.Backend, sessi
 
 
 def test_raw_sql_schema_probe_sets_max_rows(backend: nsql.Backend, session: MagicMock) -> None:
-    """con.sql() infers the result schema from a single-row probe."""
     backend.sql("SELECT dataset_rid, name, extra_sort_key FROM datasets")
     body = session.post.call_args.kwargs["json"]
     assert body["maxRows"] == 1
@@ -246,7 +235,6 @@ def test_execute_drops_leaked_sort_key_columns(backend: nsql.Backend) -> None:
 
 
 def test_fewer_columns_than_requested_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A response missing requested columns raises a diagnosable error, not an index error."""
     mock = make_session(query_result=pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"]}))
     monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
     con = nsql.connect(token="test-token", base_url="https://api.test/api")
@@ -255,7 +243,6 @@ def test_fewer_columns_than_requested_raises(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_to_pyarrow_batches_streams_aligned_batches(backend: nsql.Backend, session: MagicMock) -> None:
-    """Batch execution streams the HTTP response and yields aligned, typed batches."""
     expr = backend.table("datasets").select("dataset_rid", "name")
     with expr.to_pyarrow_batches() as reader:
         table = reader.read_all()
@@ -264,13 +251,11 @@ def test_to_pyarrow_batches_streams_aligned_batches(backend: nsql.Backend, sessi
 
 
 def test_write_operations_are_rejected(backend: nsql.Backend) -> None:
-    """The SQL API is read-only, so DDL raises UnsupportedOperationError."""
     with pytest.raises(com.UnsupportedOperationError):
         backend.create_table("t", schema={"a": "int64"})
 
 
 def test_http_errors_surface_details(monkeypatch: pytest.MonkeyPatch) -> None:
-    """API error bodies are included in the raised NominalSqlError."""
     mock = make_session()
     mock.get.side_effect = lambda url, **kwargs: fake_response(
         json_data={"errorName": "SqlErrorInvalidQuery"}, status=400
