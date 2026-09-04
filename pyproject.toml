@@ -69,6 +69,9 @@ dev = [
     "mkdocs>=1.6.1,<2",
     "mkdocstrings-python>=1.16.10,<2",
     "mkdocstrings>=0.29.1,<1",
+    # The `mcap` extra's deps, so the scanner's tests actually run rather than skipping.
+    "lz4>=4.0.0",
+    "mcap>=1.4.0",
     "mypy>=1.18.2,<2",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
@@ -80,6 +83,7 @@ dev = [
     "types-pyyaml>=6.0.12.20240808,<7",
     "types-requests>=2.32.0.20240712,<3",
     "types-tabulate>=0.9.0.20241207,<0.10",
+    "zstandard>=0.22.0",
 ]
 
 [tool.uv.sources]
@@ -89,6 +93,9 @@ nominal-tdms = { workspace = true }
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
 tdms = ["nominal-tdms>=1.143.0"]
+# lz4 and zstandard are the chunk compressors MCAP recorders use; the reader needs them to reach the
+# one keyframe a scan parses, and declares neither itself.
+mcap = ["mcap>=1.4.0", "lz4>=4.0.0", "zstandard>=0.22.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 compute = [
     "nominal-compute==0.1315.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",

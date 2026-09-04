@@ -34,6 +34,7 @@ nav:
       - Experimental:
         - Compute: reference/experimental/compute.md
         - Logging: reference/experimental/logging.md
+        - MCAP Video: reference/experimental/mcap_video.md
         - Video Processing: reference/experimental/video_processing.md
   - Guides:
       - Networking & TLS: networking-tls.md
