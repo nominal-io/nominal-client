@@ -30,6 +30,7 @@ from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.type_tools import IterableNotStr
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
@@ -210,7 +211,7 @@ class DataSource(HasRid):
 
     def search_channels(
         self,
-        substring_matches: Sequence[str] | None = None,
+        substring_matches: IterableNotStr[str] | None = None,
         fuzzy_search_text: str = "",
         data_types: Sequence[ChannelDataType] | None = None,
     ) -> Iterable[Channel]:
