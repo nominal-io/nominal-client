@@ -1,5 +1,3 @@
-"""Implementation of the Ibis backend for the Nominal SQL API."""
-
 from __future__ import annotations
 
 import io
@@ -61,12 +59,9 @@ class NominalCompiler(PostgresCompiler):
         limit: str | None = None,
         params: Mapping[ir.Expr, Any] | None = None,
     ) -> Any:
-        # Skip PostgresCompiler's cast of map/json output columns to VARCHAR
-        # (a psycopg workaround); the API returns maps natively as Arrow maps.
         return super(PostgresCompiler, self).to_sqlglot(expr, limit=limit, params=params)
 
     def visit_MapGet(self, op: ops.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
-        # The API's native map item syntax, m['k'], instead of Postgres jsonb operators.
         item = sge.Bracket(this=arg, expressions=[key])
         if default is None:
             return item
@@ -161,7 +156,6 @@ class Backend(SQLBackend):
         self._session = requests.Session()
         self._session.headers["Authorization"] = f"Bearer {token}"
         self._session.headers["User-Agent"] = construct_user_agent_string()
-        # SQL queries are read-only, so retrying POSTs on throttling/outages is safe.
         retries = Retry(
             total=3,
             backoff_factor=0.5,
@@ -193,8 +187,6 @@ class Backend(SQLBackend):
         if not workspace:
             raise NominalSqlError("No default workspace is configured for this user; pass workspace_rid to connect()")
         return str(workspace["rid"])
-
-    # -- catalog / schema ---------------------------------------------------
 
     def _fetch_catalog(self) -> dict[str, sch.Schema]:
         if self._catalog_cache is None:
@@ -251,8 +243,6 @@ class Backend(SQLBackend):
     @property
     def version(self) -> str:
         return "1"
-
-    # -- execution ----------------------------------------------------------
 
     def _query_body(self, sql: str, max_rows: int | None = None) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -387,8 +377,6 @@ class Backend(SQLBackend):
         table = self._to_pyarrow_table(table_expr, params=params, limit=limit)
         df = PandasData.convert_table(table.to_pandas(timestamp_as_object=False), table_expr.schema())
         return expr.__pandas_result__(df)
-
-    # -- read-only stubs ----------------------------------------------------
 
     def create_table(self, *args: Any, **kwargs: Any) -> ir.Table:
         raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
