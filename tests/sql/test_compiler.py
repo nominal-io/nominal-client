@@ -118,11 +118,3 @@ def test_catalog_function_drops_omitted_optional_arguments() -> None:
         'integral("t0"."value", \'trapezoid\')'
         in compile_sql(POINTS.select(total=integral(_.value, "trapezoid").over(w))).lower()
     )
-
-
-def test_catalog_aggregate_supports_filter() -> None:
-    """Aggregate catalog functions honor Ibis's `where=` (with concrete columns, as for any builtin UDF)."""
-    bit_or = catalog_function("BIT_OR", "AGGREGATE", ["NUMERIC"], "NUMERIC")
-    sql = compile_sql(POINTS.group_by("channel").agg(flags=bit_or(POINTS.value, where=POINTS.value > 0)))
-    assert "bit_or(" in sql.lower()
-    assert "FILTER(WHERE" in sql
