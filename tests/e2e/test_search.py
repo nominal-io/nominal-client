@@ -354,25 +354,25 @@ def archive_search_context(  # noqa: PLR0915
 # ---------------------------------------------------------------------------
 
 
-def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring narrows results to the run carrying the session tag."""
-    results = client.search_runs(name_substring=search_context.tag)
+def test_search_runs_by_substring_match(client: NominalClient, search_context: SearchContext) -> None:
+    """Searching runs by substring_match returns runs whose name contains the session tag."""
+    results = client.search_runs(substring_match=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
 
-def test_search_runs_by_name_substring_matches_non_name_fields(
+def test_search_runs_by_substring_match_matches_non_name_fields(
     client: NominalClient, search_context: SearchContext
 ) -> None:
-    """name_substring matches a run by a property value absent from its name, so it is not name-scoped."""
-    results = client.search_runs(name_substring=f"proponly{search_context.tag}")
+    """substring_match includes matches in run properties, not only names."""
+    results = client.search_runs(substring_match=f"proponly{search_context.tag}")
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the run created with that label."""
-    results = client.search_runs(labels=["search-test"], exact_match=search_context.tag)
+    results = client.search_runs(labels=["search-test"], substring_match=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
@@ -392,7 +392,7 @@ def test_search_runs_archive_status(
     """Run search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_runs(
-            exact_match=search_context.tag,
+            substring_match=search_context.tag,
             archive_status=archive_status,
         ),
         active_rids={search_context.run.rid},
@@ -529,9 +529,9 @@ def test_search_datasets_archive_status(
     """Dataset search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_datasets(
-            # exact_match, not search_text: dataset search_text is tokenized, so even this compound
+            # substring_match, not search_text: dataset search_text is tokenized, so even this compound
             # tag matches every resource carrying the session tag.
-            exact_match=archive_search_context.dataset_tag,
+            substring_match=archive_search_context.dataset_tag,
             archive_status=archive_status,
         ),
         active_rids={archive_search_context.active_dataset.rid},

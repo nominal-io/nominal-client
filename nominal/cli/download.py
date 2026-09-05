@@ -219,7 +219,7 @@ class DataDownloader(abc.ABC):
                     new_channels = [
                         channel
                         for subquery in subqueries
-                        for channel in dataset.search_channels(exact_match=[subquery])
+                        for channel in dataset.search_channels(substring_matches=[subquery])
                     ]
 
             if not new_channels:

@@ -14,7 +14,7 @@ migration:
   # Set to false for a resource-only migration.
   include_dataset_files: false
 
-  # Sets whether to preserve the original dataset UUID on the destination. 
+  # Sets whether to preserve the original dataset UUID on the destination.
   # If true, this will manually create channels in the new dataset.
   # Set to true when using an external data backup method which requires same UUID.
   preserve_dataset_uuid: true
@@ -57,7 +57,7 @@ migration:
   source_asset_rids:
     - asset_rid: "ri.scout.gov-staging.asset.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     - asset_rid: "ri.scout.gov-staging.asset.yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-    
+
   # -------------------------------------------------------------------------
   # Standalone workbook templates (optional)
   # Templates listed here are cloned to the destination independently of any

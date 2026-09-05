@@ -60,8 +60,7 @@ def warn_on_deprecated_argument(
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
             if argument_name in kwargs:
                 warnings.warn(warning_message, UserWarning, stacklevel=_stacklevel_for_wrapper(wrapper))
-            elif len(args) > len(param_names) - 1:
-                # TODO(drake): validate that this actually resolves to the deprecated kwarg
+            elif argument_name in param_names and len(args) > param_names.index(argument_name):
                 warnings.warn(warning_message, UserWarning, stacklevel=_stacklevel_for_wrapper(wrapper))
 
             return func(*args, **kwargs)

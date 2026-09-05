@@ -13,6 +13,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -556,9 +557,11 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
+    @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_match' instead.")
     def search_workbooks(
         self,
         *,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -569,9 +572,10 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Run. See nominal.core.NominalClient.search_workbooks for details"""
+        # The new argument takes precedence over its deprecated alias.
         return _search_workbooks(
             self._clients,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,

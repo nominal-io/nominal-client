@@ -25,11 +25,13 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.type_tools import SequenceNotStr
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
@@ -208,17 +210,20 @@ class DataSource(HasRid):
             clients=self._clients,
         )
 
+    @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_matches' instead.")
     def search_channels(
         self,
-        exact_match: Sequence[str] = (),
+        substring_matches: SequenceNotStr[str] | None = None,
         fuzzy_search_text: str = "",
-        *,
         data_types: Sequence[ChannelDataType] | None = None,
+        *,
+        exact_match: SequenceNotStr[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
         Args:
-            exact_match: Filter the returned channels to those whose names match all provided strings
+            exact_match: Deprecated alias for ``substring_matches``.
+            substring_matches: Filter the returned channels to those matching all provided strings
                 (case insensitive).
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
             data_types: Filter the returned channels to those that match any of the provided types
@@ -226,12 +231,16 @@ class DataSource(HasRid):
         Yields:
             Channel objects for each matching channel
         """
+        substring_matches = substring_matches if substring_matches is not None else exact_match
+        if isinstance(substring_matches, str):
+            raise TypeError("substring_matches must be a sequence of strings, not a single string.")
+        effective_substring_matches = tuple(substring_matches or ())
         allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
             query = datasource_api.SearchChannelsRequest(
                 data_sources=[self.rid],
-                exact_match=list(exact_match),
+                exact_match=list(effective_substring_matches),
                 fuzzy_search_text=fuzzy_search_text,
                 previously_selected_channels={},
                 next_page_token=next_page_token,
