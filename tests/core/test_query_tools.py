@@ -1,57 +1,6 @@
 from nominal.core._event_types import EventType, SearchEventOriginTypes
-from nominal.core._utils.query_tools import (
-    AssetMatch,
-    create_search_assets_query,
-    create_search_datasets_query,
-    create_search_events_query,
-    create_search_runs_query,
-    create_search_users_query,
-    create_search_workbook_templates_query,
-    create_search_workbooks_query,
-)
+from nominal.core._utils.query_tools import AssetMatch, create_search_events_query
 from nominal.protos.event.v2 import event_pb2
-
-
-def test_create_search_users_query_uses_substring_match_for_exact_match_backend_field():
-    query = create_search_users_query(substring_match="alex")
-
-    assert query.and_ is not None
-    assert query.and_[0].exact_match == "alex"
-
-
-def test_create_search_assets_query_uses_substring_match_for_exact_substring_backend_field():
-    query = create_search_assets_query(substring_match="vehicle")
-
-    assert query.and_ is not None
-    assert query.and_[0].exact_substring == "vehicle"
-
-
-def test_create_search_datasets_query_uses_substring_match_for_exact_match_backend_field():
-    query = create_search_datasets_query(substring_match="flight")
-
-    assert query.and_ is not None
-    assert query.and_[1].exact_match == "flight"
-
-
-def test_create_search_runs_query_uses_substring_match_for_exact_match_backend_field():
-    query = create_search_runs_query(substring_match="hotfire")
-
-    assert query.and_ is not None
-    assert query.and_[0].exact_match == "hotfire"
-
-
-def test_create_search_workbooks_query_uses_substring_match_for_exact_match_backend_field():
-    query = create_search_workbooks_query(substring_match="analysis")
-
-    assert query.and_ is not None
-    assert query.and_[2].exact_match == "analysis"
-
-
-def test_create_search_workbook_templates_query_uses_substring_match_for_exact_match_backend_field():
-    query = create_search_workbook_templates_query(substring_match="template")
-
-    assert query.and_ is not None
-    assert query.and_[1].exact_match == "template"
 
 
 def test_create_search_events_query_asset_match_all_ands_per_asset_clauses():

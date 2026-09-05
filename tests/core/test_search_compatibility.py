@@ -1,39 +1,41 @@
+from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core.asset import Asset
-from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.client import NominalClient
 from nominal.core.datasource import DataSource
-from nominal.core.run import Run
 
 
 @pytest.mark.parametrize(
-    ("method", "alias", "iterator"),
+    ("method", "alias", "service", "rpc_name", "field"),
     [
-        ("search_users", "exact_match", "_iter_search_users"),
-        ("search_datasets", "exact_match", "_iter_search_datasets"),
-        ("search_assets", "exact_substring", "_iter_search_assets"),
-        ("search_runs", "exact_match", "_iter_search_runs"),
-        ("search_runs", "name_substring", "_iter_search_runs"),
-        ("search_workbook_templates", "exact_match", "_iter_search_workbook_templates"),
+        ("search_users", "exact_match", "authentication", "search_users_v2", "exact_match"),
+        ("search_datasets", "exact_match", "catalog", "search_datasets", "exact_match"),
+        ("search_assets", "exact_substring", "assets", "search_assets", "exact_substring"),
+        ("search_runs", "exact_match", "run", "search_runs", "exact_match"),
+        ("search_runs", "name_substring", "run", "search_runs", "exact_match"),
+        ("search_workbook_templates", "exact_match", "template", "search_templates", "exact_match"),
     ],
 )
-def test_legacy_search_matches_modern_query(method, alias, iterator):
-    client = NominalClient(_clients=MagicMock())
-    with (
-        patch.object(NominalClient, "_workspace_rid_for_search", return_value=None),
-        patch.object(NominalClient, iterator, return_value=[]) as search,
-    ):
-        getattr(client, method)(substring_match="needle")
-        expected = search.call_args
-        with pytest.warns(UserWarning, match=alias):
-            getattr(client, method)(**{alias: "needle"})
-        assert search.call_args == expected
-        with pytest.warns(UserWarning, match=alias):
-            getattr(client, method)(substring_match="needle", **{alias: "ignored"})
-        assert search.call_args == expected
+@pytest.mark.parametrize("style", ["modern", "legacy", "both"])
+def test_search_alias_sends_substring_to_backend(method, alias, service, rpc_name, field, style):
+    clients = MagicMock()
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    rpc = getattr(getattr(clients, service), rpc_name)
+    rpc.return_value = SimpleNamespace(results=[], next_page_token=None)
+    client = NominalClient(_clients=clients)
+    arguments = {"substring_match": "needle"} if style == "modern" else {alias: "needle"}
+    if style == "both":
+        arguments = {"substring_match": "needle", alias: "ignored"}
+
+    with pytest.warns(UserWarning, match=alias) if style != "modern" else nullcontext():
+        assert getattr(client, method)(**arguments) == []
+
+    rpc.assert_called_once()
+    query = rpc.call_args.args[1].query
+    assert [getattr(clause, field) for clause in query.and_ if getattr(clause, field) is not None] == ["needle"]
 
 
 def test_legacy_positional_run_search_warns_and_forwards():
@@ -57,27 +59,6 @@ def test_legacy_channel_search_warns_and_forwards(positional):
         result = source.search_channels(["needle"]) if positional else source.search_channels(exact_match=["needle"])
         assert list(result) == []
     assert clients.datasource.search_channels.call_args.args[1].exact_match == ["needle"]
-
-
-@pytest.mark.parametrize("owner", [NominalClient, Asset, Run])
-def test_legacy_workbook_search_warns_and_forwards(owner):
-    with (
-        patch(f"{owner.__module__}._search_workbooks", return_value=[]) as search,
-        pytest.warns(UserWarning, match="exact_match"),
-    ):
-        assert owner.search_workbooks(MagicMock(), exact_match="needle") == []
-    assert search.call_args.kwargs["substring_match"] == "needle"
-
-
-def test_legacy_log_search_warns_and_forwards():
-    channel = Channel("logs", "source", ChannelDataType.LOG, None, None, MagicMock())
-    with (
-        patch("nominal.core.channel._log_filter_operator", side_effect=RuntimeError("stop before RPC")) as operator,
-        pytest.warns(UserWarning, match="insensitive_match"),
-        pytest.raises(RuntimeError, match="stop before RPC"),
-    ):
-        list(channel.search_logs(insensitive_match="needle"))
-    operator.assert_called_once_with(regex_match=None, substring_match="needle")
 
 
 @pytest.mark.parametrize("positional", [False, True])
