@@ -266,7 +266,7 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
 )
 def datasource_to_dataframe(
     datasource: DataSource,
-    channel_exact_match: SequenceNotStr[str] | None = None,
+    channel_substring_matches: SequenceNotStr[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -274,7 +274,7 @@ def datasource_to_dataframe(
     enable_gzip: bool = True,
     *,
     channels: Sequence[Channel] | None = None,
-    channel_substring_matches: SequenceNotStr[str] | None = None,
+    channel_exact_match: SequenceNotStr[str] | None = None,
     num_workers: int = 1,
     channel_batch_size: int = 20,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,

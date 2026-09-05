@@ -347,7 +347,7 @@ class NominalClient:
 
     @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_match' instead.")
     def search_users(
-        self, exact_match: str | None = None, search_text: str | None = None, *, substring_match: str | None = None
+        self, substring_match: str | None = None, search_text: str | None = None, *, exact_match: str | None = None
     ) -> Sequence[User]:
         """Search for users meeting the specified filters.
         Filters are ANDed together, e.g., if substring_match and search_text are both provided, then both must match.
@@ -714,11 +714,11 @@ class NominalClient:
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
         end: str | datetime | IntegralNanosecondsUTC | None = None,
-        name_substring: str | None = None,
+        substring_match: str | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
-        substring_match: str | None = None,
+        name_substring: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,

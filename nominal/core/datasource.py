@@ -213,11 +213,11 @@ class DataSource(HasRid):
     @warn_on_deprecated_argument("exact_match", "'exact_match' is deprecated. Use 'substring_matches' instead.")
     def search_channels(
         self,
-        exact_match: SequenceNotStr[str] | None = None,
+        substring_matches: SequenceNotStr[str] | None = None,
         fuzzy_search_text: str = "",
         data_types: Sequence[ChannelDataType] | None = None,
         *,
-        substring_matches: SequenceNotStr[str] | None = None,
+        exact_match: SequenceNotStr[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
