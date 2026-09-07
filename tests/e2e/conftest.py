@@ -16,6 +16,8 @@ Shared resource fixtures
 ------------------------
 ``ingested_dataset`` — a single session-scoped dataset ingested from csv_data; shared
                        by all read-only channel/pandas tests to avoid redundant ingest calls.
+``wait_for_export`` — polls each pandas export's rows and optional readiness predicate,
+                      sharing a 600-second budget starting after ingestion completes.
 
 Teardown helpers
 ----------------
@@ -38,7 +40,11 @@ import pytest
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from tests.e2e import POLL_INTERVAL
-from tests.e2e._export import _wait_for_export
+from tests.e2e._export import wait_for_export as poll_export
+
+# CI has observed visibility lag beyond four minutes after ingestion completes.
+# Share one budget so the 15-minute job retains time for the other tests.
+EXPORT_READINESS_BUDGET_SECONDS = 600
 
 
 def pytest_addoption(parser):
@@ -100,12 +106,12 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
 def wait_for_export(ingested_dataset: Dataset, csv_data: bytes):
     """Poll each export path within one shared deadline, starting after ingestion."""
     expected_rows = len(list(csv.DictReader(csv_data.decode().splitlines())))
-    # CI has observed visibility lag beyond four minutes after ingestion completes.
-    # Share one deadline so the 15-minute job retains time for the other tests.
-    deadline = time.monotonic() + 600
+    deadline = time.monotonic() + EXPORT_READINESS_BUDGET_SECONDS
 
-    def wait(export):
-        return _wait_for_export(export, expected_rows, timeout_seconds=max(0, deadline - time.monotonic()))
+    def wait(export, *, is_ready=None):
+        return poll_export(
+            export, expected_rows, is_ready=is_ready, timeout_seconds=max(0, deadline - time.monotonic())
+        )
 
     return wait
 

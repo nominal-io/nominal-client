@@ -296,14 +296,18 @@ def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data, wait_for_export
     for col in expected_data.columns:
         expected_data[col] = expected_data[col].astype(float)
 
-    df = wait_for_export(lambda: datasource_to_dataframe(ingested_dataset))
+    df = wait_for_export(
+        lambda: datasource_to_dataframe(ingested_dataset),
+        is_ready=lambda frame: sorted(frame.columns) == sorted(expected_data.columns),
+    )
     df_sorted = df.reindex(expected_data.columns, axis=1)
     pd.testing.assert_frame_equal(df_sorted, expected_data)
 
     # channel_exact_match filters to channels whose names contain ALL listed substrings;
     # "relative" AND "minutes" matches only "relative_minutes"
     df2 = wait_for_export(
-        lambda: datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
+        lambda: datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"]),
+        is_ready=lambda frame: list(frame.columns) == ["relative_minutes"],
     )
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
 
