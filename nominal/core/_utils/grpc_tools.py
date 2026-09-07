@@ -6,7 +6,8 @@ generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
-- TLS roots are the union of the configured trust store and the OS trust store (`_grpc_root_certificates`).
+- HTTP URLs select plaintext gRPC on any host; HTTPS URLs select TLS.
+- For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
 - Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
   pass `metadata=` / `timeout=` themselves.

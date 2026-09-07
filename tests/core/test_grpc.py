@@ -190,6 +190,7 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
 
 
 def test_http_grpc_channel_uses_plaintext_and_retains_call_policy(monkeypatch) -> None:
+    """HTTP URLs use plaintext while retaining channel options, authentication, and deadlines."""
     secure, intercept, credentials = _patch_channel(monkeypatch)
     insecure = MagicMock(return_value="plaintext-channel")
     monkeypatch.setattr(grpc, "insecure_channel", insecure)
