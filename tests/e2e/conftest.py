@@ -25,7 +25,9 @@ Teardown helpers
 
 from __future__ import annotations
 
+import csv
 import gzip
+import time
 from io import BytesIO
 from pathlib import Path
 from typing import Iterator
@@ -36,6 +38,7 @@ import pytest
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from tests.e2e import POLL_INTERVAL
+from tests.e2e._export import _wait_for_export
 
 
 def pytest_addoption(parser):
@@ -91,6 +94,20 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
     ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
     yield ds
     ds.archive()
+
+
+@pytest.fixture(scope="session")
+def wait_for_export(ingested_dataset: Dataset, csv_data: bytes):
+    """Poll each export path within one shared deadline, starting after ingestion."""
+    expected_rows = len(list(csv.DictReader(csv_data.decode().splitlines())))
+    # CI has observed visibility lag beyond four minutes after ingestion completes.
+    # Share one deadline so the 15-minute job retains time for the other tests.
+    deadline = time.monotonic() + 600
+
+    def wait(export):
+        return _wait_for_export(export, expected_rows, timeout_seconds=max(0, deadline - time.monotonic()))
+
+    return wait
 
 
 @pytest.fixture(scope="session")

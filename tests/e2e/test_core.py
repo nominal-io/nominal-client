@@ -276,34 +276,35 @@ def test_get_channel(ingested_dataset: Dataset):
     assert c.description is None
 
 
-def test_get_channel_pandas(ingested_dataset: Dataset, csv_data):
+def test_get_channel_pandas(ingested_dataset: Dataset, csv_data, wait_for_export):
     """Converting a channel to a pandas Series produces values identical to the original CSV."""
     c = ingested_dataset.get_channel("temperature")
-    s = channel_to_series(c)
-    assert s.name == c.name == "temperature"
-    assert s.index.name == "timestamp"
-    assert s.dtype == "float64"
-
     # Parse the reference CSV with matching dtype and index for a direct comparison
     df = pd.read_csv(
         BytesIO(csv_data), parse_dates=["timestamp"], index_col="timestamp", dtype={"temperature": "float64"}
     )
+    s = wait_for_export(lambda: channel_to_series(c))
+    assert s.name == c.name == "temperature"
+    assert s.index.name == "timestamp"
+    assert s.dtype == "float64"
     assert s.equals(df["temperature"])
 
 
-def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
+def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data, wait_for_export):
     """Converting a full dataset to a DataFrame matches the original CSV; channel_exact_match filters columns."""
     expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp", parse_dates=["timestamp"])
     for col in expected_data.columns:
         expected_data[col] = expected_data[col].astype(float)
 
-    df = datasource_to_dataframe(ingested_dataset)
+    df = wait_for_export(lambda: datasource_to_dataframe(ingested_dataset))
     df_sorted = df.reindex(expected_data.columns, axis=1)
     pd.testing.assert_frame_equal(df_sorted, expected_data)
 
     # channel_exact_match filters to channels whose names contain ALL listed substrings;
     # "relative" AND "minutes" matches only "relative_minutes"
-    df2 = datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
+    df2 = wait_for_export(
+        lambda: datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
+    )
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
 
 
