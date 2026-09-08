@@ -3,7 +3,7 @@
 Attribute access connects on first use (`ibis.nominal.connect()` with no arguments)
 and caches the connection for the life of the process:
 
-    from nominal.sql.fn import derivative, integral
+    from nominal.ibis.fn import derivative, integral
 
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
     pts.select(rate=derivative(_.value).over(w))
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from nominal.sql._backend import Backend, connect
+from nominal.ibis._backend import Backend, connect
 
 _connection: Backend | None = None
 

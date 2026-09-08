@@ -4,9 +4,9 @@
     ".": {
       "release-type": "python"
     },
-    "packages/nominal-sql": {
+    "packages/nominal-ibis": {
       "release-type": "python",
-      "component": "nominal-sql"
+      "component": "nominal-ibis"
     },
     "packages/nominal-tdms": {
       "release-type": "python",
