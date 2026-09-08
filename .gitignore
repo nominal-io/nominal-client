@@ -188,6 +188,7 @@ uv.toml
 .claude/skills/*
 !.claude/skills/thermo-nuclear-code-quality-review
 !.claude/skills/reviewing-nominal-api-bumps
+!.claude/skills/nominal-extractors
 
 # Agent-neutral skills home (Codex, Cursor, etc. read here; .claude/skills symlinks into it).
 .agents/*
@@ -195,3 +196,4 @@ uv.toml
 .agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review
 !.agents/skills/reviewing-nominal-api-bumps
+!.agents/skills/nominal-extractors
