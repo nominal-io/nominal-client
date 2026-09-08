@@ -207,7 +207,10 @@ failure modes are in `references/running.md`.
 - **The decorator must match the registered output format.** A mismatch fails at container
   startup with a clear error (better than emitting output the pipeline rejects).
 - **Build for `linux/amd64`.** Nominal runs images on amd64; on Apple Silicon always pass
-  `--platform linux/amd64` to `docker build`.
+  `--platform linux/amd64` to `docker build`. Nothing validates this — an arm64 image
+  registers and activates, then fails at ingest with an exec format error — so verify before
+  registering with `scripts/check_image_arch.py <tarball>` (or `docker inspect`), and put it
+  in CI.
 - **Image tags are immutable.** Re-registering an existing tag raises
   `NominalAlreadyExistsError` — bump the tag instead.
 - **Registration does not activate.** A new image runs only after
@@ -236,7 +239,9 @@ failure modes are in `references/running.md`.
   declaration methods, system metadata, error semantics, and local testing patterns.
   Read before writing or reviewing extractor code.
 - `references/registration.md` — Dockerfile conventions, building/saving the image,
-  `register_image` arguments, image lifecycle (statuses, activation, deletion, search).
-  Read before registering or upgrading an image.
+  verifying its architecture, `register_image` arguments, image lifecycle (statuses,
+  activation, deletion, search). Read before registering or upgrading an image.
+- `scripts/check_image_arch.py` — exits non-zero if a `docker save` tarball isn't amd64.
+  Run it before registering and in CI; nothing in the SDK or the platform checks this.
 - `references/running.md` — triggering ingests with `add_containerized`, tracking
   `IngestionJob`s, and debugging failed jobs. Read when running or troubleshooting.

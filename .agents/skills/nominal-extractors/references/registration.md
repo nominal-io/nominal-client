@@ -33,6 +33,31 @@ docker save my-extractor:0.1.0 -o my-extractor-0.1.0.tar
 `register_image` uploads the `docker save` tarball — not a registry reference. There is no
 docker push and no external registry involved; Nominal hosts the image in its own registry.
 
+### Verify the architecture before registering
+
+Registration does not check it. An arm64 image registers, activates, and reports READY, then
+fails at ingest with an exec format error — so the mistake surfaces in a job log long after
+the upload, and looks like a broken extractor rather than a wrong build flag. Confirm it
+before you register, and put the check in CI so a forgotten `--platform` can't reach the
+platform at all:
+
+```sh
+# with the image still in the local daemon
+docker inspect my-extractor:0.1.0 --format '{{.Architecture}}'   # want: amd64
+
+# or from the tarball alone, e.g. in CI where the artifact is all you have
+python scripts/check_image_arch.py my-extractor-0.1.0.tar
+```
+
+`scripts/check_image_arch.py` reads the architecture out of the tarball — handling both
+layouts `docker save` produces, the OCI layout (`index.json` + `blobs/`) and the legacy one
+(`manifest.json` plus a config per image) — and exits non-zero when it isn't amd64, so it
+drops straight into a pipeline before the registration step. It exits 2 when it can't parse
+the tarball, which means *check by hand*, not *proceed*.
+
+This check belongs in your build, not in the SDK: `register_image` deliberately does not
+inspect the tarball today, so nothing server-side will catch this for you.
+
 ## Create the extractor (once)
 
 ```python
