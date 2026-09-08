@@ -21,8 +21,8 @@ Example:
     pts.select(rate=con.fn.derivative(_.value).over(w)).to_pandas()
 """
 
-from nominal.sql._backend import Backend, NominalSqlError, connect
-from nominal.sql._functions import Functions
+from nominal.ibis._backend import Backend, NominalSqlError, connect
+from nominal.ibis._functions import Functions
 
 __all__ = [
     "Backend",

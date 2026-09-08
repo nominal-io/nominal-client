@@ -3,8 +3,8 @@ from __future__ import annotations
 import ibis
 from ibis import _
 
-from nominal.sql import Backend
-from nominal.sql._functions import build_function
+from nominal.ibis import Backend
+from nominal.ibis._functions import build_function
 
 POINTS = ibis.table(
     {
