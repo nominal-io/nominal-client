@@ -101,6 +101,9 @@ Argument notes:
   which values belong here rather than in `inputs` or in the image itself.
 - **`output_format`** — must match the decorator in the code (`MANIFEST` ↔
   `@manifest_extractor`; `PARQUET`/`CSV`/`AVRO_STREAM` ↔ `@single_file_extractor`).
+  **It defaults to `PARQUET`, so a manifest extractor has to pass it explicitly** — follow the
+  manifest-first guidance and omit the argument and you register the single-file contract, after
+  which every run fails at container startup on the mismatch described below.
   Only those four register: the backend can't currently ingest the other proto formats,
   so `register_image` rejects them up-front (`REGISTERABLE_OUTPUT_FORMATS`).
 - **`default_timestamp_column` / `default_timestamp_type`** — required. This is the

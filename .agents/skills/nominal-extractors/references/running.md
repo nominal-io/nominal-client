@@ -40,10 +40,13 @@ import time
 
 from nominal.core import IngestionJobStatus, wait_for_files_to_ingest
 
-TERMINAL = (IngestionJobStatus.COMPLETED, IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED)
+RUNNING = (IngestionJobStatus.SUBMITTED, IngestionJobStatus.QUEUED, IngestionJobStatus.IN_PROGRESS)
 
 # 1. the container run
-while job.refresh().status not in TERMINAL:
+deadline = time.monotonic() + 3600
+while job.refresh().status in RUNNING:
+    if time.monotonic() > deadline:
+        raise TimeoutError(f"extraction still {job.status.name} — see {job.nominal_url}")
     time.sleep(2)
 if job.status is not IngestionJobStatus.COMPLETED:
     raise RuntimeError(f"extraction {job.status.name} — see {job.nominal_url}")
@@ -58,6 +61,15 @@ after `add_containerized`, before the container has produced anything, and it se
 list — so `list(job.as_files_ingested())` returns `[]` immediately, having waited for
 nothing. It looks like a successful wait over zero outputs. Once the job is `COMPLETED` the
 file list is complete, and `as_files_ingested()` is then a fine substitute for stage 2.
+
+Why the loop tests the *running* set rather than a terminal set: `IngestionJobStatus` has a
+seventh member, `UNKNOWN`, which this client maps any status a newer server introduces into.
+Waiting *while* the status is known-running exits on anything unrecognized, and the
+`COMPLETED` check then turns it into a loud failure. Waiting *until* the status is one of a
+hard-coded terminal set does the opposite — an unrecognized status is never terminal, so a
+client one release behind its server spins forever, which is the same class of bug as the
+snapshot above. The deadline covers the remaining case, a server that adds a non-terminal
+status; pick a bound that suits your extractor's real runtime.
 
 The rest of the handle:
 

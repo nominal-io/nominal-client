@@ -181,8 +181,11 @@ job = dataset.add_containerized(
 )
 
 # Waiting takes two stages: the container run, then the files it produced.
-TERMINAL = (IngestionJobStatus.COMPLETED, IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED)
-while job.refresh().status not in TERMINAL:
+RUNNING = (IngestionJobStatus.SUBMITTED, IngestionJobStatus.QUEUED, IngestionJobStatus.IN_PROGRESS)
+deadline = time.monotonic() + 3600
+while job.refresh().status in RUNNING:
+    if time.monotonic() > deadline:
+        raise TimeoutError(f"extraction still {job.status.name} — see {job.nominal_url}")
     time.sleep(2)
 if job.status is not IngestionJobStatus.COMPLETED:
     raise RuntimeError(f"extraction {job.status.name} — see {job.nominal_url}")

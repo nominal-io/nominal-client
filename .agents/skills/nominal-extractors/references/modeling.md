@@ -27,8 +27,11 @@ Two properties push structured configuration toward inputs specifically:
 - Parameter values are strings with no schema. Anything with structure — a mapping, a list,
   a nested document — has to be encoded and parsed by hand, and a malformed value fails
   inside your parsing code with whatever message you happen to write.
-- Inputs get suffix validation (`file_suffixes=["json"]`) and, more importantly, a real
-  client-side required check.
+- Inputs carry declared suffixes (`file_suffixes=["json"]`) saying what the input accepts —
+  which is what `search_containerized_extractors(file_extension=...)` matches on, so they
+  decide which extractors a given file is offered for — and, more importantly, a real
+  client-side required check. The suffixes are descriptive, not enforced locally: passing a
+  `.txt` to an input registered `["json"]` still uploads.
 
 **`required=True` is much stronger on an input than on a parameter.** A missing required
 input raises in `add_containerized` before anything uploads. A missing required parameter is
