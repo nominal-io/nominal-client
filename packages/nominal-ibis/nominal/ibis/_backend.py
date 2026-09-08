@@ -20,7 +20,7 @@ from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 from requests.adapters import HTTPAdapter, Retry
 
-from nominal.sql._functions import Functions
+from nominal.ibis._functions import Functions
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 

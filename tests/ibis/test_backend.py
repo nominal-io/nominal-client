@@ -11,7 +11,7 @@ import pytest
 from ibis import _
 from ibis.common.annotations import SignatureValidationError
 
-import nominal.sql as nsql
+import nominal.ibis as nsql
 
 CATALOG_JSON = {
     "sqlCatalog": {
@@ -132,7 +132,7 @@ def make_session(query_result: pa.Table = QUERY_RESULT) -> MagicMock:
 @pytest.fixture
 def session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock = make_session()
-    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     return mock
 
 
@@ -153,7 +153,7 @@ def test_default_workspace_resolved_from_api(backend: nsql.Backend) -> None:
 def test_no_default_workspace_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = make_session()
     mock.get.side_effect = lambda url, **kwargs: fake_response(status=204)
-    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     with pytest.raises(nsql.NominalSqlError, match="workspace_rid"):
         nsql.connect(token="test-token", base_url="https://api.test/api")
 
@@ -199,11 +199,11 @@ def test_catalog_function_types_follow_type_families(backend: nsql.Backend) -> N
 
 
 def test_fn_module_binds_default_connection(monkeypatch: pytest.MonkeyPatch, backend: nsql.Backend) -> None:
-    import nominal.sql.fn as fn_module
+    import nominal.ibis.fn as fn_module
 
     monkeypatch.setattr(fn_module, "_connection", None)
     monkeypatch.setattr(fn_module, "connect", MagicMock(return_value=backend))
-    from nominal.sql.fn import derivative
+    from nominal.ibis.fn import derivative
 
     assert derivative is backend.fn.derivative
     fn_module.connect.assert_called_once_with()
@@ -236,7 +236,7 @@ def test_execute_drops_leaked_sort_key_columns(backend: nsql.Backend) -> None:
 
 def test_fewer_columns_than_requested_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     mock = make_session(query_result=pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"]}))
-    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     con = nsql.connect(token="test-token", base_url="https://api.test/api")
     with pytest.raises(nsql.NominalSqlError, match="expected"):
         con.table("datasets").select("dataset_rid", "name").to_pandas()
@@ -260,13 +260,13 @@ def test_http_errors_surface_details(monkeypatch: pytest.MonkeyPatch) -> None:
     mock.get.side_effect = lambda url, **kwargs: fake_response(
         json_data={"errorName": "SqlErrorInvalidQuery"}, status=400
     )
-    monkeypatch.setattr("nominal.sql._backend.requests.Session", MagicMock(return_value=mock))
+    monkeypatch.setattr("nominal.ibis._backend.requests.Session", MagicMock(return_value=mock))
     with pytest.raises(nsql.NominalSqlError, match="SqlErrorInvalidQuery"):
         nsql.connect(token="test-token", base_url="https://api.test/api")
 
 
 def test_module_imports_cleanly_in_fresh_interpreter() -> None:
-    """Connecting with nominal.sql as the first nominal import must not trip the config/core import cycle."""
+    """Connecting with nominal.ibis as the first nominal import must not trip the config/core import cycle."""
     import subprocess
     import sys
 
@@ -274,7 +274,7 @@ def test_module_imports_cleanly_in_fresh_interpreter() -> None:
         [
             sys.executable,
             "-c",
-            "from nominal.sql import Backend; b = Backend(); "
+            "from nominal.ibis import Backend; b = Backend(); "
             "b.do_connect(token='x', base_url='https://api.test', workspace_rid='ri.x.y.workspace.1')",
         ],
         capture_output=True,
