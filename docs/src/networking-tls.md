@@ -1,9 +1,27 @@
 # Networking & TLS on corporate networks
 
 The Nominal client talks to the platform over two transports: HTTP (conjure services) and gRPC
-(e.g. the Role Service). Both verify the server's TLS certificate.
+(e.g. the Role Service). HTTPS URLs verify the server's TLS certificate on both transports.
 
-## How trust is established
+## Plaintext HTTP deployments
+
+An `http://` URL selects plaintext for both HTTP and gRPC on any host, including remote hosts.
+Credentials and custom headers are sent without TLS encryption. Use `https://` when TLS is required.
+
+For example, connect to a local runtime using its HTTP ingress URL, including `/api`:
+
+```python
+client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
+dataset = client.create_dataset("x")
+```
+
+For HTTP URLs, gRPC services use plaintext HTTP/2 on the same host and port as the HTTP API.
+The runtime ingress must support both ordinary HTTP and plaintext gRPC, including the workspace
+service used to resolve the client's workspace. Desktop Core provides these routes through its
+loopback ingress. Authentication, custom headers, retries, deadlines, and Nominal exception
+translation apply to both plaintext and TLS gRPC calls. HTTPS URLs continue to use TLS.
+
+## How trust is established for HTTPS
 
 - **HTTP** uses your operating system's trust store directly (via `truststore`), plus certifi.
 - **gRPC** cannot use the OS trust store on demand, so at startup the client builds a CA bundle by

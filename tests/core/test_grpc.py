@@ -189,6 +189,36 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
     assert len(intercept_channel.call_args.args[1:]) == 2
 
 
+def test_http_grpc_channel_uses_plaintext_and_retains_call_policy(monkeypatch) -> None:
+    """HTTP URLs use plaintext while retaining channel options, authentication, and deadlines."""
+    secure, intercept, credentials = _patch_channel(monkeypatch)
+    insecure = MagicMock(return_value="plaintext-channel")
+    monkeypatch.setattr(grpc, "insecure_channel", insecure)
+
+    assert (
+        create_grpc_channel(
+            api_base_url="http://127.0.0.1:20000/api",
+            service_config=_config(),
+            user_agent="test-agent",
+            auth_header="Bearer tok",
+            header_provider=None,
+        )
+        == "intercepted-channel"
+    )
+
+    secure.assert_not_called()
+    credentials.assert_not_called()
+    assert insecure.call_args.args == ("127.0.0.1:20000",)
+    assert insecure.call_args.kwargs["compression"] == grpc.Compression.Gzip
+    assert dict(insecure.call_args.kwargs["options"])["grpc.primary_user_agent"] == "test-agent"
+    assert intercept.call_args.args[0] == "plaintext-channel"
+    details = _details()
+    for interceptor in intercept.call_args.args[1:]:
+        details = interceptor._amend(details)
+    assert ("authorization", "Bearer tok") in details.metadata
+    assert details.timeout == _config().read_timeout
+
+
 @pytest.mark.parametrize(
     "code, expected",
     [
