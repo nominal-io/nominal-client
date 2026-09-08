@@ -153,13 +153,14 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         default_timestamp_type: ts._AnyTimestampType,
         output_format: FileOutputFormat = FileOutputFormat.PARQUET,
         parameters: Sequence[FileExtractionParameter] = (),
+        activate: bool = False,
     ) -> ContainerImage:
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
         Registering attaches the image to this extractor in Nominal's registry, but does not change
-        which image the extractor runs: the new image must be activated with `set_active_image`.
-        This extractor instance is unmodified. Tags are immutable — registering an already-registered
-        tag raises `NominalAlreadyExistsError`.
+        which image the extractor runs: the new image must be activated with `set_active_image`, or
+        pass `activate=True` to register and activate in one call. Tags are immutable — registering
+        an already-registered tag raises `NominalAlreadyExistsError`.
 
         Args:
             tarball: Path to a `docker save` tarball of the extractor image.
@@ -177,6 +178,10 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 `REGISTERABLE_OUTPUT_FORMATS` — the backend cannot currently ingest the others, so
                 registering an image with one would produce an extractor whose ingests always fail.
             parameters: Scalar parameters passed to the extractor.
+            activate: If true, activate the registered image on this extractor (polling it to
+                readiness first, in case the backend processed the push asynchronously), refreshing
+                this instance in place. If false (the default), registration is side-effect-free on
+                what the extractor runs — the staging state for gated rollouts.
 
         Returns:
             The newly registered image. Current backends push the image to the registry within this
@@ -188,6 +193,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             ValueError: If `output_format` is not currently ingestible via containerized extraction.
             NominalAlreadyExistsError: If an image with this tag is already registered for this
                 extractor.
+            NominalContainerImageError: If `activate` is true and the image reaches a state from
+                which it cannot become READY.
         """
         if output_format not in REGISTERABLE_OUTPUT_FORMATS:
             supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
@@ -218,7 +225,10 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         )
         with translate_grpc_errors():
             response = self._clients.registry.CreateImage(request)
-        return ContainerImage._from_proto(self._clients, self._workspace_rid, response.image)
+        image = ContainerImage._from_proto(self._clients, self._workspace_rid, response.image)
+        if activate:
+            self.set_active_image(image, poll_until_ready=True)
+        return image
 
     def search_container_images(
         self, *, tag: str | None = None, status: ContainerImageStatus | None = None
