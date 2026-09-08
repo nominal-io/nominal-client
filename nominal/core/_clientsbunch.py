@@ -34,6 +34,7 @@ from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, transl
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
+    validate_api_base_url,
 )
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
@@ -277,6 +278,7 @@ class ClientsBunch:
         *,
         header_provider: HeaderProvider | None = None,
     ) -> Self:
+        validate_api_base_url(base_url)
         app_base_url = api_base_url_to_app_base_url(base_url)
 
         def client_factory(service_class: type[TService]) -> TService:

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.166.0](https://github.com/nominal-io/nominal-client/compare/v1.165.0...v1.166.0) (2026-09-08)
+
+
+### Features
+
+* decrease streaming bandwidth usage of rust_experimental streaming using zstd compression ([#944](https://github.com/nominal-io/nominal-client/issues/944)) ([c91c769](https://github.com/nominal-io/nominal-client/commit/c91c769a38ebe86e1a35166974bd351d997e7d87))
+* increase throughput of rust_experimental streaming using zstd ([c91c769](https://github.com/nominal-io/nominal-client/commit/c91c769a38ebe86e1a35166974bd351d997e7d87))
+
+
+### Bug Fixes
+
+* support plaintext gRPC for local runtimes ([#952](https://github.com/nominal-io/nominal-client/issues/952)) ([804bd38](https://github.com/nominal-io/nominal-client/commit/804bd3845574ce0d8faeeff299f720877be70e90))
+
 ## [1.165.0](https://github.com/nominal-io/nominal-client/compare/v1.164.0...v1.165.0) (2026-08-31)
 
 

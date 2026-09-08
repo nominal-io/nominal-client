@@ -12,7 +12,10 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
     status_code = 200
     err_msg = ""
-    client = NominalClient.create(base_url, token)
+    try:
+        client = NominalClient.create(base_url, token)
+    except NominalConfigError as err:
+        raise click.ClickException(f"Invalid client configuration: {err}") from err
 
     # first, validate that the api key is correct for the tenant / org by fetching the
     # current user using the api key

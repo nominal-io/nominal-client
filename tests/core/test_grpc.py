@@ -23,6 +23,7 @@ from nominal.core.exceptions import (
     HeaderConflictError,
     NominalAlreadyExistsError,
     NominalAuthenticationError,
+    NominalConfigError,
     NominalError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
@@ -187,6 +188,78 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
     assert options["grpc.max_receive_message_length"] == 2**31 - 1
     assert intercept_channel.call_args.args[0] == "raw-channel"
     assert len(intercept_channel.call_args.args[1:]) == 2
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.12.34.56", "[::1]"])
+def test_http_grpc_channel_uses_plaintext_and_retains_call_policy(monkeypatch, host) -> None:
+    """Literal loopback HTTP URLs retain channel options, authentication, and deadlines."""
+    secure, intercept, credentials = _patch_channel(monkeypatch)
+    insecure = MagicMock(return_value="plaintext-channel")
+    monkeypatch.setattr(grpc, "insecure_channel", insecure)
+
+    assert (
+        create_grpc_channel(
+            api_base_url=f"http://{host}:20000/api",
+            service_config=_config(),
+            user_agent="test-agent",
+            auth_header="Bearer tok",
+            header_provider=None,
+        )
+        == "intercepted-channel"
+    )
+
+    secure.assert_not_called()
+    credentials.assert_not_called()
+    assert insecure.call_args.args == (f"{host}:20000",)
+    assert insecure.call_args.kwargs["compression"] == grpc.Compression.Gzip
+    assert dict(insecure.call_args.kwargs["options"])["grpc.primary_user_agent"] == "test-agent"
+    assert intercept.call_args.args[0] == "plaintext-channel"
+    details = _details()
+    for interceptor in intercept.call_args.args[1:]:
+        details = interceptor._amend(details)
+    assert ("authorization", "Bearer tok") in details.metadata
+    assert details.timeout == _config().read_timeout
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "api.gov.nominal.io",
+        "10.0.0.1",
+        "192.168.1.2",
+        "8.8.8.8",
+        "0.0.0.0",
+        "[::]",
+        "[2001:db8::1]",
+        "localhost",
+        "127.0.0.1.example.com",
+        "127.1",
+        "2130706433",
+        "[::ffff:127.0.0.1]",
+        "[::1%25eth0]",
+        "user@127.0.0.1",
+        "127.0.0.1@api.gov.nominal.io",
+    ],
+)
+def test_http_grpc_channel_rejects_nonliteral_or_remote_hosts_before_channel_creation(monkeypatch, host):
+    """Remote addresses and ambiguous host forms cannot create a channel or attach credentials."""
+    secure, intercept, credentials = _patch_channel(monkeypatch)
+    insecure = MagicMock()
+    monkeypatch.setattr(grpc, "insecure_channel", insecure)
+
+    with pytest.raises(NominalConfigError, match="API base URL"):
+        create_grpc_channel(
+            api_base_url=f"http://{host}:20000/api",
+            service_config=_config(),
+            user_agent="test-agent",
+            auth_header="Bearer tok",
+            header_provider=None,
+        )
+
+    insecure.assert_not_called()
+    secure.assert_not_called()
+    credentials.assert_not_called()
+    intercept.assert_not_called()
 
 
 @pytest.mark.parametrize(

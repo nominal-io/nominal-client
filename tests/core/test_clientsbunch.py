@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from conjure_python_client import ServiceConfiguration
@@ -24,6 +24,26 @@ from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
+
+
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("http://localhost:20000/api", "Hostnames are not resolved"),
+        ("http://10.0.0.1/api", "https://"),
+        ("https://user:password@api.example.com/api", "must not contain user information"),
+        ("https://api.example.com:invalid/api", "hostname and port"),
+    ],
+)
+def test_client_rejects_invalid_url_before_building_transports(base_url: str, message: str) -> None:
+    with (
+        patch("nominal.core._clientsbunch.create_grpc_channel") as grpc_channel,
+        patch("nominal.core._clientsbunch.create_conjure_client_factory") as conjure_factory,
+        pytest.raises(NominalConfigError, match=message),
+    ):
+        NominalClient.from_token("token", base_url=base_url)
+    grpc_channel.assert_not_called()
+    conjure_factory.assert_not_called()
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
