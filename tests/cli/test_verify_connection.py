@@ -17,6 +17,20 @@ def _conjure_error(status_code: int) -> ConjureHTTPError:
     return ConjureHTTPError(HTTPError(response=response))
 
 
+def test_validate_token_url_reports_invalid_base_url() -> None:
+    with pytest.raises(click.ClickException, match="Invalid client configuration.*localhost") as exc:
+        validate_token_url("token", "http://localhost:20000/api", None)
+    assert isinstance(exc.value.__cause__, NominalConfigError)
+
+
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_validate_token_url_does_not_expose_url_credentials(scheme: str) -> None:
+    with pytest.raises(click.ClickException, match="must not contain user information") as exc:
+        validate_token_url("token", f"{scheme}://secret-user:secret-password@127.0.0.1:20000/api", None)
+    assert "secret-user" not in str(exc.value)
+    assert "secret-password" not in str(exc.value)
+
+
 def test_validate_token_url_accepts_valid_credentials() -> None:
     """Successful auth and workspace resolution should not emit user-facing errors."""
     client = MagicMock()

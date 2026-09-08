@@ -159,6 +159,10 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -199,6 +203,10 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -244,6 +252,10 @@ class NominalClient:
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
         extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         if token is None:
             token = _config.get_token(base_url)

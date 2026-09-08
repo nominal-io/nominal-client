@@ -6,7 +6,7 @@ generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
-- HTTP URLs select plaintext gRPC on any host; HTTPS URLs select TLS.
+- HTTP URLs allow plaintext gRPC only for literal loopback IP addresses; HTTPS URLs select TLS.
 - For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
 - Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import grpc
 from conjure_python_client import ServiceConfiguration
 
-from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
+from nominal.core._utils.networking import HeaderProvider, raise_header_conflict, validate_api_base_url
 from nominal.core.exceptions import (
     NominalAlreadyExistsError,
     NominalAuthenticationError,
@@ -254,12 +254,27 @@ def create_grpc_channel(
     auth_header: str,
     header_provider: HeaderProvider | None,
 ) -> grpc.Channel:
-    """Build the shared gRPC channel, using plaintext for HTTP URLs and TLS otherwise.
+    """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs.
 
     Configures gzip compression, native retry, lifted message-size limits, the SDK user-agent, and the
     auth-metadata + default-deadline interceptors. TLS channels use the union trust bundle; plaintext
     channels do not load TLS credentials. All of a client's gRPC stubs share this one channel.
+
+    Raises:
+        NominalConfigError: If the API URL is malformed, contains user information, or uses HTTP
+            without a literal loopback address.
     """
+    channel = _build_grpc_channel(api_base_url, service_config, user_agent)
+    # The two interceptors are order-independent: one rewrites metadata, the other the deadline.
+    return grpc.intercept_channel(
+        channel,
+        _AuthMetadataInterceptor(auth_header, header_provider),
+        _DefaultDeadlineInterceptor(service_config.read_timeout),
+    )
+
+
+def _build_grpc_channel(api_base_url: str, service_config: ServiceConfiguration, user_agent: str) -> grpc.Channel:
+    parsed = validate_api_base_url(api_base_url)
     options = [
         ("grpc.primary_user_agent", user_agent),
         ("grpc.enable_retries", 1),
@@ -267,22 +282,15 @@ def create_grpc_channel(
         ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
         ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
     ]
-    target = api_base_url_to_grpc_target(api_base_url)
-    if urlparse(api_base_url).scheme == "http":
-        channel = grpc.insecure_channel(target, options=options, compression=grpc.Compression.Gzip)
-    else:
-        credentials = grpc.ssl_channel_credentials(
-            root_certificates=_grpc_root_certificates(
-                None if service_config.security is None else service_config.security.trust_store_path
-            )
+    target = parsed.netloc
+    if parsed.scheme == "http":
+        return grpc.insecure_channel(target, options=options, compression=grpc.Compression.Gzip)
+    credentials = grpc.ssl_channel_credentials(
+        root_certificates=_grpc_root_certificates(
+            None if service_config.security is None else service_config.security.trust_store_path
         )
-        channel = grpc.secure_channel(target, credentials, options=options, compression=grpc.Compression.Gzip)
-    # The two interceptors are order-independent: one rewrites metadata, the other the deadline.
-    return grpc.intercept_channel(
-        channel,
-        _AuthMetadataInterceptor(auth_header, header_provider),
-        _DefaultDeadlineInterceptor(service_config.read_timeout),
     )
+    return grpc.secure_channel(target, credentials, options=options, compression=grpc.Compression.Gzip)
 
 
 _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
