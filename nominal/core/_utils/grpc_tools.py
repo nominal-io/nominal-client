@@ -6,7 +6,7 @@ generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
-- HTTP URLs select plaintext gRPC on any host; HTTPS URLs select TLS.
+- HTTP URLs allow plaintext gRPC only for literal loopback IP addresses; HTTPS URLs select TLS.
 - For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
 - Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
@@ -15,6 +15,7 @@ The channel is configured to track the conjure HTTP transport as closely as gRPC
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import ssl
 import sys
@@ -33,6 +34,7 @@ from nominal.core._utils.networking import HeaderProvider, raise_header_conflict
 from nominal.core.exceptions import (
     NominalAlreadyExistsError,
     NominalAuthenticationError,
+    NominalConfigError,
     NominalError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
@@ -68,6 +70,19 @@ def api_base_url_to_grpc_target(api_base_url: str) -> str:
     if not parsed.netloc:
         raise ValueError(f"Could not derive gRPC target from API base URL: {api_base_url}")
     return parsed.netloc
+
+
+def _is_loopback_address(host: str | None) -> bool:
+    """Accept literal loopback IPs without trusting DNS resolution or scoped IPv6 addresses."""
+    if host is None or "%" in host:
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv4Address):
+        return address.is_loopback
+    return address == ipaddress.IPv6Address("::1")
 
 
 @lru_cache(maxsize=None)
@@ -254,7 +269,7 @@ def create_grpc_channel(
     auth_header: str,
     header_provider: HeaderProvider | None,
 ) -> grpc.Channel:
-    """Build the shared gRPC channel, using plaintext for HTTP URLs and TLS otherwise.
+    """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs.
 
     Configures gzip compression, native retry, lifted message-size limits, the SDK user-agent, and the
     auth-metadata + default-deadline interceptors. TLS channels use the union trust bundle; plaintext
@@ -268,7 +283,13 @@ def create_grpc_channel(
         ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
     ]
     target = api_base_url_to_grpc_target(api_base_url)
-    if urlparse(api_base_url).scheme == "http":
+    parsed = urlparse(api_base_url)
+    if parsed.scheme == "http":
+        if parsed.username is not None or parsed.password is not None or not _is_loopback_address(parsed.hostname):
+            raise NominalConfigError(
+                "Plaintext gRPC requires a literal loopback IP address (127.0.0.1 or [::1]). "
+                "Use an https:// API URL for remote deployments."
+            )
         channel = grpc.insecure_channel(target, options=options, compression=grpc.Compression.Gzip)
     else:
         credentials = grpc.ssl_channel_credentials(
