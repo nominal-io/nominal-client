@@ -31,20 +31,44 @@ Containerized ingest is asynchronous and can emit many files, so the call return
 
 ## Tracking the job
 
-```python
-# Block until every produced file finishes ingesting:
-files = list(job.as_files_ingested())
+Waiting for a containerized ingest has **two stages**, and conflating them is the most
+common mistake here. First the container has to finish producing files; only then do those
+files exist to be waited on, and they ingest asynchronously in turn.
 
-# Or poll manually:
-job.refresh()
-job.status          # SUBMITTED → QUEUED → IN_PROGRESS → COMPLETED | FAILED | CANCELLED
-job.dataset_files() # the DatasetFiles produced so far
-job.cancel()
-job.nominal_url     # link to the job's page in the Nominal app
+```python
+import time
+
+from nominal.core import IngestionJobStatus, wait_for_files_to_ingest
+
+TERMINAL = (IngestionJobStatus.COMPLETED, IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED)
+
+# 1. the container run
+while job.refresh().status not in TERMINAL:
+    time.sleep(2)
+if job.status is not IngestionJobStatus.COMPLETED:
+    raise RuntimeError(f"extraction {job.status.name} — see {job.nominal_url}")
+
+# 2. the files it produced
+done, still_ingesting = wait_for_files_to_ingest(job.dataset_files())  # timeout=, return_when= available
 ```
 
-For timeout control over the blocking wait, use
-`nominal.core.wait_for_files_to_ingest(job.dataset_files(), ...)`.
+Why stage 1 can't be skipped: `job.dataset_files()` returns the files that exist *at the
+moment of the call*, and `job.as_files_ingested()` calls it exactly once. Run either right
+after `add_containerized`, before the container has produced anything, and it sees an empty
+list — so `list(job.as_files_ingested())` returns `[]` immediately, having waited for
+nothing. It looks like a successful wait over zero outputs. Once the job is `COMPLETED` the
+file list is complete, and `as_files_ingested()` is then a fine substitute for stage 2.
+
+The rest of the handle:
+
+```python
+job.refresh()       # re-reads from the server; status is a snapshot without it
+job.status          # SUBMITTED → QUEUED → IN_PROGRESS → COMPLETED | FAILED | CANCELLED
+job.dataset_files() # the DatasetFiles produced as of this call
+job.produced_file_count
+job.cancel()        # stop a job that is still running
+job.nominal_url     # link to the job's page in the Nominal app
+```
 
 ## Debugging a failed job
 
@@ -93,9 +117,12 @@ Work from the outside in:
 Once the extractor is registered, ingest triggering is the only per-file step. Typical
 patterns:
 
-- **Scripted batch**: loop `add_containerized` over files, collect jobs, then wait on all
-  (`[list(j.as_files_ingested()) for j in jobs]`) — jobs run server-side, so trigger them
-  all before waiting.
+- **Scripted batch**: loop `add_containerized` over every file and collect the jobs *before*
+  waiting on any of them — they run server-side and in parallel, so waiting inside the loop
+  serializes work that didn't need to be. Then apply the two-stage wait per job: poll each to
+  a terminal status, then `wait_for_files_to_ingest` over the files they produced. Waiting on
+  a batch is where skipping stage 1 hurts most, since an empty snapshot per job makes the
+  whole batch look instantly finished.
 - **Operator self-serve**: users upload raw files through the Nominal web app and pick the
   extractor; no SDK involved. This is the main reason to prefer an extractor over local
   conversion.

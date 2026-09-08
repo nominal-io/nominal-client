@@ -53,7 +53,7 @@ underneath it. Retrieve later with `client.get_containerized_extractor(rid)` or
 ## Register an image against it
 
 ```python
-from nominal.core.container_image import (
+from nominal.core import (
     FileExtractionInput,
     FileExtractionParameter,
     FileOutputFormat,

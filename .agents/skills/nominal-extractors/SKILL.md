@@ -1,6 +1,15 @@
 ---
 name: nominal-extractors
 description: Build, test, register, and run Nominal containerized extractors — custom Docker images the Nominal platform runs during ingest to parse proprietary or unsupported file formats into datasets. Use this whenever the user mentions containerized extractors, custom extractors, nominal.experimental.extractor, @single_file_extractor / @manifest_extractor, register_image, add_containerized, extractor manifests, or asks how to ingest a file format Nominal doesn't natively support (binary telemetry, vendor logger output, packed/proprietary formats), how to convert files server-side during ingest, or how to debug a containerized ingest job.
+visibility: public
+category: data-ingest
+tags:
+  - containerized-extractors
+  - ingest
+  - docker
+  - data-modeling
+  - experimental
+  - nominal-sdk
 ---
 
 # Nominal Containerized Extractors
@@ -129,8 +138,16 @@ ENTRYPOINT ["python", "/app/extract.py"]
 Build, save, register, activate, run (on your machine):
 
 ```python
-from nominal.core import NominalClient
-from nominal.core.container_image import FileExtractionInput, FileExtractionParameter, FileOutputFormat
+import time
+
+from nominal.core import (
+    FileExtractionInput,
+    FileExtractionParameter,
+    FileOutputFormat,
+    IngestionJobStatus,
+    NominalClient,
+    wait_for_files_to_ingest,
+)
 
 client = NominalClient.from_profile("default")
 
@@ -162,8 +179,20 @@ job = dataset.add_containerized(
     sources={"RAW_FILE": "flight_042.bin"},   # keyed by environment variable
     arguments={"THRESHOLD": "0.8"},           # values are strings
 )
-files = list(job.as_files_ingested())          # blocks until ingested
+
+# Waiting takes two stages: the container run, then the files it produced.
+TERMINAL = (IngestionJobStatus.COMPLETED, IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED)
+while job.refresh().status not in TERMINAL:
+    time.sleep(2)
+if job.status is not IngestionJobStatus.COMPLETED:
+    raise RuntimeError(f"extraction {job.status.name} — see {job.nominal_url}")
+files, _ = wait_for_files_to_ingest(job.dataset_files())
 ```
+
+The two-stage wait is not optional: `job.dataset_files()` returns only the files that exist
+at the moment of the call, and `job.as_files_ingested()` calls it once — so either one, run
+before the container has produced anything, returns empty instead of waiting. Details and the
+failure modes are in `references/running.md`.
 
 ## Rules that trip people up
 

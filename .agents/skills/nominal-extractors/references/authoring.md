@@ -179,8 +179,12 @@ is the main reason not to start here.
 
 - `ExtractorError` (from `nominal.experimental.extractor`) — violations of the extractor
   contract: missing required parameter, unknown input name, output outside `output_dir`,
-  reserved `manifest.json` name, wrong file extension for a declaration method.
-- `ValueError` and friends — malformed arguments, same as the rest of the SDK.
+  reserved `manifest.json` name, a timestamp unit the manifest can't express.
+- `ValueError` and friends — malformed arguments, *and a file extension the declaration
+  method can't read*, same as the rest of the SDK. Note that `ExtractorError` subclasses
+  `NominalError`, not `ValueError`, so the two are disjoint: `except ExtractorError` around a
+  declaration will not catch the extension mismatch. Catch both, or neither, and let `run()`
+  fail the job.
 - Any exception escaping your function (or the runtime) prints a traceback and exits
   non-zero, failing the ingest job. That is the correct way to fail: don't catch broad
   exceptions to "keep going" — an empty dataset with a green job status is much worse
