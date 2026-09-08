@@ -96,7 +96,9 @@ Argument notes:
   (`sources={"RAW_FILE": path}`). `required=True` makes ingest requests fail fast when the
   input is missing; an optional input simply isn't among the run's inputs when omitted.
 - **`parameters`** — scalar knobs, delivered as environment-variable strings. Same
-  name/env-var duality as inputs.
+  name/env-var duality as inputs, but a weaker `required`: unlike a required input, a
+  missing required parameter is not checked before the ingest starts. See `modeling.md` for
+  which values belong here rather than in `inputs` or in the image itself.
 - **`output_format`** — must match the decorator in the code (`MANIFEST` ↔
   `@manifest_extractor`; `PARQUET`/`CSV`/`AVRO_STREAM` ↔ `@single_file_extractor`).
   Only those four register: the backend can't currently ingest the other proto formats,
@@ -106,7 +108,9 @@ Argument notes:
   don't carry their own, and the last stop in the resolution order (per-output manifest
   metadata → ingest request override → this default). Accepts the full range of types:
   string literals (`"epoch_seconds"`, `"iso_8601"`, ...) or typed forms (`ts.Epoch`,
-  `ts.Iso8601`, `ts.Custom(format=...)`, `ts.Relative`).
+  `ts.Iso8601`, `ts.Custom(format=...)`, `ts.Relative`). `ts.Relative` is accepted here but
+  is almost always wrong as a *default* — its `start` would apply to every future ingest;
+  see `modeling.md`.
 
 ## Activate the image
 

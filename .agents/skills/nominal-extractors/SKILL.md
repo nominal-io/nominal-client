@@ -48,35 +48,50 @@ time, so you can register a new image version and switch over atomically.
 
 ## Lifecycle
 
-1. **Author** the extractor function — `references/authoring.md`
-2. **Test locally** with `my_extractor.run(env={...}, exit=False)` — no Docker or platform
+1. **Decide the shape** — which values are inputs vs parameters, how timestamps are
+   encoded, what the tags are — `references/modeling.md`
+2. **Author** the extractor function — `references/authoring.md`
+3. **Test locally** with `my_extractor.run(env={...}, exit=False)` — no Docker or platform
    access needed — `references/authoring.md` (Local testing section)
-3. **Build** the image for `linux/amd64` and `docker save` it to a tarball —
+4. **Build** the image for `linux/amd64` and `docker save` it to a tarball —
    `references/registration.md`
-4. **Register and activate** the image against an extractor — `references/registration.md`
-5. **Trigger ingests** with `Dataset.add_containerized` and track the `IngestionJob` —
+5. **Register and activate** the image against an extractor — `references/registration.md`
+6. **Trigger ingests** with `Dataset.add_containerized` and track the `IngestionJob` —
    `references/running.md`
 
 Read the reference file for whichever stage you're working on before writing code — each
 stage has contract details (exact env variables, timestamp resolution rules, format
 restrictions) that are easy to get subtly wrong from memory.
 
-## Choosing the output contract
+Step 1 is the one people skip, and it's the one that's expensive to undo: inputs and
+parameters are fixed at registration, and timestamp and tag choices shape every query
+written against the data afterward. If the extractor's shape isn't already settled, read
+`modeling.md` before writing code.
 
-The image's registered output format fixes which of two contracts the ingest pipeline
-applies, and the decorator you use must agree with it:
+## The output contract: write manifest extractors
 
-| | `@single_file_extractor` | `@manifest_extractor` |
+**New extractors use `@manifest_extractor`, registered with `output_format=MANIFEST`.**
+That is the current contract and a strict superset of the alternative: it describes every
+output file individually, so one image can emit several files, mix telemetry with logs and
+video, and give each file its own timestamps, tag columns, and channel prefix.
+
+`@single_file_extractor` is the original contract, still supported for images already
+registered with `PARQUET`, `CSV`, or `AVRO_STREAM`. You need it when maintaining one of
+those; don't reach for it for new work, even when the extractor happens to produce a single
+table today. It costs nothing to declare one file through the manifest contract, and the
+choice is not cheap to reverse — the output format is fixed at registration, so changing it
+later means registering and activating a new image.
+
+| | `@manifest_extractor` (use this) | `@single_file_extractor` (existing images) |
 |---|---|---|
-| Registered `output_format` | `PARQUET`, `CSV`, or `AVRO_STREAM` | `MANIFEST` |
-| Outputs | Exactly one file | Any number, mixed formats |
-| Declare with | `ctx.set_output(path)` | `ctx.add_tabular` / `add_avro_stream` / `add_journal_json` / `add_video` |
-| Per-output tag columns, channel prefixes, timestamps | No | Yes |
-| Video outputs | No | Yes (recent platform versions) |
+| Registered `output_format` | `MANIFEST` | `PARQUET`, `CSV`, or `AVRO_STREAM` |
+| Outputs | Any number, mixed formats | Exactly one file |
+| Declare with | `ctx.add_tabular` / `add_avro_stream` / `add_journal_json` / `add_video` | `ctx.set_output(path)` |
+| Per-output tag columns, channel prefixes, timestamps | Yes | No |
+| Video outputs | Yes (recent platform versions) | No |
 
-Default to `@manifest_extractor` unless the extractor genuinely produces one file and
-nothing else will ever be needed — the manifest contract is a superset, and re-registering
-an image under a different output format is a new registration.
+Whichever you use, the decorator and the registered format must agree — `Extractor.run`
+fails at startup if they disagree, rather than emitting output the pipeline rejects.
 
 ## Minimal end-to-end example
 
@@ -173,9 +188,18 @@ files = list(job.as_files_ingested())          # blocks until ingested
 - **Failures should fail loudly.** Any exception escaping your function exits non-zero and
   fails the ingest job — that's the designed behavior. Don't swallow errors into empty
   outputs.
+- **`required=True` means far less on a parameter than on an input.** A missing required
+  input raises in `add_containerized` before anything uploads; a missing required parameter
+  is only warned about at container start, then fails mid-run when `ctx.param()` reads it.
+- **Never register `Relative` as the image's default timestamp type.** The `start` would be
+  baked in once and applied to every future ingest. Register an absolute default and
+  declare `Relative` per output in the manifest.
 
 ## Reference files
 
+- `references/modeling.md` — the decisions that outlive the code: inputs vs parameters,
+  absolute vs relative time, and what to tag (plus tagging pitfalls). Read before writing
+  code for a new extractor, or when reviewing one whose shape isn't settled.
 - `references/authoring.md` — the full in-container runtime: context API, per-format
   declaration methods, system metadata, error semantics, and local testing patterns.
   Read before writing or reviewing extractor code.

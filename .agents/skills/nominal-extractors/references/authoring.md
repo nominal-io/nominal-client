@@ -84,27 +84,11 @@ ctx.additional_tags         # dict[str, str]: tags the ingest request applies to
 ctx.job_timestamp_metadata  # TimestampMetadata | None: the job-level default your outputs inherit
 ```
 
-## Declaring outputs — single-file mode
-
-For images registered with output format `PARQUET`, `CSV`, or `AVRO_STREAM`. The pipeline
-ingests exactly one output file, parsed per the registered format.
-
-```python
-@single_file_extractor
-def convert(ctx: SingleFileExtractorContext) -> None:
-    out = ctx.output_dir / "converted.parquet"
-    write_parquet(read_input(ctx.input()), out)
-    ctx.set_output(out)
-```
-
-`set_output` records a file you already wrote under `ctx.output_dir`; a second call
-raises. Producing no output fails the run.
-
 ## Declaring outputs — manifest mode
 
-For images registered with output format `MANIFEST`. Declare each file with the method
-for its format; the runtime writes `manifest.json` from the declarations when your
-function returns. At least one declaration is required.
+The contract new extractors use, for images registered with output format `MANIFEST`.
+Declare each file with the method for its format; the runtime writes `manifest.json` from
+the declarations when your function returns. At least one declaration is required.
 
 ```python
 ctx.add_tabular(
@@ -167,6 +151,29 @@ image's registered default), which supports the full range.
 Resolution order per output file: per-output manifest metadata → ingest request override
 → image default. The override-or-default portion is resolved *before* the container runs
 and ingestion fails if both are absent — so registration always requires a default.
+
+See `modeling.md` for choosing between absolute and relative time, which is the decision
+this machinery exists to serve.
+
+## Declaring outputs — single-file mode
+
+The original contract, for images registered with output format `PARQUET`, `CSV`, or
+`AVRO_STREAM`: the pipeline ingests exactly one output file, parsed per the registered
+format. You need this when maintaining an image already registered that way; write new
+extractors as manifest extractors instead.
+
+```python
+@single_file_extractor
+def convert(ctx: SingleFileExtractorContext) -> None:
+    out = ctx.output_dir / "converted.parquet"
+    write_parquet(read_input(ctx.input()), out)
+    ctx.set_output(out)
+```
+
+`set_output` records a file you already wrote under `ctx.output_dir`; a second call
+raises. Producing no output fails the run. There is no per-output timestamp, tag-column, or
+channel-prefix control in this mode — everything comes from the job-level metadata, which
+is the main reason not to start here.
 
 ## Error semantics
 
