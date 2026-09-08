@@ -1,0 +1,46 @@
+stages:
+  - deploy
+
+deploy_nominal_containerized_extractor:
+  stage: deploy
+  image: docker:27
+  services:
+    - name: docker:27-dind
+  variables:
+    ACTIVE_PLATFORM: "linux/amd64"
+    DOCKER_TLS_CERTDIR: "/certs"
+    EXTRACTOR_IMAGE_NAME: "example-containerized-extractor"
+    NOMINAL_SDK_REF: "main"
+  before_script:
+    - apk add --no-cache bash curl git python3
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - docker buildx create --use
+    - docker run --privileged --rm tonistiigi/binfmt --install arm64
+  script:
+    - export IMAGE_TAG_PREFIX="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    - export NOMINAL_SDK_PACKAGE="nominal @ git+https://github.com/nominal-io/nominal-client.git@${NOMINAL_SDK_REF}"
+    - mkdir -p dist
+    - |
+      for platform in linux/amd64 linux/arm64; do
+        safe_platform="$(printf '%s' "$platform" | tr '/' '-')"
+        docker buildx build \
+          --platform "$platform" \
+          --tag "${EXTRACTOR_IMAGE_NAME}:${IMAGE_TAG_PREFIX}-${safe_platform}" \
+          --output "type=docker,dest=dist/${EXTRACTOR_IMAGE_NAME}-${safe_platform}.tar" \
+          .
+      done
+    - |
+      uv run --with "$NOMINAL_SDK_PACKAGE" \
+        python examples/containerized-extractor-ci/deploy_containerized_extractor.py \
+          --api-url "$NOMINAL_API_URL" \
+          --api-key-env NOMINAL_API_KEY \
+          --workspace-rid "$NOMINAL_WORKSPACE_RID" \
+          --config examples/containerized-extractor-ci/extractor-config.example.json \
+          --image-tag-prefix "$IMAGE_TAG_PREFIX" \
+          --active-platform "$ACTIVE_PLATFORM" \
+          --image "linux/amd64=dist/${EXTRACTOR_IMAGE_NAME}-linux-amd64.tar" \
+          --image "linux/arm64=dist/${EXTRACTOR_IMAGE_NAME}-linux-arm64.tar"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web"'

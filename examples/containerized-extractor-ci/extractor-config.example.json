@@ -1,0 +1,20 @@
+{
+  "name": "Example Containerized Extractor",
+  "description": "Generic manifest extractor example",
+  "output_format": "MANIFEST",
+  "squash_before_registering": false,
+  "timestamp": {
+    "series_name": "timestamp",
+    "type": "epoch_microseconds"
+  },
+  "inputs": [
+    {
+      "name": "Input file",
+      "environment_variable": "INPUT_FILE",
+      "file_suffixes": ["bin", "dat"],
+      "description": "Primary file consumed by the extractor",
+      "required": true
+    }
+  ],
+  "parameters": []
+}
