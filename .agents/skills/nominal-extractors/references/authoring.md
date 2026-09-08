@@ -1,9 +1,9 @@
 # Authoring extractor code
 
-Everything here runs *inside* the container, using `nominal.experimental.extractor`.
-The container needs `nominal` installed plus whatever format libraries your code uses
-(`pyarrow`, `pandas`, ...) — format I/O is your own dependency, the runtime only manages
-the contract with the ingest pipeline.
+Everything here runs *inside* the container, using `nominal.experimental.extractor`. The
+container needs `nominal` installed plus whatever format libraries your code uses (`pyarrow`,
+`pandas`, ...). Format I/O is your own dependency; the runtime only manages the contract with
+the ingest pipeline.
 
 ## The environment contract
 
@@ -14,10 +14,10 @@ Nominal drives the container entirely through the environment:
 - Output goes to the directory named by `$OUTPUT_DIR`.
 - Declared parameters arrive as environment variables; values are always strings.
 - Nominal also injects `_NOMINAL_*` metadata describing the registered contract (output
-  format, inputs, parameters) and, on newer platforms, system metadata (job/dataset RIDs,
-  resolved timestamp metadata, tags). All optional — absent on local runs.
+  format, inputs, parameters) and, on newer platforms, system metadata (job and dataset RIDs,
+  resolved timestamp metadata, tags). All optional, and absent on local runs.
 
-You never read these variables directly: the context object (`ctx`) resolves all of it.
+Never read these variables directly. The context object (`ctx`) resolves all of it.
 
 ## Entrypoint shape
 
@@ -32,12 +32,12 @@ if __name__ == "__main__":
     my_extractor.run()
 ```
 
-`run()` builds the context from the environment, validates the registered contract,
-calls your function, finalizes outputs (writes `manifest.json` in manifest mode), and
-turns any failure — including `SystemExit` from user code — into a non-zero exit so the
-ingest job fails cleanly. It also calls `logging.basicConfig(level=logging.INFO)` when
-running as a real entrypoint, so `logging` output lands in the job's captured logs;
-prefer `logging` over `print` for anything you'll want when debugging a failed job.
+`run()` builds the context from the environment, validates the registered contract, calls
+your function, finalizes outputs (writing `manifest.json` in manifest mode), and turns any
+failure — including a `SystemExit` from your code — into a non-zero exit so the ingest job
+fails cleanly. As a real entrypoint it also calls `logging.basicConfig(level=logging.INFO)`,
+so `logging` output lands in the job's captured logs. Prefer `logging` over `print` for
+anything you will want when debugging a failed job.
 
 Exports from `nominal.experimental.extractor`:
 `single_file_extractor`, `manifest_extractor`, `Extractor`, `ExtractorContext`,
@@ -181,26 +181,23 @@ is the main reason not to start here.
   contract: missing required parameter, unknown input name, output outside `output_dir`,
   reserved `manifest.json` name, a timestamp unit the manifest can't express.
 - `ValueError` and friends — malformed arguments, *and a file extension the declaration
-  method can't read*, same as the rest of the SDK. Note that `ExtractorError` subclasses
-  `NominalError`, not `ValueError`, so the two are disjoint: `except ExtractorError` around a
-  declaration will not catch the extension mismatch. Catch both, or neither, and let `run()`
-  fail the job.
-- Any exception escaping your function (or the runtime) prints a traceback and exits
-  non-zero, failing the ingest job. That is the correct way to fail: don't catch broad
-  exceptions to "keep going" — an empty dataset with a green job status is much worse
-  than a red job.
+  method can't read*, same as the rest of the SDK. `ExtractorError` subclasses `NominalError`,
+  not `ValueError`, so the two are disjoint: `except ExtractorError` around a declaration will
+  not catch the extension mismatch. Catch both, or neither and let `run()` fail the job.
+- Any exception escaping your function or the runtime prints a traceback and exits non-zero,
+  failing the ingest job. That is the correct way to fail. Do not catch broad exceptions to
+  keep going: an empty dataset under a green job status is much worse than a red job.
 
 Decide deliberately what a degenerate input means. An empty or truncated source file can
 either raise or produce a valid zero-row output, and the runtime accepts both — a declared
-zero-row table is a legitimate output, so the job succeeds and the dataset simply gains
-nothing. Raising is usually the better default precisely because of that: a green job that
-ingested nothing is the hardest failure for the uploader to notice, while a red job names
-itself. Reserve the zero-row path for cases where "this capture is legitimately empty" is a
-real, expected state rather than a symptom.
+zero-row table is a legitimate output, so the job succeeds and the dataset gains nothing.
+Raising is usually the better default for that reason: a green job that ingested nothing is
+the hardest failure for an uploader to notice, while a red job names itself. Use the zero-row
+path only where "this capture is legitimately empty" is an expected state, not a symptom.
 
-The runtime also logs advisory warnings at startup (registered-required parameter unset,
-registered input missing from the mount) and at finalize (undeclared files left in the
-output directory). Watch for these in job logs — they usually point at the bug.
+The runtime also logs advisory warnings at startup (a registered-required parameter unset, a
+registered input missing from the mount) and at finalize (undeclared files left in the output
+directory). Watch for these in job logs; they usually point straight at the bug.
 
 ## Local testing
 
@@ -231,13 +228,13 @@ Notes:
 
 - **`env` replaces the environment, it does not merge into it.** The mapping you pass is the
   entire environment the run sees, so it must carry `OUTPUT_DIR`, every input, and every
-  parameter the code reads — nothing is inherited from the ambient process. Omitting
-  `OUTPUT_DIR` raises `ExtractorError` rather than falling back to a real value, which is
-  the single most common way a local test fails before it tests anything.
-- `run(..., exit=False)` returns the context on success and re-raises on failure —
-  assert on the exception in failure tests.
-- In manifest mode, `ctx.build_manifest()` returns the manifest document exactly as
-  written — assert on declared entries rather than re-parsing `manifest.json`.
+  parameter the code reads. Nothing is inherited from the ambient process. Omitting
+  `OUTPUT_DIR` raises `ExtractorError` instead of falling back to a real value — the most
+  common way a local test fails before it tests anything.
+- `run(..., exit=False)` returns the context on success and re-raises on failure. Assert on
+  the exception in failure tests.
+- In manifest mode, `ctx.build_manifest()` returns the manifest document exactly as written.
+  Assert on that rather than re-parsing `manifest.json`.
 - To exercise the *registered-contract* code paths (display-name resolution, unknown-name
   errors), inject the metadata Nominal would:
   `_NOMINAL_INPUTS='[{"name": "Raw file", "environmentVariable": "RAW_FILE", "path": "/tmp/raw.bin"}]'`,

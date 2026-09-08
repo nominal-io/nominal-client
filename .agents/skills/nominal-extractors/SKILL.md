@@ -15,45 +15,45 @@ tags:
 # Nominal Containerized Extractors
 
 A containerized extractor is a Docker image that Nominal runs server-side during ingest.
-The platform mounts the uploaded raw file(s) into the container, runs your code, and
-ingests whatever your code writes to the output directory into the target dataset. Once
-registered, anyone in the workspace can upload raw files in that format — from the SDK or
-the Nominal web app — without having the parsing code on their machine.
+The platform mounts the uploaded raw files into the container, runs your code, and ingests
+whatever your code writes to the output directory. Once registered, anyone in the workspace
+can upload files in that format, from the SDK or the web app, without the parsing code on
+their machine.
 
 ## Where extractors fit in Nominal's data model
 
-Nominal organizes time-series data into **datasets**. A dataset is built up from ingested
-**files**: each ingest parses a file's columns/records into **channels** (series), using
-timestamp metadata to place samples in time, with optional **tags** partitioning data
-within the dataset (e.g. per test-run or per vehicle).
+Nominal stores time-series data in **datasets**, built from ingested **files**. Each ingest
+parses a file's columns or records into **channels**, places samples in time using timestamp
+metadata, and optionally applies **tags** that partition the data within the dataset (per
+test-run, per vehicle).
 
-The SDK's `Dataset` class has native ingest methods for formats the platform parses
-itself: `add_tabular_data` (CSV/Parquet), `add_avro_stream`, `add_journal_json` (logs),
-`add_mcap`, `add_video`, `add_mcap_video`, `add_ardupilot_dataflash`.
+`Dataset` has native ingest methods for the formats the platform parses itself:
+`add_tabular_data` (CSV/Parquet), `add_avro_stream`, `add_journal_json` (logs), `add_mcap`,
+`add_video`, `add_mcap_video`, `add_ardupilot_dataflash`.
 
-A containerized extractor extends that same ingest pipeline with your code. Use one when:
+A containerized extractor runs your code in that same pipeline. Use one when:
 
-- the raw format is proprietary or unsupported (binary telemetry, packed structs, vendor
-  logger output, custom CSV dialects needing preprocessing);
-- the format recurs — many files, many uploaders — so parsing logic should live in one
-  versioned, centrally-run place rather than on each engineer's laptop;
-- non-developers (operators, technicians) upload files through the web app and the
-  conversion must happen automatically.
+- the format is proprietary or unsupported (binary telemetry, packed structs, vendor logger
+  output, CSV dialects needing preprocessing);
+- the format recurs, so the parsing logic should live in one versioned place instead of on
+  each engineer's laptop;
+- non-developers upload the files through the web app, so the conversion has to happen
+  without them running anything.
 
-For a one-off conversion where you already have a parsing script, skip the extractor:
-convert locally and call `dataset.add_tabular_data(...)` directly.
+For a one-off conversion with a script you already have, convert locally and call
+`dataset.add_tabular_data(...)` instead.
 
-Two SDK surfaces are involved, and it's important not to mix them up:
+Two SDK surfaces are involved. Do not mix them up:
 
 | Surface | Runs where | Import |
 |---|---|---|
 | Authoring runtime (the extractor's own code) | Inside the container, during ingest | `nominal.experimental.extractor` |
 | Management & triggering (create/register/activate/run) | On your machine | `nominal.core` via `NominalClient` |
 
-One more distinction: a **ContainerizedExtractor** carries identity (name, description);
-the **ContainerImage**s registered against it carry the execution contract (inputs,
-parameters, output format, default timestamp metadata). Exactly one image is active at a
-time, so you can register a new image version and switch over atomically.
+A **ContainerizedExtractor** carries identity (name, description). The **ContainerImage**s
+registered against it carry the execution contract (inputs, parameters, output format,
+default timestamp metadata). Exactly one image is active at a time, so you can register a
+new version and switch over atomically.
 
 ## Lifecycle
 
@@ -68,28 +68,26 @@ time, so you can register a new image version and switch over atomically.
 6. **Trigger ingests** with `Dataset.add_containerized` and track the `IngestionJob` —
    `references/running.md`
 
-Read the reference file for whichever stage you're working on before writing code — each
-stage has contract details (exact env variables, timestamp resolution rules, format
-restrictions) that are easy to get subtly wrong from memory.
+Read the reference file for the stage you're working on before writing code. Each stage has
+contract details — exact env variables, timestamp resolution rules, format restrictions —
+that are easy to get subtly wrong from memory.
 
-Step 1 is the one people skip, and it's the one that's expensive to undo: inputs and
-parameters are fixed at registration, and timestamp and tag choices shape every query
-written against the data afterward. If the extractor's shape isn't already settled, read
-`modeling.md` before writing code.
+Step 1 is the one people skip and the one that is expensive to undo: inputs and parameters
+are fixed at registration, and the timestamp and tag choices shape every query written
+against the data afterward. If the shape isn't settled, read `modeling.md` first.
 
 ## The output contract: write manifest extractors
 
-**New extractors use `@manifest_extractor`, registered with `output_format=MANIFEST`.**
-That is the current contract and a strict superset of the alternative: it describes every
-output file individually, so one image can emit several files, mix telemetry with logs and
-video, and give each file its own timestamps, tag columns, and channel prefix.
+**New extractors use `@manifest_extractor`, registered with `output_format=MANIFEST`.** It
+is the current contract and a strict superset of the alternative: it describes each output
+file individually, so one image can emit several files, mix telemetry with logs and video,
+and set per-file timestamps, tag columns, and channel prefixes.
 
-`@single_file_extractor` is the original contract, still supported for images already
-registered with `PARQUET`, `CSV`, or `AVRO_STREAM`. You need it when maintaining one of
-those; don't reach for it for new work, even when the extractor happens to produce a single
-table today. It costs nothing to declare one file through the manifest contract, and the
-choice is not cheap to reverse — the output format is fixed at registration, so changing it
-later means registering and activating a new image.
+`@single_file_extractor` is the original contract, still supported for images registered
+with `PARQUET`, `CSV`, or `AVRO_STREAM`. Use it to maintain one of those, not for new work —
+not even when the extractor produces a single table today. Declaring one file through the
+manifest contract costs nothing, and the choice is expensive to reverse: the output format
+is fixed at registration, so changing it later requires registering a new image.
 
 | | `@manifest_extractor` (use this) | `@single_file_extractor` (existing images) |
 |---|---|---|
@@ -99,8 +97,8 @@ later means registering and activating a new image.
 | Per-output tag columns, channel prefixes, timestamps | Yes | No |
 | Video outputs | Yes (recent platform versions) | No |
 
-Whichever you use, the decorator and the registered format must agree — `Extractor.run`
-fails at startup if they disagree, rather than emitting output the pipeline rejects.
+Whichever you use, the decorator and the registered format must agree. `Extractor.run` fails
+at startup if they disagree, rather than emitting output the pipeline rejects.
 
 ## Minimal end-to-end example
 
@@ -192,56 +190,55 @@ if job.status is not IngestionJobStatus.COMPLETED:
 files, _ = wait_for_files_to_ingest(job.dataset_files())
 ```
 
-The two-stage wait is not optional: `job.dataset_files()` returns only the files that exist
-at the moment of the call, and `job.as_files_ingested()` calls it once — so either one, run
-before the container has produced anything, returns empty instead of waiting. Details and the
-failure modes are in `references/running.md`.
+The two-stage wait is not optional. `job.dataset_files()` returns only the files that exist
+when it is called, and `job.as_files_ingested()` calls it once, so either one returns empty
+instead of waiting if the container has not produced anything yet. See
+`references/running.md` for the failure modes.
 
 ## Rules that trip people up
 
-- **Outputs must be written under `ctx.output_dir` and declared.** The pipeline ingests
-  only declared files; undeclared files earn a warning and are silently dropped.
-- **`manifest.json` belongs to the runtime.** Never write it yourself — declare outputs
-  through the `add_*` methods and the runtime writes it when your function returns.
-- **Parameters arrive as strings.** Coerce them yourself (`int(ctx.param("PARTS"))`).
+- **Outputs must be written under `ctx.output_dir` and declared.** The pipeline ingests only
+  declared files. An undeclared file earns a warning and is dropped.
+- **`manifest.json` belongs to the runtime.** Declare outputs through the `add_*` methods;
+  the runtime writes the manifest when your function returns.
+- **Parameters arrive as strings.** Coerce them yourself: `int(ctx.param("PARTS"))`.
 - **The decorator must match the registered output format.** A mismatch fails at container
-  startup with a clear error (better than emitting output the pipeline rejects).
-- **Build for `linux/amd64`.** Nominal runs images on amd64; on Apple Silicon always pass
-  `--platform linux/amd64` to `docker build`. Nothing validates this — an arm64 image
-  registers and activates, then fails at ingest with an exec format error — so verify before
-  registering with `scripts/check_image_arch.py <tarball>` (or `docker inspect`), and put it
-  in CI.
+  startup, which beats emitting output the pipeline rejects.
+- **Build for `linux/amd64`.** Nominal runs images on amd64, so on Apple Silicon always pass
+  `--platform linux/amd64` to `docker build`. Nothing checks this: an arm64 image registers
+  and activates, then fails at ingest with an exec format error. Verify before registering
+  with `scripts/check_image_arch.py <tarball>` (or `docker inspect`), and run it in CI.
 - **Image tags are immutable.** Re-registering an existing tag raises
-  `NominalAlreadyExistsError` — bump the tag instead.
+  `NominalAlreadyExistsError`. Bump the tag instead.
 - **Registration does not activate.** A new image runs only after
   `extractor.set_active_image(image)`.
 - **Timestamp metadata resolves in order:** per-output manifest metadata → the ingest
   request's `timestamp_column`/`timestamp_type` override → the image's registered default.
-  Registration requires a default; per-output metadata supports only numeric types
-  (epoch/relative, seconds→nanoseconds) — richer formats (ISO 8601, custom) must come from
+  Registration requires a default. Per-output metadata takes numeric types only
+  (epoch/relative, seconds through nanoseconds); ISO 8601 and custom formats must come from
   the job-level metadata.
 - **Failures should fail loudly.** Any exception escaping your function exits non-zero and
-  fails the ingest job — that's the designed behavior. Don't swallow errors into empty
+  fails the ingest job. That is the designed behavior — do not swallow errors into empty
   outputs.
-- **`required=True` means far less on a parameter than on an input.** A missing required
-  input raises in `add_containerized` before anything uploads; a missing required parameter
-  is only warned about at container start, then fails mid-run when `ctx.param()` reads it.
-- **Never register `Relative` as the image's default timestamp type.** The `start` would be
-  baked in once and applied to every future ingest. Register an absolute default and
-  declare `Relative` per output in the manifest.
+- **`required=True` means much less on a parameter than on an input.** A missing required
+  input raises in `add_containerized` before anything uploads. A missing required parameter
+  only warns at container start, then fails mid-run when `ctx.param()` reads it.
+- **Never register `Relative` as the image's default timestamp type.** The `start` is set
+  once and applied to every future ingest. Register an absolute default and declare
+  `Relative` per output in the manifest.
 
 ## Reference files
 
 - `references/modeling.md` — the decisions that outlive the code: inputs vs parameters,
-  absolute vs relative time, and what to tag (plus tagging pitfalls). Read before writing
-  code for a new extractor, or when reviewing one whose shape isn't settled.
-- `references/authoring.md` — the full in-container runtime: context API, per-format
-  declaration methods, system metadata, error semantics, and local testing patterns.
-  Read before writing or reviewing extractor code.
-- `references/registration.md` — Dockerfile conventions, building/saving the image,
-  verifying its architecture, `register_image` arguments, image lifecycle (statuses,
-  activation, deletion, search). Read before registering or upgrading an image.
-- `scripts/check_image_arch.py` — exits non-zero if a `docker save` tarball isn't amd64.
-  Run it before registering and in CI; nothing in the SDK or the platform checks this.
-- `references/running.md` — triggering ingests with `add_containerized`, tracking
-  `IngestionJob`s, and debugging failed jobs. Read when running or troubleshooting.
+  absolute vs relative time, what to tag, and the tagging pitfalls. Read before writing code
+  for a new extractor, or when reviewing one whose shape isn't settled.
+- `references/authoring.md` — the in-container runtime: context API, per-format declaration
+  methods, system metadata, error semantics, local testing. Read before writing or reviewing
+  extractor code.
+- `references/registration.md` — Dockerfile conventions, building and saving the image,
+  verifying its architecture, `register_image` arguments, image lifecycle. Read before
+  registering or upgrading an image.
+- `references/running.md` — triggering ingests with `add_containerized`, tracking an
+  `IngestionJob`, debugging failed jobs. Read when running or troubleshooting.
+- `scripts/check_image_arch.py` — exits non-zero if a `docker save` tarball isn't amd64. Run
+  it before registering and in CI; nothing in the SDK or the platform checks this.

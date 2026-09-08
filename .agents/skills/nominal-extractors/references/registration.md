@@ -36,10 +36,10 @@ docker push and no external registry involved; Nominal hosts the image in its ow
 ### Verify the architecture before registering
 
 Registration does not check it. An arm64 image registers, activates, and reports READY, then
-fails at ingest with an exec format error — so the mistake surfaces in a job log long after
-the upload, and looks like a broken extractor rather than a wrong build flag. Confirm it
-before you register, and put the check in CI so a forgotten `--platform` can't reach the
-platform at all:
+fails at ingest with an exec format error, so the mistake surfaces in a job log long after
+the upload and looks like a broken extractor rather than a wrong build flag. Confirm it
+before registering, and run the check in CI so a forgotten `--platform` never reaches the
+platform:
 
 ```sh
 # with the image still in the local daemon
@@ -49,14 +49,14 @@ docker inspect my-extractor:0.1.0 --format '{{.Architecture}}'   # want: amd64
 python scripts/check_image_arch.py my-extractor-0.1.0.tar
 ```
 
-`scripts/check_image_arch.py` reads the architecture out of the tarball — handling both
-layouts `docker save` produces, the OCI layout (`index.json` + `blobs/`) and the legacy one
-(`manifest.json` plus a config per image) — and exits non-zero when it isn't amd64, so it
-drops straight into a pipeline before the registration step. It exits 2 when it can't parse
-the tarball, which means *check by hand*, not *proceed*.
+`scripts/check_image_arch.py` reads the architecture out of the tarball and exits non-zero
+when it isn't amd64, so it drops into a pipeline before the registration step. It handles
+both layouts `docker save` produces: the OCI layout (`index.json` + `blobs/`) and the legacy
+one (`manifest.json` plus a config per image). It exits 2 when it cannot parse the tarball,
+which means *check by hand*, not *proceed*.
 
-This check belongs in your build, not in the SDK: `register_image` deliberately does not
-inspect the tarball today, so nothing server-side will catch this for you.
+Keep this check in your build, not in the SDK. `register_image` does not inspect the tarball
+today, so nothing server-side catches it for you.
 
 ## Create the extractor (once)
 
@@ -171,10 +171,10 @@ ingests started after this run the new image.
 
 ## Contract-change checklist
 
-When a new image version changes the *contract* — not just the code — remember both sides:
+When a new image version changes the *contract*, not just the code, update both sides:
 
-- New/renamed input or parameter env vars: update ingest callers' `sources`/`arguments`.
-- Output format change (single-file ↔ manifest): change the decorator too; the runtime
-  fails at startup if they disagree.
-- Timestamp column/type change in outputs: update the registered default (it's per-image,
-  so the new registration carries the new default) and any per-output metadata in code.
+- New or renamed input/parameter env vars: update every caller's `sources` and `arguments`.
+- Output format change (single-file ↔ manifest): change the decorator too. The runtime fails
+  at startup if they disagree.
+- Timestamp column or type change: update the registered default, which is per-image so the
+  new registration carries it, plus any per-output metadata in the code.
