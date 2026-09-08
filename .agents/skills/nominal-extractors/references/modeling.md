@@ -101,6 +101,13 @@ Three places tags can come from, in increasing order of specificity:
 Log outputs (`add_journal_json`) and videos (`add_video`) take neither: log samples carry no
 tags and land on a single channel, and a video is identified by its `channel`.
 
+**A tag column is consumed, not ingested.** Naming a column in `tag_columns` applies its
+values as tags to that file's rows; the column does not also become a channel. So each
+column is either a measurement you can plot or a dimension you can filter by, never both —
+and if you need the same value in both roles, write it to the output twice under two names.
+That makes tagging an authoring-time decision, not a registration-time one: you are
+choosing, per column, which of the two things it becomes.
+
 What makes a good tag is a fact that *identifies a source*, stays stable for the life of the
 data, and has few distinct values: vehicle, stand, motor serial, run identifier, sensor
 location. What makes a bad tag is a measurement (that's a channel), a timestamp or anything
@@ -108,8 +115,7 @@ derived from one (that's the timeline), a value that changes constantly (it frag
 series into noise), or free text that varies by upload — the same concept spelled `Stand A`,
 `stand-a`, and `standA` produces three unrelated series that nobody can join.
 
-Two things worth settling before the first real ingest, because both are painful to change
-once there's data:
+Two things worth settling before the first real ingest:
 
 - **Fix a vocabulary and enforce it in the extractor.** Tag keys and values are strings
   chosen by whoever wrote the caller, and nothing normalizes them for you. If the extractor
@@ -121,7 +127,5 @@ once there's data:
   distinct; tags are better when you want to compare the same measurement across sources,
   because a tag can be filtered and grouped while a prefix has to be matched by string.
 
-If you're unsure whether a column named in `tag_columns` also remains available as a
-channel, confirm it on a throwaway dataset before committing to the layout — it's a
-one-ingest experiment, and the answer determines whether you drop the column from the
-output or leave it in.
+Both are painful to change once there is data: tag values are baked into every series
+already ingested, so a renamed key or a re-spelled value doesn't migrate — it forks.
