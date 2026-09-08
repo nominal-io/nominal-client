@@ -5,14 +5,16 @@ The Nominal client talks to the platform over two transports: HTTP (conjure serv
 
 ## Local plaintext HTTP deployments
 
-An `http://` URL is accepted for gRPC only when its host is a literal loopback IP address:
+An `http://` API base URL is accepted only when its host is a literal loopback IP address:
 IPv4 `127.0.0.0/8` (normally `127.0.0.1`) or IPv6 `::1`. Use `https://` for remote deployments.
-Other HTTP hosts raise `NominalConfigError` during client construction, before a gRPC channel is created.
+Other HTTP hosts raise `NominalConfigError` during client construction, even if you only intend to use
+Conjure HTTP APIs. URLs with embedded user information are rejected for both HTTP and HTTPS; supply
+your API token separately.
 There is no remote-plaintext override or automatic fallback from TLS to plaintext.
 
 Use `127.0.0.1` or `[::1]` rather than `localhost` or another hostname; the check does not trust DNS
 resolution. Loopback HTTP still sends credentials and custom headers without TLS encryption.
-This restriction applies to gRPC channel construction; it does not add TLS to the Conjure HTTP transport.
+This client-wide restriction does not add TLS to the Conjure HTTP transport.
 
 For example, connect to a local runtime using its HTTP ingress URL, including `/api`:
 

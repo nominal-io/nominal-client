@@ -247,7 +247,7 @@ def test_http_grpc_channel_rejects_nonliteral_or_remote_hosts_before_channel_cre
     insecure = MagicMock()
     monkeypatch.setattr(grpc, "insecure_channel", insecure)
 
-    with pytest.raises(NominalConfigError, match="Use an https:// API URL"):
+    with pytest.raises(NominalConfigError, match="API base URL"):
         create_grpc_channel(
             api_base_url=f"http://{host}:20000/api",
             service_config=_config(),
