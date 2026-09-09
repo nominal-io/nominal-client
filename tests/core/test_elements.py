@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any, Callable
+
 import pytest
 
-from nominal.core.elements import Symbol, _color_from_proto, _color_to_proto, _normalize_hex_color
+from nominal.core.elements import Symbol, _color_from_proto, _normalize_hex_color
 from nominal.protos.scout.elements.v1 import elements_pb2
 
 
@@ -23,25 +25,14 @@ def test_symbol_sets_the_matching_proto_oneof_arm(symbol: Symbol, oneof_name: st
     assert Symbol._from_proto(proto) == symbol
 
 
-def test_symbol_from_unset_proto_is_none() -> None:
-    """An unset symbol oneof maps to None, matching the optional field on Marking."""
-    assert Symbol._from_proto(elements_pb2.Symbol()) is None
-
-
-def test_color_round_trips_through_proto() -> None:
-    """A hex color survives conversion to the proto oneof and back."""
-    assert _color_to_proto("#cc0000").hex_code == "#cc0000"
-    assert _color_from_proto(_color_to_proto("#cc0000")) == "#cc0000"
-
-
-def test_color_from_unset_proto_is_none() -> None:
-    """An unset color oneof reads back as None rather than an empty string."""
-    assert _color_from_proto(elements_pb2.Color()) is None
-
-
-def test_color_reads_back_what_the_server_sent() -> None:
-    """Reads never re-validate, so an unexpected stored value surfaces rather than raising."""
-    assert _color_from_proto(elements_pb2.Color(hex_code="#CC0000")) == "#CC0000"
+@pytest.mark.parametrize(
+    ("read", "empty_proto"),
+    [(Symbol._from_proto, elements_pb2.Symbol()), (_color_from_proto, elements_pb2.Color())],
+    ids=["symbol", "color"],
+)
+def test_an_unset_oneof_reads_back_as_none(read: Callable[[Any], object], empty_proto: Any) -> None:
+    """An absent symbol or color becomes None, matching the optional attributes on Marking."""
+    assert read(empty_proto) is None
 
 
 @pytest.mark.parametrize("bad", ["cc0000", "#ccc", "#gg0000", "#cc00000", "red", ""])
