@@ -13,7 +13,7 @@ from typing_extensions import Self
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure, _poll_files_once
-from nominal.core.exceptions import NominalIngestError
+from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -77,9 +77,6 @@ _RUNNING_JOB_STATUSES = frozenset(
 Deliberately the running set rather than the terminal set: a status this client does not recognize
 stops a wait instead of looping forever on it.
 """
-
-_FAILED_JOB_STATUSES = frozenset({IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED})
-"""Terminal statuses meaning the job did not deliver what it was asked for."""
 
 
 class IngestType(Enum):
@@ -233,22 +230,31 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         the job is terminal and every file it produced has finished ingesting.
 
         Yielded files may have failed: a job can complete with some of its files FAILED, so check
-        `ingest_status` on each yielded file if that matters. For timeout / return-when control over
-        a fixed set of files, use `nominal.core.wait_for_files_to_ingest(job.dataset_files(), ...)`.
+        `ingest_status` on each yielded file if that matters. A job that was cancelled yields whatever
+        did ingest and logs a warning, since a cancelled job is the caller getting what they asked for.
+
+        Unlike the free function `nominal.core.as_files_ingested`, which only ever reports per-file
+        status, this raises when the job itself fails — a failed job can have no files to report the
+        failure through. Iterating this rather than wrapping it in `list()` keeps the files yielded
+        before that point. For timeout / return-when control over a fixed set of files, use
+        `nominal.core.wait_for_files_to_ingest(job.dataset_files(), ...)`.
 
         Args:
             poll_interval: Interval to sleep between polls of this job and of its pending files.
-            timeout: If given, the maximum time to wait before raising `TimeoutError`.
+            timeout: Give up after this long and raise `NominalIngestTimeout`; None waits
+                indefinitely. Never sleeps past the deadline.
 
         Yields:
             Dataset files as they finish ingesting. Due to the polling mechanics, the files are not
             yielded in strictly sorted order based on their ingestion completion time.
 
         Raises:
-            NominalIngestError: The job itself finished FAILED or CANCELLED.
-            TimeoutError: `timeout` elapsed while the job or one of its files was still in progress.
+            NominalIngestFailed: The job itself finished FAILED. Files that did ingest are named in
+                the error, and were yielded before it was raised.
+            NominalIngestTimeout: `timeout` elapsed while the job or one of its files was still in
+                progress.
         """
-        start_time = datetime.datetime.now()
+        deadline = None if timeout is None else datetime.datetime.now() + timeout
         seen_file_ids: set[str] = set()
         pending: list[DatasetFile] = []
         job_running = True
@@ -266,28 +272,33 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             if not job_running and not pending:
                 break
 
-            if timeout is not None and datetime.datetime.now() - start_time >= timeout:
-                raise TimeoutError(
-                    f"timed out after {timeout} waiting for ingest job {self.rid}: "
-                    f"job status {self.status.name}, {len(pending)} file(s) still ingesting"
-                )
+            # Sleeping the full interval near the deadline would overshoot the caller's timeout.
+            sleep_for = poll_interval.total_seconds()
+            if deadline is not None:
+                remaining = (deadline - datetime.datetime.now()).total_seconds()
+                if remaining <= 0:
+                    raise NominalIngestTimeout(
+                        f"ingest job {self.rid} was still {self.status.name.lower()} after {timeout}, "
+                        f"with {len(pending)} file(s) still ingesting"
+                    )
+                sleep_for = min(sleep_for, remaining)
 
             logger.info(
                 "Sleeping for %f seconds while awaiting ingest job %s (status %s, %d file(s) ingesting)...",
-                poll_interval.total_seconds(),
+                sleep_for,
                 self.rid,
                 self.status.name,
                 len(pending),
             )
-            time.sleep(poll_interval.total_seconds())
+            time.sleep(sleep_for)
 
-        if self.status in _FAILED_JOB_STATUSES:
-            raise NominalIngestError(
-                f"ingest job {self.rid} finished {self.status.name} after producing {len(seen_file_ids)} file(s)"
+        if self.status is IngestionJobStatus.FAILED:
+            raise NominalIngestFailed(
+                f"ingest job {self.rid} failed after producing {len(seen_file_ids)} file(s): {sorted(seen_file_ids)}"
             )
         elif self.status is not IngestionJobStatus.COMPLETED:
             logger.warning(
-                "Ingest job %s had unrecognized status %s; treating as terminal after %d file(s).",
+                "Ingest job %s finished %s rather than COMPLETED, after producing %d file(s).",
                 self.rid,
                 self.status.name,
                 len(seen_file_ids),

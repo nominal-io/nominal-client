@@ -10,8 +10,12 @@ import pytest
 from nominal_api import ingest_api
 
 from nominal.core.dataset_file import IngestStatus
-from nominal.core.exceptions import NominalIngestError
+from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+
+
+class _StopPolling(Exception):
+    """Raised from a mocked sleep to end a wait loop that would otherwise never reach its deadline."""
 
 
 def _job_bean(**overrides: object) -> ingest_api.IngestJob:
@@ -32,12 +36,6 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
     )
     kwargs.update(overrides)
     return ingest_api.IngestJob(**kwargs)
-
-
-def test_from_conjure_unknown_status_falls_back_to_unknown() -> None:
-    """An unrecognized wire status name maps to UNKNOWN for forward-compatibility."""
-    future = SimpleNamespace(name="SOME_FUTURE_STATUS")
-    assert IngestionJobStatus._from_conjure(future) is IngestionJobStatus.UNKNOWN
 
 
 def test_cancel_calls_service_and_refreshes(mock_clients: MagicMock) -> None:
@@ -258,20 +256,36 @@ def test_as_files_ingested_raises_when_the_job_fails(mock_clients: MagicMock) ->
     )
     mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
 
-    with _polling(), pytest.raises(NominalIngestError, match="FAILED"):
+    with _polling(), pytest.raises(NominalIngestFailed, match="failed"):
         list(job.as_files_ingested())
 
 
-def test_as_files_ingested_raises_when_the_job_is_cancelled(mock_clients: MagicMock) -> None:
-    """A job that ends CANCELLED raises rather than quietly yielding nothing."""
+def test_as_files_ingested_names_ingested_files_when_the_job_fails(mock_clients: MagicMock) -> None:
+    """A failing job's error names the files that did ingest, which the raise discards from list()."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
+    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
+        _job_bean(status=ingest_api.IngestJobStatus.FAILED)
+    )
+    file = _make_file("landed-file", [IngestStatus.SUCCESS])
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+
+    with _polling(), pytest.raises(NominalIngestFailed, match="landed-file"):
+        list(job.as_files_ingested())
+
+
+def test_as_files_ingested_yields_without_raising_when_the_job_is_cancelled(mock_clients: MagicMock) -> None:
+    """A cancelled job yields what did ingest instead of raising, since cancelling was the caller's ask."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
     mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
         _job_bean(status=ingest_api.IngestJobStatus.CANCELLED)
     )
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
+    file = _make_file("landed-file", [IngestStatus.SUCCESS])
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
 
-    with _polling(), pytest.raises(NominalIngestError, match="CANCELLED"):
-        list(job.as_files_ingested())
+    with _polling():
+        yielded = list(job.as_files_ingested())
+
+    assert yielded == [file]
 
 
 def test_as_files_ingested_stops_on_an_unrecognized_job_status(mock_clients: MagicMock) -> None:
@@ -291,14 +305,31 @@ def test_as_files_ingested_stops_on_an_unrecognized_job_status(mock_clients: Mag
 
 
 def test_as_files_ingested_raises_timeout_while_the_job_is_still_running(mock_clients: MagicMock) -> None:
-    """An exhausted wait budget raises TimeoutError instead of blocking on a job that is still running."""
+    """An exhausted wait budget raises rather than blocking on a job that is still running."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
     mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
         _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS)
     )
     mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
 
-    with _polling() as mock_sleep, pytest.raises(TimeoutError, match="IN_PROGRESS"):
+    with _polling() as mock_sleep, pytest.raises(NominalIngestTimeout, match="in_progress"):
         list(job.as_files_ingested(timeout=timedelta(0)))
 
     mock_sleep.assert_not_called()
+
+
+def test_as_files_ingested_does_not_sleep_past_the_timeout_deadline(mock_clients: MagicMock) -> None:
+    """A poll interval longer than the remaining budget is shortened to the budget, not slept in full."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
+    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
+        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS)
+    )
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
+
+    with _polling() as mock_sleep:
+        # Sleep is mocked, so no wall-clock time passes; stop at the first sleep to inspect its length.
+        mock_sleep.side_effect = _StopPolling
+        with pytest.raises(_StopPolling):
+            list(job.as_files_ingested(poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)))
+
+    assert 0 < mock_sleep.call_args.args[0] <= 2

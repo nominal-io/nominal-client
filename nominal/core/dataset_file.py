@@ -328,6 +328,8 @@ class IngestStatus(Enum):
     QUEUED = "QUEUED"
     PARSING = "PARSING"
     INGESTING = "INGESTING"
+    UNKNOWN = "UNKNOWN"
+    """Unknown or unrecognized status returned by a newer server."""
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
@@ -349,7 +351,10 @@ class IngestStatus(Enum):
             case "ingesting":
                 ingest_status = cls.INGESTING
             case _:
-                raise ValueError(f"Unknown ingest status: {status.type}")
+                # Mirrors IngestionJobStatus: a status a newer server adds must not break a wait that
+                # is only asking whether the file is still in flight.
+                logger.warning("Unrecognized ingest status %s; treating as UNKNOWN.", status.type)
+                ingest_status = cls.UNKNOWN
         return ingest_status
 
 

@@ -207,6 +207,17 @@ def test_wait_for_files_to_ingest_returns_after_absent_file_with_first_exception
     assert not_done == [pending]
 
 
+def test_wait_for_files_to_ingest_treats_unknown_status_as_done():
+    """A file reporting a status this client does not recognize is treated as done, not polled forever."""
+    file = _make_file("future-1", [IngestStatus.UNKNOWN])
+
+    with patch("nominal.core.dataset_file._batch_refresh_files", return_value=set()):
+        done, not_done = wait_for_files_to_ingest([file])
+
+    assert done == [file]
+    assert not not_done
+
+
 def test_as_files_ingested_does_not_sleep_when_all_files_complete_in_first_poll():
     """Does not sleep when all files complete ingestion on the first poll."""
     first = _make_file("first-file", [IngestStatus.SUCCESS])
