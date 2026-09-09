@@ -20,7 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
-from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
+from nominal_api import scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
@@ -187,9 +187,3 @@ def build_compute_tag_filter(tags: Mapping[str, str] | None) -> scout_compute_ap
     if len(single_filters) == 1:
         return single_filters[0]
     return scout_compute_api.TagFilters(and_=single_filters)
-
-
-def filter_scopes(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Sequence[scout_asset_api.DataScope]:
-    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]

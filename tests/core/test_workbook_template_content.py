@@ -8,6 +8,7 @@ from nominal_api import scout_chartdefinition_api, scout_notebook_api, scout_wor
 
 from nominal.core.workbook import Workbook, WorkbookType
 from nominal.core.workbook_template import WorkbookTemplate
+from nominal.protos.run.v1 import run_service_pb2
 
 _SOURCE_ASSET = "ri.scout.test.asset.source"
 _SOURCE_RUN = "ri.scout.test.run.source"
@@ -20,7 +21,7 @@ def _instantiate(
 ) -> tuple[scout_notebook_api.CreateNotebookRequest, MagicMock]:
     clients = MagicMock()
     clients.template.get.return_value.content = content
-    clients.run.get_run.return_value.assets = list(run_assets)
+    clients.run.GetRun.return_value = run_service_pb2.GetRunResponse(run=run_service_pb2.Run(assets=run_assets))
     template = WorkbookTemplate("template", "Template", "", [], {}, WorkbookType.WORKBOOK, clients)
     with patch.object(Workbook, "_from_conjure"):
         template.create_workbook(asset=asset, run=None if asset is not None else _TARGET_RUN)
@@ -81,9 +82,9 @@ def test_legacy_video_uses_only_the_target_scope(
     }
     assert ConjureEncoder.do_encode(content) == before
     if asset is not None:
-        clients.run.get_run.assert_not_called()
+        clients.run.GetRun.assert_not_called()
     else:
-        clients.run.get_run.assert_called_once_with(clients.auth_header, _TARGET_RUN)
+        clients.run.GetRun.assert_called_once_with(run_service_pb2.GetRunRequest(rid=_TARGET_RUN))
 
 
 def test_channel_video_keeps_content_and_skips_legacy_asset_lookup() -> None:
@@ -100,4 +101,4 @@ def test_channel_video_keeps_content_and_skips_legacy_asset_lookup() -> None:
     )
     request, clients = _instantiate(content)
     assert request.content_v2.workbook is content
-    clients.run.get_run.assert_not_called()
+    clients.run.GetRun.assert_not_called()

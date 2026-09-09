@@ -5,11 +5,7 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
-from nominal_api import (
-    scout,
-    scout_run_api,
-    scout_spatial,
-)
+from nominal_api import scout_spatial
 from typing_extensions import Self, deprecated
 
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -17,9 +13,8 @@ from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
-    RefreshableConjureMixin,
-    create_links,
-    filter_scopes,
+    RefreshableGrpcMixin,
+    create_proto_links,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
@@ -37,14 +32,15 @@ from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
-from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
+from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_run_duration
 
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
@@ -74,7 +70,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
         def spatial(self) -> scout_spatial.SpatialService: ...
 
@@ -83,8 +79,8 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         """Returns a link to the page for this Run in the Nominal app"""
         return run_url(self._clients, self.rid)
 
-    def _get_latest_api(self) -> scout_run_api.Run:
-        return self._clients.run.get_run(self._clients.auth_header, self.rid)
+    def _get_latest_api(self) -> run_service_pb2.Run:
+        return _get_run_proto(self._clients.run, self.rid)
 
     def update(
         self,
@@ -118,19 +114,26 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             the existing list first:
 
                 run = run.update(assets=[*run.assets, new_asset])
+
+        Raises:
+            NominalError: If the update request fails.
         """
-        request = scout_run_api.UpdateRunRequest(
+        request = run_service_pb2.UpdateRunRequest(
+            rid=self.rid,
             description=description,
-            labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
-            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
-            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
+            labels=None if labels is None else run_service_pb2.LabelSet(labels=labels),
+            properties=None if properties is None else run_service_pb2.PropertyMap(properties=properties),
+            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_run_proto(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_run_proto(),
             title=name,
             assets=[] if assets is None else [rid_from_instance_or_string(a) for a in assets],
-            links=None if links is None else create_links(links),
+            links=None
+            if links is None
+            else run_service_pb2.LinkList(links=create_proto_links(links, run_service_pb2.Link)),
         )
-        updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
-        return self._refresh_from_api(updated_run)
+        with translate_grpc_errors():
+            response = self._clients.run.UpdateRun(request)
+        return self._refresh_from_api(response.run)
 
     def add_comment(self, content: str) -> Comment:
         """Post a markdown comment to this run's discussion.
@@ -163,28 +166,18 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        for scope in filter_scopes(api_run.asset_data_scopes, "dataset"):
-            if scope.data_scope_name != data_scope_name:
-                continue
-            if scope.data_source.dataset is None:
-                raise ValueError(f"data scope {data_scope_name!r} is typed as a dataset but carries no dataset rid")
-            return scope.data_source.dataset, scope.series_tags
+        for scope in api_run.asset_data_scopes:
+            if scope.data_source.WhichOneof("data_source") == "dataset" and scope.data_scope_name == data_scope_name:
+                return scope.data_source.dataset, dict(scope.series_tags)
         return None
 
-    def _list_datasource_rids(
-        self, datasource_type: str | None = None, property_name: str | None = None
-    ) -> Mapping[str, str]:
+    def _list_datasource_rids(self, datasource_type: str | None = None) -> Mapping[str, str]:
         enriched_run = self._get_latest_api()
         datasource_rids_by_ref_name = {}
         for ref_name, source in enriched_run.data_sources.items():
-            if datasource_type is not None and source.data_source.type != datasource_type:
-                continue
-
-            rid = cast(
-                str, getattr(source.data_source, source.data_source.type if property_name is None else property_name)
-            )
-            datasource_rids_by_ref_name[ref_name] = rid
-
+            kind = source.data_source.WhichOneof("data_source")
+            if kind is not None and (datasource_type is None or kind == datasource_type):
+                datasource_rids_by_ref_name[ref_name] = getattr(source.data_source, kind)
         return datasource_rids_by_ref_name
 
     def remove_data_sources(
@@ -197,40 +190,40 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
         The list data_sources can contain Connection, Dataset, or Video instances, or rids as string.
         A spatial can be removed by passing its rid.
+
+        Raises:
+            NominalError: If retrieving or updating the run's data sources fails.
         """
         ref_names = ref_names or []
-        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
-
-        conjure_run = self._get_latest_api()
-
-        data_sources_to_keep = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=rds.data_source,
-                series_tags=rds.series_tags,
-                offset=rds.offset,
-            )
-            for ref_name, rds in conjure_run.data_sources.items()
-            if ref_name not in ref_names
-            and all(
-                rid not in data_source_rids
+        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or [] if ds}
+        api_run = self._get_latest_api()
+        data_sources_to_keep = {}
+        for ref_name, source in api_run.data_sources.items():
+            if ref_name in ref_names:
+                continue
+            if any(
+                rid in data_source_rids
                 for rid in (
-                    rds.data_source.dataset,
-                    rds.data_source.connection,
-                    rds.data_source.video,
-                    rds.data_source.spatial,
+                    source.data_source.dataset,
+                    source.data_source.connection,
+                    source.data_source.video,
+                    source.data_source.spatial,
+                    source.data_source.log_set,
                 )
+            ):
+                continue
+            data_sources_to_keep[ref_name] = run_service_pb2.CreateRunDataSource(
+                data_source=source.data_source if source.HasField("data_source") else None,
+                series_tags=source.series_tags,
+                offset=source.offset if source.HasField("offset") else None,
             )
-        }
-
-        updated_run = self._clients.run.update_run(
-            self._clients.auth_header,
-            scout_run_api.UpdateRunRequest(
-                assets=[],
-                data_sources=data_sources_to_keep,
-            ),
-            self.rid,
+        request = run_service_pb2.UpdateRunRequest(
+            rid=self.rid,
+            data_sources=run_service_pb2.CreateRunDataSourceMap(data_sources=data_sources_to_keep),
         )
-        self._refresh_from_api(updated_run)
+        with translate_grpc_errors():
+            response = self._clients.run.UpdateRun(request)
+        self._refresh_from_api(response.run)
 
     def create_event(
         self,
@@ -347,6 +340,9 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             dataset: Dataset to add to the run
             series_tags: Key-value tags to pre-filter the dataset with before adding to the run.
             offset: Add the dataset to the run with a pre-baked offset
+
+        Raises:
+            NominalError: If adding the data source fails.
         """
         self.add_datasets({ref_name: dataset}, series_tags=series_tags, offset=offset)
 
@@ -366,16 +362,21 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             datasets: Mapping of logical names to datasets to add to the run
             series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
             offset: Add the datasets to the run with a pre-baked offset
+
+        Raises:
+            NominalError: If adding the data sources fails.
         """
         data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
+            ref_name: run_service_pb2.CreateRunDataSource(
+                data_source=run_service_pb2.DataSource(dataset=rid_from_instance_or_string(dataset)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
+                offset=None if offset is None else _to_run_duration(offset),
             )
             for ref_name, dataset in datasets.items()
         }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        request = run_service_pb2.AddDataSourcesToRunRequest(run_rid=self.rid, data_sources=data_sources)
+        with translate_grpc_errors():
+            self._clients.run.AddDataSourcesToRun(request)
 
     def add_connection(
         self,
@@ -396,15 +397,20 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             connection: Connection to add to the run
             series_tags: Key-value tags to pre-filter the connection with before adding to the run.
             offset: Add the connection to the run with a pre-baked offset
+
+        Raises:
+            NominalError: If adding the data source fails.
         """
         data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
+            ref_name: run_service_pb2.CreateRunDataSource(
+                data_source=run_service_pb2.DataSource(connection=rid_from_instance_or_string(connection)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
+                offset=None if offset is None else _to_run_duration(offset),
             )
         }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        request = run_service_pb2.AddDataSourcesToRunRequest(run_rid=self.rid, data_sources=data_sources)
+        with translate_grpc_errors():
+            self._clients.run.AddDataSourcesToRun(request)
 
     @deprecated(
         "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
@@ -412,22 +418,34 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         category=LegacyVideoDeprecationWarning,
     )
     def add_video(self, ref_name: str, video: Video | str) -> None:
-        """Add a video to a run via video object or RID."""
-        request = scout_run_api.CreateRunDataSource(
-            data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+        """Add a video to a run via video object or RID.
+
+        Raises:
+            NominalError: If adding the data source fails.
+        """
+        data_source = run_service_pb2.CreateRunDataSource(
+            data_source=run_service_pb2.DataSource(video=rid_from_instance_or_string(video)),
             series_tags={},
             offset=None,
         )
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
+        request = run_service_pb2.AddDataSourcesToRunRequest(run_rid=self.rid, data_sources={ref_name: data_source})
+        with translate_grpc_errors():
+            self._clients.run.AddDataSourcesToRun(request)
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this run.
 
         `attachments` can be `Attachment` instances, or attachment RIDs.
+
+        Raises:
+            NominalError: If adding the attachments fails.
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
-        self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
+        request = run_service_pb2.UpdateRunAttachmentRequest(
+            rid=self.rid, attachments_to_add=rids, attachments_to_remove=[]
+        )
+        with translate_grpc_errors():
+            self._clients.run.UpdateRunAttachment(request)
 
     def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
@@ -571,10 +589,16 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Does not remove the attachments from Nominal.
 
         `attachments` can be `Attachment` instances, or attachment RIDs.
+
+        Raises:
+            NominalError: If removing the attachments fails.
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
-        self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
+        request = run_service_pb2.UpdateRunAttachmentRequest(
+            rid=self.rid, attachments_to_add=[], attachments_to_remove=rids
+        )
+        with translate_grpc_errors():
+            self._clients.run.UpdateRunAttachment(request)
 
     def search_workbooks(
         self,
@@ -608,37 +632,45 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalError: If the archive request fails.
         """
-        self._clients.run.archive_run(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.run.ArchiveRun(run_service_pb2.ArchiveRunRequest(rid=self.rid))
 
     def unarchive(self) -> None:
         """Unarchive this run, allowing it to appear on the UI.
 
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalError: If the unarchive request fails.
         """
-        self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.run.UnarchiveRun(run_service_pb2.UnarchiveRunRequest(rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
+    def _from_proto(cls, clients: _Clients, run: run_service_pb2.Run) -> Self:
         return cls(
             rid=run.rid,
             name=run.title,
             description=run.description,
-            properties=MappingProxyType(run.properties),
+            properties=MappingProxyType(dict(run.properties)),
             labels=tuple(run.labels),
             links=tuple(
-                (dict(url=link.url, title=link.title) if link.title is not None else dict(url=link.url))
+                (dict(url=link.url, title=link.title) if link.HasField("title") else dict(url=link.url))
                 for link in run.links
             ),
-            start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
-            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
+            start=_SecondsNanos.from_run_proto(run.start_time).to_nanoseconds(),
+            end=(_SecondsNanos.from_run_proto(run.end_time).to_nanoseconds() if run.HasField("end_time") else None),
             run_number=run.run_number,
             assets=tuple(run.assets),
-            created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
+            created_at=run.created_at.ToNanoseconds(),
             is_archived=run.is_archived,
             _clients=clients,
-            author_rid=run.author_rid,
+            author_rid=run.author_rid if run.HasField("author_rid") else None,
         )
 
 
@@ -655,20 +687,35 @@ def _create_run(
     attachments: Iterable[Attachment] | Iterable[str] | None,
     asset_rids: Sequence[str] | None,
 ) -> Run:
-    """Create a run."""
-    request = scout_run_api.CreateRunRequest(
+    """Create a run.
+
+    Raises:
+        NominalConfigError: If no default workspace can be resolved.
+        NominalError: If the creation request fails.
+    """
+    request = run_service_pb2.CreateRunRequest(
         attachments=[rid_from_instance_or_string(a) for a in attachments or ()],
-        data_sources={},
         description=description or "",
         labels=[] if labels is None else list(labels),
-        links=[] if links is None else create_links(links),
+        links=[] if links is None else create_proto_links(links, run_service_pb2.Link),
         properties={} if properties is None else dict(properties),
-        typed_properties={},
-        start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
+        start_time=_SecondsNanos.from_flexible(start).to_run_proto(),
         title=name,
-        end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
+        end_time=None if end is None else _SecondsNanos.from_flexible(end).to_run_proto(),
         assets=[] if asset_rids is None else list(asset_rids),
         workspace=clients.resolve_default_workspace_rid(),
     )
-    response = clients.run.create_run(clients.auth_header, request)
-    return Run._from_conjure(clients, response)
+    with translate_grpc_errors():
+        response = clients.run.CreateRun(request)
+    return Run._from_proto(clients, response.run)
+
+
+def _get_run_proto(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_service_pb2.Run:
+    """Retrieve the run with the given RID.
+
+    Raises:
+        NominalNotFoundError: If no run has that RID.
+        NominalError: If the retrieval request fails.
+    """
+    with translate_grpc_errors():
+        return service.GetRun(run_service_pb2.GetRunRequest(rid=rid)).run

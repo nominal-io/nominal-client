@@ -1270,6 +1270,8 @@ class _DatasetWrapper(abc.ABC):
 
         Raises:
             ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
+            RuntimeError: If this is a run associated with multiple assets.
+            NominalError: If retrieving the resource's data scopes fails.
         """
         data_scope = self._lookup_dataset_scope(data_scope_name)
         if data_scope is None:
