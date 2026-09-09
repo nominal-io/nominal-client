@@ -52,6 +52,7 @@ def create_derived_dataset(
         Reference to the created derived dataset in Nominal.
     """
     request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),

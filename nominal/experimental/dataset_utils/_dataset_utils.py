@@ -40,6 +40,7 @@ def create_dataset_with_uuid(
         Reference to the created dataset in Nominal.
     """
     create_dataset_request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),
