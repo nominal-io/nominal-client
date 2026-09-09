@@ -133,6 +133,16 @@ def test_create_sends_symbol_and_color() -> None:
     assert marking.rid == "ri.marking.a"
 
 
+def test_create_lowercases_an_uppercase_color() -> None:
+    """Either case is accepted at the boundary; the wire value is always lowercase."""
+    clients = _clients()
+    clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
+
+    _create_marking(clients, id="itar", description=None, authorized_groups=[], symbol=None, color="#CC0000")
+
+    assert clients.markings.CreateMarking.call_args.args[0].color.hex_code == "#cc0000"
+
+
 def test_get_marking_fetches_by_rid() -> None:
     """A single get, not a one-element batch: the service distinguishes missing from unreadable."""
     clients = _clients()

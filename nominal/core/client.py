@@ -577,8 +577,8 @@ class NominalClient:
             authorized_groups: RIDs of the groups authorized to access data sources carrying
                 this marking.
             symbol: Symbol identifying the marking in the Nominal app.
-            color: Lowercase six-digit hex color identifying the marking in the Nominal app,
-                e.g. `#cc0000`.
+            color: Six-digit hex color identifying the marking in the Nominal app, e.g. `#cc0000`.
+                Either case is accepted; the value is lowercased before being sent.
 
         Returns:
             Reference to the created marking.

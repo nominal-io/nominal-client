@@ -11,7 +11,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_markings_paginated
 from nominal.core._utils.query_tools import create_search_markings_query
-from nominal.core.elements import Symbol, _color_from_proto, _color_to_proto, _validate_hex_color
+from nominal.core.elements import Symbol, _color_from_proto, _color_to_proto, _normalize_hex_color
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -41,10 +41,10 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
     description: str
     symbol: Symbol | None
     color: str | None
-    """A six-digit hex color, e.g. `#cc0000`.
+    """A lowercase six-digit hex color, e.g. `#cc0000`.
 
-    Colors passed to the SDK must be lowercase; a color read back is whatever was stored, so a marking
-    created outside the SDK may carry uppercase hex.
+    The service constrains stored colors to this form, so a color read back is always lowercase.
+    An uppercase code passed to the SDK is lowercased rather than rejected.
     """
     created_at: IntegralNanosecondsUTC
     updated_at: IntegralNanosecondsUTC
@@ -91,7 +91,7 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
             description: New description for the marking.
             authorized_groups: Group RIDs replacing the existing ones. An empty sequence clears them.
             symbol: New symbol. Pass None to remove the marking's symbol.
-            color: New lowercase six-digit hex color, e.g. `#cc0000`. Pass None to remove it.
+            color: New six-digit hex color, e.g. `#cc0000`, in either case. Pass None to remove it.
 
         Returns:
             This marking, updated in place.
@@ -102,7 +102,7 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
             `authorized_groups`, which clear those fields.
 
         Raises:
-            ValueError: If `id` is not a valid marking id.
+            ValueError: If `id` is not a valid marking id, or `color` is not a valid hex color.
             NominalError: If the update request fails, including when the marking is archived.
         """
         request = markings_pb2.UpdateMarkingRequest(
@@ -123,7 +123,7 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
                 None
                 if isinstance(color, self._NotProvided)
                 else markings_pb2.UpdateMarkingRequest.UpdateMarkingColorWrapper(
-                    value=None if color is None else _color_to_proto(_validate_hex_color(color))
+                    value=None if color is None else _color_to_proto(_normalize_hex_color(color))
                 )
             ),
         )
@@ -186,7 +186,7 @@ def _create_marking(
         description=description or "",
         authorized_groups=markings_pb2.AuthorizedGroups(group_rids=list(authorized_groups)),
         symbol=None if symbol is None else symbol._to_proto(),
-        color=None if color is None else _color_to_proto(_validate_hex_color(color)),
+        color=None if color is None else _color_to_proto(_normalize_hex_color(color)),
     )
     with translate_grpc_errors():
         response = clients.markings.CreateMarking(request)

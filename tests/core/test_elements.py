@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from nominal.core.elements import Symbol, _color_from_proto, _color_to_proto, _validate_hex_color
+from nominal.core.elements import Symbol, _color_from_proto, _color_to_proto, _normalize_hex_color
 from nominal.protos.scout.elements.v1 import elements_pb2
 
 
@@ -40,12 +40,18 @@ def test_color_from_unset_proto_is_none() -> None:
 
 
 def test_color_reads_back_what_the_server_sent() -> None:
-    """Reads are faithful: validation guards user input, so it must not reject stored values."""
+    """Reads never re-validate, so an unexpected stored value surfaces rather than raising."""
     assert _color_from_proto(elements_pb2.Color(hex_code="#CC0000")) == "#CC0000"
 
 
 @pytest.mark.parametrize("bad", ["cc0000", "#ccc", "#gg0000", "#cc00000", "red", ""])
-def test_validate_hex_color_rejects_values_the_server_would_reject(bad: str) -> None:
-    """Guard client-side: users cannot see the backend's validation rule."""
+def test_normalize_hex_color_rejects_anything_but_a_six_digit_hex(bad: str) -> None:
+    """Mirrors the server's own `^#[0-9a-f]{6}$` constraint, failing locally instead of over the wire."""
     with pytest.raises(ValueError, match="hex color"):
-        _validate_hex_color(bad)
+        _normalize_hex_color(bad)
+
+
+@pytest.mark.parametrize("given", ["#cc0000", "#CC0000", "#Cc0000"])
+def test_normalize_hex_color_lowercases_so_writes_are_case_insensitive(given: str) -> None:
+    """Case carries no meaning in a hex color, so any case is accepted and sent as lowercase."""
+    assert _normalize_hex_color(given) == "#cc0000"

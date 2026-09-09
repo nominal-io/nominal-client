@@ -73,18 +73,23 @@ class Symbol:
 
 # A color is a bare hex string rather than a type: unlike `Symbol`, its wire representation has a
 # single arm, so there is no tag to carry and a wrapper would only add ceremony.
-_HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-def _validate_hex_color(hex_code: str) -> str:
-    """The hex code, if Nominal would accept it.
+def _normalize_hex_color(hex_code: str) -> str:
+    """The hex code, lowercased.
+
+    The service validates `hex_code` against `^#[0-9a-f]{6}$` (buf.validate, `scout.elements.v1`), so
+    lowercase six digits is the only accepted form. Case carries no meaning in a hex color, so an
+    uppercase code is lowercased for the caller rather than rejected. The six-digit shape is not:
+    it mirrors the server pattern, so rejecting it here turns a server error into a local one.
 
     Raises:
-        ValueError: If `hex_code` is not a lowercase six-digit hex color, e.g. `#cc0000`.
+        ValueError: If `hex_code` is not a six-digit hex color, e.g. `#cc0000`.
     """
     if _HEX_COLOR.match(hex_code) is None:
-        raise ValueError(f"expected a lowercase six-digit hex color such as '#cc0000', got {hex_code!r}")
-    return hex_code
+        raise ValueError(f"expected a six-digit hex color such as '#cc0000', got {hex_code!r}")
+    return hex_code.lower()
 
 
 def _color_to_proto(hex_code: str) -> elements_pb2.Color:
