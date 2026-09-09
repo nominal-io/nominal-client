@@ -187,27 +187,33 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Args:
             names: Names of datascopes to remove
             scopes: Rids or instances of scope types (dataset, video, connection) to remove.
+
+        Raises:
+            ValueError: If any scope RID is empty.
         """
         scope_names_to_remove = names or []
         data_scopes_to_remove = scopes or []
 
         scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove}
+        if "" in scope_rids_to_remove:
+            raise ValueError("Data scope RIDs must not be empty")
         latest_asset = self._get_latest_api()
 
-        data_scopes_to_keep = [
-            asset_pb2.CreateAssetDataScope(
-                data_scope_name=ds.data_scope_name,
-                data_source=ds.data_source if ds.HasField("data_source") else None,
-                series_tags=ds.series_tags,
-                offset=ds.offset if ds.HasField("offset") else None,
+        data_scopes_to_keep = []
+        for ds in latest_asset.data_scopes:
+            if ds.data_scope_name in scope_names_to_remove:
+                continue
+            source_type = ds.data_source.WhichOneof("data_source")
+            if source_type is not None and getattr(ds.data_source, source_type) in scope_rids_to_remove:
+                continue
+            data_scopes_to_keep.append(
+                asset_pb2.CreateAssetDataScope(
+                    data_scope_name=ds.data_scope_name,
+                    data_source=ds.data_source if ds.HasField("data_source") else None,
+                    series_tags=ds.series_tags,
+                    offset=ds.offset if ds.HasField("offset") else None,
+                )
             )
-            for ds in latest_asset.data_scopes
-            if ds.data_scope_name not in scope_names_to_remove
-            and all(
-                rid not in scope_rids_to_remove
-                for rid in (ds.data_source.dataset, ds.data_source.connection, ds.data_source.video)
-            )
-        ]
 
         request = asset_pb2.UpdateAssetRequest(
             asset_rid=self.rid,
@@ -743,7 +749,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         return cls(
             rid=asset.rid,
             name=asset.title,
-            description=asset.description or None,
+            description=asset.description if asset.HasField("description") else None,
             properties=MappingProxyType(dict(asset.properties)),
             labels=tuple(asset.labels),
             created_at=asset.created_at.ToNanoseconds(),

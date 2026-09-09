@@ -227,6 +227,40 @@ def test_remove_data_scopes_drops_by_rid_and_keeps_survivors_intact(asset_with_s
     assert not kept[0].HasField("offset"), "an unset offset must not be re-sent as an explicit zero"
 
 
+@pytest.mark.parametrize("scopes", [[""], ["ri.video.1", ""]])
+def test_remove_data_scopes_rejects_empty_rids_before_calling_the_service(
+    asset_with_scopes, mock_clients, scopes
+) -> None:
+    with pytest.raises(ValueError, match="RIDs must not be empty"):
+        asset_with_scopes.remove_data_scopes(scopes=scopes)
+
+    mock_clients.assets.GetAssets.assert_not_called()
+    mock_clients.assets.UpdateAsset.assert_not_called()
+
+
+@pytest.mark.parametrize("source_type", ["dataset", "connection", "video", "log_set", "spatial"])
+def test_remove_data_scopes_matches_the_active_source_rid(mock_asset, mock_clients, update_asset, source_type) -> None:
+    mock_clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(
+        responses={
+            mock_asset.rid: _proto_asset(
+                mock_asset.rid,
+                data_scopes=[
+                    asset_pb2.DataScope(
+                        data_scope_name="remove", data_source=asset_pb2.DataSource(**{source_type: "ri.source.1"})
+                    ),
+                    asset_pb2.DataScope(data_scope_name="keep"),
+                ],
+            )
+        }
+    )
+
+    mock_asset.remove_data_scopes(scopes=["ri.source.1"])
+
+    kept = update_asset.call_args.args[0].data_scopes.data_scopes
+    assert [scope.data_scope_name for scope in kept] == ["keep"]
+    assert not kept[0].HasField("data_source")
+
+
 def test_scopes_are_selected_by_the_oneof_discriminator(asset_with_scopes) -> None:
     """The proto data_source is a oneof, so scope kind comes from which field is set."""
     assert asset_with_scopes._scope_rids("dataset") == {"ds": "ri.dataset.1"}
@@ -253,6 +287,12 @@ def test_from_proto_reads_optional_fields() -> None:
 
     present = Asset._from_proto(MagicMock(), _proto_asset(description="d", created_by="ri.user.1"))
     assert (present.description, present.created_by_rid) == ("d", "ri.user.1")
+
+
+def test_from_proto_preserves_an_explicitly_empty_description() -> None:
+    asset = Asset._from_proto(MagicMock(), _proto_asset(description=""))
+
+    assert asset.description == ""
 
 
 def test_get_asset_raises_not_found_when_the_rid_is_absent(mock_clients) -> None:
