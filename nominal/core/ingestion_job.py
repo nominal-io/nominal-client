@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Protocol, Sequence
@@ -10,9 +12,11 @@ from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
-from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
-from nominal.core.dataset_file import as_files_ingested as _as_files_ingested
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure, _poll_files_once
+from nominal.core.exceptions import NominalIngestError
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionJobStatus(Enum):
@@ -63,6 +67,16 @@ class IngestionJobStatus(Enum):
             case _:
                 result = ingest_api.IngestJobStatus.UNKNOWN
         return result
+
+
+_RUNNING_JOB_STATUSES = frozenset(
+    {IngestionJobStatus.SUBMITTED, IngestionJobStatus.QUEUED, IngestionJobStatus.IN_PROGRESS}
+)
+"""Statuses from which a job can still produce more files.
+
+Deliberately the running set rather than the terminal set: a status this client does not recognize
+stops the wait instead of looping forever on it.
+"""
 
 
 class IngestType(Enum):
@@ -177,16 +191,96 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             next_page_token = page.next_page
 
     def dataset_files(self) -> Sequence[DatasetFile]:
-        """Return the dataset files produced by this ingest job."""
+        """Return the dataset files this ingest job has produced so far.
+
+        This is a point-in-time snapshot: a job that is not yet terminal can still produce more files,
+        and one that produces its files in bulk has none to report until its work is done. To wait for
+        the complete set, use `as_files_ingested()`.
+        """
         return list(self._iter_dataset_files())
 
     def as_files_ingested(
-        self, *, poll_interval: datetime.timedelta = datetime.timedelta(seconds=1)
+        self,
+        *,
+        poll_interval: datetime.timedelta = datetime.timedelta(seconds=1),
+        timeout: datetime.timedelta | None = None,
     ) -> Iterable[DatasetFile]:
         """Yield this job's dataset files as each completes ingestion.
 
-        Polls the files produced by this job (as of the call) until each finishes ingesting, mirroring
-        `nominal.core.as_files_ingested`. `list(job.as_files_ingested())` blocks until all are ingested.
-        For timeout / return-when control, use `nominal.core.wait_for_files_to_ingest(job.dataset_files(), ...)`.
+        Waits out both stages of an ingest: the job producing its files, then those files finishing
+        ingestion. The file list is re-read on each poll for as long as the job is still running, so
+        files that do not exist yet when this is called are still picked up — a job that emits many
+        files registers none of them until its work is done, and a wait that read the list only once
+        would report success over zero files. `list(job.as_files_ingested())` therefore blocks until
+        the job is terminal and every file it produced has finished ingesting.
+
+        Yielded files may have failed: a job can complete with some of its files FAILED, so check
+        `ingest_status` on each yielded file if that matters. For timeout / return-when control over
+        a fixed set of files, use `nominal.core.wait_for_files_to_ingest(job.dataset_files(), ...)`.
+
+        Args:
+            poll_interval: Interval to sleep between polls of this job and of its pending files.
+            timeout: If given, the maximum time to wait before raising `TimeoutError`.
+
+        Yields:
+            Dataset files as they finish ingesting. Due to the polling mechanics, the files are not
+            yielded in strictly sorted order based on their ingestion completion time.
+
+        Raises:
+            NominalIngestError: The job itself finished FAILED or CANCELLED.
+            TimeoutError: `timeout` elapsed while the job or one of its files was still in progress.
         """
-        yield from _as_files_ingested(self.dataset_files(), poll_interval=poll_interval)
+        start_time = datetime.datetime.now()
+        seen_file_ids: set[str] = set()
+        pending: list[DatasetFile] = []
+        job_running = True
+
+        while True:
+            if job_running:
+                if self.status in _RUNNING_JOB_STATUSES:
+                    self.refresh()
+                # A terminal job's file list is complete, so read it once more and then stop looking.
+                job_running = self.status in _RUNNING_JOB_STATUSES
+                # produced_file_count is a live count that comes free with the refresh above. It says
+                # nothing about how many files to expect, but an unchanged one does mean a re-listing
+                # cannot turn up anything new — worth skipping for a job holding thousands of files.
+                # The pass that observes a terminal status always lists, whatever the count says.
+                if not job_running or self.produced_file_count != len(seen_file_ids):
+                    for file in self._iter_dataset_files():
+                        if file.id not in seen_file_ids:
+                            seen_file_ids.add(file.id)
+                            pending.append(file)
+
+            if pending:
+                newly_done, pending, _ = _poll_files_once(pending)
+                yield from newly_done
+
+            if not job_running and not pending:
+                break
+
+            if timeout is not None and datetime.datetime.now() - start_time >= timeout:
+                raise TimeoutError(
+                    f"timed out after {timeout} waiting for ingest job {self.rid}: "
+                    f"job status {self.status.name}, {len(pending)} file(s) still ingesting"
+                )
+
+            logger.info(
+                "Sleeping for %f seconds while awaiting ingest job %s (status %s, %d file(s) ingesting)...",
+                poll_interval.total_seconds(),
+                self.rid,
+                self.status.name,
+                len(pending),
+            )
+            time.sleep(poll_interval.total_seconds())
+
+        if self.status in (IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED):
+            raise NominalIngestError(
+                f"ingest job {self.rid} finished {self.status.name} after producing {len(seen_file_ids)} file(s)"
+            )
+        elif self.status is not IngestionJobStatus.COMPLETED:
+            logger.warning(
+                "Ingest job %s had unrecognized status %s; treating as terminal after %d file(s).",
+                self.rid,
+                self.status.name,
+                len(seen_file_ids),
+            )

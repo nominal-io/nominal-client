@@ -384,6 +384,55 @@ def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> 
     return absent_ids
 
 
+def _poll_files_once(files: Sequence[DatasetFile]) -> tuple[list[DatasetFile], list[DatasetFile], bool]:
+    """Refresh `files` from the server once and partition them into (done, not done, any failed).
+
+    A file that is absent from the batch response, has failed, or reports an unrecognized status is
+    treated as done, so an unknown status can never wedge a caller's polling loop.
+    """
+    done: list[DatasetFile] = []
+    not_done: list[DatasetFile] = []
+    has_failed = False
+
+    absent_ids = _batch_refresh_files([*files])
+
+    for file in files:
+        if file.id in absent_ids:
+            logger.warning(
+                "Dataset file %s from dataset %s was absent from the batch response "
+                "— it may have been deleted or never created successfully.",
+                file.id,
+                file.dataset_rid,
+            )
+            done.append(file)
+            has_failed = True
+            continue
+        match file.ingest_status:
+            case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
+                done.append(file)
+            case IngestStatus.FAILED:
+                logger.warning(
+                    "Dataset file %s from dataset %s failed to ingest! Error: %s",
+                    file.id,
+                    file.dataset_rid,
+                    file._ingest_error_message,
+                )
+                done.append(file)
+                has_failed = True
+            case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
+                not_done.append(file)
+            case _:
+                logger.warning(
+                    "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                    file.id,
+                    file.dataset_rid,
+                    file.ingest_status,
+                )
+                done.append(file)
+
+    return done, not_done, has_failed
+
+
 def wait_for_files_to_ingest(
     files: Sequence[DatasetFile],
     *,
@@ -417,44 +466,9 @@ def wait_for_files_to_ingest(
     while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
-        absent_ids = _batch_refresh_files(not_done)
-
-        next_not_done = []
-        for file in not_done:
-            if file.id in absent_ids:
-                logger.warning(
-                    "Dataset file %s from dataset %s was absent from the batch response "
-                    "— it may have been deleted or never created successfully.",
-                    file.id,
-                    file.dataset_rid,
-                )
-                done.append(file)
-                has_failed = True
-                continue
-            match file.ingest_status:
-                case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
-                    done.append(file)
-                case IngestStatus.FAILED:
-                    logger.warning(
-                        "Dataset file %s from dataset %s failed to ingest! Error: %s",
-                        file.id,
-                        file.dataset_rid,
-                        file._ingest_error_message,
-                    )
-                    done.append(file)
-                    has_failed = True
-                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
-                    next_not_done.append(file)
-                case _:
-                    logger.warning(
-                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
-                        file.id,
-                        file.dataset_rid,
-                        file.ingest_status,
-                    )
-                    done.append(file)
-
-        not_done = next_not_done
+        newly_done, not_done, newly_failed = _poll_files_once(not_done)
+        done.extend(newly_done)
+        has_failed = has_failed or newly_failed
 
         if has_failed and return_when is IngestWaitType.FIRST_EXCEPTION:
             break
