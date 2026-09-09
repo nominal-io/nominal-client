@@ -156,6 +156,11 @@ def single_file_extractor(fn: Callable[[SingleFileExtractorContext], None]) -> E
     :meth:`SingleFileExtractorContext.set_output`. If the image's registered format turns out to be
     ``MANIFEST``, :meth:`Extractor.run` fails at startup with a clear error.
 
+    This is the original output contract, kept for images already registered against it. New
+    extractors should use :func:`manifest_extractor`, a strict superset: this mode has no per-output
+    timestamp, tag-column, or channel-prefix control, and changing an image's output format later
+    requires registering a new image.
+
     Example::
 
         from nominal.experimental.extractor import SingleFileExtractorContext, single_file_extractor
@@ -176,16 +181,21 @@ def single_file_extractor(fn: Callable[[SingleFileExtractorContext], None]) -> E
 def manifest_extractor(fn: Callable[[ManifestExtractorContext], None]) -> Extractor[ManifestExtractorContext]:
     """Turn ``def fn(ctx: ManifestExtractorContext) -> None`` into a manifest extractor entrypoint.
 
-    For images registered with the ``MANIFEST`` output format: declare each output file (and its
-    per-file ingest type, tag columns, channel prefix, and optional epoch or relative timestamp
-    metadata) with :meth:`ManifestExtractorContext.add_output`, and any video with
-    :meth:`ManifestExtractorContext.add_video`; ``manifest.json`` is written automatically when the
-    function returns. If the image's registered format is not ``MANIFEST``, :meth:`Extractor.run`
-    fails at startup with a clear error.
+    Use this contract for new extractors: it describes each output file individually, so one image can
+    emit several files, mix telemetry with logs and video, and set per-file timestamps, tag columns,
+    and channel prefixes.
+
+    For images registered with the ``MANIFEST`` output format: declare each output file with the
+    method for its format -- :meth:`ManifestExtractorContext.add_tabular`,
+    :meth:`~ManifestExtractorContext.add_avro_stream`,
+    :meth:`~ManifestExtractorContext.add_journal_json` -- and any video with
+    :meth:`~ManifestExtractorContext.add_video`. Each takes only the options its format uses.
+    ``manifest.json`` is written when the function returns. If the image's registered format is not
+    ``MANIFEST``, :meth:`Extractor.run` fails at startup.
 
     Example::
 
-        from nominal.experimental.extractor import IngestType, ManifestExtractorContext, manifest_extractor
+        from nominal.experimental.extractor import ManifestExtractorContext, manifest_extractor
 
         @manifest_extractor
         def split(ctx: ManifestExtractorContext) -> None:
@@ -193,7 +203,7 @@ def manifest_extractor(fn: Callable[[ManifestExtractorContext], None]) -> Extrac
             for i, chunk in enumerate(chunks_of(table, int(ctx.get_param("PARTS", "2")))):
                 out = ctx.output_dir / f"part_{i}.parquet"
                 write_parquet(chunk, out)
-                ctx.add_output(out, ingest_type=IngestType.TABULAR)
+                ctx.add_tabular(out, timestamp_column="time_us", timestamp_type="epoch_microseconds")
 
             footage = ctx.output_dir / "camera.mp4"
             write_video(footage)

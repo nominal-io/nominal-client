@@ -947,8 +947,14 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """Add data from proprietary data formats using a pre-registered custom extractor.
 
         A containerized extraction runs asynchronously and may emit multiple output files, so this returns
-        the tracking `IngestionJob` immediately rather than a single file. Use `job.as_files_ingested()` or
-        `job.dataset_files()` to pull the produced files, `job.status` to poll, and `job.cancel()` to cancel.
+        the tracking `IngestionJob` immediately rather than a single file, and `job.cancel()` cancels it.
+
+        Waiting takes two stages: the container finishes producing files, then those files finish
+        ingesting. For the first, poll `job.refresh()` then `job.status` until the job is terminal —
+        `status` is a snapshot, so refreshing is what advances it. Only then is the file list complete:
+        `job.dataset_files()` returns the files that exist when it is called, and `job.as_files_ingested()`
+        calls it once, so either one returns empty rather than waiting if the container has not produced
+        anything yet.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
