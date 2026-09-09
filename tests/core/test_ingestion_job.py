@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
@@ -216,6 +217,23 @@ def test_as_files_ingested_skips_relisting_files_while_the_produced_count_is_unc
 
     assert yielded == [file]
     assert mock_clients.catalog.get_dataset_files_for_job.call_count == 2
+
+
+def test_as_files_ingested_warns_when_fewer_files_listed_than_the_job_reports(
+    mock_clients: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Listing fewer files than the job's produced count is reported rather than passing silently."""
+    job = IngestionJob._from_conjure(
+        mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED, produced_file_count=3)
+    )
+    file = _make_file("only-file", [IngestStatus.SUCCESS])
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+
+    with _polling(), caplog.at_level(logging.WARNING):
+        yielded = list(job.as_files_ingested())
+
+    assert yielded == [file]
+    assert "reports 3 produced file(s) but only 1 could be listed" in caplog.text
 
 
 def test_as_files_ingested_yields_files_that_failed_to_ingest(mock_clients: MagicMock) -> None:

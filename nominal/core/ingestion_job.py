@@ -292,6 +292,20 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             )
             time.sleep(sleep_for)
 
+        # The job's own count is the only cross-check available on whether the paged listing returned
+        # everything: it counts the same rows the listing selects, before that listing drops unlanded
+        # files and ones in datasets this caller cannot read. Those make a shortfall legitimate, so
+        # this reports rather than raises.
+        if self.produced_file_count is not None and len(seen_file_ids) < self.produced_file_count:
+            logger.warning(
+                "Ingest job %s reports %d produced file(s) but only %d could be listed. Unlanded files "
+                "and files in datasets you cannot read are counted but not listed; otherwise the paged "
+                "listing dropped rows.",
+                self.rid,
+                self.produced_file_count,
+                len(seen_file_ids),
+            )
+
         if self.status is IngestionJobStatus.FAILED:
             raise NominalIngestFailed(
                 f"ingest job {self.rid} failed after producing {len(seen_file_ids)} file(s): {sorted(seen_file_ids)}"
