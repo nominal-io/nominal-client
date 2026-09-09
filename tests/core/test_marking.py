@@ -274,29 +274,6 @@ def test_apply_and_remove_send_one_sided_updates() -> None:
     assert list(removed.markings_to_remove) == ["ri.marking.a"]
 
 
-def test_set_markings_sends_the_diff_in_one_call() -> None:
-    """Replacing the set adds what is missing and removes what is no longer wanted, atomically."""
-    clients = _clients()
-    _applied(clients, "ri.dataset.a", "ri.marking.keep", "ri.marking.drop")
-
-    _Markable("ri.dataset.a", clients).set_markings(["ri.marking.keep", "ri.marking.add"])
-
-    assert clients.markings.UpdateMarkingsOnResource.call_count == 1
-    request = clients.markings.UpdateMarkingsOnResource.call_args.args[0]
-    assert sorted(request.markings_to_apply) == ["ri.marking.add"]
-    assert sorted(request.markings_to_remove) == ["ri.marking.drop"]
-
-
-def test_set_markings_skips_the_call_when_nothing_changes() -> None:
-    """An unchanged set sends no update request at all."""
-    clients = _clients()
-    _applied(clients, "ri.dataset.a", "ri.marking.keep")
-
-    _Markable("ri.dataset.a", clients).set_markings(["ri.marking.keep"])
-
-    clients.markings.UpdateMarkingsOnResource.assert_not_called()
-
-
 def test_markings_accept_instances_as_well_as_rids() -> None:
     """A Marking instance is coerced to its rid on the wire."""
     clients = _clients()

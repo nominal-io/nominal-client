@@ -252,6 +252,13 @@ class MarkableMixin:
 
         Markings the user does not have permission to read are omitted.
 
+        Note:
+            The service filters unreadable markings out of the response, so this may be a strict
+            subset of what is actually applied. Treat it as "what I can see", not "what is there":
+            a resource can carry markings that never appear here. Use `apply_markings` and
+            `remove_markings`, which name their targets outright, rather than computing a desired
+            set from this list.
+
         Raises:
             NominalError: If the request fails.
         """
@@ -283,33 +290,6 @@ class MarkableMixin:
             NominalError: If the request fails.
         """
         _update_markings_on_resource(self._clients, self.rid, apply=(), remove=markings)
-
-    def set_markings(self, markings: Iterable[Marking | str]) -> None:
-        """Replace the markings on this resource with exactly the given markings.
-
-        The difference against the currently-applied markings is computed and sent as a single
-        atomic update. An empty sequence removes every marking from the resource.
-
-        Args:
-            markings: Markings, or marking RIDs, the resource should carry.
-
-        Note:
-            This replaces the markings rather than appending to them, and the difference is computed
-            against every applied marking — including any the caller cannot read, which
-            `list_markings` omits. A read-modify-write built on `list_markings` therefore removes the
-            markings it could not see. To add a marking without disturbing the others, use
-            `apply_markings` rather than merging into `set_markings`.
-
-        Raises:
-            NominalError: If the request fails.
-        """
-        desired = {rid_from_instance_or_string(marking) for marking in markings}
-        current = set(_applied_marking_rids(self._clients, self.rid))
-        to_apply = desired - current
-        to_remove = current - desired
-        if not to_apply and not to_remove:
-            return
-        _update_markings_on_resource(self._clients, self.rid, apply=to_apply, remove=to_remove)
 
 
 def _applied_marking_rids(clients: Marking._Clients, resource_rid: str) -> Sequence[str]:
