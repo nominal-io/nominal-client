@@ -10,7 +10,13 @@ from nominal.core._checklist_types import Priority
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient
-from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder, _iter_search_data_reviews
+from nominal.core.data_review import (
+    CheckViolation,
+    DataReview,
+    DataReviewBuilder,
+    _get_data_review,
+    _iter_search_data_reviews,
+)
 from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.types import common_pb2, types_pb2
@@ -186,5 +192,39 @@ def test_get_data_review_returns_a_hydrated_review(clients) -> None:
     """The getter hydrates, so callers do not repeat _from_proto at every site."""
     clients.datareview.GetDataReview.return_value = _get_response()
 
-    assert isinstance(NominalClient(_clients=clients).get_data_review("ri.datareview.1"), DataReview)
+    assert isinstance(_get_data_review(clients, "ri.datareview.1"), DataReview)
     assert clients.datareview.GetDataReview.call_args.args[0].data_review_rid == "ri.datareview.1"
+
+
+def test_client_get_data_review_and_reload_return_hydrated_reviews(clients) -> None:
+    clients.datareview.GetDataReview.return_value = _get_response()
+    review = NominalClient(_clients=clients).get_data_review("ri.datareview.1")
+    clients.datareview.GetDataReview.return_value = data_review_pb2.GetDataReviewResponse(
+        data_review=_proto_review(states=(PENDING,))
+    )
+
+    reloaded = review.reload()
+
+    assert isinstance(reloaded, DataReview)
+    assert reloaded.rid == review.rid
+    assert reloaded.completed is False
+    assert review.completed is True
+
+
+@pytest.mark.parametrize(("asset", "commit"), [(None, None), ("ri.asset.1", "abc")])
+def test_builder_preserves_optional_request_fields(clients, initiate, asset: str | None, commit: str | None) -> None:
+    clients.run.get_run.return_value.assets = ["ri.asset.1"]
+    builder = NominalClient(_clients=clients).data_review_builder()
+
+    reviews = builder.execute_checklist("ri.run.1", "ri.checklist.1", asset=asset, commit=commit).initiate(
+        wait_for_completion=False
+    )
+
+    request = initiate.call_args.args[0].requests[0]
+    assert (request.run_rid, request.checklist_rid) == ("ri.run.1", "ri.checklist.1")
+    for field, value in (("asset_rid", asset), ("commit", commit)):
+        assert request.HasField(field) is (value is not None)
+        if value is not None:
+            assert getattr(request, field) == value
+    assert len(reviews) == 1
+    assert isinstance(reviews[0], DataReview)

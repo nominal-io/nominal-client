@@ -79,7 +79,7 @@ class DataReview(HasRid):
         """Retrieves the list of events for the data review."""
         all_event_rids = [
             event_rid
-            for check in _get_data_review(self._clients, self.rid).check_evaluations
+            for check in _get_data_review_proto(self._clients, self.rid).check_evaluations
             if check.state.HasField("generated_alerts")
             for event_rid in check.state.generated_alerts.event_rids
         ]
@@ -90,7 +90,7 @@ class DataReview(HasRid):
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
-        return DataReview._from_proto(self._clients, _get_data_review(self._clients, self.rid))
+        return _get_data_review(self._clients, self.rid)
 
     def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
         """Polls the data review until it is completed."""
@@ -215,6 +215,9 @@ class DataReviewBuilder:
 
         Args:
             wait_for_completion: If True, waits for the data review process to complete before returning.
+
+        Returns:
+            The initiated reviews, which may still be running unless wait_for_completion is True.
         """
         data_reviews = _initiate_data_reviews(
             self._clients,
@@ -254,8 +257,9 @@ def _iter_search_data_reviews(
 def _check_has_settled(state: data_review_pb2.AutomaticCheckEvaluationState) -> bool:
     """Whether a check evaluation has reached a terminal state.
 
-    Matching on the oneof rather than testing individual arms means a state added to the proto has to be
-    classified here instead of silently counting as settled.
+    The generated oneof types make this match exhaustive when the client updates its proto dependency.
+    Unknown states received from a newer server appear as an unset oneof and count as settled, preserving
+    the legacy behavior.
     """
     match state.WhichOneof("automatic_check_evaluation_state"):
         case "pending_execution" | "executing":
@@ -273,20 +277,24 @@ def _initiate_data_reviews(
 ) -> Sequence[DataReview]:
     """Initiate the requested data reviews and return them hydrated."""
     request = data_review_pb2.BatchInitiateRequest(
-        requests=list(requests),
-        notification_configurations=list(notification_configurations),
+        requests=requests,
+        notification_configurations=notification_configurations,
     )
     with translate_grpc_errors():
         rids = clients.datareview.BatchInitiate(request).rids
-    return [DataReview._from_proto(clients, _get_data_review(clients, rid)) for rid in rids]
+    return [_get_data_review(clients, rid) for rid in rids]
 
 
-def _get_data_review(clients: DataReview._Clients, rid: str) -> data_review_pb2.DataReview:
+def _get_data_review(clients: DataReview._Clients, rid: str) -> DataReview:
     """The data review with the given rid.
 
     Raises:
         NominalNotFoundError: If no data review has that rid.
     """
+    return DataReview._from_proto(clients, _get_data_review_proto(clients, rid))
+
+
+def _get_data_review_proto(clients: DataReview._Clients, rid: str) -> data_review_pb2.DataReview:
     with translate_grpc_errors():
         response = clients.datareview.GetDataReview(data_review_pb2.GetDataReviewRequest(data_review_rid=rid))
     return response.data_review
