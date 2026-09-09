@@ -17,8 +17,9 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
-from nominal.core.run import Run
+from nominal.core.run import Run, _get_run_proto
 from nominal.core.workbook import Workbook, WorkbookType
+from nominal.protos.run.v1 import run_service_pb2_grpc
 
 
 def _rebind_video_datasources(
@@ -79,7 +80,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         @property
         def notebook(self) -> scout.NotebookService: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
         def template(self) -> scout.TemplateService: ...
 
@@ -202,7 +203,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             elif isinstance(run, Run) and run.assets:
                 video_asset_rid = run.assets[0]
             elif run_rid is not None:
-                raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+                raw_run = _get_run_proto(self._clients.run, run_rid)
                 video_asset_rid = raw_run.assets[0] if raw_run.assets else None
             else:
                 raise ValueError(

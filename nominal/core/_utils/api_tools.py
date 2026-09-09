@@ -108,17 +108,22 @@ class LinkDict(TypedDict):
     title: NotRequired[str]
 
 
-def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
-    links_conjure = []
+def normalize_links(links: Sequence[str | Link | LinkDict]) -> list[tuple[str, str | None]]:
+    """Reduce every accepted link spelling -- url, (url, title), or dict -- to (url, title) pairs."""
+    normalized: list[tuple[str, str | None]] = []
     for link in links:
         if isinstance(link, tuple):
             url, title = link
-            links_conjure.append(scout_run_api.Link(url=url, title=title))
+            normalized.append((url, title))
         elif isinstance(link, dict):
-            links_conjure.append(scout_run_api.Link(url=link["url"], title=link.get("title")))
+            normalized.append((link["url"], link.get("title")))
         else:
-            links_conjure.append(scout_run_api.Link(url=link))
-    return links_conjure
+            normalized.append((link, None))
+    return normalized
+
+
+def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
+    return [scout_run_api.Link(url=url, title=title) for url, title in normalize_links(links)]
 
 
 def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_compute_api.StringConstant]:

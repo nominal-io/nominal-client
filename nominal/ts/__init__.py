@@ -208,6 +208,7 @@ from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, assert_never
 
+from nominal.protos.run.v1 import run_pb2, run_service_pb2
 from nominal.protos.types import common_pb2
 from nominal.protos.types.time import time_pb2, timestamp_parsers_pb2
 
@@ -613,6 +614,9 @@ class _SecondsNanos(NamedTuple):
                 self.nanos,
             )
 
+    def to_run_proto(self) -> run_pb2.UtcTimestamp:
+        return run_pb2.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
+
     def to_scout_run_api(self) -> scout_run_api.UtcTimestamp:
         return scout_run_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
 
@@ -654,6 +658,10 @@ class _SecondsNanos(NamedTuple):
 
     def to_datetime(self) -> datetime:
         return datetime.fromtimestamp(self.seconds + self.nanos * 1e-9, timezone.utc)
+
+    @classmethod
+    def from_run_proto(cls, ts: run_pb2.UtcTimestamp) -> Self:
+        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds)
 
     @classmethod
     def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
@@ -717,6 +725,11 @@ def _to_seconds_nanos_duration(duration: timedelta | IntegralNanosecondsDuration
     """
     total_nanos = duration // _ONE_MICROSECOND * 1_000 if isinstance(duration, timedelta) else duration
     return divmod(total_nanos, 1_000_000_000)
+
+
+def _to_run_duration(duration: timedelta | IntegralNanosecondsDuration) -> run_service_pb2.Duration:
+    seconds, nanos = _to_seconds_nanos_duration(duration)
+    return run_service_pb2.Duration(seconds=seconds, nanos=nanos)
 
 
 def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
