@@ -161,8 +161,12 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         This extractor instance is unmodified. Tags are immutable — registering an already-registered
         tag raises `NominalAlreadyExistsError`.
 
+        Nominal runs extractor images on amd64, so build with `--platform linux/amd64`. Registration
+        does not check the tarball's architecture: an arm64 image (the default on Apple Silicon)
+        registers and activates, then fails at ingest with an exec format error.
+
         Args:
-            tarball: Path to a `docker save` tarball of the extractor image.
+            tarball: Path to a `docker save` tarball of the extractor image, built for linux/amd64.
             tag: Tag to register the image under.
             inputs: Input files the extractor consumes.
             default_timestamp_column: Name of the column containing timestamp data in the extractor's
