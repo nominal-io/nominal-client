@@ -13,6 +13,7 @@ Experimental functionality:
 
 [`nominal.experimental.compute`](./experimental/compute.md) - experimental "compute as code" DSL.  
 [`nominal.experimental.logging`](./experimental/logging.md) - experimental logging utilities.  
+[`nominal.experimental.mcap_video`](./experimental/mcap_video.md) - experimental direct-MCAP video scanning.  
 [`nominal.experimental.video_processing`](./experimental/video_processing.md) - experimental video processing utilities.  
 
 <!--
