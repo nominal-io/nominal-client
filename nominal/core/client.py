@@ -93,6 +93,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.exceptions import (
     LegacyVideoDeprecationWarning,
@@ -103,6 +104,14 @@ from nominal.core.exceptions import (
 )
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.core.marking import (
+    Marking,
+    _create_marking,
+    _get_marking,
+    _get_marking_by_id,
+    _marking_rids,
+    _search_markings,
+)
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -549,6 +558,80 @@ class NominalClient:
         )
         return list(self._iter_search_secrets(query, archive_status))
 
+    def create_marking(
+        self,
+        id: str,
+        *,
+        description: str | None = None,
+        authorized_groups: Sequence[str] = (),
+        symbol: Symbol | None = None,
+        color: str | None = None,
+    ) -> Marking:
+        """Create a marking in the current organization.
+
+        Args:
+            id: Human-readable identifier for the marking, unique within the organization. Must be
+                lowercase alphanumeric characters optionally separated by hyphens, starting with a
+                letter, e.g. `export-controlled`.
+            description: Human readable description of the marking.
+            authorized_groups: RIDs of the groups authorized to access data sources carrying
+                this marking.
+            symbol: Symbol identifying the marking in the Nominal app.
+            color: Six-digit hex color identifying the marking in the Nominal app, e.g. `#cc0000`.
+                Either case is accepted; the value is lowercased before being sent.
+
+        Returns:
+            Reference to the created marking.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id, or `color` is not a valid hex color.
+            NominalError: If creation fails, including when the caller is not an organization admin
+                or a marking with this id already exists.
+        """
+        return _create_marking(
+            self._clients,
+            id=id,
+            description=description,
+            authorized_groups=authorized_groups,
+            symbol=symbol,
+            color=color,
+        )
+
+    def get_marking(self, rid: str) -> Marking:
+        """Retrieve a marking by RID.
+
+        Raises:
+            NominalNotFoundError: If no marking with the given RID exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
+        """
+        return _get_marking(self._clients, rid)
+
+    def get_marking_by_id(self, id: str) -> Marking:
+        """Retrieve a marking by its human-readable id, unique within the organization.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id.
+            NominalNotFoundError: If no marking with the given id exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
+        """
+        return _get_marking_by_id(self._clients, id)
+
+    def search_markings(self, id_substring: str | None = None) -> Sequence[Marking]:
+        """Search markings in the current organization, oldest first.
+
+        Args:
+            id_substring: Substring that a marking's id must contain to be included.
+
+        Returns:
+            All markings matching the given conditions.
+
+        Note:
+            Markings are scoped to an organization rather than a workspace, so this search takes no
+            workspace filter. Archived markings are never returned; fetch them by RID with
+            `get_marking` instead.
+        """
+        return _search_markings(self._clients, id_substring=id_substring)
+
     def _iter_search_videos(
         self,
         query: scout_video_api.SearchVideosQuery,
@@ -780,7 +863,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
-        markings: Sequence[str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> Dataset:
         """Create an empty dataset.
 
@@ -790,7 +873,8 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            markings: If present, RIDs of markings to apply to the created dataset
+            markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -803,7 +887,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
-            marking_rids=markings,
+            marking_rids=_marking_rids(markings),
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
@@ -824,6 +908,7 @@ class NominalClient:
         description: str | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> Video:
         """Create an empty video to append video files to.
 
@@ -832,6 +917,8 @@ class NominalClient:
             description: Description of the video to create in nominal
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
+            markings: If present, markings (or marking RIDs) applied to the video. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Handle to the created video
@@ -844,6 +931,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
+            marking_rids=_marking_rids(markings),
         )
         return Video._from_conjure(self._clients, response)
 
@@ -1089,6 +1177,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> StreamingConnection:
         workspace_rid = self._clients.resolve_default_workspace_rid()
         datasource_response = self._clients.storage.create(
@@ -1121,7 +1210,7 @@ class NominalClient:
                 available_tag_values={},
                 should_scrape=True,
                 workspace=workspace_rid,
-                marking_rids=[],
+                marking_rids=_marking_rids(markings),
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)

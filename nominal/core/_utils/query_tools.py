@@ -20,6 +20,7 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
@@ -150,6 +151,18 @@ def _backfill_workbook_template_archive_query_clause(
             )
 
     raise ValueError(f"Unexpected archive_status for workbook template search: {archive_status}")
+
+
+def create_search_markings_query(id_substring: str | None = None) -> markings_pb2.SearchMarkingsQuery:
+    """Build a marking search query. With no arguments, matches every marking in the organization."""
+    queries = []
+    if id_substring is not None:
+        queries.append(markings_pb2.SearchMarkingsQuery(id_exact_substring_search=id_substring))
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    # Unlike most search queries in this API, `and` holds a message wrapping the list, not a repeated field.
+    return markings_pb2.SearchMarkingsQuery(
+        **{"and": markings_pb2.SearchMarkingsQueryList(queries=queries)}  # type: ignore[arg-type]
+    )
 
 
 def create_search_secrets_query(
