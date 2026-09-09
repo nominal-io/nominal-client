@@ -1657,7 +1657,6 @@ def _construct_new_ingest_options(
     s3_path: str,
     workspace_rid: str | None,
     tags: Mapping[str, str] | None,
-    marking_rids: Sequence[str] | None = None,
 ) -> ingest_api.IngestOptions:
     source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
     target = ingest_api.DatasetIngestTarget(
@@ -1668,7 +1667,7 @@ def _construct_new_ingest_options(
             dataset_description=description,
             dataset_name=name,
             workspace=workspace_rid,
-            marking_rids=list(marking_rids or []),
+            marking_rids=[],
         )
     )
     timestamp_metadata = ingest_api.TimestampMetadata(

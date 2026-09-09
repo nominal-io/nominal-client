@@ -41,7 +41,11 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
     description: str
     symbol: Symbol | None
     color: str | None
-    """A lowercase six-digit hex color, e.g. `#cc0000`."""
+    """A six-digit hex color, e.g. `#cc0000`.
+
+    Colors passed to the SDK must be lowercase; a color read back is whatever was stored, so a marking
+    created outside the SDK may carry uppercase hex.
+    """
     created_at: IntegralNanosecondsUTC
     updated_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -161,6 +165,11 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
             is_archived=marking.is_archived,
             _clients=clients,
         )
+
+
+def _marking_rids(markings: Iterable[Marking | str] | None) -> list[str]:
+    """The RIDs of the given markings. Absent markings and an empty sequence both mean "no markings"."""
+    return [] if markings is None else [rid_from_instance_or_string(marking) for marking in markings]
 
 
 def _create_marking(
@@ -283,6 +292,13 @@ class MarkableMixin:
 
         Args:
             markings: Markings, or marking RIDs, the resource should carry.
+
+        Note:
+            This replaces the markings rather than appending to them, and the difference is computed
+            against every applied marking — including any the caller cannot read, which
+            `list_markings` omits. A read-modify-write built on `list_markings` therefore removes the
+            markings it could not see. To add a marking without disturbing the others, use
+            `apply_markings` rather than merging into `set_markings`.
 
         Raises:
             NominalError: If the request fails.

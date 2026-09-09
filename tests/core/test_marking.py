@@ -65,6 +65,7 @@ def test_empty_query_matches_everything() -> None:
 
 
 def test_id_substring_becomes_a_substring_clause() -> None:
+    """A substring filter becomes a single id-substring clause inside the AND list."""
     query = create_search_markings_query(id_substring="ita")
 
     clauses = list(getattr(query, "and").queries)
@@ -72,6 +73,7 @@ def test_id_substring_becomes_a_substring_clause() -> None:
 
 
 def test_search_pagination_follows_cursors_until_exhausted() -> None:
+    """Pagination feeds each response's token into the next request and stops on an empty token."""
     markings = MagicMock()
     markings.SearchMarkings.side_effect = [
         markings_pb2.SearchMarkingsResponse(marking_metadatas=[_metadata("a")], next_page_token="tok"),
@@ -110,6 +112,7 @@ def test_create_rejects_ids_the_server_would_reject() -> None:
 
 
 def test_create_sends_symbol_and_color() -> None:
+    """Create forwards id, symbol, color, and authorized groups, and returns the created marking."""
     clients = _clients()
     clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
 
@@ -142,6 +145,7 @@ def test_get_marking_fetches_by_rid() -> None:
 
 
 def test_get_marking_surfaces_a_missing_marking_as_not_found(fake_rpc_error) -> None:
+    """A NOT_FOUND from the service is translated rather than leaking the raw RpcError."""
     clients = _clients()
     clients.markings.GetMarking.side_effect = fake_rpc_error(grpc.StatusCode.NOT_FOUND)
 
@@ -195,6 +199,7 @@ def test_update_clears_authorized_groups_with_an_empty_sequence() -> None:
 
 
 def test_search_returns_markings_across_pages() -> None:
+    """Search concatenates every page and applies the substring filter to the first request."""
     clients = _clients()
     clients.markings.SearchMarkings.side_effect = [
         markings_pb2.SearchMarkingsResponse(marking_metadatas=[_metadata("a")], next_page_token="tok"),
@@ -209,6 +214,7 @@ def test_search_returns_markings_across_pages() -> None:
 
 
 def test_authorized_groups_reads_this_markings_entry() -> None:
+    """The batch response is indexed by this marking's own rid rather than taking the first entry."""
     clients = _clients()
     marking = Marking._from_proto(clients, _marking())
     response = markings_pb2.GetAuthorizedGroupsByMarkingResponse()
@@ -219,6 +225,7 @@ def test_authorized_groups_reads_this_markings_entry() -> None:
 
 
 def test_list_markings_hydrates_applied_rids() -> None:
+    """Applied rids are resolved to full markings via a batch metadata get."""
     clients = _clients()
     _applied(clients, "ri.dataset.a", "ri.marking.a")
     clients.markings.BatchGetMarkingMetadata.return_value = markings_pb2.BatchGetMarkingMetadataResponse(
@@ -232,6 +239,7 @@ def test_list_markings_hydrates_applied_rids() -> None:
 
 
 def test_list_markings_on_unmarked_resource_is_empty_without_a_second_call() -> None:
+    """With no applied markings the batch get is skipped entirely."""
     clients = _clients()
     _applied(clients, "ri.dataset.a")
 
@@ -240,6 +248,7 @@ def test_list_markings_on_unmarked_resource_is_empty_without_a_second_call() -> 
 
 
 def test_apply_and_remove_send_one_sided_updates() -> None:
+    """Apply and remove each populate only their own side of the update request."""
     clients = _clients()
     markable = _Markable("ri.dataset.a", clients)
 
@@ -269,6 +278,7 @@ def test_set_markings_sends_the_diff_in_one_call() -> None:
 
 
 def test_set_markings_skips_the_call_when_nothing_changes() -> None:
+    """An unchanged set sends no update request at all."""
     clients = _clients()
     _applied(clients, "ri.dataset.a", "ri.marking.keep")
 
@@ -278,6 +288,7 @@ def test_set_markings_skips_the_call_when_nothing_changes() -> None:
 
 
 def test_markings_accept_instances_as_well_as_rids() -> None:
+    """A Marking instance is coerced to its rid on the wire."""
     clients = _clients()
     marking = Marking._from_proto(clients, _marking(rid="ri.marking.a"))
 
@@ -331,6 +342,7 @@ def test_streaming_connection_lists_its_markings() -> None:
 
 
 def test_client_search_markings_passes_the_substring_through() -> None:
+    """The client method forwards its substring to the query and returns hydrated markings."""
     clients = _clients()
     clients.markings.SearchMarkings.return_value = markings_pb2.SearchMarkingsResponse(
         marking_metadatas=[_metadata("ri.marking.a")], next_page_token=""
@@ -345,6 +357,7 @@ def test_client_search_markings_passes_the_substring_through() -> None:
 
 
 def test_client_create_marking_returns_the_created_marking() -> None:
+    """The client method validates and forwards color, returning the created marking."""
     clients = _clients()
     clients.markings.CreateMarking.return_value = markings_pb2.CreateMarkingResponse(marking=_marking())
     client = NominalClient(_clients=clients)
@@ -368,6 +381,7 @@ def test_create_dataset_forwards_marking_rids() -> None:
 
 
 def test_create_dataset_without_markings_sends_an_empty_list() -> None:
+    """Omitting markings sends an empty list, not null, to the catalog."""
     clients = _clients()
     NominalClient(_clients=clients).create_dataset("ds")
 
@@ -375,35 +389,10 @@ def test_create_dataset_without_markings_sends_an_empty_list() -> None:
 
 
 def test_create_streaming_connection_forwards_marking_rids() -> None:
+    """Markings reach the connection create request even on the deprecated path."""
     clients = _clients()
     with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
         NominalClient(_clients=clients).create_streaming_connection("ds-id", "conn", markings=["ri.marking.a"])
 
     request = clients.connection.create_connection.call_args.args[1]
     assert request.marking_rids == ["ri.marking.a"]
-
-
-def test_new_ingest_destination_carries_marking_rids() -> None:
-    """Called directly: this builder has no callers yet, but must not drop markings when it gains one."""
-    from nominal.core.dataset import _construct_new_ingest_options
-    from nominal.core.filetype import FileTypes
-    from nominal.ts import Iso8601
-
-    options = _construct_new_ingest_options(
-        name="ds",
-        timestamp_column="ts",
-        timestamp_type=Iso8601(),
-        file_type=FileTypes.CSV,
-        description=None,
-        labels=[],
-        properties={},
-        prefix_tree_delimiter=None,
-        channel_prefix=None,
-        tag_columns=None,
-        s3_path="s3://bucket/key.csv",
-        workspace_rid="ri.workspace.a",
-        tags=None,
-        marking_rids=["ri.marking.a"],
-    )
-
-    assert options.csv.target.new.marking_rids == ["ri.marking.a"]

@@ -109,6 +109,7 @@ from nominal.core.marking import (
     _create_marking,
     _get_marking,
     _get_marking_by_id,
+    _marking_rids,
     _search_markings,
 )
 from nominal.core.run import Run, _create_run
@@ -610,7 +611,8 @@ class NominalClient:
 
         Raises:
             ValueError: If `id` is not a valid marking id.
-            NominalError: If no marking with the given id exists or it is not accessible.
+            NominalNotFoundError: If no marking with the given id exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
         """
         return _get_marking_by_id(self._clients, id)
 
@@ -618,7 +620,7 @@ class NominalClient:
         """Search markings in the current organization, oldest first.
 
         Args:
-            id_substring: Case-insensitive substring that a marking's id must contain to be included.
+            id_substring: Substring that a marking's id must contain to be included.
 
         Returns:
             All markings matching the given conditions.
@@ -871,9 +873,8 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            markings: If present, markings (or marking RIDs) to apply to the created dataset. Markings are
-                applied in a separate step after the dataset is created, so creation and marking are not
-                atomic; if that matters, verify with `list_markings()`.
+            markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -886,7 +887,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
-            marking_rids=None if markings is None else [rid_from_instance_or_string(m) for m in markings],
+            marking_rids=_marking_rids(markings),
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
@@ -916,9 +917,8 @@ class NominalClient:
             description: Description of the video to create in nominal
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
-            markings: If present, markings (or marking RIDs) to apply to the created video. Markings are
-                applied in a separate step after the video is created, so creation and marking are not
-                atomic; if that matters, verify with `list_markings()`.
+            markings: If present, markings (or marking RIDs) applied to the video. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Handle to the created video
@@ -931,7 +931,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
-            marking_rids=None if markings is None else [rid_from_instance_or_string(m) for m in markings],
+            marking_rids=_marking_rids(markings),
         )
         return Video._from_conjure(self._clients, response)
 
@@ -1210,7 +1210,7 @@ class NominalClient:
                 available_tag_values={},
                 should_scrape=True,
                 workspace=workspace_rid,
-                marking_rids=[] if markings is None else [rid_from_instance_or_string(m) for m in markings],
+                marking_rids=_marking_rids(markings),
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)

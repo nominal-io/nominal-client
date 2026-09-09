@@ -29,11 +29,13 @@ def test_symbol_from_unset_proto_is_none() -> None:
 
 
 def test_color_round_trips_through_proto() -> None:
+    """A hex color survives conversion to the proto oneof and back."""
     assert _color_to_proto("#cc0000").hex_code == "#cc0000"
     assert _color_from_proto(_color_to_proto("#cc0000")) == "#cc0000"
 
 
 def test_color_from_unset_proto_is_none() -> None:
+    """An unset color oneof reads back as None rather than an empty string."""
     assert _color_from_proto(elements_pb2.Color()) is None
 
 

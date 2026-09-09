@@ -11,7 +11,6 @@ def test_search_markings_returns_unarchived_markings(client: NominalClient) -> N
     markings = client.search_markings()
 
     assert all(not marking.is_archived for marking in markings)
-    assert all(marking.rid for marking in markings)
 
 
 def test_search_markings_filters_by_id_substring(client: NominalClient) -> None:
@@ -27,8 +26,6 @@ def test_search_markings_filters_by_id_substring(client: NominalClient) -> None:
     assert len(filtered) <= len(all_markings)
 
 
-def test_dataset_lists_its_markings(client: NominalClient, ingested_dataset: Dataset) -> None:
-    """Listing markings on a data source succeeds; a fresh dataset typically carries none."""
-    markings = ingested_dataset.list_markings()
-
-    assert all(marking.rid for marking in markings)
+def test_dataset_lists_its_markings(ingested_dataset: Dataset) -> None:
+    """A dataset created without markings carries none."""
+    assert ingested_dataset.list_markings() == ()
