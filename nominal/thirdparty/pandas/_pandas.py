@@ -21,6 +21,35 @@ from nominal.core.filetype import FileTypes
 logger = logging.getLogger(__name__)
 
 
+def query_sql_to_dataframe(
+    client: NominalClient,
+    query: str,
+    *,
+    max_rows: int | None = None,
+    workspace_rid: str | None = None,
+) -> pd.DataFrame:
+    """Run a read-only SQL query against Nominal telemetry tables and return the result as a pandas DataFrame.
+
+    Args:
+        client: The NominalClient to query with.
+        query: The SQL query text.
+        max_rows: Optional cap on rows returned (1..5000).
+        workspace_rid: Workspace to scope the query to. Defaults to the client's resolved default workspace.
+
+    Returns:
+        Query results as a pandas `DataFrame`.
+
+    Raises:
+        conjure_python_client.ConjureHTTPError: On query failure.
+    """
+    from nominal.experimental.sql import query_sql
+
+    arrow_table = query_sql(client, query, max_rows=max_rows, workspace_rid=workspace_rid)
+
+    # query_sql always returns pa.Table, so to_pandas always returns DataFrame
+    return cast(pd.DataFrame, arrow_table.to_pandas())
+
+
 def upload_dataframe_to_dataset(
     dataset: Dataset,
     df: pd.DataFrame,
