@@ -215,7 +215,7 @@ def test_authorized_groups_reads_this_markings_entry() -> None:
     response.authorized_groups_by_marking["ri.marking.a"].group_rids.append("ri.group.a")
     clients.markings.GetAuthorizedGroupsByMarking.return_value = response
 
-    assert marking.authorized_groups() == ("ri.group.a",)
+    assert marking.authorized_group_rids() == ("ri.group.a",)
 
 
 def test_list_markings_hydrates_applied_rids() -> None:
