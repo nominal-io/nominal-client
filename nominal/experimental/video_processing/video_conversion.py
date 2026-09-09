@@ -18,6 +18,11 @@ DEFAULT_VIDEO_CODEC = "h264"
 DEFAULT_AUDIO_CODEC = "aac"
 DEFAULT_PIXEL_FORMAT = "yuv420p"
 DEFAULT_KEY_FRAME_INTERVAL_SEC = 2
+# Re-encoding alone does not sanitize audio timestamps: the encoder stamps output packets from the
+# decoded frames' timestamps, so a source with a degenerate audio timeline (e.g. splice points with
+# sub-frame packet durations) survives a plain re-encode and can still fail strict remuxing
+# downstream. aresample with async rebuilds a continuous sample timeline before encoding.
+DEFAULT_AUDIO_FILTER = "aresample=async=1000"
 
 
 def normalize_video(
@@ -36,6 +41,8 @@ def normalize_video(
         * Ensuring that there are key-frames (I-frames) present approximately every 2s of video content
         * Video is encoded with H264
         * Audio is encoded with AAC
+        * Audio timestamps are regenerated as a continuous timeline, repairing sources whose audio
+          packets carry irregular timestamps that would otherwise fail ingest
         * Video has YUV4:2:0 planar color space
 
     While this package includes bindings to use ffmpeg installed on your local system, it does not
@@ -79,6 +86,7 @@ def normalize_video(
     output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,
+        af=DEFAULT_AUDIO_FILTER,
         force_key_frames="source",
         pix_fmt=DEFAULT_PIXEL_FORMAT,
     )
