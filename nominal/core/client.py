@@ -600,7 +600,8 @@ class NominalClient:
         """Retrieve a marking by RID.
 
         Raises:
-            NominalNotFoundError: If no marking with the given RID exists or it is not accessible.
+            NominalNotFoundError: If no marking with the given RID exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
         """
         return _get_marking(self._clients, rid)
 
