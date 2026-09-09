@@ -206,6 +206,10 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         many files to expect, but an unchanged one does mean a re-listing cannot turn up anything new,
         which is worth skipping for a job holding thousands of files. A job that has stopped running is
         always listed once more, so the final file set never depends on that count.
+
+        Keyed by file id rather than filtered into a list: the listing pages by offset over a column
+        that is not unique, so a row written while a pass is in flight shifts later pages and can serve
+        the same file twice within that one pass.
         """
         if self.status in _RUNNING_JOB_STATUSES:
             self.refresh()
@@ -213,7 +217,8 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
 
         if job_running and self.produced_file_count == len(seen_file_ids):
             return True, []
-        return job_running, [file for file in self._iter_dataset_files() if file.id not in seen_file_ids]
+        new_files = {file.id: file for file in self._iter_dataset_files() if file.id not in seen_file_ids}
+        return job_running, list(new_files.values())
 
     def as_files_ingested(
         self,

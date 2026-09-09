@@ -179,6 +179,22 @@ def test_as_files_ingested_does_not_poll_a_job_that_is_already_terminal(mock_cli
     mock_sleep.assert_not_called()
 
 
+def test_as_files_ingested_yields_each_file_once_when_a_page_repeats_it(mock_clients: MagicMock) -> None:
+    """A file served on two pages of one listing pass is yielded once, as offset paging can repeat rows."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED))
+    repeated = _make_file("repeated-file", [IngestStatus.SUCCESS])
+    other = _make_file("other-file", [IngestStatus.SUCCESS])
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(
+        SimpleNamespace(files=[repeated, other], next_page="t2"),
+        SimpleNamespace(files=[repeated], next_page=None),
+    )
+
+    with _polling():
+        yielded = list(job.as_files_ingested())
+
+    assert yielded == [repeated, other]
+
+
 def test_as_files_ingested_yields_each_file_once_when_the_list_grows(mock_clients: MagicMock) -> None:
     """A file seen on an earlier poll is not yielded again when it reappears in a later file listing."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
