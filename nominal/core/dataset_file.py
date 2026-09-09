@@ -364,7 +364,7 @@ class IngestWaitType(Enum):
     ALL_COMPLETED = "ALL_COMPLETED"
 
 
-def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> set[str]:
+def _batch_refresh_files(files: Sequence[DatasetFile], *, batch_size: int = 100) -> set[str]:
     """Batch-fetches the latest API state for all files and refreshes them in-place.
 
     Returns the set of file IDs that were absent from the batch response (i.e. not found on the server).
@@ -399,7 +399,7 @@ def _poll_files_once(files: Sequence[DatasetFile]) -> tuple[list[DatasetFile], l
     not_done: list[DatasetFile] = []
     has_failed = False
 
-    absent_ids = _batch_refresh_files([*files])
+    absent_ids = _batch_refresh_files(files)
 
     for file in files:
         if file.id in absent_ids:

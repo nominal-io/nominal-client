@@ -220,6 +220,66 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         new_files = {file.id: file for file in self._iter_dataset_files() if file.id not in seen_file_ids}
         return job_running, list(new_files.values())
 
+    def _wait_for_next_poll(
+        self,
+        poll_interval: datetime.timedelta,
+        deadline: datetime.datetime | None,
+        pending: Sequence[DatasetFile],
+    ) -> None:
+        """Sleep until the next poll is due, raising if `deadline` has already passed.
+
+        Never sleeps beyond the deadline: waiting out a whole poll interval near the end of the
+        caller's budget would overshoot the timeout they asked for.
+        """
+        sleep_for = poll_interval.total_seconds()
+        if deadline is not None:
+            remaining = (deadline - datetime.datetime.now()).total_seconds()
+            if remaining <= 0:
+                raise NominalIngestTimeout(
+                    f"ingest job {self.rid} was still {self.status.name.lower()} when its wait budget "
+                    f"expired, with {len(pending)} file(s) still ingesting"
+                )
+            sleep_for = min(sleep_for, remaining)
+
+        logger.info(
+            "Sleeping for %f seconds while awaiting ingest job %s (status %s, %d file(s) ingesting)...",
+            sleep_for,
+            self.rid,
+            self.status.name,
+            len(pending),
+        )
+        time.sleep(sleep_for)
+
+    def _report_terminal_state(self, seen_file_ids: Collection[str]) -> None:
+        """Raise or warn about how this job finished, once every file it produced has been waited out.
+
+        `produced_file_count` is the only cross-check available on whether the paged listing returned
+        everything: it counts the same rows the listing selects, before that listing drops unlanded
+        files and ones in datasets this caller cannot read. Those two make a shortfall legitimate for
+        some jobs, so it is reported rather than raised.
+        """
+        if self.produced_file_count is not None and len(seen_file_ids) < self.produced_file_count:
+            logger.warning(
+                "Ingest job %s reports %d produced file(s) but only %d could be listed. Unlanded files "
+                "and files in datasets you cannot read are counted but not listed; otherwise the paged "
+                "listing dropped rows.",
+                self.rid,
+                self.produced_file_count,
+                len(seen_file_ids),
+            )
+
+        if self.status is IngestionJobStatus.FAILED:
+            raise NominalIngestFailed(
+                f"ingest job {self.rid} failed after producing {len(seen_file_ids)} file(s): {sorted(seen_file_ids)}"
+            )
+        elif self.status is not IngestionJobStatus.COMPLETED:
+            logger.warning(
+                "Ingest job %s finished %s rather than COMPLETED, after producing %d file(s).",
+                self.rid,
+                self.status.name,
+                len(seen_file_ids),
+            )
+
     def as_files_ingested(
         self,
         *,
@@ -277,48 +337,6 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             if not job_running and not pending:
                 break
 
-            # Sleeping the full interval near the deadline would overshoot the caller's timeout.
-            sleep_for = poll_interval.total_seconds()
-            if deadline is not None:
-                remaining = (deadline - datetime.datetime.now()).total_seconds()
-                if remaining <= 0:
-                    raise NominalIngestTimeout(
-                        f"ingest job {self.rid} was still {self.status.name.lower()} after {timeout}, "
-                        f"with {len(pending)} file(s) still ingesting"
-                    )
-                sleep_for = min(sleep_for, remaining)
+            self._wait_for_next_poll(poll_interval, deadline, pending)
 
-            logger.info(
-                "Sleeping for %f seconds while awaiting ingest job %s (status %s, %d file(s) ingesting)...",
-                sleep_for,
-                self.rid,
-                self.status.name,
-                len(pending),
-            )
-            time.sleep(sleep_for)
-
-        # The job's own count is the only cross-check available on whether the paged listing returned
-        # everything: it counts the same rows the listing selects, before that listing drops unlanded
-        # files and ones in datasets this caller cannot read. Those make a shortfall legitimate, so
-        # this reports rather than raises.
-        if self.produced_file_count is not None and len(seen_file_ids) < self.produced_file_count:
-            logger.warning(
-                "Ingest job %s reports %d produced file(s) but only %d could be listed. Unlanded files "
-                "and files in datasets you cannot read are counted but not listed; otherwise the paged "
-                "listing dropped rows.",
-                self.rid,
-                self.produced_file_count,
-                len(seen_file_ids),
-            )
-
-        if self.status is IngestionJobStatus.FAILED:
-            raise NominalIngestFailed(
-                f"ingest job {self.rid} failed after producing {len(seen_file_ids)} file(s): {sorted(seen_file_ids)}"
-            )
-        elif self.status is not IngestionJobStatus.COMPLETED:
-            logger.warning(
-                "Ingest job %s finished %s rather than COMPLETED, after producing %d file(s).",
-                self.rid,
-                self.status.name,
-                len(seen_file_ids),
-            )
+        self._report_terminal_state(seen_file_ids)
