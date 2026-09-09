@@ -438,6 +438,25 @@ def _poll_files_once(files: Sequence[DatasetFile]) -> tuple[list[DatasetFile], l
     return done, not_done, has_failed
 
 
+def _sleep_until_next_poll(poll_interval: datetime.timedelta, deadline: datetime.datetime | None) -> bool:
+    """Sleep until the next poll is due, capped at `deadline`. Returns whether any budget remained.
+
+    Never sleeps past the deadline: waiting out a whole poll interval near the end of a caller's budget
+    would overshoot the timeout they asked for. Callers own what an exhausted budget means — this only
+    reports it, since one waiter raises on it and another returns what it has.
+    """
+    sleep_for = poll_interval.total_seconds()
+    if deadline is not None:
+        remaining = (deadline - datetime.datetime.now()).total_seconds()
+        if remaining <= 0:
+            return False
+        sleep_for = min(sleep_for, remaining)
+
+    logger.info("Sleeping for %f seconds until the next poll...", sleep_for)
+    time.sleep(sleep_for)
+    return True
+
+
 def wait_for_files_to_ingest(
     files: Sequence[DatasetFile],
     *,
@@ -454,7 +473,7 @@ def wait_for_files_to_ingest(
     Args:
         files: Dataset files to monitor for ingestion completion.
         poll_interval: Interval to sleep between polling the remaining files under watch.
-        timeout: If given, the maximum time to wait before returning
+        timeout: If given, the maximum time to wait before returning. Never sleeps past the deadline.
         return_when: Condition for this function to exit. By default, this function will block until all files
             have completed their ingestion (successfully or unsuccessfully), but this can be changed to return
             upon the first completed or first failing ingest. This behavior mirrors that of
@@ -463,12 +482,12 @@ def wait_for_files_to_ingest(
     Returns:
         Returns a tuple of (done, not done) dataset files.
     """
-    start_time = datetime.datetime.now()
+    deadline = None if timeout is None else datetime.datetime.now() + timeout
     done: list[DatasetFile] = []
     not_done: list[DatasetFile] = [*files]
     has_failed = False
 
-    while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
+    while not_done and (deadline is None or datetime.datetime.now() < deadline):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
         newly_done, not_done, newly_failed = _poll_files_once(not_done)
@@ -482,14 +501,8 @@ def wait_for_files_to_ingest(
         elif not not_done:
             break
 
-        if timeout is None or datetime.datetime.now() - start_time < timeout:
-            logger.info(
-                "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
-                poll_interval.total_seconds(),
-                len(not_done),
-                len(files),
-            )
-            time.sleep(poll_interval.total_seconds())
+        if not _sleep_until_next_poll(poll_interval, deadline):
+            break
 
     return done, not_done
 

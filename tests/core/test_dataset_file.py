@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import api
 
 from nominal.core.dataset_file import (
     DatasetFile,
@@ -205,6 +207,26 @@ def test_wait_for_files_to_ingest_returns_after_absent_file_with_first_exception
 
     assert done == [absent]
     assert not_done == [pending]
+
+
+def test_from_conjure_unknown_ingest_status_falls_back_to_unknown():
+    """An unrecognized wire ingest status maps to UNKNOWN rather than raising, for forward-compatibility."""
+    future = SimpleNamespace(type="someFutureStatus")
+    assert IngestStatus._from_conjure(cast(api.IngestStatusV2, future)) is IngestStatus.UNKNOWN
+
+
+def test_wait_for_files_to_ingest_does_not_sleep_past_the_timeout_deadline():
+    """A poll interval longer than the remaining budget is shortened to the budget, not slept in full."""
+    file = _make_file("file-1", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
+
+    with patch("nominal.core.dataset_file.time.sleep") as mock_sleep:
+        done, not_done = wait_for_files_to_ingest(
+            [file], poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)
+        )
+
+    assert done == [file]
+    assert not not_done
+    assert 0 < mock_sleep.call_args.args[0] <= 2
 
 
 def test_wait_for_files_to_ingest_treats_unknown_status_as_done():

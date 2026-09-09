@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Collection, Iterable, Protocol, Sequence
@@ -12,7 +11,12 @@ from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
-from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure, _poll_files_once
+from nominal.core.dataset_file import (
+    DatasetFile,
+    _dataset_file_from_conjure,
+    _poll_files_once,
+    _sleep_until_next_poll,
+)
 from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -220,35 +224,14 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         new_files = {file.id: file for file in self._iter_dataset_files() if file.id not in seen_file_ids}
         return job_running, list(new_files.values())
 
-    def _wait_for_next_poll(
-        self,
-        poll_interval: datetime.timedelta,
-        deadline: datetime.datetime | None,
-        pending: Sequence[DatasetFile],
-    ) -> None:
-        """Sleep until the next poll is due, raising if `deadline` has already passed.
-
-        Never sleeps beyond the deadline: waiting out a whole poll interval near the end of the
-        caller's budget would overshoot the timeout they asked for.
-        """
-        sleep_for = poll_interval.total_seconds()
-        if deadline is not None:
-            remaining = (deadline - datetime.datetime.now()).total_seconds()
-            if remaining <= 0:
-                raise NominalIngestTimeout(
-                    f"ingest job {self.rid} was still {self.status.name.lower()} when its wait budget "
-                    f"expired, with {len(pending)} file(s) still ingesting"
-                )
-            sleep_for = min(sleep_for, remaining)
-
-        logger.info(
-            "Sleeping for %f seconds while awaiting ingest job %s (status %s, %d file(s) ingesting)...",
-            sleep_for,
-            self.rid,
-            self.status.name,
-            len(pending),
+    def _timed_out(self, pending: Sequence[DatasetFile]) -> NominalIngestTimeout:
+        """Describe which of the two stages this wait was still blocked on when its budget expired."""
+        blocked_on = (
+            f"was still {self.status.name.lower()}"
+            if self.status in _RUNNING_JOB_STATUSES
+            else f"{self.status.name.lower()}, but {len(pending)} of its file(s) were still ingesting"
         )
-        time.sleep(sleep_for)
+        return NominalIngestTimeout(f"ingest job {self.rid} {blocked_on} when its wait budget expired")
 
     def _report_terminal_state(self, seen_file_ids: Collection[str]) -> None:
         """Raise or warn about how this job finished, once every file it produced has been waited out.
@@ -337,6 +320,13 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             if not job_running and not pending:
                 break
 
-            self._wait_for_next_poll(poll_interval, deadline, pending)
+            logger.info(
+                "Awaiting ingest job %s (status %s, %d file(s) ingesting)...",
+                self.rid,
+                self.status.name,
+                len(pending),
+            )
+            if not _sleep_until_next_poll(poll_interval, deadline):
+                raise self._timed_out(pending)
 
         self._report_terminal_state(seen_file_ids)

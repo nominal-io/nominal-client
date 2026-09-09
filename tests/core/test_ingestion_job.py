@@ -39,6 +39,12 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
     return ingest_api.IngestJob(**kwargs)
 
 
+def test_from_conjure_unknown_status_falls_back_to_unknown() -> None:
+    """An unrecognized wire status name maps to UNKNOWN for forward-compatibility."""
+    future = SimpleNamespace(name="SOME_FUTURE_STATUS")
+    assert IngestionJobStatus._from_conjure(future) is IngestionJobStatus.UNKNOWN
+
+
 def test_cancel_calls_service_and_refreshes(mock_clients: MagicMock) -> None:
     """cancel() calls the cancel endpoint and refreshes the job in place from the response."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
@@ -122,7 +128,7 @@ def _polling() -> Iterator[MagicMock]:
     with (
         patch("nominal.core.dataset_file._batch_refresh_files", side_effect=_advance_polled_files),
         patch("nominal.core.ingestion_job._dataset_file_from_conjure", side_effect=lambda _clients, file: file),
-        patch("nominal.core.ingestion_job.time.sleep") as mock_sleep,
+        patch("nominal.core.dataset_file.time.sleep") as mock_sleep,
     ):
         yield mock_sleep
 
@@ -275,7 +281,7 @@ def test_as_files_ingested_yields_a_file_absent_from_the_batch_response(mock_cli
     with (
         patch("nominal.core.dataset_file._batch_refresh_files", return_value={"deleted-file"}),
         patch("nominal.core.ingestion_job._dataset_file_from_conjure", side_effect=lambda _clients, f: f),
-        patch("nominal.core.ingestion_job.time.sleep"),
+        patch("nominal.core.dataset_file.time.sleep"),
     ):
         yielded = list(job.as_files_ingested())
 
@@ -367,3 +373,18 @@ def test_as_files_ingested_does_not_sleep_past_the_timeout_deadline(mock_clients
             list(job.as_files_ingested(poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)))
 
     assert 0 < mock_sleep.call_args.args[0] <= 2
+
+
+def test_as_files_ingested_timeout_names_the_pending_files_when_the_job_is_terminal(
+    mock_clients: MagicMock,
+) -> None:
+    """A timeout on a job that finished blames its still-ingesting files, not the job's own status."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
+    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
+        _job_bean(status=ingest_api.IngestJobStatus.COMPLETED)
+    )
+    file = _make_file("slow-file", [IngestStatus.IN_PROGRESS])
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+
+    with _polling(), pytest.raises(NominalIngestTimeout, match="completed, but 1 of its file"):
+        list(job.as_files_ingested(timeout=timedelta(0)))
