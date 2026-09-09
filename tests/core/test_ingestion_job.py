@@ -95,20 +95,25 @@ def _responses(*values: object) -> Callable[..., object]:
 
 
 def _make_file(file_id: str, statuses: Sequence[IngestStatus]) -> MagicMock:
-    """Build a stand-in dataset file whose ingest_status advances one step per batch refresh."""
+    """Build a stand-in dataset file whose ingest_status advances one step per refresh."""
     file = MagicMock()
     file.id = file_id
     file.dataset_rid = "ri.catalog.test.dataset.def"
     file.ingest_status = statuses[0]
     observed = iter(statuses)
-    file._advance_status = lambda: setattr(file, "ingest_status", next(observed, statuses[-1]))
+
+    def refresh(_: object) -> MagicMock:
+        file.ingest_status = next(observed, statuses[-1])
+        return file
+
+    file._refresh_from_api.side_effect = refresh
     return file
 
 
 def _advance_polled_files(files: Sequence[MagicMock], **_kwargs: object) -> set[str]:
-    """Stand in for _batch_refresh_files: advance every polled file, report none absent."""
+    """Stand in for _batch_refresh_files: refresh every polled file, report none absent."""
     for file in files:
-        file._advance_status()
+        file._refresh_from_api(None)
     return set()
 
 

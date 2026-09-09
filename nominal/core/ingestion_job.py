@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Protocol, Sequence
+from typing import Collection, Iterable, Protocol, Sequence
 
 from nominal_api import ingest_api
 from typing_extensions import Self
@@ -75,8 +75,11 @@ _RUNNING_JOB_STATUSES = frozenset(
 """Statuses from which a job can still produce more files.
 
 Deliberately the running set rather than the terminal set: a status this client does not recognize
-stops the wait instead of looping forever on it.
+stops a wait instead of looping forever on it.
 """
+
+_FAILED_JOB_STATUSES = frozenset({IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED})
+"""Terminal statuses meaning the job did not deliver what it was asked for."""
 
 
 class IngestType(Enum):
@@ -199,6 +202,22 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         """
         return list(self._iter_dataset_files())
 
+    def _poll_for_new_files(self, seen_file_ids: Collection[str]) -> tuple[bool, list[DatasetFile]]:
+        """Refresh this job once, returning whether it can still produce files and any not yet seen.
+
+        `produced_file_count` is a live count that arrives with the refresh. It says nothing about how
+        many files to expect, but an unchanged one does mean a re-listing cannot turn up anything new,
+        which is worth skipping for a job holding thousands of files. A job that has stopped running is
+        always listed once more, so the final file set never depends on that count.
+        """
+        if self.status in _RUNNING_JOB_STATUSES:
+            self.refresh()
+        job_running = self.status in _RUNNING_JOB_STATUSES
+
+        if job_running and self.produced_file_count == len(seen_file_ids):
+            return True, []
+        return job_running, [file for file in self._iter_dataset_files() if file.id not in seen_file_ids]
+
     def as_files_ingested(
         self,
         *,
@@ -208,10 +227,9 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         """Yield this job's dataset files as each completes ingestion.
 
         Waits out both stages of an ingest: the job producing its files, then those files finishing
-        ingestion. The file list is re-read on each poll for as long as the job is still running, so
-        files that do not exist yet when this is called are still picked up — a job that emits many
-        files registers none of them until its work is done, and a wait that read the list only once
-        would report success over zero files. `list(job.as_files_ingested())` therefore blocks until
+        ingestion. The file list is re-read on each poll while the job is still running, so files that
+        do not exist yet when this is called are still picked up — a containerized extractor registers
+        its outputs only once its container has exited. `list(job.as_files_ingested())` blocks until
         the job is terminal and every file it produced has finished ingesting.
 
         Yielded files may have failed: a job can complete with some of its files FAILED, so check
@@ -237,19 +255,9 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
 
         while True:
             if job_running:
-                if self.status in _RUNNING_JOB_STATUSES:
-                    self.refresh()
-                # A terminal job's file list is complete, so read it once more and then stop looking.
-                job_running = self.status in _RUNNING_JOB_STATUSES
-                # produced_file_count is a live count that comes free with the refresh above. It says
-                # nothing about how many files to expect, but an unchanged one does mean a re-listing
-                # cannot turn up anything new — worth skipping for a job holding thousands of files.
-                # The pass that observes a terminal status always lists, whatever the count says.
-                if not job_running or self.produced_file_count != len(seen_file_ids):
-                    for file in self._iter_dataset_files():
-                        if file.id not in seen_file_ids:
-                            seen_file_ids.add(file.id)
-                            pending.append(file)
+                job_running, new_files = self._poll_for_new_files(seen_file_ids)
+                seen_file_ids.update(file.id for file in new_files)
+                pending.extend(new_files)
 
             if pending:
                 newly_done, pending, _ = _poll_files_once(pending)
@@ -273,7 +281,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             )
             time.sleep(poll_interval.total_seconds())
 
-        if self.status in (IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED):
+        if self.status in _FAILED_JOB_STATUSES:
             raise NominalIngestError(
                 f"ingest job {self.rid} finished {self.status.name} after producing {len(seen_file_ids)} file(s)"
             )
