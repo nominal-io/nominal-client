@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from nominal_api import scout_spatial_api
@@ -177,7 +178,7 @@ def test_ingest_point_cloud_csv_targets_this_asset_and_records_provenance() -> N
 
     with patch(
         "nominal.core.spatial_asset._ingest_point_cloud_csv",
-        return_value=("s3://bucket/scan.csv", "ri.scout.x.ingest-job.j"),
+        return_value=("s3://bucket/scan.csv", "ri.scout.x.ingest-job.j", None),
     ) as ingest:
         job_rid = asset.ingest_point_cloud_csv("scan.csv", column_types={"count": "real"}, tags={"run": "1"})
 
@@ -266,3 +267,48 @@ def test_from_conjure_reads_time_bounds() -> None:
     asset = SpatialAsset._from_conjure(MagicMock(), raw)
     assert asset.start_timestamp == 1_700_000_000_000_000_000
     assert asset.end_timestamp is None
+
+
+def test_ingest_point_cloud_csv_records_time_metadata_from_the_measured_range() -> None:
+    """A relative time column plus a start instant become the asset's time range.
+
+    Both coordinate systems are needed: `relative_*_us` is the extent of the time
+    column, which per-point filtering compares against, and `*_timestamp_us` is
+    where that extent sits on the wall clock, which playhead progress is measured
+    over. A workbook with only one of them has nothing to anchor to.
+    """
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    asset = _spatial_asset(clients)
+    start = datetime(2026, 3, 4, 9, 30, tzinfo=timezone.utc)
+    start_us = int(start.timestamp() * 1_000_000)
+
+    with patch(
+        "nominal.core.spatial_asset._ingest_point_cloud_csv",
+        return_value=("s3://bucket/scan.csv", "ri.scout.x.ingest-job.j", (0, 45_000_000)),
+    ):
+        asset.ingest_point_cloud_csv("scan.csv", time_column="t_s", start_timestamp=start)
+
+    request = clients.spatial.update_metadata.call_args.args[1]
+    assert request.properties["relative_start_us"] == "0"
+    assert request.properties["relative_end_us"] == "45000000"
+    assert request.properties["start_timestamp_us"] == str(start_us)
+    assert request.properties["end_timestamp_us"] == str(start_us + 45_000_000)
+    # Provenance still rides along in the same call.
+    assert request.source_handle.s3 == "s3://bucket/scan.csv"
+
+
+def test_ingest_point_cloud_csv_skips_time_metadata_without_a_start_timestamp() -> None:
+    """A measured range alone cannot be placed on the wall clock, so nothing is written."""
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    asset = _spatial_asset(clients)
+
+    with patch(
+        "nominal.core.spatial_asset._ingest_point_cloud_csv",
+        return_value=("s3://bucket/scan.csv", "ri.scout.x.ingest-job.j", (0, 45_000_000)),
+    ):
+        asset.ingest_point_cloud_csv("scan.csv", time_column="t_s")
+
+    request = clients.spatial.update_metadata.call_args.args[1]
+    assert request.properties is None

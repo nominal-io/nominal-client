@@ -13,7 +13,9 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core.point_cloud import (
     DEFAULT_POINT_CLOUD_CHANNEL,
+    DEFAULT_RGB_ATTRIBUTE,
     ColumnDataType,
+    TimeUnit,
     _ingest_point_cloud_csv,
     _PointCloudClients,
 )
@@ -149,6 +151,11 @@ class SpatialAsset(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         csv_path: PathLike,
         *,
         column_types: Mapping[str, ColumnDataType] | None = None,
+        rgb_column: str | None = None,
+        rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
+        time_column: str | None = None,
+        time_unit: TimeUnit = "s",
+        start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
         channel: str = DEFAULT_POINT_CLOUD_CHANNEL,
         tags: Mapping[str, str] | None = None,
     ) -> str | None:
@@ -161,9 +168,26 @@ class SpatialAsset(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         Scout runs the Dagger import asynchronously, so this returns as soon as the
         ingest is *accepted*, not when the point cloud is queryable.
 
+        Pass ``time_column`` for a cloud that was captured or built over time. Its extent
+        is measured and recorded on the asset, which is what lets a workbook's 3D panel
+        drive the cloud from the playhead -- without it the panel has no way to map
+        playhead position onto per-point time and renders the whole cloud at once.
+
         Args:
             csv_path: Path to the point-cloud CSV to upload.
             column_types: Per-column overrides for the int/real/string classifier.
+            rgb_column: Name of a column holding a six-character hex colour ("rrggbb", no
+                leading #). It becomes an Rgb attribute, which is what per-point colouring
+                reads; separate 0-255 columns cannot drive colour, and are silently skipped
+                by the parser rather than rejected.
+            rgb_attribute: Name for the resulting attribute.
+            time_column: Column holding per-point time, as an offset from ``start_timestamp``
+                rather than an absolute timestamp. Measuring its extent costs one extra
+                pass over the file, so it is only read when named here.
+            time_unit: Unit of the values in ``time_column``. Defaults to seconds.
+            start_timestamp: Absolute instant that ``time_column`` counts from. Given both,
+                the asset's time range and the four properties a workbook reads to drive
+                the cloud from the playhead are set from the measured extent.
             channel: Channel name for the point cloud series. Accepted by the API but not
                 yet read by the backend; reserved for workbook integration.
             tags: Tags for the point cloud series. Accepted but not yet read by the backend.
@@ -173,26 +197,69 @@ class SpatialAsset(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
 
         Raises:
             FileNotFoundError: If ``csv_path`` does not exist.
-            ValueError: If the CSV is empty, lacks x/y/z columns, or ``column_types``
-                names a column or type that does not exist.
+            ValueError: If the CSV is empty, lacks x/y/z columns, ``column_types`` names a
+                column or type that does not exist, ``rgb_column`` is not in the header,
+                or ``time_column`` is missing from the header or holds a non-numeric value.
         """
-        source_handle, ingest_job_rid = _ingest_point_cloud_csv(
+        source_handle, ingest_job_rid, time_range_us = _ingest_point_cloud_csv(
             self._clients,
             self.rid,
             csv_path,
             column_types=column_types,
+            rgb_column=rgb_column,
+            rgb_attribute=rgb_attribute,
+            time_column=time_column,
+            time_unit=time_unit,
             channel=channel,
             tags=tags,
         )
         # The s3 location is only known after the upload, which necessarily happens
         # after the asset exists -- so provenance is recorded here rather than at
-        # create time.
-        self._clients.spatial.update_metadata(
-            self._clients.auth_header,
-            scout_spatial_api.UpdateSpatialMetadataRequest(source_handle=api.Handle(s3=source_handle)),
-            self.rid,
-        )
+        # create time. The time metadata rides along in the same call.
+        request = scout_spatial_api.UpdateSpatialMetadataRequest(source_handle=api.Handle(s3=source_handle))
+        if time_range_us is not None and start_timestamp is not None:
+            request = self._time_metadata_request(request, time_range_us, start_timestamp)
+        updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
+        self._refresh_from_api(updated)
         return ingest_job_rid
+
+    def _time_metadata_request(
+        self,
+        request: scout_spatial_api.UpdateSpatialMetadataRequest,
+        time_range_us: tuple[int, int],
+        start_timestamp: datetime | IntegralNanosecondsUTC,
+    ) -> scout_spatial_api.UpdateSpatialMetadataRequest:
+        """Add the asset time range and the properties a workbook reads to a request.
+
+        Two coordinate systems, both required. `relative_*_us` is the extent of the
+        time column itself, which is what per-point filtering compares against;
+        `*_timestamp_us` is where that extent sits on the wall clock, which is what
+        playhead position is measured over. Without the pair a workbook has nothing
+        to anchor to and falls back to its own stream bounds.
+
+        Per-point time is deliberately relative: filtering happens on the GPU in
+        f32, where the spacing between representable values at epoch magnitude is
+        over two minutes, in any unit.
+        """
+        start_ns = _SecondsNanos.from_flexible(start_timestamp).to_nanoseconds()
+        start_us = start_ns // 1_000
+        relative_start_us, relative_end_us = time_range_us
+        end_ns = start_ns + relative_end_us * 1_000
+
+        # `properties` replaces the whole map, so merge onto what is already there.
+        properties = {
+            **dict(self.properties),
+            "relative_start_us": str(relative_start_us),
+            "relative_end_us": str(relative_end_us),
+            "start_timestamp_us": str(start_us),
+            "end_timestamp_us": str(start_us + relative_end_us),
+        }
+        return scout_spatial_api.UpdateSpatialMetadataRequest(
+            source_handle=request.source_handle,
+            properties=properties,
+            start_timestamp=_SecondsNanos.from_nanoseconds(start_ns).to_api(),
+            end_timestamp=_SecondsNanos.from_nanoseconds(end_ns).to_api(),
+        )
 
     def archive(self) -> None:
         """Archive this spatial asset, hiding it from search (reversible)."""

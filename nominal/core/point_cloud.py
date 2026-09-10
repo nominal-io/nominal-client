@@ -13,6 +13,7 @@ server-side.
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, Sequence, get_args
 
@@ -37,13 +38,32 @@ _SAMPLER_MAX = "Max"
 _SAMPLER_MEAN = "Mean"
 _FSE_TYPE_INT = "Int"
 _FSE_TYPE_STRING = "String"
+_FSE_TYPE_RGB = "Rgb"
 _FSE_TYPE_REAL = {"Real": "IndependentValue"}
+
+# An Rgb attribute is ONE csv column holding a six-character hex string
+# ("rrggbb", no leading #). Quiche's parser reads that cell with
+# `u8::from_str_radix` on three 2-character slices and skips the cell entirely
+# if it is not exactly six characters -- three separate 0-255 numeric columns
+# parse to nothing and every point ends up the default colour, black.
+# It also needs at least one reduction, or the renderer reports the attribute as
+# not colourable and falls back to solid white.
+DEFAULT_RGB_ATTRIBUTE = "color"
 
 DEFAULT_POINT_CLOUD_CHANNEL = "point_cloud"
 
 # Per-column data type accepted in the `column_types` override and produced by
 # the CSV sampling classifier.
 ColumnDataType = Literal["int", "real", "string"]
+
+# Unit of the values in a point cloud's time column. Mirrors the workbook's
+# `SpatialTimeUnit`, which is what the renderer converts the stored range back
+# into when it maps the playhead onto per-point values.
+TimeUnit = Literal["ns", "us", "ms", "s"]
+
+# Microseconds per unit. The spatial asset always stores its time range in
+# microseconds, whatever unit the column itself is in.
+_MICROS_PER: Mapping[TimeUnit, float] = {"ns": 1e-3, "us": 1.0, "ms": 1e3, "s": 1e6}
 
 
 class _PointCloudClients(HasScoutParams, Protocol):
@@ -59,14 +79,21 @@ def _ingest_point_cloud_csv(
     csv_path: PathLike,
     *,
     column_types: Mapping[str, ColumnDataType] | None = None,
+    rgb_column: str | None = None,
+    rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
+    time_column: str | None = None,
+    time_unit: TimeUnit = "s",
     channel: str = DEFAULT_POINT_CLOUD_CHANNEL,
     tags: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, tuple[int, int] | None]:
     """Upload a point-cloud CSV and submit it to the spatial ingest pipeline.
 
     Returns:
-        `(s3_path, ingest_job_rid)` for the submitted ingest.
+        `(s3_path, ingest_job_rid, time_range_us)`, where `time_range_us` is the
+        measured `(start, end)` extent of `time_column` in microseconds, or None
+        when no time column was named. The ingest API has no field for it, so the
+        caller records it on the spatial asset.
     """
     path = Path(csv_path)
     if not path.exists():
@@ -75,7 +102,10 @@ def _ingest_point_cloud_csv(
     # Inference runs before the upload so a malformed CSV fails fast, rather
     # than after pushing potentially many GB to object storage.
     header_line, sample_lines = _read_csv_header_and_samples(path)
-    import_config = _build_import_config(header_line, sample_lines, column_types or {})
+    import_config = _build_import_config(
+        header_line, sample_lines, column_types or {}, rgb_column=rgb_column, rgb_attribute=rgb_attribute
+    )
+    time_range = None if time_column is None else _read_time_range(path, header_line, time_column, time_unit)
 
     resolved_workspace_rid = clients.resolve_workspace(workspace_rid).rid
     s3_path = upload_multipart_file(
@@ -108,7 +138,7 @@ def _ingest_point_cloud_csv(
     logger.debug(
         "submitted point cloud ingest for %s: spatial=%s ingest_job=%s", path, spatial_rid, response.ingest_job_rid
     )
-    return s3_path, response.ingest_job_rid
+    return s3_path, response.ingest_job_rid, time_range
 
 
 # Sample size for column type inference. Picked large enough that an
@@ -135,10 +165,73 @@ def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SA
     return header, samples
 
 
+def _read_time_range(
+    path: Path,
+    header_line: str,
+    time_column: str,
+    time_unit: TimeUnit,
+) -> tuple[int, int]:
+    """Scan the time column and return its extent, in microseconds.
+
+    The renderer maps the workbook playhead onto per-point time by interpolating
+    across this range, so it has to be the true extent rather than an estimate
+    from the sampled rows -- a range short of the real maximum clips the tail of
+    the cloud, and one past it stalls the sweep before the end.
+
+    That means a full pass over the file. Only this one column is parsed, and
+    nothing is retained, so the cost is a read of the file rather than a parse
+    of it.
+    """
+    if time_unit not in _MICROS_PER:
+        raise ValueError(f"time_unit must be one of {sorted(_MICROS_PER)}: got {time_unit!r}")
+
+    headers = [h.strip() for h in header_line.split(",")]
+    try:
+        index = headers.index(time_column)
+    except ValueError:
+        raise ValueError(
+            f"time_column {time_column!r} is not in the CSV header; available columns: {headers}"
+        ) from None
+
+    minimum = math.inf
+    maximum = -math.inf
+    with path.open("r", newline="") as f:
+        next(f)  # header, already parsed by the caller
+        for line_number, line in enumerate(f, start=2):
+            row = line.rstrip("\r\n")
+            if not row:
+                continue
+            fields = row.split(",")
+            if index >= len(fields):
+                continue
+            raw = fields[index].strip()
+            if not raw:
+                continue
+            try:
+                value = float(raw)
+            except ValueError:
+                raise ValueError(
+                    f"time_column {time_column!r} holds a non-numeric value {raw!r} on line {line_number}"
+                ) from None
+            minimum = min(minimum, value)
+            maximum = max(maximum, value)
+
+    if minimum > maximum:
+        raise ValueError(f"time_column {time_column!r} has no values to derive a time range from")
+
+    micros = _MICROS_PER[time_unit]
+    # Widen to whole microseconds so rounding can never land inside the data and
+    # clip the first or last points.
+    return math.floor(minimum * micros), math.ceil(maximum * micros)
+
+
 def _build_import_config(
     header_line: str,
     sample_lines: Sequence[str],
     column_type_overrides: Mapping[str, ColumnDataType] | None = None,
+    *,
+    rgb_column: str | None = None,
+    rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
 ) -> dict[str, Any]:
     """Build the Dagger v2 `ImportRequest` body, minus `source_uri`.
 
@@ -171,13 +264,22 @@ def _build_import_config(
 
     geometry_indices = _find_geometry_indices(headers)
     geom_set = set(geometry_indices)
+    rgb_indices = _find_rgb_index(headers, rgb_column)
+    # Excluded from scalar classification: a hex colour cell would otherwise be
+    # sampled as a string column.
+    rgb_set = set(rgb_indices)
 
     int_indices: list[int] = []
     real_indices: list[int] = []
     string_indices: list[int] = []
-    attributes: list[dict[str, Any]] = []
+    # Quiche assigns each column an attribute slot by walking the buckets in the
+    # order real, int, string, rgb, normal, bool -- not the order the columns
+    # appear in the header. The archetype has to be declared in that same order
+    # or attribute k is named and typed after one column while holding another
+    # column's values.
+    by_bucket: dict[str, list[dict[str, Any]]] = {"real": [], "int": [], "string": []}
     for i, name in enumerate(headers):
-        if i in geom_set:
+        if i in geom_set or i in rgb_set:
             continue
         # Caller-supplied type wins; fall through to sample-based inference.
         kind = overrides.get(name)
@@ -210,7 +312,14 @@ def _build_import_config(
         else:
             string_indices.append(i)
             ty = _FSE_TYPE_STRING
-        attributes.append({"header": {"name": name, "ty": ty}, "reductions": reductions})
+        by_bucket[kind].append({"header": {"name": name, "ty": ty}, "reductions": reductions})
+
+    attributes = [*by_bucket["real"], *by_bucket["int"], *by_bucket["string"]]
+    if rgb_indices:
+        # Mean is the reduction that makes sense at coarse LOD: a parent node
+        # takes the average colour of the points it stands in for. `MeanSampler`
+        # is implemented for Rgb8, so this is a valid pairing.
+        attributes.append({"header": {"name": rgb_attribute, "ty": _FSE_TYPE_RGB}, "reductions": [_SAMPLER_MEAN]})
 
     return {
         "archetype": {"attributes": attributes},
@@ -222,12 +331,24 @@ def _build_import_config(
                 "real": real_indices,
                 "int": int_indices,
                 "string": string_indices,
-                "rgb": [],
+                "rgb": rgb_indices,
                 "normal": [],
                 "bool": [],
             },
         },
     }
+
+
+def _find_rgb_index(headers: Sequence[str], rgb_column: str | None) -> list[int]:
+    """Resolve the colour column name to a single index, as a list for the wire shape."""
+    if rgb_column is None:
+        return []
+    try:
+        return [headers.index(rgb_column)]
+    except ValueError:
+        raise ValueError(
+            f"rgb_column {rgb_column!r} is not in the CSV header; available columns: {list(headers)}"
+        ) from None
 
 
 def _classify_column(values: Sequence[str]) -> ColumnDataType:
