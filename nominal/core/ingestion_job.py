@@ -308,11 +308,13 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         deadline = _deadline_from(timeout)
         seen_file_ids: set[str] = set()
         pending: list[DatasetFile] = []
-        job_running = True
+        # Not `self.status in _RUNNING_JOB_STATUSES`: a job that is already terminal here still owes
+        # one listing pass, which is the whole file set for a job that finished before this was called.
+        may_produce_more = True
 
         while True:
-            if job_running:
-                job_running, new_files = self._poll_for_new_files(seen_file_ids)
+            if may_produce_more:
+                may_produce_more, new_files = self._poll_for_new_files(seen_file_ids)
                 seen_file_ids.update(file.id for file in new_files)
                 pending.extend(new_files)
 
@@ -320,7 +322,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
                 newly_done, pending, _ = _poll_files_once(pending)
                 yield from newly_done
 
-            if not job_running and not pending:
+            if not may_produce_more and not pending:
                 break
 
             logger.info(
