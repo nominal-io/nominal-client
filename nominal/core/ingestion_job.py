@@ -238,8 +238,10 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
 
         `produced_file_count` is the only cross-check available on whether the paged listing returned
         everything: it counts the same rows the listing selects, before that listing drops unlanded
-        files and ones in datasets this caller cannot read. Those two make a shortfall legitimate for
-        some jobs, so it is reported rather than raised.
+        files and ones in datasets this caller cannot read. Neither is a race a longer wait would win.
+        A file is unlanded only while its row is still a reservation, and a reservation is non-terminal
+        work that holds the job itself off COMPLETED — so one still unlanded here is one that failed
+        before it landed. A shortfall is legitimate for some jobs, so it is reported rather than raised.
         """
         if self.produced_file_count is not None and len(seen_file_ids) < self.produced_file_count:
             logger.warning(
