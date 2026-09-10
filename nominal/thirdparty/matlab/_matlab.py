@@ -117,7 +117,7 @@ def export_channels_to_matlab(
     Raises:
         ValueError: If no channels are provided, if both `resolution` and `num_buckets`
             are specified, or if the output path does not have a `.mat` suffix.
-        Any exceptions raised by the underlying API client or file I/O operations
+        Exception: Any error raised by the underlying API client or file I/O operations
             (e.g. network errors, filesystem errors).
 
     Example:
