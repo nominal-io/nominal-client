@@ -101,8 +101,9 @@ def source_client(pytestconfig) -> NominalClient:
         return NominalClient.from_profile(profile)
     auth_token = pytestconfig.getoption("source_auth_token")
     if auth_token is None:
-        raise pytest.UsageError(
-            "Either --source-profile or --source-auth-token must be provided for migration source environment"
+        pytest.skip(
+            "migration source environment not configured; pass --source-profile or "
+            "--source-auth-token (with --source-base-url) to run the migration e2e suite"
         )
     base_url = pytestconfig.getoption("source_base_url")
     print(f"Using source NominalClient.create(base_url={base_url!r})")
@@ -122,8 +123,9 @@ def dest_client(pytestconfig) -> NominalClient:
         return NominalClient.from_profile(profile)
     auth_token = pytestconfig.getoption("dest_auth_token") or pytestconfig.getoption("auth_token")
     if auth_token is None:
-        raise pytest.UsageError(
-            "Either --dest-profile or --dest-auth-token must be provided for migration destination environment"
+        pytest.skip(
+            "migration destination environment not configured; pass --dest-profile or "
+            "--dest-auth-token, or the global --profile / --auth-token"
         )
     base_url = pytestconfig.getoption("dest_base_url") or pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")

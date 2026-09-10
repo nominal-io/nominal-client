@@ -103,6 +103,7 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
         workspace=clients.resolve_default_workspace_rid(),
         marking_rids=[],
         dataset_type=scout_catalog.DatasetBackingType.LEGACY,
+        channel_search_split_tag_keys=[],
     )
     ds = Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
     try:
