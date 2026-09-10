@@ -64,6 +64,40 @@ backend log access was blocked by an expired AWS SSO session. Correlating the
 probe trace IDs with backend logs is the remaining step toward repairing the
 Iceberg/default path.
 
+## Streaming comparison
+
+A subsequent local probe streamed the same 30 floating-point values (ten
+timestamps across all three fixture channels) into a fresh staging dataset
+through the default JSON write stream. The diagnostic explicitly awaited the
+single batch future's `result()` to confirm successful request completion:
+`flush(wait=True)` itself only waits and does not propagate worker errors.
+
+The write was acknowledged at approximately 0.53 seconds. Channels were not
+immediately visible. ClickHouse first returned the exact expected DataFrame at
+34 seconds; Iceberg initially returned HTTP 400, then returned the exact frame
+at 84 seconds. The default route returned zero rows at 56 seconds and the exact
+frame at 105 seconds. Subsequent successful reads retained exact value, dtype,
+column, and timestamp-index equality. Times are sampled, with requests issued
+sequentially, not precise readiness measurements.
+The probe finished with exact matches on all three routes at approximately
+230 seconds, confirmed DUAL backing and the expected bounds, then archived its
+temporary dataset.
+
+This demonstrates that streaming can make the same fixture data readable
+through Iceberg/default export, while request acknowledgement alone does not
+guarantee immediate visibility. The earlier file probes remained unreadable at
+130 seconds. A later recheck still found ten samples in ClickHouse and none in
+Iceberg for both file-probe datasets, but those datasets had been archived at the
+end of their original probes; this is not an unconfounded measurement of how
+long an active file ingest might take to become readable.
+
+The evidence motivates a simultaneous file-versus-streaming comparison, keeping
+both datasets active until a shared deadline, and backend trace inspection of
+the file-to-Iceberg path. Streaming is useful additional coverage and could
+isolate pandas export tests from file ingestion, but replacing the sole file
+round-trip assertions would hide the original failure. Retain file-to-export
+coverage and give any streaming test an explicit export-readiness check.
+
 ## What is failing
 
 The [latest main run](https://github.com/nominal-io/nominal-client/actions/runs/34391070399)
