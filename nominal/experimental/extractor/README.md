@@ -439,8 +439,12 @@ for file in job.as_files_ingested():             # blocks until each output fini
 ```
 
 A containerized extraction is asynchronous and may produce many files, so it returns an
-`IngestionJob` rather than a single file. Use `job.status` to poll, `job.dataset_files()` for what it
-produced, and `job.cancel()` to stop it.
+`IngestionJob` rather than a single file. `as_files_ingested()` waits out both stages — the container
+producing its outputs, then each output ingesting — and re-reads the job's file list as it goes, which
+matters for a manifest extractor: none of its outputs are registered until the container exits, so a
+list read at trigger time is empty. Use `job.refresh()` then `job.status` to poll the job itself
+(`status` is a snapshot; refreshing is what advances it), `job.dataset_files()` for a point-in-time
+list of what it has produced so far, and `job.cancel()` to stop it.
 
 The keys of `sources` are the input environment variables you registered, and they must match the
 active image's inputs exactly. `timestamp_column` / `timestamp_type` on this call override the image's
