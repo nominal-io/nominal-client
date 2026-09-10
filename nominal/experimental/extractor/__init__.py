@@ -10,21 +10,25 @@ output directory. The contract is environment-driven:
 - declared parameters arrive as environment variables (values are always strings).
 
 The image's registered output format fixes which of two output contracts the ingest
-pipeline applies, and this module provides one decorator per contract:
+pipeline applies, and this module provides one decorator per contract. Write new extractors
+against the manifest contract, which is the current one and a strict superset of the other.
 
-- :func:`single_file_extractor` -- the pipeline ingests exactly one output file, parsed
-  according to the registered format (``PARQUET``, ``CSV``, ...). Your function declares
-  that file with :meth:`SingleFileExtractorContext.set_output`.
 - :func:`manifest_extractor` -- for images registered with the ``MANIFEST`` output format.
   The pipeline reads a ``manifest.json`` describing every output file; your function
   declares each file it wrote with the method for that file's format --
   :meth:`ManifestExtractorContext.add_tabular`, :meth:`~ManifestExtractorContext.add_avro_stream`,
   :meth:`~ManifestExtractorContext.add_journal_json`, :meth:`~ManifestExtractorContext.add_video`
   -- and :meth:`Extractor.run` writes the manifest automatically. A manifest extractor may emit
-  telemetry, videos, or both.
+  telemetry, videos, or both, and each output carries its own timestamps, tag columns, and
+  channel prefix.
 
   Video outputs require a recent version of the Nominal platform: an older ingest pipeline
   ignores them, and rejects a manifest whose only outputs are videos.
+
+- :func:`single_file_extractor` -- the original contract, for images already registered with a
+  single-file format (``PARQUET``, ``CSV``, ...): the pipeline ingests exactly one output file,
+  parsed according to that format, and your function declares it with
+  :meth:`SingleFileExtractorContext.set_output`. There is no per-output metadata in this mode.
 
 Both decorators turn ``def fn(ctx) -> None`` into a container entrypoint: ``ctx`` resolves
 inputs and parameters from the environment, and :meth:`Extractor.run` finalizes the outputs

@@ -13,6 +13,27 @@ This package is the **in-container runtime** — the part that runs inside your 
 image and triggering ingests happen from `nominal.core` and are covered below, because you cannot
 usefully do one without the other.
 
+## Where this fits
+
+Nominal stores time-series data in **datasets**, built from ingested **files**. Each ingest parses a
+file's columns or records into **channels**, places samples in time using timestamp metadata, and
+optionally applies **tags** that partition the data within the dataset (per test-run, per vehicle).
+`Dataset` has a method per natively-parsed format — `add_tabular_data`, `add_avro_stream`,
+`add_journal_json`, `add_mcap`, `add_video`, `add_mcap_video`, `add_ardupilot_dataflash`, and more;
+see `Dataset` for the current set. A containerized extractor runs your code in that same pipeline and
+produces the same channels, tags, and files.
+
+Use one when:
+
+- the format is proprietary or unsupported, and only your code reads it;
+- it recurs, so the parsing logic should live in one versioned place instead of on each engineer's
+  laptop;
+- non-developers upload the files through the Nominal app, so the conversion has to happen without
+  them running anything.
+
+For a one-off conversion with a parser you already have, convert locally and call
+`dataset.add_tabular_data(...)` instead. An extractor pays for its setup through repeat use.
+
 ## The contract
 
 Nominal drives your container entirely through the environment:
@@ -23,33 +44,21 @@ Nominal drives your container entirely through the environment:
 | Output directory | named by `$OUTPUT_DIR` |
 | Parameters | environment variables; **always strings**, coerce them yourself |
 
-Your job is to write files into `$OUTPUT_DIR` and say what they are. The two decorators correspond to
-the two output contracts the pipeline supports, and the one you pick must match the `output_format`
-you register the image with — `Extractor.run` fails at startup if they disagree.
+Your job is to write files into `$OUTPUT_DIR` and say what they are. There are two output contracts,
+each with its own decorator, and the one you pick must match the `output_format` you register the
+image with — `Extractor.run` fails at startup if they disagree.
 
-## Single-file extractors
-
-For images registered with `PARQUET`, `CSV`, or `AVRO_STREAM`. The pipeline ingests exactly one output
-file, parsed according to the registered format.
-
-```python
-from nominal.experimental.extractor import SingleFileExtractorContext, single_file_extractor
-
-@single_file_extractor
-def convert(ctx: SingleFileExtractorContext) -> None:
-    table = read_my_format(ctx.input())          # the sole mounted input
-    out = ctx.output_dir / "converted.parquet"
-    write_parquet(table, out)
-    ctx.set_output(out)                          # declare it
-
-if __name__ == "__main__":
-    convert.run()                                # the container entrypoint
-```
+**Write new extractors as manifest extractors.** The manifest contract is the current one and a
+strict superset: it describes each output file individually, so one image can emit several files, mix
+telemetry with logs and video, and set per-file timestamps, tags, and channel prefixes. Single-file
+extractors are the original contract, kept for images already registered that way. Changing an
+image's output format later requires registering a new image.
 
 ## Manifest extractors
 
-For images registered with `MANIFEST`. Declare as many files as you like — one method per output
-format, each exposing only the options that format actually uses. `manifest.json` is written for you.
+For images registered with `MANIFEST` — the contract to use. Declare as many files as you like, one
+method per output format, each taking only the options that format uses.
+`manifest.json` is written for you.
 
 | Method | For | Options |
 |---|---|---|
@@ -118,27 +127,35 @@ Timestamps accept a `datetime`, an ISO 8601 string, or integer nanoseconds since
 
 ### Per-output timestamps
 
-`add_tabular` and `add_journal_json` take `timestamp_column` / `timestamp_type` together to override
-the job-level timestamp metadata for that file, so outputs of different shapes can carry different
-timestamp fields:
+`add_tabular` and `add_journal_json` take `timestamp_column` / `timestamp_type` together;
+`add_avro_stream` takes the type alone, since the schema fixes which field holds the timestamps.
+
+Declaring them here is the most specific end of a precedence chain that runs from one output file up
+to the extractor's registered defaults. Use it when a single run emits files with different timestamp
+fields or units. [Timestamps](#timestamps) lays out the whole chain and which type to emit.
+
+## Single-file extractors
+
+The original contract, for images registered with `PARQUET`, `CSV`, or `AVRO_STREAM`: the pipeline
+ingests exactly one output file, parsed according to the registered format. Use it for images already
+registered that way; write new extractors as manifest extractors.
 
 ```python
-ctx.add_tabular(part, timestamp_column="ts", timestamp_type="epoch_microseconds")
-ctx.add_tabular(run, timestamp_column="elapsed", timestamp_type=ts.Relative("milliseconds", start=t0))
+from nominal.experimental.extractor import SingleFileExtractorContext, single_file_extractor
+
+@single_file_extractor
+def convert(ctx: SingleFileExtractorContext) -> None:
+    table = read_my_format(ctx.input())          # the sole mounted input
+    out = ctx.output_dir / "converted.parquet"
+    write_parquet(table, out)
+    ctx.set_output(out)                          # declare it
+
+if __name__ == "__main__":
+    convert.run()                                # the container entrypoint
 ```
 
-`add_avro_stream` takes the type alone — the avro schema fixes which field holds the timestamps, so
-there is no column to name:
-
-```python
-ctx.add_avro_stream(records, timestamp_type="epoch_microseconds")
-```
-
-Only numeric types work here — absolute epochs (`ts.Epoch`) or offsets from a start (`ts.Relative`).
-Outputs needing ISO 8601 or custom string formats omit the timestamp arguments and inherit the
-job-level metadata, which supports the full range. For an avro output, inheriting is only correct when
-the job-level type is numeric too, since avro timestamps are integers and a string format cannot read
-them.
+A second `set_output` call raises, since the registered format describes one file. Everything below —
+inputs, parameters, errors, building, registering, ingesting — applies to both contracts.
 
 ## Inputs and parameters
 
@@ -160,6 +177,139 @@ ctx.dataset_rid
 ctx.additional_tags            # tags the ingest request applies to all data from this run
 ctx.job_timestamp_metadata     # what an output falls back to when it declares none of its own
 ```
+
+### When to use inputs vs parameters
+
+Parameters are tuning knobs. Inputs are the data to extract from.
+
+- **Input** — a file the extraction reads: the capture itself, plus any sidecar it needs (a
+  calibration table, a channel map, a vendor schema).
+- **Parameter** — a scalar that changes how the extraction runs: a threshold, a mode, a sample-rate
+  divisor.
+
+A value that never varies between ingests goes in the image, not in either mechanism.
+
+Put structured configuration in an input, not a parameter. Parameter values are strings with no
+schema, so a mapping, a list, or a nested document has to be encoded and parsed by hand.
+
+**To accept a variable number of files, or a directory layout, register a `.zip` or `.tar` input.**
+Each input is a single file, so archives are how you pass many files or preserve folder structure:
+declare `file_suffixes=["zip"]` and unpack in the extractor. Use this for loggers that emit a session
+directory rather than one capture, or for a run whose file count is not known in advance.
+
+`required=True` is stronger on an input than on a parameter:
+
+- a missing required **input** raises in `add_containerized`, before anything uploads;
+- a missing required **parameter** is not checked client-side. The runtime warns at container start,
+  then the run fails mid-job when `ctx.param()` reads it.
+
+For a parameter the code cannot run without, read it at the top of your function or give it a default
+with `ctx.get_param(name, default)`.
+
+An input's `file_suffixes` also drive discovery: `search_containerized_extractors(file_extension=...)`
+matches on them, so they determine which extractors a given file is offered for. The suffixes are
+descriptive, not enforced locally — a `.txt` sent to an input registered `["json"]` still uploads.
+
+## Timestamps
+
+Nominal places every sample on an absolute timeline. Your output supplies a numeric or string
+timestamp per sample; timestamp metadata says how to read it.
+
+### Where metadata comes from, and what wins
+
+Three levels can specify it. Per output file, the pipeline resolves them in this order:
+
+| Precedence | Level | Set with | Scope |
+|---|---|---|---|
+| 1 (highest) | Per output | `ctx.add_tabular(..., timestamp_column=, timestamp_type=)` | one file in one run |
+| 2 | Ingest request | `dataset.add_containerized(..., timestamp_column=, timestamp_type=)` | every output of one run |
+| 3 (lowest) | Image default | `register_image(..., default_timestamp_column=, default_timestamp_type=)` | every run of that image |
+
+Levels 2 and 3 are resolved **before the container runs**, and ingestion fails if both are absent.
+That is why registration requires a default: it guarantees the job always has metadata to fall back
+to. Level 1 is applied afterward, from the manifest your code writes, and overrides the resolved
+job-level value for that file only.
+
+Use each level for what it describes:
+
+- **the image default** — the normal shape of this extractor's output. Set it at registration to the
+  column and type your code emits on a typical run.
+- **the ingest request** — facts about *this upload* that the image cannot know. Above all, this is
+  where a relative t0 belongs: `timestamp_type=ts.Relative("milliseconds", start=t0)`.
+- **per output** — when one run emits files with different timestamp fields or units. A manifest
+  extractor writing telemetry in microseconds and events in seconds needs this; nothing else does.
+
+Per-output metadata takes numeric types only — `ts.Epoch` or `ts.Relative`, in units of seconds
+through nanoseconds. An output needing ISO 8601 or a custom string format must omit the per-output
+pair and inherit the job-level value, which accepts the full range. For an avro output, inheriting is
+correct only when the job-level type is numeric too: avro timestamps are integers, and a string
+format cannot read them.
+
+```python
+# per output, in the manifest your extractor writes
+ctx.add_tabular(part, timestamp_column="ts", timestamp_type="epoch_microseconds")
+ctx.add_tabular(run, timestamp_column="elapsed", timestamp_type=ts.Relative("milliseconds", start=t0))
+
+# avro takes the type alone: the schema fixes which field holds the timestamps
+ctx.add_avro_stream(records, timestamp_type="epoch_microseconds")
+```
+
+### Prefer relative timestamps
+
+Emit elapsed time from the start of the recording and supply t0 at ingest. Reach for absolute
+(`ts.Epoch`, `ts.Iso8601`, `ts.Custom`) only when you can guarantee every timestamp is already
+correct in absolute time.
+
+Relative wins on two counts.
+
+**It is recoverable.** With relative timestamps, absolute time is `(elapsed in the file) + (t0 in
+metadata)`, so a wrong t0 is a metadata error: delete the file and re-ingest the same bytes with a
+corrected `start`. With absolute timestamps, the times *are* the data, so the only fix is to download
+the file, rewrite every value, and upload it again.
+
+**It is a smaller problem to get right.** Relative asks one question per sample — how far into the
+recording is this — which the logger measures directly off its own clock. Absolute asks every sample
+to be correct in wall-clock time, which depends on GPS lock, NTP sync, and clock drift, any of which
+can leave you with jumps, rounding, or an offset nobody notices until someone compares two sources.
+
+So: if the source records only elapsed time, emit relative. If the source records absolute time but
+you cannot vouch for it — unsynced machines, intermittent GPS, timestamps rounded to the second,
+occasional jumps — convert to elapsed-from-first-sample and emit relative with a best-estimate t0.
+Choosing absolute is a claim that no timestamp will ever need altering.
+
+Do **not** register `ts.Relative` as an image's `default_timestamp_type`. A default is set once and
+applies to every future ingest, so a fixed `start` gives every file the same t0. Register an absolute
+default for the fallback and pass `Relative` per ingest, where each file carries its own start.
+
+### Granularity
+
+Use the unit the data has. Declaring `epoch_milliseconds` for microsecond data does not lose
+precision, it misplaces every sample by a factor of 1000.
+
+## Choosing tags
+
+Tags separate otherwise-identical channels. A channel is identified by name, so two stands both
+producing `chamber_pressure` blend into one series unless a tag distinguishes them. Blended data is
+harder to detect and harder to undo than a failed ingest.
+
+Tags reach the data three ways, in increasing specificity:
+
+- **the ingest request** — `add_containerized(..., tags={"vehicle": "n1234"})`, applied to everything
+  the run produces and readable in-container as `ctx.additional_tags`. Use it for facts about *this
+  upload* that the file does not carry.
+- **a tag column** — `ctx.add_tabular(path, tag_columns={"motor": "motor_id"})`, read per row, when
+  the distinguishing fact varies *within* a file;
+- **avro files** and **journal json**, which carry tags within the files themselves.
+
+A good tag identifies a *source*, is stable for the life of the data, and has few distinct values:
+vehicle, stand, motor serial, run identifier. A bad tag is a measurement (that is a channel), a value
+derived from a timestamp (that is the timeline), or free text that varies by upload — `Stand A`,
+`stand-a`, and `standA` become three unrelated series. Nothing normalizes tag values, so normalize
+them in the extractor rather than relying on each caller.
+
+`channel_prefix` and tags solve different problems. A prefix renames channels
+(`engine/chamber_pressure`); a tag leaves the name alone and adds a dimension you can filter and group
+by. Prefer a tag when comparing the same measurement across sources.
 
 ## Errors
 
@@ -200,12 +350,21 @@ ctx = split.run(
 print(ctx.build_manifest())
 ```
 
+`env` *replaces* the environment, it does not merge into it, so it must carry everything your code
+reads: `OUTPUT_DIR`, the inputs, every parameter. Nothing falls back to the ambient value — omitting
+`OUTPUT_DIR` fails with `ExtractorError`, raised to the caller under `exit=False` as above, or printed
+as a traceback before a non-zero exit under `run()`'s default `exit=True`.
+
 Then save a tarball for upload:
 
 ```bash
-docker build -t my-extractor:v1 .
+docker build --platform linux/amd64 -t my-extractor:v1 .
 docker save my-extractor:v1 -o my-extractor-v1.tar
 ```
+
+Nominal runs extractor images on amd64, so `--platform linux/amd64` is required. Registration does
+not check it: an arm64 build (the default on Apple Silicon) registers and activates, then fails at
+ingest with an exec format error.
 
 ## Registering it
 
@@ -251,9 +410,10 @@ extractor.set_active_image(image)
 
 Notes worth knowing before you hit them:
 
-- **`output_format` must match your decorator.** `MANIFEST` for `@manifest_extractor`, one of
-  `PARQUET` / `CSV` / `AVRO_STREAM` for `@single_file_extractor`. A mismatch fails at container
-  startup rather than producing output the pipeline rejects.
+- **`output_format` must match your decorator, and it defaults to `PARQUET`.** `MANIFEST` for
+  `@manifest_extractor`, one of `PARQUET` / `CSV` / `AVRO_STREAM` for `@single_file_extractor`. A
+  manifest extractor must pass it explicitly: omit it and you register the single-file contract, after
+  which every run fails at container startup.
 - **Tags are immutable.** Re-registering an existing tag raises `NominalAlreadyExistsError`; bump the
   tag instead.
 - **`default_timestamp_column` / `default_timestamp_type` are required** even if every ingest
