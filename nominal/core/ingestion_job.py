@@ -4,7 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Collection, Iterable, Protocol, Sequence
+from typing import AbstractSet, Collection, Iterable, Protocol, Sequence
 
 from nominal_api import ingest_api
 from typing_extensions import Self
@@ -14,6 +14,7 @@ from nominal.core._utils.frontend_urls import ingestion_job_url
 from nominal.core.dataset_file import (
     DatasetFile,
     _dataset_file_from_conjure,
+    _deadline_from,
     _poll_files_once,
     _sleep_until_next_poll,
 )
@@ -203,7 +204,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         """
         return list(self._iter_dataset_files())
 
-    def _poll_for_new_files(self, seen_file_ids: Collection[str]) -> tuple[bool, list[DatasetFile]]:
+    def _poll_for_new_files(self, seen_file_ids: AbstractSet[str]) -> tuple[bool, list[DatasetFile]]:
         """Refresh this job once, returning whether it can still produce files and any not yet seen.
 
         `produced_file_count` is a live count that arrives with the refresh. It says nothing about how
@@ -224,7 +225,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         new_files = {file.id: file for file in self._iter_dataset_files() if file.id not in seen_file_ids}
         return job_running, list(new_files.values())
 
-    def _timed_out(self, pending: Sequence[DatasetFile]) -> NominalIngestTimeout:
+    def _timeout_error(self, pending: Sequence[DatasetFile]) -> NominalIngestTimeout:
         """Describe which of the two stages this wait was still blocked on when its budget expired."""
         blocked_on = (
             f"was still {self.status.name.lower()}"
@@ -304,7 +305,7 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             NominalIngestTimeout: `timeout` elapsed while the job or one of its files was still in
                 progress.
         """
-        deadline = None if timeout is None else datetime.datetime.now() + timeout
+        deadline = _deadline_from(timeout)
         seen_file_ids: set[str] = set()
         pending: list[DatasetFile] = []
         job_running = True
@@ -329,6 +330,6 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
                 len(pending),
             )
             if not _sleep_until_next_poll(poll_interval, deadline):
-                raise self._timed_out(pending)
+                raise self._timeout_error(pending)
 
         self._report_terminal_state(seen_file_ids)

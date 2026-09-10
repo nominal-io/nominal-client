@@ -438,7 +438,18 @@ def _poll_files_once(files: Sequence[DatasetFile]) -> tuple[list[DatasetFile], l
     return done, not_done, has_failed
 
 
-def _sleep_until_next_poll(poll_interval: datetime.timedelta, deadline: datetime.datetime | None) -> bool:
+def _deadline_from(timeout: datetime.timedelta | None) -> float | None:
+    """Turn a caller's timeout into a monotonic deadline, or None for an unbounded wait.
+
+    Monotonic rather than wall-clock: a wait bounded by `datetime.now()` stretches past the budget the
+    caller asked for when the system clock steps backwards, and expires early when it steps forwards.
+    Pair with `_sleep_until_next_poll`, which reads the same clock — a deadline from anywhere else is
+    not comparable to it.
+    """
+    return None if timeout is None else time.monotonic() + timeout.total_seconds()
+
+
+def _sleep_until_next_poll(poll_interval: datetime.timedelta, deadline: float | None) -> bool:
     """Sleep until the next poll is due, capped at `deadline`. Returns whether any budget remained.
 
     Never sleeps past the deadline: waiting out a whole poll interval near the end of a caller's budget
@@ -447,7 +458,7 @@ def _sleep_until_next_poll(poll_interval: datetime.timedelta, deadline: datetime
     """
     sleep_for = poll_interval.total_seconds()
     if deadline is not None:
-        remaining = (deadline - datetime.datetime.now()).total_seconds()
+        remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
         sleep_for = min(sleep_for, remaining)
@@ -482,12 +493,12 @@ def wait_for_files_to_ingest(
     Returns:
         Returns a tuple of (done, not done) dataset files.
     """
-    deadline = None if timeout is None else datetime.datetime.now() + timeout
+    deadline = _deadline_from(timeout)
     done: list[DatasetFile] = []
     not_done: list[DatasetFile] = [*files]
     has_failed = False
 
-    while not_done and (deadline is None or datetime.datetime.now() < deadline):
+    while not_done and (deadline is None or time.monotonic() < deadline):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
         newly_done, not_done, newly_failed = _poll_files_once(not_done)

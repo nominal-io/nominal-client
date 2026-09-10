@@ -219,14 +219,17 @@ def test_wait_for_files_to_ingest_does_not_sleep_past_the_timeout_deadline():
     """A poll interval longer than the remaining budget is shortened to the budget, not slept in full."""
     file = _make_file("file-1", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
 
-    with patch("nominal.core.dataset_file.time.sleep") as mock_sleep:
+    with (
+        patch("nominal.core.dataset_file.time.sleep") as mock_sleep,
+        patch("nominal.core.dataset_file.time.monotonic", return_value=100.0),
+    ):
         done, not_done = wait_for_files_to_ingest(
             [file], poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)
         )
 
     assert done == [file]
     assert not not_done
-    assert 0 < mock_sleep.call_args.args[0] <= 2
+    mock_sleep.assert_called_once_with(2.0)
 
 
 def test_wait_for_files_to_ingest_treats_unknown_status_as_done():

@@ -366,13 +366,13 @@ def test_as_files_ingested_does_not_sleep_past_the_timeout_deadline(mock_clients
     )
     mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
 
-    with _polling() as mock_sleep:
-        # Sleep is mocked, so no wall-clock time passes; stop at the first sleep to inspect its length.
+    with _polling() as mock_sleep, patch("nominal.core.dataset_file.time.monotonic", return_value=100.0):
+        # The frozen clock never reaches the deadline, so stop at the first sleep to inspect its length.
         mock_sleep.side_effect = _StopPolling
         with pytest.raises(_StopPolling):
             list(job.as_files_ingested(poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)))
 
-    assert 0 < mock_sleep.call_args.args[0] <= 2
+    mock_sleep.assert_called_once_with(2.0)
 
 
 def test_as_files_ingested_timeout_names_the_pending_files_when_the_job_is_terminal(
