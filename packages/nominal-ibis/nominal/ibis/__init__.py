@@ -11,16 +11,18 @@ Example:
     client = NominalClient.from_profile("prod")
     con = ibis.nominal.connect(client)
     pts = con.table("points_double")
-    df = (
+    per_minute = (
         pts.filter(_.dataset_rid == "ri.catalog....", _.channel == "temperature")
         .group_by(minute=_.ts.truncate("m"))
         .agg(n=_.count(), avg=_.value.mean())
         .to_pandas()
     )
+    print(per_minute.head())
 
     # Server functions come from the SQL catalog; nothing is declared client-side.
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    rates = pts.select(rate=con.fn.derivative(_.value).over(w)).to_pandas()
+    rates = pts.select("ts", rate=con.fn.derivative(_.value).over(w)).to_pandas()
+    print(rates.describe())
 """
 
 from nominal.ibis._backend import Backend, NominalSqlError, connect
