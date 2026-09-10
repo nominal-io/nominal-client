@@ -35,7 +35,7 @@ import pytest
 from nominal_api import scout_catalog
 
 from nominal.core import NominalClient
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, _create_dataset_request
 from nominal.core.dataset_file import IngestStatus
 from tests.e2e import POLL_INTERVAL
 
@@ -92,16 +92,9 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
     # Pin the backing type so export tests do not depend on environment defaults
     # or delayed read visibility after file ingestion reports success.
     clients = client._clients
-    request = scout_catalog.CreateDataset(
-        name=f"dataset-e2e-readonly-{uuid4().hex[:8]}",
-        labels=[],
-        properties={},
-        typed_properties={},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=clients.resolve_default_workspace_rid(),
-        marking_rids=[],
+    request = _create_dataset_request(
+        f"dataset-e2e-readonly-{uuid4().hex[:8]}",
+        workspace_rid=clients.resolve_default_workspace_rid(),
         dataset_type=scout_catalog.DatasetBackingType.LEGACY,
     )
     ds = Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
