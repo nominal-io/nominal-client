@@ -1571,6 +1571,7 @@ def _create_dataset(
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
     request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),
