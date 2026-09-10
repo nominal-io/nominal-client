@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import functools
 import io
 import logging
-import os
 from typing import Any, Iterable, Iterator, Mapping
-from urllib.parse import ParseResult
 
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
@@ -12,21 +11,21 @@ import ibis.expr.operations as ops
 import ibis.expr.schema as sch
 import ibis.expr.types as ir
 import pyarrow as pa
-import requests
 import sqlglot.expressions as sge
+from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
-from requests.adapters import HTTPAdapter, Retry
 
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.client import NominalClient
 from nominal.ibis._functions import Functions
+from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
 logger = logging.getLogger(__name__)
-
-_ARROW_FORMAT = "SQL_SERVICE_QUERY_RESULT_FORMAT_ARROW_STREAM"
 
 # Element types of MAP and ARRAY columns are not reported by the catalog; the
 # API's telemetry and metadata tables use string elements throughout.
@@ -41,7 +40,7 @@ _CATALOG_TYPES: dict[str, dt.DataType] = {
 
 
 class NominalSqlError(com.IbisError):
-    """Error returned by the Nominal SQL API."""
+    """A query result that cannot be mapped onto the Ibis expression that produced it."""
 
 
 class NominalCompiler(PostgresCompiler):
@@ -106,7 +105,30 @@ def _without_trailing_nulls(args: Iterable[Any]) -> list[Any]:
     return trimmed
 
 
-class Backend(SQLBackend):
+class _PayloadReader(io.RawIOBase):
+    """File view over the Arrow IPC stream the server splits across streamed response payloads."""
+
+    def __init__(self, responses: Iterator[sql_pb2.SqlServiceQueryResponse]) -> None:
+        self._responses = responses
+        self._pending = memoryview(b"")
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, target: Any) -> int:
+        while not self._pending:
+            with translate_grpc_errors():
+                response = next(self._responses, None)
+            if response is None:
+                return 0
+            self._pending = memoryview(response.payload)
+        count = min(len(target), len(self._pending))
+        target[:count] = self._pending[:count]
+        self._pending = self._pending[count:]
+        return count
+
+
+class Backend(SQLBackend, NoUrl):
     """Ibis backend executing queries against the Nominal SQL API."""
 
     name = "nominal"
@@ -114,107 +136,51 @@ class Backend(SQLBackend):
     supports_temporary_tables = False
     supports_python_udfs = False
 
-    base_url: str
     workspace_rid: str
 
-    def do_connect(
-        self,
-        profile: str | None = None,
-        *,
-        base_url: str | None = None,
-        token: str | None = None,
-        workspace_rid: str | None = None,
-        timeout_seconds: float = 120.0,
-    ) -> None:
-        """Connect to the Nominal SQL API.
+    def do_connect(self, client: NominalClient) -> None:
+        """Query the Nominal SQL API through an existing client.
 
         Args:
-            profile: Named profile in the Nominal config (see `nom config profile add`).
-                Used when no token is given; defaults to the `NOMINAL_PROFILE`
-                environment variable, then to "default".
-            base_url: API base URL; overrides the profile's URL when given.
-            token: API key or auth token. When given, the Nominal config is not read.
-            workspace_rid: Workspace to query in; overrides the profile's workspace.
-                When neither is set, the caller's default workspace is used.
-            timeout_seconds: HTTP timeout for catalog and query requests.
+            client: Authenticated Nominal client. Queries run in its default workspace, either the one
+                pinned in the profile or the tenant default.
         """
-        # nominal.core must initialize before nominal.config: the two circularly
-        # import each other and only the core-first order resolves. A plain
-        # import sorts before the from-imports, so formatters keep this order.
-        import nominal.core  # noqa: F401
-        from nominal.config import NominalConfig
-        from nominal.core._constants import DEFAULT_API_BASE_URL
-        from nominal.core._utils.api_tools import construct_user_agent_string
+        self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
+        self.workspace_rid = client._clients.resolve_default_workspace_rid()
+        for cached in ("_catalog", "_schemas", "fn"):
+            self.__dict__.pop(cached, None)
 
-        if token is None:
-            prof = NominalConfig.from_yaml().get_profile(profile or os.environ.get("NOMINAL_PROFILE", "default"))
-            base_url = base_url or prof.base_url
-            token = prof.token
-            workspace_rid = workspace_rid or prof.workspace_rid
-        self.base_url = (base_url or DEFAULT_API_BASE_URL).rstrip("/")
-        self._timeout = timeout_seconds
-        self._session = requests.Session()
-        self._session.headers["Authorization"] = f"Bearer {token}"
-        self._session.headers["User-Agent"] = construct_user_agent_string()
-        retries = Retry(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=(429, 502, 503, 504),
-            allowed_methods=frozenset({"GET", "POST"}),
-        )
-        self._session.mount("https://", HTTPAdapter(max_retries=retries))
-        self._catalog_cache: dict[str, sch.Schema] | None = None
-        self._catalog_functions: list[dict[str, Any]] = []
-        self._fn: Functions | None = None
-        self.workspace_rid = workspace_rid or self._default_workspace_rid()
+    @functools.cached_property
+    def _catalog(self) -> sql_pb2.SqlCatalog:
+        with translate_grpc_errors():
+            return self._sql.GetSqlCatalog(sql_pb2.GetSqlCatalogRequest()).sql_catalog
 
-    def _from_url(self, url: ParseResult, **kwargs: Any) -> "Backend":
-        return self.connect(base_url=f"https://{url.netloc}{url.path}".rstrip("/"), **kwargs)
+    @functools.cached_property
+    def _schemas(self) -> dict[str, sch.Schema]:
+        schemas: dict[str, sch.Schema] = {}
+        for table in self._catalog.tables:
+            fields: dict[str, dt.DataType] = {}
+            for column in table.columns:
+                dtype = _CATALOG_TYPES.get(column.type)
+                if dtype is None:
+                    logger.warning(
+                        "unknown catalog type %r for column %s.%s; treating it as a string",
+                        column.type,
+                        table.name,
+                        column.name,
+                    )
+                    dtype = dt.string
+                fields[column.name] = dtype.copy(nullable=column.nullable)
+            schemas[table.name] = sch.Schema(fields)
+        return schemas
 
-    def _raise_for_error(self, response: requests.Response) -> None:
-        if response.ok:
-            return
-        try:
-            detail: object = response.json()
-        except ValueError:
-            detail = response.text[:2000]
-        raise NominalSqlError(f"HTTP {response.status_code}: {detail}")
-
-    def _default_workspace_rid(self) -> str:
-        response = self._session.get(f"{self.base_url}/workspaces/v1/default-workspace", timeout=self._timeout)
-        self._raise_for_error(response)
-        workspace = response.json() if response.status_code != 204 and response.content else None
-        if not workspace:
-            raise NominalSqlError("No default workspace is configured for this user; pass workspace_rid to connect()")
-        return str(workspace["rid"])
-
-    def _fetch_catalog(self) -> dict[str, sch.Schema]:
-        if self._catalog_cache is None:
-            response = self._session.get(f"{self.base_url}/sql/v1/catalog", timeout=self._timeout)
-            self._raise_for_error(response)
-            sql_catalog = response.json().get("sqlCatalog") or {}
-            tables = sql_catalog.get("tables") or []
-            self._catalog_functions = list(sql_catalog.get("functions") or [])
-            catalog: dict[str, sch.Schema] = {}
-            for table in tables:
-                fields: dict[str, dt.DataType] = {}
-                for column in table.get("columns") or []:
-                    dtype = _CATALOG_TYPES.get(column["type"])
-                    if dtype is None:
-                        logger.warning(
-                            "unknown catalog type %r for column %s.%s; treating it as a string",
-                            column["type"],
-                            table["name"],
-                            column["name"],
-                        )
-                        dtype = dt.string
-                    fields[column["name"]] = dtype.copy(nullable=bool(column.get("nullable", False)))
-                catalog[table["name"]] = sch.Schema(fields)
-            self._catalog_cache = catalog
-        return self._catalog_cache
+    @functools.cached_property
+    def fn(self) -> Functions:
+        """Server functions from the SQL catalog, e.g. `con.fn.derivative(_.value).over(w)`."""
+        return Functions(self._catalog.functions)
 
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
-        return self._filter_with_like(sorted(self._fetch_catalog()), like)
+        return self._filter_with_like(sorted(self._schemas), like)
 
     def get_schema(
         self,
@@ -223,47 +189,33 @@ class Backend(SQLBackend):
         catalog: str | None = None,
         database: str | None = None,
     ) -> sch.Schema:
-        schemas = self._fetch_catalog()
-        if table_name not in schemas:
+        if table_name not in self._schemas:
             raise com.TableNotFound(table_name)
-        return schemas[table_name]
+        return self._schemas[table_name]
 
     def _get_schema_using_query(self, query: str) -> sch.Schema:
-        table = self._execute_sql(query, max_rows=1)
-        return PyArrowSchema.to_ibis(table.schema)
-
-    @property
-    def fn(self) -> Functions:
-        """Server functions from the SQL catalog, e.g. `con.fn.derivative(_.value).over(w)`."""
-        if self._fn is None:
-            self._fetch_catalog()
-            self._fn = Functions(self._catalog_functions)
-        return self._fn
+        with self._open_stream(query, max_rows=1) as reader:
+            return PyArrowSchema.to_ibis(reader.schema)
 
     @property
     def version(self) -> str:
         return "1"
 
-    def _query_body(self, sql: str, max_rows: int | None = None) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "query": sql,
-            "workspaceRid": self.workspace_rid,
-            "resultFormat": _ARROW_FORMAT,
-        }
-        if max_rows is not None:
-            body["maxRows"] = max_rows
-        return body
-
-    def _execute_sql(self, sql: str, max_rows: int | None = None) -> pa.Table:
-        response = self._session.post(
-            f"{self.base_url}/sql/v1/query", json=self._query_body(sql, max_rows), timeout=self._timeout
+    def _open_stream(self, sql: str, max_rows: int | None = None) -> pa.ipc.RecordBatchStreamReader:
+        request = sql_pb2.SqlServiceQueryRequest(
+            query=sql,
+            workspace_rid=self.workspace_rid,
+            result_format=sql_pb2.SQL_SERVICE_QUERY_RESULT_FORMAT_ARROW_STREAM,
         )
-        self._raise_for_error(response)
-        with pa.ipc.open_stream(io.BytesIO(response.content)) as reader:
-            return reader.read_all()
+        if max_rows is not None:
+            request.max_rows = max_rows
+        with translate_grpc_errors():
+            responses = self._sql.Query(request)
+        return pa.ipc.open_stream(io.BufferedReader(_PayloadReader(iter(responses))))
 
     def raw_sql(self, query: str) -> pa.Table:
-        return self._execute_sql(query)
+        with self._open_stream(query) as reader:
+            return reader.read_all()
 
     def _align_columns(self, result: pa.Table, expected: list[str]) -> pa.Table:
         """Project the server result onto the expression's output columns.
@@ -303,7 +255,7 @@ class Backend(SQLBackend):
         limit: int | str | None = None,
     ) -> pa.Table:
         sql = self.compile(table_expr, params=params, limit=limit)
-        result = self._align_columns(self._execute_sql(sql), list(table_expr.columns))
+        result = self._align_columns(self.raw_sql(sql), list(table_expr.columns))
         return self._cast_result(result, table_expr.schema().to_pyarrow())
 
     def to_pyarrow(
@@ -332,22 +284,12 @@ class Backend(SQLBackend):
         """Execute the expression, streaming record batches without materializing the result."""
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
-        sql = self.compile(table_expr, params=params, limit=limit)
+        reader = self._open_stream(self.compile(table_expr, params=params, limit=limit))
         expected_names = list(table_expr.columns)
         target = table_expr.schema().to_pyarrow()
 
-        response = self._session.post(
-            f"{self.base_url}/sql/v1/query",
-            json=self._query_body(sql),
-            timeout=self._timeout,
-            stream=True,
-        )
-        self._raise_for_error(response)
-        response.raw.decode_content = True
-        reader = pa.ipc.open_stream(response.raw)
-
         def aligned_batches() -> Iterator[pa.RecordBatch]:
-            try:
+            with reader:
                 for batch in reader:
                     table = self._align_columns(pa.Table.from_batches([batch]), expected_names)
                     try:
@@ -357,9 +299,6 @@ class Backend(SQLBackend):
                             f"query result schema {table.schema} is not castable to the expression schema {target}"
                         ) from e
                     yield from table.to_batches(max_chunksize=chunk_size)
-            finally:
-                reader.close()
-                response.close()
 
         return pa.RecordBatchReader.from_batches(target, aligned_batches())
 
@@ -394,11 +333,11 @@ class Backend(SQLBackend):
         raise com.UnsupportedOperationError("In-memory tables cannot be uploaded to the Nominal SQL API")
 
     def disconnect(self) -> None:
-        self._session.close()
+        """No-op: the gRPC channel belongs to the NominalClient."""
 
 
-def connect(*args: Any, **kwargs: Any) -> Backend:
-    """Connect to the Nominal SQL API; see `Backend.do_connect` for the arguments."""
-    backend = Backend(*args, **kwargs)
+def connect(client: NominalClient) -> Backend:
+    """Connect Ibis to the Nominal SQL API through an existing client; see `Backend.do_connect`."""
+    backend = Backend(client)
     backend.reconnect()
     return backend
