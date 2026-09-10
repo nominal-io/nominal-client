@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
+import time
 from datetime import timedelta
-from types import SimpleNamespace
-from typing import Callable, Iterator, Sequence
-from unittest.mock import MagicMock, patch
+from typing import Callable, Mapping, Sequence
+from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import ingest_api
+from nominal_api import api, ingest_api, scout_catalog
 
-from nominal.core.dataset_file import IngestStatus
+from nominal.core.dataset_file import DatasetFile, IngestStatus
 from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 
+DATASET_RID = "ri.catalog.test.dataset.def"
 
-class _StopPolling(Exception):
-    """Raised from a mocked sleep to end a wait loop that would otherwise never reach its deadline."""
+IN_PROGRESS = api.IngestStatusV2(in_progress=api.InProgressResult())
+SUCCESS = api.IngestStatusV2(success=api.SuccessResult())
+FAILED = api.IngestStatusV2(error=api.ErrorResult(error_type="INTERNAL", message="boom"))
+
+# These tests drive the job through the conjure clients and assert on what the caller receives, so the
+# poll interval only sets how fast the loop spins. Nothing here patches time or module internals.
+FAST = timedelta(0)
 
 
 def _job_bean(**overrides: object) -> ingest_api.IngestJob:
@@ -28,7 +33,7 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
         created_by="11111111-1111-1111-1111-111111111111",
         org_uuid="22222222-2222-2222-2222-222222222222",
         created_by_rid="ri.authn.test.user.abc",
-        dataset_rid="ri.catalog.test.dataset.def",
+        dataset_rid=DATASET_RID,
         origin_files=None,
         produced_file_count=None,
         created_at=None,
@@ -39,14 +44,61 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
     return ingest_api.IngestJob(**kwargs)
 
 
-def test_from_conjure_unknown_status_falls_back_to_unknown() -> None:
-    """An unrecognized wire status name maps to UNKNOWN for forward-compatibility."""
-    future = SimpleNamespace(name="SOME_FUTURE_STATUS")
-    assert IngestionJobStatus._from_conjure(future) is IngestionJobStatus.UNKNOWN
+def _file_bean(file_id: str, ingest_status: api.IngestStatusV2) -> scout_catalog.DatasetFile:
+    """Build a conjure DatasetFile bean as the catalog service would return it."""
+    return scout_catalog.DatasetFile(
+        dataset_rid=DATASET_RID,
+        handle=scout_catalog.Handle(s3=scout_catalog.S3Handle(bucket="test-bucket", key=file_id)),
+        id=file_id,
+        ingest_status=ingest_status,
+        name=f"{file_id}.csv",
+        uploaded_at="2026-01-01T00:00:00Z",
+    )
+
+
+def _page(*files: scout_catalog.DatasetFile, next_page: str | None = None) -> scout_catalog.DatasetFilesPage:
+    """Build one page of a get_dataset_files_for_job response."""
+    return scout_catalog.DatasetFilesPage(files=list(files), next_page=next_page)
+
+
+def _responses(*values: object) -> Callable[..., object]:
+    """Successive service responses, repeating the last one for any further calls."""
+    remaining = list(values)
+
+    def _next(*_args: object, **_kwargs: object) -> object:
+        return remaining.pop(0) if len(remaining) > 1 else remaining[0]
+
+    return _next
+
+
+def _serve_job(mock_clients: MagicMock, *statuses: ingest_api.IngestJobStatus) -> None:
+    """Serve the job status each successive refresh sees, repeating the last."""
+    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(*(_job_bean(status=s) for s in statuses))
+
+
+def _serve_listing(mock_clients: MagicMock, *pages: scout_catalog.DatasetFilesPage) -> None:
+    """Serve successive file listings for the job, repeating the last."""
+    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(*pages)
+
+
+def _serve_refreshes(mock_clients: MagicMock, *states: Mapping[str, api.IngestStatusV2]) -> None:
+    """Serve successive batch refreshes, each mapping a file id to the status it now reports.
+
+    A file left out of a state is absent from that batch response, which is how the service reports one
+    that has been deleted.
+    """
+    mock_clients.catalog.batch_get_dataset_files.side_effect = _responses(
+        *({file_id: _file_bean(file_id, status) for file_id, status in state.items()} for state in states)
+    )
+
+
+def _ids(files: Sequence[DatasetFile]) -> list[str]:
+    """The ids of the dataset files a wait produced, in order."""
+    return [file.id for file in files]
 
 
 def test_cancel_calls_service_and_refreshes(mock_clients: MagicMock) -> None:
-    """cancel() calls the cancel endpoint and refreshes the job in place from the response."""
+    """cancel() cancels the job server-side and leaves the local job reporting the new status."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
     mock_clients.ingest_jobs.cancel_ingest_job.return_value = _job_bean(status=ingest_api.IngestJobStatus.CANCELLED)
 
@@ -57,168 +109,81 @@ def test_cancel_calls_service_and_refreshes(mock_clients: MagicMock) -> None:
     assert job.status is IngestionJobStatus.CANCELLED
 
 
-def test_dataset_files_paginates_and_maps(mock_clients: MagicMock) -> None:
-    """dataset_files() pages through the per-job files endpoint, threading the page token."""
+def test_dataset_files_returns_every_page(mock_clients: MagicMock) -> None:
+    """dataset_files() returns the files from every page of the listing, not just the first."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean())
+    _serve_listing(
+        mock_clients,
+        _page(_file_bean("f1", SUCCESS), _file_bean("f2", SUCCESS), next_page="t2"),
+        _page(_file_bean("f3", SUCCESS)),
+    )
 
-    raw_file_1 = object()
-    raw_file_2 = object()
-    raw_file_3 = object()
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = [
-        SimpleNamespace(files=[raw_file_1, raw_file_2], next_page="t2"),
-        SimpleNamespace(files=[raw_file_3], next_page=None),
-    ]
-
-    sentinels = {raw_file_1: "f1", raw_file_2: "f2", raw_file_3: "f3"}
-    with patch(
-        "nominal.core.ingestion_job._dataset_file_from_conjure",
-        side_effect=lambda _clients, raw_file: sentinels[raw_file],
-    ):
-        result = job.dataset_files()
-
-    assert result == ["f1", "f2", "f3"]
-    assert mock_clients.catalog.get_dataset_files_for_job.call_count == 2
-    first_call = mock_clients.catalog.get_dataset_files_for_job.call_args_list[0]
-    assert first_call.args == (mock_clients.auth_header, job.rid, None)
-    second_call = mock_clients.catalog.get_dataset_files_for_job.call_args_list[1]
-    assert second_call.args[2] == "t2"
-
-
-def _page(*files: object) -> SimpleNamespace:
-    """Build a single-page get_dataset_files_for_job response."""
-    return SimpleNamespace(files=list(files), next_page=None)
-
-
-def _responses(*values: object) -> Callable[..., object]:
-    """Successive mock responses, repeating the last one for any further calls."""
-    remaining = list(values)
-
-    def _next(*_args: object, **_kwargs: object) -> object:
-        return remaining.pop(0) if len(remaining) > 1 else remaining[0]
-
-    return _next
-
-
-def _make_file(file_id: str, statuses: Sequence[IngestStatus]) -> MagicMock:
-    """Build a stand-in dataset file whose ingest_status advances one step per refresh."""
-    file = MagicMock()
-    file.id = file_id
-    file.dataset_rid = "ri.catalog.test.dataset.def"
-    file.ingest_status = statuses[0]
-    observed = iter(statuses)
-
-    def refresh(_: object) -> MagicMock:
-        file.ingest_status = next(observed, statuses[-1])
-        return file
-
-    file._refresh_from_api.side_effect = refresh
-    return file
-
-
-def _advance_polled_files(files: Sequence[MagicMock], **_kwargs: object) -> set[str]:
-    """Stand in for _batch_refresh_files: refresh every polled file, report none absent."""
-    for file in files:
-        file._refresh_from_api(None)
-    return set()
-
-
-@contextmanager
-def _polling() -> Iterator[MagicMock]:
-    """Patch out file refreshes, conjure file conversion, and sleeping; yield the sleep mock."""
-    with (
-        patch("nominal.core.dataset_file._batch_refresh_files", side_effect=_advance_polled_files),
-        patch("nominal.core.ingestion_job._dataset_file_from_conjure", side_effect=lambda _clients, file: file),
-        patch("nominal.core.dataset_file.time.sleep") as mock_sleep,
-    ):
-        yield mock_sleep
+    assert _ids(job.dataset_files()) == ["f1", "f2", "f3"]
 
 
 def test_as_files_ingested_waits_for_files_registered_after_the_call(mock_clients: MagicMock) -> None:
     """Files that do not exist yet when the wait starts are still yielded once the job registers them."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS),
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS),
-        _job_bean(status=ingest_api.IngestJobStatus.COMPLETED),
+    _serve_job(
+        mock_clients,
+        ingest_api.IngestJobStatus.IN_PROGRESS,
+        ingest_api.IngestJobStatus.IN_PROGRESS,
+        ingest_api.IngestJobStatus.COMPLETED,
     )
-    first = _make_file("first-file", [IngestStatus.SUCCESS])
-    second = _make_file("second-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(
-        _page(),
-        _page(),
-        _page(first, second),
-    )
+    _serve_listing(mock_clients, _page(), _page(), _page(_file_bean("first", SUCCESS), _file_bean("second", SUCCESS)))
+    _serve_refreshes(mock_clients, {"first": SUCCESS, "second": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [first, second]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["first", "second"]
 
 
 def test_as_files_ingested_yields_completed_files_while_the_job_is_still_running(mock_clients: MagicMock) -> None:
     """A file that finishes ingesting is yielded without waiting for the job to reach a terminal status."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS)
-    )
-    file = _make_file("only-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.IN_PROGRESS)
+    _serve_listing(mock_clients, _page(_file_bean("only", SUCCESS)))
+    _serve_refreshes(mock_clients, {"only": SUCCESS})
 
-    with _polling():
-        first_yielded = next(iter(job.as_files_ingested()))
+    first_yielded = next(iter(job.as_files_ingested(poll_interval=FAST)))
 
-    assert first_yielded is file
+    assert first_yielded.id == "only"
     assert job.status is IngestionJobStatus.IN_PROGRESS
 
 
-def test_as_files_ingested_does_not_poll_a_job_that_is_already_terminal(mock_clients: MagicMock) -> None:
-    """An already-completed job yields its files without re-fetching the job or sleeping."""
+def test_as_files_ingested_does_not_refetch_a_job_that_is_already_terminal(mock_clients: MagicMock) -> None:
+    """An already-completed job yields its files without asking the service for the job again."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED))
-    file = _make_file("only-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_listing(mock_clients, _page(_file_bean("only", SUCCESS)))
+    _serve_refreshes(mock_clients, {"only": SUCCESS})
 
-    with _polling() as mock_sleep:
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [file]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["only"]
     mock_clients.ingest_jobs.get_ingest_job.assert_not_called()
-    mock_sleep.assert_not_called()
 
 
 def test_as_files_ingested_yields_each_file_once_when_a_page_repeats_it(mock_clients: MagicMock) -> None:
     """A file served on two pages of one listing pass is yielded once, as offset paging can repeat rows."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED))
-    repeated = _make_file("repeated-file", [IngestStatus.SUCCESS])
-    other = _make_file("other-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(
-        SimpleNamespace(files=[repeated, other], next_page="t2"),
-        SimpleNamespace(files=[repeated], next_page=None),
+    _serve_listing(
+        mock_clients,
+        _page(_file_bean("repeated", SUCCESS), _file_bean("other", SUCCESS), next_page="t2"),
+        _page(_file_bean("repeated", SUCCESS)),
     )
+    _serve_refreshes(mock_clients, {"repeated": SUCCESS, "other": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [repeated, other]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["repeated", "other"]
 
 
 def test_as_files_ingested_yields_each_file_once_when_the_list_grows(mock_clients: MagicMock) -> None:
     """A file seen on an earlier poll is not yielded again when it reappears in a later file listing."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS),
-        _job_bean(status=ingest_api.IngestJobStatus.COMPLETED),
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.IN_PROGRESS, ingest_api.IngestJobStatus.COMPLETED)
+    _serve_listing(
+        mock_clients,
+        _page(_file_bean("first", IN_PROGRESS)),
+        _page(_file_bean("first", SUCCESS), _file_bean("second", SUCCESS)),
     )
-    first = _make_file("first-file", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
-    second = _make_file("second-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(
-        _page(first),
-        _page(first, second),
-    )
+    _serve_refreshes(mock_clients, {"first": IN_PROGRESS}, {"first": SUCCESS, "second": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [first, second]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["first", "second"]
 
 
 def test_as_files_ingested_skips_relisting_files_while_the_produced_count_is_unchanged(
@@ -231,13 +196,10 @@ def test_as_files_ingested_skips_relisting_files_while_the_produced_count_is_unc
         _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS, produced_file_count=1),
         _job_bean(status=ingest_api.IngestJobStatus.COMPLETED, produced_file_count=1),
     )
-    file = _make_file("only-file", [IngestStatus.IN_PROGRESS, IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_listing(mock_clients, _page(_file_bean("only", IN_PROGRESS)))
+    _serve_refreshes(mock_clients, {"only": IN_PROGRESS}, {"only": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [file]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["only"]
     assert mock_clients.catalog.get_dataset_files_for_job.call_count == 2
 
 
@@ -248,131 +210,104 @@ def test_as_files_ingested_warns_when_fewer_files_listed_than_the_job_reports(
     job = IngestionJob._from_conjure(
         mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED, produced_file_count=3)
     )
-    file = _make_file("only-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_listing(mock_clients, _page(_file_bean("only", SUCCESS)))
+    _serve_refreshes(mock_clients, {"only": SUCCESS})
 
-    with _polling(), caplog.at_level(logging.WARNING):
-        yielded = list(job.as_files_ingested())
+    with caplog.at_level(logging.WARNING):
+        yielded = list(job.as_files_ingested(poll_interval=FAST))
 
-    assert yielded == [file]
+    assert _ids(yielded) == ["only"]
     assert "reports 3 produced file(s) but only 1 could be listed" in caplog.text
 
 
 def test_as_files_ingested_yields_files_that_failed_to_ingest(mock_clients: MagicMock) -> None:
     """A completed job's failed file is yielded rather than dropped, so the caller can see its status."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED))
-    failed = _make_file("failed-file", [IngestStatus.FAILED])
-    succeeded = _make_file("good-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(failed, succeeded))
+    _serve_listing(mock_clients, _page(_file_bean("bad", IN_PROGRESS), _file_bean("good", IN_PROGRESS)))
+    _serve_refreshes(mock_clients, {"bad": FAILED, "good": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
+    yielded = list(job.as_files_ingested(poll_interval=FAST))
 
-    assert yielded == [failed, succeeded]
-    assert failed.ingest_status is IngestStatus.FAILED
+    assert _ids(yielded) == ["bad", "good"]
+    assert yielded[0].ingest_status is IngestStatus.FAILED
 
 
 def test_as_files_ingested_yields_a_file_absent_from_the_batch_response(mock_clients: MagicMock) -> None:
     """A file that disappears mid-wait is treated as done rather than polled forever."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.COMPLETED))
-    file = _make_file("deleted-file", [IngestStatus.IN_PROGRESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_listing(mock_clients, _page(_file_bean("deleted", IN_PROGRESS)))
+    _serve_refreshes(mock_clients, {})
 
-    with (
-        patch("nominal.core.dataset_file._batch_refresh_files", return_value={"deleted-file"}),
-        patch("nominal.core.ingestion_job._dataset_file_from_conjure", side_effect=lambda _clients, f: f),
-        patch("nominal.core.dataset_file.time.sleep"),
-    ):
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [file]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["deleted"]
 
 
 def test_as_files_ingested_raises_when_the_job_fails(mock_clients: MagicMock) -> None:
     """A job that ends FAILED raises rather than quietly yielding nothing."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.FAILED)
-    )
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.FAILED)
+    _serve_listing(mock_clients, _page())
 
-    with _polling(), pytest.raises(NominalIngestFailed, match="failed"):
-        list(job.as_files_ingested())
+    with pytest.raises(NominalIngestFailed, match="failed"):
+        list(job.as_files_ingested(poll_interval=FAST))
 
 
 def test_as_files_ingested_names_ingested_files_when_the_job_fails(mock_clients: MagicMock) -> None:
-    """A failing job's error names the files that did ingest, which the raise discards from list()."""
+    """The failure names the files that did ingest, so a partial result is still reconcilable."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.FAILED)
-    )
-    file = _make_file("landed-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.FAILED)
+    _serve_listing(mock_clients, _page(_file_bean("landed", SUCCESS)))
+    _serve_refreshes(mock_clients, {"landed": SUCCESS})
 
-    with _polling(), pytest.raises(NominalIngestFailed, match="landed-file"):
-        list(job.as_files_ingested())
+    with pytest.raises(NominalIngestFailed, match="landed"):
+        list(job.as_files_ingested(poll_interval=FAST))
 
 
 def test_as_files_ingested_yields_without_raising_when_the_job_is_cancelled(mock_clients: MagicMock) -> None:
     """A cancelled job yields what did ingest instead of raising, since cancelling was the caller's ask."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.CANCELLED)
-    )
-    file = _make_file("landed-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.CANCELLED)
+    _serve_listing(mock_clients, _page(_file_bean("landed", SUCCESS)))
+    _serve_refreshes(mock_clients, {"landed": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [file]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["landed"]
 
 
 def test_as_files_ingested_stops_on_an_unrecognized_job_status(mock_clients: MagicMock) -> None:
-    """An unrecognized job status ends the wait instead of looping on it forever."""
+    """A job status this client does not recognize ends the wait instead of looping on it forever.
+
+    `IngestJobStatus.UNKNOWN` is what conjure decodes any status a newer server adds into, so this is
+    the forward-compatibility case exactly as it arrives.
+    """
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.UNKNOWN)
-    )
-    file = _make_file("only-file", [IngestStatus.SUCCESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.UNKNOWN)
+    _serve_listing(mock_clients, _page(_file_bean("only", SUCCESS)))
+    _serve_refreshes(mock_clients, {"only": SUCCESS})
 
-    with _polling():
-        yielded = list(job.as_files_ingested())
-
-    assert yielded == [file]
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["only"]
     assert job.status is IngestionJobStatus.UNKNOWN
 
 
 def test_as_files_ingested_raises_timeout_while_the_job_is_still_running(mock_clients: MagicMock) -> None:
     """An exhausted wait budget raises rather than blocking on a job that is still running."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS)
-    )
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.IN_PROGRESS)
+    _serve_listing(mock_clients, _page())
 
-    with _polling() as mock_sleep, pytest.raises(NominalIngestTimeout, match="in_progress"):
+    with pytest.raises(NominalIngestTimeout, match="in_progress"):
         list(job.as_files_ingested(timeout=timedelta(0)))
 
-    mock_sleep.assert_not_called()
 
-
-def test_as_files_ingested_does_not_sleep_past_the_timeout_deadline(mock_clients: MagicMock) -> None:
-    """A poll interval longer than the remaining budget is shortened to the budget, not slept in full."""
+def test_as_files_ingested_gives_up_on_the_timeout_not_a_full_poll_interval_later(mock_clients: MagicMock) -> None:
+    """A timeout shorter than the poll interval ends the wait when the budget runs out, not an interval later."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS)
-    )
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page())
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.IN_PROGRESS)
+    _serve_listing(mock_clients, _page())
 
-    with _polling() as mock_sleep, patch("nominal.core.dataset_file.time.monotonic", return_value=100.0):
-        # The frozen clock never reaches the deadline, so stop at the first sleep to inspect its length.
-        mock_sleep.side_effect = _StopPolling
-        with pytest.raises(_StopPolling):
-            list(job.as_files_ingested(poll_interval=timedelta(minutes=5), timeout=timedelta(seconds=2)))
+    started = time.monotonic()
+    with pytest.raises(NominalIngestTimeout):
+        list(job.as_files_ingested(poll_interval=timedelta(seconds=5), timeout=timedelta(seconds=0.05)))
 
-    mock_sleep.assert_called_once_with(2.0)
+    assert time.monotonic() - started < 2
 
 
 def test_as_files_ingested_timeout_names_the_pending_files_when_the_job_is_terminal(
@@ -380,11 +315,9 @@ def test_as_files_ingested_timeout_names_the_pending_files_when_the_job_is_termi
 ) -> None:
     """A timeout on a job that finished blames its still-ingesting files, not the job's own status."""
     job = IngestionJob._from_conjure(mock_clients, _job_bean(status=ingest_api.IngestJobStatus.IN_PROGRESS))
-    mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(
-        _job_bean(status=ingest_api.IngestJobStatus.COMPLETED)
-    )
-    file = _make_file("slow-file", [IngestStatus.IN_PROGRESS])
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(_page(file))
+    _serve_job(mock_clients, ingest_api.IngestJobStatus.COMPLETED)
+    _serve_listing(mock_clients, _page(_file_bean("slow", IN_PROGRESS)))
+    _serve_refreshes(mock_clients, {"slow": IN_PROGRESS})
 
-    with _polling(), pytest.raises(NominalIngestTimeout, match="completed, but 1 of its file"):
+    with pytest.raises(NominalIngestTimeout, match="completed, but 1 of its file"):
         list(job.as_files_ingested(timeout=timedelta(0)))
