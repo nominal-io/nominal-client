@@ -5,6 +5,7 @@ from ibis import _
 
 from nominal.ibis import Backend
 from nominal.ibis._functions import build_function
+from nominal.protos.sql.v1 import sql_pb2
 
 POINTS = ibis.table(
     {
@@ -70,18 +71,19 @@ def test_regex_search_renders_as_regexp_like_function() -> None:
 
 
 def catalog_function(
-    name: str, kind: str, families: list[str], return_family: str | None = None, **extra: object
+    name: str, kind: str, families: list[str], return_family: str | None = None, **fields: int
 ) -> object:
-    entry: dict[str, object] = {
-        "name": name,
-        "kind": f"SQL_CATALOG_FUNCTION_KIND_{kind}",
-        "minArgs": len(families),
-        "maxArgs": len(families),
-        "argumentTypeFamilies": families,
-        **extra,
-    }
+    entry = sql_pb2.SqlCatalogFunction(
+        name=name,
+        kind=getattr(sql_pb2, f"SQL_CATALOG_FUNCTION_KIND_{kind}"),
+        min_args=len(families),
+        max_args=len(families),
+        argument_type_families=families,
+    )
     if return_family is not None:
-        entry["returnTypeFamily"] = return_family
+        entry.return_type_family = return_family
+    for field, value in fields.items():
+        setattr(entry, field, value)
     function = build_function(entry)
     assert function is not None
     return function
@@ -104,7 +106,7 @@ def test_catalog_function_bypasses_sqlglot_builtins() -> None:
 
 
 def test_catalog_function_drops_omitted_optional_arguments() -> None:
-    integral = catalog_function("INTEGRAL", "WINDOW", ["NUMERIC", "ANY"], "NUMERIC", minArgs=1)
+    integral = catalog_function("INTEGRAL", "WINDOW", ["NUMERIC", "ANY"], "NUMERIC", min_args=1)
     w = ibis.cumulative_window(group_by="channel", order_by="ts")
     assert 'integral("t0"."value") over' in compile_sql(POINTS.select(total=integral(_.value).over(w))).lower()
     assert (

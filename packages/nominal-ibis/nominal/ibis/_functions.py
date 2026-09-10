@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 import ibis.expr.datatypes as dt
 from ibis import udf
 
+from nominal.protos.sql.v1 import sql_pb2
+
 logger = logging.getLogger(__name__)
 
-_SCALAR_KIND = "SQL_CATALOG_FUNCTION_KIND_SCALAR"
-_AGGREGATE_KINDS = frozenset({"SQL_CATALOG_FUNCTION_KIND_AGGREGATE", "SQL_CATALOG_FUNCTION_KIND_WINDOW"})
+_AGGREGATE_KINDS = frozenset({sql_pb2.SQL_CATALOG_FUNCTION_KIND_AGGREGATE, sql_pb2.SQL_CATALOG_FUNCTION_KIND_WINDOW})
 
 # Catalog type families; an unlisted family accepts any argument and yields an unknown result.
 _ARGUMENT_TYPES: Mapping[str, dt.DataType] = {
@@ -37,37 +38,35 @@ _RETURN_TYPES: Mapping[str, dt.DataType] = {
 }
 
 
-def build_function(entry: Mapping[str, Any]) -> Callable[..., Any] | None:
+def build_function(entry: sql_pb2.SqlCatalogFunction) -> Callable[..., Any] | None:
     """Build an Ibis builtin UDF from one catalog function entry, or None if it cannot be expressed.
 
     Variadic functions and entries without a kind (older servers) are skipped; Ibis
     has native methods for the standard SQL functions in that set.
     """
-    name = str(entry["name"]).lower()
-    kind = entry.get("kind")
-    max_args = entry.get("maxArgs")
-    if kind == _SCALAR_KIND:
+    name = entry.name.lower()
+    if entry.kind == sql_pb2.SQL_CATALOG_FUNCTION_KIND_SCALAR:
         decorator = udf.scalar.builtin
-    elif kind in _AGGREGATE_KINDS:
+    elif entry.kind in _AGGREGATE_KINDS:
         decorator = udf.agg.builtin
     else:
-        logger.debug("skipping catalog function %s: kind %r is not supported", name, kind)
+        logger.debug("skipping catalog function %s: kind %r is not supported", name, entry.kind)
         return None
-    if max_args is None:
+    if not entry.HasField("max_args"):
         logger.debug("skipping catalog function %s: variadic functions cannot be wrapped", name)
         return None
 
-    min_args = int(entry.get("minArgs", 0))
-    families: Sequence[str] = entry.get("argumentTypeFamilies") or []
+    min_args = entry.min_args
+    families = entry.argument_type_families
     parameters = []
     annotations: dict[str, Any] = {}
-    for index in range(int(max_args)):
+    for index in range(entry.max_args):
         arg = f"arg{index}"
         default = {} if index < min_args else {"default": None}
         parameters.append(inspect.Parameter(arg, inspect.Parameter.POSITIONAL_OR_KEYWORD, **default))
         if index < len(families) and families[index] in _ARGUMENT_TYPES:
             annotations[arg] = _ARGUMENT_TYPES[families[index]]
-    return_family = entry.get("returnTypeFamily")
+    return_family = entry.return_type_family if entry.HasField("return_type_family") else None
     annotations["return"] = _RETURN_TYPES.get(return_family, dt.unknown) if return_family else dt.unknown
 
     def stub(*args: Any) -> Any:
@@ -90,8 +89,8 @@ class Functions:
         pts.select(rate=con.fn.derivative(_.value).over(w))
     """
 
-    def __init__(self, entries: Sequence[Mapping[str, Any]]) -> None:
-        functions = ((str(entry["name"]).lower(), build_function(entry)) for entry in entries)
+    def __init__(self, entries: Iterable[sql_pb2.SqlCatalogFunction]) -> None:
+        functions = ((entry.name.lower(), build_function(entry)) for entry in entries)
         self._functions: dict[str, Callable[..., Any]] = {
             name: function for name, function in functions if function is not None
         }
