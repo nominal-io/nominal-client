@@ -7,6 +7,10 @@ import shlex
 import ffmpeg
 
 from nominal.core._types import PathLike
+from nominal.experimental.video_processing.audio_timeline import (
+    DEFAULT_MAX_AUDIO_HOLE_SECONDS,
+    audio_repair_filter,
+)
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
     scale_factor_from_resolution,
@@ -27,6 +31,8 @@ def normalize_video(
     force: bool = True,
     resolution: AnyResolutionType | None = None,
     num_threads: int | None = None,
+    repair_audio: bool = True,
+    max_audio_hole_seconds: float = DEFAULT_MAX_AUDIO_HOLE_SECONDS,
 ) -> None:
     """Convert video file to an h264 encoded video file using ffmpeg.
 
@@ -37,6 +43,13 @@ def normalize_video(
         * Video is encoded with H264
         * Audio is encoded with AAC
         * Video has YUV4:2:0 planar color space
+        * Audio content is made to match the timeline the file declares, when the two disagree
+
+    Timestamps are never moved. Video timestamps are passed through untouched, and audio packets
+    keep the timestamps the source gave them; only the audio *content* is adjusted, by filling
+    silence where the file says sound is missing and dropping samples the file gives no time to
+    play. When the audio is already coherent no audio filter is applied at all, so such files are
+    converted exactly as they were before this check existed.
 
     While this package includes bindings to use ffmpeg installed on your local system, it does not
     include ffmpeg as a dependency due to the GPLv3 licensing present in the standard H264 processing library
@@ -57,6 +70,15 @@ def normalize_video(
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
             NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
                   on the machine
+        repair_audio: If true, inspect the audio timeline and rebuild the audio onto it when the
+            two disagree. Files whose audio is already coherent are left alone either way.
+        max_audio_hole_seconds: Longest single run of missing audio that will be filled with silence.
+            A gap larger than this is treated as a corrupt timestamp rather than a real dropout,
+            and raises rather than synthesizing an unbounded stretch of silence.
+
+    Raises:
+        AudioTimelineError: If the audio is damaged beyond what a bounded repair can fix — a single
+            gap longer than `max_audio_hole_seconds`, or audio outlasting the video.
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -72,16 +94,17 @@ def normalize_video(
         else:
             raise FileExistsError(f"Cannot convert {input_path} to {output_path}: output path already exists!")
 
-    # Determine if input video has an audio track. If it doesn't, add in an empty audio track
-    # to allow for seamless play of this video content alongside content with audio tracks.
-    # While the backend will do this for you automatically, it dramatically faster to do it here
-    # than in the backend since we are already re-encoding video.
     output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,
         force_key_frames="source",
         pix_fmt=DEFAULT_PIXEL_FORMAT,
     )
+
+    # Only touch the audio when it has been measured to need it: an unnecessary filter is a
+    # chance to damage a file that was already fine.
+    if repair_audio and (audio_filter := audio_repair_filter(input_path, max_audio_hole_seconds)) is not None:
+        output_kwargs["af"] = audio_filter
 
     # If user has opted out of forcing key-frames, keep key frames at the same timestamps as
     # present in the initial video.

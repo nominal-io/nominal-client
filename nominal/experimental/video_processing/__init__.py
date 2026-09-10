@@ -1,3 +1,17 @@
+from nominal.experimental.video_processing.audio_timeline import (
+    AUDIO_REPAIR_FILTER,
+    DEFAULT_MAX_AUDIO_HOLE_SECONDS,
+    AudioDefect,
+    AudioDiagnosis,
+    AudioStreamInfo,
+    AudioTimeline,
+    audio_repair_filter,
+    diagnose_audio,
+    measure_audio_timeline,
+    probe_audio_stream,
+    survives_strict_segmentation,
+    timeline_from_packets,
+)
 from nominal.experimental.video_processing.resolution import (
     FULL_HD,
     HIGH_DEFINITION,
@@ -12,6 +26,18 @@ from nominal.experimental.video_processing.resolution import (
 from nominal.experimental.video_processing.video_conversion import frame_count, has_audio_track, normalize_video
 
 __all__ = [
+    "AUDIO_REPAIR_FILTER",
+    "DEFAULT_MAX_AUDIO_HOLE_SECONDS",
+    "AudioDefect",
+    "AudioDiagnosis",
+    "AudioStreamInfo",
+    "AudioTimeline",
+    "audio_repair_filter",
+    "diagnose_audio",
+    "measure_audio_timeline",
+    "probe_audio_stream",
+    "survives_strict_segmentation",
+    "timeline_from_packets",
     "frame_count",
     "has_audio_track",
     "normalize_video",
