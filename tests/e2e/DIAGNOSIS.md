@@ -98,6 +98,35 @@ isolate pandas export tests from file ingestion, but replacing the sole file
 round-trip assertions would hide the original failure. Retain file-to-export
 coverage and give any streaming test an explicit export-readiness check.
 
+## Pre-created channel experiment
+
+Four fresh DUAL datasets compared file upload and JSON streaming, each with
+automatic channel registration or all three DOUBLE channels pre-created through
+`batch_add_channels`. Pre-created channels were verified through metadata reads
+before upload. All cases used the same CSV values, timestamps, staging profile,
+and default-route export with complete DataFrame equality checks. Uploads began
+behind a common barrier after setup. Readiness was polled roughly every ten
+seconds; request duration adds to the interval.
+
+The automatic streaming case first passed at 42.9 seconds after write
+acknowledgement (last incomplete observation at 31.2 seconds). The pre-created
+streaming case first passed at 76.6 seconds (last incomplete observation at
+65.1 seconds). Pre-creation added approximately 0.7 seconds to setup and removed
+the initial missing-channel state, but did not eliminate HTTP 400 or subsequent
+empty exports. This single comparison does not establish a causal slowdown or
+a stable timing distribution; it provides no evidence for a speedup.
+
+Both file uploads explicitly reached SUCCESS (approximately 4.9 seconds for
+automatic channels and 5.6 seconds for pre-created channels), but neither
+produced any export rows before the four-minute post-success deadline. Their
+final reads completed at approximately 241 seconds with shape `(0, 3)`, after
+23 attempts each. Both file datasets remained active throughout that window;
+all four temporary datasets were archived only after their case succeeded or
+timed out. Pre-creating channels therefore did not resolve the file-export
+failure in this comparison. These results support retaining explicit export
+readiness checks and investigating the file-to-Iceberg path rather than adding
+channel pre-creation as a presumed timing fix.
+
 ## What is failing
 
 The [latest main run](https://github.com/nominal-io/nominal-client/actions/runs/34391070399)
