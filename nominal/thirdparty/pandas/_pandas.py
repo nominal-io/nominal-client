@@ -304,6 +304,11 @@ def datasource_to_dataframe(
         relative_to: If provided, return timestamps relative to the given epoch time
         relative_resolution: If providing timestamps in relative time, the resolution to use
 
+    Raises:
+    ------
+        Exception: If any channel batch fails to export or parse, its original exception is propagated.
+            Failed batches are never returned as empty or partial data.
+
     Returns:
     -------
         A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
@@ -374,31 +379,10 @@ def datasource_to_dataframe(
             return batch_df.set_index(renamed_timestamp_col)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
-        df_futures = {
-            pool.submit(_export_channel_batch, channel_batch): channel_batch
-            for channel_batch in batched(channels, channel_batch_size)
-        }
-
-        all_dataframes = []
-        for df_future in concurrent.futures.as_completed(df_futures):
-            channel_batch = df_futures[df_future]
-
-            ex = df_future.exception()
-            if ex is not None:
-                logger.error(
-                    "Failed exporting data for channels %s from datasource %s",
-                    [ch.name for ch in channel_batch],
-                    datasource.rid,
-                    exc_info=ex,
-                )
-                continue
-            else:
-                all_dataframes.append(df_future.result())
-
-    if not all_dataframes:
-        logger.warning(f"No data found for export from datasource {datasource.rid}")
-        all_column_names = [_EXPORTED_TIMESTAMP_COL_NAME] + [ch.name for ch in channels]
-        return pd.DataFrame({col: [] for col in all_column_names}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+        df_futures = [
+            pool.submit(_export_channel_batch, channel_batch) for channel_batch in batched(channels, channel_batch_size)
+        ]
+        all_dataframes = [future.result() for future in concurrent.futures.as_completed(df_futures)]
 
     try:
         result_df = pd.concat(all_dataframes, axis=1, join="outer", sort=True)

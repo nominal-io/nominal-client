@@ -1,8 +1,68 @@
 # E2E export failure investigation
 
 Diagnostic snapshot: 2026-09-10, main `9e8503f259a91141d54c8ff87067c0076bd78464`.
-This records existing CI evidence and source inspection. It does not establish a
-backend root cause or change test/SDK behavior.
+The initial investigation recorded existing CI evidence and source inspection.
+The local reproduction below narrows the backend failure to the Iceberg/default
+read path. This branch also fixes the client error handling that hid failed
+dataframe exports. The underlying backend cause remains unresolved.
+
+## Local reproduction and client fix
+
+Running the unchanged pair with the local `staging` profile reproduced both
+failures in 8.19 seconds:
+
+```sh
+uv run pytest tests/e2e/test_core.py \
+  -k 'test_get_channel_pandas or test_get_dataset_pandas' \
+  --profile staging --no-cov -v
+```
+
+Two additional controlled CSV ingests compared the fixture's original 2024
+timestamps with recent timestamps. Both files explicitly reached SUCCESS and
+their datasets had the expected bounds. Both datasets were DUAL-backed with
+KEEP_FOREVER retention. Both bounded and unbounded exports initially returned
+HTTP 400 and then successful zero-row responses through approximately 130 seconds.
+The original-timestamp probe first observed zero rows around 88 seconds; the
+recent-timestamp probe around 46 seconds. These are sampled observations, not
+precise backend transition times.
+
+A subsequent read-only comparison on the same two datasets changed only the
+export compute node's optional `SeriesStorage` selection:
+
+| Storage selection | Original timestamps | Recent timestamps |
+| --- | --- | --- |
+| Default | 0 rows | 0 rows |
+| CLICKHOUSE | 10 rows, temperature values 20–29 | 10 rows, temperature values 20–29 |
+| ICEBERG | 0 rows | 0 rows |
+
+This establishes that the samples are available through ClickHouse while the
+Iceberg/default path cannot return them at the observed times. Range bounds and
+old fixture dates do not explain that difference. It does not yet distinguish
+Iceberg write/publication failure from read/query failure. A successful local
+profile run also cannot prove equivalence to CI's workspace or identity.
+
+Finally, the original two pandas tests passed in 50.55 seconds with a
+process-local CLICKHOUSE selection on a fresh dataset. All original value,
+dtype, index, full-dataframe, and filtered-dataframe assertions were retained.
+Each temporary dataset created by these runs was archived afterward.
+
+The client fix makes `datasource_to_dataframe` propagate a worker's original
+exception instead of silently returning empty or partial data. Successful empty
+exports retain their columns and timestamp index. This is a deliberate behavior
+change for callers that previously received partial results after a failed
+batch; they now receive the underlying exception. Four regression tests cover
+all-failed and partially failed batches, valid empty responses, and successful
+multi-batch joining. Both error tests failed before the fix and passed afterward.
+After the fix, another default-route staging run still failed both tests in
+8.41 seconds, now with the underlying HTTP 400 visible through both entry points.
+Local validation: 984 unit tests passed, one skipped; full SDK and regression
+test type checking, Ruff lint/format checks, and whitespace checks passed.
+
+The backend storage comparison is diagnostic only: the branch does not force
+ClickHouse, retry generic 400s, or weaken the E2E equality assertions. Staging
+backend log access was blocked by an expired AWS SSO session. Correlating the
+probe trace IDs with backend logs is the remaining step toward repairing the
+Iceberg/default path.
 
 ## What is failing
 
@@ -98,5 +158,6 @@ errors are swallowed before the helper sees them. Its unit tests of the retry
 helper therefore do not establish error propagation through the full dataframe
 path. Diagnose those boundaries before treating polling as a complete repair.
 
-No new live-platform reproduction or backend trace lookup was performed for
-this snapshot; live outcomes above come from the linked existing CI jobs.
+The historical sections above describe the initial CI investigation. The local
+reproduction section records subsequent live staging probes. No backend trace
+lookup has succeeded yet.
