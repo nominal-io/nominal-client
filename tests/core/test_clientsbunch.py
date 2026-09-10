@@ -258,9 +258,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
 
 
 def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch):
-    """from_config builds `units`, `comments`, `workspace`, and `roles` as generated gRPC stubs, each bound
-    to a single shared channel.
-    """
+    """from_config builds every gRPC service as a generated stub bound to a single shared channel."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
     channel = MagicMock(name="grpc-channel")
     create_grpc_channel = MagicMock(return_value=channel)
