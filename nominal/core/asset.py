@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
@@ -40,6 +39,7 @@ from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -75,7 +75,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
 
     @property
     def nominal_url(self) -> str:
@@ -89,6 +89,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         if len(response) > 1:
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
+
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+        for scope in self._list_dataset_scopes():
+            if scope.data_scope_name == data_scope_name and scope.data_source.dataset is not None:
+                return scope.data_source.dataset, scope.series_tags
+        return None
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         return filter_scopes(self._get_latest_api().data_scopes, "dataset")
@@ -588,10 +594,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     def list_runs(self) -> Sequence[Run]:
         """List all runs associated with this Asset."""
         return [
-            Run._from_conjure(self._clients, run)
+            Run._from_proto(self._clients, run)
             for run in search_runs_by_asset_paginated(
                 self._clients.run,
-                self._clients.auth_header,
                 self.rid,
             )
         ]

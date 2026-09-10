@@ -12,8 +12,6 @@ from nominal_api import (
     scout_catalog,
     scout_checks_api,
     scout_notebook_api,
-    scout_rids_api,
-    scout_run_api,
     scout_template_api,
     scout_video_api,
 )
@@ -23,6 +21,7 @@ from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -414,63 +413,63 @@ def create_search_runs_query(
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
-) -> scout_run_api.SearchQuery:
+) -> run_service_pb2.SearchQuery:
     queries = []
     if start is not None:
-        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
+        start_time = _SecondsNanos.from_flexible(start).to_run_proto()
         queries.append(
-            scout_run_api.SearchQuery(
-                start_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=start_time, end_time=None)
+            run_service_pb2.SearchQuery(
+                start_time=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(start_time=start_time, end_time=None)
                 )
             )
         )
     if end is not None:
-        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
+        end_time = _SecondsNanos.from_flexible(end).to_run_proto()
         queries.append(
-            scout_run_api.SearchQuery(
-                end_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=None, end_time=end_time)
+            run_service_pb2.SearchQuery(
+                end_time=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(start_time=None, end_time=end_time)
                 )
             )
         )
     if created_after is not None or created_before is not None:
         created_after_time = (
-            _SecondsNanos.from_flexible(created_after).to_scout_run_api() if created_after is not None else None
+            _SecondsNanos.from_flexible(created_after).to_run_proto() if created_after is not None else None
         )
         created_before_time = (
-            _SecondsNanos.from_flexible(created_before).to_scout_run_api() if created_before is not None else None
+            _SecondsNanos.from_flexible(created_before).to_run_proto() if created_before is not None else None
         )
         queries.append(
-            scout_run_api.SearchQuery(
-                created_at=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(
+            run_service_pb2.SearchQuery(
+                created_at=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(
                         start_time=created_after_time, end_time=created_before_time
                     )
                 )
             )
         )
     if name_substring is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
+        queries.append(run_service_pb2.SearchQuery(exact_match=name_substring))
     if labels:
         queries.append(
-            scout_run_api.SearchQuery(
-                labels=scout_rids_api.LabelsFilter(labels=list(labels), operator=api.SetOperator.AND)
+            run_service_pb2.SearchQuery(
+                labels=run_service_pb2.LabelsFilter(labels=list(labels), operator=run_service_pb2.AND)
             )
         )
     if properties:
         for name, value in properties.items():
             # original properties is a 1:1 map, so we will never have multiple values for the same name
             queries.append(
-                scout_run_api.SearchQuery(properties=scout_rids_api.PropertiesFilter(name=name, values=[value]))
+                run_service_pb2.SearchQuery(properties=run_service_pb2.PropertiesFilter(name=name, values=[value]))
             )
     if exact_match is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
+        queries.append(run_service_pb2.SearchQuery(exact_match=exact_match))
     if search_text is not None:
-        queries.append(scout_run_api.SearchQuery(search_text=search_text))
+        queries.append(run_service_pb2.SearchQuery(search_text=search_text))
     if workspace_rid is not None:
-        queries.append(scout_run_api.SearchQuery(workspace=workspace_rid))
-    return scout_run_api.SearchQuery(and_=queries)
+        queries.append(run_service_pb2.SearchQuery(workspace=workspace_rid))
+    return run_service_pb2.SearchQuery(all_of=run_service_pb2.SearchQueryList(queries=queries))
 
 
 def create_search_workbooks_query(

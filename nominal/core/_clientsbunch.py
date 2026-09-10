@@ -43,6 +43,7 @@ from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
@@ -161,7 +162,6 @@ class ClientsBunch:
     ingest: ingest_api.IngestService
     notebook: scout.NotebookService
     proto_write: ProtoWriteService
-    run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
@@ -171,6 +171,7 @@ class ClientsBunch:
     video: scout_video.VideoService
 
     # GRPC services
+    run: run_service_pb2_grpc.RunServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     event: event_pb2_grpc.EventServiceStub
@@ -327,7 +328,6 @@ class ClientsBunch:
             ingest=client_factory(ingest_api.IngestService),
             notebook=client_factory(scout.NotebookService),
             proto_write=client_factory(ProtoWriteService),
-            run=client_factory(scout.RunService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
@@ -336,6 +336,7 @@ class ClientsBunch:
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),

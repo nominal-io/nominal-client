@@ -4,26 +4,25 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from nominal_api import api, scout_run_api
-
 from nominal.core._utils.query_tools import create_search_runs_query
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.ts import _SecondsNanos
 
 
-def _and_queries(query: scout_run_api.SearchQuery) -> list[scout_run_api.SearchQuery]:
-    assert query.and_ is not None
-    return query.and_
+def _and_queries(query: run_service_pb2.SearchQuery) -> list[run_service_pb2.SearchQuery]:
+    assert query.WhichOneof("query") == "all_of"
+    return list(query.all_of.queries)
 
 
-def _only_sub_query(query: scout_run_api.SearchQuery) -> scout_run_api.SearchQuery:
+def _only_sub_query(query: run_service_pb2.SearchQuery) -> run_service_pb2.SearchQuery:
     sub_queries = _and_queries(query)
     assert len(sub_queries) == 1
     return sub_queries[0]
 
 
-def _custom_timeframe(filter_value: scout_run_api.TimeframeFilter | None) -> scout_run_api.CustomTimeframeFilter:
+def _custom_timeframe(filter_value: run_service_pb2.TimeframeFilter | None) -> run_service_pb2.CustomTimeframeFilter:
     assert filter_value is not None
-    assert filter_value.custom is not None
+    assert filter_value.HasField("custom")
     return filter_value.custom
 
 
@@ -44,8 +43,8 @@ def test_create_search_runs_query_with_start_time():
 
     # Should use startTime with CustomTimeframeFilter(start_time=...)
     start_time_filter = _custom_timeframe(sub_query.start_time)
-    assert start_time_filter.start_time == _SecondsNanos.from_datetime(start_time).to_scout_run_api()
-    assert start_time_filter.end_time is None
+    assert start_time_filter.start_time == _SecondsNanos.from_datetime(start_time).to_run_proto()
+    assert not start_time_filter.HasField("end_time")
 
 
 def test_create_search_runs_query_with_end_time():
@@ -57,8 +56,8 @@ def test_create_search_runs_query_with_end_time():
 
     # Should use endTime with CustomTimeframeFilter(end_time=...)
     end_time_filter = _custom_timeframe(sub_query.end_time)
-    assert end_time_filter.start_time is None
-    assert end_time_filter.end_time == _SecondsNanos.from_datetime(end_time).to_scout_run_api()
+    assert not end_time_filter.HasField("start_time")
+    assert end_time_filter.end_time == _SecondsNanos.from_datetime(end_time).to_run_proto()
 
 
 def test_create_search_runs_query_with_created_after():
@@ -70,8 +69,8 @@ def test_create_search_runs_query_with_created_after():
 
     # Should use createdAt with CustomTimeframeFilter(start_time=...)
     created_at_filter = _custom_timeframe(sub_query.created_at)
-    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert created_at_filter.end_time is None
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_run_proto()
+    assert not created_at_filter.HasField("end_time")
 
 
 def test_create_search_runs_query_with_created_before():
@@ -83,8 +82,8 @@ def test_create_search_runs_query_with_created_before():
 
     # Should use createdAt with CustomTimeframeFilter(end_time=...)
     created_at_filter = _custom_timeframe(sub_query.created_at)
-    assert created_at_filter.start_time is None
-    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
+    assert not created_at_filter.HasField("start_time")
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_run_proto()
 
 
 def test_create_search_runs_query_with_both_created_filters():
@@ -98,8 +97,8 @@ def test_create_search_runs_query_with_both_created_filters():
 
     # Should have one createdAt filter with both after and before
     created_at_filter = _custom_timeframe(sub_query.created_at)
-    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_run_proto()
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_run_proto()
 
 
 def test_create_search_runs_query_with_string_timestamps():
@@ -140,7 +139,7 @@ def test_create_search_runs_query_with_labels():
     # Should use LabelsFilter with labels wrapped in a list
     assert sub_query.labels is not None
     assert sub_query.labels.labels == labels  # labels is wrapped in a list
-    assert sub_query.labels.operator == api.SetOperator.AND
+    assert sub_query.labels.operator == run_service_pb2.AND
 
 
 def test_create_search_runs_query_with_properties():
@@ -280,8 +279,8 @@ def test_create_search_runs_query_created_at_only_after():
 
     sub_query = _only_sub_query(query)
     created_at_filter = _custom_timeframe(sub_query.created_at)
-    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert created_at_filter.end_time is None
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_run_proto()
+    assert not created_at_filter.HasField("end_time")
 
 
 def test_create_search_runs_query_created_at_only_before():
@@ -291,5 +290,5 @@ def test_create_search_runs_query_created_at_only_before():
 
     sub_query = _only_sub_query(query)
     created_at_filter = _custom_timeframe(sub_query.created_at)
-    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
-    assert created_at_filter.start_time is None
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_run_proto()
+    assert not created_at_filter.HasField("start_time")

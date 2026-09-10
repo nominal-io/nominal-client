@@ -112,7 +112,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.run import Run, _create_run
+from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
@@ -740,8 +740,7 @@ class NominalClient:
             Reference to the created run object
 
         Raises:
-            ValueError: both `asset` and `assets` provided
-            ConjureHTTPError: error making request
+            NominalError: If the run service request fails.
 
         """
         if assets is None:
@@ -762,8 +761,7 @@ class NominalClient:
 
     def get_run(self, rid: str) -> Run:
         """Retrieve a run by its RID."""
-        response = self._clients.run.get_run(self._clients.auth_header, rid)
-        return Run._from_conjure(self._clients, response)
+        return _get_run(self._clients, rid)
 
     def _iter_search_runs(
         self,
@@ -791,8 +789,8 @@ class NominalClient:
             created_before=created_before,
             workspace_rid=workspace_rid,
         )
-        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
-            yield Run._from_conjure(self._clients, run)
+        for run in search_runs_paginated(self._clients.run, query, archive_status):
+            yield Run._from_proto(self._clients, run)
 
     def search_runs(
         self,

@@ -13,7 +13,6 @@ from nominal_api import (
     scout_checks_api,
     scout_datareview_api,
     scout_notebook_api,
-    scout_run_api,
     scout_template_api,
     scout_video,
     scout_video_api,
@@ -25,6 +24,7 @@ from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 
 DEFAULT_PAGE_SIZE = 100
@@ -211,36 +211,36 @@ def search_checklists_paginated(
 
 
 def search_runs_paginated(
-    run: scout.RunService,
-    auth_header: str,
-    query: scout_run_api.SearchQuery,
+    run: run_service_pb2_grpc.RunServiceStub,
+    query: run_service_pb2.SearchQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[scout_run_api.Run]:
-    def factory(page_token: str | None) -> scout_run_api.SearchRunsRequest:
-        return scout_run_api.SearchRunsRequest(
+) -> Iterable[run_service_pb2.Run]:
+    def factory(page_token: str | None) -> run_service_pb2.SearchRunsRequest:
+        return run_service_pb2.SearchRunsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=scout_run_api.SortOptions(
-                field=scout_run_api.SortField.START_TIME,
+            sort=run_service_pb2.SortOptions(
+                field=run_service_pb2.START_TIME,
                 is_descending=True,
             ),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            archived_statuses=run_service_pb2.ArchivedStatusSet(
+                archived_statuses=archive_status.to_proto_archived_statuses()
+            ),
             next_page_token=page_token,
         )
 
-    for response in paginate_rpc(run.search_runs, auth_header, request_factory=factory):
+    for response in paginate_grpc(run.SearchRuns, request_factory=factory):
         yield from response.results
 
 
 def search_runs_by_asset_paginated(
-    run: scout.RunService,
-    auth_header: str,
+    run: run_service_pb2_grpc.RunServiceStub,
     asset_rid: str,
-) -> Iterable[scout_run_api.Run]:
-    def factory(page_token: str | None) -> scout_run_api.GetRunsByAssetRequest:
-        return scout_run_api.GetRunsByAssetRequest(asset=asset_rid, next_page_token=page_token)
+) -> Iterable[run_service_pb2.Run]:
+    def factory(page_token: str | None) -> run_service_pb2.GetRunsByAssetRequest:
+        return run_service_pb2.GetRunsByAssetRequest(asset=asset_rid, next_page_token=page_token)
 
-    for response in paginate_rpc(run.get_runs_by_asset, auth_header, request_factory=factory):
+    for response in paginate_grpc(run.GetRunsByAsset, request_factory=factory):
         yield from response.results
 
 
