@@ -32,9 +32,11 @@ from typing import Iterator
 from uuid import uuid4
 
 import pytest
+from nominal_api import scout_catalog
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.core.dataset_file import IngestStatus
 from tests.e2e import POLL_INTERVAL
 
 
@@ -86,11 +88,31 @@ def archive(request):
 
 @pytest.fixture(scope="session")
 def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset]:
-    """A single ingested dataset shared across all read-only tests in the suite."""
-    ds = client.create_dataset(f"dataset-e2e-readonly-{uuid4().hex[:8]}")
-    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
-    yield ds
-    ds.archive()
+    """A LEGACY-backed dataset shared across the read-only channel/pandas tests."""
+    # DUAL file ingestion can finish before Iceberg reads are ready. Pin this
+    # export-correctness fixture to ClickHouse using the generated creation API.
+    clients = client._clients
+    request = scout_catalog.CreateDataset(
+        name=f"dataset-e2e-readonly-{uuid4().hex[:8]}",
+        labels=[],
+        properties={},
+        typed_properties={},
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=clients.resolve_default_workspace_rid(),
+        marking_rids=[],
+        dataset_type=scout_catalog.DatasetBackingType.LEGACY,
+    )
+    ds = Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
+    try:
+        dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(
+            interval=POLL_INTERVAL
+        )
+        assert dataset_file.ingest_status == IngestStatus.SUCCESS
+        yield ds
+    finally:
+        ds.archive()
 
 
 @pytest.fixture(scope="session")

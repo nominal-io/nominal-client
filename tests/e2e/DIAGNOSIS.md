@@ -6,6 +6,23 @@ The local reproduction below narrows the backend failure to the Iceberg/default
 read path. This branch also fixes the client error handling that hid failed
 dataframe exports. The underlying backend cause remains unresolved.
 
+## Read-only fixture workaround
+
+The shared `ingested_dataset` fixture now explicitly creates a LEGACY-backed
+dataset through the generated catalog API. This keeps channel and pandas export
+correctness checks independent of the environment's default DUAL/Iceberg route.
+The fixture requires file ingestion SUCCESS before yielding and archives the
+dataset even if ingestion or assertions fail. Export assertions are unchanged;
+there is no read retry or automatic storage fallback.
+
+This is a test workaround, not a repair of DUAL/Iceberg ingestion visibility.
+These read-only tests no longer cover that storage path; dedicated DUAL/Iceberg
+readiness coverage remains separate follow-up work.
+
+Live staging validation of all four tests using this fixture passed in 63.97
+seconds: channel lookup, channel pandas export, dataset pandas export, and
+dataset markings. Ruff lint/format and `git diff --check` also passed.
+
 ## Local reproduction and client fix
 
 Running the unchanged pair with the local `staging` profile reproduced both
