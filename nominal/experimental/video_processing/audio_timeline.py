@@ -10,10 +10,10 @@ they are measured separately and never netted against each other.
 Checks are ordered by cost:
 
 * :func:`probe_audio_stream` reads the container header (~0.1s on a 7GB file).
-* :func:`survives_strict_segmentation` stream-copies to MPEG-TS under the same strict flags the
-  ingest backend uses, decoding nothing (~1s on a 7GB file). This is the authoritative answer to
-  "will ingest reject this?" — it asks ffmpeg rather than modelling its timestamp arithmetic,
-  which is easy to get wrong and cheap to simply measure.
+* :func:`survives_strict_segmentation` stream-copies to MPEG-TS preserving timestamps exactly,
+  decoding nothing (~1s on a 7GB file). This is the authoritative answer to "will this file be
+  rejected?" — it asks ffmpeg rather than modelling its timestamp arithmetic, which is easy to
+  get wrong and cheap to simply measure.
 * :func:`measure_audio_timeline` walks every audio packet (~8s on a 7GB file) to separate holes
   from overlap and locate the worst one.
 """
@@ -252,9 +252,10 @@ def video_duration_seconds(video_path: PathLike) -> float | None:
 def survives_strict_segmentation(video_path: PathLike) -> bool:
     """Whether the file's audio survives a strict, timestamp-preserving remux to MPEG-TS.
 
-    This mirrors how ingest segments video: timestamps are preserved exactly, ffmpeg's automatic
-    timestamp fixups are disabled, and the first problem is fatal. Nothing is decoded and nothing
-    is kept, so the cost is a single sequential read.
+    Segmenting video for streaming playback requires exactly this to succeed: timestamps are
+    preserved rather than rewritten, ffmpeg's automatic timestamp fixups are disabled, and the
+    first problem is fatal. A file that fails here will fail to segment. Nothing is decoded and
+    nothing is kept, so the cost is a single sequential read.
     """
     result = subprocess.run(
         [
