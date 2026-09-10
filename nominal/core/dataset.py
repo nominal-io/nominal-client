@@ -950,11 +950,11 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         the tracking `IngestionJob` immediately rather than a single file, and `job.cancel()` cancels it.
 
         Waiting takes two stages: the container finishes producing files, then those files finish
-        ingesting. For the first, poll `job.refresh()` then `job.status` until the job is terminal —
-        `status` is a snapshot, so refreshing is what advances it. Only then is the file list complete:
-        `job.dataset_files()` returns the files that exist when it is called, and `job.as_files_ingested()`
-        calls it once, so either one returns empty rather than waiting if the container has not produced
-        anything yet.
+        ingesting. `job.as_files_ingested()` covers both — it re-reads the file list while the job runs,
+        so it picks up outputs that do not exist yet at the time of the call. `job.dataset_files()`, by
+        contrast, returns only the files that exist when it is called, which is empty until a manifest
+        extractor's container has exited; and `job.status` is a snapshot, so polling it requires
+        `job.refresh()` to advance it.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
@@ -1571,6 +1571,7 @@ def _create_dataset(
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
     request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),
@@ -1581,9 +1582,6 @@ def _create_dataset(
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
         marking_rids=list(marking_rids or []),
-        # Required by the catalog API since 0.1439.0. Empty means channel search
-        # splits on no tag key, which is how datasets behaved before the field.
-        channel_search_split_tag_keys=[],
     )
     return client.create_dataset(auth_header, request)
 

@@ -52,6 +52,7 @@ def create_derived_dataset(
         Reference to the created derived dataset in Nominal.
     """
     request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),
@@ -63,9 +64,6 @@ def create_derived_dataset(
         workspace=client._clients.resolve_default_workspace_rid(),
         marking_rids=_marking_rids(markings),
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),
-        # Required by the catalog API since 0.1439.0. Empty means channel search
-        # splits on no tag key, which is how datasets behaved before the field.
-        channel_search_split_tag_keys=[],
     )
     response = client._clients.catalog.create_dataset(client._clients.auth_header, request)
     return Dataset._from_conjure(client._clients, response)

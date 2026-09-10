@@ -40,6 +40,7 @@ def create_dataset_with_uuid(
         Reference to the created dataset in Nominal.
     """
     create_dataset_request = scout_catalog.CreateDataset(
+        channel_search_split_tag_keys=[],
         name=name,
         description=description,
         labels=list(labels),
@@ -50,9 +51,6 @@ def create_dataset_with_uuid(
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=client._clients.resolve_default_workspace_rid(),
         marking_rids=_marking_rids(markings),
-        # Required by the catalog API since 0.1439.0. Empty means channel search
-        # splits on no tag key, which is how datasets behaved before the field.
-        channel_search_split_tag_keys=[],
     )
     request = scout_catalog.CreateDatasetWithUuidRequest(
         create_dataset=create_dataset_request,

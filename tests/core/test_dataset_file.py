@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -205,6 +206,31 @@ def test_wait_for_files_to_ingest_returns_after_absent_file_with_first_exception
 
     assert done == [absent]
     assert not_done == [pending]
+
+
+def test_wait_for_files_to_ingest_gives_up_on_the_timeout_not_a_full_poll_interval_later():
+    """A timeout shorter than the poll interval returns when the budget runs out, not an interval later."""
+    file = _make_file("file-1", [IngestStatus.IN_PROGRESS])
+
+    started = time.monotonic()
+    done, not_done = wait_for_files_to_ingest(
+        [file], poll_interval=timedelta(seconds=5), timeout=timedelta(seconds=0.05)
+    )
+
+    assert time.monotonic() - started < 2
+    assert not done
+    assert not_done == [file]
+
+
+def test_wait_for_files_to_ingest_treats_unknown_status_as_done():
+    """A file reporting a status this client does not recognize is treated as done, not polled forever."""
+    file = _make_file("future-1", [IngestStatus.UNKNOWN])
+
+    with patch("nominal.core.dataset_file._batch_refresh_files", return_value=set()):
+        done, not_done = wait_for_files_to_ingest([file])
+
+    assert done == [file]
+    assert not not_done
 
 
 def test_as_files_ingested_does_not_sleep_when_all_files_complete_in_first_poll():

@@ -328,6 +328,8 @@ class IngestStatus(Enum):
     QUEUED = "QUEUED"
     PARSING = "PARSING"
     INGESTING = "INGESTING"
+    UNKNOWN = "UNKNOWN"
+    """Unknown or unrecognized status returned by a newer server."""
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
@@ -349,7 +351,10 @@ class IngestStatus(Enum):
             case "ingesting":
                 ingest_status = cls.INGESTING
             case _:
-                raise ValueError(f"Unknown ingest status: {status.type}")
+                # Mirrors IngestionJobStatus: a status a newer server adds must not break a wait that
+                # is only asking whether the file is still in flight.
+                logger.warning("Unrecognized ingest status %s; treating as UNKNOWN.", status.type)
+                ingest_status = cls.UNKNOWN
         return ingest_status
 
 
@@ -359,7 +364,7 @@ class IngestWaitType(Enum):
     ALL_COMPLETED = "ALL_COMPLETED"
 
 
-def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> set[str]:
+def _batch_refresh_files(files: Sequence[DatasetFile], *, batch_size: int = 100) -> set[str]:
     """Batch-fetches the latest API state for all files and refreshes them in-place.
 
     Returns the set of file IDs that were absent from the batch response (i.e. not found on the server).
@@ -384,6 +389,85 @@ def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> 
     return absent_ids
 
 
+def _poll_files_once(files: Sequence[DatasetFile]) -> tuple[list[DatasetFile], list[DatasetFile], bool]:
+    """Refresh `files` from the server once and partition them into (done, not done, any failed).
+
+    A file that is absent from the batch response, has failed, or reports an unrecognized status is
+    treated as done, so an unknown status can never wedge a caller's polling loop.
+    """
+    done: list[DatasetFile] = []
+    not_done: list[DatasetFile] = []
+    has_failed = False
+
+    absent_ids = _batch_refresh_files(files)
+
+    for file in files:
+        if file.id in absent_ids:
+            logger.warning(
+                "Dataset file %s from dataset %s was absent from the batch response "
+                "— it may have been deleted or never created successfully.",
+                file.id,
+                file.dataset_rid,
+            )
+            done.append(file)
+            has_failed = True
+            continue
+        match file.ingest_status:
+            case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
+                done.append(file)
+            case IngestStatus.FAILED:
+                logger.warning(
+                    "Dataset file %s from dataset %s failed to ingest! Error: %s",
+                    file.id,
+                    file.dataset_rid,
+                    file._ingest_error_message,
+                )
+                done.append(file)
+                has_failed = True
+            case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
+                not_done.append(file)
+            case _:
+                logger.warning(
+                    "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
+                    file.id,
+                    file.dataset_rid,
+                    file.ingest_status,
+                )
+                done.append(file)
+
+    return done, not_done, has_failed
+
+
+def _deadline_from(timeout: datetime.timedelta | None) -> float | None:
+    """Turn a caller's timeout into a monotonic deadline, or None for an unbounded wait.
+
+    Monotonic rather than wall-clock: a wait bounded by `datetime.now()` stretches past the budget the
+    caller asked for when the system clock steps backwards, and expires early when it steps forwards.
+    Pair with `_sleep_until_next_poll`, which reads the same clock — a deadline from anywhere else is
+    not comparable to it.
+    """
+    return None if timeout is None else time.monotonic() + timeout.total_seconds()
+
+
+def _sleep_until_next_poll(poll_interval: datetime.timedelta, deadline: float | None) -> bool:
+    """Sleep until the next poll is due, capped at `deadline`. Returns whether any budget remained.
+
+    Never sleeps past the deadline: waiting out a whole poll interval near the end of a caller's budget
+    would overshoot the timeout they asked for. Callers own what an exhausted budget means — this only
+    reports it, since one waiter raises on it and another returns what it has.
+    """
+    sleep_for = poll_interval.total_seconds()
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        sleep_for = min(sleep_for, remaining)
+
+    logger.info("Sleeping for %f seconds until the next poll...", sleep_for)
+    time.sleep(sleep_for)
+    return True
+
+
 def wait_for_files_to_ingest(
     files: Sequence[DatasetFile],
     *,
@@ -400,7 +484,7 @@ def wait_for_files_to_ingest(
     Args:
         files: Dataset files to monitor for ingestion completion.
         poll_interval: Interval to sleep between polling the remaining files under watch.
-        timeout: If given, the maximum time to wait before returning
+        timeout: If given, the maximum time to wait before returning. Never sleeps past the deadline.
         return_when: Condition for this function to exit. By default, this function will block until all files
             have completed their ingestion (successfully or unsuccessfully), but this can be changed to return
             upon the first completed or first failing ingest. This behavior mirrors that of
@@ -409,52 +493,17 @@ def wait_for_files_to_ingest(
     Returns:
         Returns a tuple of (done, not done) dataset files.
     """
-    start_time = datetime.datetime.now()
+    deadline = _deadline_from(timeout)
     done: list[DatasetFile] = []
     not_done: list[DatasetFile] = [*files]
     has_failed = False
 
-    while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
+    while not_done and (deadline is None or time.monotonic() < deadline):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
-        absent_ids = _batch_refresh_files(not_done)
-
-        next_not_done = []
-        for file in not_done:
-            if file.id in absent_ids:
-                logger.warning(
-                    "Dataset file %s from dataset %s was absent from the batch response "
-                    "— it may have been deleted or never created successfully.",
-                    file.id,
-                    file.dataset_rid,
-                )
-                done.append(file)
-                has_failed = True
-                continue
-            match file.ingest_status:
-                case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
-                    done.append(file)
-                case IngestStatus.FAILED:
-                    logger.warning(
-                        "Dataset file %s from dataset %s failed to ingest! Error: %s",
-                        file.id,
-                        file.dataset_rid,
-                        file._ingest_error_message,
-                    )
-                    done.append(file)
-                    has_failed = True
-                case IngestStatus.IN_PROGRESS | IngestStatus.QUEUED | IngestStatus.PARSING | IngestStatus.INGESTING:
-                    next_not_done.append(file)
-                case _:
-                    logger.warning(
-                        "Dataset file %s from dataset %s had unknown ingest status %s; treating as done.",
-                        file.id,
-                        file.dataset_rid,
-                        file.ingest_status,
-                    )
-                    done.append(file)
-
-        not_done = next_not_done
+        newly_done, not_done, newly_failed = _poll_files_once(not_done)
+        done.extend(newly_done)
+        has_failed = has_failed or newly_failed
 
         if has_failed and return_when is IngestWaitType.FIRST_EXCEPTION:
             break
@@ -463,14 +512,8 @@ def wait_for_files_to_ingest(
         elif not not_done:
             break
 
-        if timeout is None or datetime.datetime.now() - start_time < timeout:
-            logger.info(
-                "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
-                poll_interval.total_seconds(),
-                len(not_done),
-                len(files),
-            )
-            time.sleep(poll_interval.total_seconds())
+        if not _sleep_until_next_poll(poll_interval, deadline):
+            break
 
     return done, not_done
 
