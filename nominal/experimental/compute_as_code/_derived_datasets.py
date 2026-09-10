@@ -60,6 +60,7 @@ def create_derived_dataset(
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        channel_search_split_tag_keys=[],
         workspace=client._clients.resolve_default_workspace_rid(),
         marking_rids=_marking_rids(markings),
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),

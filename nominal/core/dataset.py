@@ -1579,6 +1579,7 @@ def _create_dataset(
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        channel_search_split_tag_keys=[],
         workspace=workspace_rid,
         marking_rids=list(marking_rids or []),
     )
