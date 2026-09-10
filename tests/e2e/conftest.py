@@ -89,8 +89,8 @@ def archive(request):
 @pytest.fixture(scope="session")
 def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset]:
     """A LEGACY-backed dataset shared across the read-only channel/pandas tests."""
-    # DUAL file ingestion can finish before Iceberg reads are ready. Pin this
-    # export-correctness fixture to ClickHouse using the generated creation API.
+    # Pin the backing type so export tests do not depend on environment defaults
+    # or delayed read visibility after file ingestion reports success.
     clients = client._clients
     request = scout_catalog.CreateDataset(
         name=f"dataset-e2e-readonly-{uuid4().hex[:8]}",
