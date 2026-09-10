@@ -13,9 +13,7 @@ dependencies = [
     "nominal>=1.164.0",
     "ibis-framework>=12,<13",
     "pyarrow>=14",
-    # ibis-framework's base distribution imports these at runtime (ibis.formats.pyarrow
-    # and the SQL compiler registry) but only declares them in its per-backend extras,
-    # so they must be pinned here for a bare `nominal[sql]` install to import.
+    # ibis.formats imports these at runtime but ibis only declares them in per-backend extras.
     "pyarrow-hotfix>=0.4",
     "packaging>=23.0",
 ]
