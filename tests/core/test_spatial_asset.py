@@ -312,3 +312,76 @@ def test_ingest_point_cloud_csv_skips_time_metadata_without_a_start_timestamp() 
 
     request = clients.spatial.update_metadata.call_args.args[1]
     assert request.properties is None
+
+
+def test_ingest_point_cloud_csv_shifts_bounds_by_a_nonzero_time_minimum() -> None:
+    """A time column that starts late must move the asset start, not just the end.
+
+    `start_timestamp` is where the column reads zero, which is not where the data
+    begins. Anchoring the start at the origin while the end is offset stretches the
+    window, and the playhead then maps onto the wrong part of the scan.
+    """
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    clients.spatial.get.return_value.properties = {}
+    asset = _spatial_asset(clients)
+    start = datetime(2026, 3, 4, 9, 30, tzinfo=timezone.utc)
+    origin_us = int(start.timestamp() * 1_000_000)
+
+    with patch(
+        "nominal.core.spatial_asset._ingest_point_cloud_csv",
+        return_value=("s3://b/scan.csv", "ri.scout.x.ingest-job.j", (9_000_000, 180_000_000)),
+    ):
+        asset.ingest_point_cloud_csv("scan.csv", time_column="t_s", start_timestamp=start)
+
+    request = clients.spatial.update_metadata.call_args.args[1]
+    assert request.properties["relative_start_us"] == "9000000"
+    assert request.properties["start_timestamp_us"] == str(origin_us + 9_000_000)
+    assert request.properties["end_timestamp_us"] == str(origin_us + 180_000_000)
+    # The typed bounds bracket the data, not the origin.
+    assert request.start_timestamp.seconds == (origin_us + 9_000_000) // 1_000_000
+    assert request.end_timestamp.seconds == (origin_us + 180_000_000) // 1_000_000
+
+
+def test_ingest_point_cloud_csv_merges_onto_server_properties_not_a_stale_snapshot() -> None:
+    """Properties are read back before overwriting, because the map is replaced wholesale.
+
+    A large upload can leave the in-memory snapshot minutes old, and anything added
+    to the asset meanwhile would be erased.
+    """
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    clients.spatial.get.return_value.properties = {"added": "while uploading"}
+    asset = _spatial_asset(clients)
+
+    with patch(
+        "nominal.core.spatial_asset._ingest_point_cloud_csv",
+        return_value=("s3://b/scan.csv", "ri.scout.x.ingest-job.j", (0, 45_000_000)),
+    ):
+        asset.ingest_point_cloud_csv(
+            "scan.csv", time_column="t_s", start_timestamp=datetime(2026, 3, 4, tzinfo=timezone.utc)
+        )
+
+    request = clients.spatial.update_metadata.call_args.args[1]
+    assert request.properties["added"] == "while uploading"
+    assert request.properties["relative_end_us"] == "45000000"
+
+
+def test_ingest_point_cloud_csv_returns_the_job_even_if_recording_metadata_fails() -> None:
+    """The ingest is already running; losing its rid would orphan it.
+
+    A retry would resubmit and duplicate every point, which is not recoverable,
+    whereas the metadata can simply be written again.
+    """
+    clients = MagicMock()
+    clients.auth_header = "Bearer t"
+    clients.spatial.update_metadata.side_effect = ConnectionError("boom")
+    asset = _spatial_asset(clients)
+
+    with patch(
+        "nominal.core.spatial_asset._ingest_point_cloud_csv",
+        return_value=("s3://b/scan.csv", "ri.scout.x.ingest-job.j", None),
+    ):
+        job_rid = asset.ingest_point_cloud_csv("scan.csv")
+
+    assert job_rid == "ri.scout.x.ingest-job.j"

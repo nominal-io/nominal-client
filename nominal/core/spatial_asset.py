@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -20,6 +21,8 @@ from nominal.core.point_cloud import (
     _PointCloudClients,
 )
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -216,11 +219,23 @@ class SpatialAsset(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         # The s3 location is only known after the upload, which necessarily happens
         # after the asset exists -- so provenance is recorded here rather than at
         # create time. The time metadata rides along in the same call.
-        request = scout_spatial_api.UpdateSpatialMetadataRequest(source_handle=api.Handle(s3=source_handle))
-        if time_range_us is not None and start_timestamp is not None:
-            request = self._time_metadata_request(request, time_range_us, start_timestamp)
-        updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
-        self._refresh_from_api(updated)
+        # Best-effort: the ingest has already been accepted and is running. Raising
+        # here would lose `ingest_job_rid`, leaving an untracked job that a retry
+        # would submit a second time -- duplicating every point. Metadata can be
+        # re-applied later; a duplicate ingest cannot be undone.
+        try:
+            request = scout_spatial_api.UpdateSpatialMetadataRequest(source_handle=api.Handle(s3=source_handle))
+            if time_range_us is not None and start_timestamp is not None:
+                request = self._time_metadata_request(request, time_range_us, start_timestamp)
+            updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
+            self._refresh_from_api(updated)
+        except Exception:
+            logger.exception(
+                "point cloud ingest %s was accepted, but recording metadata on %s failed; "
+                "source handle and time range are unset",
+                ingest_job_rid,
+                self.rid,
+            )
         return ingest_job_rid
 
     def _time_metadata_request(
@@ -241,24 +256,35 @@ class SpatialAsset(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         f32, where the spacing between representable values at epoch magnitude is
         over two minutes, in any unit.
         """
-        start_ns = _SecondsNanos.from_flexible(start_timestamp).to_nanoseconds()
-        start_us = start_ns // 1_000
+        origin_ns = _SecondsNanos.from_flexible(start_timestamp).to_nanoseconds()
+        origin_us = origin_ns // 1_000
         relative_start_us, relative_end_us = time_range_us
-        end_ns = start_ns + relative_end_us * 1_000
 
-        # `properties` replaces the whole map, so merge onto what is already there.
+        # `start_timestamp` is where the time column reads zero, which is not
+        # necessarily where the data starts: a column running 9..180 begins nine
+        # seconds later. Both bounds are offsets from the origin, so a non-zero
+        # minimum has to shift the start as well as the end, or the playhead maps
+        # onto the wrong part of the scan.
+        data_start_ns = origin_ns + relative_start_us * 1_000
+        data_end_ns = origin_ns + relative_end_us * 1_000
+
+        # `properties` replaces the whole map rather than merging, so read the
+        # current values back before overwriting it. `self.properties` is a
+        # snapshot from whenever this object was last refreshed, and a large
+        # upload can leave that minutes stale.
+        latest = self._clients.spatial.get(self._clients.auth_header, self.rid)
         properties = {
-            **dict(self.properties),
+            **dict(latest.properties),
             "relative_start_us": str(relative_start_us),
             "relative_end_us": str(relative_end_us),
-            "start_timestamp_us": str(start_us),
-            "end_timestamp_us": str(start_us + relative_end_us),
+            "start_timestamp_us": str(origin_us + relative_start_us),
+            "end_timestamp_us": str(origin_us + relative_end_us),
         }
         return scout_spatial_api.UpdateSpatialMetadataRequest(
             source_handle=request.source_handle,
             properties=properties,
-            start_timestamp=_SecondsNanos.from_nanoseconds(start_ns).to_api(),
-            end_timestamp=_SecondsNanos.from_nanoseconds(end_ns).to_api(),
+            start_timestamp=_SecondsNanos.from_nanoseconds(data_start_ns).to_api(),
+            end_timestamp=_SecondsNanos.from_nanoseconds(data_end_ns).to_api(),
         )
 
     def archive(self) -> None:

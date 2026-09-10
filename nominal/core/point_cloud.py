@@ -148,6 +148,23 @@ def _ingest_point_cloud_csv(
 _TYPE_INFERENCE_SAMPLE_ROWS = 1000
 
 
+def _reject_quoted_fields(line: str, where: str) -> None:
+    """Refuse a CSV that uses quoting.
+
+    The importer does not implement it: quiche splits rows on raw commas and
+    counts columns with a plain memchr, and there is no quote handling anywhere
+    in the crate. Parsing quotes here would be worse than not, because the column
+    indices this module computes would then disagree with the ones the importer
+    actually reads, silently shifting every attribute after the quoted field.
+    Rejecting is the only option that cannot corrupt the result.
+    """
+    if '"' in line:
+        raise ValueError(
+            f"CSV quoting is not supported by the point cloud importer, but {where} contains a "
+            f"double quote: {line[:120]!r}. Remove quoting, or replace commas inside fields."
+        )
+
+
 def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> tuple[str, list[str]]:
     """Read the header row + up to n_samples non-empty data rows."""
     with path.open("r", newline="") as f:
@@ -155,10 +172,12 @@ def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SA
             header = next(f).rstrip("\r\n")
         except StopIteration:
             raise ValueError(f"CSV is empty: {path}")
+        _reject_quoted_fields(header, "the header")
         samples: list[str] = []
         for line in f:
             stripped = line.rstrip("\r\n")
             if stripped:
+                _reject_quoted_fields(stripped, f"data row {len(samples) + 2}")
                 samples.append(stripped)
             if len(samples) >= n_samples:
                 break

@@ -412,3 +412,39 @@ def test_ingest_forwards_rgb_column(tmp_path: Path) -> None:
     config = clients.ingest.ingest.call_args.args[1].options.point_cloud.dagger_import_config
     assert config["format"]["columns"]["rgb"] == [3]
     assert config["archetype"]["attributes"][-1]["header"]["ty"] == "Rgb"
+
+
+# --- csv quoting --------------------------------------------------------------
+
+
+def test_quoted_fields_are_rejected_rather_than_reparsed(tmp_path: Path) -> None:
+    """Quoting is refused up front instead of being parsed.
+
+    The importer has no quote handling at all -- quiche splits rows on raw commas
+    and counts columns with memchr -- so honouring quotes here would compute column
+    indices the importer never uses, shifting every attribute after the quoted
+    field. Failing loudly is the only option that cannot corrupt the result.
+    """
+    path = _write_csv(tmp_path, 'x,y,z,label\n0,0,0,"kerb,left"\n')
+
+    with pytest.raises(ValueError, match="CSV quoting is not supported"):
+        _read_csv_header_and_samples(path)
+
+
+def test_quoted_header_is_rejected(tmp_path: Path) -> None:
+    path = _write_csv(tmp_path, '"x","y","z"\n0,0,0\n')
+
+    with pytest.raises(ValueError, match="the header"):
+        _read_csv_header_and_samples(path)
+
+
+def test_ingest_rejects_quoted_csv_before_uploading(tmp_path: Path) -> None:
+    path = _write_csv(tmp_path, 'x,y,z,label\n0,0,0,"a,b"\n')
+    clients = _clients()
+
+    with patch("nominal.core.point_cloud.upload_multipart_file") as upload:
+        with pytest.raises(ValueError, match="CSV quoting is not supported"):
+            _ingest_point_cloud_csv(clients, "ri.scout.x.spatial.abc", path)
+
+    upload.assert_not_called()
+    clients.ingest.ingest.assert_not_called()
