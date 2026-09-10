@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.167.0](https://github.com/nominal-io/nominal-client/compare/v1.166.0...v1.167.0) (2026-09-10)
+
+
+### Features
+
+* add markings support for datasets, connections, and videos ([#930](https://github.com/nominal-io/nominal-client/issues/930)) ([9e8503f](https://github.com/nominal-io/nominal-client/commit/9e8503f259a91141d54c8ff87067c0076bd78464))
+
+
+### Bug Fixes
+
+* restrict plaintext grpc to literal loopback addresses ([#956](https://github.com/nominal-io/nominal-client/issues/956)) ([445f53e](https://github.com/nominal-io/nominal-client/commit/445f53ef66b75be053bbc9c3bde297262d46a88d))
+* use LEGACY backing for read-only dataset fixture ([#965](https://github.com/nominal-io/nominal-client/issues/965)) ([ebf4376](https://github.com/nominal-io/nominal-client/commit/ebf43762935ce870eb0efe6ee77be171e99a29c8))
+
 ## [1.166.0](https://github.com/nominal-io/nominal-client/compare/v1.165.0...v1.166.0) (2026-09-08)
 
 
