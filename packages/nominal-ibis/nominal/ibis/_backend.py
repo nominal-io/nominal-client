@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import io
 import logging
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterator, Mapping
 
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
@@ -20,7 +20,6 @@ from ibis.formats.pyarrow import PyArrowSchema
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.client import NominalClient
-from nominal.ibis._functions import Functions
 from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
@@ -82,27 +81,12 @@ class NominalCompiler(PostgresCompiler):
     def visit_RegexSearch(self, op: ops.RegexSearch, *, arg: Any, pattern: Any) -> Any:
         return self.f.anon.regexp_like(arg, pattern)
 
-    # Render catalog functions verbatim: sqlglot's own date_bin/regexp_like classes have
-    # different argument rules. Omitted optional arguments arrive as NULL and are dropped.
-    def visit_ScalarUDF(self, op: ops.ScalarUDF, **kw: Any) -> Any:
-        return self.f.anon[op.__func_name__](*_without_trailing_nulls(kw.values()))
-
-    def visit_AggUDF(self, op: ops.AggUDF, *, where: Any, **kw: Any) -> Any:
-        return self._anon_agg(op.__func_name__, *_without_trailing_nulls(kw.values()), where=where)
-
     @staticmethod
     def _minimize_spec(op: ops.WindowFunction, spec: Any) -> Any:
         # The API rejects ROW/RANGE frames on RANK/ROW_NUMBER/LAG/LEAD.
         if isinstance(op.func, ops.Analytic) and not isinstance(op.func, (ops.First, ops.Last, ops.NthValue)):
             return None
         return spec
-
-
-def _without_trailing_nulls(args: Iterable[Any]) -> list[Any]:
-    trimmed = list(args)
-    while trimmed and isinstance(trimmed[-1], sge.Null):
-        trimmed.pop()
-    return trimmed
 
 
 class _PayloadReader(io.RawIOBase):
@@ -147,7 +131,7 @@ class Backend(SQLBackend, NoUrl):
         """
         self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
         self.workspace_rid = client._clients.resolve_default_workspace_rid()
-        for cached in ("_catalog", "_schemas", "fn"):
+        for cached in ("_catalog", "_schemas"):
             self.__dict__.pop(cached, None)
 
     @functools.cached_property
@@ -173,11 +157,6 @@ class Backend(SQLBackend, NoUrl):
                 fields[column.name] = dtype.copy(nullable=column.nullable)
             schemas[table.name] = sch.Schema(fields)
         return schemas
-
-    @functools.cached_property
-    def fn(self) -> Functions:
-        """Server functions from the SQL catalog, e.g. `con.fn.derivative(_.value).over(w)`."""
-        return Functions(self._catalog.functions)
 
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
         return self._filter_with_like(sorted(self._schemas), like)
