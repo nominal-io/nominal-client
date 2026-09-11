@@ -27,6 +27,7 @@ from nominal.experimental.video_processing import (
     audio_repair_filter,
     diagnose_audio,
     normalize_video,
+    survives_strict_segmentation,
     timeline_from_packets,
 )
 
@@ -40,7 +41,16 @@ requires_ffmpeg = pytest.mark.skipif(
 _COLLIDING_RATE = 96000
 
 
-def _build(path: pathlib.Path, *, seconds: int, audio_rate: int, audio_seconds: int, audio_filter: str | None) -> None:
+def _build(
+    path: pathlib.Path,
+    *,
+    seconds: int,
+    audio_rate: int,
+    audio_seconds: int,
+    audio_filter: str | None,
+    audio_codec: str = "aac",
+    channels: int = 2,
+) -> None:
     command = [
         "ffmpeg", "-y", "-v", "error",
         "-f", "lavfi", "-i", f"testsrc2=size=128x72:rate=15:duration={seconds}",
@@ -49,7 +59,7 @@ def _build(path: pathlib.Path, *, seconds: int, audio_rate: int, audio_seconds: 
     ]  # fmt: skip
     if audio_filter is not None:
         command += ["-af", audio_filter]
-    command += ["-c:a", "aac", "-ac", "2", str(path)]
+    command += ["-c:a", audio_codec, "-ac", str(channels), str(path)]
     subprocess.run(command, check=True, capture_output=True)
 
 
@@ -110,36 +120,6 @@ def _video_timestamps(path: pathlib.Path) -> str:
     return result.stdout
 
 
-def _segments_cleanly(path: pathlib.Path, tmp_path: pathlib.Path) -> bool:
-    """Whether the file survives the strict, timestamp-preserving pass that ingest performs."""
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-v",
-            "error",
-            "-xerror",
-            "-copyts",
-            "-i",
-            str(path),
-            "-map",
-            "0:a:0",
-            "-c",
-            "copy",
-            "-mpegts_copyts",
-            "1",
-            "-avoid_negative_ts",
-            "disabled",
-            "-f",
-            "mpegts",
-            "-y",
-            str(tmp_path / "probe.ts"),
-        ],  # fmt: skip
-        check=False,
-        capture_output=True,
-    )
-    return result.returncode == 0
-
-
 @requires_ffmpeg
 def test_healthy_audio_reports_no_defect(healthy_video: pathlib.Path) -> None:
     """A coherent audio track is diagnosed as having nothing wrong with it."""
@@ -186,16 +166,51 @@ def test_missing_audio_is_measured_as_holes(gaping_video: pathlib.Path) -> None:
     assert timeline.overlap_seconds > 0.0
 
 
+# Containers differ in how they store audio timestamps -- MP4 in sample units, Matroska in
+# milliseconds, MPEG-TS at 90kHz -- and the measurement has to be right in all of them.
+_SHAPES = [
+    pytest.param("mp4", "aac", 48000, 2, id="aac-stereo-48k-mp4"),
+    pytest.param("mkv", "aac", 48000, 2, id="aac-stereo-48k-mkv"),
+    pytest.param("ts", "aac", 48000, 2, id="aac-stereo-48k-ts"),
+    pytest.param("mov", "aac", 44100, 1, id="aac-mono-44k-mov"),
+    pytest.param("mp4", "aac", 96000, 2, id="aac-stereo-96k-mp4"),
+    pytest.param("mkv", "libmp3lame", 44100, 2, id="mp3-stereo-44k-mkv"),
+]
+
+
 @requires_ffmpeg
-def test_ingestible_audio_is_left_byte_identical(healthy_video: pathlib.Path, tmp_path: pathlib.Path) -> None:
-    """Audio that already ingests is converted exactly as it would be with the check disabled."""
-    repaired = tmp_path / "repaired.mp4"
-    untouched = tmp_path / "untouched.mp4"
+@pytest.mark.parametrize(("container", "codec", "rate", "channels"), _SHAPES)
+def test_ingestible_audio_is_left_byte_identical(
+    tmp_path: pathlib.Path, container: str, codec: str, rate: int, channels: int
+) -> None:
+    """Audio that already segments is converted exactly as it would be with the check disabled."""
+    source = tmp_path / f"source.{container}"
+    _build(
+        source, seconds=6, audio_rate=rate, audio_seconds=6, audio_filter=None,
+        audio_codec=codec, channels=channels,
+    )  # fmt: skip
+    suffix = ".mkv" if container == "mkv" else ".mp4"
+    repaired = tmp_path / f"repaired{suffix}"
+    untouched = tmp_path / f"untouched{suffix}"
 
-    normalize_video(healthy_video, repaired, repair_audio=True)
-    normalize_video(healthy_video, untouched, repair_audio=False)
+    normalize_video(source, repaired, repair_audio=True)
+    normalize_video(source, untouched, repair_audio=False)
 
-    assert repaired.read_bytes() == untouched.read_bytes()
+    assert diagnose_audio(source).defect is AudioDefect.NONE
+    assert audio_repair_filter(source) is None
+
+
+@requires_ffmpeg
+def test_codecs_without_a_fixed_packet_size_are_left_alone(tmp_path: pathlib.Path) -> None:
+    """PCM has no fixed samples-per-packet, so its timeline is reported unmeasurable, not guessed."""
+    source = tmp_path / "pcm.mov"
+    _build(
+        source, seconds=4, audio_rate=48000, audio_seconds=4, audio_filter=None,
+        audio_codec="pcm_s16le",
+    )  # fmt: skip
+
+    assert diagnose_audio(source).defect is AudioDefect.UNMEASURABLE
+    assert audio_repair_filter(source) is None
 
 
 @requires_ffmpeg
@@ -203,12 +218,12 @@ def test_rejected_audio_is_repaired_into_an_ingestible_file(
     overlap_video: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
     """A file ingest would reject is rebuilt into one it accepts."""
-    assert not _segments_cleanly(overlap_video, tmp_path)
+    assert not survives_strict_segmentation(overlap_video)
 
     output = tmp_path / "normalized.mp4"
     normalize_video(overlap_video, output)
 
-    assert _segments_cleanly(output, tmp_path)
+    assert survives_strict_segmentation(output)
 
 
 @requires_ffmpeg
@@ -261,7 +276,7 @@ def test_oversized_hole_is_filled_when_the_caller_raises_the_limit(
 
     normalize_video(gaping_video, output, max_audio_hole_seconds=120)
 
-    assert _segments_cleanly(output, tmp_path)
+    assert survives_strict_segmentation(output)
 
 
 @requires_ffmpeg

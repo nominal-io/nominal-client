@@ -63,8 +63,13 @@ it rather than the other way around. Every value at or above 1 repaired the fail
 identically, so this takes the least invasive one.
 """
 
-_CONSTANT_FRAME_CODECS = frozenset({"aac", "mp3", "ac3", "eac3", "opus", "vorbis"})
-"""Codecs whose packets each decode to a fixed number of samples, making the sound countable."""
+_CONSTANT_FRAME_CODECS = frozenset({"aac", "mp3", "ac3", "eac3"})
+"""Codecs whose packets each decode to a fixed number of samples, making the sound countable.
+
+Deliberately excludes Opus and Vorbis: both may legally vary packet duration mid-stream, so a
+size sampled from the opening seconds would score every later change as a hole. They are reported
+as unmeasurable and left alone instead.
+"""
 
 _SAMPLE_WINDOW_SECONDS = 2
 """How much audio to decode when learning a codec's samples-per-packet."""
@@ -170,7 +175,6 @@ class AudioTimeline:
 class AudioDiagnosis:
     """Everything measured about a file's audio, and whether ingest will accept it as-is."""
 
-    defect: AudioDefect
     segments_cleanly: bool
     """Whether the file survives a strict, timestamp-preserving segmentation pass."""
     timeline: AudioTimeline | None
@@ -179,8 +183,19 @@ class AudioDiagnosis:
     video_seconds: float | None = None
 
     @property
+    def defect(self) -> AudioDefect:
+        """What is wrong with the audio, derived so it can never disagree with the measurement."""
+        if self.stream is None:
+            return AudioDefect.NO_AUDIO_TRACK
+        if self.timeline is None:
+            return AudioDefect.UNMEASURABLE
+        return self.timeline.defect
+
+    @property
     def audio_seconds(self) -> float | None:
-        """Duration the container records for the audio track, if any."""
+        """Span of the audio, measured when possible and otherwise as the container records it."""
+        if self.timeline is not None:
+            return self.timeline.clock_seconds
         return self.stream.duration_seconds if self.stream is not None else None
 
 
@@ -245,7 +260,7 @@ def probe_audio_stream(video_path: PathLike) -> AudioStreamInfo | None:
     )
 
 
-def video_duration_seconds(video_path: PathLike) -> float | None:
+def _video_duration_seconds(video_path: PathLike) -> float | None:
     """Duration of the first video stream, or None when the container does not record one."""
     stream = _first_stream(
         _run_ffprobe(["-select_streams", "v:0", "-show_entries", "stream=duration", str(video_path)])
@@ -324,8 +339,13 @@ def _samples_per_packet(video_path: PathLike, codec: str) -> int | None:
     return dominant or None
 
 
-def _read_audio_packets(video_path: PathLike) -> tuple[list[float], float]:
+def _read_audio_packets(video_path: PathLike) -> tuple[list[float], float] | None:
     """Return every audio packet's start time and the final packet's duration, both in seconds.
+
+    Returns None when any packet carries no timestamp. Dropping such a packet would widen the
+    interval between its neighbours, which :func:`timeline_from_packets` would then score as a
+    hole roughly two packets wide -- manufacturing the exact defect this module exists to detect.
+    A stream we cannot read completely is reported as unmeasurable instead.
 
     ffprobe is asked for ``dts_time`` rather than raw ``dts`` deliberately. A packet timestamp is
     expressed in the stream's own time base, which is 1/sample_rate only for MP4 and MOV --
@@ -357,7 +377,7 @@ def _read_audio_packets(video_path: PathLike) -> tuple[list[float], float]:
             continue
         start = _as_float(fields[0])
         if start is None:
-            continue
+            return None
         starts.append(start)
         final_duration = _as_float(fields[1]) or 0.0
     return starts, final_duration
@@ -414,36 +434,90 @@ def timeline_from_packets(
     )
 
 
-def measure_audio_timeline(video_path: PathLike) -> AudioTimeline | None:
+def measure_audio_timeline(video_path: PathLike, info: AudioStreamInfo | None = None) -> AudioTimeline | None:
     """Walk every audio packet and measure holes and overlap separately.
 
-    Returns None when the file has no audio track, or when its codec has no fixed packet size and
-    the comparison therefore cannot be made.
+    Returns None when the file has no audio track, when its codec has no fixed packet size, or
+    when any packet lacks a timestamp -- in all three cases the comparison cannot be made and the
+    audio should be left alone rather than measured approximately.
+
+    Pass ``info`` when the header has already been read, to avoid probing it twice.
     """
-    info = probe_audio_stream(video_path)
+    if info is None:
+        info = probe_audio_stream(video_path)
     if info is None:
         return None
     samples_per_packet = _samples_per_packet(video_path, info.codec)
     if samples_per_packet is None:
         return None
-    starts, final_duration = _read_audio_packets(video_path)
+    packets = _read_audio_packets(video_path)
+    if packets is None:
+        return None
+    starts, final_duration = packets
     return timeline_from_packets(info, starts, final_duration, samples_per_packet)
 
 
 def diagnose_audio(video_path: PathLike) -> AudioDiagnosis:
-    """Measure a file's audio timeline and whether ingest will accept it as-is."""
+    """Measure a file's audio timeline and whether it can be segmented.
+
+    Always performs the full measurement, so the result is complete rather than fast. The repair
+    path in :func:`audio_repair_filter` orders the same checks by cost instead, because it can
+    stop as soon as it knows it will not act.
+    """
     info = probe_audio_stream(video_path)
     if info is None:
-        return AudioDiagnosis(defect=AudioDefect.NO_AUDIO_TRACK, segments_cleanly=True, timeline=None)
+        return AudioDiagnosis(segments_cleanly=True, timeline=None)
 
-    timeline = measure_audio_timeline(video_path)
     return AudioDiagnosis(
-        defect=timeline.defect if timeline is not None else AudioDefect.UNMEASURABLE,
         segments_cleanly=survives_strict_segmentation(video_path),
-        timeline=timeline,
+        timeline=measure_audio_timeline(video_path, info),
         stream=info,
-        video_seconds=video_duration_seconds(video_path),
+        video_seconds=_video_duration_seconds(video_path),
     )
+
+
+def _reason_to_leave_alone(
+    video_path: PathLike,
+    info: AudioStreamInfo,
+    timeline: AudioTimeline | None,
+    max_audio_hole_seconds: float,
+) -> str | None:
+    """Why this file's audio should not be rebuilt, or None if it should be.
+
+    Every branch here is a case where the audio either cannot be repaired safely or has nothing
+    wrong with its timing, so the conversion should proceed as though no inspection had happened.
+    """
+    if timeline is None:
+        return (
+            f"its codec '{info.codec}' has no fixed packet size, or some packet carries no "
+            f"timestamp, so the timeline cannot be measured"
+        )
+
+    # Failing to segment is not on its own evidence of a timing fault: ffmpeg also refuses codec
+    # and container combinations it simply cannot mux. Repairing a coherent timeline could only
+    # damage it, and the filter would have nothing to correct in any case.
+    if timeline.defect is AudioDefect.NONE:
+        return (
+            f"its timeline is coherent ({timeline.describe()}), so the obstacle is not timing -- "
+            f"most likely this codec or container cannot be muxed"
+        )
+
+    video_seconds = _video_duration_seconds(video_path)
+    if video_seconds is not None and timeline.clock_seconds - video_seconds > MAX_AUDIO_OVERRUN_SECONDS:
+        return (
+            f"its audio spans {timeline.clock_seconds:.2f}s against {video_seconds:.2f}s of video, "
+            f"so the streams disagree about the length of the recording"
+        )
+
+    if timeline.largest_hole_seconds > max_audio_hole_seconds:
+        return (
+            f"it has a {timeline.largest_hole_seconds:.2f}s gap, beyond the "
+            f"{max_audio_hole_seconds:.2f}s limit -- a gap that long is likelier a corrupt "
+            f"timestamp than real missing audio, and filling it would synthesize that much "
+            f"silence (raise max_audio_hole_seconds to fill it anyway)"
+        )
+
+    return None
 
 
 def audio_repair_filter(
@@ -452,74 +526,35 @@ def audio_repair_filter(
 ) -> str | None:
     """Return the ffmpeg audio filter this file needs, or None to leave its audio untouched.
 
-    Never raises and never refuses to convert. When a repair would be unsafe or unnecessary this
-    logs what it found and returns None, leaving the conversion exactly as it would have been
-    without any audio inspection at all.
+    Checks run cheapest-first and stop as soon as the answer is known, so a file that needs
+    nothing pays only for the header read and the segmentation probe.
+
+    Never raises. When a repair would be unsafe or unnecessary this logs what it found and
+    returns None, leaving the conversion exactly as it would have been without any inspection.
     """
-    diagnosis = diagnose_audio(video_path)
-    timeline = diagnosis.timeline
-
-    if diagnosis.defect is AudioDefect.NO_AUDIO_TRACK:
+    info = probe_audio_stream(video_path)
+    if info is None:
         return None
 
-    if diagnosis.defect is AudioDefect.UNMEASURABLE:
-        codec = diagnosis.stream.codec if diagnosis.stream else "unknown"
-        logger.info(
-            "Audio of '%s' uses codec '%s', whose packets have no fixed sample count, so its "
-            "timeline cannot be measured. Leaving the audio untouched.",
-            video_path,
-            codec,
-        )
-        return None
-
-    # Audio outlasting video means the streams disagree about how long the recording was. No
-    # audio-only repair reconciles that, so report it and convert exactly as before.
-    if (
-        diagnosis.audio_seconds is not None
-        and diagnosis.video_seconds is not None
-        and diagnosis.audio_seconds - diagnosis.video_seconds > MAX_AUDIO_OVERRUN_SECONDS
-    ):
-        logger.warning(
-            "Audio of '%s' runs %.2fs against %.2fs of video; the streams disagree about the "
-            "length of the recording. Leaving the audio untouched -- inspect the source.",
-            video_path,
-            diagnosis.audio_seconds,
-            diagnosis.video_seconds,
-        )
-        return None
-
-    # A file ingest already accepts is never rewritten on our own initiative: rebuilding its audio
+    # A file that already segments is never rewritten on our own initiative: rebuilding its audio
     # could only move data that is currently fine.
-    if diagnosis.segments_cleanly:
-        if timeline is not None and timeline.defect is not AudioDefect.NONE:
-            logger.warning(
-                "Leaving audio of '%s' unchanged: it is accepted as-is, but %s. That audio is "
-                "missing from the recording itself, which no conversion can recover.",
-                video_path,
-                timeline.describe(),
-            )
-        else:
-            logger.debug("Audio timeline of '%s' is coherent; leaving audio untouched", video_path)
+    if survives_strict_segmentation(video_path):
+        logger.debug("Audio of '%s' segments as-is; leaving it untouched", video_path)
         return None
 
-    if timeline is not None and timeline.largest_hole_seconds > max_audio_hole_seconds:
-        logger.warning(
-            "Leaving audio of '%s' unchanged: it has a %.2fs gap, beyond the %.2fs limit. A gap "
-            "that long is likelier a corrupt timestamp than real missing audio, and filling it "
-            "would synthesize that much silence. Raise max_audio_hole_seconds to fill it anyway.",
-            video_path,
-            timeline.largest_hole_seconds,
-            max_audio_hole_seconds,
-        )
+    timeline = measure_audio_timeline(video_path, info)
+    reason = _reason_to_leave_alone(video_path, info, timeline, max_audio_hole_seconds)
+    if reason is not None:
+        logger.warning("Leaving audio of '%s' unchanged: %s.", video_path, reason)
         return None
 
-    finding = timeline.describe() if timeline is not None else "it is rejected by strict segmentation"
+    assert timeline is not None  # _reason_to_leave_alone returns a reason when it is None
     logger.warning(
         "Repairing audio of '%s' with ffmpeg filter '%s': %s. The filter fills gaps with silence "
         "and drops audio that has no time to play, so the timeline the file declares is preserved "
         "exactly and no video or audio timestamp moves.",
         video_path,
         AUDIO_REPAIR_FILTER,
-        finding,
+        timeline.describe(),
     )
     return AUDIO_REPAIR_FILTER
