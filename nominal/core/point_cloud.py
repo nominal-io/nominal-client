@@ -18,29 +18,15 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, Sequence, get_args
+from typing import Any, Iterable, Literal, Mapping, Sequence, TypeAlias, get_args
 
 from nominal.core._types import PathLike
 from nominal.ts import _MICROSECONDS_PER_TIME_UNIT, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
-
-# Wire values for the v2 `ImportRequest` body carried by
-# `PointCloudOpts.daggerImportConfig`. The backend deserializes that `any`
-# payload with FAIL_ON_UNKNOWN_PROPERTIES and rejects the legacy v1 shape (which
-# carried `geometry_type` and `columns` at the top level rather than under
-# `format`), so these strings must match the importer's OpenAPI enums exactly.
-# They are PascalCase, not the SCREAMING_CASE used by conjure enums.
-_GEOMETRY_TYPE_POINT = "Point"
-_SAMPLER_MIN = "Min"
-_SAMPLER_MAX = "Max"
-_SAMPLER_MEAN = "Mean"
-_FSE_TYPE_INT = "Int"
-_FSE_TYPE_STRING = "String"
-_FSE_TYPE_RGB = "Rgb"
-_FSE_TYPE_REAL = {"Real": "IndependentValue"}
 
 # An Rgb attribute is ONE csv column holding a six-character hex string
 # ("rrggbb", no leading #). The importer reads that cell with
@@ -54,38 +40,177 @@ DEFAULT_RGB_ATTRIBUTE = "color"
 DEFAULT_POINT_CLOUD_CHANNEL = "point_cloud"
 
 # Per-column data type accepted in the `column_types` override and produced by
-# the CSV sampling classifier.
+# the CSV sampling classifier. This is the client's own vocabulary, not the
+# importer's -- callers write `column_types={"count": "int"}` -- so it stays a
+# Literal rather than becoming an enum.
 ColumnDataType = Literal["int", "real", "string"]
 
+# Sample size for column type inference. Only the first N rows are classified,
+# so this stays cheap on multi-GB CSVs.
+_TYPE_INFERENCE_SAMPLE_ROWS = 1000
+
+
+# --- the importer's wire vocabulary -------------------------------------------
+#
+# These mirror the enums in the importer's OpenAPI schema, which the backend
+# deserializes with FAIL_ON_UNKNOWN_PROPERTIES: a value it does not recognise
+# fails the request outright. They are PascalCase, not the SCREAMING_CASE used
+# by conjure enums. Members this module never emits are listed anyway, so the
+# full set is visible without going back to the schema.
+
+
+class GeometryType(str, Enum):
+    """Runtime label for the geometry each row carries. Only points are produced here."""
+
+    AABB = "Aabb"
+    BALL = "Ball"
+    POINT = "Point"
+
+
+class Sampler(str, Enum):
+    """A pre-computed aggregation stored alongside an attribute for coarse zoom levels.
+
+    The renderer's hierarchical LOD pipeline samples these; without at least one,
+    an attribute cannot drive ramp colouring or value-range filtering at all.
+    """
+
+    MIN = "Min"
+    MAX = "Max"
+    MEAN = "Mean"
+    MODE = "Mode"
+    AND = "And"
+    OR = "Or"
+
+
+class RealMeasurement(str, Enum):
+    """How a real quantity relates to the geometry, which is what CSG operates on."""
+
+    INDEPENDENT_VALUE = "IndependentValue"
+    VALUE_BY_WEIGHT = "ValueByWeight"
+    VALUE_BY_VOLUME = "ValueByVolume"
+    DENSITY = "Density"
+
+
+class ScalarAttributeType(str, Enum):
+    """The attribute types that serialize as a bare string."""
+
+    INT = "Int"
+    STRING = "String"
+    RGB = "Rgb"
+    NORMAL = "Normal"
+    BOOL = "Bool"
+    UV = "Uv"
+
+    def _to_wire(self) -> str:
+        return self.value
+
+
+@dataclass(frozen=True)
+class RealAttributeType:
+    """The one attribute type that carries a value rather than serializing as a bare string."""
+
+    measurement: RealMeasurement = RealMeasurement.INDEPENDENT_VALUE
+
+    def _to_wire(self) -> dict[str, str]:
+        return {"Real": self.measurement.value}
+
+
+AttributeType: TypeAlias = ScalarAttributeType | RealAttributeType
+
+
+# --- the import config --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FseHeader:
+    name: str
+    ty: AttributeType
+
+    def _to_wire(self) -> dict[str, Any]:
+        return {"name": self.name, "ty": self.ty._to_wire()}
+
+
+@dataclass(frozen=True)
+class _Attribute:
+    """A named column plus the reductions the importer should build for it."""
+
+    header: _FseHeader
+    reductions: tuple[Sampler, ...] = ()
+
+    def _to_wire(self) -> dict[str, Any]:
+        return {"header": self.header._to_wire(), "reductions": [sampler.value for sampler in self.reductions]}
+
+
+@dataclass(frozen=True)
+class _ColumnSelection:
+    """Column indices per bucket.
+
+    All seven buckets are required on the wire even when empty, which is why they
+    are fields with defaults rather than keys assembled by hand.
+    """
+
+    geometry: tuple[int, ...]
+    real: tuple[int, ...] = ()
+    ints: tuple[int, ...] = ()
+    string: tuple[int, ...] = ()
+    rgb: tuple[int, ...] = ()
+    normal: tuple[int, ...] = ()
+    bools: tuple[int, ...] = ()
+
+    def _to_wire(self) -> dict[str, list[int]]:
+        return {
+            "geometry": list(self.geometry),
+            "real": list(self.real),
+            "int": list(self.ints),
+            "string": list(self.string),
+            "rgb": list(self.rgb),
+            "normal": list(self.normal),
+            "bool": list(self.bools),
+        }
+
+
+@dataclass(frozen=True)
+class _ImportConfig:
+    """The v2 `ImportRequest` body, minus `source_uri`.
+
+    The backend fills `source_uri` in from the presigned URL it derives for the
+    uploaded object. The rejected v1 shape carried `geometry_type` and `columns`
+    at the top level rather than under `format`.
+    """
+
+    attributes: tuple[_Attribute, ...]
+    columns: _ColumnSelection
+    geometry_type: GeometryType = GeometryType.POINT
+
+    def _to_wire(self) -> dict[str, Any]:
+        return {
+            "archetype": {"attributes": [attribute._to_wire() for attribute in self.attributes]},
+            "format": {
+                "kind": "csv",
+                "geometry_type": self.geometry_type.value,
+                "columns": self.columns._to_wire(),
+            },
+        }
+
+
 # The importer assigns each column an attribute slot by walking the buckets in
-# this order -- not the order the columns appear in the header. The archetype
-# has to be declared in the same order, or attribute k is named and typed after
-# one column while holding another column's values. (The full walk continues
-# rgb, normal, bool; the last two are always empty here.)
+# this order -- not the order the columns appear in the header. The archetype has
+# to be declared in the same order, or attribute k is named and typed after one
+# column while holding another column's values. (The walk continues rgb, normal,
+# bool; the last two are always empty here.)
 _BUCKET_ORDER: tuple[ColumnDataType, ...] = ("real", "int", "string")
 
-# Wire type and LOD reductions per column type.
-#
-# Reductions are pre-computed aggregations (per-partition Min / Max / Mean)
-# stored as separate columns at ingest time. The renderer's hierarchical LOD
-# pipeline samples them at coarse zoom levels -- without them the attribute
-# cannot drive ramp colouring or value-range filtering at all.
-#
-# Mean is not a valid pairing with an Int-typed attribute, so int gets Min + Max
-# only; those two alone still satisfy a two-sided value-range filter and drive
-# ramp colouring for geometry. String attributes have no useful scalar
-# aggregation, so their reductions stay empty.
-_WIRE_TYPE_AND_REDUCTIONS: Mapping[ColumnDataType, tuple[Any, tuple[str, ...]]] = MappingProxyType(
+# Wire type and reductions per column type. Mean is not a valid pairing with an
+# Int-typed attribute, so int gets Min + Max only; those two alone still satisfy
+# a two-sided value-range filter and drive ramp colouring for geometry. String
+# attributes have no useful scalar aggregation, so their reductions stay empty.
+_WIRE_TYPE_AND_REDUCTIONS: Mapping[ColumnDataType, tuple[AttributeType, tuple[Sampler, ...]]] = MappingProxyType(
     {
-        "real": (_FSE_TYPE_REAL, (_SAMPLER_MIN, _SAMPLER_MAX, _SAMPLER_MEAN)),
-        "int": (_FSE_TYPE_INT, (_SAMPLER_MIN, _SAMPLER_MAX)),
-        "string": (_FSE_TYPE_STRING, ()),
+        "real": (RealAttributeType(), (Sampler.MIN, Sampler.MAX, Sampler.MEAN)),
+        "int": (ScalarAttributeType.INT, (Sampler.MIN, Sampler.MAX)),
+        "string": (ScalarAttributeType.STRING, ()),
     }
 )
-
-# Sample size for column type inference. Only the first N rows are read, not the
-# whole file, so this stays cheap on multi-GB CSVs.
-_TYPE_INFERENCE_SAMPLE_ROWS = 1000
 
 
 @dataclass(frozen=True)
@@ -93,12 +218,23 @@ class _PointCloudCsv:
     """A point-cloud CSV, described for the ingest request."""
 
     path: Path
-    import_config: dict[str, Any]
+    import_config: _ImportConfig
     time_range_us: tuple[int, int] | None
     """Measured `(start, end)` extent of the time column in microseconds, or None if none was named.
 
-    The ingest API has no field for it, so the caller records it on the spatial asset.
+    The ingest API has no field for it, so the caller records it on the spatial.
     """
+
+
+@dataclass(frozen=True)
+class _CsvScan:
+    """Everything one pass over the file yields."""
+
+    headers: tuple[str, ...]
+    samples: tuple[tuple[str, ...], ...]
+    """The first `_TYPE_INFERENCE_SAMPLE_ROWS` rows, split and padded to the header width."""
+    time_extent: tuple[float, float] | None
+    """Raw `(min, max)` of the time column in its own units, or None if none was named."""
 
 
 def _describe_point_cloud_csv(
@@ -122,18 +258,77 @@ def _describe_point_cloud_csv(
             `rgb_column` is not in the header, or `time_column` is missing from
             the header or holds a non-numeric value.
     """
+    if time_unit not in _MICROSECONDS_PER_TIME_UNIT:
+        raise ValueError(f"time_unit must be one of {sorted(_MICROSECONDS_PER_TIME_UNIT)}: got {time_unit!r}")
+
     path = Path(csv_path)
     if not path.exists():
         raise FileNotFoundError(f"No such file: {path}")
 
-    header_line, sample_lines = _read_csv_header_and_samples(path)
+    scan = _scan_csv(path, time_column)
     return _PointCloudCsv(
         path=path,
         import_config=_build_import_config(
-            header_line, sample_lines, column_types or {}, rgb_column=rgb_column, rgb_attribute=rgb_attribute
+            scan, column_types or {}, rgb_column=rgb_column, rgb_attribute=rgb_attribute
         ),
-        time_range_us=None if time_column is None else _read_time_range(path, header_line, time_column, time_unit),
+        time_range_us=None if scan.time_extent is None else _to_microseconds(scan.time_extent, time_unit),
     )
+
+
+# --- reading the file ---------------------------------------------------------
+
+
+def _scan_csv(path: Path, time_column: str | None, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> _CsvScan:
+    """Read the file once to sample rows, measure the time column, and reject quoting.
+
+    One pass answers all three because their needs overlap: classification wants
+    the first `n_samples` rows, the time extent wants every row, and the quoting
+    check wants every row too. A prefix-only quoting check is not enough -- a
+    quoted field anywhere in the file shifts every attribute after it -- and one
+    sequential local read is cheap against an upload of the same bytes.
+
+    The extent has to come from every row rather than the sample: the renderer
+    interpolates the playhead across it, so a maximum short of the real one clips
+    the tail of the cloud and one past it stalls the sweep before the end.
+    """
+    minimum = math.inf
+    maximum = -math.inf
+    samples: list[tuple[str, ...]] = []
+
+    with path.open("r", newline="") as f:
+        try:
+            header_line = next(f).rstrip("\r\n")
+        except StopIteration:
+            raise ValueError(f"CSV is empty: {path}") from None
+        _reject_quoted_fields(header_line, "the header")
+
+        headers = tuple(h.strip() for h in header_line.split(","))
+        if not any(headers):
+            raise ValueError("CSV header is empty")
+        index = None if time_column is None else _column_index(headers, time_column, "time_column")
+
+        for line_number, line in enumerate(f, start=2):
+            row = line.rstrip("\r\n")
+            if not row:
+                continue
+            _reject_quoted_fields(row, f"line {line_number}")
+
+            if len(samples) < n_samples:
+                samples.append(_split_row(row, len(headers)))
+
+            if index is not None:
+                value = _time_value(row, index, time_column, line_number)
+                if value is not None:
+                    # Plain comparisons rather than min()/max(): this runs once per
+                    # row of a file that can hold tens of millions.
+                    minimum = min(minimum, value)
+                    maximum = max(maximum, value)
+
+    if index is None:
+        return _CsvScan(headers=headers, samples=tuple(samples), time_extent=None)
+    if minimum > maximum:
+        raise ValueError(f"time_column {time_column!r} has no values to derive a time range from")
+    return _CsvScan(headers=headers, samples=tuple(samples), time_extent=(minimum, maximum))
 
 
 def _reject_quoted_fields(line: str, where: str) -> None:
@@ -141,10 +336,10 @@ def _reject_quoted_fields(line: str, where: str) -> None:
 
     The importer does not implement it: it splits rows on raw commas and counts
     columns with a plain memchr, with no quote handling anywhere. Parsing quotes
-    here would be worse than not, because the column indices this module
-    computes would then disagree with the ones the importer actually reads,
-    silently shifting every attribute after the quoted field. Rejecting is the
-    only option that cannot corrupt the result.
+    here would be worse than not, because the column indices this module computes
+    would then disagree with the ones the importer actually reads, silently
+    shifting every attribute after the quoted field. Rejecting is the only option
+    that cannot corrupt the result.
     """
     if '"' in line:
         raise ValueError(
@@ -153,209 +348,179 @@ def _reject_quoted_fields(line: str, where: str) -> None:
         )
 
 
-def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> tuple[str, list[str]]:
-    """Read the header row + up to n_samples non-empty data rows."""
-    with path.open("r", newline="") as f:
-        try:
-            header = next(f).rstrip("\r\n")
-        except StopIteration:
-            raise ValueError(f"CSV is empty: {path}")
-        _reject_quoted_fields(header, "the header")
-        samples: list[str] = []
-        for line in f:
-            stripped = line.rstrip("\r\n")
-            if stripped:
-                _reject_quoted_fields(stripped, f"data row {len(samples) + 2}")
-                samples.append(stripped)
-            if len(samples) >= n_samples:
-                break
-    return header, samples
+def _split_row(row: str, n_cols: int) -> tuple[str, ...]:
+    """Split a sampled row and pad it to the header width, so column lookups cannot go out of range."""
+    fields = [value.strip() for value in row.split(",")]
+    if len(fields) < n_cols:
+        fields.extend([""] * (n_cols - len(fields)))
+    return tuple(fields)
 
 
-def _read_time_range(
-    path: Path,
-    header_line: str,
-    time_column: str,
-    time_unit: _LiteralTimeUnit,
-) -> tuple[int, int]:
-    """Scan the time column and return its extent, in microseconds.
+def _field(row: str, index: int) -> str | None:
+    """The index-th comma-separated field, or None if the row has fewer fields than that.
 
-    The renderer maps the workbook playhead onto per-point time by interpolating
-    across this range, so it has to be the true extent rather than an estimate
-    from the sampled rows -- a range short of the real maximum clips the tail of
-    the cloud, and one past it stalls the sweep before the end.
-
-    That means a full pass over the file. Only this one column is parsed, and
-    nothing is retained, so the cost is a read of the file rather than a parse
-    of it.
+    Walks commas rather than splitting: the caller wants one field out of a row
+    that may hold dozens, on every row of a very large file, and `split` would
+    allocate a string per column to reach it.
     """
-    if time_unit not in _MICROSECONDS_PER_TIME_UNIT:
-        raise ValueError(f"time_unit must be one of {sorted(_MICROSECONDS_PER_TIME_UNIT)}: got {time_unit!r}")
+    start = 0
+    for _ in range(index):
+        comma = row.find(",", start)
+        if comma < 0:
+            return None
+        start = comma + 1
+    end = row.find(",", start)
+    return row[start:] if end < 0 else row[start:end]
 
-    headers = [h.strip() for h in header_line.split(",")]
+
+def _time_value(row: str, index: int, time_column: str | None, line_number: int) -> float | None:
+    """Parse the time column out of a row, or None when the row does not carry one."""
+    raw = _field(row, index)
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
     try:
-        index = headers.index(time_column)
+        return float(raw)
     except ValueError:
         raise ValueError(
-            f"time_column {time_column!r} is not in the CSV header; available columns: {headers}"
+            f"time_column {time_column!r} holds a non-numeric value {raw!r} on line {line_number}"
         ) from None
 
-    minimum = math.inf
-    maximum = -math.inf
-    with path.open("r", newline="") as f:
-        next(f)  # header, already parsed by the caller
-        for line_number, line in enumerate(f, start=2):
-            row = line.rstrip("\r\n")
-            if not row:
-                continue
-            fields = row.split(",")
-            if index >= len(fields):
-                continue
-            raw = fields[index].strip()
-            if not raw:
-                continue
-            try:
-                value = float(raw)
-            except ValueError:
-                raise ValueError(
-                    f"time_column {time_column!r} holds a non-numeric value {raw!r} on line {line_number}"
-                ) from None
-            minimum = min(minimum, value)
-            maximum = max(maximum, value)
 
-    if minimum > maximum:
-        raise ValueError(f"time_column {time_column!r} has no values to derive a time range from")
+def _to_microseconds(extent: tuple[float, float], time_unit: _LiteralTimeUnit) -> tuple[int, int]:
+    """Convert a raw extent to whole microseconds, which is what a spatial stores.
 
+    Widened outward so rounding can never land inside the data and clip the first
+    or last points.
+    """
     micros = _MICROSECONDS_PER_TIME_UNIT[time_unit]
-    # Widen to whole microseconds so rounding can never land inside the data and
-    # clip the first or last points.
+    minimum, maximum = extent
     return math.floor(minimum * micros), math.ceil(maximum * micros)
 
 
+# --- building the config ------------------------------------------------------
+
+
 def _build_import_config(
-    header_line: str,
-    sample_lines: Sequence[str],
+    scan: _CsvScan,
     column_type_overrides: Mapping[str, ColumnDataType] | None = None,
     *,
     rgb_column: str | None = None,
     rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
-) -> dict[str, Any]:
-    """Build the v2 `ImportRequest` body, minus `source_uri`.
-
-    The backend fills `source_uri` in from the presigned URL it derives for the
-    uploaded object.
-    """
+) -> _ImportConfig:
+    """Assign every column to a bucket and declare the archetype in the importer's walk order."""
     overrides = column_type_overrides or {}
-    if not header_line.strip():
-        raise ValueError("CSV header is empty")
-    headers = [h.strip() for h in header_line.split(",")]
-    n_cols = len(headers)
+    headers = scan.headers
+    _validate_overrides(overrides, headers)
 
-    header_set = set(headers)
-    unknown = [name for name in overrides if name not in header_set]
+    geometry = _find_geometry_indices(headers)
+    rgb = () if rgb_column is None else (_column_index(headers, rgb_column, "rgb_column"),)
+    # Geometry and colour columns are excluded from scalar classification: a hex
+    # colour cell would otherwise be sampled as a string column.
+    reserved = {*geometry, *rgb}
+
+    # One bucket per column type is the single source of truth: both the archetype
+    # and the column selection are derived from it, so they cannot drift apart.
+    columns: dict[ColumnDataType, list[tuple[int, str]]] = {kind: [] for kind in _BUCKET_ORDER}
+    for i, name in enumerate(headers):
+        if i in reserved:
+            continue
+        # Caller-supplied type wins; fall through to sample-based inference.
+        kind = overrides.get(name) or _classify_column(row[i] for row in scan.samples)
+        columns[kind].append((i, name))
+
+    attributes = [_attribute(name, kind) for kind in _BUCKET_ORDER for _, name in columns[kind]]
+    if rgb:
+        # Mean is the reduction that makes sense at coarse LOD: a parent node takes
+        # the average colour of the points it stands in for, and the mean sampler
+        # is implemented for Rgb8.
+        attributes.append(
+            _Attribute(header=_FseHeader(name=rgb_attribute, ty=ScalarAttributeType.RGB), reductions=(Sampler.MEAN,))
+        )
+
+    return _ImportConfig(
+        attributes=tuple(attributes),
+        columns=_ColumnSelection(
+            geometry=geometry,
+            real=tuple(i for i, _ in columns["real"]),
+            ints=tuple(i for i, _ in columns["int"]),
+            string=tuple(i for i, _ in columns["string"]),
+            rgb=rgb,
+        ),
+    )
+
+
+def _validate_overrides(overrides: Mapping[str, ColumnDataType], headers: Sequence[str]) -> None:
+    """Reject overrides naming a column or a type that does not exist."""
+    unknown = [name for name in overrides if name not in set(headers)]
     if unknown:
         raise ValueError(
-            f"column_types references columns not in CSV header: {sorted(unknown)}; available columns: {headers}"
+            f"column_types references columns not in CSV header: {sorted(unknown)}; available columns: {list(headers)}"
         )
     valid_types = get_args(ColumnDataType)
     bad_types = {name: ty for name, ty in overrides.items() if ty not in valid_types}
     if bad_types:
         raise ValueError(f"column_types values must be one of {sorted(valid_types)}: got {bad_types}")
 
-    parsed_samples: list[list[str]] = []
-    for line in sample_lines:
-        row = [v.strip() for v in line.split(",")]
-        if len(row) < n_cols:
-            row = row + [""] * (n_cols - len(row))
-        parsed_samples.append(row)
 
-    geometry_indices = _find_geometry_indices(headers)
-    rgb_indices = _find_rgb_index(headers, rgb_column)
-    # Geometry and colour columns are excluded from scalar classification: a hex
-    # colour cell would otherwise be sampled as a string column.
-    reserved = {*geometry_indices, *rgb_indices}
-
-    # One bucket per column type is the single source of truth here: both the
-    # archetype and the column selection below are derived from it, so they
-    # cannot drift out of step.
-    columns: dict[ColumnDataType, list[tuple[int, str]]] = {kind: [] for kind in _BUCKET_ORDER}
-    for i, name in enumerate(headers):
-        if i in reserved:
-            continue
-        # Caller-supplied type wins; fall through to sample-based inference.
-        kind = overrides.get(name) or _classify_column([row[i] for row in parsed_samples])
-        columns[kind].append((i, name))
-
-    attributes = [_attribute(name, kind) for kind in _BUCKET_ORDER for _, name in columns[kind]]
-    if rgb_indices:
-        # Mean is the reduction that makes sense at coarse LOD: a parent node
-        # takes the average colour of the points it stands in for. The mean
-        # sampler is implemented for Rgb8, so this is a valid pairing.
-        attributes.append({"header": {"name": rgb_attribute, "ty": _FSE_TYPE_RGB}, "reductions": [_SAMPLER_MEAN]})
-
-    return {
-        "archetype": {"attributes": attributes},
-        "format": {
-            "kind": "csv",
-            "geometry_type": _GEOMETRY_TYPE_POINT,
-            "columns": {
-                "geometry": geometry_indices,
-                "real": [i for i, _ in columns["real"]],
-                "int": [i for i, _ in columns["int"]],
-                "string": [i for i, _ in columns["string"]],
-                "rgb": rgb_indices,
-                "normal": [],
-                "bool": [],
-            },
-        },
-    }
-
-
-def _attribute(name: str, kind: ColumnDataType) -> dict[str, Any]:
+def _attribute(name: str, kind: ColumnDataType) -> _Attribute:
     """One archetype attribute: the column's wire type and its LOD reductions."""
     ty, reductions = _WIRE_TYPE_AND_REDUCTIONS[kind]
-    return {"header": {"name": name, "ty": ty}, "reductions": [*reductions]}
+    return _Attribute(header=_FseHeader(name=name, ty=ty), reductions=reductions)
 
 
-def _find_rgb_index(headers: Sequence[str], rgb_column: str | None) -> list[int]:
-    """Resolve the colour column name to a single index, as a list for the wire shape."""
-    if rgb_column is None:
-        return []
+def _column_index(headers: Sequence[str], column: str, argument: str) -> int:
+    """Resolve a caller-named column to its index.
+
+    Matched exactly, unlike the x/y/z lookup: those are a fixed convention whose
+    case varies between producers, where these are names the caller read off their
+    own header.
+    """
     try:
-        return [headers.index(rgb_column)]
+        return headers.index(column)
     except ValueError:
         raise ValueError(
-            f"rgb_column {rgb_column!r} is not in the CSV header; available columns: {list(headers)}"
+            f"{argument} {column!r} is not in the CSV header; available columns: {list(headers)}"
         ) from None
 
 
-def _find_geometry_indices(headers: Sequence[str]) -> list[int]:
+def _find_geometry_indices(headers: Sequence[str]) -> tuple[int, int, int]:
+    """Locate the x/y/z columns, case-insensitively."""
     lowered = [h.lower() for h in headers]
     try:
-        return [lowered.index("x"), lowered.index("y"), lowered.index("z")]
+        return lowered.index("x"), lowered.index("y"), lowered.index("z")
     except ValueError as e:
         raise ValueError(f"CSV is missing required point-cloud columns x/y/z; got headers={list(headers)}") from e
 
 
-def _classify_column(values: Sequence[str]) -> ColumnDataType:
+def _classify_column(values: Iterable[str]) -> ColumnDataType:
     """Classify a column from sampled values: all-numeric is real, anything else is string.
 
     `int` is deliberately never inferred. Only the first
     `_TYPE_INFERENCE_SAMPLE_ROWS` rows are sampled, so an integer-looking sample
     is no evidence the rest of the column is integral -- and an Int-typed
-    attribute truncates every float the importer reads into it, silently, for
-    the whole file. Real represents integral values exactly well past any
-    plausible point-cloud magnitude, so typing a genuine int column as real
-    costs nothing that matters, while the reverse corrupts the data. Callers
-    who want the Int wire type ask for it explicitly via `column_types`.
+    attribute truncates every float the importer reads into it, silently, for the
+    whole file. Real represents integral values exactly well past any plausible
+    point-cloud magnitude, so typing a genuine int column as real costs nothing
+    that matters, while the reverse corrupts the data. Callers who want the Int
+    wire type ask for it explicitly via `column_types`.
 
     All-empty columns default to string: there is nothing to measure, and string
     is the only type that cannot misrepresent the values.
+
+    Returns on the first non-numeric value, so a string column costs one failed
+    parse rather than one per sampled row.
     """
-    populated = [v for v in values if v]
-    if not populated:
-        return "string"
-    return "real" if all(_is_numeric(v) for v in populated) else "string"
+    populated = False
+    for value in values:
+        if not value:
+            continue
+        if not _is_numeric(value):
+            return "string"
+        populated = True
+    return "real" if populated else "string"
 
 
 def _is_numeric(value: str) -> bool:

@@ -330,7 +330,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
                         target=ingest_api.PointCloudIngestTarget(
                             existing=ingest_api.ExistingSpatialIngestDestination(spatial_rid=self.rid)
                         ),
-                        dagger_import_config=described.import_config,
+                        dagger_import_config=described.import_config._to_wire(),
                         channel=channel,
                         tags=dict(tags) if tags else {},
                     )
