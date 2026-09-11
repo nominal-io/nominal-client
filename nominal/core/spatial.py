@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, TypeAlias
+from typing import Mapping, Protocol, Sequence
 
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
 from typing_extensions import Self
@@ -26,9 +27,6 @@ from nominal.core.point_cloud import (
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class ScanPattern(Enum):
@@ -79,30 +77,33 @@ class PointCloudMetadata:
     resolution_mm: float | None = None
     scan_pattern: ScanPattern | None = None
 
-    def _to_conjure(self) -> scout_spatial_api.SpatialTypeMetadata:
-        return scout_spatial_api.SpatialTypeMetadata(
-            point_cloud=scout_spatial_api.PointCloudMetadata(
-                sensor_model=self.sensor_model,
-                coordinate_system=self.coordinate_system,
-                resolution_mm=self.resolution_mm,
-                scan_pattern=None if self.scan_pattern is None else self.scan_pattern._to_conjure(),
-            )
+    def _to_conjure(self) -> scout_spatial_api.PointCloudMetadata:
+        return scout_spatial_api.PointCloudMetadata(
+            sensor_model=self.sensor_model,
+            coordinate_system=self.coordinate_system,
+            resolution_mm=self.resolution_mm,
+            scan_pattern=None if self.scan_pattern is None else self.scan_pattern._to_conjure(),
         )
 
+    @classmethod
+    def _from_conjure(cls, type_metadata: scout_spatial_api.SpatialTypeMetadata) -> Self:
+        """Read the point-cloud arm of a spatial's type metadata.
 
-SpatialMetadata: TypeAlias = PointCloudMetadata
-
-
-def _spatial_metadata_from_conjure(type_metadata: scout_spatial_api.SpatialTypeMetadata) -> SpatialMetadata:
-    point_cloud = type_metadata.point_cloud
-    if point_cloud is None:
-        return PointCloudMetadata()
-    return PointCloudMetadata(
-        sensor_model=point_cloud.sensor_model,
-        coordinate_system=point_cloud.coordinate_system,
-        resolution_mm=point_cloud.resolution_mm,
-        scan_pattern=None if point_cloud.scan_pattern is None else ScanPattern._from_conjure(point_cloud.scan_pattern),
-    )
+        `SpatialTypeMetadata` is a union with one arm today, so an unset arm means
+        a spatial of a kind this client predates; an empty metadata reads better
+        there than a crash on a field that simply is not there yet.
+        """
+        point_cloud = type_metadata.point_cloud
+        if point_cloud is None:
+            return cls()
+        return cls(
+            sensor_model=point_cloud.sensor_model,
+            coordinate_system=point_cloud.coordinate_system,
+            resolution_mm=point_cloud.resolution_mm,
+            scan_pattern=(
+                None if point_cloud.scan_pattern is None else ScanPattern._from_conjure(point_cloud.scan_pattern)
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -138,14 +139,12 @@ class _PointCloudTimeMetadata:
         return cls(
             start=origin_ns + relative_start_us * 1_000,
             end=origin_ns + relative_end_us * 1_000,
-            properties=MappingProxyType(
-                {
-                    "relative_start_us": str(relative_start_us),
-                    "relative_end_us": str(relative_end_us),
-                    "start_timestamp_us": str(origin_us + relative_start_us),
-                    "end_timestamp_us": str(origin_us + relative_end_us),
-                }
-            ),
+            properties={
+                "relative_start_us": str(relative_start_us),
+                "relative_end_us": str(relative_end_us),
+                "start_timestamp_us": str(origin_us + relative_start_us),
+                "end_timestamp_us": str(origin_us + relative_end_us),
+            },
         )
 
 
@@ -160,12 +159,10 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     properties: Mapping[str, str]
     is_archived: bool
     dagger_uuid: str
-    metadata: SpatialMetadata
+    metadata: PointCloudMetadata
     created_at: IntegralNanosecondsUTC
     start_timestamp: IntegralNanosecondsUTC | None
     end_timestamp: IntegralNanosecondsUTC | None
-    source_handle: str | None
-    """Object-storage location of the data ingested into this spatial, recorded for provenance."""
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -188,24 +185,16 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-        start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
-        end_timestamp: datetime | IntegralNanosecondsUTC | None = None,
     ) -> Self:
         """Replace spatial metadata in-place and return the updated spatial.
 
         Only the fields passed in are replaced; the rest are left untouched.
-
-        `start_timestamp` and `end_timestamp` bound the time range this spatial covers, which
-        is how it lines up against other data on a timeline. They are absolute instants,
-        not a parsing format: a point-cloud CSV has no timestamp column.
         """
         request = scout_spatial_api.UpdateSpatialMetadataRequest(
             title=name,
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
-            start_timestamp=None if start_timestamp is None else _SecondsNanos.from_flexible(start_timestamp).to_api(),
-            end_timestamp=None if end_timestamp is None else _SecondsNanos.from_flexible(end_timestamp).to_api(),
         )
         updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated)
@@ -400,7 +389,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
             properties=MappingProxyType(raw_spatial.properties),
             is_archived=raw_spatial.is_archived,
             dagger_uuid=raw_spatial.dagger_uuid,
-            metadata=_spatial_metadata_from_conjure(raw_spatial.type_metadata),
+            metadata=PointCloudMetadata._from_conjure(raw_spatial.type_metadata),
             created_at=_SecondsNanos.from_flexible(raw_spatial.created_at).to_nanoseconds(),
             start_timestamp=(
                 None
@@ -412,18 +401,17 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
                 if raw_spatial.end_timestamp is None
                 else _SecondsNanos.from_api(raw_spatial.end_timestamp).to_nanoseconds()
             ),
-            source_handle=None if raw_spatial.source_handle is None else raw_spatial.source_handle.s3,
             _clients=clients,
             created_by_rid=raw_spatial.created_by,
         )
 
 
-def _create_spatial(
+def _create_point_cloud_spatial(
     auth_header: str,
     spatial_service: scout_spatial.SpatialService,
     name: str,
     *,
-    metadata: SpatialMetadata,
+    metadata: PointCloudMetadata,
     description: str | None,
     labels: Sequence[str],
     properties: Mapping[str, str] | None,
@@ -441,7 +429,7 @@ def _create_spatial(
     request = scout_spatial_api.CreateSpatialRequest(
         title=name,
         dagger_uuid=str(uuid.uuid4()),
-        type_metadata=metadata._to_conjure(),
+        type_metadata=scout_spatial_api.SpatialTypeMetadata(point_cloud=metadata._to_conjure()),
         labels=list(labels),
         properties=dict(properties) if properties else {},
         marking_rids=list(marking_rids),

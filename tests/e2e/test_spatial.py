@@ -66,7 +66,7 @@ def point_cloud_csv(tmp_path_factory) -> Path:
 
 @pytest.fixture
 def spatial(client: NominalClient) -> Iterator[Spatial]:
-    asset = client.create_spatial(
+    asset = client.create_point_cloud_spatial(
         f"e2e-spatial-{uuid4().hex[:8]}",
         metadata=PointCloudMetadata(sensor_model="Ouster OS1-128", scan_pattern=ScanPattern.ROTATING),
     )
@@ -114,22 +114,12 @@ def test_create_spatial_round_trips(client: NominalClient, spatial: Spatial) -> 
 
 
 def test_update_round_trips_every_field_and_leaves_the_rest_alone(client: NominalClient, spatial: Spatial) -> None:
-    """Everything update() writes survives a fetch, and what it does not name is left untouched.
-
-    The time bounds go through this path rather than create: for a point cloud the
-    range is measured from the time column during ingest, and update is how data
-    carrying no time column of its own gets one.
-    """
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2026, 1, 2, tzinfo=timezone.utc)
-
+    """Everything update() writes survives a fetch, and what it does not name is left untouched."""
     spatial.update(
         name="renamed-scan",
         description="updated",
         labels=["lidar", "e2e"],
         properties={"site": "downtown"},
-        start_timestamp=start,
-        end_timestamp=end,
     )
     assert spatial.name == "renamed-scan"
 
@@ -138,15 +128,13 @@ def test_update_round_trips_every_field_and_leaves_the_rest_alone(client: Nomina
     assert fetched.description == "updated"
     assert set(fetched.labels) == {"lidar", "e2e"}
     assert fetched.properties["site"] == "downtown"
-    assert fetched.start_timestamp == int(start.timestamp()) * 1_000_000_000
-    assert fetched.end_timestamp == int(end.timestamp()) * 1_000_000_000
     # Untouched fields survive the partial update.
     assert fetched.metadata.sensor_model == "Ouster OS1-128"
 
 
 def test_archive_and_unarchive(client: NominalClient) -> None:
     """Archiving hides a spatial from search and unarchiving brings it back."""
-    asset = client.create_spatial(f"e2e-spatial-arch-{uuid4().hex[:8]}", metadata=PointCloudMetadata())
+    asset = client.create_point_cloud_spatial(f"e2e-spatial-arch-{uuid4().hex[:8]}", metadata=PointCloudMetadata())
     try:
         asset.archive()
         assert client.get_spatial(asset.rid).is_archived is True
@@ -172,18 +160,6 @@ def test_point_cloud_ingest_completes(client: NominalClient, spatial: Spatial, p
     assert status == IngestionJobStatus.COMPLETED, f"ingest job {job_rid} ended {status}"
 
 
-def test_point_cloud_ingest_records_source_handle(
-    client: NominalClient, spatial: Spatial, point_cloud_csv: Path
-) -> None:
-    """Provenance is written back to the spatial after the upload."""
-    assert spatial.source_handle is None, "nothing uploaded yet"
-    _ingest(spatial, point_cloud_csv)
-    # Set during ingest, since the object location is not knowable at create time.
-    source_handle = client.get_spatial(spatial.rid).source_handle
-    assert source_handle is not None
-    assert source_handle.endswith(".csv")
-
-
 def test_point_cloud_ingest_accepts_column_type_overrides(
     client: NominalClient, spatial: Spatial, point_cloud_csv: Path
 ) -> None:
@@ -203,9 +179,10 @@ def test_ingest_into_archived_spatial_is_accepted(
     lands on a hidden spatial is easy to mistake for a silent no-op.
     """
     spatial.archive()
-    assert _ingest(spatial, point_cloud_csv) is not None
-    # The upload really landed, rather than being dropped on the floor.
-    assert client.get_spatial(spatial.rid).source_handle is not None
+    job_rid = _ingest(spatial, point_cloud_csv)
+    # Polling to completion is what proves the upload really landed, rather than
+    # being accepted and then dropped on the floor.
+    assert _poll_ingest_job(client, job_rid) == IngestionJobStatus.COMPLETED
 
 
 # --- spatials as run / asset data scopes --------------------------------------

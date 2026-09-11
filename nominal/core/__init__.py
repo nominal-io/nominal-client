@@ -33,7 +33,7 @@ from nominal.core.marking import Marking
 from nominal.core.point_cloud import ColumnDataType
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial, SpatialMetadata
+from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
@@ -89,7 +89,6 @@ __all__ = [
     "SearchEventOriginType",
     "Secret",
     "Spatial",
-    "SpatialMetadata",
     "Symbol",
     "SymbolKind",
     "TimestampMetadata",

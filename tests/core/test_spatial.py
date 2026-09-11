@@ -52,7 +52,6 @@ def spatial(clients: MagicMock) -> Spatial:
         created_at=1_700_000_000_000_000_000,
         start_timestamp=None,
         end_timestamp=None,
-        source_handle=None,
         _clients=clients,
     )
 
@@ -123,7 +122,7 @@ def test_create_spatial_reserves_a_model_in_the_default_workspace(clients: Magic
     """Creation names the model that will hold the data and lands in the client's default workspace."""
     clients.spatial.create.return_value = _raw_spatial()
 
-    NominalClient.create_spatial(
+    NominalClient.create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING)
     )
 
@@ -140,7 +139,7 @@ def test_each_spatial_reserves_its_own_model(clients: MagicMock, client: MagicMo
 
     uuids = set()
     for _ in range(3):
-        NominalClient.create_spatial(client, "scan", metadata=PointCloudMetadata())
+        NominalClient.create_point_cloud_spatial(client, "scan", metadata=PointCloudMetadata())
         uuids.add(clients.spatial.create.call_args.args[1].dagger_uuid)
 
     assert len(uuids) == 3
@@ -150,7 +149,7 @@ def test_create_spatial_applies_markings(clients: MagicMock, client: MagicMock) 
     """Markings ride along in the create request, so a restricted spatial is never briefly visible."""
     clients.spatial.create.return_value = _raw_spatial()
 
-    NominalClient.create_spatial(
+    NominalClient.create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(), markings=["ri.scout.x.marking.m1", "ri.scout.x.marking.m2"]
     )
 
@@ -160,12 +159,11 @@ def test_create_spatial_applies_markings(clients: MagicMock, client: MagicMock) 
 
 def test_update_replaces_only_the_fields_passed(clients: MagicMock, spatial: Spatial) -> None:
     """Everything not named is left untouched rather than cleared, which is how the service reads it."""
-    spatial.update(start_timestamp=1_700_000_000_000_000_000)
+    spatial.update(name="renamed")
 
     request = clients.spatial.update_metadata.call_args.args[1]
-    assert request.start_timestamp.seconds == 1_700_000_000
-    assert request.end_timestamp is None
-    assert request.title is None
+    assert request.title == "renamed"
+    assert request.description is None
     assert request.labels is None
     assert request.properties is None
 

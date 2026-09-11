@@ -114,7 +114,7 @@ from nominal.core.marking import (
 )
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
-from nominal.core.spatial import Spatial, SpatialMetadata, _create_spatial
+from nominal.core.spatial import PointCloudMetadata, Spatial, _create_point_cloud_spatial
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -938,10 +938,10 @@ class NominalClient:
 
     create_empty_video = create_video
 
-    def create_spatial(
+    def create_point_cloud_spatial(
         self,
         name: str,
-        metadata: SpatialMetadata,
+        metadata: PointCloudMetadata,
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
@@ -954,12 +954,11 @@ class NominalClient:
         with `Spatial.ingest_point_cloud_csv`.
 
         The time range this spatial covers is not set here: `ingest_point_cloud_csv`
-        measures it from the point cloud's own time column, and `Spatial.update`
-        sets it explicitly for data that carries no time column.
+        measures it from the point cloud's own time column.
 
         Args:
             name: Human-readable name for the spatial.
-            metadata: Type-specific metadata, e.g. `PointCloudMetadata(...)`.
+            metadata: Point-cloud metadata, e.g. `PointCloudMetadata(sensor_model=...)`.
             description: Optional description.
             labels: Labels to apply.
             properties: Key-value properties to apply.
@@ -970,7 +969,7 @@ class NominalClient:
         Returns:
             The created spatial.
         """
-        response = _create_spatial(
+        response = _create_point_cloud_spatial(
             self._clients.auth_header,
             self._clients.spatial,
             name,
