@@ -123,7 +123,11 @@ class StreamingConnection(Connection):
 def _get_connections(
     clients: Connection._Clients, connection_rids: Sequence[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
-    return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
+    """Fetch many connections in one request. The response omits RIDs the caller cannot read."""
+    rids = list(connection_rids)
+    if not rids:
+        return []
+    return clients.connection.get_connections(clients.auth_header, rids)
 
 
 def _get_connection(clients: Connection._Clients, connection_rid: str) -> scout_datasource_connection_api.Connection:
