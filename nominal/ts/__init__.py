@@ -579,20 +579,6 @@ def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
     return api.TimeUnit[unit.upper()]
 
 
-_MICROSECONDS_PER_TIME_UNIT: Mapping[_LiteralTimeUnit, float] = MappingProxyType(
-    {
-        "picoseconds": 1e-6,
-        "nanoseconds": 1e-3,
-        "microseconds": 1.0,
-        "milliseconds": 1e3,
-        "seconds": 1e6,
-        "minutes": 60e6,
-        "hours": 3600e6,
-        "days": 86400e6,
-    }
-)
-
-
 _str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingProxyType(
     {
         "iso_8601": ISO_8601,

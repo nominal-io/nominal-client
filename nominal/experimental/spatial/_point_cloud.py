@@ -24,7 +24,7 @@ from types import MappingProxyType
 from typing import Any, Iterable, Literal, Mapping, Sequence, TypeAlias, get_args
 
 from nominal.core._types import PathLike
-from nominal.ts import _MICROSECONDS_PER_TIME_UNIT, _LiteralTimeUnit
+from nominal.ts import _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 # importer's -- callers write `column_types={"count": "int"}` -- so it stays a
 # Literal rather than becoming an enum.
 ColumnDataType = Literal["int", "real", "string"]
+
+# Microseconds per unit of a time column. A spatial always stores its range in
+# microseconds, whatever unit the column itself is in, so the conversion belongs
+# with the code that reads the column rather than in `nominal.ts` -- nothing else
+# in the library needs a unit expressed as a microsecond scale factor.
+_MICROSECONDS_PER_TIME_UNIT: Mapping[_LiteralTimeUnit, float] = MappingProxyType(
+    {
+        "picoseconds": 1e-6,
+        "nanoseconds": 1e-3,
+        "microseconds": 1.0,
+        "milliseconds": 1e3,
+        "seconds": 1e6,
+        "minutes": 60e6,
+        "hours": 3600e6,
+        "days": 86400e6,
+    }
+)
 
 # Sample size for column type inference. Only the first N rows are classified,
 # so this stays cheap on multi-GB CSVs.
