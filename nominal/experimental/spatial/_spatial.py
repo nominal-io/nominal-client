@@ -12,7 +12,7 @@ from typing import Mapping, Protocol, Sequence, overload
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
 from typing_extensions import Self
 
-from nominal.core import Marking, NominalClient
+from nominal.core import Dataset, Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
@@ -21,7 +21,7 @@ from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.marking import _marking_rids
 from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
-from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
+from nominal.ts import IntegralNanosecondsUTC, Relative, _LiteralTimeUnit, _SecondsNanos, _validate_timestamp_pair
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,14 @@ class _PointCloudTimeMetadata:
     properties: Mapping[str, str]
 
     @classmethod
-    def from_extent(cls, time_range_us: tuple[int, int], origin: datetime | IntegralNanosecondsUTC) -> Self:
+    def from_extent(
+        cls,
+        time_range_us: tuple[int, int],
+        origin: datetime | IntegralNanosecondsUTC,
+        *,
+        attribute: str | None = None,
+        unit: _LiteralTimeUnit = "seconds",
+    ) -> Self:
         """Place a measured `(start, end)` extent in microseconds against the instant it counts from."""
         origin_ns = _SecondsNanos.from_flexible(origin).to_nanoseconds()
         origin_us = origin_ns // 1_000
@@ -140,6 +147,11 @@ class _PointCloudTimeMetadata:
             start=origin_ns + relative_start_us * 1_000,
             end=origin_ns + relative_end_us * 1_000,
             properties={
+                **(
+                    {"time_attribute": attribute, "time_unit": unit, "time_origin_ns": str(origin_ns)}
+                    if attribute is not None
+                    else {}
+                ),
                 "relative_start_us": str(relative_start_us),
                 "relative_end_us": str(relative_end_us),
                 "start_timestamp_us": str(origin_us + relative_start_us),
@@ -292,27 +304,16 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
             time_unit="seconds" if timestamp_type is None else timestamp_type.unit,
         )
         source_handle = self._upload_csv(described.path)
-        job = self._submit_ingest(source_handle, described)
 
         time_metadata = (
             None
             if described.time_range_us is None or timestamp_type is None
-            else _PointCloudTimeMetadata.from_extent(described.time_range_us, timestamp_type.start)
-        )
-        # Best-effort: the ingest has already been accepted and is running. Raising
-        # here would lose the job, leaving an untracked ingest that a retry would
-        # submit a second time -- duplicating every point. Metadata can be
-        # re-applied later; a duplicate ingest cannot be undone.
-        try:
-            self._record_ingest_metadata(source_handle, time_metadata)
-        except Exception:
-            logger.exception(
-                "point cloud ingest %s was accepted, but recording metadata on %s failed; "
-                "source handle and time range are unset",
-                job.rid,
-                self.rid,
+            else _PointCloudTimeMetadata.from_extent(
+                described.time_range_us, timestamp_type.start, attribute=timestamp_column, unit=timestamp_type.unit
             )
-        return job
+        )
+        self._record_ingest_metadata(source_handle, time_metadata)
+        return self._submit_ingest(source_handle, described)
 
     def _upload_csv(self, path: Path) -> str:
         """Upload the CSV to object storage and return its location."""
@@ -430,14 +431,25 @@ def create_point_cloud_spatial(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     markings: Sequence[Marking | str] | None = None,
+    dataset: Dataset | None = None,
+    channel: str = "point_cloud",
+    tags: Mapping[str, str] | None = None,
+    start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+    end_timestamp: datetime | IntegralNanosecondsUTC | None = None,
 ) -> Spatial:
     """Create an empty spatial, ready to have a point cloud added to it.
 
     The spatial reserves the model that will hold its data; add the data with
-    `Spatial.add_point_cloud_csv`. The time range it covers is not set here:
-    `add_point_cloud_csv` measures it from the point cloud's own time column.
+    `Spatial.add_point_cloud_csv`. Create one spatial per uploaded file.
+    Dataset channels require absolute coverage bounds at creation; ingest records
+    the measured bounds and the exact origin of the file's relative timestamps.
 
     Args:
+        dataset: Optional source dataset in this client's workspace.
+        channel: Channel name for the uploaded spatial.
+        tags: Channel tags. Requires a dataset.
+        start_timestamp: Absolute coverage start, required for dataset channels.
+        end_timestamp: Absolute coverage end, required for dataset channels.
         client: Client to create the spatial with.
         name: Human-readable name for the spatial.
         metadata: Point-cloud metadata, e.g. `PointCloudMetadata(sensor_model=...)`.
@@ -451,6 +463,10 @@ def create_point_cloud_spatial(
     Returns:
         The created spatial.
     """
+    if dataset is not None and (start_timestamp is None or end_timestamp is None):
+        raise ValueError("Dataset channel uploads require start_timestamp and end_timestamp")
+    if dataset is None and tags:
+        raise ValueError("Spatial channel tags require a dataset")
     return Spatial._from_conjure(
         client._clients,
         _create_spatial_request(
@@ -461,6 +477,11 @@ def create_point_cloud_spatial(
             labels=labels,
             properties=properties,
             markings=markings,
+            dataset=dataset,
+            channel=channel,
+            tags=tags,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
         ),
     )
 
@@ -479,15 +500,12 @@ def _create_spatial_request(
     labels: Sequence[str],
     properties: Mapping[str, str] | None,
     markings: Sequence[Marking | str] | None,
+    dataset: Dataset | None = None,
+    channel: str = "point_cloud",
+    tags: Mapping[str, str] | None = None,
+    start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
+    end_timestamp: datetime | IntegralNanosecondsUTC | None = None,
 ) -> scout_spatial_api.Spatial:
-    # The spatial names the model rather than referencing an existing one: the
-    # platform indexes the import under this uuid when the point cloud is
-    # ingested, and rejects an ingest that tries to create its own target.
-    #
-    # `source_handle` and the time range are left at their defaults: the object
-    # location is not known until the CSV is uploaded, and the range is measured
-    # from the point cloud's time column during ingest or set later with
-    # `Spatial.update`.
     request = scout_spatial_api.CreateSpatialRequest(
         title=name,
         dagger_uuid=str(uuid.uuid4()),
@@ -497,7 +515,13 @@ def _create_spatial_request(
         marking_rids=_marking_rids(markings),
         description=description,
         workspace=client._clients.resolve_default_workspace_rid(),
+        start_timestamp=None if start_timestamp is None else _SecondsNanos.from_flexible(start_timestamp).to_api(),
+        end_timestamp=None if end_timestamp is None else _SecondsNanos.from_flexible(end_timestamp).to_api(),
     )
+    if dataset is not None:
+        return client._clients.spatial.create_in_channel(
+            client._clients.auth_header, request, dataset.rid, channel, tags or {}
+        )
     return client._clients.spatial.create(client._clients.auth_header, request)
 
 

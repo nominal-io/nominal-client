@@ -20,7 +20,6 @@ from nominal_api import (
     scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
-    scout_spatial,
     scout_video,
     storage_datasource_api,
     storage_writer_api,
@@ -37,6 +36,7 @@ from nominal.core._utils.networking import (
     create_conjure_client_factory,
     validate_api_base_url,
 )
+from nominal.core._utils.spatial_service import SpatialService
 from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
@@ -165,7 +165,7 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
-    spatial: scout_spatial.SpatialService
+    spatial: SpatialService
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
@@ -333,7 +333,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             run=client_factory(scout.RunService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
-            spatial=client_factory(scout_spatial.SpatialService),
+            spatial=client_factory(SpatialService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),

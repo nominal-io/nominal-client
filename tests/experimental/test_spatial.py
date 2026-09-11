@@ -35,6 +35,7 @@ def clients() -> MagicMock:
     clients.ingest_jobs.get_ingest_job.return_value = _raw_ingest_job()
     # The time-range write reads properties back before replacing the map.
     clients.spatial.get.return_value.properties = {}
+    clients.spatial.update_metadata.return_value = _raw_spatial()
     return clients
 
 
@@ -288,20 +289,11 @@ def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
     assert properties["relative_end_us"] == "45000000"
 
 
-def test_ingest_returns_the_job_even_if_recording_metadata_fails(
-    clients: MagicMock, spatial: Spatial, tmp_path: Path
-) -> None:
-    """The ingest is already running; losing its rid would orphan it.
-
-    A retry would resubmit and duplicate every point, which is not recoverable,
-    whereas the metadata can simply be written again.
-    """
+def test_ingest_requires_metadata_before_submitting(clients: MagicMock, spatial: Spatial, tmp_path: Path) -> None:
     clients.spatial.update_metadata.side_effect = ConnectionError("boom")
-
-    with _stubbed_upload():
-        job = spatial.add_point_cloud_csv(_csv(tmp_path))
-
-    assert job.rid == _JOB_RID
+    with _stubbed_upload(), pytest.raises(ConnectionError, match="boom"):
+        spatial.add_point_cloud_csv(_csv(tmp_path))
+    clients.ingest.ingest.assert_not_called()
 
 
 def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: Spatial, tmp_path: Path) -> None:
@@ -335,3 +327,77 @@ def test_ingest_rejects_half_of_the_time_pair(
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
+
+
+def test_channel_uploads_have_independent_models_and_coverage(clients: MagicMock, client: MagicMock) -> None:
+    clients.spatial.create_in_channel.return_value = _raw_spatial()
+    dataset = MagicMock(rid="ri.catalog.test.dataset.uploads")
+    for start in (1_700_000_000_000_000_000, 1_700_000_100_000_000_000):
+        create_point_cloud_spatial(
+            client,
+            "scan",
+            metadata=PointCloudMetadata(),
+            dataset=dataset,
+            channel="lidar",
+            tags={"sensor": "front"},
+            start_timestamp=start,
+            end_timestamp=start + 45_000_000_000,
+        )
+    first, second = [call.args for call in clients.spatial.create_in_channel.call_args_list]
+    assert first[1].dagger_uuid != second[1].dagger_uuid
+    assert first[1].start_timestamp == api.Timestamp(seconds=1_700_000_000, nanos=0)
+    assert second[1].start_timestamp == api.Timestamp(seconds=1_700_000_100, nanos=0)
+    assert first[2:] == second[2:] == (dataset.rid, "lidar", {"sensor": "front"})
+    clients.spatial.create.assert_not_called()
+
+
+def test_channel_upload_requires_coverage_before_creating_a_model(clients: MagicMock, client: MagicMock) -> None:
+    with pytest.raises(ValueError, match="require start_timestamp and end_timestamp"):
+        create_point_cloud_spatial(client, "scan", metadata=PointCloudMetadata(), dataset=MagicMock())
+    clients.spatial.create_in_channel.assert_not_called()
+    clients.spatial.create.assert_not_called()
+
+
+@pytest.mark.parametrize("supports_channels", [True, False])
+def test_channel_creation_sends_and_checks_the_wire_identity(supports_channels: bool) -> None:
+    from conjure_python_client import ConjureEncoder
+
+    from nominal.core._utils.spatial_service import SpatialService
+
+    service = MagicMock()
+    service._uri = "https://example.test/api"
+    service._return_none_for_unknown_union_types = False
+    raw = scout_spatial_api.Spatial(
+        created_at="2026-09-11T00:00:00Z",
+        created_by="user",
+        dagger_uuid="model",
+        is_archived=False,
+        labels=[],
+        properties={},
+        rid=_SPATIAL_RID,
+        title="scan",
+        type_metadata=scout_spatial_api.SpatialTypeMetadata(point_cloud=scout_spatial_api.PointCloudMetadata()),
+        updated_at="2026-09-11T00:00:00Z",
+    )
+    body = ConjureEncoder().default(raw)
+    identity = {"datasetRid": "dataset", "channel": "lidar", "tags": {"run": "1"}}
+    if supports_channels:
+        body["channel"] = identity
+    service._request.return_value.json.return_value = body
+    request = scout_spatial_api.CreateSpatialRequest(
+        dagger_uuid="model",
+        labels=[],
+        marking_rids=[],
+        properties={},
+        title="scan",
+        type_metadata=raw.type_metadata,
+    )
+    if supports_channels:
+        assert (
+            SpatialService.create_in_channel(service, "Bearer test", request, "dataset", "lidar", {"run": "1"}).rid
+            == _SPATIAL_RID
+        )
+    else:
+        with pytest.raises(RuntimeError, match="server did not register"):
+            SpatialService.create_in_channel(service, "Bearer test", request, "dataset", "lidar", {"run": "1"})
+    assert service._request.call_args.kwargs["json"]["channel"] == identity
