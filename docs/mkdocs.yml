@@ -31,6 +31,7 @@ nav:
         - matlab: reference/thirdparty/matlab.md
         - pandas: reference/thirdparty/pandas.md
         - tdms: reference/thirdparty/tdms.md
+        - ibis: reference/thirdparty/ibis.md
       - Experimental:
         - Compute: reference/experimental/compute.md
         - Logging: reference/experimental/logging.md

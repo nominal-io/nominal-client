@@ -19,3 +19,5 @@ Experimental functionality:
   Eventually we can use `summary` over `filters` when it moves from Sponsors only to GA:
   https://mkdocstrings.github.io/python/usage/configuration/members/#summary
 -->
+
+[`nominal.ibis`](./thirdparty/ibis.md) - query the Nominal SQL API with Ibis, installed with `nominal-ibis`.
