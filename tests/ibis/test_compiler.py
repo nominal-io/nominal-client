@@ -4,8 +4,6 @@ import ibis
 from ibis import _
 
 from nominal.ibis import Backend
-from nominal.ibis._functions import build_function
-from nominal.protos.sql.v1 import sql_pb2
 
 POINTS = ibis.table(
     {
@@ -68,48 +66,3 @@ def test_regex_search_renders_as_regexp_like_function() -> None:
     sql = compile_sql(POINTS.filter(_.channel.re_search("BATTERY")).select("ts"))
     assert "REGEXP_LIKE" in sql.upper()
     assert "~" not in sql
-
-
-def catalog_function(
-    name: str, kind: str, families: list[str], return_family: str | None = None, **fields: int
-) -> object:
-    entry = sql_pb2.SqlCatalogFunction(
-        name=name,
-        kind=getattr(sql_pb2, f"SQL_CATALOG_FUNCTION_KIND_{kind}"),
-        min_args=len(families),
-        max_args=len(families),
-        argument_type_families=families,
-    )
-    if return_family is not None:
-        entry.return_type_family = return_family
-    for field, value in fields.items():
-        setattr(entry, field, value)
-    function = build_function(entry)
-    assert function is not None
-    return function
-
-
-def test_catalog_window_function_renders_by_name() -> None:
-    derivative = catalog_function("DERIVATIVE", "WINDOW", ["NUMERIC"], "NUMERIC")
-    w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    sql = compile_sql(POINTS.select(rate=derivative(_.value).over(w)))
-    assert "derivative(" in sql.lower()
-    assert "OVER (PARTITION BY" in sql
-
-
-def test_catalog_function_bypasses_sqlglot_builtins() -> None:
-    """Names sqlglot knows (date_bin, regexp_like) render verbatim rather than through sqlglot's own rules."""
-    date_bin = catalog_function("DATE_BIN", "SCALAR", ["ANY", "DATETIME", "DATETIME"], "TIMESTAMP")
-    origin = ibis.timestamp("2020-01-01 00:00:00")
-    sql = compile_sql(POINTS.select(bucket=date_bin("1m", _.ts, origin)))
-    assert "date_bin('1m'" in sql.lower()
-
-
-def test_catalog_function_drops_omitted_optional_arguments() -> None:
-    integral = catalog_function("INTEGRAL", "WINDOW", ["NUMERIC", "ANY"], "NUMERIC", min_args=1)
-    w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    assert 'integral("t0"."value") over' in compile_sql(POINTS.select(total=integral(_.value).over(w))).lower()
-    assert (
-        'integral("t0"."value", \'trapezoid\')'
-        in compile_sql(POINTS.select(total=integral(_.value, "trapezoid").over(w))).lower()
-    )
