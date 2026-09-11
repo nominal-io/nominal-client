@@ -196,35 +196,21 @@ class Backend(SQLBackend, NoUrl):
         with self._open_stream(query) as reader:
             return reader.read_all()
 
-    def _align_columns(self, result: pa.Table, expected: list[str]) -> pa.Table:
-        """Project the server result onto the expression's output columns.
-
-        The server may append ORDER BY sort keys to the projection; requested
-        columns keep their aliases, so they are selected back by name.
-        """
-        names = result.column_names
-        if len(names) < len(expected):
-            raise NominalSqlError(f"Server returned columns {names}, expected {expected}")
-        if names == expected:
-            return result
-        if names[: len(expected)] == expected:
-            return result.select(list(range(len(expected))))
-        if all(names.count(name) == 1 for name in expected):
-            return result.select(expected)
-        if len(names) == len(expected):
-            return result.rename_columns(expected)
-        raise NominalSqlError(f"Cannot map server columns {names} onto expected columns {expected}")
-
     def _cast_result(self, result: pa.Table, target: pa.Schema) -> pa.Table:
+        # Scout lowers RelRoot.rel without applying RelRoot.fields, so unselected
+        # ORDER BY fields can trail the requested projection. Only trim that case;
+        # never infer column identity by reordering or renaming unexpected fields.
+        expected = target.names
+        if result.column_names[: len(expected)] != expected:
+            raise NominalSqlError(f"Server returned columns {result.column_names}, expected {expected}")
+        if result.num_columns > len(expected):
+            result = result.select(list(range(len(expected))))
         try:
             return result.cast(target)
-        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
-            logger.warning(
-                "query result schema %s is not castable to the expression schema %s; returning server types",
-                result.schema,
-                target,
-            )
-            return result
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as e:
+            raise NominalSqlError(
+                f"query result schema {result.schema} is not castable to the expression schema {target}"
+            ) from e
 
     def _to_pyarrow_table(
         self,
@@ -234,7 +220,7 @@ class Backend(SQLBackend, NoUrl):
         limit: int | str | None = None,
     ) -> pa.Table:
         sql = self.compile(table_expr, params=params, limit=limit)
-        result = self._align_columns(self.raw_sql(sql), list(table_expr.columns))
+        result = self.raw_sql(sql)
         return self._cast_result(result, table_expr.schema().to_pyarrow())
 
     def to_pyarrow(
@@ -264,22 +250,15 @@ class Backend(SQLBackend, NoUrl):
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
         reader = self._open_stream(self.compile(table_expr, params=params, limit=limit))
-        expected_names = list(table_expr.columns)
         target = table_expr.schema().to_pyarrow()
 
-        def aligned_batches() -> Iterator[pa.RecordBatch]:
+        def converted_batches() -> Iterator[pa.RecordBatch]:
             with reader:
                 for batch in reader:
-                    table = self._align_columns(pa.Table.from_batches([batch]), expected_names)
-                    try:
-                        table = table.cast(target)
-                    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as e:
-                        raise NominalSqlError(
-                            f"query result schema {table.schema} is not castable to the expression schema {target}"
-                        ) from e
+                    table = self._cast_result(pa.Table.from_batches([batch]), target)
                     yield from table.to_batches(max_chunksize=chunk_size)
 
-        return pa.RecordBatchReader.from_batches(target, aligned_batches())
+        return pa.RecordBatchReader.from_batches(target, converted_batches())
 
     def execute(
         self,
