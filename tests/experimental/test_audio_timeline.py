@@ -22,7 +22,6 @@ import pytest
 from nominal.experimental.video_processing import (
     AUDIO_REPAIR_FILTER,
     AudioDefect,
-    AudioStreamInfo,
     AudioTimelineError,
     audio_repair_filter,
     diagnose_audio,
@@ -289,14 +288,14 @@ def test_audio_outlasting_video_is_left_alone(tmp_path: pathlib.Path) -> None:
     normalize_video(path, tmp_path / "out.mp4")  # converts rather than raising
 
 
-_INFO = AudioStreamInfo(codec="aac", sample_rate=48000, channels=2, duration_seconds=None)
+_RATE = 48000
 _FRAME = 1024
-_PACKET_SECONDS = _FRAME / 48000
+_PACKET_SECONDS = _FRAME / _RATE
 
 
 def test_evenly_spaced_packets_measure_as_coherent() -> None:
     """Packets spaced exactly one frame apart carry neither holes nor overlap."""
-    timeline = timeline_from_packets(_INFO, [i * _PACKET_SECONDS for i in range(100)], _PACKET_SECONDS, _FRAME)
+    timeline = timeline_from_packets([i * _PACKET_SECONDS for i in range(100)], _PACKET_SECONDS, _FRAME, _RATE)
 
     assert timeline is not None
     assert timeline.defect is AudioDefect.NONE
@@ -309,7 +308,7 @@ def test_dropped_packets_measure_as_a_hole() -> None:
     missing = 30  # packets; comfortably above the tolerance that separates noise from a defect
     starts = [n * _PACKET_SECONDS for n in (0, 1, 2 + missing, 3 + missing)]
 
-    timeline = timeline_from_packets(_INFO, starts, _PACKET_SECONDS, _FRAME)
+    timeline = timeline_from_packets(starts, _PACKET_SECONDS, _FRAME, _RATE)
 
     assert timeline is not None
     assert timeline.defect is AudioDefect.HOLES
@@ -325,7 +324,7 @@ def test_holes_and_overlap_are_reported_separately_not_netted() -> None:
     starts = [0.0, (1 + span) * _PACKET_SECONDS]
     starts += [starts[-1] + i / 48000 for i in range(1, span + 1)]
 
-    timeline = timeline_from_packets(_INFO, starts, _PACKET_SECONDS, _FRAME)
+    timeline = timeline_from_packets(starts, _PACKET_SECONDS, _FRAME, _RATE)
 
     assert timeline is not None
     assert timeline.hole_seconds == pytest.approx(span * _PACKET_SECONDS)
@@ -338,7 +337,7 @@ def test_millisecond_timestamp_rounding_is_not_reported_as_damage() -> None:
     # 400 packets stamped at whole-millisecond resolution, as a Matroska muxer would write them.
     starts = [round(n * _PACKET_SECONDS, 3) for n in range(400)]
 
-    timeline = timeline_from_packets(_INFO, starts, _PACKET_SECONDS, _FRAME)
+    timeline = timeline_from_packets(starts, _PACKET_SECONDS, _FRAME, _RATE)
 
     assert timeline is not None
     assert timeline.defect is AudioDefect.NONE
@@ -348,4 +347,4 @@ def test_millisecond_timestamp_rounding_is_not_reported_as_damage() -> None:
 
 def test_measuring_needs_at_least_one_packet() -> None:
     """An empty packet list yields no timeline rather than a zero-filled one."""
-    assert timeline_from_packets(_INFO, [], _PACKET_SECONDS, _FRAME) is None
+    assert timeline_from_packets([], _PACKET_SECONDS, _FRAME, _RATE) is None

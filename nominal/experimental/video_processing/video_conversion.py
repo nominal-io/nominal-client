@@ -9,10 +9,11 @@ import ffmpeg
 from nominal.core._types import PathLike
 from nominal.experimental.video_processing.audio_timeline import (
     DEFAULT_MAX_AUDIO_HOLE_SECONDS,
-    AudioDefect,
     AudioTimelineError,
     audio_repair_filter,
-    diagnose_audio,
+    measure_audio_timeline,
+    probe_audio_stream,
+    survives_strict_segmentation,
 )
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
@@ -154,11 +155,12 @@ def _assert_output_will_segment(input_path: pathlib.Path, output_path: pathlib.P
     unusable costs those minutes twice. Checking here turns that into a few seconds and an error
     naming what is still wrong.
     """
-    diagnosis = diagnose_audio(output_path)
-    if diagnosis.defect is AudioDefect.NO_AUDIO_TRACK or diagnosis.segments_cleanly:
+    if probe_audio_stream(output_path) is None or survives_strict_segmentation(output_path):
         return
 
-    detail = diagnosis.timeline.describe() if diagnosis.timeline is not None else "its audio timeline is unusable"
+    # Only now is the expensive measurement worth running: it exists to explain the failure.
+    timeline = measure_audio_timeline(output_path)
+    detail = timeline.describe() if timeline is not None else "its audio timeline is unusable"
     raise AudioTimelineError(
         f"Normalized '{input_path}' to '{output_path}', but the result still cannot be segmented: "
         f"{detail}. Uploading it would fail after the transfer, so it is being reported now. "

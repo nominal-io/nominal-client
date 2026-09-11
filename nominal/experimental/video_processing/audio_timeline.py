@@ -49,9 +49,6 @@ means the two streams disagree about the length of the recording, which no audio
 reconcile.
 """
 
-DEFAULT_TOLERANCE_SECONDS = 0.25
-"""Slack allowed before a measurement counts as a defect, absorbing encoder priming and rounding."""
-
 AUDIO_REPAIR_FILTER = "aresample=async=1"
 """Rebuilds audio onto the timeline the container already declares.
 
@@ -123,12 +120,10 @@ class AudioTimeline:
     """A measured comparison between what a container claims about its audio and what the audio is.
 
     This type exists only when the measurement succeeded; a track that cannot be measured produces
-    no timeline rather than one populated with zeroes that would read as "nothing wrong".
+    no timeline rather than one populated with zeroes that would read as "nothing wrong". It holds
+    only measurements -- the stream's codec, rate and layout live on :class:`AudioStreamInfo`.
     """
 
-    codec: str
-    sample_rate: int
-    channels: int
     packet_count: int
     clock_seconds: float
     """Span the container's timeline claims, first packet start to last packet end."""
@@ -144,30 +139,28 @@ class AudioTimeline:
 
     @property
     def defect(self) -> AudioDefect:
-        """Classify the track, using the same tolerance the repair decision uses."""
-        holes = self.hole_seconds > DEFAULT_TOLERANCE_SECONDS
-        overlap = self.overlap_seconds > DEFAULT_TOLERANCE_SECONDS
-        if holes and overlap:
+        """Classify the track. Anything that survived the per-packet deadband is a real finding."""
+        if self.hole_count and self.overlap_count:
             return AudioDefect.MIXED
-        if holes:
+        if self.hole_count:
             return AudioDefect.HOLES
-        if overlap:
+        if self.overlap_count:
             return AudioDefect.OVERLAP
         return AudioDefect.NONE
 
     def describe(self) -> str:
         """One line naming what is wrong, for logs and operator-facing messages."""
-        if self.defect is AudioDefect.NONE:
-            return f"audio timeline is coherent ({self.packet_count} packets, {self.clock_seconds:.2f}s)"
         parts = []
-        if self.hole_seconds > DEFAULT_TOLERANCE_SECONDS:
+        if self.hole_count:
             gaps = "gap" if self.hole_count == 1 else "gaps"
             parts.append(
                 f"{self.hole_seconds:.2f}s of missing audio across {self.hole_count} {gaps} "
                 f"(largest {self.largest_hole_seconds:.2f}s)"
             )
-        if self.overlap_seconds > DEFAULT_TOLERANCE_SECONDS:
+        if self.overlap_count:
             parts.append(f"{self.overlap_seconds:.2f}s of audio with no time to play in ({self.overlap_count} packets)")
+        if not parts:
+            return f"audio timeline is coherent ({self.packet_count} packets, {self.clock_seconds:.2f}s)"
         return "; ".join(parts)
 
 
@@ -180,7 +173,6 @@ class AudioDiagnosis:
     timeline: AudioTimeline | None
     """The measurement, or None when there is no audio track or the codec cannot be measured."""
     stream: AudioStreamInfo | None = None
-    video_seconds: float | None = None
 
     @property
     def defect(self) -> AudioDefect:
@@ -190,13 +182,6 @@ class AudioDiagnosis:
         if self.timeline is None:
             return AudioDefect.UNMEASURABLE
         return self.timeline.defect
-
-    @property
-    def audio_seconds(self) -> float | None:
-        """Span of the audio, measured when possible and otherwise as the container records it."""
-        if self.timeline is not None:
-            return self.timeline.clock_seconds
-        return self.stream.duration_seconds if self.stream is not None else None
 
 
 def _run_ffprobe(args: Sequence[str]) -> dict[str, object]:
@@ -384,10 +369,10 @@ def _read_audio_packets(video_path: PathLike) -> tuple[list[float], float] | Non
 
 
 def timeline_from_packets(
-    info: AudioStreamInfo,
     packet_start_seconds: Sequence[float],
     final_packet_duration_seconds: float,
     samples_per_packet: int,
+    sample_rate: int,
 ) -> AudioTimeline | None:
     """Measure holes and overlap from packet start times. Pure -- no subprocesses, no file access.
 
@@ -401,10 +386,10 @@ def timeline_from_packets(
     of phantom defect. Real dropouts lose whole packets and real flush runs compress by nearly a
     whole packet, so both stay far above this threshold.
     """
-    if not packet_start_seconds or info.sample_rate <= 0 or samples_per_packet <= 0:
+    if not packet_start_seconds or sample_rate <= 0 or samples_per_packet <= 0:
         return None
 
-    packet_seconds = samples_per_packet / info.sample_rate
+    packet_seconds = samples_per_packet / sample_rate
     deadband = packet_seconds * _QUANTIZATION_DEADBAND_FRACTION
 
     hole_seconds = overlap_seconds = largest_hole = 0.0
@@ -420,9 +405,6 @@ def timeline_from_packets(
             overlap_count += 1
 
     return AudioTimeline(
-        codec=info.codec,
-        sample_rate=info.sample_rate,
-        channels=info.channels,
         packet_count=len(packet_start_seconds),
         clock_seconds=packet_start_seconds[-1] + final_packet_duration_seconds - packet_start_seconds[0],
         sound_seconds=len(packet_start_seconds) * packet_seconds,
@@ -454,7 +436,7 @@ def measure_audio_timeline(video_path: PathLike, info: AudioStreamInfo | None = 
     if packets is None:
         return None
     starts, final_duration = packets
-    return timeline_from_packets(info, starts, final_duration, samples_per_packet)
+    return timeline_from_packets(starts, final_duration, samples_per_packet, info.sample_rate)
 
 
 def diagnose_audio(video_path: PathLike) -> AudioDiagnosis:
@@ -472,7 +454,6 @@ def diagnose_audio(video_path: PathLike) -> AudioDiagnosis:
         segments_cleanly=survives_strict_segmentation(video_path),
         timeline=measure_audio_timeline(video_path, info),
         stream=info,
-        video_seconds=_video_duration_seconds(video_path),
     )
 
 
