@@ -99,6 +99,10 @@ class AudioDefect(enum.Enum):
     """Audio is present but its packets have no fixed sample count, so it cannot be compared."""
 
 
+class AudioTimelineError(Exception):
+    """Raised when a normalized file still cannot be segmented, so uploading it would fail."""
+
+
 @dataclasses.dataclass(frozen=True)
 class AudioStreamInfo:
     """Header fields of an audio stream, parsed once so callers never re-coerce raw ffprobe text."""

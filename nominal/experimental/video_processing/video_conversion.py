@@ -9,7 +9,10 @@ import ffmpeg
 from nominal.core._types import PathLike
 from nominal.experimental.video_processing.audio_timeline import (
     DEFAULT_MAX_AUDIO_HOLE_SECONDS,
+    AudioDefect,
+    AudioTimelineError,
     audio_repair_filter,
+    diagnose_audio,
 )
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
@@ -70,15 +73,16 @@ def normalize_video(
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
             NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
                   on the machine
-        repair_audio: If true, inspect the audio timeline and rebuild the audio onto it when the
-            two disagree. Files whose audio is already coherent are left alone either way.
-        max_audio_hole_seconds: Longest single run of missing audio that will be filled with silence.
-            A gap larger than this is treated as a corrupt timestamp rather than a real dropout,
-            and raises rather than synthesizing an unbounded stretch of silence.
+        repair_audio: If true, inspect the audio timeline, rebuild the audio onto it when the two
+            disagree, and verify the converted file can be segmented before returning.
+        max_audio_hole_seconds: Longest single run of missing audio that will be filled with
+            silence. A gap larger than this is treated as a corrupt timestamp rather than a real
+            dropout and is left alone, rather than synthesizing that much silence from one bad
+            number. Raise it to fill such a gap anyway.
 
     Raises:
-        AudioTimelineError: If the audio is damaged beyond what a bounded repair can fix — a single
-            gap longer than `max_audio_hole_seconds`, or audio outlasting the video.
+        AudioTimelineError: If the converted file still cannot be segmented. Reported here rather
+            than after a long upload that would be rejected on arrival.
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -127,6 +131,9 @@ def normalize_video(
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()
 
+    if repair_audio:
+        _assert_output_will_segment(input_path, output_path)
+
     # Warn the user if the number of frames changes as a result of re-encoding the video
     frames_before = frame_count(input_path)
     frames_after = frame_count(output_path)
@@ -138,6 +145,25 @@ def normalize_video(
             frames_after,
             frames_before,
         )
+
+
+def _assert_output_will_segment(input_path: pathlib.Path, output_path: pathlib.Path) -> None:
+    """Raise if the converted file still would not segment, so it is never uploaded in vain.
+
+    Normalizing and uploading a long video costs minutes; finding out afterwards that it is still
+    unusable costs those minutes twice. Checking here turns that into a few seconds and an error
+    naming what is still wrong.
+    """
+    diagnosis = diagnose_audio(output_path)
+    if diagnosis.defect is AudioDefect.NO_AUDIO_TRACK or diagnosis.segments_cleanly:
+        return
+
+    detail = diagnosis.timeline.describe() if diagnosis.timeline is not None else "its audio timeline is unusable"
+    raise AudioTimelineError(
+        f"Normalized '{input_path}' to '{output_path}', but the result still cannot be segmented: "
+        f"{detail}. Uploading it would fail after the transfer, so it is being reported now. "
+        f"The output has been left in place for inspection."
+    )
 
 
 def frame_count(video_path: pathlib.Path) -> int:

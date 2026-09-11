@@ -23,6 +23,7 @@ from nominal.experimental.video_processing import (
     AUDIO_REPAIR_FILTER,
     AudioDefect,
     AudioStreamInfo,
+    AudioTimelineError,
     audio_repair_filter,
     diagnose_audio,
     normalize_video,
@@ -226,6 +227,27 @@ def test_repair_does_not_move_video_timestamps(overlap_video: pathlib.Path, tmp_
 def test_oversized_hole_is_left_alone_rather_than_filled(gaping_video: pathlib.Path) -> None:
     """A gap too large to be a real dropout selects no filter, so the conversion is unchanged."""
     assert audio_repair_filter(gaping_video, max_audio_hole_seconds=10) is None
+
+
+@requires_ffmpeg
+def test_a_file_that_still_cannot_segment_fails_before_upload(
+    gaping_video: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """Declining the repair leaves an unusable file, which is reported rather than handed back."""
+    with pytest.raises(AudioTimelineError, match="still cannot be segmented"):
+        normalize_video(gaping_video, tmp_path / "out.mp4", max_audio_hole_seconds=10)
+
+
+@requires_ffmpeg
+def test_conversion_is_not_verified_when_audio_inspection_is_disabled(
+    gaping_video: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """Opting out of audio handling opts out of the post-conversion check along with it."""
+    output = tmp_path / "unverified.mp4"
+
+    normalize_video(gaping_video, output, repair_audio=False)
+
+    assert output.exists()
 
 
 @requires_ffmpeg
