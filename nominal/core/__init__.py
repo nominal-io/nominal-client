@@ -1,4 +1,5 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._point_cloud import ColumnDataType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
 from nominal.core._utils.networking import HeaderProvider
@@ -30,7 +31,6 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
-from nominal.core.point_cloud import ColumnDataType
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial

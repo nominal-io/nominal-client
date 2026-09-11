@@ -28,17 +28,6 @@ from nominal.ts import _MICROSECONDS_PER_TIME_UNIT, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
 
-# An Rgb attribute is ONE csv column holding a six-character hex string
-# ("rrggbb", no leading #). The importer reads that cell with
-# `u8::from_str_radix` on three 2-character slices and skips the cell entirely
-# if it is not exactly six characters -- three separate 0-255 numeric columns
-# parse to nothing and every point ends up the default colour, black.
-# It also needs at least one reduction, or the renderer reports the attribute as
-# not colourable and falls back to solid white.
-DEFAULT_RGB_ATTRIBUTE = "color"
-
-DEFAULT_POINT_CLOUD_CHANNEL = "point_cloud"
-
 # Per-column data type accepted in the `column_types` override and produced by
 # the CSV sampling classifier. This is the client's own vocabulary, not the
 # importer's -- callers write `column_types={"count": "int"}` -- so it stays a
@@ -59,7 +48,7 @@ _TYPE_INFERENCE_SAMPLE_ROWS = 1000
 # full set is visible without going back to the schema.
 
 
-class GeometryType(str, Enum):
+class _GeometryType(str, Enum):
     """Runtime label for the geometry each row carries. Only points are produced here."""
 
     AABB = "Aabb"
@@ -67,7 +56,7 @@ class GeometryType(str, Enum):
     POINT = "Point"
 
 
-class Sampler(str, Enum):
+class _Sampler(str, Enum):
     """A pre-computed aggregation stored alongside an attribute for coarse zoom levels.
 
     The renderer's hierarchical LOD pipeline samples these; without at least one,
@@ -82,7 +71,7 @@ class Sampler(str, Enum):
     OR = "Or"
 
 
-class RealMeasurement(str, Enum):
+class _RealMeasurement(str, Enum):
     """How a real quantity relates to the geometry, which is what CSG operates on."""
 
     INDEPENDENT_VALUE = "IndependentValue"
@@ -91,7 +80,7 @@ class RealMeasurement(str, Enum):
     DENSITY = "Density"
 
 
-class ScalarAttributeType(str, Enum):
+class _ScalarAttributeType(str, Enum):
     """The attribute types that serialize as a bare string."""
 
     INT = "Int"
@@ -106,16 +95,16 @@ class ScalarAttributeType(str, Enum):
 
 
 @dataclass(frozen=True)
-class RealAttributeType:
+class _RealAttributeType:
     """The one attribute type that carries a value rather than serializing as a bare string."""
 
-    measurement: RealMeasurement = RealMeasurement.INDEPENDENT_VALUE
+    measurement: _RealMeasurement = _RealMeasurement.INDEPENDENT_VALUE
 
     def _to_wire(self) -> dict[str, str]:
         return {"Real": self.measurement.value}
 
 
-AttributeType: TypeAlias = ScalarAttributeType | RealAttributeType
+_AttributeType: TypeAlias = _ScalarAttributeType | _RealAttributeType
 
 
 # --- the import config --------------------------------------------------------
@@ -124,7 +113,7 @@ AttributeType: TypeAlias = ScalarAttributeType | RealAttributeType
 @dataclass(frozen=True)
 class _FseHeader:
     name: str
-    ty: AttributeType
+    ty: _AttributeType
 
     def _to_wire(self) -> dict[str, Any]:
         return {"name": self.name, "ty": self.ty._to_wire()}
@@ -135,7 +124,7 @@ class _Attribute:
     """A named column plus the reductions the importer should build for it."""
 
     header: _FseHeader
-    reductions: tuple[Sampler, ...] = ()
+    reductions: tuple[_Sampler, ...] = ()
 
     def _to_wire(self) -> dict[str, Any]:
         return {"header": self.header._to_wire(), "reductions": [sampler.value for sampler in self.reductions]}
@@ -180,7 +169,7 @@ class _ImportConfig:
 
     attributes: tuple[_Attribute, ...]
     columns: _ColumnSelection
-    geometry_type: GeometryType = GeometryType.POINT
+    geometry_type: _GeometryType = _GeometryType.POINT
 
     def _to_wire(self) -> dict[str, Any]:
         return {
@@ -204,11 +193,11 @@ _BUCKET_ORDER: tuple[ColumnDataType, ...] = ("real", "int", "string")
 # Int-typed attribute, so int gets Min + Max only; those two alone still satisfy
 # a two-sided value-range filter and drive ramp colouring for geometry. String
 # attributes have no useful scalar aggregation, so their reductions stay empty.
-_WIRE_TYPE_AND_REDUCTIONS: Mapping[ColumnDataType, tuple[AttributeType, tuple[Sampler, ...]]] = MappingProxyType(
+_WIRE_TYPE_AND_REDUCTIONS: Mapping[ColumnDataType, tuple[_AttributeType, tuple[_Sampler, ...]]] = MappingProxyType(
     {
-        "real": (RealAttributeType(), (Sampler.MIN, Sampler.MAX, Sampler.MEAN)),
-        "int": (ScalarAttributeType.INT, (Sampler.MIN, Sampler.MAX)),
-        "string": (ScalarAttributeType.STRING, ()),
+        "real": (_RealAttributeType(), (_Sampler.MIN, _Sampler.MAX, _Sampler.MEAN)),
+        "int": (_ScalarAttributeType.INT, (_Sampler.MIN, _Sampler.MAX)),
+        "string": (_ScalarAttributeType.STRING, ()),
     }
 )
 
@@ -242,7 +231,7 @@ def _describe_point_cloud_csv(
     *,
     column_types: Mapping[str, ColumnDataType] | None = None,
     rgb_column: str | None = None,
-    rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
+    rgb_attribute: str = "color",
     time_column: str | None = None,
     time_unit: _LiteralTimeUnit = "seconds",
 ) -> _PointCloudCsv:
@@ -408,7 +397,7 @@ def _build_import_config(
     column_type_overrides: Mapping[str, ColumnDataType] | None = None,
     *,
     rgb_column: str | None = None,
-    rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
+    rgb_attribute: str,
 ) -> _ImportConfig:
     """Assign every column to a bucket and declare the archetype in the importer's walk order."""
     overrides = column_type_overrides or {}
@@ -433,11 +422,19 @@ def _build_import_config(
 
     attributes = [_attribute(name, kind) for kind in _BUCKET_ORDER for _, name in columns[kind]]
     if rgb:
-        # Mean is the reduction that makes sense at coarse LOD: a parent node takes
-        # the average colour of the points it stands in for, and the mean sampler
-        # is implemented for Rgb8.
+        # An Rgb attribute is ONE csv column holding a six-character hex string
+        # ("rrggbb", no leading #). The importer reads that cell with
+        # `u8::from_str_radix` on three 2-character slices and skips it entirely
+        # unless it is exactly six characters -- three separate 0-255 numeric
+        # columns parse to nothing and every point ends up black.
+        #
+        # Mean is the reduction that makes sense at coarse LOD: a parent node
+        # takes the average colour of the points it stands in for, and the mean
+        # sampler is implemented for Rgb8. Without at least one reduction the
+        # renderer reports the attribute as not colourable and falls back to
+        # solid white.
         attributes.append(
-            _Attribute(header=_FseHeader(name=rgb_attribute, ty=ScalarAttributeType.RGB), reductions=(Sampler.MEAN,))
+            _Attribute(header=_FseHeader(name=rgb_attribute, ty=_ScalarAttributeType.RGB), reductions=(_Sampler.MEAN,))
         )
 
     return _ImportConfig(

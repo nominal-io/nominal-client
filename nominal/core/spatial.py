@@ -13,17 +13,11 @@ from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, uploa
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
-from nominal.core.point_cloud import (
-    DEFAULT_POINT_CLOUD_CHANNEL,
-    DEFAULT_RGB_ATTRIBUTE,
-    ColumnDataType,
-    _describe_point_cloud_csv,
-    _PointCloudCsv,
-)
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -205,11 +199,11 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         *,
         column_types: Mapping[str, ColumnDataType] | None = None,
         rgb_column: str | None = None,
-        rgb_attribute: str = DEFAULT_RGB_ATTRIBUTE,
+        rgb_attribute: str = "color",
         time_column: str | None = None,
         time_unit: _LiteralTimeUnit = "seconds",
         start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
-        channel: str = DEFAULT_POINT_CLOUD_CHANNEL,
+        channel: str = "point_cloud",
         tags: Mapping[str, str] | None = None,
     ) -> str | None:
         """Upload a point-cloud CSV and ingest it into this spatial's model.
