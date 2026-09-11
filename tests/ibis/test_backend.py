@@ -9,8 +9,6 @@ import ibis
 import ibis.common.exceptions as com
 import pyarrow as pa
 import pytest
-from ibis import _
-from ibis.common.annotations import SignatureValidationError
 
 import nominal.ibis as nibis
 from nominal.core.client import NominalClient
@@ -22,26 +20,6 @@ WORKSPACE_RID = "ri.security.x.workspace.1"
 
 def column(name: str, type_: str, nullable: bool = False) -> sql_pb2.SqlCatalogColumn:
     return sql_pb2.SqlCatalogColumn(name=name, type=type_, nullable=nullable)
-
-
-def function(
-    name: str,
-    kind: str,
-    families: list[str],
-    return_family: str | None = None,
-    **fields: object,
-) -> sql_pb2.SqlCatalogFunction:
-    entry = sql_pb2.SqlCatalogFunction(
-        name=name,
-        kind=getattr(sql_pb2, f"SQL_CATALOG_FUNCTION_KIND_{kind}"),
-        min_args=len(families),
-        max_args=len(families),
-        argument_type_families=families,
-        **fields,
-    )
-    if return_family is not None:
-        entry.return_type_family = return_family
-    return entry
 
 
 CATALOG = sql_pb2.SqlCatalog(
@@ -60,17 +38,6 @@ CATALOG = sql_pb2.SqlCatalog(
             name="datasets",
             columns=[column("dataset_rid", "VARCHAR"), column("name", "VARCHAR")],
         ),
-    ],
-    functions=[
-        function("AVG", "AGGREGATE", ["NUMERIC"], "NUMERIC", supports_over=True),
-        sql_pb2.SqlCatalogFunction(name="COALESCE", kind=sql_pb2.SQL_CATALOG_FUNCTION_KIND_SCALAR, min_args=1),
-        function("DATE_BIN", "SCALAR", ["ANY", "DATETIME", "DATETIME"], "TIMESTAMP"),
-        function("DERIVATIVE", "WINDOW", ["NUMERIC"], "NUMERIC", supports_over=True),
-        sql_pb2.SqlCatalogFunction(name="LEGACY_NAME_ONLY"),
-        sql_pb2.SqlCatalogFunction(
-            name="MAX", kind=sql_pb2.SQL_CATALOG_FUNCTION_KIND_AGGREGATE, supports_over=True, min_args=1, max_args=1
-        ),
-        function("REGEXP_LIKE", "SCALAR", ["CHARACTER", "CHARACTER"], "BOOLEAN"),
     ],
 )
 
@@ -133,27 +100,6 @@ def test_schema_types_from_catalog(backend: nibis.Backend) -> None:
     assert schema["value"].nullable
     assert not schema["channel"].nullable
     assert schema["tags"].is_map()
-
-
-def test_functions_generated_from_catalog(backend: nibis.Backend, client: NominalClient) -> None:
-    """Every expressible catalog function is exposed on con.fn; variadic and kind-less entries are skipped."""
-    assert list(backend.fn) == ["avg", "date_bin", "derivative", "max", "regexp_like"]
-    backend.list_tables()
-    client._clients.sql.GetSqlCatalog.assert_called_once()
-    with pytest.raises(AttributeError, match="no function named 'nope'"):
-        backend.fn.nope
-
-
-def test_catalog_function_types_follow_type_families(backend: nibis.Backend) -> None:
-    pts = backend.table("points_double")
-    w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    assert pts.select(rate=backend.fn.derivative(_.value).over(w)).schema()["rate"].is_float64()
-    origin = ibis.timestamp("2020-01-01 00:00:00")
-    assert pts.select(b=backend.fn.date_bin("1m", _.ts, origin)).schema()["b"].is_timestamp()
-    assert pts.select(m=backend.fn.regexp_like(_.channel, "^temp")).schema()["m"].is_boolean()
-    assert pts.select(m=backend.fn.max(_.value)).schema()["m"].is_unknown()
-    with pytest.raises(SignatureValidationError):
-        backend.fn.derivative(pts.channel)
 
 
 def test_unknown_table_raises(backend: nibis.Backend) -> None:
@@ -230,3 +176,24 @@ def test_module_imports_cleanly_in_fresh_interpreter() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+def test_native_max_preserves_numeric_result(output: str) -> None:
+    """Native Ibis aggregates retain their numeric type through every result path."""
+    con = nibis.connect(make_client(query_result=pa.table({"maximum": [1.5]})))
+    points = con.table("points_double")
+    expr = points.aggregate(maximum=points.value.max())
+    assert expr.schema()["maximum"].is_float64()
+    if output == "pandas":
+        result = expr.to_pandas()
+        assert result["maximum"].dtype.kind == "f"
+        assert result["maximum"].tolist() == [1.5]
+    else:
+        if output == "arrow":
+            table = expr.to_pyarrow()
+        else:
+            with expr.to_pyarrow_batches() as reader:
+                table = reader.read_all()
+        assert table.schema.field("maximum").type == pa.float64()
+        assert table.column("maximum").to_pylist() == [1.5]
