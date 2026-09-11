@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import io
-import logging
 from typing import Any, Iterator, Mapping
 
 import ibis.common.exceptions as com
@@ -24,22 +23,42 @@ from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
-logger = logging.getLogger(__name__)
-
-# Element types of MAP and ARRAY columns are not reported by the catalog; the
-# API's telemetry and metadata tables use string elements throughout.
-_CATALOG_TYPES: dict[str, dt.DataType] = {
-    "TIMESTAMP": dt.Timestamp(scale=9),
-    "DOUBLE": dt.Float64(),
-    "BIGINT": dt.Int64(),
-    "VARCHAR": dt.String(),
-    "MAP": dt.Map(dt.string, dt.string),
-    "ARRAY": dt.Array(dt.string),
+_CATALOG_SCALAR_TYPES: dict[int, dt.DataType] = {
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: dt.Timestamp(scale=9),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_DOUBLE: dt.Float64(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BIGINT: dt.Int64(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: dt.Int32(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BOOLEAN: dt.Boolean(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR: dt.String(),
 }
 
 
 class NominalSqlError(com.IbisError):
-    """A query result that cannot be mapped onto the Ibis expression that produced it."""
+    """A catalog type or query result that cannot be represented by this backend."""
+
+
+def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.DataType:
+    kind = data_type.WhichOneof("kind")
+    if kind == "scalar":
+        if data_type.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY:
+            raise NominalSqlError(
+                f"Catalog type ANY for {column} has no concrete Ibis type; "
+                "use con.sql() with an explicitly typed projection"
+            )
+        dtype = _CATALOG_SCALAR_TYPES.get(data_type.scalar)
+        if dtype is not None:
+            return dtype
+        raise NominalSqlError(
+            f"Unsupported catalog scalar type {data_type.scalar} for {column}; "
+            "use con.sql() with an explicitly typed projection"
+        )
+    if kind == "array_element":
+        return dt.Array(_catalog_type(data_type.array_element, column))
+    if kind == "map":
+        return dt.Map(_catalog_type(data_type.map.key, column), _catalog_type(data_type.map.value, column))
+    raise NominalSqlError(
+        f"Missing or unsupported catalog data_type for {column}; the server must provide recursive column types"
+    )
 
 
 class NominalCompiler(PostgresCompiler):
@@ -57,6 +76,8 @@ class NominalCompiler(PostgresCompiler):
         limit: str | None = None,
         params: Mapping[ir.Expr, Any] | None = None,
     ) -> Any:
+        # Postgres casts map/JSON outputs to strings for its driver. Our Arrow
+        # transport preserves these types, so bypass that preprocessing.
         return super(PostgresCompiler, self).to_sqlglot(expr, limit=limit, params=params)
 
     def visit_MapGet(self, op: ops.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
@@ -131,35 +152,15 @@ class Backend(SQLBackend, NoUrl):
         """
         self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
         self.workspace_rid = client._clients.resolve_default_workspace_rid()
-        for cached in ("_catalog", "_schemas"):
-            self.__dict__.pop(cached, None)
+        self.__dict__.pop("_catalog", None)
 
     @functools.cached_property
     def _catalog(self) -> sql_pb2.SqlCatalog:
         with translate_grpc_errors():
             return self._sql.GetSqlCatalog(sql_pb2.GetSqlCatalogRequest()).sql_catalog
 
-    @functools.cached_property
-    def _schemas(self) -> dict[str, sch.Schema]:
-        schemas: dict[str, sch.Schema] = {}
-        for table in self._catalog.tables:
-            fields: dict[str, dt.DataType] = {}
-            for column in table.columns:
-                dtype = _CATALOG_TYPES.get(column.type)
-                if dtype is None:
-                    logger.warning(
-                        "unknown catalog type %r for column %s.%s; treating it as a string",
-                        column.type,
-                        table.name,
-                        column.name,
-                    )
-                    dtype = dt.string
-                fields[column.name] = dtype.copy(nullable=column.nullable)
-            schemas[table.name] = sch.Schema(fields)
-        return schemas
-
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
-        return self._filter_with_like(sorted(self._schemas), like)
+        return self._filter_with_like(sorted(table.name for table in self._catalog.tables), like)
 
     def get_schema(
         self,
@@ -168,9 +169,17 @@ class Backend(SQLBackend, NoUrl):
         catalog: str | None = None,
         database: str | None = None,
     ) -> sch.Schema:
-        if table_name not in self._schemas:
-            raise com.TableNotFound(table_name)
-        return self._schemas[table_name]
+        for table in self._catalog.tables:
+            if table.name == table_name:
+                return sch.Schema(
+                    {
+                        column.name: _catalog_type(column.data_type, f"{table_name}.{column.name}").copy(
+                            nullable=column.nullable
+                        )
+                        for column in table.columns
+                    }
+                )
+        raise com.TableNotFound(table_name)
 
     def _get_schema_using_query(self, query: str) -> sch.Schema:
         with self._open_stream(query, max_rows=1) as reader:
@@ -197,14 +206,9 @@ class Backend(SQLBackend, NoUrl):
             return reader.read_all()
 
     def _cast_result(self, result: pa.Table, target: pa.Schema) -> pa.Table:
-        # Scout lowers RelRoot.rel without applying RelRoot.fields, so unselected
-        # ORDER BY fields can trail the requested projection. Only trim that case;
-        # never infer column identity by reordering or renaming unexpected fields.
         expected = target.names
-        if result.column_names[: len(expected)] != expected:
+        if result.column_names != expected:
             raise NominalSqlError(f"Server returned columns {result.column_names}, expected {expected}")
-        if result.num_columns > len(expected):
-            result = result.select(list(range(len(expected))))
         try:
             return result.cast(target)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as e:

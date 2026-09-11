@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import grpc
 import ibis
 import ibis.common.exceptions as com
+import ibis.expr.datatypes as dt
 import pyarrow as pa
 import pytest
 
@@ -19,7 +20,14 @@ WORKSPACE_RID = "ri.security.x.workspace.1"
 
 
 def column(name: str, type_: str, nullable: bool = False) -> sql_pb2.SqlCatalogColumn:
-    return sql_pb2.SqlCatalogColumn(name=name, type=type_, nullable=nullable)
+    if type_ == "MAP":
+        string = sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR)
+        data_type = sql_pb2.SqlCatalogDataType(map=sql_pb2.SqlCatalogMapType(key=string, value=string))
+    else:
+        data_type = sql_pb2.SqlCatalogDataType(
+            scalar=sql_pb2.SqlCatalogScalarType.Value(f"SQL_CATALOG_SCALAR_TYPE_{type_}")
+        )
+    return sql_pb2.SqlCatalogColumn(name=name, type=type_, nullable=nullable, data_type=data_type)
 
 
 CATALOG = sql_pb2.SqlCatalog(
@@ -41,7 +49,7 @@ CATALOG = sql_pb2.SqlCatalog(
     ],
 )
 
-QUERY_RESULT = pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"], "name": ["flight"], "extra_sort_key": [1]})
+QUERY_RESULT = pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"], "name": ["flight"]})
 
 
 def arrow_ipc_bytes(table: pa.Table) -> bytes:
@@ -116,12 +124,11 @@ def test_query_request_carries_workspace_and_arrow_format(backend: nibis.Backend
 
 
 def test_raw_sql_schema_probe_sets_max_rows(backend: nibis.Backend, client: NominalClient) -> None:
-    backend.sql("SELECT dataset_rid, name, extra_sort_key FROM datasets")
+    backend.sql("SELECT dataset_rid, name FROM datasets")
     assert client._clients.sql.Query.call_args.args[0].max_rows == 1
 
 
-def test_execute_drops_leaked_sort_key_columns(backend: nibis.Backend) -> None:
-    """The server appends ORDER BY keys to the projection; requested columns are selected back by name."""
+def test_execute_returns_selected_columns(backend: nibis.Backend) -> None:
     df = backend.table("datasets").select("dataset_rid", "name").to_pandas()
     assert list(df.columns) == ["dataset_rid", "name"]
     assert df["name"][0] == "flight"
@@ -200,7 +207,10 @@ def test_native_max_preserves_numeric_result(output: str) -> None:
 
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
-@pytest.mark.parametrize("names", [["name", "dataset_rid"], ["first", "second"]])
+@pytest.mark.parametrize(
+    "names",
+    [["name", "dataset_rid"], ["first", "second"], ["dataset_rid"], ["dataset_rid", "name", "extra_sort_key"]],
+)
 def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: list[str]) -> None:
     """All output paths reject columns that do not match the requested projection."""
     con = nibis.connect(make_client(pa.table({name: ["value"] for name in names})))
@@ -228,3 +238,79 @@ def test_incompatible_result_type_raises(output: str) -> None:
         else:
             with expr.to_pyarrow_batches() as reader:
                 reader.read_all()
+
+
+@pytest.mark.parametrize(
+    ("scalar", "expected"),
+    [
+        ("VARCHAR", dt.string),
+        ("BOOLEAN", dt.boolean),
+        ("INTEGER", dt.int32),
+        ("BIGINT", dt.int64),
+        ("DOUBLE", dt.float64),
+        ("TIMESTAMP", dt.Timestamp(scale=9)),
+    ],
+)
+def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.DataType) -> None:
+    client._clients.sql.GetSqlCatalog.return_value.sql_catalog.CopyFrom(
+        sql_pb2.SqlCatalog(tables=[sql_pb2.SqlCatalogTable(name="typed", columns=[column("value", scalar, True)])])
+    )
+    assert nibis.connect(client).table("typed").schema()["value"] == expected
+
+
+def test_nested_catalog_types_round_trip() -> None:
+    string = sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR)
+    links = sql_pb2.SqlCatalogDataType(
+        array_element=sql_pb2.SqlCatalogDataType(map=sql_pb2.SqlCatalogMapType(key=string, value=string))
+    )
+    catalog = sql_pb2.SqlCatalog(
+        tables=[
+            sql_pb2.SqlCatalogTable(
+                name="assets",
+                columns=[sql_pb2.SqlCatalogColumn(name="links", type="ARRAY", data_type=links, nullable=True)],
+            )
+        ]
+    )
+    result = pa.table(
+        {"links": [[[("url", "https://nominal.io"), ("label", "Nominal")]]]},
+        schema=pa.schema([pa.field("links", pa.list_(pa.map_(pa.string(), pa.string())))]),
+    )
+    client = make_client(result)
+    client._clients.sql.GetSqlCatalog.return_value.sql_catalog.CopyFrom(catalog)
+    expr = nibis.connect(client).table("assets")
+    assert expr.schema()["links"] == dt.Array(dt.Map(dt.string, dt.string))
+    assert expr.to_pyarrow().equals(result)
+
+
+@pytest.mark.parametrize(
+    ("data_type", "message"),
+    [
+        (sql_pb2.SqlCatalogDataType(), "Missing or unsupported catalog data_type"),
+        (
+            sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_UNSPECIFIED),
+            "Unsupported catalog scalar type",
+        ),
+        (sql_pb2.SqlCatalogDataType(scalar=999), "Unsupported catalog scalar type"),
+        (
+            sql_pb2.SqlCatalogDataType(
+                map=sql_pb2.SqlCatalogMapType(
+                    key=sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY),
+                    value=sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY),
+                )
+            ),
+            "Catalog type ANY",
+        ),
+    ],
+)
+def test_unsupported_catalog_type_only_blocks_its_table(
+    client: NominalClient, data_type: sql_pb2.SqlCatalogDataType, message: str
+) -> None:
+    catalog = client._clients.sql.GetSqlCatalog.return_value.sql_catalog
+    catalog.tables.add(
+        name="points_struct", columns=[sql_pb2.SqlCatalogColumn(name="value", type="MAP", data_type=data_type)]
+    )
+    con = nibis.connect(client)
+    assert con.list_tables() == ["datasets", "points_double", "points_struct"]
+    assert con.table("datasets").columns == ("dataset_rid", "name")
+    with pytest.raises(nibis.NominalSqlError, match=message + ".*points_struct.value"):
+        con.table("points_struct")

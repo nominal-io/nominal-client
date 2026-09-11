@@ -11,6 +11,7 @@ readme = { text = "Ibis backend for the Nominal SQL API.", content-type = "text/
 requires-python = ">=3.10,<4"
 dependencies = [
     "nominal>=1.164.0",
+    "nominal-api-protos>=0.1441.0",
     "ibis-framework>=12,<13",
     "pyarrow>=14",
     # ibis.formats imports these at runtime but ibis only declares them in per-backend extras.
