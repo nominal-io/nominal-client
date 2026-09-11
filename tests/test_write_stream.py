@@ -20,6 +20,10 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DataBatch = list[DataItem]
 
+# This module covers the protobuf write-stream internals on purpose. 'protobuf' is superseded by
+# 'rust' but still supported, so its deprecation warning is expected here rather than a failure.
+pytestmark = pytest.mark.filterwarnings("ignore::nominal.core.exceptions.StreamImplementationDeprecationWarning")
+
 
 def dt_to_nano(dt: datetime) -> IntegralNanosecondsUTC:
     return _SecondsNanos.from_datetime(dt).to_nanoseconds()
@@ -341,7 +345,7 @@ def test_multiple_write_streams(mock_connection):
 
     # First stream
     with mock_connection.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
     ) as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
@@ -349,7 +353,7 @@ def test_multiple_write_streams(mock_connection):
 
     # Second stream
     with mock_connection.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
     ) as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
@@ -660,13 +664,17 @@ def test_multiple_write_streams_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # First stream
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream1:
+    with mock_dataset.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
+    ) as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
         # Force a small sleep to allow the batch to be processed
 
     # Second stream
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream2:
+    with mock_dataset.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
+    ) as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
@@ -851,7 +859,9 @@ def test_write_stream_enqueue_float_array(mock_dataset):
     """Test enqueue_float_array on a write stream."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+    with mock_dataset.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
+    ) as stream:
         stream.enqueue_float_array("channel1", timestamp, [1.0, 2.0, 3.0])
         stream.enqueue_float_array("channel1", timestamp + timedelta(seconds=1), [4.0, 5.0, 6.0])
 
@@ -876,7 +886,9 @@ def test_write_stream_enqueue_string_array(mock_dataset):
     """Test enqueue_string_array on a write stream."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+    with mock_dataset.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="protobuf"
+    ) as stream:
         stream.enqueue_string_array("channel1", timestamp, ["a", "b", "c"])
         stream.enqueue_string_array("channel1", timestamp + timedelta(seconds=1), ["d", "e", "f"])
 

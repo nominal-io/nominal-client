@@ -63,26 +63,32 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["json", "protobuf", "experimental"] = ...,
+        implementation: Literal["json", "protobuf", "experimental"] = ...,
+        *,
+        data_format: Literal["json", "protobuf", "experimental"] | None = None,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["rust", "rust_experimental"] | None = None,
+        implementation: Literal["rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        *,
+        data_format: Literal["rust", "rust_experimental"] | None = None,
     ) -> DataStream: ...
     def get_write_stream(
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        *,
+        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
     ) -> DataStream:
         """Stream to write non-blocking messages to a datasource.
 
@@ -90,18 +96,20 @@ class StreamingConnection(Connection):
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            data_format: Serialized data format to use during upload. Defaults to 'rust', falling back to
-                'json' when `nominal-streaming` is not installed.
-                NOTE: 'rust_experimental' is a deprecated alias for 'rust'.
+            implementation: Streaming implementation to use. Defaults to 'rust', falling back to
+                'protobuf' when `nominal-streaming` is not installed.
+                NOTE: 'protobuf', 'experimental', and 'rust_experimental' are deprecated; 'rust'
+                      supersedes all three.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
             log_level: Log level to use in underlying rust streaming code.
                 NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
             num_workers: Number of worker threads to use in underlying rust streaming code.
                 NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
+            data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
         --------
@@ -111,12 +119,14 @@ class StreamingConnection(Connection):
 
         Raises:
         ------
+            ValueError: both `implementation` and `data_format` were given, or the implementation is unknown.
             ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
-                explicitly via `data_format` or implicitly by passing a rust-only argument.
+                explicitly via `implementation` or implicitly by passing a rust-only argument.
         """
         return _get_write_stream(
             batch_size=batch_size,
             max_wait=max_wait,
+            implementation=implementation,
             data_format=data_format,
             file_fallback=file_fallback,
             log_level=log_level,

@@ -28,10 +28,12 @@ from nominal_api import (
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
+from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.exceptions import StreamImplementationDeprecationWarning
 from nominal.core.marking import MarkableMixin
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
@@ -157,26 +159,32 @@ class DataSource(HasRid, MarkableMixin):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["json", "protobuf", "experimental"] = ...,
+        implementation: Literal["json", "protobuf", "experimental"] = ...,
+        *,
+        data_format: Literal["json", "protobuf", "experimental"] | None = None,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["rust", "rust_experimental"] | None = None,
+        implementation: Literal["rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        *,
+        data_format: Literal["rust", "rust_experimental"] | None = None,
     ) -> DataStream: ...
     def get_write_stream(
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        *,
+        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
@@ -186,18 +194,20 @@ class DataSource(HasRid, MarkableMixin):
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            data_format: Serialized data format to use during upload. Defaults to 'rust', falling back to
-                'json' when `nominal-streaming` is not installed.
-                NOTE: 'rust_experimental' is a deprecated alias for 'rust'.
+            implementation: Streaming implementation to use. Defaults to 'rust', falling back to
+                'protobuf' when `nominal-streaming` is not installed.
+                NOTE: 'protobuf', 'experimental', and 'rust_experimental' are deprecated; 'rust'
+                      supersedes all three.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
             log_level: Log level to use in underlying rust streaming code.
                 NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
             num_workers: Number of worker threads to use in underlying rust streaming code.
                 NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `data_format='rust'`
+                NOTE: only works with `implementation='rust'`
+            data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
         --------
@@ -207,12 +217,14 @@ class DataSource(HasRid, MarkableMixin):
 
         Raises:
         ------
+            ValueError: both `implementation` and `data_format` were given, or the implementation is unknown.
             ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
-                explicitly via `data_format` or implicitly by passing a rust-only argument.
+                explicitly via `implementation` or implicitly by passing a rust-only argument.
         """
         return _get_write_stream(
             batch_size=batch_size,
             max_wait=max_wait,
+            implementation=implementation,
             data_format=data_format,
             file_fallback=file_fallback,
             log_level=log_level,
@@ -489,40 +501,68 @@ def _construct_export_request(
     return request
 
 
+_IMPLEMENTATIONS = ("json", "protobuf", "experimental", "rust")
+
+# Every one of these still works; each warns and points at the implementation that supersedes it.
+_DEPRECATED_IMPLEMENTATIONS = {
+    "rust_experimental": "use implementation='rust'",
+    "protobuf": "use implementation='rust', which supersedes it",
+    "experimental": "use implementation='rust', which supersedes it",
+}
+
+# _resolve_implementation -> _get_write_stream -> get_write_stream -> the caller we want to blame.
+_DEPRECATION_STACKLEVEL = 4
+
+
 def _import_rust_write_stream() -> type[RustWriteStream]:
     """Import the rust write stream, raising ImportError if `nominal-streaming` is unavailable.
 
-    Isolated from constructing the stream so that only a genuinely missing (or unloadable)
-    `nominal-streaming` is treated as "rust is not available here".
+    Delayed, and kept separate from building the stream: `nominal-streaming` ships pre-compiled
+    binaries for a subset of platforms, so a failed import here means "rust is not available on this
+    machine", while a failure constructing the stream is a real error that should surface.
     """
-    # Delayed import intentionally in case of any issues with experimental and pre-compiled binaries
     from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
 
     return RustWriteStream
 
 
-def _resolve_data_format(
+def _resolve_implementation(
+    implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
     data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
     rust_only_arguments: Mapping[str, object],
 ) -> Literal["json", "protobuf", "experimental", "rust"]:
-    """Resolve the requested data format to the implementation to use.
+    """Resolve the requested implementation, warning about deprecated spellings on the way.
 
-    `None` means "rust if we can, json otherwise": `nominal-streaming` ships for most platforms as a
-    dependency of `nominal`, but not for all of them, and it may be uninstallable (or uninstalled) on
-    any given machine. The fallback is deliberately not taken when the caller passed a rust-only
-    argument: silently dropping `file_fallback` would turn a durability feature into a no-op.
+    `None` means "rust if we can, protobuf otherwise": `nominal-streaming` is a dependency of
+    `nominal`, but it carries platform markers and is not installable everywhere. The fallback is
+    deliberately not taken when the caller passed a rust-only argument, since silently dropping
+    `file_fallback` would turn a durability feature into a no-op.
+
+    Deprecation warnings fire only for what the caller actually asked for -- landing on 'protobuf'
+    via the fallback is not the caller choosing a deprecated implementation.
     """
-    if data_format == "rust_experimental":
-        warnings.warn(
-            "data_format='rust_experimental' is deprecated: use data_format='rust' instead. "
-            "Rust streaming is no longer experimental, and is the default when `data_format` is omitted.",
-            UserWarning,
-            stacklevel=4,
-        )
-        return "rust"
-
     if data_format is not None:
-        return data_format
+        if implementation is not None:
+            raise ValueError("Pass only `implementation`: `data_format` is its deprecated name")
+
+        warnings.warn(
+            "The `data_format` argument is deprecated: pass `implementation` instead.",
+            StreamImplementationDeprecationWarning,
+            stacklevel=_DEPRECATION_STACKLEVEL,
+        )
+        implementation = data_format
+
+    if implementation in _DEPRECATED_IMPLEMENTATIONS:
+        warnings.warn(
+            f"implementation={implementation!r} is deprecated: {_DEPRECATED_IMPLEMENTATIONS[implementation]}.",
+            StreamImplementationDeprecationWarning,
+            stacklevel=_DEPRECATION_STACKLEVEL,
+        )
+
+    if implementation == "rust_experimental":
+        return "rust"
+    elif implementation is not None:
+        return implementation
 
     try:
         _import_rust_write_stream()
@@ -534,10 +574,10 @@ def _resolve_data_format(
             ) from ex
 
         logger.info(
-            "nominal-streaming is unavailable, falling back to `data_format='json'` streaming. "
+            "nominal-streaming is unavailable, falling back to `implementation='protobuf'` streaming. "
             "Install nominal-streaming for higher-throughput streaming."
         )
-        return "json"
+        return "protobuf"
 
     return "rust"
 
@@ -545,6 +585,7 @@ def _resolve_data_format(
 def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
+    implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
     data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
     file_fallback: PathLike | None,
     log_level: str | None,
@@ -557,14 +598,14 @@ def _get_write_stream(
         "log_level": log_level,
         "num_workers": num_workers,
     }
-    data_format = _resolve_data_format(data_format, rust_only_arguments)
+    resolved = _resolve_implementation(implementation, data_format, rust_only_arguments)
 
-    if data_format != "rust":
+    if resolved != "rust":
         for key, value in rust_only_arguments.items():
             if value is not None:
-                logger.warning("Argument %s has no effect unless `data_format='rust'`", key)
+                logger.warning("Argument %s has no effect unless `implementation='rust'`", key)
 
-    if data_format == "json":
+    if resolved == "json":
         return WriteStream.create(
             batch_size=batch_size,
             max_wait=max_wait,
@@ -575,14 +616,7 @@ def _get_write_stream(
                 storage_writer=clients.storage_writer,
             ),
         )
-    elif data_format == "protobuf":
-        try:
-            from nominal.core._stream.batch_processor_proto import process_batch
-        except ImportError as ex:
-            raise ImportError(
-                "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
-            ) from ex
-
+    elif resolved == "protobuf":
         return WriteStream.create(
             batch_size,
             max_wait,
@@ -593,14 +627,11 @@ def _get_write_stream(
                 proto_write=clients.proto_write,
             ),
         )
-    elif data_format == "experimental":
-        try:
-            from nominal.experimental.stream_v2._serializer import BatchSerializer
-            from nominal.experimental.stream_v2._write_stream import WriteStreamV2
-        except ImportError as ex:
-            raise ImportError(
-                "nominal-api-protos is required to use get_write_stream with data_format='experimental'"
-            ) from ex
+    elif resolved == "experimental":
+        # Delayed import: `nominal.experimental.stream_v2` imports `nominal.core.connection`, which
+        # imports this module. Not optional -- purely to break the cycle.
+        from nominal.experimental.stream_v2._serializer import BatchSerializer
+        from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
         return WriteStreamV2.create(
             clients=clients,
@@ -612,11 +643,13 @@ def _get_write_stream(
             track_metrics=True,
             max_workers=None,
         )
-    elif data_format == "rust":
+    elif resolved == "rust":
         try:
             rust_write_stream = _import_rust_write_stream()
         except ImportError as ex:
-            raise ImportError("nominal-streaming is required to use get_write_stream with data_format='rust'") from ex
+            raise ImportError(
+                "nominal-streaming is required to use get_write_stream with implementation='rust'"
+            ) from ex
 
         return rust_write_stream._from_datasource(
             write_rid,
@@ -629,5 +662,5 @@ def _get_write_stream(
         )
     else:
         raise ValueError(
-            f"Expected `data_format` to be one of {{json, protobuf, experimental, rust}}, received '{data_format}'"
+            f"Expected `implementation` to be one of {{{', '.join(_IMPLEMENTATIONS)}}}, received '{resolved}'"
         )
