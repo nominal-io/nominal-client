@@ -188,8 +188,6 @@ class DataSource(HasRid, MarkableMixin):
             max_wait: How long a batch can exist before being flushed to Nominal.
             data_format: Serialized data format to use during upload. Defaults to 'rust', falling back to
                 'json' when `nominal-streaming` is not installed.
-                NOTE: selecting 'protobuf' or 'experimental' requires that `nominal` was installed
-                      with `protos` extras.
                 NOTE: 'rust_experimental' is a deprecated alias for 'rust'.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
