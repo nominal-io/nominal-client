@@ -920,6 +920,7 @@ source = { editable = "packages/nominal-ibis" }
 dependencies = [
     { name = "ibis-framework" },
     { name = "nominal" },
+    { name = "nominal-api-protos" },
     { name = "packaging" },
     { name = "pyarrow" },
     { name = "pyarrow-hotfix" },
@@ -929,6 +930,7 @@ dependencies = [
 requires-dist = [
     { name = "ibis-framework", specifier = ">=12,<13" },
     { name = "nominal", editable = "." },
+    { name = "nominal-api-protos", specifier = ">=0.1441.0" },
     { name = "packaging", specifier = ">=23.0" },
     { name = "pyarrow", specifier = ">=14" },
     { name = "pyarrow-hotfix", specifier = ">=0.4" },
