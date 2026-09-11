@@ -19,18 +19,12 @@ Example:
     )
     print(per_minute.head())
 
-    # Server functions come from the SQL catalog
-    w = ibis.cumulative_window(group_by="channel", order_by="ts")
-    rates = pts.select("ts", rate=con.fn.derivative(_.value).over(w)).to_pandas()
-    print(rates.describe())
 """
 
 from nominal.ibis._backend import Backend, NominalSqlError, connect
-from nominal.ibis._functions import Functions
 
 __all__ = [
     "Backend",
-    "Functions",
     "NominalSqlError",
     "connect",
 ]
