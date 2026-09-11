@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, TypeAlias
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import api, scout_spatial, scout_spatial_api
 from typing_extensions import Self
@@ -357,3 +357,12 @@ def _create_spatial_asset(
 
 def _get_spatial(clients: SpatialAsset._Clients, rid: str) -> scout_spatial_api.Spatial:
     return clients.spatial.get(clients.auth_header, rid)
+
+
+def _get_spatials(clients: SpatialAsset._Clients, spatial_rids: Iterable[str]) -> Sequence[scout_spatial_api.Spatial]:
+    """Fetch many spatial assets in one request. The response omits RIDs the caller cannot read."""
+    rids = list(spatial_rids)
+    if not rids:
+        return []
+    request = scout_spatial_api.GetSpatialsRequest(spatial_rids=rids)
+    return list(clients.spatial.batch_get(clients.auth_header, request).responses)

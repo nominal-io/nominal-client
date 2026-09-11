@@ -21,6 +21,7 @@ from nominal.core._utils.api_tools import (
     RefreshableConjureMixin,
     create_links,
     filter_scopes,
+    pair_by_rid,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.frontend_urls import run_url
@@ -33,8 +34,8 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_da
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
-from nominal.core.spatial_asset import SpatialAsset, _get_spatial
-from nominal.core.video import Video, _get_video
+from nominal.core.spatial_asset import SpatialAsset, _get_spatial, _get_spatials
+from nominal.core.video import Video, _get_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
@@ -428,68 +429,33 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
-    def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-        datasets_by_rids = {
-            ds.rid: Dataset._from_conjure(self._clients, ds)
-            for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
-        }
-        for ref_name, rid in dataset_rids_by_ref_name.items():
-            dataset = datasets_by_rids[rid]
-            yield (ref_name, dataset)
-
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this run.
         Returns (ref_name, dataset) pairs for each dataset.
         """
-        return list(self._iter_list_datasets())
-
-    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
-        conn_rids_by_ref_name = self._list_datasource_rids("connection")
-        connections_by_rids = {
-            conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
-        }
-
-        for ref_name, rid in conn_rids_by_ref_name.items():
-            connection = connections_by_rids[rid]
-            yield (ref_name, connection)
+        rids = self._list_datasource_rids("dataset")
+        datasets = _get_datasets(self._clients.auth_header, self._clients.catalog, rids.values())
+        return pair_by_rid(rids, [Dataset._from_conjure(self._clients, dataset) for dataset in datasets])
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this run.
         Returns (ref_name, connection) pairs for each connection
         """
-        return list(self._iter_list_connections())
-
-    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
-        video_rids_by_ref_name = self._list_datasource_rids("video")
-        videos_by_rids = {
-            rid: Video._from_conjure(
-                self._clients,
-                _get_video(self._clients, rid),
-            )
-            for rid in video_rids_by_ref_name.values()
-        }
-        for ref_name, rid in video_rids_by_ref_name.items():
-            video = videos_by_rids[rid]
-            yield (ref_name, video)
+        rids = self._list_datasource_rids("connection")
+        connections = _get_connections(self._clients, list(rids.values()))
+        return pair_by_rid(rids, [Connection._from_conjure(self._clients, connection) for connection in connections])
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
-        return list(self._iter_list_videos())
-
-    def _iter_list_spatials(self) -> Iterable[tuple[str, SpatialAsset]]:
-        spatial_rids_by_ref_name = self._list_datasource_rids("spatial")
-        spatials_by_rids = {
-            rid: SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, rid))
-            for rid in spatial_rids_by_ref_name.values()
-        }
-        for ref_name, rid in spatial_rids_by_ref_name.items():
-            yield (ref_name, spatials_by_rids[rid])
+        rids = self._list_datasource_rids("video")
+        videos = _get_videos(self._clients, rids.values())
+        return pair_by_rid(rids, [Video._from_conjure(self._clients, video) for video in videos])
 
     def list_spatials(self) -> Sequence[tuple[str, SpatialAsset]]:
         """List a sequence of refname, SpatialAsset tuples associated with this Run."""
-        return list(self._iter_list_spatials())
+        rids = self._list_datasource_rids("spatial")
+        spatials = _get_spatials(self._clients, rids.values())
+        return pair_by_rid(rids, [SpatialAsset._from_conjure(self._clients, spatial) for spatial in spatials])
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
