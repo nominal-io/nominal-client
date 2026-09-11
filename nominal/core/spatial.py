@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
 from typing_extensions import Self
@@ -18,9 +18,13 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos
+from nominal.core.ingestion_job import IngestionJob
+from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
 
 logger = logging.getLogger(__name__)
+
+# Required by the ingest request, but not yet read by the backend.
+_POINT_CLOUD_CHANNEL = "point_cloud"
 
 
 class ScanPattern(Enum):
@@ -161,7 +165,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
 
-    class _Clients(HasScoutParams, Protocol):
+    class _Clients(IngestionJob._Clients, HasScoutParams, Protocol):
         @property
         def spatial(self) -> scout_spatial.SpatialService: ...
         @property
@@ -193,20 +197,39 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated)
 
-    def ingest_point_cloud_csv(
+    @overload
+    def add_point_cloud_csv(
         self,
         csv_path: PathLike,
         *,
         column_types: Mapping[str, ColumnDataType] | None = None,
         rgb_column: str | None = None,
         rgb_attribute: str = "color",
-        time_column: str | None = None,
-        time_unit: _LiteralTimeUnit = "seconds",
-        start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
-        channel: str = "point_cloud",
-        tags: Mapping[str, str] | None = None,
-    ) -> str | None:
-        """Upload a point-cloud CSV and ingest it into this spatial's model.
+    ) -> IngestionJob: ...
+
+    @overload
+    def add_point_cloud_csv(
+        self,
+        csv_path: PathLike,
+        *,
+        column_types: Mapping[str, ColumnDataType] | None = None,
+        rgb_column: str | None = None,
+        rgb_attribute: str = "color",
+        timestamp_column: str,
+        timestamp_type: Relative,
+    ) -> IngestionJob: ...
+
+    def add_point_cloud_csv(
+        self,
+        csv_path: PathLike,
+        *,
+        column_types: Mapping[str, ColumnDataType] | None = None,
+        rgb_column: str | None = None,
+        rgb_attribute: str = "color",
+        timestamp_column: str | None = None,
+        timestamp_type: Relative | None = None,
+    ) -> IngestionJob:
+        """Upload a point-cloud CSV and add it to this spatial's model.
 
         The CSV must contain at minimum x, y, z columns (case-insensitive); remaining
         columns are classified as real or string by sampling the first ~1000 data rows.
@@ -214,13 +237,14 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         a column you know holds integers.
 
         The import runs asynchronously, so this returns as soon as the ingest is
-        *accepted*, not when the point cloud is queryable.
+        *accepted*, not when the point cloud is queryable. Poll the returned job to
+        wait for it.
 
-        Pass ``time_column`` and ``start_timestamp`` together for a cloud that was
-        captured or built over time. The column's extent is measured and recorded on
-        the spatial, which is what lets a workbook's 3D panel drive the cloud from the
-        playhead -- without it the panel has no way to map playhead position onto
-        per-point time and renders the whole cloud at once.
+        Pass ``timestamp_column`` and ``timestamp_type`` for a cloud that was captured
+        or built over time. The column's extent is measured and recorded on the spatial,
+        which is what lets a workbook's 3D panel drive the cloud from the playhead --
+        without it the panel has no way to map playhead position onto per-point time
+        and renders the whole cloud at once.
 
         Args:
             csv_path: Path to the point-cloud CSV to upload.
@@ -231,56 +255,51 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
                 reads; separate 0-255 columns cannot drive colour, and are silently skipped
                 by the parser rather than rejected.
             rgb_attribute: Name for the resulting attribute.
-            time_column: Column holding per-point time, as an offset from ``start_timestamp``
-                rather than an absolute timestamp. Measuring its extent costs one extra
-                pass over the file, so it is only read when named here.
-            time_unit: Unit of the values in ``time_column``. Defaults to seconds.
-            start_timestamp: Absolute instant that ``time_column`` counts from. Given both,
-                the spatial's time range and the four properties a workbook reads to drive
-                the cloud from the playhead are set from the measured extent.
-            channel: Channel name for the point cloud series. Accepted by the API but not
-                yet read by the backend; reserved for workbook integration.
-            tags: Tags for the point cloud series. Accepted but not yet read by the backend.
+            timestamp_column: Column holding per-point time. Measuring its extent costs one
+                extra pass over the file, so it is only read when named here.
+            timestamp_type: How to read ``timestamp_column``. Only `Relative` is accepted:
+                per-point time has to be an offset from a start instant, because filtering
+                happens on the GPU in f32, where the spacing between representable values
+                at epoch magnitude is over two minutes.
 
         Returns:
-            The rid of the submitted ingest job, if the platform created one.
+            The submitted ingest job. Follow it with `status` and `refresh()`, which is
+            the only signal it carries: the import writes into this spatial's own model
+            rather than the catalog, so the job reports no `dataset_rid`, a
+            `produced_file_count` of zero, and an empty `dataset_files()`.
+            `as_files_ingested()` still raises if the job fails, but otherwise yields
+            nothing -- an empty result there means the job produced no catalog entry,
+            not that it produced no points.
 
         Raises:
             FileNotFoundError: If ``csv_path`` does not exist.
-            ValueError: If only one of ``time_column`` / ``start_timestamp`` is given, the
-                CSV is empty, lacks x/y/z columns, ``column_types`` names a column or type
-                that does not exist, ``rgb_column`` is not in the header, or ``time_column``
-                is missing from the header or holds a non-numeric value.
+            ValueError: If only one of ``timestamp_column`` / ``timestamp_type`` is given,
+                the CSV is empty or uses quoting, lacks x/y/z columns, ``column_types``
+                names a column or type that does not exist, ``rgb_column`` is not in the
+                header, or ``timestamp_column`` is missing from the header or holds a
+                non-numeric value.
         """
-        # Neither half of the pair does anything alone: an extent with nothing to
-        # anchor it to, or an anchor with no extent to place, is dropped on the
-        # floor. Rejecting up front beats a silent no-op after a full extra pass
-        # over the file and a multi-GB upload.
-        if (time_column is None) != (start_timestamp is None):
-            raise ValueError(
-                "time_column and start_timestamp must be given together: time_column measures the extent, "
-                "start_timestamp is the absolute instant that extent is offset from"
-            )
+        _validate_timestamp_pair(timestamp_column, timestamp_type)
 
         described = _describe_point_cloud_csv(
             csv_path,
             column_types=column_types,
             rgb_column=rgb_column,
             rgb_attribute=rgb_attribute,
-            time_column=time_column,
-            time_unit=time_unit,
+            timestamp_column=timestamp_column,
+            time_unit="seconds" if timestamp_type is None else timestamp_type.unit,
         )
         source_handle = self._upload_csv(described.path)
-        ingest_job_rid = self._submit_ingest(source_handle, described, channel=channel, tags=tags)
+        job = self._submit_ingest(source_handle, described)
 
         time_metadata = (
             None
-            if described.time_range_us is None or start_timestamp is None
-            else _PointCloudTimeMetadata.from_extent(described.time_range_us, start_timestamp)
+            if described.time_range_us is None or timestamp_type is None
+            else _PointCloudTimeMetadata.from_extent(described.time_range_us, timestamp_type.start)
         )
         # Best-effort: the ingest has already been accepted and is running. Raising
-        # here would lose `ingest_job_rid`, leaving an untracked job that a retry
-        # would submit a second time -- duplicating every point. Metadata can be
+        # here would lose the job, leaving an untracked ingest that a retry would
+        # submit a second time -- duplicating every point. Metadata can be
         # re-applied later; a duplicate ingest cannot be undone.
         try:
             self._record_ingest_metadata(source_handle, time_metadata)
@@ -288,10 +307,10 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
             logger.exception(
                 "point cloud ingest %s was accepted, but recording metadata on %s failed; "
                 "source handle and time range are unset",
-                ingest_job_rid,
+                job.rid,
                 self.rid,
             )
-        return ingest_job_rid
+        return job
 
     def _upload_csv(self, path: Path) -> str:
         """Upload the CSV to object storage and return its location."""
@@ -304,17 +323,14 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
             header_provider=self._clients.header_provider,
         )
 
-    def _submit_ingest(
-        self,
-        source_handle: str,
-        described: _PointCloudCsv,
-        *,
-        channel: str,
-        tags: Mapping[str, str] | None,
-    ) -> str | None:
-        """Submit the uploaded CSV to the point-cloud ingest pipeline."""
+    def _submit_ingest(self, source_handle: str, described: _PointCloudCsv) -> IngestionJob:
+        """Submit the uploaded CSV to the point-cloud ingest pipeline and return the job it created."""
         # The target must already exist: the service rejects `PointCloudIngestTarget.new`,
         # since this spatial's daggerUuid is what names the model the import writes into.
+        #
+        # `channel` and `tags` are required by the request but not yet read by the
+        # backend, so they are not exposed: a caller passing tags that never appear
+        # anywhere would be worse than not offering them.
         response = self._clients.ingest.ingest(
             self._clients.auth_header,
             ingest_api.IngestRequest(
@@ -325,19 +341,22 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
                             existing=ingest_api.ExistingSpatialIngestDestination(spatial_rid=self.rid)
                         ),
                         dagger_import_config=described.import_config._to_wire(),
-                        channel=channel,
-                        tags=dict(tags) if tags else {},
+                        channel=_POINT_CLOUD_CHANNEL,
+                        tags={},
                     )
                 )
             ),
         )
+        if response.ingest_job_rid is None:
+            raise ValueError(f"point cloud ingest for {self.rid} was accepted without an ingest job to track it")
         logger.debug(
             "submitted point cloud ingest for %s: spatial=%s ingest_job=%s",
             described.path,
             self.rid,
             response.ingest_job_rid,
         )
-        return response.ingest_job_rid
+        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, response.ingest_job_rid)
+        return IngestionJob._from_conjure(self._clients, job)
 
     def _record_ingest_metadata(self, source_handle: str, time_metadata: _PointCloudTimeMetadata | None) -> None:
         """Record provenance, and the measured time range when there is one.

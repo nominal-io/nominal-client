@@ -34,7 +34,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from nominal.core import NominalClient
-from nominal.core.ingestion_job import IngestionJobStatus
+from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial
 
 DAGGER_UNAVAILABLE = "Dagger is not configured"
@@ -74,28 +74,25 @@ def spatial(client: NominalClient) -> Iterator[Spatial]:
     asset.archive()
 
 
-def _poll_ingest_job(client: NominalClient, rid: str) -> IngestionJobStatus:
+def _poll_ingest_job(job: IngestionJob) -> IngestionJobStatus:
     """Block until the ingest job reaches a terminal status, or fail on timeout."""
     deadline = time.monotonic() + INGEST_TIMEOUT.total_seconds()
-    job = client.get_ingestion_job(rid)
     while job.status not in TERMINAL_STATUSES:
         if time.monotonic() > deadline:
-            pytest.fail(f"ingest job {rid} still {job.status} after {INGEST_TIMEOUT}")
+            pytest.fail(f"ingest job {job.rid} still {job.status} after {INGEST_TIMEOUT}")
         time.sleep(INGEST_POLL_INTERVAL.total_seconds())
         job = job.refresh()
     return job.status
 
 
-def _ingest(asset: Spatial, csv_path: Path, **kwargs) -> str:
+def _ingest(spatial: Spatial, csv_path: Path, **kwargs) -> IngestionJob:
     """Submit a point-cloud ingest, skipping the test if the indexing service is unavailable."""
     try:
-        job_rid = asset.ingest_point_cloud_csv(csv_path, **kwargs)
+        return spatial.add_point_cloud_csv(csv_path, **kwargs)
     except Exception as e:
         if DAGGER_UNAVAILABLE in str(e):
             pytest.skip("the backend has no indexing service configured; point-cloud ingest unavailable")
         raise
-    assert job_rid is not None, "the backend returned no ingest job rid"
-    return job_rid
 
 
 # --- spatial metadata (no indexing service required) --------------------------
@@ -155,18 +152,18 @@ def test_point_cloud_ingest_completes(client: NominalClient, spatial: Spatial, p
     shape (a stray field, a lowercased enum, geometry_type left at the top level)
     fails the request outright rather than degrading quietly.
     """
-    job_rid = _ingest(spatial, point_cloud_csv)
-    status = _poll_ingest_job(client, job_rid)
-    assert status == IngestionJobStatus.COMPLETED, f"ingest job {job_rid} ended {status}"
+    job = _ingest(spatial, point_cloud_csv)
+    status = _poll_ingest_job(job)
+    assert status == IngestionJobStatus.COMPLETED, f"ingest job {job.rid} ended {status}"
 
 
 def test_point_cloud_ingest_accepts_column_type_overrides(
     client: NominalClient, spatial: Spatial, point_cloud_csv: Path
 ) -> None:
     """An explicit column_types override reaches the wire as Int and the backend still accepts it."""
-    job_rid = _ingest(spatial, point_cloud_csv, column_types={"count": "int"})
-    status = _poll_ingest_job(client, job_rid)
-    assert status == IngestionJobStatus.COMPLETED, f"ingest job {job_rid} ended {status}"
+    job = _ingest(spatial, point_cloud_csv, column_types={"count": "int"})
+    status = _poll_ingest_job(job)
+    assert status == IngestionJobStatus.COMPLETED, f"ingest job {job.rid} ended {status}"
 
 
 def test_ingest_into_archived_spatial_is_accepted(
@@ -179,10 +176,9 @@ def test_ingest_into_archived_spatial_is_accepted(
     lands on a hidden spatial is easy to mistake for a silent no-op.
     """
     spatial.archive()
-    job_rid = _ingest(spatial, point_cloud_csv)
     # Polling to completion is what proves the upload really landed, rather than
     # being accepted and then dropped on the floor.
-    assert _poll_ingest_job(client, job_rid) == IngestionJobStatus.COMPLETED
+    assert _poll_ingest_job(_ingest(spatial, point_cloud_csv)) == IngestionJobStatus.COMPLETED
 
 
 # --- spatials as run / asset data scopes --------------------------------------

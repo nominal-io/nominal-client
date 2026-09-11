@@ -232,7 +232,7 @@ def _describe_point_cloud_csv(
     column_types: Mapping[str, ColumnDataType] | None = None,
     rgb_column: str | None = None,
     rgb_attribute: str = "color",
-    time_column: str | None = None,
+    timestamp_column: str | None = None,
     time_unit: _LiteralTimeUnit = "seconds",
 ) -> _PointCloudCsv:
     """Read a point-cloud CSV and build everything the ingest request needs from it.
@@ -244,7 +244,7 @@ def _describe_point_cloud_csv(
         FileNotFoundError: If `csv_path` does not exist.
         ValueError: If the CSV is empty, uses quoting, lacks x/y/z columns,
             `column_types` names a column or type that does not exist,
-            `rgb_column` is not in the header, or `time_column` is missing from
+            `rgb_column` is not in the header, or `timestamp_column` is missing from
             the header or holds a non-numeric value.
     """
     if time_unit not in _MICROSECONDS_PER_TIME_UNIT:
@@ -254,7 +254,7 @@ def _describe_point_cloud_csv(
     if not path.exists():
         raise FileNotFoundError(f"No such file: {path}")
 
-    scan = _scan_csv(path, time_column)
+    scan = _scan_csv(path, timestamp_column)
     return _PointCloudCsv(
         path=path,
         import_config=_build_import_config(
@@ -267,7 +267,7 @@ def _describe_point_cloud_csv(
 # --- reading the file ---------------------------------------------------------
 
 
-def _scan_csv(path: Path, time_column: str | None, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> _CsvScan:
+def _scan_csv(path: Path, timestamp_column: str | None, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> _CsvScan:
     """Read the file once to sample rows, measure the time column, and reject quoting.
 
     One pass answers all three because their needs overlap: classification wants
@@ -294,7 +294,7 @@ def _scan_csv(path: Path, time_column: str | None, n_samples: int = _TYPE_INFERE
         headers = tuple(h.strip() for h in header_line.split(","))
         if not any(headers):
             raise ValueError("CSV header is empty")
-        index = None if time_column is None else _column_index(headers, time_column, "time_column")
+        index = None if timestamp_column is None else _column_index(headers, timestamp_column, "timestamp_column")
 
         for line_number, line in enumerate(f, start=2):
             row = line.rstrip("\r\n")
@@ -306,7 +306,7 @@ def _scan_csv(path: Path, time_column: str | None, n_samples: int = _TYPE_INFERE
                 samples.append(_split_row(row, len(headers)))
 
             if index is not None:
-                value = _time_value(row, index, time_column, line_number)
+                value = _time_value(row, index, timestamp_column, line_number)
                 if value is not None:
                     # Plain comparisons rather than min()/max(): this runs once per
                     # row of a file that can hold tens of millions.
@@ -316,7 +316,7 @@ def _scan_csv(path: Path, time_column: str | None, n_samples: int = _TYPE_INFERE
     if index is None:
         return _CsvScan(headers=headers, samples=tuple(samples), time_extent=None)
     if minimum > maximum:
-        raise ValueError(f"time_column {time_column!r} has no values to derive a time range from")
+        raise ValueError(f"timestamp_column {timestamp_column!r} has no values to derive a time range from")
     return _CsvScan(headers=headers, samples=tuple(samples), time_extent=(minimum, maximum))
 
 
@@ -362,7 +362,7 @@ def _field(row: str, index: int) -> str | None:
     return row[start:] if end < 0 else row[start:end]
 
 
-def _time_value(row: str, index: int, time_column: str | None, line_number: int) -> float | None:
+def _time_value(row: str, index: int, timestamp_column: str | None, line_number: int) -> float | None:
     """Parse the time column out of a row, or None when the row does not carry one."""
     raw = _field(row, index)
     if raw is None:
@@ -374,7 +374,7 @@ def _time_value(row: str, index: int, time_column: str | None, line_number: int)
         return float(raw)
     except ValueError:
         raise ValueError(
-            f"time_column {time_column!r} holds a non-numeric value {raw!r} on line {line_number}"
+            f"timestamp_column {timestamp_column!r} holds a non-numeric value {raw!r} on line {line_number}"
         ) from None
 
 

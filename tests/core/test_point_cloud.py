@@ -207,7 +207,7 @@ def test_time_range_is_measured_over_every_row(tmp_path: Path) -> None:
     the second data row and the largest on the last, so a prefix-only scan or a
     first-row guess would both get it wrong.
     """
-    described = _describe(tmp_path, _TIMED_CSV, time_column="t_s")
+    described = _describe(tmp_path, _TIMED_CSV, timestamp_column="t_s")
 
     assert described.time_range_us == (250_000, 9_750_000)
 
@@ -224,21 +224,23 @@ def test_time_range_is_measured_over_every_row(tmp_path: Path) -> None:
 )
 def test_time_range_is_converted_to_microseconds(tmp_path: Path, unit: str, start_us: int, end_us: int) -> None:
     """The spatial always stores microseconds, whatever unit the column is in."""
-    described = _describe(tmp_path, _TIMED_CSV, time_column="t_s", time_unit=unit)
+    described = _describe(tmp_path, _TIMED_CSV, timestamp_column="t_s", time_unit=unit)
 
     assert described.time_range_us == (start_us, end_us)
 
 
 def test_time_range_widens_rather_than_rounding_inward(tmp_path: Path) -> None:
     """Sub-microsecond ends round outward so the range cannot exclude real points."""
-    described = _describe(tmp_path, "x,y,z,t_us\n0,0,0,1.4\n1,1,1,8.6\n", time_column="t_us", time_unit="microseconds")
+    described = _describe(
+        tmp_path, "x,y,z,t_us\n0,0,0,1.4\n1,1,1,8.6\n", timestamp_column="t_us", time_unit="microseconds"
+    )
 
     assert described.time_range_us == (1, 9)
 
 
 def test_time_range_ignores_rows_with_no_time_value(tmp_path: Path) -> None:
     """A blank time cell is a gap in the data, not a zero that widens the range."""
-    described = _describe(tmp_path, "x,y,z,t_s\n0,0,0,2\n1,1,1,\n2,2,2,4\n", time_column="t_s")
+    described = _describe(tmp_path, "x,y,z,t_s\n0,0,0,2\n1,1,1,\n2,2,2,4\n", timestamp_column="t_s")
 
     assert described.time_range_us == (2_000_000, 4_000_000)
 
@@ -262,10 +264,10 @@ def test_no_time_column_measures_nothing(tmp_path: Path) -> None:
         ("x,y,z,count\n0,0,0,1\n", {"column_types": {"nope": "int"}}, "not in CSV header"),
         ("x,y,z,count\n0,0,0,1\n", {"column_types": {"count": "float"}}, "must be one of"),
         ("x,y,z,color\n0,0,0,c04422\n", {"rgb_column": "nope"}, "is not in the CSV header"),
-        (_TIMED_CSV, {"time_column": "nope"}, "is not in the CSV header"),
-        ("x,y,z,t_s\n0,0,0,1\n1,1,1,later\n", {"time_column": "t_s"}, "non-numeric value 'later' on line 3"),
-        ("x,y,z,t_s\n0,0,0,\n", {"time_column": "t_s"}, "no values to derive a time range"),
-        (_TIMED_CSV, {"time_column": "t_s", "time_unit": "fortnights"}, "time_unit must be one of"),
+        (_TIMED_CSV, {"timestamp_column": "nope"}, "is not in the CSV header"),
+        ("x,y,z,t_s\n0,0,0,1\n1,1,1,later\n", {"timestamp_column": "t_s"}, "non-numeric value 'later' on line 3"),
+        ("x,y,z,t_s\n0,0,0,\n", {"timestamp_column": "t_s"}, "no values to derive a time range"),
+        (_TIMED_CSV, {"timestamp_column": "t_s", "time_unit": "fortnights"}, "time_unit must be one of"),
         # Quoting is refused rather than parsed: the importer splits rows on raw commas with no
         # quote handling, so honouring quotes here would compute column indices it never reads,
         # shifting every attribute after the quoted field.

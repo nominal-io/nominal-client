@@ -6,10 +6,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api import api, scout_spatial_api
+from nominal_api import api, ingest_api, scout_spatial_api
 
 from nominal.core.client import NominalClient
 from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial, _PointCloudTimeMetadata
+from nominal.ts import Relative
 
 _SPATIAL_RID = "ri.scout.x.spatial.abc"
 _JOB_RID = "ri.scout.x.ingest-job.j"
@@ -25,6 +26,7 @@ def clients() -> MagicMock:
     clients.auth_header = "Bearer t"
     clients.resolve_default_workspace_rid.return_value = _WORKSPACE_RID
     clients.ingest.ingest.return_value.ingest_job_rid = _JOB_RID
+    clients.ingest_jobs.get_ingest_job.return_value = _raw_ingest_job()
     # The time-range write reads properties back before replacing the map.
     clients.spatial.get.return_value.properties = {}
     return clients
@@ -77,6 +79,26 @@ def _raw_spatial(
     raw.start_timestamp = start_timestamp
     raw.end_timestamp = None
     return raw
+
+
+def _raw_ingest_job() -> MagicMock:
+    """A conjure IngestJob bean as the service would return it for a point-cloud ingest.
+
+    `dataset_rid` is None and no files are produced: a point-cloud ingest writes into
+    the spatial's own model, so the job is the only artifact it yields.
+    """
+    job = MagicMock()
+    job.ingest_job_rid = _JOB_RID
+    job.status = ingest_api.IngestJobStatus.IN_PROGRESS
+    job.ingest_type = ingest_api.IngestType.POINT_CLOUD
+    job.dataset_rid = None
+    job.origin_files = []
+    job.produced_file_count = None
+    job.created_by_rid = None
+    job.created_at = None
+    job.start_time = None
+    job.end_time = None
+    return job
 
 
 def _stubbed_upload(s3_path: str = "s3://bucket/scan.csv") -> object:
@@ -220,9 +242,9 @@ def test_ingest_targets_this_spatial_and_records_the_uploaded_object(
     only knowable after the upload, so it cannot be set at create time.
     """
     with _stubbed_upload("s3://bucket/scan.csv"):
-        job_rid = spatial.ingest_point_cloud_csv(_csv(tmp_path), channel="pc", tags={"run": "1"})
+        job = spatial.add_point_cloud_csv(_csv(tmp_path))
 
-    assert job_rid == _JOB_RID
+    assert job.rid == _JOB_RID
     opts = clients.ingest.ingest.call_args.args[1].options.point_cloud
     assert opts.source.s3.path == "s3://bucket/scan.csv"
     assert opts.target.existing.spatial_rid == _SPATIAL_RID
@@ -249,8 +271,10 @@ def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
     clients.spatial.get.return_value.properties = {"added": "while uploading"}
 
     with _stubbed_upload():
-        spatial.ingest_point_cloud_csv(
-            _csv(tmp_path, _TIMED_CSV), time_column="t_s", start_timestamp=datetime(2026, 3, 4, tzinfo=timezone.utc)
+        spatial.add_point_cloud_csv(
+            _csv(tmp_path, _TIMED_CSV),
+            timestamp_column="t_s",
+            timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, tzinfo=timezone.utc)),
         )
 
     properties = clients.spatial.update_metadata.call_args.args[1].properties
@@ -269,15 +293,15 @@ def test_ingest_returns_the_job_even_if_recording_metadata_fails(
     clients.spatial.update_metadata.side_effect = ConnectionError("boom")
 
     with _stubbed_upload():
-        job_rid = spatial.ingest_point_cloud_csv(_csv(tmp_path))
+        job = spatial.add_point_cloud_csv(_csv(tmp_path))
 
-    assert job_rid == _JOB_RID
+    assert job.rid == _JOB_RID
 
 
 def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: Spatial, tmp_path: Path) -> None:
     """A malformed CSV must fail before many GB are pushed to object storage."""
     with pytest.raises(ValueError, match="missing required point-cloud columns"):
-        spatial.ingest_point_cloud_csv(_csv(tmp_path, "a,b,c\n1,2,3\n"))
+        spatial.add_point_cloud_csv(_csv(tmp_path, "a,b,c\n1,2,3\n"))
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
@@ -286,8 +310,8 @@ def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: 
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"time_column": "t_s"},
-        {"start_timestamp": datetime(2026, 3, 4, tzinfo=timezone.utc)},
+        {"timestamp_column": "t_s"},
+        {"timestamp_type": Relative("seconds", start=datetime(2026, 3, 4, tzinfo=timezone.utc))},
     ],
 )
 def test_ingest_rejects_half_of_the_time_pair(
@@ -295,12 +319,13 @@ def test_ingest_rejects_half_of_the_time_pair(
 ) -> None:
     """Neither half does anything alone, so half a pair is refused instead of silently dropped.
 
-    An extent with nothing to anchor it to, and an anchor with no extent to
-    place, are both no-ops -- and reaching that point costs a full extra pass
-    over the file plus a potentially multi-GB upload.
+    Refused by `nominal.ts._validate_timestamp_pair`, the same guard every other
+    method taking the pair uses, so the message is the one callers already know.
+    Reaching the upload first would cost a full extra pass over the file and a
+    potentially multi-GB transfer before the extent was dropped on the floor.
     """
-    with pytest.raises(ValueError, match="must be given together"):
-        spatial.ingest_point_cloud_csv(_csv(tmp_path, _TIMED_CSV), **kwargs)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="pass both timestamp_column and timestamp_type"):
+        spatial.add_point_cloud_csv(_csv(tmp_path, _TIMED_CSV), **kwargs)  # type: ignore[arg-type]
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
