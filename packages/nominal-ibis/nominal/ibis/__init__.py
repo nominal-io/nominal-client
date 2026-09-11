@@ -4,9 +4,10 @@ Compiles Ibis expressions to SQL in the Nominal SQL API's dialect and executes
 them through an authenticated NominalClient, streaming results back as Arrow.
 
 Requires a server that returns recursive catalog column types and applies the
-final SQL projection. Tables containing unresolved ANY types (such as
-points_struct.value) cannot be opened with con.table(); use con.sql() to select
-concrete columns or explicitly cast the values you need.
+final SQL projection. MAP<ANY, ANY> columns, including points_struct.value,
+are exposed as strings containing Scout's JSON text; use json.loads() after
+fetching to access their contents. Concretely typed maps remain Ibis maps.
+Other unresolved ANY types require an explicitly typed projection via con.sql().
 
 Example:
     import ibis

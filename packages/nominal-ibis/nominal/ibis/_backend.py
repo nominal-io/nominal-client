@@ -55,6 +55,12 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
     if kind == "array_element":
         return dt.Array(_catalog_type(data_type.array_element, column))
     if kind == "map":
+        if (
+            data_type.map.key.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
+            and data_type.map.value.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
+        ):
+            # Scout projects dynamic struct values as JSON text in Arrow.
+            return dt.string
         return dt.Map(_catalog_type(data_type.map.key, column), _catalog_type(data_type.map.value, column))
     raise NominalSqlError(
         f"Missing or unsupported catalog data_type for {column}; the server must provide recursive column types"
