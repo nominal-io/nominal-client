@@ -161,5 +161,19 @@ def filter_scopes(
 
 def filter_scope_rids(scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
     return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in filter_scopes(scopes, scope_type)
+        scope.data_scope_name: rid
+        for scope in filter_scopes(scopes, scope_type)
+        if (rid := extract_scope_rid(scope.data_source)) is not None
     }
+
+
+def extract_scope_rid(data_source: scout_run_api.DataSource) -> str | None:
+    """RID held by whichever arm of the `DataSource` union is populated.
+
+    A union carries exactly one arm, and no RID is ever the empty string, so the
+    first non-None arm is the answer. Callers get the RID without having to know
+    which kind of data source they were handed.
+    """
+    return (
+        data_source.dataset or data_source.connection or data_source.video or data_source.spatial or data_source.log_set
+    )

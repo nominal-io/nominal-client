@@ -114,7 +114,7 @@ from nominal.core.marking import (
 )
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
-from nominal.core.spatial_asset import SpatialAsset, SpatialMetadata, _create_spatial_asset
+from nominal.core.spatial import Spatial, SpatialMetadata, _create_spatial
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -938,35 +938,39 @@ class NominalClient:
 
     create_empty_video = create_video
 
-    def create_spatial_asset(
+    def create_spatial(
         self,
         name: str,
-        *,
         metadata: SpatialMetadata,
+        *,
         description: str | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
-        start_timestamp: datetime | IntegralNanosecondsUTC | None = None,
-        end_timestamp: datetime | IntegralNanosecondsUTC | None = None,
-    ) -> SpatialAsset:
-        """Create an empty spatial asset, ready to have data ingested into it.
+        markings: Sequence[Marking | str] | None = None,
+    ) -> Spatial:
+        """Create an empty spatial, ready to have data ingested into it.
 
-        The asset reserves the Dagger model that will hold its data; ingest the data
-        with `SpatialAsset.ingest_point_cloud_csv`.
+        The spatial reserves the model that will hold its data; ingest the data
+        with `Spatial.ingest_point_cloud_csv`.
+
+        The time range this spatial covers is not set here: `ingest_point_cloud_csv`
+        measures it from the point cloud's own time column, and `Spatial.update`
+        sets it explicitly for data that carries no time column.
 
         Args:
-            name: Human-readable name for the spatial asset.
+            name: Human-readable name for the spatial.
             metadata: Type-specific metadata, e.g. `PointCloudMetadata(...)`.
             description: Optional description.
             labels: Labels to apply.
             properties: Key-value properties to apply.
-            start_timestamp: Start of the time range this asset covers.
-            end_timestamp: End of the time range this asset covers.
+            markings: If present, markings (or marking RIDs) applied to the spatial. Sent as part of
+                the creation request rather than applied in a follow-up call. Without any, the
+                spatial is visible to everyone in the workspace.
 
         Returns:
-            The created spatial asset.
+            The created spatial.
         """
-        response = _create_spatial_asset(
+        response = _create_spatial(
             self._clients.auth_header,
             self._clients.spatial,
             name,
@@ -975,15 +979,14 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
-            start_timestamp=start_timestamp,
-            end_timestamp=end_timestamp,
+            marking_rids=_marking_rids(markings),
         )
-        return SpatialAsset._from_conjure(self._clients, response)
+        return Spatial._from_conjure(self._clients, response)
 
-    def get_spatial_asset(self, rid: str) -> SpatialAsset:
-        """Retrieve a spatial asset by its RID."""
+    def get_spatial(self, rid: str) -> Spatial:
+        """Retrieve a spatial by its RID."""
         response = self._clients.spatial.get(self._clients.auth_header, rid)
-        return SpatialAsset._from_conjure(self._clients, response)
+        return Spatial._from_conjure(self._clients, response)
 
     @deprecated(
         "`NominalClient.get_video` is deprecated in favor of video channels on a dataset. Fetch the dataset with "
