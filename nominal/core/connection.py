@@ -61,25 +61,25 @@ class StreamingConnection(Connection):
     @overload
     def get_write_stream(
         self,
-        batch_size: int = 50_000,
-        max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental"] | None = None,
+        batch_size: int = 250_000,
+        max_wait: timedelta = timedelta(seconds=0.25),
+        data_format: Literal["json", "protobuf", "experimental"] = ...,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
         self,
-        batch_size: int = 50_000,
-        max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["rust_experimental"] | None = None,
+        batch_size: int = 250_000,
+        max_wait: timedelta = timedelta(seconds=0.25),
+        data_format: Literal["rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream: ...
     def get_write_stream(
         self,
-        batch_size: int = 50_000,
-        max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
+        batch_size: int = 250_000,
+        max_wait: timedelta = timedelta(seconds=0.25),
+        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
@@ -90,23 +90,30 @@ class StreamingConnection(Connection):
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            data_format: Serialized data format to use during upload.
+            data_format: Serialized data format to use during upload. Defaults to 'rust', falling back to
+                'json' when `nominal-streaming` is not installed.
                 NOTE: selecting 'protobuf' requires that `nominal` was installed with `protos` extras.
+                NOTE: 'rust_experimental' is a deprecated alias for 'rust'.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
-                NOTE: only works with `data_format='rust_experimental'`
+                NOTE: only works with `data_format='rust'`
             log_level: Log level to use in underlying rust streaming code.
                 NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `data_format='rust_experimental'`
+                NOTE: only works with `data_format='rust'`
             num_workers: Number of worker threads to use in underlying rust streaming code.
                 NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `data_format='rust_experimental'`
+                NOTE: only works with `data_format='rust'`
 
         Returns:
         --------
             Write stream object configured to send data to nominal. This may be used as a context manager
             (so that resources are automatically released upon exiting the context), or if not used as a context
             manager, should be explicitly `close()`-ed once no longer needed.
+
+        Raises:
+        ------
+            ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
+                explicitly via `data_format` or implicitly by passing a rust-only argument.
         """
         return _get_write_stream(
             batch_size=batch_size,

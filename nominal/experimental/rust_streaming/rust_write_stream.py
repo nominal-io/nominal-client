@@ -14,9 +14,6 @@ class RustWriteStream(NominalDatasetStream, DataStream):
     """Thin wrapper around the existing Rust Dataset Stream.
 
     See: `nominal_streaming.NominalDatasetStream` for more details
-
-    Note: Array streaming is not currently supported by the Rust streaming backend.
-    Use enqueue() for scalar values only.
     """
 
     @classmethod
