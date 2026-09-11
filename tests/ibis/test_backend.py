@@ -197,3 +197,34 @@ def test_native_max_preserves_numeric_result(output: str) -> None:
                 table = reader.read_all()
         assert table.schema.field("maximum").type == pa.float64()
         assert table.column("maximum").to_pylist() == [1.5]
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+@pytest.mark.parametrize("names", [["name", "dataset_rid"], ["first", "second"]])
+def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: list[str]) -> None:
+    """All output paths reject columns that do not match the requested projection."""
+    con = nibis.connect(make_client(pa.table({name: ["value"] for name in names})))
+    expr = con.table("datasets")
+    with pytest.raises(nibis.NominalSqlError, match="Server returned columns"):
+        if output == "pandas":
+            expr.to_pandas()
+        elif output == "arrow":
+            expr.to_pyarrow()
+        else:
+            with expr.to_pyarrow_batches() as reader:
+                reader.read_all()
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+def test_incompatible_result_type_raises(output: str) -> None:
+    """Failed conversions report the same error for materialized and streamed results."""
+    con = nibis.connect(make_client(pa.table({"value": ["not a number"]})))
+    expr = con.table("points_double").select("value")
+    with pytest.raises(nibis.NominalSqlError, match="not castable"):
+        if output == "pandas":
+            expr.to_pandas()
+        elif output == "arrow":
+            expr.to_pyarrow()
+        else:
+            with expr.to_pyarrow_batches() as reader:
+                reader.read_all()
