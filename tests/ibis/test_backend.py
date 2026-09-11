@@ -211,9 +211,12 @@ def test_native_max_preserves_numeric_result(output: str) -> None:
     "names",
     [["name", "dataset_rid"], ["first", "second"], ["dataset_rid"], ["dataset_rid", "name", "extra_sort_key"]],
 )
-def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: list[str]) -> None:
+@pytest.mark.parametrize("empty", [False, True])
+def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: list[str], empty: bool) -> None:
     """All output paths reject columns that do not match the requested projection."""
-    con = nibis.connect(make_client(pa.table({name: ["value"] for name in names})))
+    con = nibis.connect(
+        make_client(pa.table({name: pa.array([] if empty else ["value"], type=pa.string()) for name in names}))
+    )
     expr = con.table("datasets")
     with pytest.raises(nibis.NominalSqlError, match="Server returned columns"):
         if output == "pandas":
