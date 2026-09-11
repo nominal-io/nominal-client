@@ -14,6 +14,7 @@ from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.core.exceptions import StreamImplementationDeprecationWarning
 from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
@@ -75,7 +76,7 @@ def test_connection_write_stream_defaults_to_rust(mock_connection: StreamingConn
         assert isinstance(stream, RustWriteStream)
 
 
-def test_default_stream_offers_the_same_enqueue_surface_as_json(mock_dataset: Dataset):
+def test_default_stream_offers_the_full_enqueue_surface(mock_dataset: Dataset):
     """Switching the default to rust keeps every enqueue entry point the other implementations offer."""
     expected = {name for name in dir(WriteStreamBase) if name.startswith("enqueue")}
 
@@ -96,11 +97,11 @@ def test_rust_is_selectable_by_name_without_warning(mock_dataset: Dataset):
 
 def test_implementation_is_accepted_positionally(mock_dataset: Dataset):
     """The implementation slot is the third positional parameter `data_format` used to occupy."""
-    with mock_dataset.get_write_stream(250_000, timedelta(seconds=0.25), "json") as stream:
+    with mock_dataset.get_write_stream(250_000, timedelta(seconds=0.25), "python") as stream:
         assert isinstance(stream, WriteStream)
 
 
-@pytest.mark.parametrize("implementation", ["rust_experimental", "protobuf", "experimental"])
+@pytest.mark.parametrize("implementation", ["json", "protobuf", "experimental", "rust_experimental"])
 def test_deprecated_implementations_still_work(mock_dataset: Dataset, implementation: str):
     """Every deprecated implementation still builds a stream, warning to move to 'rust'."""
     with (
@@ -123,7 +124,7 @@ def test_data_format_argument_is_deprecated_but_honored(mock_dataset: Dataset):
     """The old `data_format` argument still selects an implementation, warning to rename the call."""
     with (
         pytest.warns(StreamImplementationDeprecationWarning, match="`data_format` argument is deprecated"),
-        mock_dataset.get_write_stream(data_format="json") as stream,
+        mock_dataset.get_write_stream(data_format="python") as stream,
     ):
         assert isinstance(stream, WriteStream)
 
@@ -131,7 +132,7 @@ def test_data_format_argument_is_deprecated_but_honored(mock_dataset: Dataset):
 def test_deprecation_warning_blames_the_caller(mock_dataset: Dataset):
     """Deprecation warnings point at the user's call site, not at nominal's internals."""
     with pytest.warns(StreamImplementationDeprecationWarning) as caught:
-        mock_dataset.get_write_stream(data_format="json").close()
+        mock_dataset.get_write_stream(data_format="python").close()
 
     assert [warning.filename for warning in caught] == [__file__]
 
@@ -142,10 +143,10 @@ def test_implementation_and_data_format_together_is_an_error(mock_dataset: Datas
         mock_dataset.get_write_stream(implementation="rust", data_format="rust")
 
 
-def test_falls_back_to_protobuf_without_nominal_streaming(
+def test_falls_back_to_python_without_nominal_streaming(
     mock_dataset: Dataset, mock_clients: MagicMock, without_nominal_streaming: None
 ):
-    """Without nominal-streaming the default stream writes protobuf, not JSON."""
+    """Without nominal-streaming the default stream is the pure-python one, writing protobuf."""
     with mock_dataset.get_write_stream(batch_size=1) as stream:
         stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
 
@@ -153,10 +154,8 @@ def test_falls_back_to_protobuf_without_nominal_streaming(
     mock_clients.storage_writer.write_batches.assert_not_called()
 
 
-def test_protobuf_fallback_is_not_treated_as_a_deprecated_choice(
-    mock_dataset: Dataset, without_nominal_streaming: None
-):
-    """Landing on protobuf via the fallback is nominal's choice, so it does not warn the caller."""
+def test_python_fallback_is_not_treated_as_a_deprecated_choice(mock_dataset: Dataset, without_nominal_streaming: None):
+    """Landing on python via the fallback is nominal's choice, so it does not warn the caller."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         mock_dataset.get_write_stream().close()
@@ -178,13 +177,13 @@ def test_rust_only_argument_raises_without_nominal_streaming(mock_dataset: Datas
 
 def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
     """An unrecognized implementation names the ones that are actually supported."""
-    with pytest.raises(ValueError, match="json, protobuf, experimental, rust"):
+    with pytest.raises(ValueError, match="python, rust, experimental"):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
 def test_rust_only_arguments_warn_for_other_implementations(mock_dataset: Dataset, caplog: pytest.LogCaptureFixture):
     """Rust-only arguments log a warning when a non-rust implementation is explicitly chosen."""
-    with mock_dataset.get_write_stream(implementation="json", num_workers=4):  # type: ignore[call-overload]
+    with mock_dataset.get_write_stream(implementation="python", num_workers=4):  # type: ignore[call-overload]
         pass
 
     assert "Argument num_workers has no effect unless `implementation='rust'`" in caplog.text
@@ -213,3 +212,27 @@ def test_constructed_stream_uses_default_batching(mock_dataset: Dataset, without
         assert isinstance(stream, WriteStream)
         assert stream.batch_size == 250_000
         assert stream.max_wait == timedelta(seconds=0.25)
+
+
+@pytest.mark.parametrize("implementation", ["json", "protobuf"])
+def test_superseded_python_spellings_resolve_to_python(
+    mock_dataset: Dataset, mock_clients: MagicMock, implementation: str
+):
+    """'json' and 'protobuf' both now mean 'python', which writes protobuf on the wire."""
+    with (
+        pytest.warns(StreamImplementationDeprecationWarning, match="use implementation='python'"),
+        mock_dataset.get_write_stream(batch_size=1, implementation=implementation) as stream,  # type: ignore[call-overload]
+    ):
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+
+    mock_clients.proto_write.write_nominal_batches.assert_called_once()
+    mock_clients.storage_writer.write_batches.assert_not_called()
+
+
+def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
+    """'experimental' stays its own implementation: folding it in would drop its streaming metrics."""
+    with (
+        pytest.warns(StreamImplementationDeprecationWarning, match="kept only for its streaming metrics"),
+        mock_dataset.get_write_stream(implementation="experimental") as stream,
+    ):
+        assert isinstance(stream, WriteStreamV2)

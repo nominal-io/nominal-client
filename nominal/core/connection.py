@@ -63,9 +63,9 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        implementation: Literal["json", "protobuf", "experimental"] = ...,
+        implementation: Literal["python", "json", "protobuf", "experimental"] = ...,
         *,
-        data_format: Literal["json", "protobuf", "experimental"] | None = None,
+        data_format: Literal["python", "json", "protobuf", "experimental"] | None = None,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
@@ -83,12 +83,13 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        implementation: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"]
+        | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
         *,
-        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        data_format: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"] | None = None,
     ) -> DataStream:
         """Stream to write non-blocking messages to a datasource.
 
@@ -96,10 +97,12 @@ class StreamingConnection(Connection):
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            implementation: Streaming implementation to use. Defaults to 'rust', falling back to
-                'protobuf' when `nominal-streaming` is not installed.
-                NOTE: 'protobuf', 'experimental', and 'rust_experimental' are deprecated; 'rust'
-                      supersedes all three.
+            implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
+                falling back to 'python' when `nominal-streaming` is not installed.
+                NOTE: 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+                      'python', 'python', and 'rust' respectively.
+                NOTE: 'experimental' is also deprecated, but is its own implementation rather than an
+                      alias -- it streams runtime metrics to a dataset that nothing else does yet.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
                 NOTE: only works with `implementation='rust'`

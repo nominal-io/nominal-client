@@ -4,7 +4,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import TYPE_CHECKING, Iterable, Literal, Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, overload
 
 from nominal_api import (
     api,
@@ -27,7 +27,6 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
-from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
@@ -159,9 +158,9 @@ class DataSource(HasRid, MarkableMixin):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        implementation: Literal["json", "protobuf", "experimental"] = ...,
+        implementation: Literal["python", "json", "protobuf", "experimental"] = ...,
         *,
-        data_format: Literal["json", "protobuf", "experimental"] | None = None,
+        data_format: Literal["python", "json", "protobuf", "experimental"] | None = None,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
@@ -179,12 +178,13 @@ class DataSource(HasRid, MarkableMixin):
         self,
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
-        implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        implementation: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"]
+        | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
         *,
-        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
+        data_format: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"] | None = None,
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
@@ -194,10 +194,12 @@ class DataSource(HasRid, MarkableMixin):
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            implementation: Streaming implementation to use. Defaults to 'rust', falling back to
-                'protobuf' when `nominal-streaming` is not installed.
-                NOTE: 'protobuf', 'experimental', and 'rust_experimental' are deprecated; 'rust'
-                      supersedes all three.
+            implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
+                falling back to 'python' when `nominal-streaming` is not installed.
+                NOTE: 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+                      'python', 'python', and 'rust' respectively.
+                NOTE: 'experimental' is also deprecated, but is its own implementation rather than an
+                      alias -- it streams runtime metrics to a dataset that nothing else does yet.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
                 NOTE: only works with `implementation='rust'`
@@ -501,13 +503,18 @@ def _construct_export_request(
     return request
 
 
-_IMPLEMENTATIONS = ("json", "protobuf", "experimental", "rust")
+_IMPLEMENTATIONS = ("python", "rust", "experimental")
 
-# Every one of these still works; each warns and points at the implementation that supersedes it.
+# Every spelling `implementation` accepts, including the superseded ones. The public signatures spell
+# the literals out so they render in the docs; the plumbing below uses this.
+_AnyImplementation: TypeAlias = Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"]
+
+# Superseded spellings. Each still works and each warns; the value is the guidance in the warning.
 _DEPRECATED_IMPLEMENTATIONS = {
+    "json": "use implementation='python'",
+    "protobuf": "use implementation='python'",
     "rust_experimental": "use implementation='rust'",
-    "protobuf": "use implementation='rust', which supersedes it",
-    "experimental": "use implementation='rust', which supersedes it",
+    "experimental": "use implementation='rust' -- 'experimental' is kept only for its streaming metrics",
 }
 
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the caller we want to blame.
@@ -527,19 +534,19 @@ def _import_rust_write_stream() -> type[RustWriteStream]:
 
 
 def _resolve_implementation(
-    implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
-    data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
+    implementation: _AnyImplementation | None,
+    data_format: _AnyImplementation | None,
     rust_only_arguments: Mapping[str, object],
-) -> Literal["json", "protobuf", "experimental", "rust"]:
-    """Resolve the requested implementation, warning about deprecated spellings on the way.
+) -> Literal["python", "rust", "experimental"]:
+    """Resolve the requested implementation, warning about superseded spellings on the way.
 
-    `None` means "rust if we can, protobuf otherwise": `nominal-streaming` is a dependency of
+    `None` means "rust if we can, python otherwise": `nominal-streaming` is a dependency of
     `nominal`, but it carries platform markers and is not installable everywhere. The fallback is
     deliberately not taken when the caller passed a rust-only argument, since silently dropping
     `file_fallback` would turn a durability feature into a no-op.
 
-    Deprecation warnings fire only for what the caller actually asked for -- landing on 'protobuf'
-    via the fallback is not the caller choosing a deprecated implementation.
+    Deprecation warnings fire only for what the caller actually asked for -- landing on 'python' via
+    the fallback is not the caller choosing a deprecated implementation.
     """
     if data_format is not None:
         if implementation is not None:
@@ -559,10 +566,23 @@ def _resolve_implementation(
             stacklevel=_DEPRECATION_STACKLEVEL,
         )
 
-    if implementation == "rust_experimental":
-        return "rust"
-    elif implementation is not None:
-        return implementation
+    match implementation:
+        case None:
+            pass  # resolved below, against what is installed
+        case "json" | "protobuf":
+            # Both were pure-python streams; 'python' is whichever of the two is worth having.
+            return "python"
+        case "rust_experimental":
+            return "rust"
+        case "python" | "rust" | "experimental":
+            # 'experimental' survives as itself rather than as an alias: it streams runtime metrics
+            # to a dataset that no other implementation offers yet, so folding it into 'python'
+            # would silently drop them.
+            return implementation
+        case _:
+            raise ValueError(
+                f"Expected `implementation` to be one of {{{', '.join(_IMPLEMENTATIONS)}}}, received {implementation!r}"
+            )
 
     try:
         _import_rust_write_stream()
@@ -574,10 +594,10 @@ def _resolve_implementation(
             ) from ex
 
         logger.info(
-            "nominal-streaming is unavailable, falling back to `implementation='protobuf'` streaming. "
+            "nominal-streaming is unavailable, falling back to `implementation='python'` streaming. "
             "Install nominal-streaming for higher-throughput streaming."
         )
-        return "protobuf"
+        return "python"
 
     return "rust"
 
@@ -585,8 +605,8 @@ def _resolve_implementation(
 def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
-    implementation: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
-    data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None,
+    implementation: _AnyImplementation | None,
+    data_format: _AnyImplementation | None,
     file_fallback: PathLike | None,
     log_level: str | None,
     num_workers: int | None,
@@ -605,18 +625,7 @@ def _get_write_stream(
             if value is not None:
                 logger.warning("Argument %s has no effect unless `implementation='rust'`", key)
 
-    if resolved == "json":
-        return WriteStream.create(
-            batch_size=batch_size,
-            max_wait=max_wait,
-            process_batch=lambda batch: process_batch_legacy(
-                batch=batch,
-                nominal_data_source_rid=write_rid,
-                auth_header=clients.auth_header,
-                storage_writer=clients.storage_writer,
-            ),
-        )
-    elif resolved == "protobuf":
+    if resolved == "python":
         return WriteStream.create(
             batch_size,
             max_wait,
@@ -659,8 +668,4 @@ def _get_write_stream(
             file_fallback=file_fallback,
             log_level=log_level,
             num_workers=num_workers,
-        )
-    else:
-        raise ValueError(
-            f"Expected `implementation` to be one of {{{', '.join(_IMPLEMENTATIONS)}}}, received '{resolved}'"
         )
