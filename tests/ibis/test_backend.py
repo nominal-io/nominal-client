@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from typing import Iterator
 from unittest.mock import MagicMock
 
@@ -298,7 +299,7 @@ def test_nested_catalog_types_round_trip() -> None:
             sql_pb2.SqlCatalogDataType(
                 map=sql_pb2.SqlCatalogMapType(
                     key=sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY),
-                    value=sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY),
+                    value=sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR),
                 )
             ),
             "Catalog type ANY",
@@ -317,3 +318,36 @@ def test_unsupported_catalog_type_only_blocks_its_table(
     assert con.table("datasets").columns == ("dataset_rid", "name")
     with pytest.raises(nibis.NominalSqlError, match=message + ".*points_struct.value"):
         con.table("points_struct")
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+def test_points_struct_value_is_json_text(output: str) -> None:
+    value = {"location": {"lat": 42.5}, "tags": ["flight", "test"], "count": 10, "valid": True}
+    text = json.dumps(value)
+    client = make_client(pa.table({"value": pa.array([text, None], type=pa.string())}))
+    any_type = sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY)
+    client._clients.sql.GetSqlCatalog.return_value.sql_catalog.tables.add(
+        name="points_struct",
+        columns=[
+            sql_pb2.SqlCatalogColumn(
+                name="value",
+                type="MAP",
+                nullable=True,
+                data_type=sql_pb2.SqlCatalogDataType(map=sql_pb2.SqlCatalogMapType(key=any_type, value=any_type)),
+            )
+        ],
+    )
+    con = nibis.connect(client)
+    expr = con.table("points_struct").select("value")
+    assert expr.schema()["value"] == dt.string
+    assert con.table("points_double").schema()["tags"].is_map()
+    assert "CAST" not in con.compile(expr)
+    if output == "pandas":
+        values = expr.to_pandas()["value"].tolist()
+    elif output == "arrow":
+        values = expr.to_pyarrow()["value"].to_pylist()
+    else:
+        with expr.to_pyarrow_batches() as reader:
+            values = reader.read_all()["value"].to_pylist()
+    assert values == [text, None]
+    assert json.loads(values[0]) == value
