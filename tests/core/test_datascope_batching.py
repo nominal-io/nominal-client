@@ -39,7 +39,6 @@ def clients() -> MagicMock:
     clients.catalog.get_enriched_datasets.return_value = []
     clients.connection.get_connections.return_value = []
     clients.video.batch_get.return_value.responses = []
-    clients.spatial.batch_get.return_value.responses = []
     return clients
 
 
@@ -128,7 +127,6 @@ def test_scope_types_absent_from_an_asset_cost_no_request(clients: MagicMock) ->
     clients.connection.get_connections.assert_called_once()
     clients.catalog.get_enriched_datasets.assert_not_called()
     clients.video.batch_get.assert_not_called()
-    clients.spatial.batch_get.assert_not_called()
 
 
 def test_getting_one_scope_resolves_only_that_scope(clients: MagicMock) -> None:
@@ -184,21 +182,6 @@ def test_run_videos_resolve_in_a_single_request(clients: MagicMock) -> None:
     clients.video.get.assert_not_called()
 
 
-def test_run_spatials_resolve_in_a_single_request(clients: MagicMock) -> None:
-    """Listing spatials on a run batches their RIDs instead of fetching one at a time."""
-    run = _run(
-        clients,
-        one=scout_run_api.DataSource(spatial="ri.s.1"),
-        two=scout_run_api.DataSource(spatial="ri.s.2"),
-    )
-
-    run.list_spatials()
-
-    clients.spatial.batch_get.assert_called_once()
-    assert sorted(clients.spatial.batch_get.call_args.args[1].spatial_rids) == ["ri.s.1", "ri.s.2"]
-    clients.spatial.get.assert_not_called()
-
-
 def test_run_scope_types_absent_from_a_run_cost_no_request(clients: MagicMock) -> None:
     """A run with no video refs must not call the video service at all."""
     run = _run(clients, ds=scout_run_api.DataSource(dataset="ri.d.1"))
@@ -207,3 +190,47 @@ def test_run_scope_types_absent_from_a_run_cost_no_request(clients: MagicMock) -
 
     clients.video.batch_get.assert_not_called()
     clients.video.get.assert_not_called()
+
+
+# --- adding a scope -----------------------------------------------------------
+
+
+def _raw_asset(title: str) -> MagicMock:
+    """A conjure Asset bean as `add_data_scopes_to_asset` answers with."""
+    raw = MagicMock()
+    raw.rid = _ASSET_RID
+    raw.title = title
+    raw.description = None
+    raw.properties = {}
+    raw.labels = []
+    raw.created_at = 0
+    raw.is_archived = False
+    raw.created_by = None
+    return raw
+
+
+def test_adding_a_scope_to_an_asset_updates_it_in_place(clients: MagicMock) -> None:
+    """The response carries the new state, so the caller is not left holding a stale asset."""
+    asset = _asset(clients)
+    clients.assets.add_data_scopes_to_asset.return_value = _raw_asset("renamed-elsewhere")
+
+    asset.add_dataset("ds", "ri.d.1")
+
+    assert asset.name == "renamed-elsewhere"
+
+
+def test_adding_a_scope_to_a_run_updates_it_in_place(clients: MagicMock) -> None:
+    """Same for a run: the add response is the run's new state, not something to discard."""
+    run = _run(clients)
+    updated = MagicMock()
+    updated.rid, updated.title, updated.description = _RUN_RID, "renamed-elsewhere", ""
+    updated.properties, updated.labels, updated.links = {}, [], []
+    updated.start_time = scout_run_api.UtcTimestamp(seconds_since_epoch=0, offset_nanoseconds=0)
+    updated.end_time, updated.run_number = None, 1
+    updated.assets, updated.is_archived, updated.created_by = [], False, None
+    updated.created_at = 0
+    clients.run.add_data_sources_to_run.return_value = updated
+
+    run.add_dataset("ds", "ri.d.1")
+
+    assert run.name == "renamed-elsewhere"

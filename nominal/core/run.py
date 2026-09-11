@@ -19,7 +19,9 @@ from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
     RefreshableConjureMixin,
+    ScopeTypeSpecifier,
     create_links,
+    extract_scope_rid,
     filter_scopes,
     pair_by_rid,
     rid_from_instance_or_string,
@@ -34,7 +36,7 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_da
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
-from nominal.core.spatial_asset import SpatialAsset, _get_spatial, _get_spatials
+from nominal.core.spatial_asset import SpatialAsset, _get_spatial
 from nominal.core.video import Video, _get_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
@@ -163,21 +165,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
         return filter_scopes(api_run.asset_data_scopes, "dataset")
 
-    def _list_datasource_rids(
-        self, datasource_type: str | None = None, property_name: str | None = None
-    ) -> Mapping[str, str]:
-        enriched_run = self._get_latest_api()
-        datasource_rids_by_ref_name = {}
-        for ref_name, source in enriched_run.data_sources.items():
-            if datasource_type is not None and source.data_source.type != datasource_type:
-                continue
-
-            rid = cast(
-                str, getattr(source.data_source, source.data_source.type if property_name is None else property_name)
-            )
-            datasource_rids_by_ref_name[ref_name] = rid
-
-        return datasource_rids_by_ref_name
+    def _list_datasource_rids(self, datasource_type: ScopeTypeSpecifier) -> Mapping[str, str]:
+        return {
+            ref_name: rid
+            for ref_name, source in self._get_latest_api().data_sources.items()
+            if source.data_source.type == datasource_type and (rid := extract_scope_rid(source.data_source)) is not None
+        }
 
     def remove_data_sources(
         self,
@@ -201,16 +194,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
                 offset=rds.offset,
             )
             for ref_name, rds in conjure_run.data_sources.items()
-            if ref_name not in ref_names
-            and all(
-                rid not in data_source_rids
-                for rid in (
-                    rds.data_source.dataset,
-                    rds.data_source.connection,
-                    rds.data_source.video,
-                    rds.data_source.spatial,
-                )
-            )
+            if ref_name not in ref_names and extract_scope_rid(rds.data_source) not in data_source_rids
         }
 
         updated_run = self._clients.run.update_run(
@@ -320,6 +304,34 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             archive_status=archive_status,
         )
 
+    def _add_data_sources(
+        self,
+        data_sources: Mapping[str, scout_run_api.DataSource],
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
+        requests = {
+            data_scope_name: scout_run_api.CreateRunDataSource(
+                data_source=data_source,
+                series_tags={**series_tags} if series_tags else {},
+                offset=None if offset is None else _to_api_duration(offset),
+            )
+            for data_scope_name, data_source in data_sources.items()
+        }
+        resp = self._clients.run.add_data_sources_to_run(self._clients.auth_header, requests, self.rid)
+        self._refresh_from_api(resp)
+
+    def _add_data_source(
+        self,
+        data_scope_name: str,
+        data_source: scout_run_api.DataSource,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
+        self._add_data_sources({data_scope_name: data_source}, series_tags=series_tags, offset=offset)
+
     def add_dataset(
         self,
         ref_name: str,
@@ -358,15 +370,14 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
             offset: Add the datasets to the run with a pre-baked offset
         """
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
-            )
-            for ref_name, dataset in datasets.items()
-        }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        self._add_data_sources(
+            {
+                ref_name: scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset))
+                for ref_name, dataset in datasets.items()
+            },
+            series_tags=series_tags,
+            offset=offset,
+        )
 
     def add_connection(
         self,
@@ -388,14 +399,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             series_tags: Key-value tags to pre-filter the connection with before adding to the run.
             offset: Add the connection to the run with a pre-baked offset
         """
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
-            )
-        }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        self._add_data_source(
+            ref_name,
+            scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
+            series_tags=series_tags,
+            offset=offset,
+        )
 
     @deprecated(
         "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
@@ -404,12 +413,10 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     )
     def add_video(self, ref_name: str, video: Video | str) -> None:
         """Add a video to a run via video object or RID."""
-        request = scout_run_api.CreateRunDataSource(
-            data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
-            series_tags={},
-            offset=None,
+        self._add_data_source(
+            ref_name,
+            scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
         )
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
 
     def add_spatial(self, ref_name: str, spatial: SpatialAsset | str) -> None:
         """Add a spatial asset to a run via SpatialAsset object or RID."""
@@ -453,9 +460,12 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
     def list_spatials(self) -> Sequence[tuple[str, SpatialAsset]]:
         """List a sequence of refname, SpatialAsset tuples associated with this Run."""
-        rids = self._list_datasource_rids("spatial")
-        spatials = _get_spatials(self._clients, rids.values())
-        return pair_by_rid(rids, [SpatialAsset._from_conjure(self._clients, spatial) for spatial in spatials])
+        # Left per-rid: spatial is being relocated to `nominal.experimental.spatial`, so
+        # batching it here would only have to be undone. See #970.
+        return [
+            (name, SpatialAsset._from_conjure(self._clients, _get_spatial(self._clients, rid)))
+            for name, rid in self._list_datasource_rids("spatial").items()
+        ]
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
