@@ -96,3 +96,25 @@ def test_nominal_config_rejects_unsupported_version(config_path: Path) -> None:
 
     with pytest.raises(NominalConfigError, match="unsupported config version"):
         NominalConfig.from_yaml(config_path)
+
+
+@pytest.mark.parametrize("first_import", ["nominal.config", "nominal.config._config", "nominal.core"])
+def test_config_import_order(first_import: str) -> None:
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import {first_import}; "
+            "from nominal.config import NominalConfig, NominalConfigError; "
+            "from nominal.core.exceptions import NominalConfigError as PublicError, NominalError; "
+            "assert NominalConfigError is PublicError; "
+            "assert issubclass(PublicError, NominalError)",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
