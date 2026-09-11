@@ -205,10 +205,13 @@ class Backend(SQLBackend, NoUrl):
         with self._open_stream(query) as reader:
             return reader.read_all()
 
+    @staticmethod
+    def _check_result_columns(actual: pa.Schema, target: pa.Schema) -> None:
+        if actual.names != target.names:
+            raise NominalSqlError(f"Server returned columns {actual.names}, expected {target.names}")
+
     def _cast_result(self, result: pa.Table, target: pa.Schema) -> pa.Table:
-        expected = target.names
-        if result.column_names != expected:
-            raise NominalSqlError(f"Server returned columns {result.column_names}, expected {expected}")
+        self._check_result_columns(result.schema, target)
         try:
             return result.cast(target)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError) as e:
@@ -253,11 +256,12 @@ class Backend(SQLBackend, NoUrl):
         """Execute the expression, streaming record batches without materializing the result."""
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
-        reader = self._open_stream(self.compile(table_expr, params=params, limit=limit))
+        sql = self.compile(table_expr, params=params, limit=limit)
         target = table_expr.schema().to_pyarrow()
 
         def converted_batches() -> Iterator[pa.RecordBatch]:
-            with reader:
+            with self._open_stream(sql) as reader:
+                self._check_result_columns(reader.schema, target)
                 for batch in reader:
                     table = self._cast_result(pa.Table.from_batches([batch]), target)
                     yield from table.to_batches(max_chunksize=chunk_size)
