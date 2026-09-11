@@ -9,7 +9,7 @@ from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, _create_dataset_request
 from nominal.core.marking import _marking_rids
 
 
@@ -51,17 +51,12 @@ def create_derived_dataset(
     Returns:
         Reference to the created derived dataset in Nominal.
     """
-    request = scout_catalog.CreateDataset(
-        channel_search_split_tag_keys=[],
-        name=name,
+    request = _create_dataset_request(
+        name,
         description=description,
-        labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=client._clients.resolve_default_workspace_rid(),
+        labels=labels,
+        properties=properties,
+        workspace_rid=client._clients.resolve_default_workspace_rid(),
         marking_rids=_marking_rids(markings),
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),
     )
