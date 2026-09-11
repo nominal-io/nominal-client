@@ -164,25 +164,14 @@ def test_create_search_runs_query_with_properties():
     assert prop_filters == properties
 
 
-def test_create_search_runs_query_with_name_substring():
-    """Test query creation with name_substring filter."""
-    name_substring = "test-run"
-    query = create_search_runs_query(name_substring=name_substring)
+def test_create_search_runs_query_with_substring_match():
+    """Test query creation with substring_match filter."""
+    substring_match = "Run 12345"
+    query = create_search_runs_query(substring_match=substring_match)
 
     sub_query = _only_sub_query(query)
 
-    # Should use exact_match for name_substring
-    assert sub_query.exact_match == name_substring
-
-
-def test_create_search_runs_query_with_exact_match():
-    """Test query creation with exact_match filter."""
-    exact_match = "Run 12345"
-    query = create_search_runs_query(exact_match=exact_match)
-
-    sub_query = _only_sub_query(query)
-
-    assert sub_query.exact_match == exact_match
+    assert sub_query.exact_match == substring_match
 
 
 def test_create_search_runs_query_with_search_text():
@@ -211,10 +200,9 @@ def test_create_search_runs_query_with_all_filters():
     end = datetime(2024, 12, 31)
     created_after = datetime(2024, 6, 1)
     created_before = datetime(2024, 6, 30)
-    name_substring = "test"
     labels = ["test", "automated"]
     properties = {"env": "prod"}
-    exact_match = "Test Run 1"
+    substring_match = "Test Run 1"
     search_text = "important"
     workspace_rid = "ri.workspace.main.workspace.12345"
 
@@ -223,19 +211,18 @@ def test_create_search_runs_query_with_all_filters():
         end=end,
         created_after=created_after,
         created_before=created_before,
-        name_substring=name_substring,
         labels=labels,
         properties=properties,
-        exact_match=exact_match,
+        substring_match=substring_match,
         search_text=search_text,
         workspace_rid=workspace_rid,
     )
 
     # Should have all filters:
-    # start_time, end_time, created_at, name_substring, labels,
-    # properties (1 per property = 1), exact_match, search_text, workspace
-    # Total: 9 filters
-    assert len(_and_queries(query)) == 9
+    # start_time, end_time, created_at, labels,
+    # properties (1 per property = 1), substring_match, search_text, workspace
+    # Total: 8 filters
+    assert len(_and_queries(query)) == 8
 
 
 def test_create_search_runs_query_empty_labels():
@@ -259,10 +246,9 @@ def test_create_search_runs_query_none_values():
     query = create_search_runs_query(
         start=None,
         end=None,
-        name_substring=None,
         labels=None,
         properties=None,
-        exact_match=None,
+        substring_match=None,
         search_text=None,
         created_after=None,
         created_before=None,

@@ -63,10 +63,10 @@ class LogPoint:
 
 
 def _log_filter_operator(
-    regex_match: str | None = None, insensitive_match: str | None = None
+    regex_match: str | None = None, substring_match: str | None = None
 ) -> scout_compute_api.LogFilterOperator:
-    if regex_match and insensitive_match:
-        raise ValueError("Only one of `regex_match` or `insensitive_match` may be provided")
+    if regex_match and substring_match:
+        raise ValueError("Only one of `regex_match` or `substring_match` may be provided")
     elif regex_match:
         return scout_compute_api.LogFilterOperator(
             regex_filter=scout_compute_api.LogRegexFilterOperator(regex=regex_match)
@@ -74,7 +74,7 @@ def _log_filter_operator(
     else:
         return scout_compute_api.LogFilterOperator(
             exact_match_case_insensitive_filter=scout_compute_api.LogExactMatchCaseInsensitiveFilter(
-                token=insensitive_match or ""
+                token=substring_match or ""
             )
         )
 
