@@ -16,6 +16,18 @@ class LegacyVideoDeprecationWarning(DeprecationWarning):
     """
 
 
+class StreamImplementationDeprecationWarning(UserWarning):
+    """Emitted by the superseded spellings of `get_write_stream`'s implementation choice: the
+    `data_format` argument, and the 'protobuf', 'experimental', and 'rust_experimental'
+    implementations. All still work; 'rust' supersedes them.
+
+    A `UserWarning` rather than a `DeprecationWarning` so that library callers actually see it --
+    Python hides DeprecationWarning outside `__main__`, which is where these callers live. Its own
+    class so it can be filtered without muting every other warning, e.g.
+    `warnings.filterwarnings("ignore", category=StreamImplementationDeprecationWarning)`.
+    """
+
+
 class NominalIngestError(NominalError):
     """An error occurred during ingest."""
 
