@@ -114,7 +114,6 @@ from nominal.core.marking import (
 )
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
-from nominal.core.spatial import PointCloudMetadata, Spatial, _create_point_cloud_spatial
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -937,55 +936,6 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     create_empty_video = create_video
-
-    def create_point_cloud_spatial(
-        self,
-        name: str,
-        metadata: PointCloudMetadata,
-        *,
-        description: str | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        markings: Sequence[Marking | str] | None = None,
-    ) -> Spatial:
-        """Create an empty spatial, ready to have data ingested into it.
-
-        The spatial reserves the model that will hold its data; ingest the data
-        with `Spatial.ingest_point_cloud_csv`.
-
-        The time range this spatial covers is not set here: `ingest_point_cloud_csv`
-        measures it from the point cloud's own time column.
-
-        Args:
-            name: Human-readable name for the spatial.
-            metadata: Point-cloud metadata, e.g. `PointCloudMetadata(sensor_model=...)`.
-            description: Optional description.
-            labels: Labels to apply.
-            properties: Key-value properties to apply.
-            markings: If present, markings (or marking RIDs) applied to the spatial. Sent as part of
-                the creation request rather than applied in a follow-up call. Without any, the
-                spatial is visible to everyone in the workspace.
-
-        Returns:
-            The created spatial.
-        """
-        response = _create_point_cloud_spatial(
-            self._clients.auth_header,
-            self._clients.spatial,
-            name,
-            metadata=metadata,
-            description=description,
-            labels=labels,
-            properties=properties,
-            workspace_rid=self._clients.resolve_default_workspace_rid(),
-            marking_rids=_marking_rids(markings),
-        )
-        return Spatial._from_conjure(self._clients, response)
-
-    def get_spatial(self, rid: str) -> Spatial:
-        """Retrieve a spatial by its RID."""
-        response = self._clients.spatial.get(self._clients.auth_header, rid)
-        return Spatial._from_conjure(self._clients, response)
 
     @deprecated(
         "`NominalClient.get_video` is deprecated in favor of video channels on a dataset. Fetch the dataset with "

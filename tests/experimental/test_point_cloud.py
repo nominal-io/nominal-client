@@ -5,7 +5,7 @@ from typing import Any, Sequence
 
 import pytest
 
-from nominal.core._point_cloud import _TYPE_INFERENCE_SAMPLE_ROWS, _describe_point_cloud_csv
+from nominal.experimental.spatial._point_cloud import _TYPE_INFERENCE_SAMPLE_ROWS, _describe_point_cloud_csv
 
 _TIMED_CSV = "x,y,z,t_s\n0,0,0,1.5\n1,1,1,0.25\n2,2,2,9.75\n"
 _RGB_HEADER = "x,y,z,color,intensity,ring,label"

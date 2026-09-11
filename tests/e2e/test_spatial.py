@@ -35,7 +35,19 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
-from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial
+from nominal.experimental.spatial import (
+    PointCloudMetadata,
+    ScanPattern,
+    Spatial,
+    add_spatial_to_asset,
+    add_spatial_to_run,
+    create_point_cloud_spatial,
+    get_spatial,
+    get_spatial_from_asset,
+    get_spatial_from_run,
+    list_spatials_in_asset,
+    list_spatials_in_run,
+)
 
 DAGGER_UNAVAILABLE = "Dagger is not configured"
 
@@ -66,7 +78,8 @@ def point_cloud_csv(tmp_path_factory) -> Path:
 
 @pytest.fixture
 def spatial(client: NominalClient) -> Iterator[Spatial]:
-    asset = client.create_point_cloud_spatial(
+    asset = create_point_cloud_spatial(
+        client,
         f"e2e-spatial-{uuid4().hex[:8]}",
         metadata=PointCloudMetadata(sensor_model="Ouster OS1-128", scan_pattern=ScanPattern.ROTATING),
     )
@@ -100,7 +113,7 @@ def _ingest(spatial: Spatial, csv_path: Path, **kwargs) -> IngestionJob:
 
 def test_create_spatial_round_trips(client: NominalClient, spatial: Spatial) -> None:
     """A created spatial is readable by rid with its metadata intact."""
-    fetched = client.get_spatial(spatial.rid)
+    fetched = get_spatial(client, spatial.rid)
     assert fetched.rid == spatial.rid
     assert fetched.name == spatial.name
     assert fetched.metadata == PointCloudMetadata(sensor_model="Ouster OS1-128", scan_pattern=ScanPattern.ROTATING)
@@ -120,7 +133,7 @@ def test_update_round_trips_every_field_and_leaves_the_rest_alone(client: Nomina
     )
     assert spatial.name == "renamed-scan"
 
-    fetched = client.get_spatial(spatial.rid)
+    fetched = get_spatial(client, spatial.rid)
     assert fetched.name == "renamed-scan"
     assert fetched.description == "updated"
     assert set(fetched.labels) == {"lidar", "e2e"}
@@ -131,12 +144,12 @@ def test_update_round_trips_every_field_and_leaves_the_rest_alone(client: Nomina
 
 def test_archive_and_unarchive(client: NominalClient) -> None:
     """Archiving hides a spatial from search and unarchiving brings it back."""
-    asset = client.create_point_cloud_spatial(f"e2e-spatial-arch-{uuid4().hex[:8]}", metadata=PointCloudMetadata())
+    asset = create_point_cloud_spatial(client, f"e2e-spatial-arch-{uuid4().hex[:8]}", metadata=PointCloudMetadata())
     try:
         asset.archive()
-        assert client.get_spatial(asset.rid).is_archived is True
+        assert get_spatial(client, asset.rid).is_archived is True
         asset.unarchive()
-        assert client.get_spatial(asset.rid).is_archived is False
+        assert get_spatial(client, asset.rid).is_archived is False
     finally:
         asset.archive()
 
@@ -189,9 +202,9 @@ def test_spatial_as_run_data_scope(client: NominalClient, spatial: Spatial) -> N
     start = datetime.now(timezone.utc)
     run = client.create_run(f"e2e-spatial-run-{uuid4().hex[:8]}", start=start, end=start + timedelta(hours=1))
     try:
-        run.add_spatial("cloud", spatial)
-        assert run.get_spatial("cloud").rid == spatial.rid
-        assert [(name, a.rid) for name, a in run.list_spatials()] == [("cloud", spatial.rid)]
+        add_spatial_to_run(run, "cloud", spatial)
+        assert get_spatial_from_run(run, "cloud").rid == spatial.rid
+        assert [(name, a.rid) for name, a in list_spatials_in_run(run)] == [("cloud", spatial.rid)]
     finally:
         run.archive()
 
@@ -200,10 +213,11 @@ def test_spatial_as_asset_data_scope(client: NominalClient, spatial: Spatial) ->
     """add_spatial / get_spatial / list_spatials round-trip on an Asset."""
     asset = client.create_asset(f"e2e-spatial-asset-{uuid4().hex[:8]}")
     try:
-        asset.add_spatial("cloud", spatial)
-        assert asset.get_spatial("cloud").rid == spatial.rid
-        assert [(name, a.rid) for name, a in asset.list_spatials()] == [("cloud", spatial.rid)]
-        # Spatial scopes must also show up in the combined data-scope listing.
-        assert spatial.rid in [scope.rid for _, scope in asset.list_data_scopes()]
+        add_spatial_to_asset(asset, "cloud", spatial)
+        assert get_spatial_from_asset(asset, "cloud").rid == spatial.rid
+        assert [(name, a.rid) for name, a in list_spatials_in_asset(asset)] == [("cloud", spatial.rid)]
+        # Core's combined listing deliberately leaves spatials out: `ScopeType` covers only
+        # the kinds core knows about, and a spatial is reached through this module instead.
+        assert spatial.rid not in [scope.rid for _, scope in asset.list_data_scopes()]
     finally:
         asset.archive()

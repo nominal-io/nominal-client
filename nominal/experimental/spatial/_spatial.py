@@ -12,13 +12,15 @@ from typing import Mapping, Protocol, Sequence, overload
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
 from typing_extensions import Self
 
+from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
+from nominal.core.marking import _marking_rids
+from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
 
 logger = logging.getLogger(__name__)
@@ -419,17 +421,64 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         )
 
 
-def _create_point_cloud_spatial(
-    auth_header: str,
-    spatial_service: scout_spatial.SpatialService,
+def create_point_cloud_spatial(
+    client: NominalClient,
+    name: str,
+    *,
+    metadata: PointCloudMetadata,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    markings: Sequence[Marking | str] | None = None,
+) -> Spatial:
+    """Create an empty spatial, ready to have a point cloud added to it.
+
+    The spatial reserves the model that will hold its data; add the data with
+    `Spatial.add_point_cloud_csv`. The time range it covers is not set here:
+    `add_point_cloud_csv` measures it from the point cloud's own time column.
+
+    Args:
+        client: Client to create the spatial with.
+        name: Human-readable name for the spatial.
+        metadata: Point-cloud metadata, e.g. `PointCloudMetadata(sensor_model=...)`.
+        description: Optional description.
+        labels: Labels to apply.
+        properties: Key-value properties to apply.
+        markings: If present, markings (or marking RIDs) applied to the spatial. Sent as part of
+            the creation request rather than applied in a follow-up call. Without any, the
+            spatial is visible to everyone in the workspace.
+
+    Returns:
+        The created spatial.
+    """
+    return Spatial._from_conjure(
+        client._clients,
+        _create_spatial_request(
+            client,
+            name,
+            metadata=metadata,
+            description=description,
+            labels=labels,
+            properties=properties,
+            markings=markings,
+        ),
+    )
+
+
+def get_spatial(client: NominalClient, rid: str) -> Spatial:
+    """Retrieve a spatial by its RID."""
+    return Spatial._from_conjure(client._clients, _get_spatial(client._clients, rid))
+
+
+def _create_spatial_request(
+    client: NominalClient,
     name: str,
     *,
     metadata: PointCloudMetadata,
     description: str | None,
     labels: Sequence[str],
     properties: Mapping[str, str] | None,
-    workspace_rid: str,
-    marking_rids: Sequence[str],
+    markings: Sequence[Marking | str] | None,
 ) -> scout_spatial_api.Spatial:
     # The spatial names the model rather than referencing an existing one: the
     # platform indexes the import under this uuid when the point cloud is
@@ -445,11 +494,11 @@ def _create_point_cloud_spatial(
         type_metadata=scout_spatial_api.SpatialTypeMetadata(point_cloud=metadata._to_conjure()),
         labels=list(labels),
         properties=dict(properties) if properties else {},
-        marking_rids=list(marking_rids),
+        marking_rids=_marking_rids(markings),
         description=description,
-        workspace=workspace_rid,
+        workspace=client._clients.resolve_default_workspace_rid(),
     )
-    return spatial_service.create(auth_header, request)
+    return client._clients.spatial.create(client._clients.auth_header, request)
 
 
 def _get_spatial(clients: Spatial._Clients, rid: str) -> scout_spatial_api.Spatial:

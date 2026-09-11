@@ -8,8 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nominal_api import api, ingest_api, scout_spatial_api
 
-from nominal.core.client import NominalClient
-from nominal.core.spatial import PointCloudMetadata, ScanPattern, Spatial, _PointCloudTimeMetadata
+from nominal.experimental.spatial import (
+    PointCloudMetadata,
+    ScanPattern,
+    Spatial,
+    create_point_cloud_spatial,
+    get_spatial,
+)
+from nominal.experimental.spatial._spatial import _PointCloudTimeMetadata
 from nominal.ts import Relative
 
 _SPATIAL_RID = "ri.scout.x.spatial.abc"
@@ -107,7 +113,7 @@ def _stubbed_upload(s3_path: str = "s3://bucket/scan.csv") -> object:
     It runs a thread pool over presigned PUTs to object storage, so there is no
     way to drive it from a mock that is not worse than replacing it outright.
     """
-    return patch("nominal.core.spatial.upload_multipart_file", return_value=s3_path)
+    return patch("nominal.experimental.spatial._spatial.upload_multipart_file", return_value=s3_path)
 
 
 def _csv(tmp_path: Path, text: str = _STATIC_CSV) -> Path:
@@ -130,7 +136,7 @@ def test_get_spatial_returns_typed_metadata_and_nanosecond_bounds(clients: Magic
         start_timestamp=api.Timestamp(seconds=1_700_000_000, nanos=0),
     )
 
-    result = NominalClient.get_spatial(client, _SPATIAL_RID)
+    result = get_spatial(client, _SPATIAL_RID)
 
     assert result.metadata == PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING)
     assert result.start_timestamp == 1_700_000_000_000_000_000
@@ -144,7 +150,7 @@ def test_create_spatial_reserves_a_model_in_the_default_workspace(clients: Magic
     """Creation names the model that will hold the data and lands in the client's default workspace."""
     clients.spatial.create.return_value = _raw_spatial()
 
-    NominalClient.create_point_cloud_spatial(
+    create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING)
     )
 
@@ -161,7 +167,7 @@ def test_each_spatial_reserves_its_own_model(clients: MagicMock, client: MagicMo
 
     uuids = set()
     for _ in range(3):
-        NominalClient.create_point_cloud_spatial(client, "scan", metadata=PointCloudMetadata())
+        create_point_cloud_spatial(client, "scan", metadata=PointCloudMetadata())
         uuids.add(clients.spatial.create.call_args.args[1].dagger_uuid)
 
     assert len(uuids) == 3
@@ -171,7 +177,7 @@ def test_create_spatial_applies_markings(clients: MagicMock, client: MagicMock) 
     """Markings ride along in the create request, so a restricted spatial is never briefly visible."""
     clients.spatial.create.return_value = _raw_spatial()
 
-    NominalClient.create_point_cloud_spatial(
+    create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(), markings=["ri.scout.x.marking.m1", "ri.scout.x.marking.m2"]
     )
 
