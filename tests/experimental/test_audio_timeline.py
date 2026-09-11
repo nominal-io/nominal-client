@@ -7,8 +7,8 @@ Fixtures are synthesized with real ffmpeg — no external media. Two defect shap
 * **overlap** — packets stamped a fraction of a frame apart while each still decodes a full
   frame, as a recorder produces when it flushes a late burst.
 
-The two need opposite repairs and routinely occur in the same file, so they are measured
-separately rather than netted.
+The two call for opposite repairs and routinely occur in the same file, so each is measured on
+its own.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ def _video_timestamps(path: pathlib.Path) -> str:
 
 @requires_ffmpeg
 def test_healthy_audio_reports_no_defect(healthy_video: pathlib.Path) -> None:
-    """A coherent audio track is diagnosed as having nothing wrong with it."""
+    """A coherent audio track is diagnosed as coherent and selects no filter."""
     diagnosis = diagnose_audio(healthy_video)
 
     assert diagnosis.defect is AudioDefect.NONE
@@ -131,7 +131,7 @@ def test_healthy_audio_reports_no_defect(healthy_video: pathlib.Path) -> None:
 
 @requires_ffmpeg
 def test_video_without_audio_is_recognized(healthy_video: pathlib.Path, tmp_path: pathlib.Path) -> None:
-    """A file carrying no audio track is reported as such rather than as a defect."""
+    """A file carrying no audio track is reported with its own classification."""
     silent = tmp_path / "silent.mp4"
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-i", str(healthy_video), "-an", "-c", "copy", str(silent)],
@@ -156,12 +156,12 @@ def test_sub_frame_packet_spacing_is_measured_as_overlap(overlap_video: pathlib.
 
 @requires_ffmpeg
 def test_missing_audio_is_measured_as_holes(gaping_video: pathlib.Path) -> None:
-    """A dropout leaves a hole whose size is reported, not netted away against overlap."""
+    """A dropout is reported as a hole whose measured size matches the audio that went missing."""
     timeline = diagnose_audio(gaping_video).timeline
 
     assert timeline is not None
     assert timeline.largest_hole_seconds == pytest.approx(60.0, abs=1.0)
-    # The same file also carries overlap; reporting only the net would hide one of the two.
+    # The same file also carries overlap, and both are reported.
     assert timeline.overlap_seconds > 0.0
 
 
@@ -182,7 +182,7 @@ _SHAPES = [
 def test_ingestible_audio_is_left_byte_identical(
     tmp_path: pathlib.Path, container: str, codec: str, rate: int, channels: int
 ) -> None:
-    """Audio that already segments is converted exactly as it would be with the check disabled."""
+    """Audio that already segments keeps the conversion it would get with inspection disabled."""
     source = tmp_path / f"source.{container}"
     _build(
         source, seconds=6, audio_rate=rate, audio_seconds=6, audio_filter=None,
@@ -216,7 +216,7 @@ def test_codecs_without_a_fixed_packet_size_are_left_alone(tmp_path: pathlib.Pat
 def test_rejected_audio_is_repaired_into_an_ingestible_file(
     overlap_video: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    """A file ingest would reject is rebuilt into one it accepts."""
+    """A file that fails to segment is rebuilt into one that segments."""
     assert not survives_strict_segmentation(overlap_video)
 
     output = tmp_path / "normalized.mp4"
@@ -247,7 +247,7 @@ def test_oversized_hole_is_left_alone_rather_than_filled(gaping_video: pathlib.P
 def test_a_file_that_still_cannot_segment_fails_before_upload(
     gaping_video: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    """Declining the repair leaves an unusable file, which is reported rather than handed back."""
+    """When the repair is declined and the result still cannot segment, that is raised to the caller."""
     with pytest.raises(AudioTimelineError, match="still cannot be segmented"):
         normalize_video(gaping_video, tmp_path / "out.mp4", max_audio_hole_seconds=10)
 
@@ -285,7 +285,7 @@ def test_audio_outlasting_video_is_left_alone(tmp_path: pathlib.Path) -> None:
     _build(path, seconds=4, audio_rate=48000, audio_seconds=10, audio_filter=None)
 
     assert audio_repair_filter(path) is None
-    normalize_video(path, tmp_path / "out.mp4")  # converts rather than raising
+    normalize_video(path, tmp_path / "out.mp4")  # the conversion completes
 
 
 _RATE = 48000
@@ -318,7 +318,7 @@ def test_dropped_packets_measure_as_a_hole() -> None:
 
 
 def test_holes_and_overlap_are_reported_separately_not_netted() -> None:
-    """A file holding equal holes and overlap reports both, rather than cancelling them to zero."""
+    """A file holding both holes and overlap reports each of them at its measured size."""
     span = 30  # packets of each defect, so neither is dismissed as rounding noise
     # A dropout, then a burst of packets stamped almost on top of one another as a buffer flushes.
     starts = [0.0, (1 + span) * _PACKET_SECONDS]
@@ -333,7 +333,7 @@ def test_holes_and_overlap_are_reported_separately_not_netted() -> None:
 
 
 def test_millisecond_timestamp_rounding_is_not_reported_as_damage() -> None:
-    """Matroska rounds a 21.33ms packet to 21ms; accumulating that must not look like a defect."""
+    """Timestamps stored at whole-millisecond resolution measure as a coherent timeline."""
     # 400 packets stamped at whole-millisecond resolution, as a Matroska muxer would write them.
     starts = [round(n * _PACKET_SECONDS, 3) for n in range(400)]
 
@@ -346,5 +346,5 @@ def test_millisecond_timestamp_rounding_is_not_reported_as_damage() -> None:
 
 
 def test_measuring_needs_at_least_one_packet() -> None:
-    """An empty packet list yields no timeline rather than a zero-filled one."""
+    """Measuring requires at least one packet, and yields no timeline without one."""
     assert timeline_from_packets([], _PACKET_SECONDS, _FRAME, _RATE) is None

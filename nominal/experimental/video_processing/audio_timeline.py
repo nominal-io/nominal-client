@@ -4,16 +4,15 @@ A container stores audio as packets plus a table of packet *durations*; a packet
 the running sum of the durations before it. The sound itself is a fixed number of samples per
 packet, decided by the codec. Nothing forces the two to agree, so a file can carry a clock that
 advances faster than its audio (*holes*) or slower (*overlap*) while every timestamp still
-increases. Both shapes occur, frequently in the same file, and they need opposite repairs — so
-they are measured separately and never netted against each other.
+increases. Both shapes occur, frequently in the same file, and each is measured on its own, since
+they call for opposite repairs.
 
 Checks are ordered by cost:
 
 * :func:`probe_audio_stream` reads the container header (~0.1s on a 7GB file).
 * :func:`survives_strict_segmentation` stream-copies to MPEG-TS preserving timestamps exactly,
-  decoding nothing (~1s on a 7GB file). This is the authoritative answer to "will this file be
-  rejected?" — it asks ffmpeg rather than modelling its timestamp arithmetic, which is easy to
-  get wrong and cheap to simply measure.
+  decoding nothing (~1s on a 7GB file). It asks ffmpeg for the answer, so it reports what the
+  tool will actually do with the file.
 * :func:`measure_audio_timeline` walks every audio packet (~8s on a 7GB file) to separate holes
   from overlap and locate the worst one.
 """
@@ -52,30 +51,28 @@ reconcile.
 AUDIO_REPAIR_FILTER = "aresample=async=1"
 """Rebuilds audio onto the timeline the container already declares.
 
-``async=1`` selects filling and trimming only: silence is inserted where the clock says sound is
-missing, and samples with no time to play in are dropped. Values above 1 additionally permit
-*stretching* — resampling audio to chase a drifting clock, which alters the timing of every sample
-after it. We never want that: the declared timeline is authoritative, so content is adjusted to fit
-it rather than the other way around. Every value at or above 1 repaired the failures we measured
-identically, so this takes the least invasive one.
+``async=1`` fills and trims: silence is inserted where the clock says sound is missing, and samples
+with no time to play in are dropped. It leaves every timestamp where it is, so the timeline the file
+declares stays authoritative and only the content moves to fit it.
 """
 
 _CONSTANT_FRAME_CODECS = frozenset({"aac", "mp3", "ac3", "eac3"})
-"""Codecs whose packets each decode to a fixed number of samples, making the sound countable.
+"""Codecs whose packet duration is fixed for the life of a stream.
 
-Deliberately excludes Opus and Vorbis: both may legally vary packet duration mid-stream, so a
-size sampled from the opening seconds would score every later change as a hole. They are reported
-as unmeasurable and left alone instead.
+That fixed size is what makes packet count a measure of how much sound is present. Membership
+requires the guarantee to hold mid-stream, so it covers codecs whose frame size is set once in the
+stream configuration.
 """
 
 _SAMPLE_WINDOW_SECONDS = 2
 """How much audio to decode when learning a codec's samples-per-packet."""
 
 _QUANTIZATION_DEADBAND_FRACTION = 0.25
-"""Share of one packet's duration that a timestamp may deviate before it counts as a defect.
+"""Share of one packet's duration a timestamp must deviate by to count as a defect.
 
-Absorbs the rounding a container applies when its time base is coarser than the audio's, which
-would otherwise accumulate into minutes of phantom holes across a long recording.
+Sized to sit above container timestamp resolution — Matroska records a 21.33ms packet as 21ms — and
+well below a real finding, since a dropout loses whole packets and a flush run compresses by nearly
+a whole packet.
 """
 
 
@@ -107,7 +104,7 @@ class AudioTimelineError(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class AudioStreamInfo:
-    """Header fields of an audio stream, parsed once so callers never re-coerce raw ffprobe text."""
+    """Header fields of an audio stream, parsed once into typed values for callers to read."""
 
     codec: str
     sample_rate: int
@@ -119,9 +116,8 @@ class AudioStreamInfo:
 class AudioTimeline:
     """A measured comparison between what a container claims about its audio and what the audio is.
 
-    This type exists only when the measurement succeeded; a track that cannot be measured produces
-    no timeline rather than one populated with zeroes that would read as "nothing wrong". It holds
-    only measurements -- the stream's codec, rate and layout live on :class:`AudioStreamInfo`.
+    Exists only when the measurement succeeded, so every field here is something that was counted.
+    Holds measurements alone; the stream's codec, rate and layout live on :class:`AudioStreamInfo`.
     """
 
     packet_count: int
@@ -176,7 +172,7 @@ class AudioDiagnosis:
 
     @property
     def defect(self) -> AudioDefect:
-        """What is wrong with the audio, derived so it can never disagree with the measurement."""
+        """What is wrong with the audio, derived from the measurement it summarises."""
         if self.stream is None:
             return AudioDefect.NO_AUDIO_TRACK
         if self.timeline is None:
@@ -257,9 +253,9 @@ def survives_strict_segmentation(video_path: PathLike) -> bool:
     """Whether the file's audio survives a strict, timestamp-preserving remux to MPEG-TS.
 
     Segmenting video for streaming playback requires exactly this to succeed: timestamps are
-    preserved rather than rewritten, ffmpeg's automatic timestamp fixups are disabled, and the
-    first problem is fatal. A file that fails here will fail to segment. Nothing is decoded and
-    nothing is kept, so the cost is a single sequential read.
+    preserved as written, ffmpeg's automatic fixups are off, and the first problem is fatal. A file
+    that passes here will segment. Nothing is decoded and nothing is kept, so the cost is a single
+    sequential read.
     """
     result = subprocess.run(
         [
@@ -292,8 +288,8 @@ def survives_strict_segmentation(video_path: PathLike) -> bool:
 def _samples_per_packet(video_path: PathLike, codec: str) -> int | None:
     """Decode a brief window to learn how many samples one packet of this codec carries.
 
-    Returns None when the codec has no fixed packet size, or when the sampled window shows no
-    clearly dominant size — an unmeasurable track is reported as such rather than guessed at.
+    Returns a size only when one clearly dominates the sampled window, which is the signal that
+    this stream's packets each carry the same amount of sound.
     """
     if codec not in _CONSTANT_FRAME_CODECS:
         return None
@@ -327,15 +323,12 @@ def _samples_per_packet(video_path: PathLike, codec: str) -> int | None:
 def _read_audio_packets(video_path: PathLike) -> tuple[list[float], float] | None:
     """Return every audio packet's start time and the final packet's duration, both in seconds.
 
-    Returns None when any packet carries no timestamp. Dropping such a packet would widen the
-    interval between its neighbours, which :func:`timeline_from_packets` would then score as a
-    hole roughly two packets wide -- manufacturing the exact defect this module exists to detect.
-    A stream we cannot read completely is reported as unmeasurable instead.
+    Requires a complete sequence: the measurement is only meaningful when every packet's position
+    is known, since a missing start time and a genuine gap are indistinguishable downstream.
+    Returns None when any packet carries no timestamp.
 
-    ffprobe is asked for ``dts_time`` rather than raw ``dts`` deliberately. A packet timestamp is
-    expressed in the stream's own time base, which is 1/sample_rate only for MP4 and MOV --
-    Matroska uses milliseconds and MPEG-TS uses 90kHz. Letting ffprobe apply the time base keeps
-    this container-agnostic instead of silently mis-scaling every non-MP4 input.
+    Times come back in seconds because ffprobe applies each stream's own time base, which is
+    1/sample_rate for MP4 and MOV, milliseconds for Matroska and 90kHz for MPEG-TS.
     """
     result = subprocess.run(
         [
@@ -380,11 +373,8 @@ def timeline_from_packets(
     that, the clock covers time holding no sound (a hole); where it starts earlier, sound exists
     that the clock gives no time to play (overlap).
 
-    Deviations smaller than a fraction of a packet are ignored. Containers store timestamps at
-    their own resolution -- Matroska rounds to the millisecond, so a 21.33ms packet is recorded as
-    21ms -- and accumulating that rounding across a long file would otherwise manufacture minutes
-    of phantom defect. Real dropouts lose whole packets and real flush runs compress by nearly a
-    whole packet, so both stay far above this threshold.
+    A deviation counts once it exceeds a fraction of a packet, placing the threshold above the
+    resolution containers record timestamps at and well below a real finding.
     """
     if not packet_start_seconds or sample_rate <= 0 or samples_per_packet <= 0:
         return None
@@ -420,8 +410,7 @@ def measure_audio_timeline(video_path: PathLike, info: AudioStreamInfo | None = 
     """Walk every audio packet and measure holes and overlap separately.
 
     Returns None when the file has no audio track, when its codec has no fixed packet size, or
-    when any packet lacks a timestamp -- in all three cases the comparison cannot be made and the
-    audio should be left alone rather than measured approximately.
+    when any packet lacks a timestamp; the comparison needs all three to hold.
 
     Pass ``info`` when the header has already been read, to avoid probing it twice.
     """
@@ -442,9 +431,8 @@ def measure_audio_timeline(video_path: PathLike, info: AudioStreamInfo | None = 
 def diagnose_audio(video_path: PathLike) -> AudioDiagnosis:
     """Measure a file's audio timeline and whether it can be segmented.
 
-    Always performs the full measurement, so the result is complete rather than fast. The repair
-    path in :func:`audio_repair_filter` orders the same checks by cost instead, because it can
-    stop as soon as it knows it will not act.
+    Performs the full measurement, so the result describes the file completely.
+    :func:`audio_repair_filter` runs the same checks cheapest-first when it needs only a decision.
     """
     info = probe_audio_stream(video_path)
     if info is None:
@@ -465,8 +453,8 @@ def _reason_to_leave_alone(
 ) -> str | None:
     """Why this file's audio should not be rebuilt, or None if it should be.
 
-    Every branch here is a case where the audio either cannot be repaired safely or has nothing
-    wrong with its timing, so the conversion should proceed as though no inspection had happened.
+    Each branch names a condition under which the conversion proceeds with the audio as it stands:
+    either its timing is sound, or the damage falls outside what a bounded repair covers.
     """
     if timeline is None:
         return (
@@ -474,9 +462,8 @@ def _reason_to_leave_alone(
             f"timestamp, so the timeline cannot be measured"
         )
 
-    # Failing to segment is not on its own evidence of a timing fault: ffmpeg also refuses codec
-    # and container combinations it simply cannot mux. Repairing a coherent timeline could only
-    # damage it, and the filter would have nothing to correct in any case.
+    # Repair requires a measured timing defect. ffmpeg also refuses codec and container
+    # combinations it cannot mux, and those arrive here with a coherent timeline.
     if timeline.defect is AudioDefect.NONE:
         return (
             f"its timeline is coherent ({timeline.describe()}), so the obstacle is not timing -- "
@@ -510,15 +497,14 @@ def audio_repair_filter(
     Checks run cheapest-first and stop as soon as the answer is known, so a file that needs
     nothing pays only for the header read and the segmentation probe.
 
-    Never raises. When a repair would be unsafe or unnecessary this logs what it found and
-    returns None, leaving the conversion exactly as it would have been without any inspection.
+    Returns a filter for audio whose timing is measurably broken and repairable within
+    ``max_audio_hole_seconds``. Every other outcome logs what it found and returns None.
     """
     info = probe_audio_stream(video_path)
     if info is None:
         return None
 
-    # A file that already segments is never rewritten on our own initiative: rebuilding its audio
-    # could only move data that is currently fine.
+    # Files that already segment are the common case, and they keep the audio they arrived with.
     if survives_strict_segmentation(video_path):
         logger.debug("Audio of '%s' segments as-is; leaving it untouched", video_path)
         return None

@@ -49,11 +49,10 @@ def normalize_video(
         * Video has YUV4:2:0 planar color space
         * Audio content is made to match the timeline the file declares, when the two disagree
 
-    Timestamps are never moved. Video timestamps are passed through untouched, and audio packets
-    keep the timestamps the source gave them; only the audio *content* is adjusted, by filling
+    Timestamps are preserved throughout: video timestamps pass through untouched, and audio packets
+    keep the timestamps the source gave them. Only the audio *content* is adjusted, by filling
     silence where the file says sound is missing and dropping samples the file gives no time to
-    play. When the audio is already coherent no audio filter is applied at all, so such files are
-    converted exactly as they were before this check existed.
+    play. Audio whose timing is already coherent is converted with no audio filter at all.
 
     While this package includes bindings to use ffmpeg installed on your local system, it does not
     include ffmpeg as a dependency due to the GPLv3 licensing present in the standard H264 processing library
@@ -77,13 +76,12 @@ def normalize_video(
         repair_audio: If true, inspect the audio timeline, rebuild the audio onto it when the two
             disagree, and verify the converted file can be segmented before returning.
         max_audio_hole_seconds: Longest single run of missing audio that will be filled with
-            silence. A gap larger than this is treated as a corrupt timestamp rather than a real
-            dropout and is left alone, rather than synthesizing that much silence from one bad
-            number. Raise it to fill such a gap anyway.
+            silence. Bounds how much silence one timestamp can introduce; audio containing a longer
+            gap is reported and left as it is. Raise it to fill such a gap.
 
     Raises:
-        AudioTimelineError: If the converted file still cannot be segmented. Reported here rather
-            than after a long upload that would be rejected on arrival.
+        AudioTimelineError: If the converted file cannot be segmented, so the result is known
+            before any time is spent uploading it.
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -106,8 +104,7 @@ def normalize_video(
         pix_fmt=DEFAULT_PIXEL_FORMAT,
     )
 
-    # Only touch the audio when it has been measured to need it: an unnecessary filter is a
-    # chance to damage a file that was already fine.
+    # The filter is applied only to audio measured to need it.
     if repair_audio and (audio_filter := audio_repair_filter(input_path, max_audio_hole_seconds)) is not None:
         output_kwargs["af"] = audio_filter
 
@@ -149,16 +146,14 @@ def normalize_video(
 
 
 def _assert_output_will_segment(input_path: pathlib.Path, output_path: pathlib.Path) -> None:
-    """Raise if the converted file still would not segment, so it is never uploaded in vain.
+    """Confirm the converted file can be segmented, raising with the diagnosis when it cannot.
 
-    Normalizing and uploading a long video costs minutes; finding out afterwards that it is still
-    unusable costs those minutes twice. Checking here turns that into a few seconds and an error
-    naming what is still wrong.
+    Costs a single sequential read, and establishes before upload whether the file is usable.
     """
     if probe_audio_stream(output_path) is None or survives_strict_segmentation(output_path):
         return
 
-    # Only now is the expensive measurement worth running: it exists to explain the failure.
+    # The measurement runs here to name what is still wrong in the error.
     timeline = measure_audio_timeline(output_path)
     detail = timeline.describe() if timeline is not None else "its audio timeline is unusable"
     raise AudioTimelineError(
