@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.168.0](https://github.com/nominal-io/nominal-client/compare/v1.167.0...v1.168.0) (2026-09-11)
+
+
+### Features
+
+* add the SqlService gRPC stub to the client bunch ([#967](https://github.com/nominal-io/nominal-client/issues/967)) ([6e595dc](https://github.com/nominal-io/nominal-client/commit/6e595dc35593c62b0ebd0f64f589337fd34e16f6))
+* **spatial:** added a spatial V1 ingest client ([#949](https://github.com/nominal-io/nominal-client/issues/949)) ([27f34a7](https://github.com/nominal-io/nominal-client/commit/27f34a7c597171a6f300ff786dbd4834bc9f9e13))
+
 ## [1.167.0](https://github.com/nominal-io/nominal-client/compare/v1.166.0...v1.167.0) (2026-09-10)
 
 
