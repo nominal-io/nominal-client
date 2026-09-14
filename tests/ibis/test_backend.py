@@ -11,6 +11,7 @@ import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
 import pyarrow as pa
 import pytest
+from google.rpc import error_details_pb2, status_pb2
 
 import nominal.ibis as nibis
 from nominal.core.client import NominalClient
@@ -191,13 +192,26 @@ def test_write_operations_are_rejected(backend: nibis.Backend) -> None:
         backend.create_table("t", schema={"a": "int64"})
 
 
-def test_grpc_errors_surface_as_nominal_errors(backend: nibis.Backend, client: NominalClient) -> None:
+@pytest.mark.parametrize("rich_details", [False, True])
+def test_grpc_errors_surface_as_nominal_errors(
+    backend: nibis.Backend, client: NominalClient, rich_details: bool
+) -> None:
+    status = status_pb2.Status(code=3, message="Invalid query")
+    status.details.add().Pack(
+        error_details_pb2.ErrorInfo(
+            domain="sql", reason="INVALID_QUERY", metadata={"detail": "unknown column", "sqlQueryId": "query-123"}
+        )
+    )
+
     class InvalidQuery(grpc.RpcError):
         def code(self) -> grpc.StatusCode:
             return grpc.StatusCode.INVALID_ARGUMENT
 
         def details(self) -> str:
-            return "unknown column"
+            return "Invalid query" if rich_details else "unknown column"
+
+        def trailing_metadata(self) -> tuple[tuple[str, bytes], ...]:
+            return (("grpc-status-details-bin", status.SerializeToString()),) if rich_details else ()
 
     def failing_query(request: sql_pb2.SqlServiceQueryRequest) -> Iterator[sql_pb2.SqlServiceQueryResponse]:
         raise InvalidQuery()
@@ -207,8 +221,11 @@ def test_grpc_errors_surface_as_nominal_errors(backend: nibis.Backend, client: N
     call.__iter__.return_value = failing_query(sql_pb2.SqlServiceQueryRequest())
     client._clients.sql.Query.side_effect = None
     client._clients.sql.Query.return_value = call
-    with pytest.raises(NominalInvalidArgumentError, match="unknown column"):
+    with pytest.raises(NominalInvalidArgumentError, match="unknown column") as exc_info:
         backend.table("datasets").select("name").to_pandas()
+    if rich_details:
+        assert "query-123" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, InvalidQuery)
     call.cancel.assert_called_once_with()
 
 
