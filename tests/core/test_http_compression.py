@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gzip
 import io
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import requests
+import zstandard
 from conjure_python_client import ServiceConfiguration
 
 from nominal.core._clientsbunch import ProtoWriteService
@@ -82,7 +82,7 @@ def test_configured_post_retry_reuses_encoded_bytes(http_server):
     assert len(received) == 2
     assert received[0] == received[1]
     _, _, headers, body = received[0]
-    assert gzip.decompress(body) == b"payload" * 100
+    assert zstandard.ZstdDecompressor().decompress(body) == b"payload" * 100
     assert headers["Content-Length"] == str(len(body))
     assert "Transfer-Encoding" not in headers
     assert headers["Authorization"] == "Bearer synthetic"
@@ -102,7 +102,7 @@ def test_redirect_wire_body_matches_encoding(http_server, status):
     if status in (307, 308):
         assert method == "POST"
         assert body == received[0][3]
-        assert gzip.decompress(body) == b"payload"
+        assert zstandard.ZstdDecompressor().decompress(body) == b"payload"
         assert headers["Content-Length"] == str(len(body))
     else:
         assert method == "GET"
@@ -141,7 +141,7 @@ def test_buffered_compression_has_one_framing_header(http_server):
     headers, body = received[0][2:]
     assert "Transfer-Encoding" not in headers
     assert headers["Content-Length"] == str(len(body))
-    assert gzip.decompress(body) == b"payload"
+    assert zstandard.ZstdDecompressor().decompress(body) == b"payload"
 
 
 def test_shared_adapter_compresses_concurrent_requests_independently(http_server):
@@ -161,7 +161,7 @@ def test_shared_adapter_compresses_concurrent_requests_independently(http_server
         adapter.close()
     assert len(received) == 8
     for _, path, headers, body in received:
-        assert gzip.decompress(body) == (path[1:] * 1000).encode()
+        assert zstandard.ZstdDecompressor().decompress(body) == (path[1:] * 1000).encode()
         assert headers["Content-Length"] == str(len(body))
 
 
