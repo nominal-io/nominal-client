@@ -5,7 +5,19 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Any, Generic, Literal, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import (
+    Any,
+    Generic,
+    Iterable,
+    Literal,
+    Mapping,
+    Protocol,
+    Sequence,
+    TypeAlias,
+    TypedDict,
+    TypeVar,
+    runtime_checkable,
+)
 
 from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
@@ -24,6 +36,9 @@ T_contra = TypeVar("T_contra", contravariant=True)
 @runtime_checkable
 class HasRid(Protocol):
     rid: str
+
+
+T_rid = TypeVar("T_rid", bound=HasRid)
 
 
 class RefreshableMixin(Generic[T], abc.ABC):
@@ -159,7 +174,28 @@ def filter_scopes(
     return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
 
 
-def filter_scope_rids(scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in filter_scopes(scopes, scope_type)
-    }
+def extract_scope_rid(data_source: scout_run_api.DataSource) -> str | None:
+    """RID held by whichever arm of the `DataSource` union is populated.
+
+    A union carries exactly one arm, so the first populated one is the answer. Callers get the
+    RID without having to know which kind of data source they were handed.
+    """
+    arms = (
+        data_source.dataset,
+        data_source.connection,
+        data_source.video,
+        data_source.spatial,
+        data_source.log_set,
+    )
+    return next((rid for rid in arms if rid is not None), None)
+
+
+def pair_by_rid(rids_by_name: Mapping[str, str], resources: Iterable[T_rid]) -> Sequence[tuple[str, T_rid]]:
+    """Pair each scope or ref name with its resource, matched on RID.
+
+    Batch endpoints answer with an unordered set and omit RIDs the caller is not
+    authorized to read, so a name is matched by RID rather than by position, and a
+    name whose resource did not come back is left out.
+    """
+    by_rid = {resource.rid: resource for resource in resources}
+    return [(name, by_rid[rid]) for name, rid in rids_by_name.items() if rid in by_rid]

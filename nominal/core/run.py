@@ -15,12 +15,15 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._scope_resolution import DataScopeMixin, ScopeType, group_scope_rids
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
     RefreshableConjureMixin,
+    ScopeTypeSpecifier,
     create_links,
+    extract_scope_rid,
     filter_scopes,
     rid_from_instance_or_string,
 )
@@ -29,8 +32,8 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.connection import Connection, _get_connection
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
@@ -44,7 +47,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper, DataScopeMixin):
     rid: str
     name: str
     description: str
@@ -60,6 +63,9 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
+
+    _scope_name_label = "ref name"
+    _parent_label = "run"
 
     class _Clients(
         Attachment._Clients,
@@ -156,28 +162,50 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             response = self._clients.comments.CreateComment(request)
         return Comment._from_proto(response.comment)
 
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+    def _single_asset_api(self) -> scout_run_api.Run:
+        """This run's payload, or raise if it has more than one asset.
+
+        The server fills `data_sources` and `asset_data_scopes` only for a run with exactly one
+        asset and leaves both empty otherwise, which would read as a run with no data sources at
+        all rather than as a call that does not support this run. Only `asset_data_scopes_map` is
+        populated for a multi-asset run, and nothing here reads it yet.
+
+        A run with no assets is not an error: it genuinely has no data sources, so empty is right.
+        """
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
-            raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
-
-        return filter_scopes(api_run.asset_data_scopes, "dataset")
-
-    def _list_datasource_rids(
-        self, datasource_type: str | None = None, property_name: str | None = None
-    ) -> Mapping[str, str]:
-        enriched_run = self._get_latest_api()
-        datasource_rids_by_ref_name = {}
-        for ref_name, source in enriched_run.data_sources.items():
-            if datasource_type is not None and source.data_source.type != datasource_type:
-                continue
-
-            rid = cast(
-                str, getattr(source.data_source, source.data_source.type if property_name is None else property_name)
+            raise RuntimeError(
+                f"Run {self.rid} has {len(api_run.assets)} assets, and data scopes can only be resolved on a run "
+                "with a single asset. Reach them through the run's assets instead."
             )
-            datasource_rids_by_ref_name[ref_name] = rid
+        return api_run
 
-        return datasource_rids_by_ref_name
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+        return filter_scopes(self._single_asset_api().asset_data_scopes, "dataset")
+
+    def _scope_rids_by_type(self) -> Mapping[ScopeTypeSpecifier, Mapping[str, str]]:
+        # `data_sources` and the `asset_data_scopes` that `_list_dataset_scopes` reads are both
+        # projected from the same asset data scope rows today, keyed by the same name — but the
+        # server reserves the right to diverge them ("eventually we will reserve the dataSources
+        # field for bespoke data scopes associated directly with a run"), so they stay separate.
+        return group_scope_rids(self._single_asset_api().data_sources.items())
+
+    def get_data_scope(self, ref_name: str) -> ScopeType:
+        """Retrieve a data source by ref name, whatever its type.
+
+        Args:
+            ref_name: Name of the run datasource reference to resolve.
+
+        Returns:
+            Dataset, Connection, or Video associated with the ref name.
+
+        Raises:
+            ValueError: If no data source reference exists with the provided name, if one does but
+                its data source could not be read, or if it is a spatial — those live in
+                `nominal.experimental.spatial`.
+            RuntimeError: If this run has more than one asset.
+        """
+        return self._resolve_named_scope(ref_name)
 
     def remove_data_sources(
         self,
@@ -193,7 +221,10 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         ref_names = ref_names or []
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
 
-        conjure_run = self._get_latest_api()
+        # Guarded like every read path: `data_sources` is empty on a multi-asset run, so the
+        # kept-set would be computed from nothing. The server rejects that too, but failing here
+        # keeps the error local and consistent with the rest of the scope surface.
+        conjure_run = self._single_asset_api()
 
         data_sources_to_keep = {
             ref_name: scout_run_api.CreateRunDataSource(
@@ -202,16 +233,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
                 offset=rds.offset,
             )
             for ref_name, rds in conjure_run.data_sources.items()
-            if ref_name not in ref_names
-            and all(
-                rid not in data_source_rids
-                for rid in (
-                    rds.data_source.dataset,
-                    rds.data_source.connection,
-                    rds.data_source.video,
-                    rds.data_source.spatial,
-                )
-            )
+            if ref_name not in ref_names and extract_scope_rid(rds.data_source) not in data_source_rids
         }
 
         updated_run = self._clients.run.update_run(
@@ -321,6 +343,34 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             archive_status=archive_status,
         )
 
+    def _add_data_sources(
+        self,
+        data_sources: Mapping[str, scout_run_api.DataSource],
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
+        """Add data sources as refs, refreshing this run from the response."""
+        requests = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=data_source,
+                series_tags={**series_tags} if series_tags else {},
+                offset=None if offset is None else _to_api_duration(offset),
+            )
+            for ref_name, data_source in data_sources.items()
+        }
+        self._refresh_from_api(self._clients.run.add_data_sources_to_run(self._clients.auth_header, requests, self.rid))
+
+    def _add_data_source(
+        self,
+        ref_name: str,
+        data_source: scout_run_api.DataSource,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
+        self._add_data_sources({ref_name: data_source}, series_tags=series_tags, offset=offset)
+
     def add_dataset(
         self,
         ref_name: str,
@@ -339,6 +389,8 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             dataset: Dataset to add to the run
             series_tags: Key-value tags to pre-filter the dataset with before adding to the run.
             offset: Add the dataset to the run with a pre-baked offset
+
+        This run is refreshed in place from the response.
         """
         self.add_datasets({ref_name: dataset}, series_tags=series_tags, offset=offset)
 
@@ -358,16 +410,17 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             datasets: Mapping of logical names to datasets to add to the run
             series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
             offset: Add the datasets to the run with a pre-baked offset
+
+        This run is refreshed in place from the response.
         """
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
-            )
-            for ref_name, dataset in datasets.items()
-        }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        self._add_data_sources(
+            {
+                ref_name: scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset))
+                for ref_name, dataset in datasets.items()
+            },
+            series_tags=series_tags,
+            offset=offset,
+        )
 
     def add_connection(
         self,
@@ -388,15 +441,15 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             connection: Connection to add to the run
             series_tags: Key-value tags to pre-filter the connection with before adding to the run.
             offset: Add the connection to the run with a pre-baked offset
+
+        This run is refreshed in place from the response.
         """
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_api_duration(offset),
-            )
-        }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+        self._add_data_source(
+            ref_name,
+            scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
+            series_tags=series_tags,
+            offset=offset,
+        )
 
     @deprecated(
         "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
@@ -404,13 +457,14 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         category=LegacyVideoDeprecationWarning,
     )
     def add_video(self, ref_name: str, video: Video | str) -> None:
-        """Add a video to a run via video object or RID."""
-        request = scout_run_api.CreateRunDataSource(
-            data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
-            series_tags={},
-            offset=None,
+        """Add a video to a run via video object or RID.
+
+        This run is refreshed in place from the response.
+        """
+        self._add_data_source(
+            ref_name,
+            scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
         )
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this run.
@@ -420,56 +474,6 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
-
-    def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-        datasets_by_rids = {
-            ds.rid: Dataset._from_conjure(self._clients, ds)
-            for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
-        }
-        for ref_name, rid in dataset_rids_by_ref_name.items():
-            dataset = datasets_by_rids[rid]
-            yield (ref_name, dataset)
-
-    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
-        """List the datasets associated with this run.
-        Returns (ref_name, dataset) pairs for each dataset.
-        """
-        return list(self._iter_list_datasets())
-
-    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
-        conn_rids_by_ref_name = self._list_datasource_rids("connection")
-        connections_by_rids = {
-            conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
-        }
-
-        for ref_name, rid in conn_rids_by_ref_name.items():
-            connection = connections_by_rids[rid]
-            yield (ref_name, connection)
-
-    def list_connections(self) -> Sequence[tuple[str, Connection]]:
-        """List the connections associated with this run.
-        Returns (ref_name, connection) pairs for each connection
-        """
-        return list(self._iter_list_connections())
-
-    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
-        video_rids_by_ref_name = self._list_datasource_rids("video")
-        videos_by_rids = {
-            rid: Video._from_conjure(
-                self._clients,
-                _get_video(self._clients, rid),
-            )
-            for rid in video_rids_by_ref_name.values()
-        }
-        for ref_name, rid in video_rids_by_ref_name.items():
-            video = videos_by_rids[rid]
-            yield (ref_name, video)
-
-    def list_videos(self) -> Sequence[tuple[str, Video]]:
-        """List a sequence of refname, Video tuples associated with this Run."""
-        return list(self._iter_list_videos())
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
@@ -483,14 +487,9 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Raises:
             ValueError: If no dataset reference exists with the provided name.
         """
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-        dataset_rid = dataset_rids_by_ref_name.get(ref_name)
-        if dataset_rid is None:
-            raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
-
         return Dataset._from_conjure(
             self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
+            _get_dataset(self._clients.auth_header, self._clients.catalog, self._scope_rid("dataset", ref_name)),
         )
 
     def get_connection(self, ref_name: str) -> Connection:
@@ -505,12 +504,9 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Raises:
             ValueError: If no connection reference exists with the provided name.
         """
-        connection_rids_by_ref_name = self._list_datasource_rids("connection")
-        connection_rid = connection_rids_by_ref_name.get(ref_name)
-        if connection_rid is None:
-            raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
-
-        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+        return Connection._from_conjure(
+            self._clients, _get_connection(self._clients, self._scope_rid("connection", ref_name))
+        )
 
     @deprecated(
         "Resolving a standalone `Video` ref is deprecated in favor of video channels on a dataset. Use "
@@ -529,12 +525,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Raises:
             ValueError: If no video reference exists with the provided name.
         """
-        video_rids_by_ref_name = self._list_datasource_rids("video")
-        video_rid = video_rids_by_ref_name.get(ref_name)
-        if video_rid is None:
-            raise ValueError(f"No video with ref name '{ref_name}' found for this run")
-
-        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
+        return Video._from_conjure(self._clients, _get_video(self._clients, self._scope_rid("video", ref_name)))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
