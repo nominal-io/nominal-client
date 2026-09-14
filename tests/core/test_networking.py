@@ -27,8 +27,6 @@ def test_gzip_adapter_updates_content_length_after_compression() -> None:
     adapter = NominalRequestsAdapter()
     request = _prepared_request("hello world" * 50)
 
-    adapter.add_headers(request)
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
@@ -48,8 +46,6 @@ def test_gzip_adapter_compresses_bytes_body() -> None:
     raw = b"binary payload" * 50
     request = _prepared_request(raw)
 
-    adapter.add_headers(request)
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
@@ -68,15 +64,12 @@ def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
     request = _prepared_request("plain text body")
     original_body = request.body
 
-    adapter.add_headers(request, stream=True)
-
-    assert "Content-Encoding" not in request.headers
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request, stream=True)
 
     assert super_send.call_args.args[1].body == original_body
+    assert "Content-Encoding" not in super_send.call_args.args[1].headers
 
 
 def test_ssl_adapter_proxy_uses_own_ssl_context() -> None:
@@ -185,7 +178,6 @@ def test_adapter_preserves_explicit_content_encoding(encoding: str) -> None:
     ).prepare()
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send"):
         for _ in range(2):
-            adapter.add_headers(request)
             adapter.send(request)
             assert request.body == b"already-encoded"
             assert request.headers["Content-Encoding"] == encoding
@@ -220,3 +212,44 @@ def test_gzip_body_is_not_recompressed_on_redirect(status: int) -> None:
         assert gzip.decompress(body) == b"hello world" * 50
         assert headers["Content-Encoding"] == "gzip"
         assert headers["Content-Length"] == str(len(body))
+
+
+@pytest.mark.parametrize("status", [301, 302, 303])
+def test_bodyless_redirect_removes_content_encoding(status: int) -> None:
+    """Redirects that drop a POST body also remove its stale encoding header."""
+    sent = []
+
+    def respond(adapter, request, **kwargs):
+        sent.append((request.method, request.body, dict(request.headers)))
+        response = requests.Response()
+        response.status_code = status if len(sent) == 1 else 204
+        response._content = b""
+        response.request = request
+        response.url = request.url
+        if len(sent) == 1:
+            response.headers["Location"] = "https://example.com/redirected"
+        return response
+
+    with requests.Session() as session:
+        session.mount("https://example.com", NominalRequestsAdapter())
+        with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", respond):
+            response = session.post("https://example.com/original", data=b"hello world")
+    assert response.status_code == 204
+    assert len(sent) == 2
+    assert sent[0][2]["Content-Encoding"] == "gzip"
+    method, body, headers = sent[1]
+    assert method == "GET"
+    assert body is None
+    assert "Content-Encoding" not in headers
+
+
+def test_response_streaming_preserves_encoded_request_body() -> None:
+    """Streaming the response must not strip the encoding from a caller-encoded request."""
+    adapter = NominalRequestsAdapter()
+    request = requests.Request(
+        "POST", "https://example.com", data=b"encoded", headers={"Content-Encoding": "zstd"}
+    ).prepare()
+    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send"):
+        adapter.send(request, stream=True)
+    assert request.body == b"encoded"
+    assert request.headers["Content-Encoding"] == "zstd"
