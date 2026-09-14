@@ -165,10 +165,10 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     run: scout.RunService
     series_metadata: timeseries_metadata.SeriesMetadataService
+    spatial: scout_spatial.SpatialService
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
-    spatial: scout_spatial.SpatialService
     upload: upload_api.UploadService
     video_file: scout_video.VideoFileService
     video: scout_video.VideoService
@@ -333,10 +333,10 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             run=client_factory(scout.RunService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
+            spatial=client_factory(scout_spatial.SpatialService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
-            spatial=client_factory(scout_spatial.SpatialService),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),

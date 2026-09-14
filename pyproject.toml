@@ -116,10 +116,6 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-# One shared lint/format config covers the core package (nominal/**), every
-# workspace sub-package source + co-located tests (packages/**), and the root
-# tests (tests/**). Sub-packages intentionally do not define their own ruff
-# config so style stays uniform across the workspace.
 include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
@@ -168,13 +164,6 @@ ignore = [
 
 [tool.mypy]
 strict = true
-# These are checked as *installed* namespace packages (one shared `nominal`
-# namespace split across distributions). Two consequences for sub-packages:
-#   1. Each `nominal.*` sub-package must be listed here explicitly - mypy does
-#      not auto-discover namespace sub-packages from the top-level entry.
-#   2. Each sub-package must ship a `py.typed` marker (PEP 561) in its build
-#      `include`, or mypy aborts with "cannot be type checked due to missing
-#      py.typed marker" (see packages/nominal-*/pyproject.toml).
 packages = ["nominal", "nominal.tdms"]
 
 [[tool.mypy.overrides]]
