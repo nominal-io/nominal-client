@@ -199,23 +199,6 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
 
-    def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
-        super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
-
-        body = request.body
-        if body is None:
-            return
-        elif kwargs.get("stream", False):
-            return
-
-        content_length = len(body)
-        headers = {
-            self.ACCEPT_ENCODING: "gzip",
-            self.CONTENT_ENCODING: "gzip",
-            self.CONTENT_LENGTH: str(content_length),
-        }
-        request.headers.update(headers)
-
     def send(
         self,
         request: requests.PreparedRequest,
@@ -225,13 +208,18 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
-        if stream:
-            return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
-        elif request.body is not None:
+        # A redirect can resend the same encoded body. Compress only once, regardless of codec.
+        if not stream and request.body is not None and self.CONTENT_ENCODING not in request.headers:
             body = request.body
             raw_body = body if isinstance(body, bytes) else body.encode("utf-8")
             request.body = gzip.compress(raw_body, compresslevel=GZIP_COMPRESSION_LEVEL)
-            request.headers[self.CONTENT_LENGTH] = str(len(request.body))
+            request.headers.update(
+                {
+                    self.ACCEPT_ENCODING: "gzip",
+                    self.CONTENT_ENCODING: "gzip",
+                    self.CONTENT_LENGTH: str(len(request.body)),
+                }
+            )
 
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 

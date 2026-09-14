@@ -174,3 +174,49 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
 
     assert prepared.headers["User-Agent"] == "provider-agent"
     session.close()
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "zstd", "br", "identity"])
+def test_adapter_preserves_explicit_content_encoding(encoding: str) -> None:
+    """Caller-encoded payloads remain unchanged across repeated adapter sends."""
+    adapter = NominalRequestsAdapter()
+    request = requests.Request(
+        "POST", "https://example.com", data=b"already-encoded", headers={"Content-Encoding": encoding}
+    ).prepare()
+    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send"):
+        for _ in range(2):
+            adapter.add_headers(request)
+            adapter.send(request)
+            assert request.body == b"already-encoded"
+            assert request.headers["Content-Encoding"] == encoding
+            assert request.headers["Content-Length"] == str(len(request.body))
+
+
+@pytest.mark.parametrize("status", [307, 308])
+def test_gzip_body_is_not_recompressed_on_redirect(status: int) -> None:
+    """Requests follows a body-preserving redirect without applying gzip a second time."""
+    sent = []
+
+    def respond(adapter, request, **kwargs):
+        sent.append((request.body, dict(request.headers)))
+        response = requests.Response()
+        response.status_code = status if len(sent) == 1 else 204
+        response._content = b""
+        response.request = request
+        response.url = request.url
+        if len(sent) == 1:
+            response.headers["Location"] = "https://example.com/redirected"
+        return response
+
+    with requests.Session() as session:
+        session.mount("https://example.com", NominalRequestsAdapter())
+        with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", respond):
+            response = session.post("https://example.com/original", data=b"hello world" * 50)
+    assert response.status_code == 204
+    assert len(response.history) == 1
+    assert len(sent) == 2
+    assert sent[0][0] == sent[1][0]
+    for body, headers in sent:
+        assert gzip.decompress(body) == b"hello world" * 50
+        assert headers["Content-Encoding"] == "gzip"
+        assert headers["Content-Length"] == str(len(body))
