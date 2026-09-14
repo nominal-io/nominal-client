@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import functools
 import io
-import weakref
 from contextlib import contextmanager
-from pathlib import Path
-from types import TracebackType
-from typing import Any, Callable, Generator, Iterator, Mapping
+from typing import Any, Iterator, Mapping
 
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
@@ -14,7 +11,6 @@ import ibis.expr.operations as ops
 import ibis.expr.schema as sch
 import ibis.expr.types as ir
 import pyarrow as pa
-import pyarrow.dataset as ds
 import sqlglot.expressions as sge
 from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
@@ -144,61 +140,6 @@ class _PayloadReader(io.RawIOBase):
         return count
 
 
-class _QueryBatchReader:
-    """Arrow-compatible reader that also closes the generator owning the query RPC.
-
-    PyArrow's iterator-backed RecordBatchReader.close() does not close its
-    Python iterator. Keep that lifecycle explicit while delegating Arrow reads
-    unchanged, including their original Python exceptions.
-    """
-
-    def __init__(self, reader: pa.RecordBatchReader, close: Callable[[], None]) -> None:
-        self._reader = reader
-        self._finalize = weakref.finalize(self, close)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._reader, name)
-
-    def __iter__(self) -> _QueryBatchReader:
-        return self
-
-    def __next__(self) -> pa.RecordBatch:
-        return self._reader.read_next_batch()
-
-    def __enter__(self) -> _QueryBatchReader:
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None
-    ) -> None:
-        self.close()
-
-    def close(self) -> None:
-        try:
-            self._finalize()
-        finally:
-            self._reader.close()
-
-    def cast(self, target_schema: pa.Schema) -> _QueryBatchReader:
-        return _QueryBatchReader(self._reader.cast(target_schema), self.close)
-
-    def _export_reader(self) -> pa.RecordBatchReader:
-        # Keep this owner alive until the consumer releases the exported stream,
-        # and propagate that release back to the query even on early exit.
-        def exported_batches() -> Iterator[pa.RecordBatch]:
-            yield from self
-
-        batches = exported_batches()
-        weakref.finalize(batches, self.close)
-        return pa.RecordBatchReader.from_batches(self.schema, batches)
-
-    def __arrow_c_stream__(self, requested_schema: Any = None) -> Any:
-        return self._export_reader().__arrow_c_stream__(requested_schema)
-
-    def _export_to_c(self, out_ptr: int) -> None:
-        self._export_reader()._export_to_c(out_ptr)
-
-
 class Backend(SQLBackend, NoUrl):
     """Ibis backend executing queries against the Nominal SQL API."""
 
@@ -323,37 +264,21 @@ class Backend(SQLBackend, NoUrl):
         limit: int | str | None = None,
         chunk_size: int = 1_000_000,
         **kwargs: Any,
-    ) -> _QueryBatchReader:
-        """Stream record batches; close the reader or use a `with` block to cancel an unfinished query."""
+    ) -> pa.RecordBatchReader:
+        """Execute the expression, streaming record batches without materializing the result."""
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
         sql = self.compile(table_expr, params=params, limit=limit)
         target = table_expr.schema().to_pyarrow()
 
-        def converted_batches() -> Generator[pa.RecordBatch, None, None]:
+        def converted_batches() -> Iterator[pa.RecordBatch]:
             with self._open_stream(sql) as reader:
                 self._check_result_columns(reader.schema, target)
                 for batch in reader:
                     table = self._cast_result(pa.Table.from_batches([batch]), target)
                     yield from table.to_batches(max_chunksize=chunk_size)
 
-        batches = converted_batches()
-        return _QueryBatchReader(pa.RecordBatchReader.from_batches(target, batches), batches.close)
-
-    def to_parquet_dir(
-        self,
-        expr: ir.Expr,
-        /,
-        directory: str | Path,
-        *,
-        params: Mapping[ir.Scalar, Any] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        # Older dataset writers require a native reader. Import its C stream
-        # without copying batches, retaining ownership through the managed reader.
-        with self.to_pyarrow_batches(expr, params=params) as batches:
-            with pa.RecordBatchReader._import_from_c_capsule(batches.__arrow_c_stream__()) as reader:
-                ds.write_dataset(reader, base_dir=directory, format="parquet", **kwargs)
+        return pa.RecordBatchReader.from_batches(target, converted_batches())
 
     def execute(
         self,

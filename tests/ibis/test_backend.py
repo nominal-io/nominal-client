@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Iterator
 from unittest.mock import MagicMock
 
@@ -18,7 +15,7 @@ import pytest
 import nominal.ibis as nibis
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalInvalidArgumentError
-from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
+from nominal.protos.sql.v1 import sql_pb2
 
 WORKSPACE_RID = "ri.security.x.workspace.1"
 
@@ -56,10 +53,10 @@ CATALOG = sql_pb2.SqlCatalog(
 QUERY_RESULT = pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"], "name": ["flight"]})
 
 
-def arrow_ipc_bytes(table: pa.Table, max_chunksize: int | None = None) -> bytes:
+def arrow_ipc_bytes(table: pa.Table) -> bytes:
     sink = io.BytesIO()
     with pa.ipc.new_stream(sink, table.schema) as writer:
-        writer.write_table(table, max_chunksize=max_chunksize)
+        writer.write_table(table)
     return sink.getvalue()
 
 
@@ -159,83 +156,9 @@ def test_to_pyarrow_batches_reassembles_the_stream_across_payload_chunks(backend
     assert table.num_rows == 1
 
 
-@pytest.mark.parametrize("exit_mode", ["close", "context", "exception", "exhaust", "arrow_export"])
-def test_batch_reader_cancels_query_without_closing_client(client: NominalClient, exit_mode: str) -> None:
-    """Closing, exhausting, or exporting a reader releases its RPC while the client stays usable."""
-    call = query_call(arrow_ipc_bytes(pa.concat_tables([QUERY_RESULT, QUERY_RESULT]), max_chunksize=1))
-    client._clients.sql.Query.side_effect = None
-    client._clients.sql.Query.return_value = call
-    con = nibis.connect(client)
-    reader = con.table("datasets").to_pyarrow_batches()
-    client._clients.sql.Query.assert_not_called()
-    assert reader.read_next_batch().num_rows == 1
-    call.cancel.assert_not_called()
-
-    if exit_mode == "close":
-        reader.close()
-    elif exit_mode == "context":
-        with reader:
-            pass
-    elif exit_mode == "exception":
-        with pytest.raises(ValueError, match="consumer failed"), reader:
-            raise ValueError("consumer failed")
-    elif exit_mode == "exhaust":
-        assert [batch.num_rows for batch in reader] == [1]
-    else:
-        exported = pa.RecordBatchReader._import_from_c_capsule(reader.__arrow_c_stream__())
-        exported.close()
-
-    call.cancel.assert_called_once_with()
-    reader.close()
-    call.cancel.assert_called_once_with()
-    client._clients.grpc_channel.close.assert_not_called()
-
-    next_call = query_call(arrow_ipc_bytes(QUERY_RESULT))
-    client._clients.sql.Query.return_value = next_call
-    assert con.table("datasets").to_pandas()["name"].tolist() == ["flight"]
-    next_call.cancel.assert_called_once_with()
-
-
-def test_closing_unstarted_batch_reader_does_not_start_query(client: NominalClient) -> None:
-    """Closing before the first read never opens a query RPC."""
-    reader = nibis.connect(client).table("datasets").to_pyarrow_batches()
-    reader.close()
-    assert list(reader) == []
-    client._clients.sql.Query.assert_not_called()
-
-
-def test_batch_reader_close_cancels_live_grpc_call(client: NominalClient) -> None:
-    """An early close reaches the server while the reader remains referenced by the caller."""
-    cancelled = threading.Event()
-    finish = threading.Event()
-    result = pa.table({"dataset_rid": ["dataset"] * 10_000, "name": ["flight"] * 10_000})
-    payload = arrow_ipc_bytes(result, max_chunksize=1000)
-
-    class Service(sql_pb2_grpc.SqlServiceServicer):
-        def Query(self, request: sql_pb2.SqlServiceQueryRequest, context: grpc.ServicerContext):
-            context.add_callback(cancelled.set)
-            yield sql_pb2.SqlServiceQueryResponse(payload=payload)
-            finish.wait(10)
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        server = grpc.server(executor)
-        sql_pb2_grpc.add_SqlServiceServicer_to_server(Service(), server)
-        port = server.add_insecure_port("127.0.0.1:0")
-        server.start()
-        try:
-            with grpc.insecure_channel(f"127.0.0.1:{port}") as channel:
-                client._clients.sql.Query = sql_pb2_grpc.SqlServiceStub(channel).Query
-                reader = nibis.connect(client).table("datasets").to_pyarrow_batches()
-                with reader:
-                    assert reader.read_next_batch().num_rows == 1000
-                    assert not cancelled.is_set()
-                assert cancelled.wait(2), "Closing the reader did not cancel the RPC"
-        finally:
-            finish.set()
-            server.stop(0).wait()
-
-
-@pytest.mark.parametrize("operation", ["raw_sql", "schema_probe", "invalid_stream", "invalid_columns", "invalid_cast"])
+@pytest.mark.parametrize(
+    "operation", ["raw_sql", "batches", "schema_probe", "invalid_stream", "invalid_columns", "invalid_cast"]
+)
 def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, operation: str) -> None:
     """Schema probes, materialized reads, and stream/conversion failures all release the RPC."""
     result = pa.table({"value": ["not numeric"]}) if operation == "invalid_cast" else QUERY_RESULT
@@ -246,6 +169,10 @@ def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, op
     con = nibis.connect(client)
     if operation == "raw_sql":
         assert con.raw_sql("SELECT * FROM datasets").equals(QUERY_RESULT)
+    elif operation == "batches":
+        reader = con.table("datasets").to_pyarrow_batches()
+        assert isinstance(reader, pa.RecordBatchReader)
+        assert reader.read_all().to_pydict() == QUERY_RESULT.to_pydict()
     elif operation == "schema_probe":
         con.sql("SELECT * FROM datasets")
     elif operation == "invalid_stream":
@@ -256,37 +183,6 @@ def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, op
         reader = expr.to_pyarrow_batches()
         with pytest.raises(nibis.NominalSqlError):
             reader.read_all()
-    call.cancel.assert_called_once_with()
-
-
-def test_exported_arrow_stream_keeps_temporary_reader_alive(client: NominalClient) -> None:
-    """An Arrow consumer can own the stream after the Python wrapper goes out of scope."""
-    call = query_call(arrow_ipc_bytes(QUERY_RESULT))
-    client._clients.sql.Query.side_effect = None
-    client._clients.sql.Query.return_value = call
-    expr = nibis.connect(client).table("datasets")
-    with pa.RecordBatchReader._import_from_c_capsule(expr.to_pyarrow_batches().__arrow_c_stream__()) as reader:
-        assert reader.read_all().to_pydict() == QUERY_RESULT.to_pydict()
-    call.cancel.assert_called_once_with()
-
-
-def test_managed_reader_supports_ibis_dataset_export(backend: nibis.Backend, tmp_path: Path) -> None:
-    """Ibis can write a Parquet dataset through the managed reader, including on PyArrow 14."""
-    import pyarrow.dataset as ds
-
-    backend.table("datasets").to_parquet_dir(tmp_path)
-    assert ds.dataset(tmp_path, format="parquet").to_table().to_pydict() == QUERY_RESULT.to_pydict()
-
-
-@pytest.mark.skipif(not hasattr(pa.RecordBatchReader, "cast"), reason="PyArrow version does not support reader.cast")
-def test_cast_reader_closes_query(client: NominalClient) -> None:
-    """A lazily cast reader retains ownership and cancels the query on early close."""
-    call = query_call(arrow_ipc_bytes(QUERY_RESULT))
-    client._clients.sql.Query.side_effect = None
-    client._clients.sql.Query.return_value = call
-    reader = nibis.connect(client).table("datasets").to_pyarrow_batches().cast(QUERY_RESULT.schema)
-    with reader:
-        assert reader.read_next_batch().num_rows == 1
     call.cancel.assert_called_once_with()
 
 
