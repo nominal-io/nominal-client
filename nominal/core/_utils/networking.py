@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import ipaddress
 import logging
 import ssl
@@ -13,6 +12,7 @@ from urllib.parse import ParseResult, urlparse
 import requests
 import truststore
 import typing_extensions
+import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-GZIP_COMPRESSION_LEVEL = 1
+ZSTD_COMPRESSION_LEVEL = 1
 
 _LOOPBACK_NETWORKS = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
 
@@ -193,7 +193,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
 
 
 class NominalRequestsAdapter(SslBypassRequestsAdapter):
-    """Gzip unencoded request bodies, preserving caller-specified Content-Encoding.
+    """Zstd-compress unencoded request bodies, preserving caller-specified Content-Encoding.
 
     An explicit encoding, including ``identity``, opts out of automatic compression.
     File and iterator bodies pass through without buffering.
@@ -219,12 +219,13 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         elif not stream and isinstance(request.body, (bytes, str)) and self.CONTENT_ENCODING not in request.headers:
             body = request.body
             raw_body = body if isinstance(body, bytes) else body.encode("utf-8")
-            request.body = gzip.compress(raw_body, compresslevel=GZIP_COMPRESSION_LEVEL)
+            # Each send owns its context; this adapter is shared by concurrent upload workers.
+            request.body = zstandard.ZstdCompressor(level=ZSTD_COMPRESSION_LEVEL).compress(raw_body)
             request.headers.pop("Transfer-Encoding", None)
             request.headers.update(
                 {
                     self.ACCEPT_ENCODING: "gzip",
-                    self.CONTENT_ENCODING: "gzip",
+                    self.CONTENT_ENCODING: "zstd",
                     self.CONTENT_LENGTH: str(len(request.body)),
                 }
             )
@@ -240,10 +241,9 @@ def create_conjure_service_client(
     header_provider: HeaderProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
-    that automatically gzip data being sent to services.
+    that automatically zstd-compresses data being sent to services.
 
-    In bandwidth constrained scenarios, this has been measured to have up to 5x speedups in time to
-    send data to backend services, depending on the compressability of the data.
+    Keeps the existing gzip response preference for auto-compressed requests.
 
     See: https://github.com/palantir/conjure-python-client/blob/60d6d7639502a3b0fe18fad388ce84cbc54eb613/conjure_python_client/_http/requests_client.py#L181
 

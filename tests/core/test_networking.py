@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import gzip
 import io
 from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
 import requests
+import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
@@ -23,7 +23,7 @@ def _prepared_request(body: object) -> requests.PreparedRequest:
     return requests.Request("POST", "https://example.com", data=body).prepare()
 
 
-def test_gzip_adapter_updates_content_length_after_compression() -> None:
+def test_zstd_adapter_updates_content_length_after_compression() -> None:
     """Content-Length must reflect the compressed body size, not the original."""
     adapter = NominalRequestsAdapter()
     request = _prepared_request("hello world" * 50)
@@ -36,12 +36,13 @@ def test_gzip_adapter_updates_content_length_after_compression() -> None:
     compressed_body = sent_request.body
 
     assert isinstance(compressed_body, bytes)
-    assert gzip.decompress(compressed_body) == ("hello world" * 50).encode("utf-8")
-    assert sent_request.headers["Content-Encoding"] == "gzip"
+    assert zstandard.ZstdDecompressor().decompress(compressed_body) == ("hello world" * 50).encode("utf-8")
+    assert sent_request.headers["Content-Encoding"] == "zstd"
+    assert sent_request.headers["Accept-Encoding"] == "gzip"
     assert sent_request.headers["Content-Length"] == str(len(compressed_body))
 
 
-def test_gzip_adapter_compresses_bytes_body() -> None:
+def test_zstd_adapter_compresses_bytes_body() -> None:
     """Bytes bodies must be compressed directly without an encode step."""
     adapter = NominalRequestsAdapter()
     raw = b"binary payload" * 50
@@ -55,11 +56,11 @@ def test_gzip_adapter_compresses_bytes_body() -> None:
     compressed_body = sent_request.body
 
     assert isinstance(compressed_body, bytes)
-    assert gzip.decompress(compressed_body) == raw
+    assert zstandard.ZstdDecompressor().decompress(compressed_body) == raw
     assert sent_request.headers["Content-Length"] == str(len(compressed_body))
 
 
-def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
+def test_zstd_adapter_skips_compression_for_streaming_requests() -> None:
     """Streaming requests must pass through unmodified so the consumer controls the body."""
     adapter = NominalRequestsAdapter()
     request = _prepared_request("plain text body")
@@ -212,15 +213,15 @@ def _follow_redirect(status: int) -> list[requests.PreparedRequest]:
 
 
 @pytest.mark.parametrize("status", [307, 308])
-def test_gzip_body_is_not_recompressed_on_redirect(status: int) -> None:
-    """Requests follows a body-preserving redirect without applying gzip a second time."""
+def test_zstd_body_is_not_recompressed_on_redirect(status: int) -> None:
+    """Requests follows a body-preserving redirect without applying zstd a second time."""
     first, redirected = _follow_redirect(status)
     assert first.body == redirected.body
     for request in (first, redirected):
         assert request.method == "POST"
         assert isinstance(request.body, bytes)
-        assert gzip.decompress(request.body) == b"hello world" * 50
-        assert request.headers["Content-Encoding"] == "gzip"
+        assert zstandard.ZstdDecompressor().decompress(request.body) == b"hello world" * 50
+        assert request.headers["Content-Encoding"] == "zstd"
         assert request.headers["Content-Length"] == str(len(request.body))
 
 
@@ -228,7 +229,7 @@ def test_gzip_body_is_not_recompressed_on_redirect(status: int) -> None:
 def test_bodyless_redirect_removes_content_encoding(status: int) -> None:
     """Redirects that drop a POST body also remove its stale encoding header."""
     first, redirected = _follow_redirect(status)
-    assert first.headers["Content-Encoding"] == "gzip"
+    assert first.headers["Content-Encoding"] == "zstd"
     assert redirected.method == "GET"
     assert redirected.body is None
     assert "Content-Encoding" not in redirected.headers
