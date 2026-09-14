@@ -11,15 +11,24 @@ from nominal.core.channel import Channel, ChannelDataType
 class _FakeRpcError(grpc.RpcError):
     """A grpc.RpcError with a controllable status code and details, for exercising gRPC error translation."""
 
-    def __init__(self, code: grpc.StatusCode, details: str = "fake rpc error") -> None:
+    def __init__(
+        self,
+        code: grpc.StatusCode,
+        details: str = "fake rpc error",
+        trailing_metadata: tuple[tuple[str, str | bytes], ...] | None = None,
+    ) -> None:
         self._code = code
         self._details = details
+        self._trailing_metadata = trailing_metadata
 
     def code(self) -> grpc.StatusCode:
         return self._code
 
     def details(self) -> str:
         return self._details
+
+    def trailing_metadata(self) -> tuple[tuple[str, str | bytes], ...] | None:
+        return self._trailing_metadata
 
 
 @pytest.fixture
