@@ -1559,6 +1559,41 @@ def _get_dataset(
     return datasets[0]
 
 
+def _create_dataset_request(
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+    marking_rids: Sequence[str] = (),
+    derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
+    dataset_type: scout_catalog.DatasetBackingType | None = None,
+) -> scout_catalog.CreateDataset:
+    """Build the CreateDataset request shared by every dataset creation path.
+
+    Callers pass only the fields that differ between them; the rest is the shape the catalog API
+    expects for a client-created dataset. `channel_search_split_tag_keys` is empty because the server
+    rejects split keys on a dataset with no derived definition, and empty is what it already stores
+    for datasets created before that field existed.
+    """
+    return scout_catalog.CreateDataset(
+        name=name,
+        description=description,
+        labels=list(labels),
+        properties={} if properties is None else dict(properties),
+        typed_properties={},
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=workspace_rid,
+        marking_rids=list(marking_rids),
+        channel_search_split_tag_keys=[],
+        derived_definition=derived_definition,
+        dataset_type=dataset_type,
+    )
+
+
 def _create_dataset(
     auth_header: str,
     client: scout_catalog.CatalogService,
@@ -1570,18 +1605,13 @@ def _create_dataset(
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
-    request = scout_catalog.CreateDataset(
-        channel_search_split_tag_keys=[],
-        name=name,
+    request = _create_dataset_request(
+        name,
         description=description,
-        labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=workspace_rid,
-        marking_rids=list(marking_rids or []),
+        labels=labels,
+        properties=properties,
+        workspace_rid=workspace_rid,
+        marking_rids=marking_rids or (),
     )
     return client.create_dataset(auth_header, request)
 
