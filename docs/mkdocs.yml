@@ -36,6 +36,7 @@ nav:
         - Logging: reference/experimental/logging.md
         - Video Processing: reference/experimental/video_processing.md
   - Guides:
+      - File Store: file-store.md
       - Networking & TLS: networking-tls.md
   - Development:
       - Contributing: contributing.md
