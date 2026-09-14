@@ -12,7 +12,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
 from typing_extensions import Self
 
-from nominal.core._stream.batch_processor import process_log_batch
+from nominal.core._stream.batch_processor_proto import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
@@ -1177,7 +1177,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             batch_size=batch_size,
             max_wait=max_wait,
             process_batch=lambda batch: process_log_batch(
-                batch, self.rid, auth_header=self._clients.auth_header, storage_writer=self._clients.storage_writer
+                batch, self.rid, auth_header=self._clients.auth_header, proto_write=self._clients.proto_write
             ),
         )
 

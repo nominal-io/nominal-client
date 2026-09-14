@@ -41,6 +41,7 @@ from nominal.core.exceptions import NominalConfigError
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.direct_channel_writer.v2.direct_nominal_channel_writer_pb2 import WriteBatchesRequest
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -81,6 +82,21 @@ class RequestMetrics:
 
 
 class ProtoWriteService(Service):
+    def write_columnar_batches(self, auth_header: str, request: WriteBatchesRequest) -> None:
+        """Serialize a direct columnar request; the shared HTTP adapter owns compression."""
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-protobuf",
+            "Authorization": auth_header,
+        }
+        self._request(
+            "POST",
+            self._uri + "/storage/writer/v1/nominal-columnar",
+            params={},
+            headers=headers,
+            data=request.SerializeToString(),
+        )
+
     def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",

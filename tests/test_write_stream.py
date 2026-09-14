@@ -1053,3 +1053,16 @@ def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_tim
 
     stop.wait.assert_called_once()
     assert stop.wait.call_args.kwargs["timeout"] == expected_timeout
+
+
+def test_dataset_log_stream_uses_python_columnar_writer(mock_dataset, mock_clients):
+    from nominal.protos.direct_channel_writer.v2 import direct_nominal_channel_writer_pb2 as wire
+
+    with mock_dataset.get_log_stream(batch_size=10) as stream:
+        stream.enqueue("logs", 123, "hello", {"level": "INFO"})
+    mock_clients.proto_write.write_columnar_batches.assert_called_once()
+    request = mock_clients.proto_write.write_columnar_batches.call_args.kwargs["request"]
+    assert isinstance(request, wire.WriteBatchesRequest)
+    assert request.data_source_rid == mock_dataset.rid
+    assert request.batches[0].points.timestamps[0].nanos == 123
+    assert request.batches[0].points.log_points.points[0].value.args == {"level": "INFO"}
