@@ -9,8 +9,10 @@ from typing import Any, Sequence, cast
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, StreamValueType
+from nominal.core._stream.write_stream import BatchItem, DataItem, LogItem, PointType, StreamValueType
 from nominal.core._utils.queueing import Batch
+from nominal.protos.direct_channel_writer.v2 import direct_nominal_channel_writer_pb2 as wire
+from nominal.protos.direct_channel_writer_common.v2.direct_channel_writer_common_pb2 import RecordsBatch
 from nominal.protos.write.nominal_write_pb2 import (
     ArrayPoints,
     DoubleArrayPoint,
@@ -184,3 +186,33 @@ def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Times
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)
     ts = Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)
     return ts
+
+
+def create_log_write_request(batch: Sequence[LogItem], nominal_data_source_rid: str) -> wire.WriteBatchesRequest:
+    """Group log channels in one request, preserving per-channel order and per-record arguments."""
+    request = wire.WriteBatchesRequest(data_source_rid=nominal_data_source_rid)
+    by_channel: dict[str, RecordsBatch] = {}
+    for item in batch:
+        channel = by_channel.get(item.channel_name)
+        if channel is None:
+            channel = request.batches.add(channel=item.channel_name)
+            by_channel[item.channel_name] = channel
+        seconds, nanos = _SecondsNanos.from_nanoseconds(item.timestamp)
+        channel.points.timestamps.add(seconds=seconds, nanos=nanos)
+        value = channel.points.log_points.points.add().value
+        value.message = item.value
+        if item.tags:
+            value.args.update(item.tags)
+    return request
+
+
+def process_log_batch(
+    batch: Sequence[LogItem],
+    nominal_data_source_rid: str,
+    auth_header: str,
+    proto_write: ProtoWriteService,
+) -> None:
+    """Build and upload a batch of logs through the configured protobuf transport."""
+    if batch:
+        request = create_log_write_request(batch, nominal_data_source_rid)
+        proto_write.write_columnar_batches(auth_header=auth_header, request=request)
