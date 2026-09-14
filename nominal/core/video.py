@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Mapping, Protocol, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
 from typing_extensions import Self, deprecated
@@ -572,6 +572,15 @@ def _build_video_file_timestamp_manifest(
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
     return clients.video.get(clients.auth_header, video_rid)
+
+
+def _get_videos(clients: Video._Clients, video_rids: Iterable[str]) -> Sequence[scout_video_api.Video]:
+    """Fetch many videos in one request. The response omits RIDs the caller cannot read."""
+    rids = list(video_rids)
+    if not rids:
+        return []
+    request = scout_video_api.GetVideosRequest(video_rids=rids)
+    return list(clients.video.batch_get(clients.auth_header, request).responses)
 
 
 def _create_video(

@@ -117,7 +117,7 @@ from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
-from nominal.core.video import Video, _create_video
+from nominal.core.video import Video, _create_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
@@ -948,8 +948,7 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     def _iter_get_videos(self, rids: Iterable[str]) -> Iterable[Video]:
-        request = scout_video_api.GetVideosRequest(video_rids=list(rids))
-        for response in self._clients.video.batch_get(self._clients.auth_header, request).responses:
+        for response in _get_videos(self._clients, rids):
             yield Video._from_conjure(self._clients, response)
 
     @deprecated(

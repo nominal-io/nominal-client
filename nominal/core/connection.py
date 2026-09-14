@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Sequence, overload
+from typing import Iterable, Literal, Sequence, overload
 
 from nominal_api import scout_datasource_connection_api
 
@@ -121,9 +121,13 @@ class StreamingConnection(Connection):
 
 
 def _get_connections(
-    clients: Connection._Clients, connection_rids: Sequence[str]
+    clients: Connection._Clients, connection_rids: Iterable[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
-    return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
+    """Fetch many connections in one request. The response omits RIDs the caller cannot read."""
+    rids = list(connection_rids)
+    if not rids:
+        return []
+    return clients.connection.get_connections(clients.auth_header, rids)
 
 
 def _get_connection(clients: Connection._Clients, connection_rid: str) -> scout_datasource_connection_api.Connection:

@@ -8,12 +8,12 @@ a spatial added here shows up in the platform exactly as any other data source d
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from nominal_api import scout_asset_api, scout_run_api
 
 from nominal.core import Asset, Run
-from nominal.core._utils.api_tools import filter_scope_rids, rid_from_instance_or_string
+from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.experimental.spatial._spatial import Spatial, _get_spatial
 
 
@@ -122,11 +122,15 @@ def list_spatials_in_run(run: Run) -> Sequence[tuple[str, Spatial]]:
     ]
 
 
-def _spatial_scope_rids(asset: Asset) -> dict[str, str]:
-    """Spatial rids by data scope name, read from one fetch of the asset."""
-    return dict(filter_scope_rids(asset._get_latest_api().data_scopes, "spatial"))
+def _spatial_scope_rids(asset: Asset) -> Mapping[str, str]:
+    """Spatial rids by data scope name, read from one fetch of the asset.
+
+    `group_scope_rids` keys every scope type, resolvable by core or not, which is what lets
+    spatial read its rids from the same grouping the core scope types use.
+    """
+    return asset._scope_rids_by_type()["spatial"]
 
 
-def _spatial_datasource_rids(run: Run) -> dict[str, str]:
+def _spatial_datasource_rids(run: Run) -> Mapping[str, str]:
     """Spatial rids by ref name, read from one fetch of the run."""
-    return dict(run._list_datasource_rids("spatial"))
+    return run._scope_rids_by_type()["spatial"]

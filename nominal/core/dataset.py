@@ -1544,7 +1544,11 @@ def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, s
 def _get_datasets(
     auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
 ) -> Iterable[scout_catalog.EnrichedDataset]:
-    request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
+    """Fetch many datasets in one request. The response omits RIDs the caller cannot read."""
+    rids = list(dataset_rids)
+    if not rids:
+        return
+    request = scout_catalog.GetDatasetsRequest(dataset_rids=rids)
     yield from client.get_enriched_datasets(auth_header, request)
 
 
