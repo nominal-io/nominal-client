@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.168.0](https://github.com/nominal-io/nominal-client/compare/v1.167.0...v1.168.0) (2026-09-14)
+
+
+### Features
+
+* add the SqlService gRPC stub to the client bunch ([#967](https://github.com/nominal-io/nominal-client/issues/967)) ([6e595dc](https://github.com/nominal-io/nominal-client/commit/6e595dc35593c62b0ebd0f64f589337fd34e16f6))
+* default streaming to rust, collapse implementations to python and rust ([#974](https://github.com/nominal-io/nominal-client/issues/974)) ([92c4144](https://github.com/nominal-io/nominal-client/commit/92c41443b6dedd8a0c631fc626eb1b4c557e56ae))
+* default streaming to rust, rename data_format to implementation ([92c4144](https://github.com/nominal-io/nominal-client/commit/92c41443b6dedd8a0c631fc626eb1b4c557e56ae))
+* **spatial:** added a spatial V1 ingest client ([#949](https://github.com/nominal-io/nominal-client/issues/949)) ([27f34a7](https://github.com/nominal-io/nominal-client/commit/27f34a7c597171a6f300ff786dbd4834bc9f9e13))
+
+
+### Bug Fixes
+
+* **spatial:** clean up the spatial integration and move it to nominal.experimental ([#970](https://github.com/nominal-io/nominal-client/issues/970)) ([33fd751](https://github.com/nominal-io/nominal-client/commit/33fd751adf626c97450fe926f2df407b0c84d818))
+
 ## [1.167.0](https://github.com/nominal-io/nominal-client/compare/v1.166.0...v1.167.0) (2026-09-10)
 
 
