@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
@@ -27,8 +28,6 @@ def test_gzip_adapter_updates_content_length_after_compression() -> None:
     adapter = NominalRequestsAdapter()
     request = _prepared_request("hello world" * 50)
 
-    adapter.add_headers(request)
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
@@ -48,8 +47,6 @@ def test_gzip_adapter_compresses_bytes_body() -> None:
     raw = b"binary payload" * 50
     request = _prepared_request(raw)
 
-    adapter.add_headers(request)
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
@@ -68,15 +65,12 @@ def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
     request = _prepared_request("plain text body")
     original_body = request.body
 
-    adapter.add_headers(request, stream=True)
-
-    assert "Content-Encoding" not in request.headers
-
     with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request, stream=True)
 
     assert super_send.call_args.args[1].body == original_body
+    assert "Content-Encoding" not in super_send.call_args.args[1].headers
 
 
 def test_ssl_adapter_proxy_uses_own_ssl_context() -> None:
@@ -174,3 +168,86 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
 
     assert prepared.headers["User-Agent"] == "provider-agent"
     session.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("encoding", ["gzip", "zstd", "br", "identity"])
+def test_adapter_preserves_explicit_content_encoding(encoding: str, stream: bool) -> None:
+    """Caller-encoded payloads remain unchanged across repeated adapter sends."""
+    adapter = NominalRequestsAdapter()
+    request = requests.Request(
+        "POST", "https://example.com", data=b"already-encoded", headers={"Content-Encoding": encoding}
+    ).prepare()
+    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send"):
+        for _ in range(2):
+            adapter.send(request, stream=stream)
+            assert request.body == b"already-encoded"
+            assert request.headers["Content-Encoding"] == encoding
+            assert request.headers["Content-Length"] == str(len(request.body))
+
+
+def _follow_redirect(status: int) -> list[requests.PreparedRequest]:
+    """Exercise Requests' redirect handling and capture each request before further mutation."""
+    sent: list[requests.PreparedRequest] = []
+
+    def respond(adapter, request, **kwargs):
+        sent.append(request.copy())
+        response = requests.Response()
+        response.status_code = status if len(sent) == 1 else 204
+        response._content = b""
+        response.request = request
+        response.url = request.url
+        if len(sent) == 1:
+            response.headers["Location"] = "https://example.com/redirected"
+        return response
+
+    with requests.Session() as session:
+        session.mount("https://example.com", NominalRequestsAdapter())
+        with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", respond):
+            response = session.post("https://example.com/original", data=b"hello world" * 50)
+    assert response.status_code == 204
+    assert len(response.history) == 1
+    assert len(sent) == 2
+    return sent
+
+
+@pytest.mark.parametrize("status", [307, 308])
+def test_gzip_body_is_not_recompressed_on_redirect(status: int) -> None:
+    """Requests follows a body-preserving redirect without applying gzip a second time."""
+    first, redirected = _follow_redirect(status)
+    assert first.body == redirected.body
+    for request in (first, redirected):
+        assert request.method == "POST"
+        assert isinstance(request.body, bytes)
+        assert gzip.decompress(request.body) == b"hello world" * 50
+        assert request.headers["Content-Encoding"] == "gzip"
+        assert request.headers["Content-Length"] == str(len(request.body))
+
+
+@pytest.mark.parametrize("status", [301, 302, 303])
+def test_bodyless_redirect_removes_content_encoding(status: int) -> None:
+    """Redirects that drop a POST body also remove its stale encoding header."""
+    first, redirected = _follow_redirect(status)
+    assert first.headers["Content-Encoding"] == "gzip"
+    assert redirected.method == "GET"
+    assert redirected.body is None
+    assert "Content-Encoding" not in redirected.headers
+
+
+@pytest.mark.parametrize("kind", ["file", "generator"])
+def test_adapter_does_not_consume_upload_stream(kind: str) -> None:
+    """The adapter delegates the original upload object without reading or materializing it."""
+    consumed = []
+
+    def chunks():
+        consumed.append(True)
+        yield b"payload"
+
+    body = io.BytesIO(b"payload") if kind == "file" else chunks()
+    request = requests.Request("POST", "https://example.com", data=body).prepare()
+    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send") as send:
+        NominalRequestsAdapter().send(request)
+    assert send.call_args.args[0].body is body
+    assert not consumed
+    if isinstance(body, io.BytesIO):
+        assert body.tell() == 0
