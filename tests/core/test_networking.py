@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
@@ -231,3 +232,22 @@ def test_bodyless_redirect_removes_content_encoding(status: int) -> None:
     assert redirected.method == "GET"
     assert redirected.body is None
     assert "Content-Encoding" not in redirected.headers
+
+
+@pytest.mark.parametrize("kind", ["file", "generator"])
+def test_adapter_does_not_consume_upload_stream(kind: str) -> None:
+    """The adapter delegates the original upload object without reading or materializing it."""
+    consumed = []
+
+    def chunks():
+        consumed.append(True)
+        yield b"payload"
+
+    body = io.BytesIO(b"payload") if kind == "file" else chunks()
+    request = requests.Request("POST", "https://example.com", data=body).prepare()
+    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send") as send:
+        NominalRequestsAdapter().send(request)
+    assert send.call_args.args[0].body is body
+    assert not consumed
+    if isinstance(body, io.BytesIO):
+        assert body.tell() == 0

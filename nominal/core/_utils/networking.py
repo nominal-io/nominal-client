@@ -196,6 +196,7 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
     """Gzip unencoded request bodies, preserving caller-specified Content-Encoding.
 
     An explicit encoding, including ``identity``, opts out of automatic compression.
+    File and iterator bodies pass through without buffering.
     For compatibility, ``stream=True`` also bypasses request compression.
     """
 
@@ -215,10 +216,11 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         # A redirect can resend the same encoded body. Compress only once, regardless of codec.
         if request.body is None:
             request.headers.pop(self.CONTENT_ENCODING, None)
-        elif not stream and self.CONTENT_ENCODING not in request.headers:
+        elif not stream and isinstance(request.body, (bytes, str)) and self.CONTENT_ENCODING not in request.headers:
             body = request.body
             raw_body = body if isinstance(body, bytes) else body.encode("utf-8")
             request.body = gzip.compress(raw_body, compresslevel=GZIP_COMPRESSION_LEVEL)
+            request.headers.pop("Transfer-Encoding", None)
             request.headers.update(
                 {
                     self.ACCEPT_ENCODING: "gzip",
