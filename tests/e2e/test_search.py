@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import ArchiveStatusFilter, EventType, NominalClient
+from nominal.core import ArchiveStatusFilter, EventType, NominalClient, between, gt
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
@@ -424,6 +424,62 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
     results = client.search_assets(properties={"search-tag": search_context.tag})
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}
+
+
+def test_numeric_property_search(client: NominalClient, archive: Callable[[object], None]) -> None:
+    """Numeric equality and comparison filters match typed properties on assets, runs, and datasets."""
+    tag = uuid4().hex
+    start, end = _create_random_start_end()
+
+    asset_lo = client.create_asset(f"asset-np-lo-{tag}", properties={"np-tag": tag, "mass_kg": 5})
+    asset_mid = client.create_asset(f"asset-np-mid-{tag}", properties={"np-tag": tag, "mass_kg": 15})
+    asset_hi = client.create_asset(f"asset-np-hi-{tag}", properties={"np-tag": tag, "mass_kg": 25})
+    archive(asset_lo)
+    archive(asset_mid)
+    archive(asset_hi)
+
+    run_lo = client.create_run(f"run-np-lo-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 5})
+    run_mid = client.create_run(f"run-np-mid-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 15})
+    run_hi = client.create_run(f"run-np-hi-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 25})
+    archive(run_lo)
+    archive(run_mid)
+    archive(run_hi)
+
+    dataset_lo = client.create_dataset(f"dataset-np-lo-{tag}", properties={"np-tag": tag, "mass_kg": 5})
+    dataset_mid = client.create_dataset(f"dataset-np-mid-{tag}", properties={"np-tag": tag, "mass_kg": 15})
+    dataset_hi = client.create_dataset(f"dataset-np-hi-{tag}", properties={"np-tag": tag, "mass_kg": 25})
+    archive(dataset_lo)
+    archive(dataset_mid)
+    archive(dataset_hi)
+
+    assert {a.rid for a in client.search_assets(properties={"np-tag": tag, "mass_kg": 15})} == {asset_mid.rid}
+    assert {a.rid for a in client.search_assets(properties={"np-tag": tag}, property_filters=[gt("mass_kg", 10)])} == {
+        asset_mid.rid,
+        asset_hi.rid,
+    }
+    assert {
+        a.rid for a in client.search_assets(properties={"np-tag": tag}, property_filters=[between("mass_kg", 10, 20)])
+    } == {asset_mid.rid}
+
+    assert {r.rid for r in client.search_runs(properties={"np-tag": tag, "mass_kg": 15})} == {run_mid.rid}
+    assert {r.rid for r in client.search_runs(properties={"np-tag": tag}, property_filters=[gt("mass_kg", 10)])} == {
+        run_mid.rid,
+        run_hi.rid,
+    }
+    assert {
+        r.rid for r in client.search_runs(properties={"np-tag": tag}, property_filters=[between("mass_kg", 10, 20)])
+    } == {run_mid.rid}
+
+    assert {d.rid for d in client.search_datasets(properties={"np-tag": tag, "mass_kg": 15})} == {dataset_mid.rid}
+    assert {
+        d.rid for d in client.search_datasets(properties={"np-tag": tag}, property_filters=[gt("mass_kg", 10)])
+    } == {
+        dataset_mid.rid,
+        dataset_hi.rid,
+    }
+    assert {
+        d.rid for d in client.search_datasets(properties={"np-tag": tag}, property_filters=[between("mass_kg", 10, 20)])
+    } == {dataset_mid.rid}
 
 
 def test_search_assets_archive_status(

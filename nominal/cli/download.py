@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------------
 
 
-def _render_properties(props: Optional[Mapping[str, str]]) -> str:
+def _render_properties(props: Optional[Mapping[str, str | float]]) -> str:
     if not props:
         return "-"
     # show a compact key=value list

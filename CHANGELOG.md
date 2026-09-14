@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+
+### Features
+
+* support numeric properties on assets, runs, and datasets
+
+
 ## [1.167.0](https://github.com/nominal-io/nominal-client/compare/v1.166.0...v1.167.0) (2026-09-10)
 
 

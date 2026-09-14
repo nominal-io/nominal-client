@@ -11,6 +11,7 @@ from nominal_api.api import Timestamp
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal.core._utils.properties import PropertyValue
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -86,7 +87,7 @@ def upload_dataframe(
     *,
     wait_until_complete: bool = True,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: Mapping[str, PropertyValue] | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
 ) -> Dataset:

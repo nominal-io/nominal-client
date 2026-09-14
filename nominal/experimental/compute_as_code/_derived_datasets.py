@@ -9,6 +9,7 @@ from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.properties import PropertyValue
 from nominal.core.dataset import Dataset, _create_dataset_request
 from nominal.core.marking import _marking_rids
 
@@ -28,7 +29,7 @@ def create_derived_dataset(
     message: str = "Initial derived definition",
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: Mapping[str, PropertyValue] | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> Dataset:
     """Create a derived dataset defined by a ``nominal_compute`` graph.

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nominal.core import NominalClient
+from nominal.core._utils.properties import PropertyValue
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
@@ -137,7 +138,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         options: DatasetCopyOptions,
         dataset_name: str,
         dataset_description: str | None,
-        dataset_properties: Mapping[str, str] | dict[str, Any],
+        dataset_properties: Mapping[str, PropertyValue] | dict[str, Any],
         dataset_labels: Sequence[str],
     ) -> Dataset:
         if options.preserve_uuid:
