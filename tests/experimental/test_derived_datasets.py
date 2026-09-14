@@ -71,7 +71,8 @@ def test_create_derived_dataset_sets_derived_definition(client: MagicMock) -> No
     assert details.is_v2_dataset is True
     assert details.workspace == "ri.workspace.w"
     assert details.labels == ["a"]
-    assert details.properties == {"k": "v"}
+    assert details.properties == {}
+    assert details.typed_properties["k"].string_value == "v"
 
 
 def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> None:
