@@ -2,18 +2,7 @@ from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
 from nominal.core._utils.networking import HeaderProvider
-from nominal.core._utils.properties import (
-    NumericPropertyFilter,
-    PropertyValue,
-    between,
-    eq,
-    gt,
-    gte,
-    lt,
-    lte,
-    neq,
-    not_between,
-)
+from nominal.core._utils.properties import PropertyValue, TypedProperties
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
@@ -95,9 +84,9 @@ __all__ = [
     "Marking",
     "Comment",
     "NominalClient",
-    "NumericPropertyFilter",
     "PointCloudMetadata",
     "PropertyValue",
+    "TypedProperties",
     "Run",
     "ScanPattern",
     "SearchEventOriginType",
@@ -120,12 +109,4 @@ __all__ = [
     "Workspace",
     "WorkspaceSearchType",
     "WriteStream",
-    "between",
-    "eq",
-    "gt",
-    "gte",
-    "lt",
-    "lte",
-    "neq",
-    "not_between",
 ]

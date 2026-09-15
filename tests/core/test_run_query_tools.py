@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from nominal_api import api, scout_run_api
 
+from nominal.core import properties as props
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.ts import _SecondsNanos
 
@@ -144,9 +146,9 @@ def test_create_search_runs_query_with_labels():
 
 
 def test_create_search_runs_query_with_properties():
-    """Test query creation with properties filter."""
+    """Test query creation with string equality property filters."""
     properties = {"env": "production", "version": "1.0", "region": "us-east"}
-    query = create_search_runs_query(properties=properties)
+    query = create_search_runs_query(property_filters=[props.eq(name, value) for name, value in properties.items()])
 
     # Should create one PropertiesFilter per property (3 properties = 3 filters)
     assert len(_and_queries(query)) == 3
@@ -225,7 +227,7 @@ def test_create_search_runs_query_with_all_filters():
         created_before=created_before,
         name_substring=name_substring,
         labels=labels,
-        properties=properties,
+        property_filters=[props.eq(name, value) for name, value in properties.items()],
         exact_match=exact_match,
         search_text=search_text,
         workspace_rid=workspace_rid,
@@ -247,8 +249,9 @@ def test_create_search_runs_query_empty_labels():
 
 
 def test_create_search_runs_query_empty_properties():
-    """Test query creation with empty properties dict."""
-    query = create_search_runs_query(properties={})
+    """Deprecated empty properties= dict still warns and adds no filter."""
+    with pytest.warns(DeprecationWarning, match="properties="):
+        query = create_search_runs_query(properties={})
 
     # Empty properties should not add a filter
     assert len(_and_queries(query)) == 0

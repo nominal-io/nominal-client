@@ -19,9 +19,10 @@ from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.properties import (
-    PropertyValue,
+    TypedProperties,
+    properties_for_update,
+    resource_properties_from_conjure,
     string_properties_for_ingest,
-    typed_properties_from_conjure,
     typed_properties_to_conjure,
 )
 from nominal.core._utils.query_tools import create_search_dataset_files_query
@@ -56,7 +57,7 @@ DatasetBounds: TypeAlias = Bounds
 class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
-    properties: Mapping[str, str | float]
+    properties: TypedProperties
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
@@ -74,7 +75,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace dataset metadata.
@@ -90,11 +91,13 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
         """
+        legacy_properties, typed_properties = properties_for_update(properties)
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
             labels=None if labels is None else list(labels),
             name=name,
-            typed_properties=None if properties is None else typed_properties_to_conjure(properties),
+            properties=legacy_properties,
+            typed_properties=typed_properties,
         )
         updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
         return self._refresh_from_api(updated_dataset)
@@ -1064,7 +1067,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=typed_properties_from_conjure(dataset.typed_properties),
+            properties=resource_properties_from_conjure(dataset.typed_properties, dataset.properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
@@ -1569,7 +1572,7 @@ def _create_dataset_request(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, PropertyValue] | None = None,
+    properties: TypedProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] = (),
     derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
@@ -1587,7 +1590,7 @@ def _create_dataset_request(
         description=description,
         labels=list(labels),
         properties={},
-        typed_properties=typed_properties_to_conjure(properties),
+        typed_properties=typed_properties_to_conjure(properties) or {},
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
@@ -1606,7 +1609,7 @@ def _create_dataset(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, PropertyValue] | None = None,
+    properties: TypedProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
@@ -1686,7 +1689,7 @@ def _construct_new_ingest_options(
     file_type: FileType,
     description: str | None,
     labels: Sequence[str],
-    properties: Mapping[str, PropertyValue],
+    properties: TypedProperties,
     prefix_tree_delimiter: str | None,
     channel_prefix: str | None,
     tag_columns: Mapping[str, str] | None,

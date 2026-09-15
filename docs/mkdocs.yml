@@ -25,6 +25,7 @@ nav:
       - High-level SDK: reference/toplevel.md
       - Timestamps: reference/ts.md
       - Core SDK: reference/core.md
+      - Properties: reference/properties.md
       - Exceptions: reference/exceptions.md
       - nom cli: reference/nom-cli.md
       - Third Party:

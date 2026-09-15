@@ -55,7 +55,7 @@ from nominal.core._utils.pagination_tools import (
     search_videos_paginated,
     search_workbook_templates_paginated,
 )
-from nominal.core._utils.properties import NumericPropertyFilter, PropertyValue, typed_properties_to_conjure
+from nominal.core._utils.properties import PropertyFilter, TypedProperties, eq, typed_properties_to_conjure
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
@@ -398,8 +398,8 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, PropertyValue] | None = None,
-        property_filters: Sequence[NumericPropertyFilter] | None = None,
+        properties: TypedProperties | None = None,
+        property_filters: Sequence[PropertyFilter] | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -414,9 +414,10 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
-                String values match string properties; int/float values match numeric properties with equality.
-            property_filters: Numeric comparison and range filters (gt, between, ...) ANDed with the other clauses.
+            properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
+                ``eq()``. String values match string properties; float values match numeric equality.
+            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
+                ANDed together. ``eq`` accepts string or float.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -697,7 +698,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -710,7 +711,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -723,7 +724,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         attachments: Iterable[Attachment] | Iterable[str] | None = None,
@@ -777,8 +778,8 @@ class NominalClient:
         end: str | datetime | IntegralNanosecondsUTC | None,
         name_substring: str | None,
         labels: Sequence[str] | None,
-        properties: Mapping[str, PropertyValue] | None,
-        property_filters: Sequence[NumericPropertyFilter] | None,
+        properties: TypedProperties | None,
+        property_filters: Sequence[PropertyFilter] | None,
         exact_match: str | None,
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
@@ -809,8 +810,8 @@ class NominalClient:
         name_substring: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, PropertyValue] | None = None,
-        property_filters: Sequence[NumericPropertyFilter] | None = None,
+        properties: TypedProperties | None = None,
+        property_filters: Sequence[PropertyFilter] | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -828,9 +829,10 @@ class NominalClient:
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
             labels: A sequence of labels that must ALL be present on a run to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-                String values match string properties; int/float values match numeric properties with equality.
-            property_filters: Numeric comparison and range filters (gt, between, ...) ANDed with the other clauses.
+            properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
+                ``eq()``. String values match string properties; float values match numeric equality.
+            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
+                ANDed together. ``eq`` accepts string or float.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -873,7 +875,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         prefix_tree_delimiter: str | None = None,
         markings: Sequence[Marking | str] | None = None,
     ) -> Dataset:
@@ -1282,7 +1284,7 @@ class NominalClient:
         name: str,
         description: str | None = None,
         *,
-        properties: Mapping[str, PropertyValue] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Asset:
         """Create an asset."""
@@ -1290,7 +1292,7 @@ class NominalClient:
             description=description,
             labels=list(labels),
             properties={},
-            typed_properties=typed_properties_to_conjure(properties),
+            typed_properties=typed_properties_to_conjure(properties) or {},
             title=name,
             attachments=[],
             data_scopes=[],
@@ -1311,7 +1313,7 @@ class NominalClient:
 
     def get_or_create_asset_by_properties(
         self,
-        properties: Mapping[str, PropertyValue],
+        properties: TypedProperties,
         *,
         name: str,
         description: str | None = None,
@@ -1329,7 +1331,10 @@ class NominalClient:
         Returns:
             The existing or newly created asset.
         """
-        assets = self.search_assets(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
+        assets = self.search_assets(
+            property_filters=[eq(name, value) for name, value in properties.items()],
+            workspace=WorkspaceSearchType.DEFAULT,
+        )
 
         logger.info("Found %d assets searching by properties.", len(assets))
 
@@ -1357,8 +1362,8 @@ class NominalClient:
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, PropertyValue] | None = None,
-        property_filters: Sequence[NumericPropertyFilter] | None = None,
+        properties: TypedProperties | None = None,
+        property_filters: Sequence[PropertyFilter] | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
@@ -1371,9 +1376,10 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-                String values match string properties; int/float values match numeric properties with equality.
-            property_filters: Numeric comparison and range filters (gt, between, ...) ANDed with the other clauses.
+            properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
+                ``eq()``. String values match string properties; float values match numeric equality.
+            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
+                ANDed together. ``eq`` accepts string or float.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.

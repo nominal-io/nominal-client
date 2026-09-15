@@ -131,11 +131,11 @@ def test_numeric_properties_crud(client: NominalClient, archive: ArchiveFn):
     assert asset.properties["serial"] == "A1"
     assert asset.properties["mass_kg"] == 12.5
 
-    asset.update(properties={"serial": "A1", "mass_kg": 20})
+    asset.update(properties={"serial": "A1", "mass_kg": 20.0})
     assert asset.properties == {"serial": "A1", "mass_kg": 20.0}
 
     start, end = _create_random_start_end()
-    run = client.create_run(f"run-np-{tag}", start, end, properties={"serial": "A1", "mass_kg": 12})
+    run = client.create_run(f"run-np-{tag}", start, end, properties={"serial": "A1", "mass_kg": 12.0})
     archive(run)
     assert run.properties["mass_kg"] == 12.0
     run.update(properties={"serial": "A1", "mass_kg": 7.5})
@@ -144,7 +144,7 @@ def test_numeric_properties_crud(client: NominalClient, archive: ArchiveFn):
     dataset = client.create_dataset(f"dataset-np-{tag}", properties={"serial": "A1", "mass_kg": 3.25})
     archive(dataset)
     assert dataset.properties["mass_kg"] == 3.25
-    dataset.update(properties={"serial": "B2", "mass_kg": 4})
+    dataset.update(properties={"serial": "B2", "mass_kg": 4.0})
     assert dataset.properties == {"serial": "B2", "mass_kg": 4.0}
 
 
