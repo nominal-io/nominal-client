@@ -62,7 +62,7 @@ def test_argmin_renders_as_min_by() -> None:
     assert "ARG_MIN" not in sql.upper()
 
 
-def test_regex_search_renders_as_regexp_like_function() -> None:
+def test_regex_search_renders_as_posix_match_operator() -> None:
     sql = compile_sql(POINTS.filter(_.channel.re_search("BATTERY")).select("ts"))
-    assert "REGEXP_LIKE" in sql.upper()
-    assert "~" not in sql
+    assert " ~ " in sql
+    assert "REGEXP_LIKE" not in sql.upper()

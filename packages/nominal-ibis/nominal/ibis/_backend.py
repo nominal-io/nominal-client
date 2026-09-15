@@ -71,11 +71,6 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
 class NominalCompiler(PostgresCompiler):
     """Postgres-flavored SQL adjusted for the Nominal SQL API's dialect."""
 
-    # Excluding RegexSearch keeps our visit_RegexSearch from being overwritten
-    # by the generated simple-op impl, whose "regexp_like" sqlglot renders as
-    # the ~ operator, which the API rejects.
-    SIMPLE_OPS = {op: name for op, name in PostgresCompiler.SIMPLE_OPS.items() if op is not ops.RegexSearch}
-
     def to_sqlglot(
         self,
         expr: ir.Expr,
@@ -105,9 +100,6 @@ class NominalCompiler(PostgresCompiler):
 
     def visit_ArgMin(self, op: ops.ArgMin, *, arg: Any, key: Any, where: Any) -> Any:
         return self._anon_agg("min_by", arg, key, where=where)
-
-    def visit_RegexSearch(self, op: ops.RegexSearch, *, arg: Any, pattern: Any) -> Any:
-        return self.f.anon.regexp_like(arg, pattern)
 
     @staticmethod
     def _minimize_spec(op: ops.WindowFunction, spec: Any) -> Any:
