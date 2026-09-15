@@ -78,21 +78,6 @@ def properties_from_conjure(
     return MappingProxyType(typed_properties_from_conjure(typed_properties))
 
 
-def string_properties_for_ingest(properties: TypedProperties | None) -> dict[str, str]:
-    """Return string properties for ingest destinations that cannot accept typed/numeric values."""
-    if not properties:
-        return {}
-    strings: dict[str, str] = {}
-    for name, value in properties.items():
-        if not isinstance(value, str):
-            raise TypeError(
-                "numeric properties are not supported when creating a dataset via ingest; "
-                "set them via Dataset.update after ingest"
-            )
-        strings[name] = value
-    return strings
-
-
 def iter_property_filter_clauses(
     properties: TypedProperties | None,
     property_filters: Sequence[PropertyFilter] | None,

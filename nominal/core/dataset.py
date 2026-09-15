@@ -20,7 +20,6 @@ from nominal.core._utils.multipart import path_upload_name, upload_multipart_fil
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.properties import (
     properties_from_conjure,
-    string_properties_for_ingest,
     typed_properties_to_conjure,
 )
 from nominal.core._utils.query_tools import create_search_dataset_files_query
@@ -1686,7 +1685,7 @@ def _construct_new_ingest_options(
     file_type: FileType,
     description: str | None,
     labels: Sequence[str],
-    properties: TypedProperties,
+    properties: Mapping[str, str],
     prefix_tree_delimiter: str | None,
     channel_prefix: str | None,
     tag_columns: Mapping[str, str] | None,
@@ -1698,7 +1697,7 @@ def _construct_new_ingest_options(
     target = ingest_api.DatasetIngestTarget(
         new=ingest_api.NewDatasetIngestDestination(
             labels=list(labels),
-            properties=string_properties_for_ingest(properties),
+            properties=dict(properties),
             channel_config=_build_channel_config(prefix_tree_delimiter),
             dataset_description=description,
             dataset_name=name,

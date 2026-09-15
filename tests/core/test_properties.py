@@ -8,7 +8,6 @@ from nominal_api import api, scout_run_api
 
 from nominal.core import properties as props
 from nominal.core._utils.properties import (
-    string_properties_for_ingest,
     typed_properties_from_conjure,
     typed_properties_to_conjure,
 )
@@ -41,13 +40,6 @@ def test_typed_properties_from_conjure_skips_unknown_variant(caplog: pytest.LogC
     assert result == {"ok": "A1"}
     assert "unknown type" in caplog.text
     assert "booleanValue" in caplog.text
-
-
-def test_string_properties_for_ingest_rejects_numerics() -> None:
-    """Ingest destinations accept strings only; numbers raise TypeError."""
-    assert string_properties_for_ingest({"serial": "A1"}) == {"serial": "A1"}
-    with pytest.raises(TypeError, match="ingest"):
-        string_properties_for_ingest({"mass_kg": 12.5})
 
 
 def test_filter_factories_eq_gt_between() -> None:
