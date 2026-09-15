@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import warnings
 
 from nominal_streaming import NominalDatasetStream
 
@@ -14,10 +15,38 @@ class RustWriteStream(NominalDatasetStream, DataStream):
     """Thin wrapper around the existing Rust Dataset Stream.
 
     See: `nominal_streaming.NominalDatasetStream` for more details
-
-    Note: Array streaming is not currently supported by the Rust streaming backend.
-    Use enqueue() for scalar values only.
     """
+
+    def __enter__(self) -> RustWriteStream:
+        """Enter the stream, opening it only if it is not open already.
+
+        `_from_datasource` opens the stream so that it accepts enqueues without a `with` block, the
+        way `WriteStream` does. The underlying `open()` refuses to run twice, so entering an
+        already-open stream has to be a no-op rather than a second open.
+        """
+        if self._opened:
+            return self
+
+        self.open()
+        return self
+
+    def flush(self, wait: bool = False, timeout: float | None = None) -> None:
+        """No-op: the rust stream manages its own flushing.
+
+        `WriteStream.flush` is what `get_write_stream` used to return, so callers who never named an
+        implementation may be calling this. It warns rather than raising: it is not on
+        `WriteStreamBase`, so the callers who reach it are the untyped ones, and breaking them
+        outright would skip the deprecation cycle they are owed.
+
+        Batches are sent once they reach `batch_size` or `max_wait`, and `close()` drains what is
+        left, so what `flush(wait=True)` guaranteed is still available through `close()`.
+        """
+        warnings.warn(
+            "flush() does nothing on the rust implementation: batches are sent once they reach "
+            "batch_size or max_wait, and close() drains what is left.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     @classmethod
     def _from_datasource(
@@ -50,4 +79,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         if log_level is not None:
             stream = stream.enable_logging(log_level)
 
-        return stream
+        # Open here rather than in `__enter__` alone: `get_write_stream` documents that the stream
+        # may be closed explicitly instead of being used as a context manager, and an unopened rust
+        # stream rejects every enqueue.
+        return stream.open()
