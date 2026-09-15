@@ -30,6 +30,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
+from nominal.core.properties import PropertyValue, TypedProperties
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
@@ -80,6 +81,8 @@ __all__ = [
     "Marking",
     "Comment",
     "NominalClient",
+    "PropertyValue",
+    "TypedProperties",
     "Run",
     "SearchEventOriginType",
     "Secret",

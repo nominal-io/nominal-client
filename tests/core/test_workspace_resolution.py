@@ -6,6 +6,7 @@ import pytest
 
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.exceptions import NominalConfigError
+from nominal.core.properties import eq
 from nominal.core.workspace import Workspace
 
 
@@ -120,5 +121,8 @@ def test_get_or_create_asset_by_properties_uses_default_workspace_resolution_for
     ):
         assert client.get_or_create_asset_by_properties(properties, name="asset-name") is asset
 
-    search_assets.assert_called_once_with(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
+    search_assets.assert_called_once_with(
+        property_filters=[eq("k", "v")],
+        workspace=WorkspaceSearchType.DEFAULT,
+    )
     create_asset.assert_called_once_with(name="asset-name", description=None, properties=properties, labels=())

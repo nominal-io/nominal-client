@@ -17,6 +17,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.core.properties import TypedProperties
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def upload_dataframe(
     *,
     wait_until_complete: bool = True,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: TypedProperties | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
 ) -> Dataset:
@@ -102,7 +103,7 @@ def upload_dataframe(
         channel_name_delimiter: Delimiter to use for folding channel view to a tree view.
         wait_until_complete: If true, wait until all data has been ingested successfully before returning
         labels: String labels to apply to the created dataset
-        properties: String key-value pairs to apply to the created dataset
+        properties: Key-value properties to apply to the created dataset. Values may be str or float.
         tag_columns: Mapping of column name => tag key to apply to the respective rows of data
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
 

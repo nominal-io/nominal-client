@@ -1,6 +1,7 @@
 Also see the [Python Quickstart guide](https://docs.nominal.io/core/sdk/python-client/quickstart). 
 
 [`nominal.core`](./core.md) — platform client.  
+[`nominal.core.properties`](./properties.md) — property filters (`eq`, `gt`, `between`, ...).  
 [`nominal.ts`](./ts.md) — timestamp utilities.  
 
 Third-party integrations:
