@@ -38,15 +38,10 @@ print(df)
 ```
 
 `MAP<ANY, ANY>` columns such as `points_struct.value` are JSON strings in
-results, matching Scout's Arrow serialization. Parse them after fetching;
-Ibis map operations are unavailable on these string columns. Concretely typed
-maps remain maps. Other unresolved `ANY` types are unsupported.
+results, matching Scout's Arrow serialization.
 
 For large results, `query.to_pyarrow_batches()` returns a standard PyArrow
-`RecordBatchReader` so you can process the result incrementally. The query RPC
-is cleaned up when iteration finishes or fails. Closing the reader before
-consuming it fully does not guarantee immediate RPC cancellation; cleanup may
-wait until the reader is released or the RPC ends.
+`RecordBatchReader` so you can process the result incrementally.
 
 To test without contacting a server:
 
