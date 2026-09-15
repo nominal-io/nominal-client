@@ -8,7 +8,6 @@ from nominal_api import api, scout_run_api
 
 from nominal.core import properties as props
 from nominal.core._utils.properties import (
-    resource_properties_from_conjure,
     string_properties_for_ingest,
     typed_properties_from_conjure,
     typed_properties_to_conjure,
@@ -42,21 +41,6 @@ def test_typed_properties_from_conjure_skips_unknown_variant(caplog: pytest.LogC
     assert result == {"ok": "A1"}
     assert "unknown type" in caplog.text
     assert "booleanValue" in caplog.text
-
-
-def test_resource_properties_from_conjure_merges_legacy_with_typed_winning() -> None:
-    """Legacy string properties fill gaps; typed values override duplicate keys."""
-    typed = {
-        "serial": api.TypedPropertyValue(string_value="typed"),
-        "mass_kg": api.TypedPropertyValue(numeric_value=12.5),
-    }
-    legacy = {"serial": "legacy", "site": "pad-a"}
-
-    result = resource_properties_from_conjure(typed, legacy)
-    assert dict(result) == {"serial": "typed", "mass_kg": 12.5, "site": "pad-a"}
-
-    legacy_only = resource_properties_from_conjure(None, {"serial": "A1"})
-    assert dict(legacy_only) == {"serial": "A1"}
 
 
 def test_string_properties_for_ingest_rejects_numerics() -> None:

@@ -20,8 +20,7 @@ from nominal.core._utils.multipart import path_upload_name, upload_multipart_fil
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.properties import (
     TypedProperties,
-    properties_for_update,
-    resource_properties_from_conjure,
+    properties_from_conjure,
     string_properties_for_ingest,
     typed_properties_to_conjure,
 )
@@ -91,13 +90,11 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
         """
-        legacy_properties, typed_properties = properties_for_update(properties)
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
             labels=None if labels is None else list(labels),
             name=name,
-            properties=legacy_properties,
-            typed_properties=typed_properties,
+            typed_properties=typed_properties_to_conjure(properties),
         )
         updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
         return self._refresh_from_api(updated_dataset)
@@ -1067,7 +1064,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=resource_properties_from_conjure(dataset.typed_properties, dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,

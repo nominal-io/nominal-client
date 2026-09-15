@@ -110,19 +110,6 @@ def typed_properties_to_conjure(
     return {name: typed_property_value_to_conjure(value, name=name) for name, value in properties.items()}
 
 
-def properties_for_update(
-    properties: TypedProperties | None,
-) -> tuple[dict[str, str] | None, dict[str, api.TypedPropertyValue] | None]:
-    """Return ``(legacy, typed)`` fields for an update request.
-
-    ``None`` leaves both maps unchanged. A provided mapping writes typed values
-    and clears the legacy string map.
-    """
-    if properties is None:
-        return None, None
-    return {}, typed_properties_to_conjure(properties)
-
-
 def typed_properties_from_conjure(
     typed_properties: Mapping[str, api.TypedPropertyValue] | None,
 ) -> dict[str, PropertyValue]:
@@ -143,17 +130,10 @@ def typed_properties_from_conjure(
     return result
 
 
-def resource_properties_from_conjure(
+def properties_from_conjure(
     typed_properties: Mapping[str, api.TypedPropertyValue] | None,
-    legacy_properties: Mapping[str, str] | None,
 ) -> TypedProperties:
-    """Hydrate properties from the typed map, falling back to legacy string properties.
-
-    When both maps contain the same key, the typed value wins.
-    """
-    result: dict[str, PropertyValue] = dict(legacy_properties or {})
-    result.update(typed_properties_from_conjure(typed_properties))
-    return MappingProxyType(result)
+    return MappingProxyType(typed_properties_from_conjure(typed_properties))
 
 
 def string_properties_for_ingest(properties: TypedProperties | None) -> dict[str, str]:

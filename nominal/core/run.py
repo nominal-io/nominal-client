@@ -26,8 +26,7 @@ from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.properties import (
     TypedProperties,
-    properties_for_update,
-    resource_properties_from_conjure,
+    properties_from_conjure,
     typed_properties_to_conjure,
 )
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
@@ -121,12 +120,10 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
             run = run.update(assets=[*run.assets, new_asset])
         """
-        legacy_properties, typed_properties = properties_for_update(properties)
         request = scout_run_api.UpdateRunRequest(
             description=description,
             labels=None if labels is None else list(labels),
-            properties=legacy_properties,
-            typed_properties=typed_properties,
+            typed_properties=typed_properties_to_conjure(properties),
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
@@ -661,7 +658,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             rid=run.rid,
             name=run.title,
             description=run.description,
-            properties=resource_properties_from_conjure(run.typed_properties, run.properties),
+            properties=properties_from_conjure(run.typed_properties),
             labels=tuple(run.labels),
             links=tuple(
                 (dict(url=link.url, title=link.title) if link.title is not None else dict(url=link.url))

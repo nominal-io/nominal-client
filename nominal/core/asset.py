@@ -31,8 +31,8 @@ from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.properties import (
     TypedProperties,
-    properties_for_update,
-    resource_properties_from_conjure,
+    properties_from_conjure,
+    typed_properties_to_conjure,
 )
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -126,12 +126,10 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
                 new_labels.append(old_label)
             asset = asset.update(labels=new_labels)
         """
-        legacy_properties, typed_properties = properties_for_update(properties)
         request = scout_asset_api.UpdateAssetRequest(
             description=description,
             labels=None if labels is None else list(labels),
-            properties=legacy_properties,
-            typed_properties=typed_properties,
+            typed_properties=typed_properties_to_conjure(properties),
             title=name,
             links=None if links is None else create_links(links),
         )
@@ -779,7 +777,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             rid=asset.rid,
             name=asset.title,
             description=asset.description,
-            properties=resource_properties_from_conjure(asset.typed_properties, asset.properties),
+            properties=properties_from_conjure(asset.typed_properties),
             labels=tuple(asset.labels),
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
             is_archived=asset.is_archived,
