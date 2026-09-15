@@ -10,21 +10,25 @@ from nominal.core import properties as props
 from nominal.core._utils.properties import (
     typed_properties_from_conjure,
     typed_properties_to_conjure,
+    warn_deprecated_search_properties,
 )
 from nominal.core._utils.query_tools import create_search_runs_query
+from nominal.core.exceptions import SearchPropertiesDeprecationWarning
 
 
 def test_typed_properties_to_conjure_converts_strings_and_floats() -> None:
-    """Strings stay strings; floats become numericValue. None omits the map."""
-    result = typed_properties_to_conjure({"serial": "A1", "mass_kg": 12.0, "temp_c": 1.5})
+    """Strings stay strings; ints and floats become numericValue. None omits the map."""
+    result = typed_properties_to_conjure({"serial": "A1", "mass_kg": 12.0, "count": 5})
 
     assert result["serial"].type == "stringValue"
     assert result["serial"].string_value == "A1"
     assert result["mass_kg"].type == "numericValue"
     assert result["mass_kg"].numeric_value == 12.0
-    assert result["temp_c"].numeric_value == 1.5
+    assert result["count"].numeric_value == 5.0
     assert typed_properties_to_conjure(None) is None
     assert typed_properties_to_conjure({}) == {}
+    with pytest.raises(TypeError, match="str, int, or float"):
+        typed_properties_to_conjure({"flag": True})
 
 
 def test_typed_properties_from_conjure_skips_unknown_variant(caplog: pytest.LogCaptureFixture) -> None:
@@ -48,13 +52,15 @@ def test_filter_factories_eq_gt_between() -> None:
     assert string_eq.name == "serial"
     assert string_eq.values == ("A1",)
 
-    numeric_eq = props.eq("mass_kg", 12.0)
+    numeric_eq = props.eq("mass_kg", 12)
     assert numeric_eq.operator == props.PropertyComparisonOperator.EQ
     assert numeric_eq.value == 12.0
 
-    gt = props.gt("mass_kg", 10.0)
+    gt = props.gt("mass_kg", 10)
     assert gt.operator == props.PropertyComparisonOperator.GT
     assert gt.value == 10.0
+    with pytest.raises(TypeError, match="int or float"):
+        props.gt("mass_kg", True)
 
     rng = props.between("mass_kg", 1.0, 10.0)
     assert rng.min_value == 1.0
@@ -68,6 +74,8 @@ def test_filter_factories_eq_gt_between() -> None:
     string_in = props.in_("site", ["pad-a", "pad-b"])
     assert string_in.name == "site"
     assert string_in.values == ("pad-a", "pad-b")
+    with pytest.raises(ValueError, match="at least one value"):
+        props.in_("site", [])
 
 
 def _run_clauses(query: scout_run_api.SearchQuery) -> list[scout_run_api.SearchQuery]:
@@ -108,10 +116,9 @@ def test_create_search_runs_query_mixed_filters() -> None:
     assert rng.numeric_property_range.max == 20.0
 
 
-def test_create_search_runs_query_deprecated_properties_expands_and_warns() -> None:
-    """Deprecated properties= still expands to eq() clauses and warns."""
-    with pytest.warns(DeprecationWarning, match="properties="):
-        query = create_search_runs_query(properties={"serial": "A1", "mass_kg": 12.5})
+def test_create_search_runs_query_deprecated_properties_expands() -> None:
+    """Deprecated properties= still expands to eq() clauses."""
+    query = create_search_runs_query(properties={"serial": "A1", "mass_kg": 12.5})
 
     clauses = _run_clauses(query)
     assert len(clauses) == 2
@@ -124,3 +131,10 @@ def test_create_search_runs_query_deprecated_properties_expands_and_warns() -> N
     assert numeric_eq.numeric_property.name == "mass_kg"
     assert numeric_eq.numeric_property.operator == api.PropertyComparisonOperator.EQ
     assert numeric_eq.numeric_property.value == 12.5
+
+
+def test_warn_deprecated_search_properties_uses_dedicated_category() -> None:
+    """Public search_* warn via SearchPropertiesDeprecationWarning when properties= is passed."""
+    with pytest.warns(SearchPropertiesDeprecationWarning, match="property_filters"):
+        warn_deprecated_search_properties({"serial": "A1"})
+    warn_deprecated_search_properties(None)

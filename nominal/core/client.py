@@ -55,7 +55,7 @@ from nominal.core._utils.pagination_tools import (
     search_videos_paginated,
     search_workbook_templates_paginated,
 )
-from nominal.core._utils.properties import typed_properties_to_conjure
+from nominal.core._utils.properties import typed_properties_to_conjure, warn_deprecated_search_properties
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
@@ -435,6 +435,7 @@ class NominalClient:
         Returns:
             All datasets which match all of the provided conditions
         """
+        warn_deprecated_search_properties(properties)
         query = create_search_datasets_query(
             exact_match=exact_match,
             search_text=search_text,
@@ -858,6 +859,7 @@ class NominalClient:
         Returns:
             All runs which match all of the provided conditions
         """
+        warn_deprecated_search_properties(properties)
         return list(
             self._iter_search_runs(
                 start=start,
@@ -1250,7 +1252,7 @@ class NominalClient:
         request = scout_asset_api.CreateAssetRequest(
             description=description,
             labels=list(labels),
-            properties=None,  # type: ignore[arg-type]
+            properties={},
             typed_properties=typed_properties_to_conjure(properties) or {},
             title=name,
             attachments=[],
@@ -1356,6 +1358,7 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
+        warn_deprecated_search_properties(properties)
         query = create_search_assets_query(
             search_text=search_text,
             labels=labels,

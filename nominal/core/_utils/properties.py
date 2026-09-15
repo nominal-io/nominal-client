@@ -7,10 +7,13 @@ from typing import Callable, Iterator, Mapping, Sequence, TypeVar, overload
 
 from nominal_api import api
 
+from nominal.core.exceptions import SearchPropertiesDeprecationWarning
 from nominal.core.properties import (
     PropertyFilter,
     PropertyValue,
+    StringInFilter,
     TypedProperties,
+    _as_numeric_value,
     eq,
 )
 
@@ -25,10 +28,19 @@ _SEARCH_PROPERTIES_DEPRECATION = (
 )
 
 
+def warn_deprecated_search_properties(properties: TypedProperties | None) -> None:
+    """Warn at the user call site. Call only from public ``search_*`` methods."""
+    if properties is not None:
+        warnings.warn(_SEARCH_PROPERTIES_DEPRECATION, SearchPropertiesDeprecationWarning, stacklevel=3)
+
+
 def check_property_value(value: object, *, name: str) -> PropertyValue:
-    if isinstance(value, (str, float)):
+    if isinstance(value, str):
         return value
-    raise TypeError(f"property {name!r} must be str or float, got {type(value).__name__}")
+    try:
+        return _as_numeric_value(value, what=f"property {name!r}")
+    except TypeError as exc:
+        raise TypeError(f"property {name!r} must be str, int, or float, got {type(value).__name__}") from exc
 
 
 def typed_property_value_to_conjure(value: object, *, name: str) -> api.TypedPropertyValue:
@@ -87,9 +99,11 @@ def iter_property_filter_clauses(
 ) -> Iterator[_QueryT]:
     filters: list[PropertyFilter] = []
     if properties is not None:
-        warnings.warn(_SEARCH_PROPERTIES_DEPRECATION, DeprecationWarning, stacklevel=3)
         filters.extend(eq(name, value) for name, value in properties.items())
     if property_filters:
         filters.extend(property_filters)
     for filt in filters:
-        yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
+        if isinstance(filt, StringInFilter):
+            yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
+        else:
+            yield filt.to_query_clause(query_cls)

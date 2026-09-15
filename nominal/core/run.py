@@ -653,7 +653,7 @@ def _create_run(
         description=description or "",
         labels=[] if labels is None else list(labels),
         links=[] if links is None else create_links(links),
-        properties=None,  # type: ignore[arg-type]
+        properties={},
         typed_properties=typed_properties_to_conjure(properties) or {},
         start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
         title=name,

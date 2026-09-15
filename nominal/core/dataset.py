@@ -1585,7 +1585,7 @@ def _create_dataset_request(
         name=name,
         description=description,
         labels=list(labels),
-        properties=None,  # type: ignore[arg-type]
+        properties={},
         typed_properties=typed_properties_to_conjure(properties) or {},
         is_v2_dataset=True,
         metadata={},

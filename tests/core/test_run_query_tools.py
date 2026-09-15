@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from nominal_api import api, scout_run_api
 
 from nominal.core import properties as props
@@ -249,9 +248,8 @@ def test_create_search_runs_query_empty_labels():
 
 
 def test_create_search_runs_query_empty_properties():
-    """Deprecated empty properties= dict still warns and adds no filter."""
-    with pytest.warns(DeprecationWarning, match="properties="):
-        query = create_search_runs_query(properties={})
+    """Deprecated empty properties= dict adds no filter."""
+    query = create_search_runs_query(properties={})
 
     # Empty properties should not add a filter
     assert len(_and_queries(query)) == 0

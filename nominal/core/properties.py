@@ -23,7 +23,13 @@ from typing import Callable, Mapping, Sequence, TypeAlias, TypeVar
 from nominal_api import api
 
 PropertyValue: TypeAlias = str | float
+"""A stored property value: ``str`` or ``float``.
+
+``bool`` is rejected.
+"""
+
 TypedProperties: TypeAlias = Mapping[str, PropertyValue]
+"""A mapping of property names to :data:`PropertyValue` values."""
 
 _QueryT = TypeVar("_QueryT")
 
@@ -41,10 +47,6 @@ class PropertyComparisonOperator(Enum):
     def _to_conjure(self) -> api.PropertyComparisonOperator:
         return _PROPERTY_COMPARISON_OPERATOR_TO_CONJURE[self]
 
-    @classmethod
-    def _from_conjure(cls, value: api.PropertyComparisonOperator) -> PropertyComparisonOperator:
-        return _PROPERTY_COMPARISON_OPERATOR_FROM_CONJURE[value]
-
 
 _PROPERTY_COMPARISON_OPERATOR_TO_CONJURE: Mapping[PropertyComparisonOperator, api.PropertyComparisonOperator] = {
     PropertyComparisonOperator.EQ: api.PropertyComparisonOperator.EQ,
@@ -53,9 +55,6 @@ _PROPERTY_COMPARISON_OPERATOR_TO_CONJURE: Mapping[PropertyComparisonOperator, ap
     PropertyComparisonOperator.GTE: api.PropertyComparisonOperator.GTE,
     PropertyComparisonOperator.LT: api.PropertyComparisonOperator.LT,
     PropertyComparisonOperator.LTE: api.PropertyComparisonOperator.LTE,
-}
-_PROPERTY_COMPARISON_OPERATOR_FROM_CONJURE: Mapping[api.PropertyComparisonOperator, PropertyComparisonOperator] = {
-    v: k for k, v in _PROPERTY_COMPARISON_OPERATOR_TO_CONJURE.items()
 }
 
 
@@ -68,24 +67,17 @@ class NumericPropertyRangeOperator(Enum):
     def _to_conjure(self) -> api.NumericPropertyRangeOperator:
         return _NUMERIC_PROPERTY_RANGE_OPERATOR_TO_CONJURE[self]
 
-    @classmethod
-    def _from_conjure(cls, value: api.NumericPropertyRangeOperator) -> NumericPropertyRangeOperator:
-        return _NUMERIC_PROPERTY_RANGE_OPERATOR_FROM_CONJURE[value]
-
 
 _NUMERIC_PROPERTY_RANGE_OPERATOR_TO_CONJURE: Mapping[NumericPropertyRangeOperator, api.NumericPropertyRangeOperator] = {
     NumericPropertyRangeOperator.BETWEEN: api.NumericPropertyRangeOperator.BETWEEN,
     NumericPropertyRangeOperator.NOT_BETWEEN: api.NumericPropertyRangeOperator.NOT_BETWEEN,
 }
-_NUMERIC_PROPERTY_RANGE_OPERATOR_FROM_CONJURE: Mapping[
-    api.NumericPropertyRangeOperator, NumericPropertyRangeOperator
-] = {v: k for k, v in _NUMERIC_PROPERTY_RANGE_OPERATOR_TO_CONJURE.items()}
 
 
 def _as_numeric_value(value: object, *, what: str) -> float:
-    if isinstance(value, float):
-        return value
-    raise TypeError(f"{what} must be float, got {type(value).__name__}")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{what} must be int or float, got {type(value).__name__}")
+    return float(value)
 
 
 @dataclass(frozen=True)
@@ -103,11 +95,9 @@ class StringInFilter:
         self,
         query_cls: Callable[..., _QueryT],
         *,
-        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT],
     ) -> _QueryT:
         del query_cls
-        if string_in_clause is None:
-            raise TypeError("string_in_clause is required")
         return string_in_clause(self.name, self.values)
 
 
@@ -122,13 +112,7 @@ class NumericComparisonFilter:
     operator: PropertyComparisonOperator
     value: float
 
-    def to_query_clause(
-        self,
-        query_cls: Callable[..., _QueryT],
-        *,
-        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
-    ) -> _QueryT:
-        del string_in_clause
+    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
         return query_cls(
             numeric_property=api.NumericPropertyPredicate(
                 name=self.name,
@@ -151,13 +135,7 @@ class NumericRangeFilter:
     min_value: float
     max_value: float
 
-    def to_query_clause(
-        self,
-        query_cls: Callable[..., _QueryT],
-        *,
-        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
-    ) -> _QueryT:
-        del string_in_clause
+    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
         return query_cls(
             numeric_property_range=api.NumericPropertyRangePredicate(
                 name=self.name,
@@ -196,7 +174,8 @@ def _range(
 def eq(name: str, value: str | float) -> StringInFilter | NumericComparisonFilter:
     """Equality filter on a string or numeric property.
 
-    Types are not coerced: a string value only matches string properties, a float only matches numeric properties.
+    Types are not coerced across string vs numeric: ``eq("x", "1")`` matches only
+    string properties and ``eq("x", 1.0)`` matches only numeric properties.
     """
     if isinstance(value, str):
         return StringInFilter(name=name, values=(value,))
@@ -204,7 +183,12 @@ def eq(name: str, value: str | float) -> StringInFilter | NumericComparisonFilte
 
 
 def in_(name: str, values: Sequence[str]) -> StringInFilter:
-    """Match if the string property equals any of ``values``."""
+    """Match if the string property equals any of ``values``.
+
+    ``values`` must be non-empty.
+    """
+    if not values:
+        raise ValueError("in_() requires at least one value")
     return StringInFilter(name=name, values=tuple(values))
 
 
