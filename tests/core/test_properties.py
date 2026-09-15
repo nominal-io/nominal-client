@@ -54,7 +54,7 @@ def test_filter_factories_eq_gt_between() -> None:
     """Equality filters accept string or float; gt and between cover comparison and range."""
     string_eq = props.eq("serial", "A1")
     assert string_eq.name == "serial"
-    assert string_eq.value == "A1"
+    assert string_eq.values == ("A1",)
 
     numeric_eq = props.eq("mass_kg", 12.0)
     assert numeric_eq.operator == props.PropertyComparisonOperator.EQ

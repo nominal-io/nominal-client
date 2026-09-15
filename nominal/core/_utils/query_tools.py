@@ -267,9 +267,6 @@ def create_search_assets_query(
             properties,
             property_filters,
             query_cls=scout_asset_api.SearchAssetsQuery,
-            string_clause=lambda name, value: scout_asset_api.SearchAssetsQuery(
-                property=api.Property(name=name, value=value)
-            ),
             string_in_clause=lambda name, values: scout_asset_api.SearchAssetsQuery(
                 properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
             ),
@@ -371,6 +368,14 @@ def create_search_dataset_files_query(
     return scout_catalog.SearchDatasetFilesQuery(and_=queries)
 
 
+def _dataset_string_in_clause(name: str, values: Sequence[str]) -> scout_catalog.SearchDatasetsQuery:
+    # Datasets have no PropertiesFilter; emulate IN as OR of Property equalities.
+    clauses = [scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)) for value in values]
+    if len(clauses) == 1:
+        return clauses[0]
+    return scout_catalog.SearchDatasetsQuery(or_=clauses)
+
+
 def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,
@@ -398,10 +403,7 @@ def create_search_datasets_query(
             properties,
             property_filters,
             query_cls=scout_catalog.SearchDatasetsQuery,
-            string_clause=lambda name, value: scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)),
-            string_in_clause=lambda name, values: scout_catalog.SearchDatasetsQuery(
-                or_=[scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)) for value in values]
-            ),
+            string_in_clause=_dataset_string_in_clause,
         )
     )
 
@@ -486,9 +488,6 @@ def create_search_runs_query(
             properties,
             property_filters,
             query_cls=scout_run_api.SearchQuery,
-            string_clause=lambda name, value: scout_run_api.SearchQuery(
-                properties=scout_rids_api.PropertiesFilter(name=name, values=[value])
-            ),
             string_in_clause=lambda name, values: scout_run_api.SearchQuery(
                 properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
             ),

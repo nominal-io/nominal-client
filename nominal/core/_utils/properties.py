@@ -98,7 +98,6 @@ def iter_property_filter_clauses(
     property_filters: Sequence[PropertyFilter] | None,
     *,
     query_cls: Callable[..., _QueryT],
-    string_clause: Callable[[str, str], _QueryT],
     string_in_clause: Callable[[str, Sequence[str]], _QueryT],
 ) -> Iterator[_QueryT]:
     filters: list[PropertyFilter] = []
@@ -108,8 +107,4 @@ def iter_property_filter_clauses(
     if property_filters:
         filters.extend(property_filters)
     for filt in filters:
-        yield filt.to_query_clause(
-            query_cls,
-            string_clause=string_clause,
-            string_in_clause=string_in_clause,
-        )
+        yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
