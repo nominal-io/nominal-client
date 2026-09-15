@@ -4,6 +4,10 @@
     ".": {
       "release-type": "python"
     },
+    "packages/nominal-ibis": {
+      "release-type": "python",
+      "component": "nominal-ibis"
+    },
     "packages/nominal-tdms": {
       "release-type": "python",
       "component": "nominal-tdms"
