@@ -417,8 +417,11 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a dataset to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
                 ``eq()``. String values match string properties; float values match numeric equality.
+                Types are not coerced.
             property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float.
+                ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
+                numeric values.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -832,8 +835,11 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
                 ``eq()``. String values match string properties; float values match numeric equality.
+                Types are not coerced.
             property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float.
+                ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
+                numeric values.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -1379,8 +1385,11 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
                 ``eq()``. String values match string properties; float values match numeric equality.
+                Types are not coerced.
             property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float.
+                ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
+                numeric values.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.

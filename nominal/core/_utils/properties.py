@@ -10,8 +10,6 @@ from nominal_api import api
 from nominal.core.properties import (
     PropertyFilter,
     PropertyValue,
-    StringEqualityFilter,
-    StringInFilter,
     TypedProperties,
     eq,
 )
@@ -110,9 +108,8 @@ def iter_property_filter_clauses(
     if property_filters:
         filters.extend(property_filters)
     for filt in filters:
-        if isinstance(filt, StringEqualityFilter):
-            yield string_clause(filt.name, filt.value)
-        elif isinstance(filt, StringInFilter):
-            yield string_in_clause(filt.name, filt.values)
-        else:
-            yield filt.to_query_clause(query_cls)
+        yield filt.to_query_clause(
+            query_cls,
+            string_clause=string_clause,
+            string_in_clause=string_in_clause,
+        )

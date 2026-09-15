@@ -98,6 +98,18 @@ class StringEqualityFilter:
     name: str
     value: str
 
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_clause: Callable[[str, str], _QueryT] | None = None,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
+    ) -> _QueryT:
+        del query_cls, string_in_clause
+        if string_clause is None:
+            raise TypeError("string_clause is required")
+        return string_clause(self.name, self.value)
+
 
 @dataclass(frozen=True)
 class StringInFilter:
@@ -108,6 +120,18 @@ class StringInFilter:
 
     name: str
     values: tuple[str, ...]
+
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_clause: Callable[[str, str], _QueryT] | None = None,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
+    ) -> _QueryT:
+        del query_cls, string_clause
+        if string_in_clause is None:
+            raise TypeError("string_in_clause is required")
+        return string_in_clause(self.name, self.values)
 
 
 @dataclass(frozen=True)
@@ -121,7 +145,14 @@ class NumericComparisonFilter:
     operator: PropertyComparisonOperator
     value: float
 
-    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_clause: Callable[[str, str], _QueryT] | None = None,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
+    ) -> _QueryT:
+        del string_clause, string_in_clause
         return query_cls(
             numeric_property=api.NumericPropertyPredicate(
                 name=self.name,
@@ -144,7 +175,14 @@ class NumericRangeFilter:
     min_value: float
     max_value: float
 
-    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_clause: Callable[[str, str], _QueryT] | None = None,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT] | None = None,
+    ) -> _QueryT:
+        del string_clause, string_in_clause
         return query_cls(
             numeric_property_range=api.NumericPropertyRangePredicate(
                 name=self.name,
@@ -181,7 +219,10 @@ def _range(
 
 
 def eq(name: str, value: str | float) -> StringEqualityFilter | NumericComparisonFilter:
-    """Equality filter on a string or numeric property."""
+    """Equality filter on a string or numeric property.
+
+    Types are not coerced: a string value only matches string properties, a float only matches numeric properties.
+    """
     if isinstance(value, str):
         return StringEqualityFilter(name=name, value=value)
     return _comparison(name, PropertyComparisonOperator.EQ, value)
