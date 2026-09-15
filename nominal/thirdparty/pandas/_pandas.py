@@ -11,13 +11,13 @@ from nominal_api.api import Timestamp
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
-from nominal.core._utils.properties import PropertyValue
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.core.properties import TypedProperties
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def upload_dataframe(
     *,
     wait_until_complete: bool = True,
     labels: Sequence[str] = (),
-    properties: Mapping[str, PropertyValue] | None = None,
+    properties: TypedProperties | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
 ) -> Dataset:

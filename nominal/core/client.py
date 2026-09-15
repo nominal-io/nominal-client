@@ -55,7 +55,7 @@ from nominal.core._utils.pagination_tools import (
     search_videos_paginated,
     search_workbook_templates_paginated,
 )
-from nominal.core._utils.properties import PropertyFilter, TypedProperties, eq, typed_properties_to_conjure
+from nominal.core._utils.properties import typed_properties_to_conjure
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
@@ -113,6 +113,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
+from nominal.core.properties import PropertyFilter, TypedProperties, eq
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.spatial_asset import SpatialAsset, SpatialMetadata, _create_spatial_asset
@@ -1291,7 +1292,7 @@ class NominalClient:
         request = scout_asset_api.CreateAssetRequest(
             description=description,
             labels=list(labels),
-            properties={},
+            properties=None,  # type: ignore[arg-type]
             typed_properties=typed_properties_to_conjure(properties) or {},
             title=name,
             attachments=[],

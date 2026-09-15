@@ -29,11 +29,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
-from nominal.core._utils.properties import (
-    TypedProperties,
-    properties_from_conjure,
-    typed_properties_to_conjure,
-)
+from nominal.core._utils.properties import properties_from_conjure, typed_properties_to_conjure
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
@@ -41,6 +37,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
+from nominal.core.properties import TypedProperties
 from nominal.core.spatial_asset import SpatialAsset, _get_spatial
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks

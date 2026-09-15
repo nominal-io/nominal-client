@@ -24,11 +24,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.properties import (
-    TypedProperties,
-    properties_from_conjure,
-    typed_properties_to_conjure,
-)
+from nominal.core._utils.properties import properties_from_conjure, typed_properties_to_conjure
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
@@ -37,6 +33,7 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_da
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
+from nominal.core.properties import TypedProperties
 from nominal.core.spatial_asset import SpatialAsset, _get_spatial
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -695,7 +692,7 @@ def _create_run(
         description=description or "",
         labels=[] if labels is None else list(labels),
         links=[] if links is None else create_links(links),
-        properties={},
+        properties=None,  # type: ignore[arg-type]
         typed_properties=typed_properties_to_conjure(properties) or {},
         start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
         title=name,

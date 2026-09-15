@@ -1,12 +1,12 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from nominal_api import scout_catalog
 
 from nominal.core import Dataset, Marking, NominalClient, User
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.properties import PropertyValue
 from nominal.core.dataset import _create_dataset_request
 from nominal.core.marking import _marking_rids
+from nominal.core.properties import TypedProperties
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
@@ -17,7 +17,7 @@ def create_dataset_with_uuid(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, PropertyValue] | None = None,
+    properties: TypedProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> Dataset:
     """Create a dataset with a specific UUID.

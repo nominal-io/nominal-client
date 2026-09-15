@@ -19,7 +19,6 @@ from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.properties import (
-    TypedProperties,
     properties_from_conjure,
     string_properties_for_ingest,
     typed_properties_to_conjure,
@@ -33,6 +32,7 @@ from nominal.core.exceptions import NominalIngestError, NominalVideoTimestampMod
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.properties import TypedProperties
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.ts import (
@@ -1586,7 +1586,7 @@ def _create_dataset_request(
         name=name,
         description=description,
         labels=list(labels),
-        properties={},
+        properties=None,  # type: ignore[arg-type]
         typed_properties=typed_properties_to_conjure(properties) or {},
         is_v2_dataset=True,
         metadata={},

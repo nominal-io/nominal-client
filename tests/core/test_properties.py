@@ -73,6 +73,10 @@ def test_filter_factories_eq_gt_between() -> None:
     assert clause.numeric_property_range.min == 1.0
     assert clause.numeric_property_range.max == 10.0
 
+    string_in = props.in_("site", ["pad-a", "pad-b"])
+    assert string_in.name == "site"
+    assert string_in.values == ("pad-a", "pad-b")
+
 
 def _run_clauses(query: scout_run_api.SearchQuery) -> list[scout_run_api.SearchQuery]:
     assert query.and_ is not None
@@ -84,17 +88,20 @@ def test_create_search_runs_query_mixed_filters() -> None:
     query = create_search_runs_query(
         property_filters=[
             props.eq("serial", "A1"),
+            props.in_("site", ["pad-a", "pad-b"]),
             props.eq("mass_kg", 12.5),
             props.gt("temp_c", 0.0),
             props.between("mass_kg", 1.0, 20.0),
         ]
     )
     clauses = _run_clauses(query)
-    assert len(clauses) == 4
+    assert len(clauses) == 5
 
-    string_clause = next(c for c in clauses if c.properties is not None)
-    assert string_clause.properties.name == "serial"
+    string_clause = next(c for c in clauses if c.properties is not None and c.properties.name == "serial")
     assert string_clause.properties.values == ["A1"]
+
+    string_in = next(c for c in clauses if c.properties is not None and c.properties.name == "site")
+    assert string_in.properties.values == ["pad-a", "pad-b"]
 
     numeric_eq = next(c for c in clauses if c.numeric_property is not None and c.numeric_property.name == "mass_kg")
     assert numeric_eq.numeric_property.operator == api.PropertyComparisonOperator.EQ

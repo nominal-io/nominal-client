@@ -20,7 +20,8 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core._utils.properties import PropertyFilter, TypedProperties, iter_property_filter_clauses
+from nominal.core._utils.properties import iter_property_filter_clauses
+from nominal.core.properties import PropertyFilter, TypedProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
@@ -269,6 +270,9 @@ def create_search_assets_query(
             string_clause=lambda name, value: scout_asset_api.SearchAssetsQuery(
                 property=api.Property(name=name, value=value)
             ),
+            string_in_clause=lambda name, values: scout_asset_api.SearchAssetsQuery(
+                properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
+            ),
         )
     )
     if workspace_rid is not None:
@@ -395,6 +399,9 @@ def create_search_datasets_query(
             property_filters,
             query_cls=scout_catalog.SearchDatasetsQuery,
             string_clause=lambda name, value: scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)),
+            string_in_clause=lambda name, values: scout_catalog.SearchDatasetsQuery(
+                or_=[scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)) for value in values]
+            ),
         )
     )
 
@@ -481,6 +488,9 @@ def create_search_runs_query(
             query_cls=scout_run_api.SearchQuery,
             string_clause=lambda name, value: scout_run_api.SearchQuery(
                 properties=scout_rids_api.PropertiesFilter(name=name, values=[value])
+            ),
+            string_in_clause=lambda name, values: scout_run_api.SearchQuery(
+                properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
             ),
         )
     )
