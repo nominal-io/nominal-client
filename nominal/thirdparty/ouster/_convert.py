@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import yaml
+from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ class _NavTrajectory:
         self.rpys = np.array([(p[4], p[5], p[6]) for p in poses])
         logger.info("Nav: %d poses, %.3f - %.3f s", len(poses), self.timestamps[0], self.timestamps[-1])
 
-    def interpolate(self, t: float) -> tuple[np.ndarray, np.ndarray]:
+    def interpolate(self, t: float) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         if t <= self.timestamps[0]:
             return self.translations[0], self.rpys[0]
         if t >= self.timestamps[-1]:
@@ -211,7 +212,7 @@ class _NavTrajectory:
 # -- Coordinate transforms ----------------------------------------------------
 
 
-def _rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
+def _rotation_matrix(roll: float, pitch: float, yaw: float) -> NDArray[np.float64]:
     cr, sr = np.cos(roll), np.sin(roll)
     cp, sp = np.cos(pitch), np.sin(pitch)
     cy, sy = np.cos(yaw), np.sin(yaw)
@@ -227,20 +228,20 @@ def _rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
 _FRD_FLU = np.diag([1.0, -1.0, -1.0])
 
 
-def _rotation_frd_to_flu(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    result: np.ndarray = _FRD_FLU @ _rotation_matrix(roll, pitch, yaw) @ _FRD_FLU
+def _rotation_frd_to_flu(roll: float, pitch: float, yaw: float) -> NDArray[np.float64]:
+    result: NDArray[np.float64] = _FRD_FLU @ _rotation_matrix(roll, pitch, yaw) @ _FRD_FLU
     return result
 
 
-def _translation_frd_to_flu(t_frd: np.ndarray) -> np.ndarray:
-    result: np.ndarray = _FRD_FLU @ t_frd
+def _translation_frd_to_flu(t_frd: NDArray[np.float64]) -> NDArray[np.float64]:
+    result: NDArray[np.float64] = _FRD_FLU @ t_frd
     return result
 
 
 # -- Sensor offset parsing ----------------------------------------------------
 
 
-def _parse_ouster_params(path: Path) -> tuple[np.ndarray, np.ndarray] | None:
+def _parse_ouster_params(path: Path) -> tuple[NDArray[np.float64], NDArray[np.float64]] | None:
     vals: dict[str, float] = {}
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
@@ -306,11 +307,11 @@ def _build_structured_metadata(meta_path: Path) -> str:
 
 
 def _apply_transforms(
-    pts: np.ndarray,
-    sensor_offset: tuple[np.ndarray, np.ndarray] | None,
+    pts: NDArray[np.float64],
+    sensor_offset: tuple[NDArray[np.float64], NDArray[np.float64]] | None,
     nav: _NavTrajectory | None,
     frame_gmt: float,
-) -> np.ndarray:
+) -> NDArray[np.float64]:
     if sensor_offset is not None:
         s_trans_frd, s_rpy = sensor_offset
         r_s = _rotation_frd_to_flu(s_rpy[0], s_rpy[1], s_rpy[2])
@@ -326,10 +327,10 @@ def _apply_transforms(
 
 def _write_scan_points(
     writer: Any,
-    pts: np.ndarray,
-    refl: np.ndarray,
-    signal: np.ndarray,
-    near_ir: np.ndarray,
+    pts: NDArray[np.float64],
+    refl: NDArray[np.float64],
+    signal: NDArray[np.float64],
+    near_ir: NDArray[np.float64],
     time_rel: float,
 ) -> None:
     for j in range(len(pts)):
@@ -352,7 +353,7 @@ def _convert_sensor(
     out_csv: Path,
     nav: _NavTrajectory | None,
     playback_start_gmt: float,
-    sensor_offset: tuple[np.ndarray, np.ndarray] | None,
+    sensor_offset: tuple[NDArray[np.float64], NDArray[np.float64]] | None,
     max_scans: int | None,
 ) -> int:
     try:
@@ -386,8 +387,9 @@ def _convert_sensor(
                 if max_scans is not None and scan_count >= max_scans:
                     break
 
+                # A frame set holds no frame for a sensor that dropped out of it; skip that like an empty scan.
                 scan = scan_set[0]
-                if scan is None:
+                if scan is None or len(valid_ts := scan.timestamp[scan.timestamp > 0]) == 0:
                     scan_count += 1
                     continue
                 xyz = xyzlut(scan)
@@ -395,10 +397,6 @@ def _convert_sensor(
                 sig = scan.field(ChanField.SIGNAL).astype(np.float64).reshape(-1)
                 nir = scan.field(ChanField.NEAR_IR).astype(np.float64).reshape(-1)
 
-                valid_ts = scan.timestamp[scan.timestamp > 0]
-                if len(valid_ts) == 0:
-                    scan_count += 1
-                    continue
                 frame_ts_s = float(np.median(valid_ts)) / 1e9
 
                 if ptp_to_gmt_offset is None:
@@ -412,10 +410,10 @@ def _convert_sensor(
                 valid = np.linalg.norm(pts, axis=1) > 0.1
                 pts, refl, sig, nir = pts[valid], refl[valid], sig[valid], nir[valid]
 
-                pts = _apply_transforms(pts, sensor_offset, nav, frame_gmt)
-                _write_scan_points(writer, pts, refl, sig, nir, time_rel)
+                out_pts = _apply_transforms(pts, sensor_offset, nav, frame_gmt)
+                _write_scan_points(writer, out_pts, refl, sig, nir, time_rel)
 
-                total_points += len(pts)
+                total_points += len(out_pts)
                 scan_count += 1
                 if scan_count % 10 == 0:
                     logger.info("%d scans, %d points...", scan_count, total_points)
