@@ -35,14 +35,14 @@ class TagFilter:
         object.__setattr__(self, "values", tuple(self.values))
 
     @classmethod
-    def in_(cls, key: str, *values: str) -> Self:
-        """Keep only the series whose `key` tag is one of `values`."""
-        return cls(key, values)
+    def in_(cls, key: str, value: str, *values: str) -> Self:
+        """Keep only the series whose `key` tag is one of the given values."""
+        return cls(key, (value, *values))
 
     @classmethod
-    def not_in(cls, key: str, *values: str) -> Self:
-        """Drop the series whose `key` tag is one of `values`."""
-        return cls(key, values, exclude=True)
+    def not_in(cls, key: str, value: str, *values: str) -> Self:
+        """Drop the series whose `key` tag is one of the given values."""
+        return cls(key, (value, *values), exclude=True)
 
 
 @dataclass(frozen=True)
@@ -80,45 +80,6 @@ class DerivedDatasetInput:
     ) -> Self:
         """An input naming `dataset`, with the given transforms applied to it."""
         return cls(rid_from_instance_or_string(dataset), filters, add_tag, offset)
-
-
-def _list_inputs(clients: DataSource._Clients, dataset_rid: str) -> Sequence[DerivedDatasetInput]:
-    return _parse_spec(_get_definition(clients, dataset_rid).spec)
-
-
-def _add_input(
-    clients: DataSource._Clients,
-    dataset_rid: str,
-    dataset_input: DerivedDatasetInput,
-    message: str | None,
-) -> Sequence[DerivedDatasetInput]:
-    return _edit_inputs(
-        clients,
-        dataset_rid,
-        lambda existing: (*existing, dataset_input),
-        message or f"Add input dataset {dataset_input.dataset_rid}",
-    )
-
-
-def _remove_input(
-    clients: DataSource._Clients,
-    dataset_rid: str,
-    target: DerivedDatasetInput | str,
-    message: str | None,
-) -> Sequence[DerivedDatasetInput]:
-    """Drop one exact appearance when `target` is an input, or every appearance when it is a dataset RID."""
-    target_rid = target.dataset_rid if isinstance(target, DerivedDatasetInput) else target
-
-    def matches(item: DerivedDatasetInput) -> bool:
-        return item == target if isinstance(target, DerivedDatasetInput) else item.dataset_rid == target
-
-    def without_the_target(existing: Sequence[DerivedDatasetInput]) -> Sequence[DerivedDatasetInput]:
-        remaining = tuple(item for item in existing if not matches(item))
-        if len(remaining) == len(existing):
-            raise ValueError(f"dataset {target_rid!r} is not an input of derived dataset {dataset_rid!r}")
-        return remaining
-
-    return _edit_inputs(clients, dataset_rid, without_the_target, message or f"Remove input dataset {target_rid}")
 
 
 def _edit_inputs(
@@ -363,7 +324,7 @@ class DerivedDataset(Dataset):
             ValueError: If this dataset's definition was authored as something other than a combination of
                 input datasets with the per-input transforms this API models.
         """
-        return _list_inputs(self._clients, self.rid)
+        return _parse_spec(_get_definition(self._clients, self.rid).spec)
 
     def add_input_dataset(
         self, dataset_input: DerivedDatasetInput, *, message: str | None = None
@@ -384,7 +345,12 @@ class DerivedDataset(Dataset):
             conjure_python_client.ConjureHTTPError: If the definition was committed to by someone else since
                 this call read it.
         """
-        return _add_input(self._clients, self.rid, dataset_input, message)
+        return _edit_inputs(
+            self._clients,
+            self.rid,
+            lambda existing: (*existing, dataset_input),
+            message or f"Add input dataset {dataset_input.dataset_rid}",
+        )
 
     def remove_input_dataset(
         self, dataset: Dataset | str | DerivedDatasetInput, *, message: str | None = None
@@ -408,8 +374,25 @@ class DerivedDataset(Dataset):
             conjure_python_client.ConjureHTTPError: If the definition was committed to by someone else since
                 this call read it.
         """
-        target = dataset if isinstance(dataset, DerivedDatasetInput) else rid_from_instance_or_string(dataset)
-        return _remove_input(self._clients, self.rid, target, message)
+        if isinstance(dataset, DerivedDatasetInput):
+            rid = dataset.dataset_rid
+
+            def matches(item: DerivedDatasetInput) -> bool:
+                return item == dataset
+
+        else:
+            rid = rid_from_instance_or_string(dataset)
+
+            def matches(item: DerivedDatasetInput) -> bool:
+                return item.dataset_rid == rid
+
+        def without_the_target(existing: Sequence[DerivedDatasetInput]) -> Sequence[DerivedDatasetInput]:
+            remaining = tuple(item for item in existing if not matches(item))
+            if len(remaining) == len(existing):
+                raise ValueError(f"dataset {rid!r} is not an input of derived dataset {self.rid!r}")
+            return remaining
+
+        return _edit_inputs(self._clients, self.rid, without_the_target, message or f"Remove input dataset {rid}")
 
 
 def _create_derived_dataset(

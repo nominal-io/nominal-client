@@ -304,8 +304,8 @@ def test_parse_spec_keeps_one_key_constrained_twice() -> None:
 @pytest.mark.parametrize(
     ("predicate", "clause"),
     [
-        pytest.param(_tag_in("vehicle"), TagFilter.in_("vehicle"), id="in-nothing"),
-        pytest.param(_tag_not_in("vehicle"), TagFilter.not_in("vehicle"), id="not-in-nothing"),
+        pytest.param(_tag_in("vehicle"), TagFilter("vehicle", ()), id="in-nothing"),
+        pytest.param(_tag_not_in("vehicle"), TagFilter("vehicle", (), exclude=True), id="not-in-nothing"),
     ],
 )
 def test_parse_spec_accepts_an_empty_value_set(predicate: scout_compute_api.TagPredicate, clause: TagFilter) -> None:
