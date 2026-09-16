@@ -10,9 +10,9 @@ pip install 'nominal[compute]'
 
 A derived dataset is a regular dataset whose contents are computed from a `nominal_compute` graph instead of
 ingested files. A derived dataset that is a union of input datasets — each optionally filtered by tags,
-labelled with a tag, and shifted in time — needs none of this: use `NominalClient.create_derived_dataset` and
-the `DerivedDataset.*_input_dataset*` methods, which work without the `compute` extra and can edit the
-definition afterwards.
+labelled with a tag, and shifted in time — needs none of this: use `nominal.experimental.derived_datasets`,
+whose `create_derived_dataset` and `DerivedDataset.*_input_dataset*` methods work without the `compute` extra
+and can edit the definition afterwards.
 
 Reach for this module when the definition is a compute graph that shape cannot express. Note that
 `nominal_compute` has no tag filter of its own, so a graph built here cannot filter its inputs by tag.

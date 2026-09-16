@@ -10,7 +10,7 @@ from nominal_api import scout_catalog, scout_compute_api
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.dataset import Dataset
-from nominal.core.derived_dataset import (
+from nominal.experimental.derived_datasets._derived_datasets import (
     DerivedDataset,
     _commit_definition,
     _create_derived_dataset,
@@ -40,11 +40,12 @@ def create_derived_dataset(
 
     A derived dataset is a regular dataset whose contents are computed from a
     ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned
-    as a core :class:`~nominal.core.derived_dataset.DerivedDataset`, which is a `Dataset`
+    as a :class:`~nominal.experimental.derived_datasets.DerivedDataset`, which is a `Dataset`
     and behaves like one everywhere a dataset is accepted.
 
-    For the common case of a union of tag-filtered input datasets, `NominalClient.create_derived_dataset`
-    expresses the same thing without the ``compute`` extra, and its inputs can be edited afterwards.
+    For the common case of a union of tag-filtered input datasets,
+    `nominal.experimental.derived_datasets.create_derived_dataset` expresses the same thing without the
+    ``compute`` extra, and its inputs can be edited afterwards.
 
     Args:
         client: The NominalClient to use for creating the derived dataset.

@@ -24,7 +24,6 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
-from nominal.core.derived_dataset import DerivedDataset, DerivedDatasetInput, TagFilter
 from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event
 from nominal.core.filetype import FileType, FileTypes
@@ -63,8 +62,6 @@ __all__ = [
     "DatasetFile",
     "DataSource",
     "DataStream",
-    "DerivedDataset",
-    "DerivedDatasetInput",
     "Event",
     "EventType",
     "FileExtractionInput",
@@ -88,7 +85,6 @@ __all__ = [
     "Secret",
     "Symbol",
     "SymbolKind",
-    "TagFilter",
     "TimestampMetadata",
     "Unit",
     "UnitLike",

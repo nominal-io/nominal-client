@@ -2,7 +2,7 @@
 
 Covers:
   - Creating a derived dataset with inputs, and with no inputs
-  - Looking one up afterwards and getting a `DerivedDataset` back
+  - Looking one up afterwards with `get_derived_dataset`, and being refused for a plain dataset
   - Listing the inputs back, tags included
   - Adding and removing inputs, each as a new commit on the definition
   - Reading the raw definition back and replacing it with a commit, at and against a specific commit
@@ -26,7 +26,14 @@ import pytest
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import IngestStatus
-from nominal.core.derived_dataset import DerivedDataset, DerivedDatasetInput, TagFilter, _build_spec
+from nominal.experimental.derived_datasets import (
+    DerivedDataset,
+    DerivedDatasetInput,
+    TagFilter,
+    create_derived_dataset,
+    get_derived_dataset,
+)
+from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
 from tests.e2e import POLL_INTERVAL
 
@@ -105,7 +112,7 @@ def test_create_derived_dataset_with_inputs(
         DerivedDatasetInput.create(dataset_b),
     )
 
-    derived = client.create_derived_dataset(f"derived-{uuid4().hex[:8]}", inputs=inputs, labels=["e2e"])
+    derived = create_derived_dataset(client, f"derived-{uuid4().hex[:8]}", inputs=inputs, labels=["e2e"])
     archive(derived)
 
     assert derived.labels == ("e2e",)
@@ -114,7 +121,7 @@ def test_create_derived_dataset_with_inputs(
 
 def test_create_derived_dataset_with_no_inputs(client: NominalClient, archive: ArchiveFn) -> None:
     """A derived dataset can be created empty and populated afterwards."""
-    derived = client.create_derived_dataset(f"derived-empty-{uuid4().hex[:8]}")
+    derived = create_derived_dataset(client, f"derived-empty-{uuid4().hex[:8]}")
     archive(derived)
 
     assert derived.list_input_datasets() == ()
@@ -123,15 +130,16 @@ def test_create_derived_dataset_with_no_inputs(client: NominalClient, archive: A
 def test_a_derived_dataset_is_looked_up_as_a_derived_dataset(
     client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
 ) -> None:
-    """A plain dataset lookup carries the derived definition, which is what types the result as derived."""
+    """The lookup carries the derived definition, which is what types the result as derived."""
     dataset_a, _ = tagged_datasets
-    derived = client.create_derived_dataset(
-        f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
+    derived = create_derived_dataset(
+        client, f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
     )
     archive(derived)
 
-    assert isinstance(client.get_dataset(derived.rid), DerivedDataset)
-    assert not isinstance(client.get_dataset(dataset_a.rid), DerivedDataset)
+    assert isinstance(get_derived_dataset(client, derived.rid), DerivedDataset)
+    with pytest.raises(ValueError, match="is not a derived dataset"):
+        get_derived_dataset(client, dataset_a.rid)
 
 
 def test_add_and_remove_input_datasets(
@@ -139,7 +147,7 @@ def test_add_and_remove_input_datasets(
 ) -> None:
     """Inputs added and removed one at a time leave the definition in the expected state each step."""
     dataset_a, dataset_b = tagged_datasets
-    derived = client.create_derived_dataset(f"derived-{uuid4().hex[:8]}")
+    derived = create_derived_dataset(client, f"derived-{uuid4().hex[:8]}")
     archive(derived)
 
     assert derived.add_input_dataset(
@@ -158,8 +166,8 @@ def test_get_and_commit_definition_round_trip_the_raw_spec(
 ) -> None:
     """The raw spec read back is the one written, and a commit against it replaces the definition."""
     dataset_a, dataset_b = tagged_datasets
-    derived = client.create_derived_dataset(
-        f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
+    derived = create_derived_dataset(
+        client, f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
     )
     archive(derived)
 
@@ -178,8 +186,8 @@ def test_remove_input_dataset_rejects_a_dataset_that_is_not_an_input(
     client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
 ) -> None:
     dataset_a, dataset_b = tagged_datasets
-    derived = client.create_derived_dataset(
-        f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
+    derived = create_derived_dataset(
+        client, f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
     )
     archive(derived)
 
@@ -197,7 +205,8 @@ def test_derived_dataset_reads_the_union_of_its_inputs(
     """The union carries both inputs' readings. Asserted by value: the two CSVs share no temperature."""
     dataset_a, dataset_b = tagged_datasets
 
-    both = client.create_derived_dataset(
+    both = create_derived_dataset(
+        client,
         f"derived-union-{uuid4().hex[:8]}",
         inputs=[DerivedDatasetInput.create(dataset_a), DerivedDatasetInput.create(dataset_b)],
     )
@@ -210,7 +219,8 @@ def test_a_filter_selects_series_within_an_input(
     client: NominalClient, mixed_dataset: Dataset, csv_data: bytes, archive: ArchiveFn
 ) -> None:
     """Filtering one dataset that holds both tag values keeps only the matching series, not the whole input."""
-    filtered = client.create_derived_dataset(
+    filtered = create_derived_dataset(
+        client,
         f"derived-filtered-{uuid4().hex[:8]}",
         inputs=[DerivedDatasetInput.create(mixed_dataset, filters=[TagFilter.in_("vehicle", "A")])],
     )
@@ -223,7 +233,8 @@ def test_an_exclusion_filter_drops_the_matching_series(
     client: NominalClient, mixed_dataset: Dataset, csv_data2: bytes, archive: ArchiveFn
 ) -> None:
     """`not_in` is the complement of the same filter, and is only expressible through `filters`."""
-    excluded = client.create_derived_dataset(
+    excluded = create_derived_dataset(
+        client,
         f"derived-excluded-{uuid4().hex[:8]}",
         inputs=[DerivedDatasetInput.create(mixed_dataset, filters=[TagFilter.not_in("vehicle", "A")])],
     )
@@ -235,7 +246,8 @@ def test_an_exclusion_filter_drops_the_matching_series(
 def test_a_multi_value_filter_keeps_every_named_value(
     client: NominalClient, mixed_dataset: Dataset, csv_data: bytes, csv_data2: bytes, archive: ArchiveFn
 ) -> None:
-    both_values = client.create_derived_dataset(
+    both_values = create_derived_dataset(
+        client,
         f"derived-multi-{uuid4().hex[:8]}",
         inputs=[DerivedDatasetInput.create(mixed_dataset, filters=[TagFilter.in_("vehicle", ["A", "B"])])],
     )
@@ -251,12 +263,12 @@ def test_an_offset_shifts_the_input_in_time(
     dataset_a, _ = tagged_datasets
     offset = timedelta(hours=1)
 
-    unshifted = client.create_derived_dataset(
-        f"derived-unshifted-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
+    unshifted = create_derived_dataset(
+        client, f"derived-unshifted-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
     )
     archive(unshifted)
-    shifted = client.create_derived_dataset(
-        f"derived-shifted-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a, offset=offset)]
+    shifted = create_derived_dataset(
+        client, f"derived-shifted-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a, offset=offset)]
     )
     archive(shifted)
 
@@ -284,7 +296,7 @@ def test_an_added_tag_labels_the_inputs_series(
         DerivedDatasetInput.create(dataset_b, add_tag=("source", "daq2")),
     )
 
-    labelled = client.create_derived_dataset(f"derived-labelled-{uuid4().hex[:8]}", inputs=inputs)
+    labelled = create_derived_dataset(client, f"derived-labelled-{uuid4().hex[:8]}", inputs=inputs)
     archive(labelled)
 
     assert labelled.list_input_datasets() == inputs
@@ -306,7 +318,7 @@ def test_a_dataset_can_be_listed_twice(
         DerivedDatasetInput.create(dataset_a, add_tag=("source", "two")),
     )
 
-    doubled = client.create_derived_dataset(f"derived-doubled-{uuid4().hex[:8]}", inputs=inputs)
+    doubled = create_derived_dataset(client, f"derived-doubled-{uuid4().hex[:8]}", inputs=inputs)
     archive(doubled)
 
     assert doubled.list_input_datasets() == inputs

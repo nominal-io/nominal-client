@@ -1218,20 +1218,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         )
 
 
-def _dataset_from_conjure(clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Dataset:
-    """Build the correct Dataset subtype for a Catalog row.
-
-    Returns a DerivedDataset when the row carries a derived definition, otherwise a plain Dataset.
-    This is the only place that knows about both types; the class factories stay type-specific.
-    """
-    # Local import avoids an import cycle (derived_dataset imports this module).
-    from nominal.core.derived_dataset import DerivedDataset
-
-    if dataset.derived_definition is None:
-        return Dataset._from_conjure(clients, dataset)
-    return DerivedDataset._from_conjure(clients, dataset)
-
-
 class _DatasetWrapper(abc.ABC):
     """A lightweight façade over `nominal.core.Dataset` that routes ingest calls through a *data scope*.
 
@@ -1276,7 +1262,7 @@ class _DatasetWrapper(abc.ABC):
         elif data_scope.data_source.dataset is None:
             raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
 
-        dataset = _dataset_from_conjure(
+        dataset = Dataset._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
         )

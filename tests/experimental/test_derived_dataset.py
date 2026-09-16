@@ -8,11 +8,15 @@ import pytest
 from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core.client import NominalClient
-from nominal.core.dataset import Dataset, DatasetBounds, _dataset_from_conjure
-from nominal.core.derived_dataset import (
+from nominal.core.dataset import DatasetBounds
+from nominal.experimental.derived_datasets import (
     DerivedDataset,
     DerivedDatasetInput,
     TagFilter,
+    create_derived_dataset,
+    get_derived_dataset,
+)
+from nominal.experimental.derived_datasets._derived_datasets import (
     _build_duration,
     _build_spec,
     _parse_duration,
@@ -668,21 +672,27 @@ def test_remove_input_dataset_rejects_a_dataset_that_is_not_an_input(
     mock_clients.catalog.commit_derived_definition.assert_not_called()
 
 
-# --- construction ---
+# --- lookup ---
 
 
-def test_a_dataset_with_a_derived_definition_is_built_as_a_derived_dataset(
-    mock_clients: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
+def test_get_derived_dataset_returns_a_derived_dataset(
+    client: NominalClient, mock_clients: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
 ) -> None:
-    """Every dataset lookup builds through `_dataset_from_conjure`, so a derived one arrives typed as one."""
     enriched = make_enriched_dataset(derived_definition=_definition(_build_spec([])))
-    assert isinstance(_dataset_from_conjure(mock_clients, enriched), DerivedDataset)
+    mock_clients.catalog.get_enriched_datasets.return_value = [enriched]
+
+    derived = get_derived_dataset(client, enriched.rid)
+
+    assert isinstance(derived, DerivedDataset)
+    assert derived.rid == enriched.rid
 
 
-def test_an_ordinary_dataset_is_not(
-    mock_clients: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
+def test_get_derived_dataset_refuses_an_ordinary_dataset(
+    client: NominalClient, mock_clients: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
 ) -> None:
-    assert type(_dataset_from_conjure(mock_clients, make_enriched_dataset())) is Dataset
+    mock_clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset()]
+    with pytest.raises(ValueError, match="is not a derived dataset"):
+        get_derived_dataset(client, "ri.catalog.ws.dataset.abc")
 
 
 def test_refresh_keeps_a_derived_dataset_derived(
@@ -716,7 +726,7 @@ def test_create_derived_dataset_sets_the_definition_on_the_create_request(
     )
     inputs = [DerivedDatasetInput("ri.a", [TagFilter.in_("vehicle", "A")]), DerivedDatasetInput("ri.b")]
 
-    derived = client.create_derived_dataset("merged", inputs=inputs, labels=["a"], properties={"k": "v"})
+    derived = create_derived_dataset(client, "merged", inputs=inputs, labels=["a"], properties={"k": "v"})
 
     assert isinstance(derived, DerivedDataset)
 
@@ -733,7 +743,7 @@ def test_create_derived_dataset_defaults_to_no_inputs(
 ) -> None:
     mock_clients.catalog.create_dataset.return_value = make_enriched_dataset()
 
-    client.create_derived_dataset("merged", message="empty for now")
+    create_derived_dataset(client, "merged", message="empty for now")
 
     _, request = mock_clients.catalog.create_dataset.call_args[0]
     assert request.derived_definition.spec == _build_spec([])

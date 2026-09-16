@@ -9,7 +9,8 @@ from nominal_api import scout_catalog, scout_compute_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core.dataset import Dataset, _create_dataset_request
+from nominal.core.client import NominalClient
+from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.marking import Marking, _marking_rids
 from nominal.ts import IntegralNanosecondsDuration, _to_seconds_nanos_duration
@@ -303,7 +304,7 @@ def _literal_values(values: scout_compute_api.StringSetConstantV2) -> Sequence[s
 class DerivedDataset(Dataset):
     """A dataset whose contents are computed from a definition instead of ingested files.
 
-    Returned by `NominalClient.create_derived_dataset`, and by any lookup of a dataset the server reports
+    Returned by `create_derived_dataset`, and by `get_derived_dataset` for a dataset the server reports
     as derived. The `*_input_dataset*` methods read and edit a definition authored as a union of input
     datasets, each optionally filtered, tagged and time-shifted — the same composition the app builds.
     `get_definition` and `commit_definition` work with any definition as a raw compute spec.
@@ -424,7 +425,7 @@ def _create_derived_dataset(
 ) -> DerivedDataset:
     """Create a dataset whose contents are computed from `spec` rather than ingested from files.
 
-    The single creation path behind both `NominalClient.create_derived_dataset` and
+    The single creation path behind both `create_derived_dataset` here and
     `nominal.experimental.compute_as_code.create_derived_dataset`, which differ only in how they build `spec`.
     """
     request = _create_dataset_request(
@@ -437,3 +438,56 @@ def _create_derived_dataset(
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=spec, message=message),
     )
     return DerivedDataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
+
+
+def create_derived_dataset(
+    client: NominalClient,
+    name: str,
+    *,
+    inputs: Sequence[DerivedDatasetInput] = (),
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    markings: Sequence[Marking | str] | None = None,
+    message: str = "Initial derived definition",
+) -> DerivedDataset:
+    """Create a derived dataset: a virtual dataset whose contents are the union of its input datasets.
+
+    Args:
+        client: The NominalClient to use for creating the derived dataset.
+        name: Name of the derived dataset to create in Nominal.
+        inputs: The datasets this one is composed of, each with its own transforms. May be empty, and
+            populated later with `DerivedDataset.add_input_dataset`.
+        description: Human readable description of the dataset.
+        labels: Text labels to apply to the created dataset.
+        properties: Key-value properties to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+            the creation request rather than applied in a follow-up call.
+        message: Commit message for the initial definition.
+
+    Returns:
+        Reference to the created derived dataset in Nominal.
+    """
+    return _create_derived_dataset(
+        client._clients,
+        name,
+        _build_spec(inputs),
+        message=message,
+        description=description,
+        labels=labels,
+        properties=properties,
+        markings=markings,
+    )
+
+
+def get_derived_dataset(client: NominalClient, dataset: Dataset | str) -> DerivedDataset:
+    """Retrieve a derived dataset by RID, or as the derived counterpart of a `Dataset` looked up through core.
+
+    Raises:
+        ValueError: If the dataset is not derived.
+    """
+    rid = rid_from_instance_or_string(dataset)
+    response = _get_dataset(client._clients.auth_header, client._clients.catalog, rid)
+    if response.derived_definition is None:
+        raise ValueError(f"dataset {rid!r} is not a derived dataset")
+    return DerivedDataset._from_conjure(client._clients, response)
