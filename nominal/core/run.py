@@ -30,7 +30,7 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _dataset_from_conjure, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
@@ -424,7 +424,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
         dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
         datasets_by_rids = {
-            ds.rid: Dataset._from_conjure(self._clients, ds)
+            ds.rid: _dataset_from_conjure(self._clients, ds)
             for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
         }
         for ref_name, rid in dataset_rids_by_ref_name.items():
@@ -488,7 +488,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         if dataset_rid is None:
             raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
 
-        return Dataset._from_conjure(
+        return _dataset_from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
         )

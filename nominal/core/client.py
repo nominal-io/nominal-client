@@ -87,12 +87,14 @@ from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
+    _dataset_from_conjure,
     _get_dataset,
     _get_datasets,
     _search_dataset_files,
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.derived_dataset import DerivedDataset, DerivedDatasetInput, _build_spec, _create_derived_dataset
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.exceptions import (
@@ -388,7 +390,7 @@ class NominalClient:
             self._clients.auth_header,
             query,
         ):
-            yield Dataset._from_conjure(self._clients, raw_dataset)
+            yield _dataset_from_conjure(self._clients, raw_dataset)
 
     def search_datasets(
         self,
@@ -896,6 +898,44 @@ class NominalClient:
 
         return dataset
 
+    def create_derived_dataset(
+        self,
+        name: str,
+        *,
+        inputs: Sequence[DerivedDatasetInput] = (),
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
+        message: str = "Initial derived definition",
+    ) -> DerivedDataset:
+        """Create a derived dataset: a virtual dataset whose contents are the union of its input datasets.
+
+        Args:
+            name: Name of the derived dataset to create in Nominal.
+            inputs: The datasets this one is composed of, each with its own transforms. May be empty, and
+                populated later with `DerivedDataset.add_input_dataset`.
+            description: Human readable description of the dataset.
+            labels: Text labels to apply to the created dataset.
+            properties: Key-value properties to apply to the created dataset.
+            markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+                the creation request rather than applied in a follow-up call.
+            message: Commit message for the initial definition.
+
+        Returns:
+            Reference to the created derived dataset in Nominal.
+        """
+        return _create_derived_dataset(
+            self._clients,
+            name,
+            _build_spec(inputs),
+            message=message,
+            description=description,
+            labels=labels,
+            properties=properties,
+            markings=markings,
+        )
+
     @deprecated(
         "`NominalClient.create_video` is deprecated in favor of video channels on a dataset. Create a dataset with "
         "`NominalClient.create_dataset`, then upload video to a channel on it with `Dataset.add_video`.",
@@ -977,11 +1017,11 @@ class NominalClient:
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
-        return Dataset._from_conjure(self._clients, response)
+        return _dataset_from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
         for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, rids):
-            yield Dataset._from_conjure(self._clients, ds)
+            yield _dataset_from_conjure(self._clients, ds)
 
     def get_datasets(self, rids: Iterable[str]) -> Sequence[Dataset]:
         """Retrieve datasets by their RIDs."""

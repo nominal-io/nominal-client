@@ -34,7 +34,14 @@ from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import (
+    Dataset,
+    _create_dataset,
+    _dataset_from_conjure,
+    _DatasetWrapper,
+    _get_dataset,
+    _get_datasets,
+)
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
@@ -502,7 +509,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         if dataset_rid is None:
             raise ValueError(f"No dataset with data scope name '{data_scope_name}' found for this asset")
 
-        return Dataset._from_conjure(
+        return _dataset_from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
         )
@@ -563,7 +570,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
         }
         return [
-            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
+            (name, _dataset_from_conjure(self._clients, datasets_map[rid]))
             for name, rid in scope_rid.items()
             if rid in datasets_map
         ]

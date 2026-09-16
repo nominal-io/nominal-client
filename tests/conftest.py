@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import grpc
 import pytest
+from nominal_api import api, scout_catalog
 
 from nominal.core.channel import Channel, ChannelDataType
 
@@ -46,6 +47,39 @@ def make_channel(mock_clients):
             unit=None,
             description=None,
             _clients=mock_clients,
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_enriched_dataset():
+    """Factory fixture for an EnrichedDataset, the Catalog row every dataset lookup is built from."""
+
+    def _make(
+        rid: str = "ri.catalog.ws.dataset.abc",
+        *,
+        name: str = "A dataset",
+        derived_definition: scout_catalog.DerivedDefinition | None = None,
+    ) -> scout_catalog.EnrichedDataset:
+        return scout_catalog.EnrichedDataset(
+            rid=rid,
+            name=name,
+            display_name=name,
+            uuid="00000000-0000-0000-0000-000000000000",
+            properties={},
+            typed_properties={},
+            labels=[],
+            is_archived=False,
+            allow_streaming=False,
+            channel_search_split_tag_keys=[],
+            granularity=api.Granularity.NANOSECONDS,
+            ingest_date="2026-01-01T00:00:00Z",
+            last_ingest_status=api.IngestStatusV2(success=api.SuccessResult()),
+            origin_metadata=scout_catalog.DatasetOriginMetadata(),
+            retention_policy=scout_catalog.RetentionPolicy(type=scout_catalog.RetentionPolicyType.KEEP_FOREVER),
+            timestamp_type=scout_catalog.WeakTimestampType.ABSOLUTE,
+            derived_definition=derived_definition,
         )
 
     return _make
