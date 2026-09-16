@@ -357,7 +357,7 @@ def _convert_sensor(
 ) -> int:
     try:
         from ouster.sdk.core import ChanField, XYZLut
-        from ouster.sdk.pcap import PcapScanSource
+        from ouster.sdk.pcap import PcapFrameSetSource
     except ImportError as e:
         raise ImportError(
             "nominal[ouster] is required for PCAP conversion. Install it with: pip install 'nominal[ouster]'"
@@ -371,7 +371,7 @@ def _convert_sensor(
 
     logger.info("Opening PCAP: %s (%.1f MB)", pcap_path.name, pcap_path.stat().st_size / 1e6)
     try:
-        source = PcapScanSource(str(pcap_path))
+        source = PcapFrameSetSource(str(pcap_path))
         xyzlut = XYZLut(source.sensor_info[0])
 
         total_points = 0
@@ -387,6 +387,9 @@ def _convert_sensor(
                     break
 
                 scan = scan_set[0]
+                if scan is None:
+                    scan_count += 1
+                    continue
                 xyz = xyzlut(scan)
                 refl = scan.field(ChanField.REFLECTIVITY).astype(np.float64).reshape(-1)
                 sig = scan.field(ChanField.SIGNAL).astype(np.float64).reshape(-1)
