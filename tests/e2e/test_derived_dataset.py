@@ -237,7 +237,7 @@ def test_a_multi_value_filter_keeps_every_named_value(
 ) -> None:
     both_values = client.create_derived_dataset(
         f"derived-multi-{uuid4().hex[:8]}",
-        inputs=[DerivedDatasetInput.create(mixed_dataset, filters=[TagFilter.in_("vehicle", "A", "B")])],
+        inputs=[DerivedDatasetInput.create(mixed_dataset, filters=[TagFilter.in_("vehicle", ["A", "B"])])],
     )
     archive(both_values)
 

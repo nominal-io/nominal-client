@@ -35,14 +35,30 @@ class TagFilter:
         object.__setattr__(self, "values", tuple(self.values))
 
     @classmethod
-    def in_(cls, key: str, value: str, *values: str) -> Self:
-        """Keep only the series whose `key` tag is one of the given values."""
-        return cls(key, (value, *values))
+    def in_(cls, key: str, values: str | Sequence[str]) -> Self:
+        """Keep only the series whose `key` tag is `values`, or one of them when several are given.
+
+        Raises:
+            ValueError: If `values` is empty, which would select nothing.
+        """
+        return cls(key, _at_least_one(values))
 
     @classmethod
-    def not_in(cls, key: str, value: str, *values: str) -> Self:
-        """Drop the series whose `key` tag is one of the given values."""
-        return cls(key, (value, *values), exclude=True)
+    def not_in(cls, key: str, values: str | Sequence[str]) -> Self:
+        """Drop the series whose `key` tag is `values`, or one of them when several are given.
+
+        Raises:
+            ValueError: If `values` is empty, which would drop nothing.
+        """
+        return cls(key, _at_least_one(values), exclude=True)
+
+
+def _at_least_one(values: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, str):
+        return (values,)
+    if not values:
+        raise ValueError("a tag filter needs at least one value")
+    return tuple(values)
 
 
 @dataclass(frozen=True)

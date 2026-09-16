@@ -157,6 +157,20 @@ def test_filter_values_are_frozen() -> None:
         clause.values[0] = "B"  # type: ignore[index]
 
 
+def test_constructors_take_one_value_or_several() -> None:
+    """A single string and a one-element list build the same clause; the string is not split into characters."""
+    assert TagFilter.in_("vehicle", "AB") == TagFilter.in_("vehicle", ["AB"]) == TagFilter("vehicle", ("AB",))
+    assert TagFilter.not_in("vehicle", ["A", "B"]) == TagFilter("vehicle", ("A", "B"), exclude=True)
+
+
+def test_constructors_reject_no_values() -> None:
+    """`in []` selects nothing and `not in []` drops nothing; neither is what a caller means."""
+    with pytest.raises(ValueError, match="at least one value"):
+        TagFilter.in_("vehicle", [])
+    with pytest.raises(ValueError, match="at least one value"):
+        TagFilter.not_in("vehicle", ())
+
+
 def test_an_offset_is_reduced_to_nanoseconds() -> None:
     """A timedelta and a nanosecond count naming the same shift produce equal inputs."""
     assert DerivedDatasetInput("ri.a", offset=timedelta(seconds=-5)) == DerivedDatasetInput(
@@ -195,7 +209,7 @@ def test_build_spec_ands_the_clauses_in_the_order_given() -> None:
 
 
 def test_build_spec_carries_multiple_values_on_one_clause() -> None:
-    spec = _build_spec([DerivedDatasetInput("ri.a", [TagFilter.in_("vehicle", "A", "B")])])
+    spec = _build_spec([DerivedDatasetInput("ri.a", [TagFilter.in_("vehicle", ["A", "B"])])])
     assert spec == _combine(_filter(_saved("ri.a"), _tag_in("vehicle", "A", "B")))
 
 
@@ -258,7 +272,7 @@ def test_build_spec_accepts_no_inputs() -> None:
 def test_parse_spec_round_trips_every_transform() -> None:
     """Parsing what the builder produced recovers the inputs, transforms and all."""
     inputs = (
-        DerivedDatasetInput("ri.a", [TagFilter.in_("vehicle", "A", "B"), TagFilter.not_in("run", "7")]),
+        DerivedDatasetInput("ri.a", [TagFilter.in_("vehicle", ["A", "B"]), TagFilter.not_in("run", "7")]),
         DerivedDatasetInput("ri.b", (), ("source", "daq1"), timedelta(hours=1)),
         DerivedDatasetInput("ri.c"),
     )
@@ -274,7 +288,7 @@ def test_parse_spec_reads_a_hand_authored_definition() -> None:
     assert _parse_spec(spec) == (
         DerivedDatasetInput("ri.a"),
         DerivedDatasetInput(
-            "ri.b", [TagFilter.in_("vehicle", "A"), TagFilter.not_in("run", "7"), TagFilter.in_("site", "X", "Y")]
+            "ri.b", [TagFilter.in_("vehicle", "A"), TagFilter.not_in("run", "7"), TagFilter.in_("site", ["X", "Y"])]
         ),
     )
 
