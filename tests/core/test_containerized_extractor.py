@@ -34,7 +34,7 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
 
 
 def test_search_extractors_follows_pagination_cursors() -> None:
-    """Search accumulates results across pages until the server returns an empty next_page_token."""
+    """Search preserves synthetic metadata filters and follows pagination cursors across pages."""
     clients = _clients()
     page1 = containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
         extractors=[_ext("a")], next_page_token="tok"
@@ -44,12 +44,24 @@ def test_search_extractors_follows_pagination_cursors() -> None:
     )
     clients.containerized_extractor.SearchContainerizedExtractors.side_effect = [page1, page2]
 
-    results = _search_containerized_extractors(clients, include_archived=False, file_extension=None, workspace_rid=None)
+    results = _search_containerized_extractors(
+        clients,
+        include_archived=False,
+        file_extension=None,
+        labels=iter(["owned", "production"]),
+        properties={"team": "example-team"},
+        workspace_rid=None,
+    )
 
     assert [e.rid for e in results] == ["a", "b"]
-    assert clients.containerized_extractor.SearchContainerizedExtractors.call_count == 2
-    second_call_request = clients.containerized_extractor.SearchContainerizedExtractors.call_args_list[1].args[0]
+    first_call_request, second_call_request = [
+        call.args[0] for call in clients.containerized_extractor.SearchContainerizedExtractors.call_args_list
+    ]
+    assert list(first_call_request.labels) == ["owned", "production"]
+    assert dict(first_call_request.properties) == {"team": "example-team"}
     assert second_call_request.next_page_token == "tok"
+    assert list(second_call_request.labels) == ["owned", "production"]
+    assert dict(second_call_request.properties) == {"team": "example-team"}
 
 
 def test_create_defaults_workspace_to_client_default() -> None:
@@ -59,10 +71,39 @@ def test_create_defaults_workspace_to_client_default() -> None:
         containerized_extractor_pb2.CreateContainerizedExtractorResponse(extractor=_ext("a"))
     )
 
-    _create_containerized_extractor(clients, "a", description=None)
+    _create_containerized_extractor(clients, "a", description=None, labels=None, properties=None)
 
     request = clients.containerized_extractor.CreateContainerizedExtractor.call_args.args[0]
     assert request.workspace_rid == "ri.workspace.default"
+
+
+@pytest.mark.parametrize(
+    ("labels", "properties", "expected_present"),
+    [
+        pytest.param(None, None, False, id="preserve"),
+        pytest.param([], {}, True, id="clear"),
+    ],
+)
+def test_update_distinguishes_omitted_metadata_from_explicit_clears(
+    labels: list[str] | None,
+    properties: dict[str, str] | None,
+    expected_present: bool,
+) -> None:
+    """None preserves metadata; empty collections send wrappers that clear it."""
+    clients = _clients()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    clients.containerized_extractor.UpdateContainerizedExtractor.return_value = (
+        containerized_extractor_pb2.UpdateContainerizedExtractorResponse(extractor=_ext("ri.ext"))
+    )
+
+    extractor.update(labels=labels, properties=properties)
+
+    request = clients.containerized_extractor.UpdateContainerizedExtractor.call_args.args[0]
+    assert request.HasField("labels") is expected_present
+    assert request.HasField("properties") is expected_present
+    if expected_present:
+        assert list(request.labels.labels) == []
+        assert dict(request.properties.properties) == {}
 
 
 def test_extractor_refresh_updates_fields_in_place() -> None:
