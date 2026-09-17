@@ -16,7 +16,13 @@ from nominal_api import upload_api
 from typing_extensions import Self
 
 from nominal import ts
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import (
+    HasRid,
+    RefreshableGrpcMixin,
+    label_update,
+    property_update,
+    rid_from_instance_or_string,
+)
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
@@ -33,7 +39,6 @@ from nominal.core.container_image import (
 from nominal.core.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2
-from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -95,10 +100,6 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             merge them before calling to retain existing values.
         """
         image_rid = None if active_container_image is None else rid_from_instance_or_string(active_container_image)
-        updated_labels = None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
-        updated_properties = (
-            None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
-        )
         request = containerized_extractor_pb2.UpdateContainerizedExtractorRequest(
             rid=self.rid,
             workspace_rid=self._workspace_rid,
@@ -106,8 +107,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             description=description,
             is_archived=is_archived,
             active_container_image_rid=image_rid,
-            labels=updated_labels,
-            properties=updated_properties,
+            labels=label_update(labels),
+            properties=property_update(properties),
         )
         with translate_grpc_errors():
             response = self._clients.containerized_extractor.UpdateContainerizedExtractor(request)

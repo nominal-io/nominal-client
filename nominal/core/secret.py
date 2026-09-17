@@ -6,10 +6,9 @@ from typing import Mapping, Protocol, Sequence
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update, property_update
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
-from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -54,8 +53,8 @@ class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
             request=secrets_pb2.UpdateSecretRequest(
                 name=name,
                 description=description,
-                labels=None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels)),
-                properties=None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties)),
+                labels=label_update(labels),
+                properties=property_update(properties),
             ),
         )
         with translate_grpc_errors():
