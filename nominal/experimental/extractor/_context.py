@@ -459,6 +459,7 @@ class ManifestExtractorContext(ExtractorContext):
                 ingest_type=ingest_type._to_conjure(),
                 relative_path=relative,
                 tag_columns=dict(tag_columns or {}),
+                units={},
                 channel_prefix=channel_prefix,
                 timestamp_metadata=timestamp_metadata,
             )
