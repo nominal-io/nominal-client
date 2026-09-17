@@ -447,15 +447,22 @@ def test_avro_rejects_text_timestamps() -> None:
         (".parquet.zip", True),
     ],
 )
-def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archive: bool) -> None:
+@pytest.mark.parametrize("method", ["add_parquet", "add_tabular_data"])
+def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archive: bool, method: str) -> None:
     client = MagicMock()
     builder = IngestBuilder(client, "ri.catalog.test.dataset")
-    builder.add_tabular_data(
-        write_file("records" + suffix, 1),
-        "time",
-        "epoch_seconds",
-        units={"speed": "m/s"},
-        tag_columns={"source": "device"},
+    assert (
+        getattr(builder, method)(
+            write_file("records" + suffix, 1),
+            "time",
+            "epoch_seconds",
+            units={"speed": "m/s"},
+            tag_columns={"source": "device"},
+            channel_prefix="test_",
+            channel_name_overrides={"speed": "velocity"},
+            tags={"run": "r1"},
+        )
+        is builder
     )
     with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
         builder.submit()
@@ -465,6 +472,9 @@ def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archiv
     assert options.parquet.is_archive == archive
     assert dict(options.parquet.format.wide.tag_columns) == {"source": "device"}
     assert dict(options.units) == {"speed": "m/s"}
+    assert options.channel_prefix == "test_"
+    assert dict(options.channel_name_overrides) == {"speed": "velocity"}
+    assert dict(request.items[0].tags) == {"run": "r1"}
 
 
 @pytest.mark.parametrize("row", ["header_row", "data_row", "units_row"])
@@ -480,4 +490,12 @@ def test_add_csv_rejects_other_formats(suffix: str) -> None:
     builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
     with pytest.raises(ValueError, match="CSV"):
         builder.add_csv("data" + suffix, "time", "epoch_seconds")
+    assert not builder._pending
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".csv.gz", ".avro"])
+def test_add_parquet_rejects_other_formats(suffix: str) -> None:
+    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+    with pytest.raises(ValueError, match="Parquet"):
+        builder.add_parquet("data" + suffix, "time", "epoch_seconds")
     assert not builder._pending

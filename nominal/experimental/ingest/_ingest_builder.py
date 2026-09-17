@@ -349,7 +349,7 @@ class IngestBuilder:
         channel_name_overrides: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
-        """Register a tabular file (CSV or Parquet), mirroring `Dataset.add_tabular_data`.
+        """Register a tabular file by forwarding to :meth:`add_csv` or :meth:`add_parquet`.
 
         Supported extensions: .csv / .csv.gz, .parquet / .parquet.gz, and the parquet-archive
         formats (.parquet.tar / .parquet.tar.gz / .parquet.zip). The format is inferred from
@@ -375,31 +375,17 @@ class IngestBuilder:
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
 
-        if file_type.is_csv():
-            return self.add_csv(
-                file_path,
-                timestamp_column,
-                timestamp_type,
-                tag_columns=tag_columns,
-                units=units,
-                channel_prefix=channel_prefix,
-                channel_name_overrides=channel_name_overrides,
-                tags=tags,
-            )
-        options = file_ingest_pb2.FileIngestOptions(
-            timestamp_metadata=common_pb2.TimestampMetadata(
-                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
-            ),
+        add_file = self.add_csv if file_type.is_csv() else self.add_parquet
+        return add_file(
+            file_path,
+            timestamp_column,
+            timestamp_type,
+            tag_columns=tag_columns,
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
-            parquet=file_ingest_pb2.ParquetIngestOptions(
-                format=file_ingest_pb2.ParquetFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
-                is_archive=file_type.is_parquet_archive(),
-            ),
+            tags=tags,
         )
-        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
-        return self
 
     def add_csv(
         self,
@@ -463,6 +449,58 @@ class IngestBuilder:
                 header_row=header_row,
                 data_row=data_row,
                 units_row=units_row,
+            ),
+        )
+        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        return self
+
+    def add_parquet(
+        self,
+        path: PathLike,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        *,
+        tag_columns: Mapping[str, str] | None = None,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a Parquet file or archive, inferring compression and archive format from its extension.
+
+        Supports .parquet, .parquet.gz, .parquet.tar, .parquet.tar.gz, and .parquet.zip.
+
+        Args:
+            path: Path to a Parquet file or archive.
+            timestamp_column: Column containing timestamps; not ingested as a data channel.
+            timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
+            tag_columns: Mapping of tag keys to columns supplying their values.
+            units: Mapping of channel names to unit symbols.
+            channel_prefix: Prefix prepended to every ingested channel name.
+            channel_name_overrides: Mapping of original channel names to their ingested names.
+            tags: Key-value pairs applied as tags to all data from this file.
+
+        Returns:
+            This builder, for chaining.
+
+        Raises:
+            ValueError: The path is not Parquet.
+        """
+        file_path = Path(path)
+        file_type = FileType.from_path(file_path)
+        if not file_type.is_parquet():
+            raise ValueError(f"Parquet path must name a Parquet file or archive: {file_path}")
+
+        options = file_ingest_pb2.FileIngestOptions(
+            timestamp_metadata=common_pb2.TimestampMetadata(
+                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
+            ),
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
+            parquet=file_ingest_pb2.ParquetIngestOptions(
+                format=file_ingest_pb2.ParquetFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
+                is_archive=file_type.is_parquet_archive(),
             ),
         )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
