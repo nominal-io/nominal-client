@@ -248,6 +248,7 @@ def test_avro_stream_accepts_gzipped(manifest_document: ReadManifest, run_extrac
 def test_manifest_output_units_are_copied_per_declaration(
     manifest_document: ReadManifest, run_extractor: RunExtractor
 ) -> None:
+    """Each output retains its declared units even when the caller later changes the shared map."""
     units = {"pressure": "Pa"}
 
     @manifest_extractor
