@@ -33,7 +33,6 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
-from nominal.experimental.ingest._file_options import avro_file_options, tabular_file_options
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -294,6 +293,21 @@ def _upload_all(
     return outcomes
 
 
+def _validate_csv_rows(header_row: int | None, data_row: int | None, units_row: int | None) -> None:
+    """Check one-based CSV record numbers before any upload is queued."""
+    for name, row in (("header_row", header_row), ("data_row", data_row), ("units_row", units_row)):
+        if row is not None and (isinstance(row, bool) or not isinstance(row, int) or not 1 <= row <= 2**31 - 1):
+            raise ValueError(f"{name} must be a positive one-based int32 record number")
+    header = 1 if header_row is None else header_row
+    data = header + 1 if data_row is None else data_row
+    if data <= header:
+        raise ValueError("data_row must be greater than header_row")
+    if units_row == header:
+        raise ValueError("units_row must not be header_row")
+    if units_row is not None and units_row >= data:
+        raise ValueError("units_row must be less than data_row, which defaults to header_row + 1")
+
+
 class IngestBuilder:
     """Accumulate files and submit them as a single (MULTI) ingest job.
 
@@ -376,14 +390,28 @@ class IngestBuilder:
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
 
-        options = tabular_file_options(
-            file_type,
-            timestamp_column,
-            timestamp_type,
-            tag_columns=tag_columns,
+        if file_type.is_csv():
+            return self.add_csv(
+                file_path,
+                timestamp_column,
+                timestamp_type,
+                tag_columns=tag_columns,
+                units=units,
+                channel_prefix=channel_prefix,
+                channel_name_overrides=channel_name_overrides,
+                tags=tags,
+            )
+        options = file_ingest_pb2.FileIngestOptions(
+            timestamp_metadata=common_pb2.TimestampMetadata(
+                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
+            ),
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
+            parquet=file_ingest_pb2.ParquetIngestOptions(
+                format=file_ingest_pb2.ParquetFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
+                is_archive=file_type.is_parquet_archive(),
+            ),
         )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
@@ -437,17 +465,20 @@ class IngestBuilder:
         if not file_type.is_csv():
             raise ValueError(f"CSV path must end in .csv or .csv.gz: {file_path}")
 
-        options = tabular_file_options(
-            file_type,
-            timestamp_column,
-            timestamp_type,
-            tag_columns=tag_columns,
+        _validate_csv_rows(header_row, data_row, units_row)
+        options = file_ingest_pb2.FileIngestOptions(
+            timestamp_metadata=common_pb2.TimestampMetadata(
+                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
+            ),
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
-            header_row=header_row,
-            data_row=data_row,
-            units_row=units_row,
+            csv=file_ingest_pb2.CsvIngestOptions(
+                format=file_ingest_pb2.CsvFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
+                header_row=header_row,
+                data_row=data_row,
+                units_row=units_row,
+            ),
         )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
@@ -491,7 +522,15 @@ class IngestBuilder:
         # ("channel names come from record data").
         # TODO(drake): expose channel_name_overrides here once the backend accepts it for avro.
 
-        options = avro_file_options(timestamp_type=timestamp_type, units=units, channel_prefix=channel_prefix)
+        declared_type = Epoch("nanoseconds") if timestamp_type is None else _to_typed_timestamp_type(timestamp_type)
+        if not isinstance(declared_type, (Epoch, Relative)):
+            raise ValueError("avro stream timestamps must be numeric (ts.Epoch or ts.Relative)")
+        options = file_ingest_pb2.FileIngestOptions(
+            timestamp_metadata=common_pb2.TimestampMetadata(column="timestamps", type=declared_type._to_proto()),
+            units=units,
+            channel_prefix=channel_prefix,
+            avro=file_ingest_pb2.AvroIngestOptions(),
+        )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
 
