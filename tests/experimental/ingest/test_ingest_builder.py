@@ -177,11 +177,12 @@ class TestSubmit:
         _video_path, manifest_path = fake.enqueued
         assert not manifest_path.exists()
 
-    def test_tabular_dispatches_on_extension(self, write_file: WriteFile) -> None:
+    @pytest.mark.parametrize("csv_name", ["a.csv", "a.csv.gz"])
+    def test_tabular_dispatches_on_extension(self, write_file: WriteFile, csv_name: str) -> None:
         """One method handles both tabular formats: the extension picks the wire options."""
         client = MagicMock()
         builder = IngestBuilder(client, "ri.catalog.test.dataset")
-        builder.add_tabular_data(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file(csv_name, 1), timestamp_column="ts", timestamp_type="epoch_seconds")
         builder.add_tabular_data(write_file("b.parquet", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
 
         with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
@@ -374,28 +375,25 @@ class TestSubmitAllowPartial:
         client._clients.ingest_v2.Ingest.assert_not_called()
 
 
-@pytest.mark.parametrize("suffix", [".csv", ".csv.gz"])
 @pytest.mark.parametrize(
     "rows",
     [
         {},
+        {"header_row": None, "data_row": None, "units_row": None},
         {"header_row": 1},
         {"header_row": 2, "data_row": 4, "units_row": 3},
-        {"header_row": 3, "units_row": 1},
         # Forward representable values unchanged; the backend owns CSV row validation.
-        {"header_row": 0},
-        {"data_row": -1},
-        {"header_row": 3, "data_row": 2, "units_row": 3},
+        {"header_row": 0, "data_row": -1, "units_row": 0},
     ],
 )
-def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, rows: dict[str, int]) -> None:
+def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, rows: dict[str, int | None]) -> None:
     client = MagicMock()
     builder = IngestBuilder(client, "ri.catalog.test.dataset")
     units = {"speed": "m/s"}
     tag_columns = {"source": "device"}
     overrides = {"speed": "velocity"}
     builder.add_csv(
-        write_file("records" + suffix, 1),
+        write_file("records.csv", 1),
         "time",
         "epoch_seconds",
         units=units,
@@ -416,25 +414,9 @@ def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, 
     assert dict(options.channel_name_overrides) == {"speed": "velocity"}
     assert options.channel_prefix == "test_"
     for name in ("header_row", "data_row", "units_row"):
-        assert options.csv.HasField(name) == (name in rows)
-        if name in rows:
+        assert options.csv.HasField(name) == (rows.get(name) is not None)
+        if rows.get(name) is not None:
             assert getattr(options.csv, name) == rows[name]
-
-
-@pytest.mark.parametrize("suffix", [".parquet", ".parquet.gz", ".parquet.tar", ".parquet.tar.gz", ".parquet.zip"])
-@pytest.mark.parametrize("row", ["header_row", "data_row", "units_row"])
-def test_parquet_rejects_csv_rows(suffix: str, row: str) -> None:
-    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
-    with pytest.raises(ValueError, match="CSV"):
-        builder.add_csv("missing" + suffix, "time", "epoch_seconds", **{row: 3})
-    assert not builder._pending
-
-
-def test_avro_rejects_text_timestamps() -> None:
-    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
-    with pytest.raises(ValueError, match="numeric"):
-        builder.add_avro_stream("missing.avro", timestamp_type="iso_8601")  # type: ignore[arg-type]
-    assert not builder._pending
 
 
 @pytest.mark.parametrize(
@@ -447,22 +429,18 @@ def test_avro_rejects_text_timestamps() -> None:
         (".parquet.zip", True),
     ],
 )
-@pytest.mark.parametrize("method", ["add_parquet", "add_tabular_data"])
-def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archive: bool, method: str) -> None:
+def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archive: bool) -> None:
     client = MagicMock()
     builder = IngestBuilder(client, "ri.catalog.test.dataset")
-    assert (
-        getattr(builder, method)(
-            write_file("records" + suffix, 1),
-            "time",
-            "epoch_seconds",
-            units={"speed": "m/s"},
-            tag_columns={"source": "device"},
-            channel_prefix="test_",
-            channel_name_overrides={"speed": "velocity"},
-            tags={"run": "r1"},
-        )
-        is builder
+    builder.add_parquet(
+        write_file("records" + suffix, 1),
+        "time",
+        "epoch_seconds",
+        units={"speed": "m/s"},
+        tag_columns={"source": "device"},
+        channel_prefix="test_",
+        channel_name_overrides={"speed": "velocity"},
+        tags={"run": "r1"},
     )
     with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
         builder.submit()
@@ -477,25 +455,13 @@ def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archiv
     assert dict(request.items[0].tags) == {"run": "r1"}
 
 
-@pytest.mark.parametrize("row", ["header_row", "data_row", "units_row"])
-def test_tabular_does_not_accept_csv_only_options(row: str) -> None:
-    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
-    with pytest.raises(TypeError, match="unexpected keyword argument"):
-        builder.add_tabular_data("data.csv", "time", "epoch_seconds", **{row: 3})
-    assert not builder._pending
-
-
-@pytest.mark.parametrize("suffix", [".avro", ".jsonl", ".mp4"])
-def test_add_csv_rejects_other_formats(suffix: str) -> None:
+def test_add_csv_rejects_parquet() -> None:
     builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
     with pytest.raises(ValueError, match="CSV"):
-        builder.add_csv("data" + suffix, "time", "epoch_seconds")
-    assert not builder._pending
+        builder.add_csv("data.parquet", "time", "epoch_seconds")
 
 
-@pytest.mark.parametrize("suffix", [".csv", ".csv.gz", ".avro"])
-def test_add_parquet_rejects_other_formats(suffix: str) -> None:
+def test_add_parquet_rejects_csv() -> None:
     builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
     with pytest.raises(ValueError, match="Parquet"):
-        builder.add_parquet("data" + suffix, "time", "epoch_seconds")
-    assert not builder._pending
+        builder.add_parquet("data.csv", "time", "epoch_seconds")

@@ -545,11 +545,15 @@ class IngestBuilder:
         # ("channel names come from record data").
         # TODO(drake): expose channel_name_overrides here once the backend accepts it for avro.
 
-        declared_type = Epoch("nanoseconds") if timestamp_type is None else _to_typed_timestamp_type(timestamp_type)
-        if not isinstance(declared_type, (Epoch, Relative)):
-            raise ValueError("avro stream timestamps must be numeric (ts.Epoch or ts.Relative)")
+        # The canonical avro stream schema fixes the timestamps to a `timestamps` field (see
+        # `Dataset.add_avro_stream` for the schema) and the multi-file endpoint requires
+        # timestamp_metadata on every file item, so the canonical epoch-nanosecond reading is sent
+        # whenever the caller declares none.
+        declared_type = Epoch(unit="nanoseconds") if timestamp_type is None else timestamp_type
         options = file_ingest_pb2.FileIngestOptions(
-            timestamp_metadata=common_pb2.TimestampMetadata(column="timestamps", type=declared_type._to_proto()),
+            timestamp_metadata=common_pb2.TimestampMetadata(
+                column="timestamps", type=_to_typed_timestamp_type(declared_type)._to_proto()
+            ),
             units=units,
             channel_prefix=channel_prefix,
             avro=file_ingest_pb2.AvroIngestOptions(),
