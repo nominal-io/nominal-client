@@ -16,7 +16,7 @@ def test_csv_units_row_map_override_and_upsert(client: NominalClient, archive, t
     path.write_text("time,pressure,speed\n,Pa,m/s\n1700000000,101325,4\n")
     job = (
         IngestBuilder(client, dataset)
-        .add_tabular_data(
+        .add_csv(
             path,
             "time",
             "epoch_seconds",
@@ -35,7 +35,7 @@ def test_csv_units_row_map_override_and_upsert(client: NominalClient, archive, t
     path.write_text("time,pressure,speed\n1700000001,102,5\n")
     job = (
         IngestBuilder(client, dataset)
-        .add_tabular_data(
+        .add_csv(
             path,
             "time",
             "epoch_seconds",

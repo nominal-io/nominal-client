@@ -348,16 +348,13 @@ class IngestBuilder:
         units: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
         channel_name_overrides: Mapping[str, str] | None = None,
-        header_row: int | None = None,
-        data_row: int | None = None,
-        units_row: int | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register a tabular file (CSV or Parquet), mirroring `Dataset.add_tabular_data`.
 
         Supported extensions: .csv / .csv.gz, .parquet / .parquet.gz, and the parquet-archive
         formats (.parquet.tar / .parquet.tar.gz / .parquet.zip). The format is inferred from
-        the extension.
+        the extension. Use :meth:`add_csv` for CSV-specific row options.
 
         Args:
             path: Path to the file on disk.
@@ -365,29 +362,80 @@ class IngestBuilder:
                 ingested as its own channel; it sets the timestamps for every other channel.
             timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_seconds'.
             tag_columns: Mapping of tag keys to the columns whose values supply each tag.
-            units: Mapping of channel name to unit symbol. Overrides units read from
-                `units_row` for these channels; other channels retain their row units.
+            units: Mapping of channel name to unit symbol.
             channel_prefix: Prefix prepended to every channel name ingested from this file.
             channel_name_overrides: Mapping of original channel name to the name to ingest it under.
-            header_row: CSV only. One-based header record number, defaulting to 1.
-                Blank lines are ignored; a multiline record counts as one record.
-            data_row: CSV only. One-based first data record, defaulting to `header_row + 1`.
-                Must follow the header; intervening records are skipped.
-            units_row: CSV only. One-based units record, distinct from the header and before
-                the first data record. Set `data_row` past it. Unit cells match columns by
-                position, including a placeholder for the timestamp column. Empty cells have
-                no unit. Omit to read no units row.
             tags: Key-value pairs applied as tags to all data from this file.
 
         Returns:
             This builder, for chaining.
 
         Raises:
-            ValueError: the path is not a supported tabular format, CSV row numbers are
-                invalid, or CSV row options are supplied for Parquet.
+            ValueError: The path is not a supported tabular format.
         """
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
+
+        options = tabular_file_options(
+            file_type,
+            timestamp_column,
+            timestamp_type,
+            tag_columns=tag_columns,
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
+        )
+        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        return self
+
+    def add_csv(
+        self,
+        path: PathLike,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        *,
+        tag_columns: Mapping[str, str] | None = None,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
+        header_row: int | None = None,
+        data_row: int | None = None,
+        units_row: int | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a CSV file (.csv or .csv.gz) with optional row selection.
+
+        All shared arguments follow :meth:`add_tabular_data`. Explicit ``units`` override
+        units read from ``units_row`` per channel; other channels retain their row units.
+
+        Args:
+            path: Path to a .csv or .csv.gz file.
+            timestamp_column: Column containing timestamps; not ingested as a data channel.
+            timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
+            tag_columns: Mapping of tag keys to columns supplying their values.
+            units: Mapping of channel names to unit symbols, overriding the units record per channel.
+            channel_prefix: Prefix prepended to every ingested channel name.
+            channel_name_overrides: Mapping of original channel names to their ingested names.
+            tags: Key-value pairs applied as tags to all data from this file.
+            header_row: One-based header record number, defaulting to 1.
+                Blank lines are ignored; a multiline record counts as one record.
+            data_row: One-based first data record, defaulting to ``header_row + 1``.
+                Must follow the header; intervening records are skipped.
+            units_row: One-based units record, distinct from the header and before
+                the first data record. Set ``data_row`` past it. Unit cells match columns
+                by position, including a placeholder for the timestamp column. Empty
+                cells have no unit. Omit to read no units row.
+
+        Returns:
+            This builder, for chaining.
+
+        Raises:
+            ValueError: The path is not CSV or the row numbers are invalid.
+        """
+        file_path = Path(path)
+        file_type = FileType.from_path(file_path)
+        if not file_type.is_csv():
+            raise ValueError(f"CSV path must end in .csv or .csv.gz: {file_path}")
 
         options = tabular_file_options(
             file_type,

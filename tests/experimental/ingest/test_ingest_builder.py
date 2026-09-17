@@ -384,7 +384,7 @@ def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, 
     units = {"speed": "m/s"}
     tag_columns = {"source": "device"}
     overrides = {"speed": "velocity"}
-    builder.add_tabular_data(
+    builder.add_csv(
         write_file("records" + suffix, 1),
         "time",
         "epoch_seconds",
@@ -431,7 +431,7 @@ def test_invalid_csv_rows_fail_before_upload(rows: dict[str, Any], message: str)
     client = MagicMock()
     builder = IngestBuilder(client, "ri.catalog.test.dataset")
     with patch.object(MultipartUploader, "create") as upload, pytest.raises(ValueError, match=message):
-        builder.add_tabular_data("missing.csv", "time", "epoch_seconds", **rows)
+        builder.add_csv("missing.csv", "time", "epoch_seconds", **rows)
     upload.assert_not_called()
     assert not builder._pending
 
@@ -441,7 +441,7 @@ def test_invalid_csv_rows_fail_before_upload(rows: dict[str, Any], message: str)
 def test_parquet_rejects_csv_rows(suffix: str, row: str) -> None:
     builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
     with pytest.raises(ValueError, match="CSV"):
-        builder.add_tabular_data("missing" + suffix, "time", "epoch_seconds", **{row: 3})
+        builder.add_csv("missing" + suffix, "time", "epoch_seconds", **{row: 3})
     assert not builder._pending
 
 
@@ -480,3 +480,19 @@ def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archiv
     assert options.parquet.is_archive == archive
     assert dict(options.parquet.format.wide.tag_columns) == {"source": "device"}
     assert dict(options.units) == {"speed": "m/s"}
+
+
+@pytest.mark.parametrize("row", ["header_row", "data_row", "units_row"])
+def test_tabular_does_not_accept_csv_only_options(row: str) -> None:
+    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        builder.add_tabular_data("data.csv", "time", "epoch_seconds", **{row: 3})
+    assert not builder._pending
+
+
+@pytest.mark.parametrize("suffix", [".avro", ".jsonl", ".mp4"])
+def test_add_csv_rejects_other_formats(suffix: str) -> None:
+    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+    with pytest.raises(ValueError, match="CSV"):
+        builder.add_csv("data" + suffix, "time", "epoch_seconds")
+    assert not builder._pending
