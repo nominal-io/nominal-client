@@ -56,11 +56,13 @@ def _archive_all(datasets: Sequence[Dataset]) -> None:
         raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
 
 
-def _temperatures(dataset: Dataset, tags: Mapping[str, str] | None = None) -> list[float]:
-    """Every temperature reading in a datasource, sorted — the values identify which input they came from.
+def _temperatures(client: NominalClient, derived: DerivedDataset, tags: Mapping[str, str] | None = None) -> list[float]:
+    """Every temperature reading in a derived dataset, sorted — the values identify which input they came from.
 
-    `tags` narrows the export to the series carrying them, which is how a tag applied server-side is read back.
+    A `DerivedDataset` is not a `Dataset`, so its data is read through the regular dataset lookup. `tags`
+    narrows the export to the series carrying them, which is how a tag applied server-side is read back.
     """
+    dataset = client.get_dataset(derived.rid)
     frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
     return sorted(frame["temperature"].dropna().tolist())
 
@@ -212,7 +214,7 @@ def test_derived_dataset_reads_the_union_of_its_inputs(
     )
     archive(both)
 
-    assert _temperatures(both) == _expected_temperatures(csv_data, csv_data2)
+    assert _temperatures(client, both) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_a_filter_selects_series_within_an_input(
@@ -226,7 +228,7 @@ def test_a_filter_selects_series_within_an_input(
     )
     archive(filtered)
 
-    assert _temperatures(filtered) == _expected_temperatures(csv_data)
+    assert _temperatures(client, filtered) == _expected_temperatures(csv_data)
 
 
 def test_an_exclusion_filter_drops_the_matching_series(
@@ -240,7 +242,7 @@ def test_an_exclusion_filter_drops_the_matching_series(
     )
     archive(excluded)
 
-    assert _temperatures(excluded) == _expected_temperatures(csv_data2)
+    assert _temperatures(client, excluded) == _expected_temperatures(csv_data2)
 
 
 def test_a_multi_value_filter_keeps_every_named_value(
@@ -253,7 +255,7 @@ def test_a_multi_value_filter_keeps_every_named_value(
     )
     archive(both_values)
 
-    assert _temperatures(both_values) == _expected_temperatures(csv_data, csv_data2)
+    assert _temperatures(client, both_values) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_an_offset_shifts_the_input_in_time(
@@ -272,9 +274,9 @@ def test_an_offset_shifts_the_input_in_time(
     )
     archive(shifted)
 
-    before = datasource_to_dataframe(unshifted, channel_exact_match=["temperature"])
-    after = datasource_to_dataframe(shifted, channel_exact_match=["temperature"])
-    assert _temperatures(shifted) == _temperatures(unshifted)
+    before = datasource_to_dataframe(client.get_dataset(unshifted.rid), channel_exact_match=["temperature"])
+    after = datasource_to_dataframe(client.get_dataset(shifted.rid), channel_exact_match=["temperature"])
+    assert _temperatures(client, shifted) == _temperatures(client, unshifted)
     assert after.index.min() - before.index.min() == offset
 
 
@@ -300,9 +302,9 @@ def test_an_added_tag_labels_the_inputs_series(
     archive(labelled)
 
     assert labelled.list_input_datasets() == inputs
-    assert _temperatures(labelled, {"source": "daq1"}) == _expected_temperatures(csv_data)
-    assert _temperatures(labelled, {"source": "daq2"}) == _expected_temperatures(csv_data2)
-    assert _temperatures(labelled) == _expected_temperatures(csv_data, csv_data2)
+    assert _temperatures(client, labelled, {"source": "daq1"}) == _expected_temperatures(csv_data)
+    assert _temperatures(client, labelled, {"source": "daq2"}) == _expected_temperatures(csv_data2)
+    assert _temperatures(client, labelled) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_a_dataset_can_be_listed_twice(
@@ -322,4 +324,4 @@ def test_a_dataset_can_be_listed_twice(
     archive(doubled)
 
     assert doubled.list_input_datasets() == inputs
-    assert _temperatures(doubled) == _expected_temperatures(csv_data)
+    assert _temperatures(client, doubled) == _expected_temperatures(csv_data)

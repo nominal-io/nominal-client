@@ -40,8 +40,8 @@ def create_derived_dataset(
 
     A derived dataset is a regular dataset whose contents are computed from a
     ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned
-    as a :class:`~nominal.experimental.derived_datasets.DerivedDataset`, which is a `Dataset`
-    and behaves like one everywhere a dataset is accepted.
+    as a :class:`~nominal.experimental.derived_datasets.DerivedDataset`, which is not a `Dataset`:
+    look it up with `NominalClient.get_dataset` to read its data or attach it to an asset.
 
     For the common case of a union of tag-filtered input datasets,
     `nominal.experimental.derived_datasets.create_derived_dataset` expresses the same thing without the

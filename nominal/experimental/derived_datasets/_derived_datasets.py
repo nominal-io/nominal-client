@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
+from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
@@ -301,20 +302,50 @@ def _literal_values(values: scout_compute_api.StringSetConstantV2) -> Sequence[s
 
 
 @dataclass(frozen=True)
-class DerivedDataset(Dataset):
+class DerivedDataset:
     """A dataset whose contents are computed from a definition instead of ingested files.
 
     Returned by `create_derived_dataset`, and by `get_derived_dataset` for a dataset the server reports
     as derived. The `*_input_dataset*` methods read and edit a definition authored as a union of input
     datasets, each optionally filtered, tagged and time-shifted — the same composition the app builds.
     `get_definition` and `commit_definition` work with any definition as a raw compute spec.
+
+    It is not a `Dataset`: nothing can be ingested into it. To read its data or attach it to an asset or a
+    run, look it up as a regular dataset with `NominalClient.get_dataset` by `rid`.
     """
+
+    rid: str
+    name: str
+    description: str | None
+    properties: Mapping[str, str]
+    labels: Sequence[str]
+    is_archived: bool
+    _clients: DataSource._Clients = field(repr=False)
+
+    @classmethod
+    def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
+        return cls(
+            rid=dataset.rid,
+            name=dataset.name,
+            description=dataset.description,
+            properties=MappingProxyType(dataset.properties),
+            labels=tuple(dataset.labels),
+            is_archived=dataset.is_archived,
+            _clients=clients,
+        )
+
+    def archive(self) -> None:
+        """Archive this dataset. Archived datasets are not deleted, but are hidden from the UI."""
+        self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
 
     def get_definition(self, commit: str | None = None) -> scout_catalog.DerivedDefinition:
         """Fetch this dataset's derived definition: its compute spec and the commit that produced it.
 
         Args:
             commit: If provided, the definition at this commit rather than the latest.
+
+        Returns:
+            The derived definition at the requested commit, or the latest if none was given.
         """
         return _get_definition(self._clients, self.rid, commit)
 
@@ -336,6 +367,9 @@ class DerivedDataset(Dataset):
 
     def list_input_datasets(self) -> Sequence[DerivedDatasetInput]:
         """List the input datasets this derived dataset is composed of, with the transforms applied to each.
+
+        Returns:
+            One `DerivedDatasetInput` per appearance in the definition, in definition order.
 
         Raises:
             ValueError: If this dataset's definition was authored as something other than a combination of
@@ -374,9 +408,10 @@ class DerivedDataset(Dataset):
     ) -> Sequence[DerivedDatasetInput]:
         """Remove an input dataset from this derived dataset, as a new commit on its definition.
 
-        Pass one of the inputs `list_input_datasets` returned to remove that appearance alone. Passing a
-        dataset or a RID removes every appearance of it — a dataset added more than once, under different
-        filters or at different offsets, is how a single source is aligned against itself.
+        Pass one of the inputs `list_input_datasets` returned to remove the appearances equal to it, which
+        differ from the others by their transforms. Passing a dataset or a RID removes every appearance of
+        it — a dataset added more than once, under different filters or at different offsets, is how a
+        single source is aligned against itself.
 
         Args:
             dataset: The input to remove, or the dataset (or its RID) to remove every appearance of.

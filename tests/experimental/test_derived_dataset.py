@@ -8,7 +8,6 @@ import pytest
 from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core.client import NominalClient
-from nominal.core.dataset import DatasetBounds
 from nominal.experimental.derived_datasets import (
     DerivedDataset,
     DerivedDatasetInput,
@@ -119,7 +118,6 @@ def mock_dataset(mock_clients: MagicMock) -> DerivedDataset:
         rid="ri.catalog.ws.dataset.derived",
         name="Derived",
         description=None,
-        bounds=DatasetBounds(start=0, end=1),
         properties={},
         labels=[],
         is_archived=False,
@@ -693,24 +691,6 @@ def test_get_derived_dataset_refuses_an_ordinary_dataset(
     mock_clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset()]
     with pytest.raises(ValueError, match="is not a derived dataset"):
         get_derived_dataset(client, "ri.catalog.ws.dataset.abc")
-
-
-def test_refresh_keeps_a_derived_dataset_derived(
-    mock_dataset: DerivedDataset,
-    mock_clients: MagicMock,
-    make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset],
-) -> None:
-    """`refresh()` rebuilds through `type(self)`, so it must update in place and stay the same class."""
-    latest = make_enriched_dataset(
-        "ri.catalog.ws.dataset.derived", name="Renamed", derived_definition=_definition(_build_spec([]))
-    )
-    mock_clients.catalog.get_enriched_datasets.return_value = [latest]
-
-    refreshed = mock_dataset.refresh()
-
-    assert refreshed is mock_dataset
-    assert type(refreshed) is DerivedDataset
-    assert refreshed.name == "Renamed"
 
 
 # --- creation ---
