@@ -1537,7 +1537,14 @@ class NominalClient:
             archive_status=archive_status,
         )
 
-    def create_containerized_extractor(self, name: str, *, description: str | None = None) -> ContainerizedExtractor:
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> ContainerizedExtractor:
         """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
 
         A newly created extractor has no container image: register one with
@@ -1546,11 +1553,19 @@ class NominalClient:
         Args:
             name: Name of the extractor.
             description: Human-readable description of the extractor.
+            labels: Labels to set on the extractor.
+            properties: Key-value properties to set on the extractor.
 
         Returns:
             The newly created extractor.
         """
-        return _create_containerized_extractor(self._clients, name, description=description)
+        return _create_containerized_extractor(
+            self._clients,
+            name,
+            description=description,
+            labels=labels,
+            properties=properties,
+        )
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
         """Get a containerized extractor by its RID.
@@ -1568,6 +1583,8 @@ class NominalClient:
         *,
         include_archived: bool = False,
         file_extension: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
@@ -1576,6 +1593,9 @@ class NominalClient:
             include_archived: If true, include archived extractors in the results.
             file_extension: If provided, only include extractors whose active image declares an input
                 accepting files with this suffix (e.g. "csv" — no leading dot).
+            labels: Only include extractors carrying every requested label.
+            properties: Only include extractors carrying every requested name/value pair.
+                Extractors may carry additional labels and properties.
             workspace: Workspace to search within (the client's default workspace if not provided).
 
         Returns:
@@ -1585,6 +1605,8 @@ class NominalClient:
             self._clients,
             include_archived=include_archived,
             file_extension=file_extension,
+            labels=labels,
+            properties=properties,
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
 

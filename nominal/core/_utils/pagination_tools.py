@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
@@ -356,14 +356,21 @@ def search_containerized_extractors_paginated(
     workspace_rid: str,
     include_archived: bool = False,
     file_extension: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
 ) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
     # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
     # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.
+    request_labels = list(labels or [])
+    request_properties = dict(properties or {})
+
     def factory(page_token: str | None) -> containerized_extractor_pb2.SearchContainerizedExtractorsRequest:
         return containerized_extractor_pb2.SearchContainerizedExtractorsRequest(
             workspace_rid=workspace_rid,
             include_archived=include_archived,
             file_extension=file_extension,
+            labels=request_labels,
+            properties=request_properties,
             page_size=DEFAULT_PAGE_SIZE,
             next_page_token=page_token,
         )

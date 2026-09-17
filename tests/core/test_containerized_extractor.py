@@ -33,23 +33,49 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
     return registry_pb2.ContainerImage(rid=rid, tag="v1", extractor_rid="ri.ext", status=status)
 
 
+def _pages() -> list[containerized_extractor_pb2.SearchContainerizedExtractorsResponse]:
+    return [
+        containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
+            extractors=[_ext("a")], next_page_token="tok"
+        ),
+        containerized_extractor_pb2.SearchContainerizedExtractorsResponse(extractors=[_ext("b")], next_page_token=""),
+    ]
+
+
 def test_search_extractors_follows_pagination_cursors() -> None:
     """Search accumulates results across pages until the server returns an empty next_page_token."""
     clients = _clients()
-    page1 = containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
-        extractors=[_ext("a")], next_page_token="tok"
-    )
-    page2 = containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
-        extractors=[_ext("b")], next_page_token=""
-    )
-    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = [page1, page2]
+    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = _pages()
 
-    results = _search_containerized_extractors(clients, include_archived=False, file_extension=None, workspace_rid=None)
+    results = _search_containerized_extractors(
+        clients, include_archived=False, file_extension=None, labels=None, properties=None, workspace_rid=None
+    )
 
     assert [e.rid for e in results] == ["a", "b"]
     assert clients.containerized_extractor.SearchContainerizedExtractors.call_count == 2
     second_call_request = clients.containerized_extractor.SearchContainerizedExtractors.call_args_list[1].args[0]
     assert second_call_request.next_page_token == "tok"
+
+
+def test_search_repeats_metadata_filters_on_every_page() -> None:
+    """Metadata filters are materialized once, so a single-pass labels iterator still filters page two."""
+    clients = _clients()
+    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = _pages()
+
+    _search_containerized_extractors(
+        clients,
+        include_archived=False,
+        file_extension=None,
+        labels=iter(["owned", "production"]),
+        properties={"team": "example-team"},
+        workspace_rid=None,
+    )
+
+    requests = [call.args[0] for call in clients.containerized_extractor.SearchContainerizedExtractors.call_args_list]
+    assert [(list(r.labels), dict(r.properties)) for r in requests] == [
+        (["owned", "production"], {"team": "example-team"}),
+        (["owned", "production"], {"team": "example-team"}),
+    ]
 
 
 def test_create_defaults_workspace_to_client_default() -> None:
@@ -59,10 +85,39 @@ def test_create_defaults_workspace_to_client_default() -> None:
         containerized_extractor_pb2.CreateContainerizedExtractorResponse(extractor=_ext("a"))
     )
 
-    _create_containerized_extractor(clients, "a", description=None)
+    _create_containerized_extractor(clients, "a", description=None, labels=None, properties=None)
 
     request = clients.containerized_extractor.CreateContainerizedExtractor.call_args.args[0]
     assert request.workspace_rid == "ri.workspace.default"
+
+
+@pytest.mark.parametrize(
+    ("labels", "properties", "expected"),
+    [
+        pytest.param(None, None, None, id="omitted"),
+        pytest.param([], {}, ([], {}), id="cleared"),
+        pytest.param(["owned"], {"team": "example-team"}, (["owned"], {"team": "example-team"}), id="replaced"),
+    ],
+)
+def test_update_distinguishes_omitted_metadata_from_explicit_values(
+    labels: list[str] | None,
+    properties: dict[str, str] | None,
+    expected: tuple[list[str], dict[str, str]] | None,
+) -> None:
+    """None omits metadata from the request; any collection sends wrappers that replace it."""
+    clients = _clients()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    clients.containerized_extractor.UpdateContainerizedExtractor.return_value = (
+        containerized_extractor_pb2.UpdateContainerizedExtractorResponse(extractor=_ext("ri.ext"))
+    )
+
+    extractor.update(labels=labels, properties=properties)
+
+    request = clients.containerized_extractor.UpdateContainerizedExtractor.call_args.args[0]
+    assert request.HasField("labels") is (expected is not None)
+    assert request.HasField("properties") is (expected is not None)
+    if expected is not None:
+        assert (list(request.labels.labels), dict(request.properties.properties)) == expected
 
 
 def test_extractor_refresh_updates_fields_in_place() -> None:

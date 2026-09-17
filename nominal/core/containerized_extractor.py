@@ -10,13 +10,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import upload_api
 from typing_extensions import Self
 
 from nominal import ts
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import (
+    HasRid,
+    RefreshableGrpcMixin,
+    label_update,
+    property_update,
+    rid_from_instance_or_string,
+)
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
@@ -46,6 +52,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
     is_archived: bool
     active_image: ContainerImage | None
     created_at: IntegralNanosecondsUTC
+    labels: Sequence[str]
+    properties: Mapping[str, str]
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -70,6 +78,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         description: str | None = None,
         is_archived: bool | None = None,
         active_container_image: ContainerImage | str | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Self:
         """Update the extractor in-place.
 
@@ -78,12 +88,16 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             description: New description of the extractor.
             is_archived: New archived state of the extractor.
             active_container_image: Registered container image the extractor should run.
+            labels: Labels replacing the existing ones. An empty sequence clears them.
+            properties: Key-value properties replacing the existing ones. An empty mapping clears them.
 
         Returns:
             This instance, refreshed with the updated values.
 
         Note:
-            Fields left as None are unchanged (there is no way to clear a previously set field).
+            Arguments left as None are omitted and the corresponding fields are unchanged. Name and
+            description cannot be cleared. Labels and properties are replaced rather than appended;
+            merge them before calling to retain existing values.
         """
         image_rid = None if active_container_image is None else rid_from_instance_or_string(active_container_image)
         request = containerized_extractor_pb2.UpdateContainerizedExtractorRequest(
@@ -93,6 +107,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             description=description,
             is_archived=is_archived,
             active_container_image_rid=image_rid,
+            labels=label_update(labels),
+            properties=property_update(properties),
         )
         with translate_grpc_errors():
             response = self._clients.containerized_extractor.UpdateContainerizedExtractor(request)
@@ -259,16 +275,27 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 else None
             ),
             created_at=msg.created_at.ToNanoseconds(),
+            labels=list(msg.labels),
+            properties=dict(msg.properties),
             _workspace_rid=msg.workspace_rid,
             _clients=clients,
         )
 
 
 def _create_containerized_extractor(
-    clients: ContainerizedExtractor._Clients, name: str, *, description: str | None
+    clients: ContainerizedExtractor._Clients,
+    name: str,
+    *,
+    description: str | None,
+    labels: Sequence[str] | None,
+    properties: Mapping[str, str] | None,
 ) -> ContainerizedExtractor:
     request = containerized_extractor_pb2.CreateContainerizedExtractorRequest(
-        workspace_rid=clients.resolve_default_workspace_rid(), name=name, description=description
+        workspace_rid=clients.resolve_default_workspace_rid(),
+        name=name,
+        description=description,
+        labels=list(labels or []),
+        properties=dict(properties or {}),
     )
     with translate_grpc_errors():
         response = clients.containerized_extractor.CreateContainerizedExtractor(request)
@@ -290,6 +317,8 @@ def _iter_search_containerized_extractors(
     *,
     include_archived: bool,
     file_extension: str | None,
+    labels: Sequence[str] | None,
+    properties: Mapping[str, str] | None,
     workspace_rid: str | None,
 ) -> Iterable[ContainerizedExtractor]:
     ws = clients.resolve_workspace(workspace_rid).rid
@@ -298,6 +327,8 @@ def _iter_search_containerized_extractors(
         ws,
         include_archived=include_archived,
         file_extension=file_extension,
+        labels=labels,
+        properties=properties,
     )
     for extractor in extractors:
         yield ContainerizedExtractor._from_proto(clients, extractor)
@@ -308,10 +339,17 @@ def _search_containerized_extractors(
     *,
     include_archived: bool,
     file_extension: str | None,
+    labels: Sequence[str] | None,
+    properties: Mapping[str, str] | None,
     workspace_rid: str | None,
 ) -> Sequence[ContainerizedExtractor]:
     return list(
         _iter_search_containerized_extractors(
-            clients, include_archived=include_archived, file_extension=file_extension, workspace_rid=workspace_rid
+            clients,
+            include_archived=include_archived,
+            file_extension=file_extension,
+            labels=labels,
+            properties=properties,
+            workspace_rid=workspace_rid,
         )
     )
