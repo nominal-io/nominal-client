@@ -293,21 +293,6 @@ def _upload_all(
     return outcomes
 
 
-def _validate_csv_rows(header_row: int | None, data_row: int | None, units_row: int | None) -> None:
-    """Check one-based CSV record numbers before any upload is queued."""
-    for name, row in (("header_row", header_row), ("data_row", data_row), ("units_row", units_row)):
-        if row is not None and (isinstance(row, bool) or not isinstance(row, int) or not 1 <= row <= 2**31 - 1):
-            raise ValueError(f"{name} must be a positive one-based int32 record number")
-    header = 1 if header_row is None else header_row
-    data = header + 1 if data_row is None else data_row
-    if data <= header:
-        raise ValueError("data_row must be greater than header_row")
-    if units_row == header:
-        raise ValueError("units_row must not be header_row")
-    if units_row is not None and units_row >= data:
-        raise ValueError("units_row must be less than data_row, which defaults to header_row + 1")
-
-
 class IngestBuilder:
     """Accumulate files and submit them as a single (MULTI) ingest job.
 
@@ -435,6 +420,7 @@ class IngestBuilder:
 
         All shared arguments follow :meth:`add_tabular_data`. Explicit ``units`` override
         units read from ``units_row`` per channel; other channels retain their row units.
+        The backend validates row numbers and their ordering when the job is submitted.
 
         Args:
             path: Path to a .csv or .csv.gz file.
@@ -445,11 +431,11 @@ class IngestBuilder:
             channel_prefix: Prefix prepended to every ingested channel name.
             channel_name_overrides: Mapping of original channel names to their ingested names.
             tags: Key-value pairs applied as tags to all data from this file.
-            header_row: One-based header record number, defaulting to 1.
+            header_row: Positive, one-based header record number, defaulting to 1.
                 Blank lines are ignored; a multiline record counts as one record.
-            data_row: One-based first data record, defaulting to ``header_row + 1``.
+            data_row: Positive, one-based first data record, defaulting to ``header_row + 1``.
                 Must follow the header; intervening records are skipped.
-            units_row: One-based units record, distinct from the header and before
+            units_row: Positive, one-based units record, distinct from the header and before
                 the first data record. Set ``data_row`` past it. Unit cells match columns
                 by position, including a placeholder for the timestamp column. Empty
                 cells have no unit. Omit to read no units row.
@@ -458,14 +444,13 @@ class IngestBuilder:
             This builder, for chaining.
 
         Raises:
-            ValueError: The path is not CSV or the row numbers are invalid.
+            ValueError: The path is not CSV.
         """
         file_path = Path(path)
         file_type = FileType.from_path(file_path)
         if not file_type.is_csv():
             raise ValueError(f"CSV path must end in .csv or .csv.gz: {file_path}")
 
-        _validate_csv_rows(header_row, data_row, units_row)
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=common_pb2.TimestampMetadata(
                 column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()

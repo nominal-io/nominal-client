@@ -124,7 +124,8 @@ own per-file tag on each `add_*` call, e.g. `tags={"FILE_UUID": str(uuid.uuid4()
 Units are passed to ingestion; values are not converted by the client.
 
 On `add_csv`, `header_row`, `units_row`, and `data_row` are **one-based record
-numbers**. Blank lines are ignored and a quoted multiline record counts once.
+numbers**, all positive. The backend validates these values and their ordering
+when the job is submitted. Blank lines are ignored and a quoted multiline record counts once.
 The header defaults to record 1 and data defaults to the next record. A units
 record must differ from the header and precede the first data record:
 

@@ -376,7 +376,17 @@ class TestSubmitAllowPartial:
 
 @pytest.mark.parametrize("suffix", [".csv", ".csv.gz"])
 @pytest.mark.parametrize(
-    "rows", [{}, {"header_row": 1}, {"header_row": 2, "data_row": 4, "units_row": 3}, {"header_row": 3, "units_row": 1}]
+    "rows",
+    [
+        {},
+        {"header_row": 1},
+        {"header_row": 2, "data_row": 4, "units_row": 3},
+        {"header_row": 3, "units_row": 1},
+        # Forward representable values unchanged; the backend owns CSV row validation.
+        {"header_row": 0},
+        {"data_row": -1},
+        {"header_row": 3, "data_row": 2, "units_row": 3},
+    ],
 )
 def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, rows: dict[str, int]) -> None:
     client = MagicMock()
@@ -409,31 +419,6 @@ def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, 
         assert options.csv.HasField(name) == (name in rows)
         if name in rows:
             assert getattr(options.csv, name) == rows[name]
-
-
-@pytest.mark.parametrize(
-    "rows,message",
-    [
-        ({"header_row": 0}, "header_row"),
-        ({"data_row": -1}, "data_row"),
-        ({"units_row": 0}, "units_row"),
-        ({"header_row": True}, "header_row"),
-        ({"header_row": 1.5}, "header_row"),
-        ({"header_row": 2**31}, "header_row"),
-        ({"data_row": 1}, "greater than header_row"),
-        ({"header_row": 3, "data_row": 2}, "greater than header_row"),
-        ({"units_row": 1}, "must not be header_row"),
-        ({"units_row": 2}, "less than data_row"),
-        ({"units_row": 4, "data_row": 3}, "less than data_row"),
-    ],
-)
-def test_invalid_csv_rows_fail_before_upload(rows: dict[str, Any], message: str) -> None:
-    client = MagicMock()
-    builder = IngestBuilder(client, "ri.catalog.test.dataset")
-    with patch.object(MultipartUploader, "create") as upload, pytest.raises(ValueError, match=message):
-        builder.add_csv("missing.csv", "time", "epoch_seconds", **rows)
-    upload.assert_not_called()
-    assert not builder._pending
 
 
 @pytest.mark.parametrize("suffix", [".parquet", ".parquet.gz", ".parquet.tar", ".parquet.tar.gz", ".parquet.zip"])
