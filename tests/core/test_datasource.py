@@ -98,6 +98,32 @@ def test_batch_add_channels_returns_missing_when_server_drops_channel(mock_datas
     assert result.missing == [req2]
 
 
+def test_search_channels_rejects_string_substring_matches(mock_datasource: DataSource):
+    with pytest.raises(TypeError, match="substring_matches must be a sequence of strings"):
+        list(mock_datasource.search_channels(substring_matches="asdf"))  # type: ignore[arg-type]
+
+
+def test_search_channels_preserves_backend_substring_matches(mock_datasource: DataSource, mock_clients: MagicMock):
+    engine_temperature = MagicMock(name="engine_temperature")
+    engine_temperature.name = "engine_temperature"
+    engine_temperature.data_source = "test-datasource-rid"
+    engine_temperature.unit = None
+    engine_temperature.data_type = None
+    engine_temperature.description = None
+    ambient_temperature = MagicMock(name="ambient_temperature")
+    ambient_temperature.name = "ambient_temperature"
+    ambient_temperature.data_source = "test-datasource-rid"
+    ambient_temperature.unit = None
+    ambient_temperature.data_type = None
+    ambient_temperature.description = None
+    mock_clients.datasource.search_channels.return_value.results = [engine_temperature, ambient_temperature]
+    mock_clients.datasource.search_channels.return_value.next_page_token = None
+
+    channels = list(mock_datasource.search_channels(substring_matches=["engine", "temperature"]))
+
+    assert [channel.name for channel in channels] == ["engine_temperature", "ambient_temperature"]
+
+
 def test_batch_update_or_create_channels_single_batch(mock_datasource: DataSource, mock_clients: MagicMock):
     """All channels fit in one batch, so batch_create_or_update is called exactly once."""
     channels = [
