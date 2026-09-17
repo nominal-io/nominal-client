@@ -372,3 +372,111 @@ class TestSubmitAllowPartial:
                 builder.submit(allow_partial=True)
 
         client._clients.ingest_v2.Ingest.assert_not_called()
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".csv.gz"])
+@pytest.mark.parametrize(
+    "rows", [{}, {"header_row": 1}, {"header_row": 2, "data_row": 4, "units_row": 3}, {"header_row": 3, "units_row": 1}]
+)
+def test_csv_row_presence_and_map_snapshots(write_file: WriteFile, suffix: str, rows: dict[str, int]) -> None:
+    client = MagicMock()
+    builder = IngestBuilder(client, "ri.catalog.test.dataset")
+    units = {"speed": "m/s"}
+    tag_columns = {"source": "device"}
+    overrides = {"speed": "velocity"}
+    builder.add_tabular_data(
+        write_file("records" + suffix, 1),
+        "time",
+        "epoch_seconds",
+        units=units,
+        tag_columns=tag_columns,
+        channel_name_overrides=overrides,
+        channel_prefix="test_",
+        **rows,
+    )
+    units["speed"] = "km/h"
+    tag_columns.clear()
+    overrides.clear()
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
+        builder.submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    options = request.items[0].file.ingest
+    assert dict(options.units) == {"speed": "m/s"}
+    assert dict(options.csv.format.wide.tag_columns) == {"source": "device"}
+    assert dict(options.channel_name_overrides) == {"speed": "velocity"}
+    assert options.channel_prefix == "test_"
+    for name in ("header_row", "data_row", "units_row"):
+        assert options.csv.HasField(name) == (name in rows)
+        if name in rows:
+            assert getattr(options.csv, name) == rows[name]
+
+
+@pytest.mark.parametrize(
+    "rows,message",
+    [
+        ({"header_row": 0}, "header_row"),
+        ({"data_row": -1}, "data_row"),
+        ({"units_row": 0}, "units_row"),
+        ({"header_row": True}, "header_row"),
+        ({"header_row": 1.5}, "header_row"),
+        ({"header_row": 2**31}, "header_row"),
+        ({"data_row": 1}, "greater than header_row"),
+        ({"header_row": 3, "data_row": 2}, "greater than header_row"),
+        ({"units_row": 1}, "must not be header_row"),
+        ({"units_row": 2}, "less than data_row"),
+        ({"units_row": 4, "data_row": 3}, "less than data_row"),
+    ],
+)
+def test_invalid_csv_rows_fail_before_upload(rows: dict[str, Any], message: str) -> None:
+    client = MagicMock()
+    builder = IngestBuilder(client, "ri.catalog.test.dataset")
+    with patch.object(MultipartUploader, "create") as upload, pytest.raises(ValueError, match=message):
+        builder.add_tabular_data("missing.csv", "time", "epoch_seconds", **rows)
+    upload.assert_not_called()
+    assert not builder._pending
+
+
+@pytest.mark.parametrize("suffix", [".parquet", ".parquet.gz", ".parquet.tar", ".parquet.tar.gz", ".parquet.zip"])
+@pytest.mark.parametrize("row", ["header_row", "data_row", "units_row"])
+def test_parquet_rejects_csv_rows(suffix: str, row: str) -> None:
+    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+    with pytest.raises(ValueError, match="CSV"):
+        builder.add_tabular_data("missing" + suffix, "time", "epoch_seconds", **{row: 3})
+    assert not builder._pending
+
+
+def test_avro_rejects_text_timestamps() -> None:
+    builder = IngestBuilder(MagicMock(), "ri.catalog.test.dataset")
+    with pytest.raises(ValueError, match="numeric"):
+        builder.add_avro_stream("missing.avro", timestamp_type="iso_8601")  # type: ignore[arg-type]
+    assert not builder._pending
+
+
+@pytest.mark.parametrize(
+    "suffix,archive",
+    [
+        (".parquet", False),
+        (".parquet.gz", False),
+        (".parquet.tar", True),
+        (".parquet.tar.gz", True),
+        (".parquet.zip", True),
+    ],
+)
+def test_parquet_archive_wire_options(write_file: WriteFile, suffix: str, archive: bool) -> None:
+    client = MagicMock()
+    builder = IngestBuilder(client, "ri.catalog.test.dataset")
+    builder.add_tabular_data(
+        write_file("records" + suffix, 1),
+        "time",
+        "epoch_seconds",
+        units={"speed": "m/s"},
+        tag_columns={"source": "device"},
+    )
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
+        builder.submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    options = request.items[0].file.ingest
+    assert options.WhichOneof("ingest") == "parquet"
+    assert options.parquet.is_archive == archive
+    assert dict(options.parquet.format.wide.tag_columns) == {"source": "device"}
+    assert dict(options.units) == {"speed": "m/s"}

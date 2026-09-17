@@ -33,6 +33,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
+from nominal.experimental.ingest._file_options import avro_file_options, tabular_file_options
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -347,6 +348,9 @@ class IngestBuilder:
         units: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
         channel_name_overrides: Mapping[str, str] | None = None,
+        header_row: int | None = None,
+        data_row: int | None = None,
+        units_row: int | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
         """Register a tabular file (CSV or Parquet), mirroring `Dataset.add_tabular_data`.
@@ -361,38 +365,42 @@ class IngestBuilder:
                 ingested as its own channel; it sets the timestamps for every other channel.
             timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_seconds'.
             tag_columns: Mapping of tag keys to the columns whose values supply each tag.
-            units: Mapping of channel name to unit symbol.
+            units: Mapping of channel name to unit symbol. Overrides units read from
+                `units_row` for these channels; other channels retain their row units.
             channel_prefix: Prefix prepended to every channel name ingested from this file.
             channel_name_overrides: Mapping of original channel name to the name to ingest it under.
+            header_row: CSV only. One-based header record number, defaulting to 1.
+                Blank lines are ignored; a multiline record counts as one record.
+            data_row: CSV only. One-based first data record, defaulting to `header_row + 1`.
+                Must follow the header; intervening records are skipped.
+            units_row: CSV only. One-based units record, distinct from the header and before
+                the first data record. Set `data_row` past it. Unit cells match columns by
+                position, including a placeholder for the timestamp column. Empty cells have
+                no unit. Omit to read no units row.
             tags: Key-value pairs applied as tags to all data from this file.
 
         Returns:
             This builder, for chaining.
 
         Raises:
-            ValueError: the path is not a supported tabular format.
+            ValueError: the path is not a supported tabular format, CSV row numbers are
+                invalid, or CSV row options are supplied for Parquet.
         """
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
 
-        options = file_ingest_pb2.FileIngestOptions(
-            timestamp_metadata=common_pb2.TimestampMetadata(
-                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
-            ),
+        options = tabular_file_options(
+            file_type,
+            timestamp_column,
+            timestamp_type,
+            tag_columns=tag_columns,
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
+            header_row=header_row,
+            data_row=data_row,
+            units_row=units_row,
         )
-        wide_format = file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})
-        if file_type.is_csv():
-            options.csv.CopyFrom(file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide_format)))
-        else:
-            options.parquet.CopyFrom(
-                file_ingest_pb2.ParquetIngestOptions(
-                    format=file_ingest_pb2.ParquetFormat(wide=wide_format),
-                    is_archive=file_type.is_parquet_archive(),
-                )
-            )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
 
@@ -435,19 +443,7 @@ class IngestBuilder:
         # ("channel names come from record data").
         # TODO(drake): expose channel_name_overrides here once the backend accepts it for avro.
 
-        # The canonical avro stream schema fixes the timestamps to a `timestamps` field (see
-        # `Dataset.add_avro_stream` for the schema) and the multi-file endpoint requires
-        # timestamp_metadata on every file item, so the canonical epoch-nanosecond reading is sent
-        # whenever the caller declares none.
-        declared_type = Epoch(unit="nanoseconds") if timestamp_type is None else timestamp_type
-        options = file_ingest_pb2.FileIngestOptions(
-            timestamp_metadata=common_pb2.TimestampMetadata(
-                column="timestamps", type=_to_typed_timestamp_type(declared_type)._to_proto()
-            ),
-            units=units,
-            channel_prefix=channel_prefix,
-            avro=file_ingest_pb2.AvroIngestOptions(),
-        )
+        options = avro_file_options(timestamp_type=timestamp_type, units=units, channel_prefix=channel_prefix)
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
 

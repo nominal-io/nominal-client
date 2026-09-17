@@ -245,6 +245,67 @@ def test_avro_stream_accepts_gzipped(manifest_document: ReadManifest, run_extrac
     assert entry["channelPrefix"] == "sensors/"
 
 
+@pytest.mark.parametrize("filename", ["telemetry.csv", "telemetry.parquet", "records.avro.gz"])
+@pytest.mark.parametrize(
+    ("kwargs", "expected_units"),
+    [
+        pytest.param({}, {}, id="omitted"),
+        pytest.param({"units": None}, {}, id="none"),
+        pytest.param({"units": {}}, {}, id="empty"),
+        pytest.param(
+            {"units": {"pressure": "Pa", "temperature": "K"}}, {"pressure": "Pa", "temperature": "K"}, id="units"
+        ),
+    ],
+)
+def test_manifest_output_units(
+    manifest_document: ReadManifest,
+    run_extractor: RunExtractor,
+    filename: str,
+    kwargs: dict[str, Any],
+    expected_units: dict[str, str],
+) -> None:
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        out = ctx.output_dir / filename
+        out.write_bytes(b"data")
+        if filename.endswith(".avro.gz"):
+            returned = ctx.add_avro_stream(out, timestamp_type="epoch_microseconds", **kwargs)
+        else:
+            returned = ctx.add_tabular(out, timestamp_column="ts", timestamp_type="epoch_microseconds", **kwargs)
+        assert returned == out
+
+    run_extractor(emit)
+
+    [entry] = manifest_document()["outputs"]
+    assert entry["units"] == expected_units
+    assert entry["timestampMetadata"]["epochTimeUnit"] == "MICROSECONDS"
+
+
+def test_manifest_output_units_are_copied_per_declaration(
+    manifest_document: ReadManifest, run_extractor: RunExtractor
+) -> None:
+    units = {"pressure": "Pa"}
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        table = ctx.output_dir / "telemetry.parquet"
+        table.write_bytes(b"table")
+        ctx.add_tabular(table, units=units)
+        units["pressure"] = "kPa"
+        records = ctx.output_dir / "records.avro"
+        records.write_bytes(b"records")
+        ctx.add_avro_stream(records, units=units)
+        units.clear()
+        ctx.add_tabular(table)
+
+    ctx = run_extractor(emit)
+    units["pressure"] = "bar"
+
+    expected_units = [{"pressure": "Pa"}, {"pressure": "kPa"}, {}]
+    assert [entry["units"] for entry in manifest_document()["outputs"]] == expected_units
+    assert [entry["units"] for entry in ctx.build_manifest()["outputs"]] == expected_units
+
+
 def test_manifest_mode_rejects_zero_outputs(run_extractor: RunExtractor) -> None:
     """Manifest mode fails when the extractor declares no outputs."""
 
