@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -177,8 +178,16 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
 
 
 @pytest.mark.parametrize("include_mappings", [False, True])
-def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(include_mappings: bool) -> None:
+def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(
+    include_mappings: bool, tmp_path: Path
+) -> None:
     clients = _clients()
+    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
+    clients.upload.list_parts.return_value = []
+    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
+    # No file chunks means no object-store requests; upload service calls use the mock client.
+    tarball = tmp_path / "extractor.tar"
+    tarball.touch()
     extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
     mappings = (
         [
@@ -200,17 +209,17 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(i
     response_image.exit_code_mappings.extend(expected)
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
 
-    with patch("nominal.core.containerized_extractor.upload_multipart_file", return_value="s3://image"):
-        image = extractor.register_image(
-            "extractor.tar",
-            tag="v1",
-            inputs=[],
-            default_timestamp_column="ts",
-            default_timestamp_type="iso_8601",
-            **({"exit_code_mappings": mappings} if include_mappings else {}),
-        )
+    image = extractor.register_image(
+        tarball,
+        tag="v1",
+        inputs=[],
+        default_timestamp_column="ts",
+        default_timestamp_type="iso_8601",
+        **({"exit_code_mappings": mappings} if include_mappings else {}),
+    )
 
     request = clients.registry.CreateImage.call_args.args[0]
+    assert request.object_path == "s3://image"
     assert list(request.exit_code_mappings) == expected
     assert tuple(image.exit_code_mappings) == tuple(mappings)
     assert extractor.active_image is None
