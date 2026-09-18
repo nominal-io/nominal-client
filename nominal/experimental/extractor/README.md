@@ -626,11 +626,12 @@ must be integers from 1 through 255. Unmapped failures keep the traceback and ex
 `exit=False` re-raises without writing a termination message. Direct calls to the decorated
 function likewise propagate exceptions; reporting belongs to `run()`.
 
-`message=` on `@error` supplies static catalog fallback text. It is optional for runtime-only use,
-and does **not** replace `str(exception)` in runtime reports. Catalog export requires it for each
-mapping, because the platform needs a useful message when no termination message is available.
-Generate `exit_code_mappings` with `catalog_manifest()` as described below; direct
-`registration_kwargs()` and the image-registration API do not publish error policies.
+`message=` on `@error` supplies static fallback text. It is optional for runtime-only use,
+and does **not** replace `str(exception)` in runtime reports. Both `registration_kwargs()` and
+`catalog_manifest()` require it for each mapping, because the platform needs a useful message when
+no termination message is available. Both exports reject reserved codes and conflicting fallbacks
+for the same exit code; identical fallbacks are combined. Direct registration supplies typed
+`ExitCodeMapping` objects, while the catalog export serializes the same mappings.
 
 ## Building the image
 
@@ -745,6 +746,7 @@ Notes worth knowing before you hit them:
 |---|---|
 | `@input` | `inputs`: `FileExtractionInput` objects with name, environment variable, description, suffixes, and requiredness |
 | `@parameter` | `parameters`: `FileExtractionParameter` objects with name, environment variable, description, and requiredness |
+| `@error` | `exit_code_mappings`: `ExitCodeMapping` objects with exit code, canonical code, static message, and retryability |
 | Outer extractor decorator | `output_format`, `default_timestamp_column`, and `default_timestamp_type` |
 
 Only declarations contribute to this dictionary. Generating it does not inspect the callback body,
@@ -754,8 +756,8 @@ extractors also require an explicit output format for generation. The helper rai
 when these registration settings are incomplete.
 
 `type=` and `default=` remain runtime settings; the current platform registration schema does not
-store them. Error mappings configure runtime reporting and are not part of image-registration
-kwargs. The helper does not build or upload an image, choose its tag, create an extractor, or
+store them. Error mappings supply both runtime reporting and registered exit-code fallbacks.
+The helper does not build or upload an image, choose its tag, create an extractor, or
 activate it. Keep those deployment decisions in registration code, as above.
 
 ## Exporting a catalog manifest

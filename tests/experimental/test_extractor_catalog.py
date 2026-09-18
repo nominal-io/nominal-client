@@ -1,6 +1,7 @@
 """Catalog exports share the runtime declarations and respect the catalog wire contract."""
 
 import json
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -48,6 +49,9 @@ def test_catalog_export_is_pure_serializable_and_independent():
             {"exit_code": 64, "code": "MALFORMED_INPUT", "message": "Recording is malformed", "retryable": False}
         ],
     }
+    assert [asdict(mapping) for mapping in convert.registration_kwargs()["exit_code_mappings"]] == expected[
+        "exit_code_mappings"
+    ]
     actual = convert.catalog_manifest(**IDENTITY)
     assert json.loads(json.dumps(actual)) == expected
     actual["inputs"].clear()
@@ -75,10 +79,6 @@ def test_invalid_catalog_identity(change):
         ({"envvar": "source"}, "environment"),
         ({"suffixes": []}, "suffix"),
         ({"suffixes": [".csv"]}, "suffix"),
-        ({"message": None}, "message"),
-        ({"message": "x" * 513}, "message"),
-        ({"code": "UNKNOWN"}, "reserved"),
-        ({"code": "bad-code"}, "code"),
         ({"timestamp": ts.Relative("seconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc))}, "timestamp"),
         ({"timestamp": ts.Custom("yyyy-MM-dd")}, "timestamp"),
     ],
@@ -104,7 +104,29 @@ def test_fallbacks_group_by_exit_code_or_reject_ambiguity(same_fallback):
     second = ex.manifest_extractor(callback, default_timestamp_column="time", default_timestamp_type="iso_8601")
     assert len(first.catalog_manifest(**IDENTITY)["exit_code_mappings"]) == 1
     if same_fallback:
+        assert second.registration_kwargs() == first.registration_kwargs()
         assert second.catalog_manifest(**IDENTITY) == first.catalog_manifest(**IDENTITY)
     else:
         with pytest.raises(ValueError, match="exit.*64"):
+            second.registration_kwargs()
+        with pytest.raises(ValueError, match="exit.*64"):
             second.catalog_manifest(**IDENTITY)
+
+
+@pytest.mark.parametrize(
+    "options,match",
+    [
+        ({"message": None}, "message"),
+        ({"message": "x" * 513}, "message"),
+        ({"code": "UNKNOWN"}, "reserved"),
+        ({"code": "EXTRACTOR_UNSCHEDULABLE"}, "reserved"),
+        ({"code": "bad-code"}, "code"),
+    ],
+)
+def test_both_exports_reject_invalid_error_fallbacks(options, match):
+    """SDK and catalog exports enforce the same error fallback contract."""
+    convert = make_extractor(**options)
+    with pytest.raises(ValueError, match=match):
+        convert.registration_kwargs()
+    with pytest.raises(ValueError, match=match):
+        convert.catalog_manifest(**IDENTITY)

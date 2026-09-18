@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
+from dataclasses import asdict
 from typing import Any, Mapping, TypedDict
 
 from nominal import ts
-from nominal.core.container_image import FileExtractionInput, FileExtractionParameter, FileOutputFormat
+from nominal.core.container_image import ExitCodeMapping, FileExtractionInput, FileExtractionParameter, FileOutputFormat
 from nominal.experimental.extractor._arguments import _Input, _Parameter
 from nominal.experimental.extractor._definition import _Definition
 from nominal.experimental.extractor._errors import _ErrorMapping
@@ -21,6 +22,7 @@ class _RegistrationKwargs(TypedDict):
 
     inputs: list[FileExtractionInput]
     parameters: list[FileExtractionParameter]
+    exit_code_mappings: list[ExitCodeMapping]
     output_format: FileOutputFormat
     default_timestamp_column: str
     default_timestamp_type: ts._AnyTimestampType
@@ -35,6 +37,7 @@ def _registration_kwargs(definition: _Definition) -> _RegistrationKwargs:
     return {
         "inputs": [argument.spec for argument in definition.arguments if isinstance(argument, _Input)],
         "parameters": [argument.spec for argument in definition.arguments if isinstance(argument, _Parameter)],
+        "exit_code_mappings": _error_fallbacks(definition.errors),
         "output_format": definition.output_format,
         "default_timestamp_column": definition.timestamp_column,
         "default_timestamp_type": definition.timestamp_type,
@@ -45,6 +48,7 @@ _RESERVED_CODES = frozenset(
     {
         "IMAGE_PULL_FAILED",
         "EXTRACTOR_TIMEOUT",
+        "EXTRACTOR_UNSCHEDULABLE",
         "EXTRACTOR_OOM_KILLED",
         "OUTPUT_UPLOAD_FAILED",
         "INVALID_OUTPUT",
@@ -134,25 +138,25 @@ def _catalog_manifest(
         "parameters": parameters,
         "output_file_format": registration["output_format"].value,
         "default_timestamp_metadata": {"series_name": column, "timestamp_type": timestamp_type},
-        "exit_code_mappings": _error_fallbacks(definition.errors),
+        "exit_code_mappings": [asdict(mapping) for mapping in registration["exit_code_mappings"]],
     }
 
 
-def _error_fallbacks(errors: Mapping[type[Exception], _ErrorMapping]) -> list[dict[str, Any]]:
-    """A process exit code must identify exactly one catalog fallback."""
-    fallbacks: dict[int, dict[str, Any]] = {}
+def _error_fallbacks(errors: Mapping[type[Exception], _ErrorMapping]) -> list[ExitCodeMapping]:
+    """Build shared SDK/catalog fallbacks, requiring one policy per process exit code."""
+    fallbacks: dict[int, ExitCodeMapping] = {}
     for mapping in errors.values():
         if mapping.code in _RESERVED_CODES:
-            raise ValueError(f"catalog error code {mapping.code!r} is platform-reserved")
+            raise ValueError(f"extractor error code {mapping.code!r} is platform-reserved")
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", mapping.code) is None:
-            raise ValueError(f"invalid catalog error code {mapping.code!r}")
-        fallback = {
-            "exit_code": mapping.exit_code,
-            "code": mapping.code,
-            "message": _text(mapping.message, f"error {mapping.code!r} message", 512),
-            "retryable": mapping.retryable,
-        }
+            raise ValueError(f"invalid extractor error code {mapping.code!r}")
+        fallback = ExitCodeMapping(
+            exit_code=mapping.exit_code,
+            code=mapping.code,
+            message=_text(mapping.message, f"error {mapping.code!r} message", 512),
+            retryable=mapping.retryable,
+        )
         if mapping.exit_code in fallbacks and fallbacks[mapping.exit_code] != fallback:
-            raise ValueError(f"conflicting catalog fallbacks for exit code {mapping.exit_code}")
+            raise ValueError(f"conflicting error fallbacks for exit code {mapping.exit_code}")
         fallbacks[mapping.exit_code] = fallback
     return [fallbacks[code] for code in sorted(fallbacks)]

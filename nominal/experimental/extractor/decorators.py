@@ -158,9 +158,9 @@ def error(
     mapped failures retain their full traceback on stderr.
 
     Mappings cover startup, argument binding, extraction, and output finalization. They
-    configure runtime reporting. ``message`` supplies the static catalog fallback text
-    required by :meth:`Extractor.catalog_manifest`; runtime messages come from the exception.
-    Direct image registration does not export error policies.
+    configure runtime reporting. ``message`` supplies static fallback text required by both
+    :meth:`Extractor.registration_kwargs` and :meth:`Extractor.catalog_manifest`.
+    Runtime messages come from the exception. Both exports validate and combine exit-code fallbacks.
     ``run(exit=False)`` and direct callback invocation propagate errors without reporting.
     """
     return _ErrorMapping(exception_type, code, exit_code, retryable, message)

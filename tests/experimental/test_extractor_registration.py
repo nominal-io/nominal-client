@@ -28,6 +28,7 @@ def test_registration_is_pure_and_ordered():
             FileExtractionInput("Flight recording", "RECORDING", "Data", ("mcap",), True),
             FileExtractionInput("calibration", "CALIBRATION", required=False),
         ],
+        "exit_code_mappings": [],
         "parameters": [FileExtractionParameter("parts", "PART_COUNT", "Partitions", False)],
         "output_format": FileOutputFormat.MANIFEST,
         "default_timestamp_column": "time",
@@ -84,7 +85,7 @@ def test_explicit_single_file_format_and_error_mapping(tmp_path):
     @ex.single_file_extractor(
         output_format=FileOutputFormat.CSV, default_timestamp_column="time", default_timestamp_type="epoch_seconds"
     )
-    @ex.error(ex.ExtractorError, code="FORMAT", exit_code=65)
+    @ex.error(ex.ExtractorError, code="FORMAT", exit_code=65, message="Output format mismatch")
     def extract(ctx):
         raise AssertionError("format mismatch must fail before callback")
 

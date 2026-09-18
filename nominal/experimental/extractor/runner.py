@@ -102,7 +102,7 @@ class Extractor(Generic[_CtxT]):
 
         Pass the result as ``**entrypoint.registration_kwargs()`` to
         ``ContainerizedExtractor.register_image(tarball, tag=..., ...)``. Returns fresh lists of
-        FileExtractionInput and FileExtractionParameter objects, the output format, and the two
+        FileExtractionInput, FileExtractionParameter, and ExitCodeMapping objects, the output format, and the two
         default timestamp settings. List order follows the decorators from top to bottom.
 
         Declare ``default_timestamp_column`` and ``default_timestamp_type`` on the outer
@@ -111,8 +111,10 @@ class Extractor(Generic[_CtxT]):
         Timestamp settings describe image defaults; they do not populate local job metadata.
 
         Does not execute the callback or converters, inspect its body, read the environment,
-        upload an image, or activate it. Parameter types/defaults and error mappings remain
-        runtime-only. Legacy lookups add no metadata: no argument declarations yields empty
+        upload an image, or activate it. Parameter types/defaults remain runtime-only.
+        Error mappings require a static message and non-reserved code; identical exit-code
+        fallbacks are combined, while conflicting fallbacks raise ValueError.
+        Legacy lookups add no metadata: no argument declarations yields empty
         inputs/parameters. Keep complete manual registration metadata for partially migrated
         extractors with additional undeclared dependencies.
         """
