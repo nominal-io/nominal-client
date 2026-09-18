@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import grpc
 import pytest
 from conjure_python_client import ServiceConfiguration
+from google.rpc import error_details_pb2, status_pb2
 
 from nominal.core._utils import grpc_tools
 from nominal.core._utils.grpc_tools import (
@@ -294,3 +295,66 @@ def test_translate_grpc_errors_passes_through_on_success() -> None:
     with translate_grpc_errors():
         value = 5
     assert value == 5
+
+
+def test_translate_grpc_errors_preserves_rich_error_info(fake_rpc_error) -> None:
+    status = status_pb2.Status(code=3, message="Invalid query")
+    status.details.add().Pack(
+        error_details_pb2.ErrorInfo(
+            domain="sql",
+            reason="INVALID_QUERY",
+            metadata={"detail": "Column 'missing' not found", "sqlQueryId": "query-123"},
+        )
+    )
+    error = fake_rpc_error(
+        grpc.StatusCode.INVALID_ARGUMENT,
+        status.message,
+        (("grpc-status-details-bin", status.SerializeToString()),),
+    )
+    with pytest.raises(NominalInvalidArgumentError) as exc_info:
+        with translate_grpc_errors():
+            raise error
+
+    assert str(exc_info.value) == (
+        "StatusCode.INVALID_ARGUMENT: Invalid query\n"
+        "sql/INVALID_QUERY\n"
+        "detail: Column 'missing' not found\n"
+        "sqlQueryId: query-123"
+    )
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        None,
+        (),
+        (("unrelated-trailer", "value"),),
+        (("grpc-status-details-bin", b"\xff"),),
+        (("grpc-status-details-bin", "not binary"),),
+    ],
+)
+def test_translate_grpc_errors_preserves_plain_error_with_missing_or_invalid_metadata(metadata, fake_rpc_error) -> None:
+    error = fake_rpc_error(grpc.StatusCode.INTERNAL, "original failure", metadata)
+    with pytest.raises(NominalError) as exc_info:
+        with translate_grpc_errors():
+            raise error
+    assert str(exc_info.value) == "StatusCode.INTERNAL: original failure"
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_translate_grpc_errors_ignores_unknown_or_malformed_detail(malformed, fake_rpc_error) -> None:
+    status = status_pb2.Status(code=13, message="original failure")
+    if malformed:
+        status.details.add(type_url="type.googleapis.com/google.rpc.ErrorInfo", value=b"\xff")
+    else:
+        status.details.add().Pack(error_details_pb2.RetryInfo())
+    error = fake_rpc_error(
+        grpc.StatusCode.INTERNAL, status.message, (("grpc-status-details-bin", status.SerializeToString()),)
+    )
+    with pytest.raises(NominalError) as exc_info:
+        with translate_grpc_errors():
+            raise error
+    assert str(exc_info.value) == "StatusCode.INTERNAL: original failure"
+    assert exc_info.value.__cause__ is error
