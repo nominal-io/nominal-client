@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import ipaddress
 import logging
 import ssl
@@ -13,6 +12,7 @@ from urllib.parse import ParseResult, urlparse
 import requests
 import truststore
 import typing_extensions
+import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-GZIP_COMPRESSION_LEVEL = 1
+ZSTD_COMPRESSION_LEVEL = 1
 
 _LOOPBACK_NETWORKS = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
 
@@ -193,28 +193,36 @@ class SslBypassRequestsAdapter(HTTPAdapter):
 
 
 class NominalRequestsAdapter(SslBypassRequestsAdapter):
-    """Adapter used with `requests` library for sending gzip-compressed data."""
+    """Apply Nominal's HTTP content-encoding policy at Requests' adapter boundary.
+
+    Requests prepares the body and headers before calling ``send``. We replace only
+    buffered bytes/text with zstd bytes, then update their encoding and framing
+    together. Doing this before ``super().send`` lets urllib3 retry the resulting
+    bytes unchanged. Keep body mutation and header updates in this one hook rather
+    than splitting them across ``send`` and ``add_headers``: both must make the same
+    decision about preserving an explicit encoding.
+
+    Requests handles redirects above the adapter and can call ``send`` again with
+    an already-encoded body. Any explicit Content-Encoding, including ``identity``,
+    opts out of compression; never infer the codec from the body or recompress it.
+    File and iterator bodies stay under Requests' streaming and rewind handling.
+    The ``stream`` argument controls *response* streaming, not the upload body type.
+    Its historical request-compression bypass is retained for compatibility.
+
+    Content-Encoding describes our upload; Accept-Encoding negotiates the response.
+    They need not match. Default to gzip responses unless the caller chooses otherwise.
+    Staging E2Es on 2026-09-17 advertised zstd with gzip fallback but received no zstd
+    responses. Enabling zstd responses also requires urllib3's ``zstd`` extra on
+    Python < 3.14; the ``zstandard`` package used for uploads does not enable it.
+
+    Delegate connection pooling, TLS, proxies, timeouts, retries and response decoding
+    to the parent transport. Redirect policy remains with Requests' Session.
+    ``test_networking.py`` covers the resulting upload and header behavior.
+    """
 
     ACCEPT_ENCODING = "Accept-Encoding"
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
-
-    def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
-        super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
-
-        body = request.body
-        if body is None:
-            return
-        elif kwargs.get("stream", False):
-            return
-
-        content_length = len(body)
-        headers = {
-            self.ACCEPT_ENCODING: "gzip",
-            self.CONTENT_ENCODING: "gzip",
-            self.CONTENT_LENGTH: str(content_length),
-        }
-        request.headers.update(headers)
 
     def send(
         self,
@@ -225,13 +233,24 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
-        if stream:
-            return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
-        elif request.body is not None:
+        request.headers.setdefault(self.ACCEPT_ENCODING, "gzip")
+        if request.body is None:
+            # Requests drops POST bodies on 301/302/303 but leaves Content-Encoding behind.
+            request.headers.pop(self.CONTENT_ENCODING, None)
+        elif not stream and isinstance(request.body, (bytes, str)) and self.CONTENT_ENCODING not in request.headers:
             body = request.body
             raw_body = body if isinstance(body, bytes) else body.encode("utf-8")
-            request.body = gzip.compress(raw_body, compresslevel=GZIP_COMPRESSION_LEVEL)
-            request.headers[self.CONTENT_LENGTH] = str(len(request.body))
+            # Each send owns its context; this adapter is shared by concurrent upload workers.
+            request.body = zstandard.ZstdCompressor(level=ZSTD_COMPRESSION_LEVEL).compress(raw_body)
+            # Replacing the body invalidates its old length/transfer framing. Fixed bytes
+            # must not advertise both Content-Length and Transfer-Encoding: chunked.
+            request.headers.pop("Transfer-Encoding", None)
+            request.headers.update(
+                {
+                    self.CONTENT_ENCODING: "zstd",
+                    self.CONTENT_LENGTH: str(len(request.body)),
+                }
+            )
 
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
@@ -244,10 +263,9 @@ def create_conjure_service_client(
     header_provider: HeaderProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
-    that automatically gzip data being sent to services.
+    that automatically zstd-compresses data being sent to services.
 
-    In bandwidth constrained scenarios, this has been measured to have up to 5x speedups in time to
-    send data to backend services, depending on the compressability of the data.
+    Defaults to gzip responses unless the caller supplies another preference.
 
     See: https://github.com/palantir/conjure-python-client/blob/60d6d7639502a3b0fe18fad388ce84cbc54eb613/conjure_python_client/_http/requests_client.py#L181
 
@@ -259,7 +277,6 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        enable_keep_alive: If true, enable keep alive in connections with the service.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -270,6 +287,8 @@ def create_conjure_service_client(
         total=service_config.max_num_retries,
         connect=service_config.max_num_retries,  # Allow connection error retries
         read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
+        # Preserve the existing Conjure policy: 308 is retried here before Session
+        # can follow it as a redirect.
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
@@ -277,6 +296,7 @@ def create_conjure_service_client(
     # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
     session = HeaderProviderSession(header_provider)
+    # Replaces Requests' default headers; the adapter supplies Accept-Encoding.
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
         verify = service_config.security.trust_store_path
