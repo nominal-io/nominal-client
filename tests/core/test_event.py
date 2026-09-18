@@ -5,9 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType, SearchEventOriginTypes
 from nominal.core.client import NominalClient
-from nominal.core.event import Event
+from nominal.core.event import Event, EventDisposition
 from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.types import common_pb2
@@ -23,7 +24,9 @@ def _proto_event(
     created_by: str | None = None,
     seconds: int = 2,
     nanos: int = 3,
+    priority: event_pb2.Priority.ValueType | None = None,
 ) -> event_pb2.Event:
+    disposition = event_pb2.EventDisposition(priority=priority) if priority is not None else None
     return event_pb2.Event(
         rid=rid,
         uuid="uuid-1",
@@ -33,6 +36,7 @@ def _proto_event(
         created_by=created_by,
         timestamp=time_pb2.Timestamp(seconds=seconds, nanos=nanos),
         duration=common_pb2.Duration(seconds=1, nanos=500),
+        disposition=disposition,
     )
 
 
@@ -84,6 +88,25 @@ def test_from_proto_decodes_seconds_and_nanos() -> None:
 def test_from_proto_reads_optional_created_by(created_by: str | None) -> None:
     """created_by is optional on the wire for legacy events; absent must not read as an empty rid."""
     assert Event._from_proto(MagicMock(), _proto_event(created_by=created_by)).created_by_rid == created_by
+
+
+def test_from_proto_reads_absent_disposition_as_none() -> None:
+    """An event never opened for disposition must read as None, not as an empty disposition."""
+    assert Event._from_proto(MagicMock(), _proto_event()).disposition is None
+
+
+@pytest.mark.parametrize("priority", list(Priority), ids=lambda p: p.name)
+def test_priority_maps_from_every_wire_value(priority: Priority) -> None:
+    """The wire numbering is offset from the enum's, so a transposed pair is invisible without this."""
+    assert Priority._from_proto(event_pb2.Priority.Value(priority.name)) is priority
+
+
+@pytest.mark.parametrize("wire_priority", [event_pb2.PRIORITY_UNSPECIFIED, 99], ids=["unspecified", "unknown"])
+def test_from_proto_reads_unset_or_unknown_priority_as_none(wire_priority: event_pb2.Priority.ValueType) -> None:
+    """An unset or unknown wire priority reads as None inside the disposition rather than raising."""
+    event = Event._from_proto(MagicMock(), _proto_event(priority=wire_priority))
+
+    assert event.disposition == EventDisposition(priority=None)
 
 
 def test_from_proto_degrades_unknown_event_types() -> None:
