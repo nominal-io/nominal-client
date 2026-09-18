@@ -336,13 +336,13 @@ options that format uses. The runner writes `manifest.json` after your callback 
 
 | Method | For | Options |
 |---|---|---|
-| `add_tabular` | `.csv` / `.parquet` (and `.gz`) | `tag_columns`, `channel_prefix`, `timestamp_column`/`timestamp_type` |
-| `add_avro_stream` | `.avro` / `.avro.gz` | `channel_prefix`, `timestamp_type` |
+| `add_tabular` | `.csv` / `.parquet` (and `.gz`) | `tag_columns`, `channel_prefix`, `units`, `timestamp_column`/`timestamp_type` |
+| `add_avro_stream` | `.avro` / `.avro.gz` | `channel_prefix`, `units`, `timestamp_type` |
 | `add_journal_json` | `.jsonl` / `.jsonl.gz`, ingested as logs | `timestamp_column`/`timestamp_type` |
 | `add_video` | any supported video container | `channel` (required), `start` or `frame_timestamps` |
 
-The gaps are deliberate. Avro records carry their own channel, values, and tags, so there is nothing
-to map — but their timestamps are bare numbers, so `add_avro_stream` still takes a `timestamp_type`
+The gaps are deliberate. Avro records carry their own channel, values, and tags, so no tag columns
+are needed — but their timestamps are bare numbers, so `add_avro_stream` still takes a `timestamp_type`
 saying how to read them. Log samples carry no tags and all land on one channel, so tag columns and a
 channel prefix would be silently dropped. Each method also checks the file extension its format
 requires, so a mismatch fails at the call rather than server-side after upload.
@@ -363,7 +363,7 @@ def split(ctx: ex.ManifestExtractorContext, *, recording: Path, parts: int) -> N
     for i, chunk in enumerate(chunks_of(decoded.telemetry, parts)):
         part = ctx.output_dir / f"part_{i}.parquet"
         write_parquet(chunk, part)
-        ctx.add_tabular(part, tag_columns={"vehicle": "veh_id"})
+        ctx.add_tabular(part, tag_columns={"vehicle": "veh_id"}, units={"pressure": "Pa"})
 
     events = ctx.output_dir / "events.jsonl"
     write_jsonl(decoded.events, events)          # each line needs a MESSAGE field
@@ -380,6 +380,22 @@ if __name__ == "__main__":
 Save this entrypoint as `extractor.py` for the build and registration examples below.
 `read_my_format`, `chunks_of`, `write_parquet`, and `write_jsonl` are application-provided parsing
 and writing helpers. A manifest extractor may emit telemetry, videos, or only videos.
+
+`units` maps channel names to unit symbols on each tabular or Avro output. The runtime copies the
+mapping into that output's manifest entry and preserves symbols as supplied. Omitting it, passing
+`None`, or passing an empty mapping writes an empty units map.
+
+Declare units where you declare the output, since different files from the same extractor can
+have different channels and units. For example:
+
+```python
+ctx.add_tabular(table, units={"pressure": "Pa", "temperature": "K"})
+ctx.add_avro_stream(records, units={"voltage": "V"})
+```
+
+These maps travel in the output manifest; they are not input parameters or image-registration
+metadata. Both the package-level context import and
+`nominal.experimental.extractor.context.ManifestExtractorContext` expose the same `units=` API.
 
 ### Videos
 
