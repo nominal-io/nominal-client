@@ -1,82 +1,112 @@
 from __future__ import annotations
 
-import gzip
+import io
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
 import requests
+import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
 
 from nominal.core._utils.networking import (
     HeaderProviderSession,
-    NominalRequestsAdapter,
     SslBypassRequestsAdapter,
     create_conjure_service_client,
 )
 from nominal.core.exceptions import HeaderConflictError
 
 
-def _prepared_request(body: object) -> requests.PreparedRequest:
-    return requests.Request("POST", "https://example.com", data=body).prepare()
+@pytest.fixture
+def session() -> Iterator[requests.Session]:
+    """Use the HTTP session configured for SDK service clients."""
+    service_class = MagicMock()
+    create_conjure_service_client(service_class, "test", ServiceConfiguration(uris=["https://example.com"]))
+    with service_class.call_args.args[0] as configured_session:
+        yield configured_session
 
 
-def test_gzip_adapter_updates_content_length_after_compression() -> None:
-    """Content-Length must reflect the compressed body size, not the original."""
-    adapter = NominalRequestsAdapter()
-    request = _prepared_request("hello world" * 50)
-
-    adapter.add_headers(request)
-
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
-        super_send.return_value = requests.Response()
-        adapter.send(request)
-
-    sent_request = super_send.call_args.args[1]
-    compressed_body = sent_request.body
-
-    assert isinstance(compressed_body, bytes)
-    assert gzip.decompress(compressed_body) == ("hello world" * 50).encode("utf-8")
-    assert sent_request.headers["Content-Encoding"] == "gzip"
-    assert sent_request.headers["Content-Length"] == str(len(compressed_body))
+@pytest.fixture
+def transport() -> Iterator[MagicMock]:
+    """Replace network I/O with a successful empty response."""
+    response = requests.Response()
+    response.status_code = 204
+    response._content = b""
+    with patch.object(SslBypassRequestsAdapter, "send", return_value=response) as send:
+        yield send
 
 
-def test_gzip_adapter_compresses_bytes_body() -> None:
-    """Bytes bodies must be compressed directly without an encode step."""
-    adapter = NominalRequestsAdapter()
-    raw = b"binary payload" * 50
-    request = _prepared_request(raw)
-
-    adapter.add_headers(request)
-
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
-        super_send.return_value = requests.Response()
-        adapter.send(request)
-
-    sent_request = super_send.call_args.args[1]
-    compressed_body = sent_request.body
-
-    assert isinstance(compressed_body, bytes)
-    assert gzip.decompress(compressed_body) == raw
-    assert sent_request.headers["Content-Length"] == str(len(compressed_body))
+@pytest.mark.parametrize("body", ["hello world", b"hello world"])
+def test_requests_use_zstd(session: requests.Session, transport: MagicMock, body: str | bytes) -> None:
+    """Text and byte uploads reach the server as correctly framed zstd payloads."""
+    session.post("https://example.com", data=body)
+    request = transport.call_args.args[0]
+    assert zstandard.ZstdDecompressor().decompress(request.body) == b"hello world"
+    assert request.headers["Content-Encoding"] == "zstd"
+    assert request.headers["Content-Length"] == str(len(request.body))
+    assert "Transfer-Encoding" not in request.headers
+    assert request.headers["Accept-Encoding"] == "gzip"
 
 
-def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
-    """Streaming requests must pass through unmodified so the consumer controls the body."""
-    adapter = NominalRequestsAdapter()
-    request = _prepared_request("plain text body")
-    original_body = request.body
-
-    adapter.add_headers(request, stream=True)
-
+def test_response_streaming_preserves_uncompressed_upload(session: requests.Session, transport: MagicMock) -> None:
+    """Response streaming retains the existing uncompressed upload behavior."""
+    session.post("https://example.com", data=b"payload", stream=True)
+    request = transport.call_args.args[0]
+    assert request.body == b"payload"
     assert "Content-Encoding" not in request.headers
 
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
-        super_send.return_value = requests.Response()
-        adapter.send(request, stream=True)
 
-    assert super_send.call_args.args[1].body == original_body
+@pytest.mark.parametrize("encoding", ["zstd", "identity"])
+def test_explicit_request_encoding_is_preserved(session: requests.Session, transport: MagicMock, encoding: str) -> None:
+    """Caller-encoded uploads keep their body and encoding while still requesting gzip responses."""
+    body = zstandard.ZstdCompressor().compress(b"payload") if encoding == "zstd" else b"payload"
+    session.post("https://example.com", data=body, headers={"Content-Encoding": encoding})
+    request = transport.call_args.args[0]
+    assert request.body == body
+    assert request.headers["Content-Encoding"] == encoding
+    assert request.headers["Accept-Encoding"] == "gzip"
+
+
+def test_explicit_response_preference_is_preserved(session: requests.Session, transport: MagicMock) -> None:
+    """Callers can request uncompressed responses while their uploads use zstd."""
+    session.post("https://example.com", data=b"payload", headers={"Accept-Encoding": "identity"})
+    request = transport.call_args.args[0]
+    assert request.headers["Accept-Encoding"] == "identity"
+    assert request.headers["Content-Encoding"] == "zstd"
+
+
+@pytest.mark.parametrize("status", [302, 307])
+def test_redirect_preserves_valid_request_encoding(
+    session: requests.Session, transport: MagicMock, status: int
+) -> None:
+    """Redirected uploads remain decodable, and redirected GETs carry no body encoding."""
+    redirect = requests.Response()
+    redirect.status_code = status
+    redirect.headers["Location"] = "https://example.com/redirected"
+    redirect._content = b""
+    transport.side_effect = [redirect, transport.return_value]
+    session.post("https://example.com", data=b"payload")
+    request = transport.call_args.args[0]
+    if status == 307:
+        assert request.method == "POST"
+        assert request.headers["Content-Encoding"] == "zstd"
+        assert zstandard.ZstdDecompressor().decompress(request.body) == b"payload"
+    else:
+        assert request.method == "GET"
+        assert request.body is None
+        assert "Content-Encoding" not in request.headers
+
+
+@pytest.mark.parametrize("kind", ["file", "iterator"])
+def test_upload_streams_remain_readable(session: requests.Session, transport: MagicMock, kind: str) -> None:
+    """File and iterator uploads reach the transport without being consumed or compressed."""
+    body = io.BytesIO(b"payload") if kind == "file" else iter([b"pay", b"load"])
+    session.post("https://example.com", data=body)
+    request = transport.call_args.args[0]
+    assert b"".join(request.body) == b"payload"
+    assert "Content-Encoding" not in request.headers
 
 
 def test_ssl_adapter_proxy_uses_own_ssl_context() -> None:
@@ -128,6 +158,8 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
 
 
 def test_header_provider_session_evaluates_headers_per_request() -> None:
+    """Dynamic headers are refreshed for each request."""
+
     class DynamicHeaders:
         value = "first"
 
@@ -147,6 +179,8 @@ def test_header_provider_session_evaluates_headers_per_request() -> None:
 
 
 def test_header_provider_session_raises_for_explicit_request_header_conflict() -> None:
+    """Explicit request headers cannot be overwritten by a header provider."""
+
     class DynamicHeaders:
         def headers(self) -> dict[str, str]:
             return {"X-Test": "default"}
@@ -163,6 +197,8 @@ def test_header_provider_session_raises_for_explicit_request_header_conflict() -
 
 
 def test_header_provider_session_can_override_session_default_headers() -> None:
+    """Header providers can override session defaults."""
+
     class DynamicHeaders:
         def headers(self) -> dict[str, str]:
             return {"User-Agent": "provider-agent"}
