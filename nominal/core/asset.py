@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
@@ -31,6 +30,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.properties import properties_from_conjure, typed_properties_to_conjure
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
@@ -38,6 +38,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
+from nominal.core.properties import TypedProperties
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -53,7 +54,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     rid: str
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: TypedProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -105,7 +106,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
@@ -126,7 +127,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         request = scout_asset_api.UpdateAssetRequest(
             description=description,
             labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
+            typed_properties=typed_properties_to_conjure(properties),
             title=name,
             links=None if links is None else create_links(links),
         )
@@ -416,7 +417,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Event:
         """Create an event associated with this Asset at a given point in time.
@@ -452,7 +453,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         end: datetime.datetime | IntegralNanosecondsUTC | None,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -731,7 +732,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             rid=asset.rid,
             name=asset.title,
             description=asset.description,
-            properties=MappingProxyType(asset.properties),
+            properties=properties_from_conjure(asset.typed_properties),
             labels=tuple(asset.labels),
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
             is_archived=asset.is_archived,

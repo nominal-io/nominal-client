@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
@@ -26,6 +25,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.properties import properties_from_conjure, typed_properties_to_conjure
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
@@ -34,6 +34,7 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_da
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
+from nominal.core.properties import TypedProperties
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
@@ -48,7 +49,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: TypedProperties
     labels: Sequence[str]
     links: Sequence[LinkDict]
     start: IntegralNanosecondsUTC
@@ -93,7 +94,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         assets: Sequence[Asset | str] | None = None,
@@ -120,7 +121,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateRunRequest(
             description=description,
             labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
+            typed_properties=typed_properties_to_conjure(properties),
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
@@ -232,7 +233,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         """Create an event associated with all associated assets of this run at a given point in time.
@@ -615,7 +616,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             rid=run.rid,
             name=run.title,
             description=run.description,
-            properties=MappingProxyType(run.properties),
+            properties=properties_from_conjure(run.typed_properties),
             labels=tuple(run.labels),
             links=tuple(
                 (dict(url=link.url, title=link.title) if link.title is not None else dict(url=link.url))
@@ -639,7 +640,7 @@ def _create_run(
     start: datetime | IntegralNanosecondsUTC,
     end: datetime | IntegralNanosecondsUTC | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: TypedProperties | None,
     labels: Sequence[str] | None,
     links: Sequence[str | Link | LinkDict] | None,
     attachments: Iterable[Attachment] | Iterable[str] | None,
@@ -652,8 +653,8 @@ def _create_run(
         description=description or "",
         labels=[] if labels is None else list(labels),
         links=[] if links is None else create_links(links),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
+        properties={},
+        typed_properties=typed_properties_to_conjure(properties) or {},
         start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
         title=name,
         end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),

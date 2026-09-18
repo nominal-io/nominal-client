@@ -10,7 +10,7 @@ from nominal.core.client import NominalClient
 from nominal.core.event import Event
 from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
-from nominal.protos.types import common_pb2
+from nominal.protos.types import common_pb2, types_pb2
 from nominal.protos.types.time import time_pb2
 
 
@@ -53,7 +53,8 @@ def test_update_omits_absent_fields_so_the_backend_leaves_them_unchanged() -> No
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert update.rid == event.rid
     assert update.name == "renamed"
-    for field in ("description", "labels", "properties", "asset_rids", "timestamp", "duration", "type"):
+    omitted = ("description", "labels", "properties", "typed_properties", "asset_rids", "timestamp", "duration", "type")
+    for field in omitted:
         assert not update.HasField(field), f"{field} should be absent when omitted"
     assert event.name == "renamed"
 
@@ -69,7 +70,9 @@ def test_update_sends_empty_collections_as_explicit_clears() -> None:
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert (update.HasField("asset_rids"), list(update.asset_rids.asset_rids)) == (True, [])
     assert (update.HasField("labels"), list(update.labels.labels)) == (True, [])
-    assert (update.HasField("properties"), dict(update.properties.properties)) == (True, {})
+    assert update.HasField("typed_properties")
+    assert dict(update.typed_properties.typed_properties) == {}
+    assert not update.HasField("properties")
 
 
 def test_from_proto_decodes_seconds_and_nanos() -> None:
@@ -133,6 +136,52 @@ def test_search_event_origin_type_round_trips(origin_type: SearchEventOriginType
     assert SearchEventOriginType._from_proto(origin_type._to_proto()) is origin_type
 
 
+def test_from_proto_reads_typed_properties() -> None:
+    """Reads come from typed_properties; the legacy string map is ignored."""
+    proto = _proto_event()
+    proto.properties["legacy"] = "ignored"
+    proto.typed_properties["serial"].CopyFrom(types_pb2.TypedPropertyValue(string_value="A1"))
+    proto.typed_properties["mass_kg"].CopyFrom(types_pb2.TypedPropertyValue(numeric_value=12.5))
+
+    event = Event._from_proto(MagicMock(), proto)
+
+    assert dict(event.properties) == {"serial": "A1", "mass_kg": 12.5}
+
+
+def test_create_event_sends_typed_properties() -> None:
+    """Create writes the typed map and an empty legacy properties map."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.event.CreateEvent.return_value = event_pb2.CreateEventResponse(event=_proto_event())
+
+    client.create_event(
+        "launch",
+        EventType.FLAG,
+        start=1,
+        properties={"serial": "A1", "mass_kg": 12.5, "count": 5},
+    )
+
+    request = clients.event.CreateEvent.call_args.args[0]
+    assert dict(request.properties) == {}
+    assert request.typed_properties["serial"].string_value == "A1"
+    assert request.typed_properties["mass_kg"].numeric_value == 12.5
+    assert request.typed_properties["count"].numeric_value == 5.0
+
+
+def test_update_sends_typed_properties() -> None:
+    """An explicit properties mapping replaces typed_properties and leaves the legacy wrapper omitted."""
+    clients = MagicMock()
+    event = _event(clients)
+    clients.event.BatchUpdateEvent.return_value = event_pb2.BatchUpdateEventResponse(events=[_proto_event()])
+
+    event.update(properties={"serial": "A1", "mass_kg": 7.5}, type=None)
+
+    update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
+    assert not update.HasField("properties")
+    assert update.typed_properties.typed_properties["serial"].string_value == "A1"
+    assert update.typed_properties.typed_properties["mass_kg"].numeric_value == 7.5
+
+
 def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     """Creation is the only path that sends a caller-chosen type, timestamp and duration."""
     clients = MagicMock()
@@ -147,6 +196,8 @@ def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     assert (request.timestamp.seconds, request.timestamp.nanos) == (1, 2)
     assert (request.duration.seconds, request.duration.nanos) == (3, 4)
     assert list(request.asset_rids) == ["ri.asset.1"]
+    assert dict(request.properties) == {}
+    assert dict(request.typed_properties) == {}
     assert not request.HasField("description")
 
 

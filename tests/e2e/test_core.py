@@ -26,7 +26,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from nominal.core import NominalClient
+from nominal.core import EventType, NominalClient
 from nominal.core.channel import ChannelDataType
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
@@ -120,6 +120,42 @@ def test_update_run(client: NominalClient, archive: ArchiveFn):
     assert run.labels == tuple(new_labels)
     assert run.start == _SecondsNanos.from_datetime(new_start).to_nanoseconds()
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
+
+
+def test_numeric_properties_crud(client: NominalClient, archive: ArchiveFn):
+    """Assets, runs, datasets, and events store numeric properties as floats via typed_properties."""
+    tag = uuid4().hex
+
+    asset = client.create_asset(f"asset-np-{tag}", properties={"serial": "A1", "mass_kg": 12.5})
+    archive(asset)
+    assert asset.properties["serial"] == "A1"
+    assert asset.properties["mass_kg"] == 12.5
+
+    asset.update(properties={"serial": "A1", "mass_kg": 20.0})
+    assert asset.properties == {"serial": "A1", "mass_kg": 20.0}
+
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-np-{tag}", start, end, properties={"serial": "A1", "mass_kg": 12.0})
+    archive(run)
+    assert run.properties["mass_kg"] == 12.0
+    run.update(properties={"serial": "A1", "mass_kg": 7.5})
+    assert run.properties["mass_kg"] == 7.5
+
+    dataset = client.create_dataset(f"dataset-np-{tag}", properties={"serial": "A1", "mass_kg": 3.25})
+    archive(dataset)
+    assert dataset.properties["mass_kg"] == 3.25
+    dataset.update(properties={"serial": "B2", "mass_kg": 4.0})
+    assert dataset.properties == {"serial": "B2", "mass_kg": 4.0}
+
+    start, _end = _create_random_start_end()
+    event = client.create_event(
+        f"event-np-{tag}", EventType.INFO, start, assets=[asset], properties={"serial": "A1", "mass_kg": 9.5}
+    )
+    archive(event)
+    assert event.properties["serial"] == "A1"
+    assert event.properties["mass_kg"] == 9.5
+    event.update(properties={"serial": "A1", "mass_kg": 11.0}, type=None)
+    assert event.properties == {"serial": "A1", "mass_kg": 11.0}
 
 
 def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):

@@ -20,6 +20,8 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.properties import iter_property_filter_clauses
+from nominal.core.properties import PropertyFilter, TypedProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
@@ -247,9 +249,10 @@ def create_search_container_images_query(
 def create_search_assets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: TypedProperties | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
+    property_filters: Sequence[PropertyFilter] | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
@@ -259,9 +262,16 @@ def create_search_assets_query(
     if labels is not None:
         for label in labels:
             queries.append(scout_asset_api.SearchAssetsQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
+    queries.extend(
+        iter_property_filter_clauses(
+            properties,
+            property_filters,
+            query_cls=scout_asset_api.SearchAssetsQuery,
+            string_in_clause=lambda name, values: scout_asset_api.SearchAssetsQuery(
+                properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
+            ),
+        )
+    )
     if workspace_rid is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
 
@@ -358,15 +368,24 @@ def create_search_dataset_files_query(
     return scout_catalog.SearchDatasetFilesQuery(and_=queries)
 
 
+def _dataset_string_in_clause(name: str, values: Sequence[str]) -> scout_catalog.SearchDatasetsQuery:
+    # Datasets have no PropertiesFilter; emulate IN as OR of Property equalities.
+    clauses = [scout_catalog.SearchDatasetsQuery(properties=api.Property(name, value)) for value in values]
+    if len(clauses) == 1:
+        return clauses[0]
+    return scout_catalog.SearchDatasetsQuery(or_=clauses)
+
+
 def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: TypedProperties | None = None,
     ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    property_filters: Sequence[PropertyFilter] | None = None,
 ) -> scout_catalog.SearchDatasetsQuery:
     queries = [_backfill_dataset_archive_query_clause(archive_status)]
     if search_text is not None:
@@ -379,9 +398,14 @@ def create_search_datasets_query(
         for label in labels:
             queries.append(scout_catalog.SearchDatasetsQuery(label=label))
 
-    if properties is not None:
-        for prop_key, prop_value in properties.items():
-            queries.append(scout_catalog.SearchDatasetsQuery(properties=api.Property(prop_key, prop_value)))
+    queries.extend(
+        iter_property_filter_clauses(
+            properties,
+            property_filters,
+            query_cls=scout_catalog.SearchDatasetsQuery,
+            string_in_clause=_dataset_string_in_clause,
+        )
+    )
 
     if ingested_before_inclusive is not None:
         queries.append(
@@ -408,12 +432,13 @@ def create_search_runs_query(
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: TypedProperties | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
+    property_filters: Sequence[PropertyFilter] | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
@@ -458,12 +483,16 @@ def create_search_runs_query(
                 labels=scout_rids_api.LabelsFilter(labels=list(labels), operator=api.SetOperator.AND)
             )
         )
-    if properties:
-        for name, value in properties.items():
-            # original properties is a 1:1 map, so we will never have multiple values for the same name
-            queries.append(
-                scout_run_api.SearchQuery(properties=scout_rids_api.PropertiesFilter(name=name, values=[value]))
-            )
+    queries.extend(
+        iter_property_filter_clauses(
+            properties,
+            property_filters,
+            query_cls=scout_run_api.SearchQuery,
+            string_in_clause=lambda name, values: scout_run_api.SearchQuery(
+                properties=scout_rids_api.PropertiesFilter(name=name, values=list(values))
+            ),
+        )
+    )
     if exact_match is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
     if search_text is not None:

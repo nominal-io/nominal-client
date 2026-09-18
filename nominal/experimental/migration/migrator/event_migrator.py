@@ -3,12 +3,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Iterable, Mapping
+from typing import Iterable
 
 from nominal.core import NominalClient
 from nominal.core._event_types import EventType
 from nominal.core.asset import Asset
 from nominal.core.event import Event
+from nominal.core.properties import TypedProperties
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
@@ -25,7 +26,7 @@ class EventCopyOptions(ResourceCopyOptions):
     new_duration: timedelta | IntegralNanosecondsDuration | None = None
     new_description: str | None = None
     new_assets: Iterable[Asset | str] | None = None
-    new_properties: Mapping[str, str] | None = None
+    new_properties: TypedProperties | None = None
     new_labels: Iterable[str] | None = None
 
 
