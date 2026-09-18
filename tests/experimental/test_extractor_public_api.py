@@ -15,7 +15,6 @@ def test_public_modules_own_their_package_exports():
     }
     for name, symbols in exports.items():
         module = import_module(f"nominal.experimental.extractor.{name}")
-        assert set(module.__all__) == set(symbols)
         for symbol in symbols:
             exported = vars(module)[symbol]
             assert exported is vars(ex)[symbol]

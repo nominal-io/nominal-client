@@ -34,9 +34,6 @@ from nominal.experimental.extractor.context import (
     ManifestExtractorContext,
 )
 
-__all__ = ["Extractor"]
-
-
 logger = logging.getLogger(__name__)
 
 _CtxT = TypeVar("_CtxT", bound=ExtractorContext)
