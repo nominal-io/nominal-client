@@ -79,6 +79,7 @@ def test_image_from_proto_handles_minimal_proto() -> None:
 
 
 def test_image_refresh_replaces_and_clears_exit_code_mappings() -> None:
+    """refresh() adopts the server's exit code mappings, including clearing them when the server drops them."""
     clients = _clients()
     image = ContainerImage._from_proto(clients, "ri.ws", _img("ri.img"))
     updated = _img("ri.img")

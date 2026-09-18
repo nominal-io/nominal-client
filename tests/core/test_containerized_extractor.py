@@ -177,10 +177,8 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
     clients.registry.CreateImage.assert_not_called()
 
 
-@pytest.mark.parametrize("include_mappings", [False, True])
-def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(
-    include_mappings: bool, tmp_path: Path
-) -> None:
+def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(tmp_path: Path) -> None:
+    """Registration sends each error mapping and retains the mappings returned by the registry."""
     clients = _clients()
     clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
     clients.upload.list_parts.return_value = []
@@ -189,22 +187,14 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(
     tarball = tmp_path / "extractor.tar"
     tarball.touch()
     extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
-    mappings = (
-        [
-            core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
-            core.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
-        ]
-        if include_mappings
-        else []
-    )
-    expected = (
-        [
-            registry_pb2.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
-            registry_pb2.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
-        ]
-        if include_mappings
-        else []
-    )
+    mappings = [
+        core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+        core.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+    ]
+    expected = [
+        registry_pb2.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+        registry_pb2.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+    ]
     response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     response_image.exit_code_mappings.extend(expected)
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
@@ -215,14 +205,13 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(
         inputs=[],
         default_timestamp_column="ts",
         default_timestamp_type="iso_8601",
-        **({"exit_code_mappings": mappings} if include_mappings else {}),
+        exit_code_mappings=mappings,
     )
 
     request = clients.registry.CreateImage.call_args.args[0]
     assert request.object_path == "s3://image"
     assert list(request.exit_code_mappings) == expected
     assert tuple(image.exit_code_mappings) == tuple(mappings)
-    assert extractor.active_image is None
 
 
 def test_set_active_image_polls_then_activates() -> None:

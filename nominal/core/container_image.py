@@ -214,7 +214,12 @@ class ExitCodeMapping:
     exit_code: int
     """Container process exit code this mapping applies to."""
     code: str
-    """Machine-readable error code, outside the reserved platform error namespace."""
+    """Machine-readable error code chosen by the extractor author.
+
+    Do not use the platform-reserved codes `IMAGE_PULL_FAILED`, `EXTRACTOR_TIMEOUT`,
+    `EXTRACTOR_UNSCHEDULABLE`, `EXTRACTOR_OOM_KILLED`, `OUTPUT_UPLOAD_FAILED`, `INVALID_OUTPUT`,
+    or `UNKNOWN`.
+    """
     message: str
     """Human-readable fallback message for this error."""
     retryable: bool = False
@@ -273,6 +278,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     extractor_rid: str
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
+    exit_code_mappings: Sequence[ExitCodeMapping]
+    """Fallback errors for failed container exit codes; empty when no mappings are registered."""
     file_output_format: FileOutputFormat
     default_timestamp_metadata: TimestampMetadata | None
     """How timestamps in the extractor's output are encoded, when nothing more specific applies.
@@ -290,8 +297,6 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     """
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
-    exit_code_mappings: Sequence[ExitCodeMapping] = ()
-    """Fallback errors for failed container exit codes; empty when no mappings are registered."""
 
     class _Clients(HasScoutParams, Protocol):
         @property
