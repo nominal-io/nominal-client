@@ -21,6 +21,7 @@ def write_output(ctx, text):
 
 @pytest.mark.parametrize("outer", [ex.manifest_extractor, ex.single_file_extractor])
 def test_arguments_resolve_on_each_run(outer, tmp_path, caplog):
+    """Each run resolves fresh values and preserves ordinary wrappers in both output modes."""
     source = tmp_path / "recording.txt"
     source.write_text("recording")
 
@@ -56,6 +57,8 @@ def test_arguments_resolve_on_each_run(outer, tmp_path, caplog):
 
 @pytest.mark.parametrize("raw,expected", [("false", False), ("0", False), ("OFF", False), ("yes", True), ("1", True)])
 def test_boolean_conversion(tmp_path, raw, expected):
+    """Boolean strings become actual booleans before the callback runs."""
+
     @ex.single_file_extractor
     @ex.parameter("enabled", type=bool)
     def extract(ctx, enabled):
@@ -67,6 +70,7 @@ def test_boolean_conversion(tmp_path, raw, expected):
 
 @pytest.mark.parametrize("converter,raw", [(int, None), (int, ""), (int, "secret-invalid-value"), (bool, "neither")])
 def test_binding_failure_precedes_callback_and_can_be_mapped(tmp_path, converter, raw, capsys):
+    """Binding errors prevent extraction and finalization while honoring declared error mappings."""
     called = []
 
     @ex.manifest_extractor
@@ -94,6 +98,8 @@ def test_binding_failure_precedes_callback_and_can_be_mapped(tmp_path, converter
 
 
 def test_optional_inputs_and_none_parameter(tmp_path):
+    """Missing optional arguments become None, but a supplied missing file is rejected."""
+
     @ex.single_file_extractor
     @ex.input("calibration", default=None)
     @ex.parameter("offset", type=int, default=None)
@@ -108,6 +114,8 @@ def test_optional_inputs_and_none_parameter(tmp_path):
 
 
 def test_metadata_is_authoritative(tmp_path):
+    """Registered parameter metadata prevents undeclared environment values from being consumed."""
+
     @ex.single_file_extractor
     @ex.parameter("parts", default="2")
     def extract(ctx, parts):
@@ -118,6 +126,7 @@ def test_metadata_is_authoritative(tmp_path):
 
 
 def test_registered_input_path_and_envvar_override(tmp_path):
+    """Registered paths override environment paths, while an empty parameter remains supplied."""
     source = tmp_path / "source"
     source.write_text("data")
 
@@ -143,6 +152,7 @@ def test_registered_input_path_and_envvar_override(tmp_path):
 
 
 def test_legacy_warning_once_per_run(tmp_path, caplog):
+    """Legacy lookups carry editor hints and emit only one migration log per run."""
     for method in (
         ex.ExtractorContext.inputs.fget,
         ex.ExtractorContext.input,
@@ -168,6 +178,8 @@ def test_legacy_warning_once_per_run(tmp_path, caplog):
 
 
 def test_mixed_arguments_warn_only_for_legacy_access(tmp_path, caplog):
+    """Declarative and legacy access can coexist with one warning for the legacy lookup."""
+
     @ex.single_file_extractor
     @ex.parameter("parts", default="2")
     def extract(ctx, parts):
@@ -186,6 +198,8 @@ def test_mixed_arguments_warn_only_for_legacy_access(tmp_path, caplog):
     ],
 )
 def test_invalid_bindings(decorate):
+    """Unknown, context, and duplicate callback targets fail during declaration assembly."""
+
     def extract(ctx, parts, recording=None):
         pass
 
@@ -195,11 +209,13 @@ def test_invalid_bindings(decorate):
 
 @pytest.mark.parametrize("envvar", ["OUTPUT_DIR", "NOMINAL_EXTRACTOR_INPUT_DIR", "_NOMINAL_TEST", "bad-name", ""])
 def test_invalid_environment_names(envvar):
+    """Invalid and framework-reserved environment names fail before execution."""
     with pytest.raises(ValueError, match="env"):
         ex.parameter("parts", envvar=envvar)
 
 
 def test_signature_defaults_and_undeclared_required_arguments():
+    """Defaults belong to decorators and every required callback argument needs a declaration."""
     with pytest.raises(TypeError, match="default"):
         ex.manifest_extractor(ex.parameter("parts")(lambda ctx, parts=2: None))
     with pytest.raises(TypeError, match="binding|argument"):
@@ -208,6 +224,7 @@ def test_signature_defaults_and_undeclared_required_arguments():
 
 @pytest.mark.parametrize("wrapped", [False, True])
 def test_wrong_decorator_order(wrapped):
+    """Argument decorators reject built entrypoints even through functools.wraps."""
     entrypoint = ex.manifest_extractor(lambda ctx: None)
     if wrapped:
 
@@ -222,6 +239,7 @@ def test_wrong_decorator_order(wrapped):
 
 @pytest.mark.parametrize("kind", ["parameter", "input"])
 def test_display_names_cannot_shadow_declarative_envvars(kind, tmp_path):
+    """Declarative lookup uses exact environment names even when a display name collides."""
     first = tmp_path / "first"
     second = tmp_path / "second"
     first.write_text("first")
@@ -246,6 +264,8 @@ def test_display_names_cannot_shadow_declarative_envvars(kind, tmp_path):
 
 
 def test_direct_call_binds_without_finalizing(tmp_path, caplog):
+    """Direct invocation binds arguments but leaves manifest finalization to the runner."""
+
     @ex.manifest_extractor
     @ex.parameter("value", type=int, default=5)
     def extract(ctx, value):
@@ -259,6 +279,8 @@ def test_direct_call_binds_without_finalizing(tmp_path, caplog):
 
 
 def test_registered_missing_input_does_not_fall_back_to_environment(tmp_path):
+    """An input absent from registered metadata cannot be supplied through an ambient path."""
+
     @ex.manifest_extractor
     @ex.input("source")
     def extract(ctx, source):
@@ -272,11 +294,13 @@ def test_registered_missing_input_does_not_fall_back_to_environment(tmp_path):
 
 @pytest.mark.parametrize("callback", [lambda ctx, value, /: None, lambda **kwargs: None])
 def test_positional_only_and_catchall_targets_are_rejected(callback):
+    """Declared targets must be explicit arguments that can receive keyword values."""
     with pytest.raises(TypeError):
         ex.manifest_extractor(ex.parameter("value")(callback))
 
 
 def test_duplicate_display_names_are_rejected():
+    """Two file declarations cannot share a registration display name."""
     with pytest.raises(ValueError, match="duplicate"):
         ex.manifest_extractor(
             ex.input("first", name="File")(ex.input("second", name="File")(lambda ctx, first, second: None))
@@ -284,6 +308,8 @@ def test_duplicate_display_names_are_rejected():
 
 
 def test_duplicate_environment_variables_are_rejected():
+    """Inputs and parameters cannot consume the same environment variable."""
+
     def extract(ctx, parts, recording):
         pass
 
@@ -293,6 +319,8 @@ def test_duplicate_environment_variables_are_rejected():
 
 
 def test_debug_logging_traces_execution_without_parameter_values(tmp_path, caplog):
+    """DEBUG logs expose binding decisions without exposing defaults or supplied values."""
+
     @ex.single_file_extractor
     @ex.parameter("secret", default="private-default")
     def extract(ctx, secret):

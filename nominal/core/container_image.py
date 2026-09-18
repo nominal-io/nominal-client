@@ -203,6 +203,20 @@ class FileExtractionParameter:
         )
 
 
+RESERVED_EXTRACTOR_ERROR_CODES = frozenset(
+    {
+        "IMAGE_PULL_FAILED",
+        "EXTRACTOR_TIMEOUT",
+        "EXTRACTOR_UNSCHEDULABLE",
+        "EXTRACTOR_OOM_KILLED",
+        "OUTPUT_UPLOAD_FAILED",
+        "INVALID_OUTPUT",
+        "UNKNOWN",
+    }
+)
+"""Platform-owned error codes that extractor declarations must not redefine."""
+
+
 @dataclass(frozen=True)
 class ExitCodeMapping:
     """Map a failed container's exit code to a canonical extractor error.
@@ -216,9 +230,7 @@ class ExitCodeMapping:
     code: str
     """Machine-readable error code chosen by the extractor author.
 
-    Do not use the platform-reserved codes `IMAGE_PULL_FAILED`, `EXTRACTOR_TIMEOUT`,
-    `EXTRACTOR_UNSCHEDULABLE`, `EXTRACTOR_OOM_KILLED`, `OUTPUT_UPLOAD_FAILED`, `INVALID_OUTPUT`,
-    or `UNKNOWN`.
+    Do not use platform-owned codes listed in :data:`RESERVED_EXTRACTOR_ERROR_CODES`.
     """
     message: str
     """Human-readable fallback message for this error."""

@@ -33,6 +33,7 @@ def make_extractor(**options):
 
 
 def test_catalog_export_is_pure_serializable_and_independent():
+    """Catalog and SDK exports share fallbacks and return independently mutable collections."""
     convert = make_extractor()
     expected = {
         **IDENTITY,
@@ -69,6 +70,7 @@ def test_catalog_export_is_pure_serializable_and_independent():
     ],
 )
 def test_invalid_catalog_identity(change):
+    """Malformed release identity is rejected before a manifest can be published."""
     with pytest.raises(ValueError):
         make_extractor().catalog_manifest(**(IDENTITY | change))
 
@@ -84,6 +86,7 @@ def test_invalid_catalog_identity(change):
     ],
 )
 def test_catalog_restrictions_do_not_change_runtime_registration(options, match):
+    """Catalog-only representability restrictions leave direct SDK registration available."""
     convert = make_extractor(**options)
     convert.registration_kwargs()
     with pytest.raises(ValueError, match=match):
@@ -92,6 +95,8 @@ def test_catalog_restrictions_do_not_change_runtime_registration(options, match)
 
 @pytest.mark.parametrize("same_fallback", [False, True])
 def test_fallbacks_group_by_exit_code_or_reject_ambiguity(same_fallback):
+    """Identical exit-code fallbacks coalesce and conflicting policies fail in both exports."""
+
     @ex.input("source", file_suffixes=["csv"])
     @ex.error(ValueError, code="BAD_INPUT", exit_code=64, message="Bad recording")
     def callback(ctx, source):

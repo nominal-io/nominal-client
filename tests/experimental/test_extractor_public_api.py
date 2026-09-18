@@ -6,6 +6,7 @@ from nominal.experimental import extractor as ex
 
 
 def test_public_modules_own_their_package_exports():
+    """Focused public modules own the exact objects exposed by package-level imports."""
     exports = {
         "decorators": ("input", "parameter", "error", "manifest_extractor", "single_file_extractor"),
         "context": ("ExtractorContext", "ManifestExtractorContext", "SingleFileExtractorContext"),

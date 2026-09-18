@@ -7,7 +7,13 @@ from dataclasses import asdict
 from typing import Any, Mapping, TypedDict
 
 from nominal import ts
-from nominal.core.container_image import ExitCodeMapping, FileExtractionInput, FileExtractionParameter, FileOutputFormat
+from nominal.core.container_image import (
+    RESERVED_EXTRACTOR_ERROR_CODES,
+    ExitCodeMapping,
+    FileExtractionInput,
+    FileExtractionParameter,
+    FileOutputFormat,
+)
 from nominal.experimental.extractor._arguments import _Input, _Parameter
 from nominal.experimental.extractor._definition import _Definition
 from nominal.experimental.extractor._errors import _ErrorMapping
@@ -42,19 +48,6 @@ def _registration_kwargs(definition: _Definition) -> _RegistrationKwargs:
         "default_timestamp_column": definition.timestamp_column,
         "default_timestamp_type": definition.timestamp_type,
     }
-
-
-_RESERVED_CODES = frozenset(
-    {
-        "IMAGE_PULL_FAILED",
-        "EXTRACTOR_TIMEOUT",
-        "EXTRACTOR_UNSCHEDULABLE",
-        "EXTRACTOR_OOM_KILLED",
-        "OUTPUT_UPLOAD_FAILED",
-        "INVALID_OUTPUT",
-        "UNKNOWN",
-    }
-)
 
 
 def _text(value: str | None, field: str, maximum: int) -> str:
@@ -146,7 +139,7 @@ def _error_fallbacks(errors: Mapping[type[Exception], _ErrorMapping]) -> list[Ex
     """Build shared SDK/catalog fallbacks, requiring one policy per process exit code."""
     fallbacks: dict[int, ExitCodeMapping] = {}
     for mapping in errors.values():
-        if mapping.code in _RESERVED_CODES:
+        if mapping.code in RESERVED_EXTRACTOR_ERROR_CODES:
             raise ValueError(f"extractor error code {mapping.code!r} is platform-reserved")
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", mapping.code) is None:
             raise ValueError(f"invalid extractor error code {mapping.code!r}")

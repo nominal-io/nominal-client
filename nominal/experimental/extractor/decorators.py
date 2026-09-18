@@ -123,7 +123,12 @@ def parameter(
     if type is _MISSING:
         inferred = builtins.type(default)
         type = inferred if inferred in (str, int, float, bool) else str
-    converter = _parameter_converter(type, None if default is _MISSING else default)
+    try:
+        converter = _parameter_converter(type, None if default is _MISSING else default)
+    except TypeError as error:
+        raise TypeError(f"invalid declaration for parameter {argument!r}: {error}") from None
+    except ValueError as error:
+        raise ValueError(f"invalid default for parameter {argument!r}: {error}") from None
     return _Parameter(
         argument,
         FileExtractionParameter(

@@ -10,6 +10,8 @@ from nominal.experimental import extractor as ex
 
 
 def test_registration_is_pure_and_ordered():
+    """Registration preserves declaration order without invoking converters or reading the environment."""
+
     def converter(raw):
         raise AssertionError("must not convert")
 
@@ -40,6 +42,8 @@ def test_registration_is_pure_and_ordered():
 
 @pytest.mark.parametrize("declared", [False, True])
 def test_legacy_lookups_never_appear_in_registration(declared):
+    """Only decorators contribute metadata, including on partially migrated callbacks."""
+
     def extract(ctx, **kwargs):
         ctx.input("HIDDEN")
         ctx.param("SECRET")
@@ -59,6 +63,7 @@ def test_legacy_lookups_never_appear_in_registration(declared):
 
 @pytest.mark.parametrize("outer", [ex.manifest_extractor, ex.single_file_extractor])
 def test_registration_requires_explicit_timestamp_pair(outer):
+    """Registration requires both timestamp settings for either output contract."""
     with pytest.raises(ValueError, match="timestamp"):
         outer(lambda ctx: None, default_timestamp_column="time")
     with pytest.raises(ValueError, match="timestamp"):
@@ -66,6 +71,7 @@ def test_registration_requires_explicit_timestamp_pair(outer):
 
 
 def test_single_file_requires_format_only_for_registration():
+    """A single-file extractor can run without a format but cannot export registration without one."""
     extract = ex.single_file_extractor(
         lambda ctx: None, default_timestamp_column="time", default_timestamp_type="epoch_seconds"
     )
@@ -77,11 +83,14 @@ def test_single_file_requires_format_only_for_registration():
     "format", [FileOutputFormat.MANIFEST, FileOutputFormat.UNSPECIFIED, FileOutputFormat.PARQUET_TAR]
 )
 def test_single_file_rejects_invalid_format(format):
+    """Single-file declarations reject manifest and unsupported registration formats."""
     with pytest.raises(ValueError, match="output_format"):
         ex.single_file_extractor(lambda ctx: None, output_format=format)
 
 
 def test_explicit_single_file_format_and_error_mapping(tmp_path):
+    """Registered format mismatch fails before extraction and uses the declared error policy."""
+
     @ex.single_file_extractor(
         output_format=FileOutputFormat.CSV, default_timestamp_column="time", default_timestamp_type="epoch_seconds"
     )

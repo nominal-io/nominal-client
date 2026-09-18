@@ -94,7 +94,10 @@ class FloatRange:
             raise ValueError("minimum must not exceed maximum")
 
     def _validate(self, value: object) -> None:
-        _validate_number(value)
+        try:
+            _validate_number(value)
+        except (TypeError, ValueError) as error:
+            raise BadParameter(str(error)) from None
         assert isinstance(value, (int, float))
         _check_range(value, self.min, self.max)
 
@@ -109,10 +112,10 @@ class FloatRange:
 
 def _validate_number(value: object) -> None:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise BadParameter("must be a finite number")
+        raise TypeError("must be a finite number")
     # Integers are finite without conversion to float, including arbitrary precision values.
     if isinstance(value, float) and not math.isfinite(value):
-        raise BadParameter("must be a finite number")
+        raise ValueError("must be a finite number")
 
 
 def _boolean(value: str) -> bool:
