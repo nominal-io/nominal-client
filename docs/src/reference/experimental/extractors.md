@@ -13,6 +13,9 @@ reference. Their public objects are also available directly from `nominal.experi
 
 ## Output contexts
 
+`ManifestExtractorContext.add_tabular` and `add_avro_stream` accept `units=` maps from channel
+names to unit symbols. Each declaration copies its map into that output's manifest entry.
+
 ::: nominal.experimental.extractor.context
 
 ## Parameter types

@@ -385,6 +385,18 @@ and writing helpers. A manifest extractor may emit telemetry, videos, or only vi
 mapping into that output's manifest entry and preserves symbols as supplied. Omitting it, passing
 `None`, or passing an empty mapping writes an empty units map.
 
+Declare units where you declare the output, since different files from the same extractor can
+have different channels and units. For example:
+
+```python
+ctx.add_tabular(table, units={"pressure": "Pa", "temperature": "K"})
+ctx.add_avro_stream(records, units={"voltage": "V"})
+```
+
+These maps travel in the output manifest; they are not input parameters or image-registration
+metadata. Both the package-level context import and
+`nominal.experimental.extractor.context.ManifestExtractorContext` expose the same `units=` API.
+
 ### Videos
 
 `add_video` needs a `channel` — the video becomes a channel on the dataset, alongside the telemetry —
