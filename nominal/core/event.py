@@ -7,6 +7,7 @@ from typing import Iterable, Mapping, Protocol, Sequence
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
@@ -32,6 +33,17 @@ from nominal.ts import (
 
 
 @dataclass(frozen=True)
+class EventDisposition:
+    """The disposition opened on an event. On the wire it also carries state and assignees, not yet exposed here."""
+
+    priority: Priority | None
+
+    @classmethod
+    def _from_proto(cls, disposition: event_pb2.EventDisposition) -> Self:
+        return cls(priority=Priority._from_proto(disposition.priority))
+
+
+@dataclass(frozen=True)
 class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     rid: str
     asset_rids: Sequence[str]
@@ -43,6 +55,11 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     labels: Sequence[str]
     type: EventType
     is_archived: bool
+    disposition: EventDisposition | None
+    """None until the event is opened for disposition.
+
+    Checklist-fired events are opened automatically. Any event can be opened.
+    """
 
     _uuid: str = field(repr=False)
 
@@ -159,6 +176,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             duration=_from_proto_duration(event.duration),
             type=EventType._from_proto(event.type),
             is_archived=event.is_archived,
+            disposition=EventDisposition._from_proto(event.disposition) if event.HasField("disposition") else None,
             properties=dict(event.properties),
             labels=list(event.labels),
             created_by_rid=event.created_by or None,
