@@ -33,6 +33,7 @@ nav:
         - tdms: reference/thirdparty/tdms.md
       - Experimental:
         - Compute: reference/experimental/compute.md
+        - Extractors: reference/experimental/extractors.md
         - Logging: reference/experimental/logging.md
         - Video Processing: reference/experimental/video_processing.md
   - Guides:
