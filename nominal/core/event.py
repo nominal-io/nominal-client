@@ -14,13 +14,15 @@ from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,
     label_update,
-    property_update,
     rid_from_instance_or_string,
+    typed_property_update,
 )
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
+from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
 from nominal.core.exceptions import NominalNotFoundError
+from nominal.core.properties import TypedProperties
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.ts import (
     IntegralNanosecondsDuration,
@@ -39,7 +41,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     description: str
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
-    properties: Mapping[str, str]
+    properties: TypedProperties
     labels: Sequence[str]
     type: EventType
     is_archived: bool
@@ -66,7 +68,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         assets: Iterable[core_asset.Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Iterable[str] | None = None,
         type: EventType | None,
     ) -> Self:
@@ -119,7 +121,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
                     labels=label_update(labels),
                     name=name,
                     description=description,
-                    properties=property_update(properties),
+                    typed_properties=typed_property_update(properties),
                     timestamp=updated_timestamp,
                     type=updated_type,
                 )
@@ -159,7 +161,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             duration=_from_proto_duration(event.duration),
             type=EventType._from_proto(event.type),
             is_archived=event.is_archived,
-            properties=dict(event.properties),
+            properties=properties_from_proto(event.typed_properties),
             labels=list(event.labels),
             created_by_rid=event.created_by or None,
             _uuid=event.uuid,
@@ -196,7 +198,7 @@ def _create_event(
     duration: timedelta | IntegralNanosecondsDuration,
     assets: Iterable[core_asset.Asset | str] | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: TypedProperties | None,
     labels: Iterable[str] | None,
 ) -> Event:
     request = event_pb2.CreateEventRequest(
@@ -205,7 +207,8 @@ def _create_event(
         asset_rids=[rid_from_instance_or_string(asset) for asset in (assets or [])],
         timestamp=_SecondsNanos.from_flexible(start).to_proto(),
         duration=_to_proto_duration(duration),
-        properties=dict(properties or {}),
+        properties={},
+        typed_properties=typed_properties_to_proto(properties) or {},
         labels=list(labels or []),
         type=type._to_proto(),
     )

@@ -26,7 +26,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from nominal.core import NominalClient
+from nominal.core import EventType, NominalClient
 from nominal.core.channel import ChannelDataType
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
@@ -123,7 +123,7 @@ def test_update_run(client: NominalClient, archive: ArchiveFn):
 
 
 def test_numeric_properties_crud(client: NominalClient, archive: ArchiveFn):
-    """Assets, runs, and datasets store numeric properties as floats via typed_properties."""
+    """Assets, runs, datasets, and events store numeric properties as floats via typed_properties."""
     tag = uuid4().hex
 
     asset = client.create_asset(f"asset-np-{tag}", properties={"serial": "A1", "mass_kg": 12.5})
@@ -146,6 +146,16 @@ def test_numeric_properties_crud(client: NominalClient, archive: ArchiveFn):
     assert dataset.properties["mass_kg"] == 3.25
     dataset.update(properties={"serial": "B2", "mass_kg": 4.0})
     assert dataset.properties == {"serial": "B2", "mass_kg": 4.0}
+
+    start, _end = _create_random_start_end()
+    event = client.create_event(
+        f"event-np-{tag}", EventType.INFO, start, assets=[asset], properties={"serial": "A1", "mass_kg": 9.5}
+    )
+    archive(event)
+    assert event.properties["serial"] == "A1"
+    assert event.properties["mass_kg"] == 9.5
+    event.update(properties={"serial": "A1", "mass_kg": 11.0}, type=None)
+    assert event.properties == {"serial": "A1", "mass_kg": 11.0}
 
 
 def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):

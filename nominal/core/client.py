@@ -1451,7 +1451,7 @@ class NominalClient:
         *,
         description: str | None = None,
         assets: Iterable[Asset | str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         return _create_event(

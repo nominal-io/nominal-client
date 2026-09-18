@@ -417,7 +417,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: TypedProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Event:
         """Create an event associated with this Asset at a given point in time.

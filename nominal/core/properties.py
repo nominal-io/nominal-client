@@ -1,4 +1,4 @@
-"""Property helpers for assets, runs, and datasets.
+"""Property helpers for assets, runs, datasets, and events.
 
 Filters live here so they stay namespaced:
 

@@ -9,11 +9,14 @@ from nominal_api import api, scout_run_api
 from nominal.core import properties as props
 from nominal.core._utils.properties import (
     typed_properties_from_conjure,
+    typed_properties_from_proto,
     typed_properties_to_conjure,
+    typed_properties_to_proto,
     warn_deprecated_search_properties,
 )
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.core.exceptions import SearchPropertiesDeprecationWarning
+from nominal.protos.types import types_pb2
 
 
 def test_typed_properties_to_conjure_converts_strings_and_floats() -> None:
@@ -29,6 +32,33 @@ def test_typed_properties_to_conjure_converts_strings_and_floats() -> None:
     assert typed_properties_to_conjure({}) == {}
     with pytest.raises(TypeError, match="str, int, or float"):
         typed_properties_to_conjure({"flag": True})
+
+
+def test_typed_properties_to_proto_converts_strings_and_floats() -> None:
+    """Proto conversion matches conjure: strings stay strings; ints and floats become numeric_value."""
+    result = typed_properties_to_proto({"serial": "A1", "mass_kg": 12.0, "count": 5})
+
+    assert result["serial"].string_value == "A1"
+    assert result["mass_kg"].numeric_value == 12.0
+    assert result["count"].numeric_value == 5.0
+    assert typed_properties_to_proto(None) is None
+    assert typed_properties_to_proto({}) == {}
+    with pytest.raises(TypeError, match="str, int, or float"):
+        typed_properties_to_proto({"flag": True})
+
+
+def test_typed_properties_from_proto_skips_unset_variant(caplog: pytest.LogCaptureFixture) -> None:
+    """An empty TypedPropertyValue oneof is skipped with a warning instead of failing the read."""
+    typed = {
+        "ok": types_pb2.TypedPropertyValue(string_value="A1"),
+        "future": types_pb2.TypedPropertyValue(),
+    }
+
+    with caplog.at_level(logging.WARNING):
+        result = typed_properties_from_proto(typed)
+
+    assert result == {"ok": "A1"}
+    assert "unknown type" in caplog.text
 
 
 def test_typed_properties_from_conjure_skips_unknown_variant(caplog: pytest.LogCaptureFixture) -> None:

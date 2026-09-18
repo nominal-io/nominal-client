@@ -16,6 +16,7 @@ from nominal.core.properties import (
     _as_numeric_value,
     eq,
 )
+from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,52 @@ def properties_from_conjure(
     typed_properties: Mapping[str, api.TypedPropertyValue] | None,
 ) -> TypedProperties:
     return MappingProxyType(typed_properties_from_conjure(typed_properties))
+
+
+def typed_property_value_to_proto(value: object, *, name: str) -> types_pb2.TypedPropertyValue:
+    checked = check_property_value(value, name=name)
+    if isinstance(checked, str):
+        return types_pb2.TypedPropertyValue(string_value=checked)
+    return types_pb2.TypedPropertyValue(numeric_value=checked)
+
+
+@overload
+def typed_properties_to_proto(properties: None) -> None: ...
+@overload
+def typed_properties_to_proto(properties: TypedProperties) -> dict[str, types_pb2.TypedPropertyValue]: ...
+@overload
+def typed_properties_to_proto(
+    properties: TypedProperties | None,
+) -> dict[str, types_pb2.TypedPropertyValue] | None: ...
+def typed_properties_to_proto(
+    properties: TypedProperties | None,
+) -> dict[str, types_pb2.TypedPropertyValue] | None:
+    if properties is None:
+        return None
+    return {name: typed_property_value_to_proto(value, name=name) for name, value in properties.items()}
+
+
+def typed_properties_from_proto(
+    typed_properties: Mapping[str, types_pb2.TypedPropertyValue] | None,
+) -> dict[str, PropertyValue]:
+    if not typed_properties:
+        return {}
+    result: dict[str, PropertyValue] = {}
+    for name, value in typed_properties.items():
+        which = value.WhichOneof("typed_property_value")
+        if which == "numeric_value":
+            result[name] = value.numeric_value
+        elif which == "string_value":
+            result[name] = value.string_value
+        else:
+            logger.warning("Skipping typed property %r with unknown type %r", name, which)
+    return result
+
+
+def properties_from_proto(
+    typed_properties: Mapping[str, types_pb2.TypedPropertyValue] | None,
+) -> TypedProperties:
+    return MappingProxyType(typed_properties_from_proto(typed_properties))
 
 
 def iter_property_filter_clauses(
