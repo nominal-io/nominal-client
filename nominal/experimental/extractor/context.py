@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Mapping, Sequence, overload
 
 from conjure_python_client import ConjureDecoder, ConjureEncoder
 from nominal_api import ingest_manifest, scout_catalog, scout_video_api
+from typing_extensions import deprecated
 
 from nominal import ts
 from nominal.core._video_types import _scale_parameter
@@ -35,6 +36,9 @@ from nominal.experimental.extractor._manifest import (
     _optional_manifest_timestamp_metadata,
 )
 
+__all__ = ["ExtractorContext", "ManifestExtractorContext", "SingleFileExtractorContext"]
+
+
 logger = logging.getLogger(__name__)
 
 # The well-known name the ingest pipeline reads from the output directory; the runtime writes it.
@@ -45,8 +49,10 @@ _MANIFEST_FILENAME = "manifest.json"
 class ExtractorContext:
     """The execution context handed to an extractor function.
 
-    Resolves inputs and parameters from the environment, and collects the output files the
-    function writes. Authors do not construct this directly; :meth:`Extractor.run` builds a
+    Use this for output paths, output declarations, and job metadata. Declare inputs and
+    parameters with ``@input`` and ``@parameter`` so the runtime passes them as callback
+    arguments. Context lookup methods remain available for migration and warn once per run.
+    Authors do not construct this directly; :meth:`Extractor.run` builds a
     :class:`SingleFileExtractorContext` or :class:`ManifestExtractorContext`.
     """
 
@@ -62,92 +68,130 @@ class ExtractorContext:
     # declaration succeeds, so the stray-file warning never re-derives it from mode-specific state.
     _declared: set[str] = field(default_factory=set, repr=False)
 
+    _legacy_arguments_warned: bool = field(default=False, init=False, repr=False)
+
+    def _warn_legacy_arguments(self) -> None:
+        if not self._legacy_arguments_warned:
+            self._legacy_arguments_warned = True
+            logger.warning(
+                "Context input/parameter lookups are legacy; declare arguments with @input and @parameter. "
+                "Registration metadata includes only decorator declarations."
+            )
+
     @property
+    @deprecated("Use @input to declare callback arguments instead of ctx.inputs.", category=None)
     def inputs(self) -> list[Path]:
         """All input files Nominal mounted for this run.
 
+        Legacy authoring API: prefer a separate ``@input`` declaration per registered input.
+        Access logs one migration warning per run; it contributes no registration metadata.
         Taken from the registered ``_NOMINAL_INPUTS`` metadata when present, in the order Nominal
         serializes them; otherwise discovered by listing the input mount, sorted by name.
         """
+        self._warn_legacy_arguments()
+        return self._resolve_inputs()
+
+    def _resolve_inputs(self) -> list[Path]:
         if self._input_specs is not None:
             return [Path(spec.path) for spec in self._input_specs]
         if not self._input_dir.is_dir():
             return []
         return sorted(path for path in self._input_dir.iterdir() if path.is_file())
 
+    @deprecated("Use @input to declare callback arguments instead of ctx.input().", category=None)
     def input(self, name: str | None = None) -> Path:
         """Resolve an input file.
+
+        Legacy authoring API: prefer ``@input("source", envvar="SOURCE")`` and a ``source``
+        callback argument. This method logs one migration warning per run and contributes
+        no registration metadata.
 
         With ``name`` -- the input's registered display name or its environment variable -- returns
         that input's path. Without it, returns the sole mounted input file, raising if there is not
         exactly one.
         """
+        self._warn_legacy_arguments()
+        result = self._resolve_input(name)
+        assert result is not None
+        return result
+
+    def _resolve_input(self, name: str | None, *, optional: bool = False, envvar_only: bool = False) -> Path | None:
         if name is not None:
-            spec = _find_spec(self._input_specs, name)
+            spec = _find_spec(self._input_specs, name, envvar_only=envvar_only)
             if spec is not None:
                 return Path(spec.path)
             if self._input_specs is None:
                 value = self._env.get(name)
                 if value:
                     return Path(value)
+                if optional:
+                    return None
                 raise ExtractorError(f"input {name!r} is not set; no matching environment variable")
+            if optional:
+                return None
             raise ExtractorError(
                 f"input {name!r} is not among this run's inputs: {_spec_names(self._input_specs) or '(none)'}; "
                 "an optional input not provided by the ingest request is not listed"
             )
-        files = self.inputs
+        files = self._resolve_inputs()
         if len(files) != 1:
             raise ExtractorError(
                 f"expected exactly one input file, found {len(files)}; pass an input name to input() to select one"
             )
         return files[0]
 
-    def _param_env_var(self, name: str) -> str:
-        """Resolve a parameter name to its environment variable.
-
-        With registered contract metadata, the contract is authoritative: a name with no entry is
-        an authoring error. Without it (a local run), ``name`` is treated as the environment
-        variable directly.
-        """
-        spec = _find_spec(self._param_specs, name)
-        if spec is not None:
-            return spec.environment_variable
-        if self._param_specs is None:
-            return name
-        raise ExtractorError(
-            f"unknown parameter {name!r}; registered parameters are: {_spec_names(self._param_specs) or '(none)'}"
-        )
-
+    @deprecated("Use @parameter to declare callback arguments instead of ctx.param().", category=None)
     def param(self, name: str) -> str:
         """Read a required parameter from the environment.
+
+        Legacy authoring API: prefer ``@parameter("parts", envvar="PARTS", type=int)`` and
+        a ``parts`` callback argument. This method logs one migration warning per run and
+        contributes no registration metadata.
 
         ``name`` -- the parameter's registered display name or its environment variable -- is
         resolved against ``_NOMINAL_PARAMETERS`` when Nominal injected it; otherwise it is treated
         directly as the environment variable. Raises :class:`ExtractorError` when the parameter is
-        not set. Parameter values are strings; coerce them yourself: ``int(ctx.param("PARTS"))``.
+        not set. Values returned by this legacy method remain strings.
         With registered contract metadata present, an unregistered ``name`` raises
         :class:`ExtractorError`.
         """
-        raw = self._env.get(self._param_env_var(name))
+        self._warn_legacy_arguments()
+        raw = self._resolve_param(name)
         if raw is None:
             raise ExtractorError(f"required parameter {name!r} is not set")
         return raw
 
     @overload
+    @deprecated("Use @parameter to declare callback arguments instead of ctx.get_param().", category=None)
     def get_param(self, name: str, default: None = None) -> str | None: ...
 
     @overload
+    @deprecated("Use @parameter to declare callback arguments instead of ctx.get_param().", category=None)
     def get_param(self, name: str, default: str) -> str: ...
 
+    @deprecated("Use @parameter to declare callback arguments instead of ctx.get_param().", category=None)
     def get_param(self, name: str, default: str | None = None) -> str | None:
         """Read an optional parameter from the environment, or ``default`` when unset.
 
-        Name resolution matches :meth:`param`. Parameter values are strings; coerce them
-        yourself: ``int(ctx.get_param("PARTS", "2"))``. With registered contract metadata present,
+        Legacy authoring API: prefer ``@parameter("parts", type=int, default=2)`` and a
+        ``parts`` callback argument. This method logs one migration warning per run and
+        contributes no registration metadata. Its returned values remain strings (or None).
+        Name resolution matches :meth:`param`. With registered contract metadata present,
         an unregistered ``name`` raises :class:`ExtractorError`.
         """
-        raw = self._env.get(self._param_env_var(name))
+        self._warn_legacy_arguments()
+        raw = self._resolve_param(name)
         return default if raw is None else raw
+
+    def _resolve_param(self, name: str, *, envvar_only: bool = False) -> str | None:
+        spec = _find_spec(self._param_specs, name, envvar_only=envvar_only)
+        if spec is not None:
+            return self._env.get(spec.environment_variable)
+        if self._param_specs is None:
+            return self._env.get(name)
+        raise ExtractorError(
+            f"unknown parameter {name!r}; registered parameters are: {_spec_names(self._param_specs) or '(none)'}"
+        )
 
     @property
     def ingest_job_rid(self) -> str | None:

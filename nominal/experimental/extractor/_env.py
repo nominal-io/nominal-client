@@ -11,6 +11,7 @@ from nominal.core.exceptions import ExtractorError
 # Mirrors the mount/env contract the Nominal ingest pipeline establishes for the customer
 # container.
 _DEFAULT_INPUT_DIR = "/input"
+_DEFAULT_TERMINATION_LOG_PATH = "/dev/termination-log"
 _OUTPUT_DIR_ENV = "OUTPUT_DIR"
 
 # Lets tests (and non-default mounts) point input discovery somewhere other than /input.
@@ -105,10 +106,10 @@ def _parse_param_specs(env: Mapping[str, str]) -> list[_ParamSpec] | None:
         raise ExtractorError(f"{_PARAMETERS_ENV} is not valid extractor contract metadata: {entries!r}") from ex
 
 
-def _find_spec(specs: list[_SpecT] | None, name: str) -> _SpecT | None:
+def _find_spec(specs: list[_SpecT] | None, name: str, *, envvar_only: bool = False) -> _SpecT | None:
     """Find a spec by its registered display name or environment variable."""
     for spec in specs or []:
-        if name in (spec.environment_variable, spec.name):
+        if name == spec.environment_variable or (not envvar_only and name == spec.name):
             return spec
     return None
 
