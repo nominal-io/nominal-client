@@ -466,12 +466,14 @@ def test_parquet_archive_detection(
 def test_add_csv_rejects_parquet(empty_builder: tuple[MagicMock, IngestBuilder]) -> None:
     """Registering a Parquet file as CSV fails before uploading it."""
     _, builder = empty_builder
-    with pytest.raises(ValueError, match="CSV"):
+    with pytest.raises(ValueError, match="CSV") as exc:
         builder.add_csv("data.parquet", "time", "epoch_seconds")
+    assert ".csv.gz" in str(exc.value)
 
 
 def test_add_parquet_rejects_csv(empty_builder: tuple[MagicMock, IngestBuilder]) -> None:
     """Registering a CSV file as Parquet fails before uploading it."""
     _, builder = empty_builder
-    with pytest.raises(ValueError, match="Parquet"):
+    with pytest.raises(ValueError, match="Parquet") as exc:
         builder.add_parquet("data.csv", "time", "epoch_seconds")
+    assert ".parquet.zip" in str(exc.value)

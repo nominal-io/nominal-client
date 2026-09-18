@@ -433,9 +433,7 @@ class IngestBuilder:
             ValueError: The path is not CSV.
         """
         file_path = Path(path)
-        file_type = FileType.from_path(file_path)
-        if not file_type.is_csv():
-            raise ValueError(f"CSV path must end in .csv or .csv.gz: {file_path}")
+        file_type = FileType.from_csv(file_path)
 
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=common_pb2.TimestampMetadata(
@@ -487,9 +485,7 @@ class IngestBuilder:
             ValueError: The path is not Parquet.
         """
         file_path = Path(path)
-        file_type = FileType.from_path(file_path)
-        if not file_type.is_parquet():
-            raise ValueError(f"Parquet path must name a Parquet file or archive: {file_path}")
+        file_type = FileType.from_parquet(file_path)
 
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=common_pb2.TimestampMetadata(

@@ -37,7 +37,7 @@ dataset = client.get_dataset("rid...")
 # tags here are applied as defaults to every file, overrideable per file
 builder = IngestBuilder(client, dataset, tags={"aircraft": "test-tail-1"})
 
-# add tabular files (csv or parquet, inferred from the extension)
+# add Parquet files (use add_csv for CSV, or add_tabular_data to infer the format)
 builder.add_parquet(
     "test.parquet",
     timestamp_column="time",
