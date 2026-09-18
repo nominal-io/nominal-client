@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.170.0](https://github.com/nominal-io/nominal-client/compare/v1.169.0...v1.170.0) (2026-09-18)
+
+
+### Features
+
+* **event:** expose event disposition priority ([#987](https://github.com/nominal-io/nominal-client/issues/987)) ([324510f](https://github.com/nominal-io/nominal-client/commit/324510f26aa6adb83e1a088d2d2935475e9cca72))
+* **event:** expose the event disposition with its priority ([324510f](https://github.com/nominal-io/nominal-client/commit/324510f26aa6adb83e1a088d2d2935475e9cca72))
+* support container image exit code mappings ([#992](https://github.com/nominal-io/nominal-client/issues/992)) ([642e29c](https://github.com/nominal-io/nominal-client/commit/642e29c7a18328c6fea576beecfa35bc2ace2a3b))
+
 ## [1.169.0](https://github.com/nominal-io/nominal-client/compare/v1.168.0...v1.169.0) (2026-09-18)
 
 
