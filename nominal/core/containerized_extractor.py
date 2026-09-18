@@ -30,6 +30,7 @@ from nominal.core.container_image import (
     REGISTERABLE_OUTPUT_FORMATS,
     ContainerImage,
     ContainerImageStatus,
+    ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
     FileOutputFormat,
@@ -169,6 +170,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         default_timestamp_type: ts._AnyTimestampType,
         output_format: FileOutputFormat = FileOutputFormat.PARQUET,
         parameters: Sequence[FileExtractionParameter] = (),
+        exit_code_mappings: Sequence[ExitCodeMapping] = (),
     ) -> ContainerImage:
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
@@ -197,6 +199,9 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 `REGISTERABLE_OUTPUT_FORMATS` — the backend cannot currently ingest the others, so
                 registering an image with one would produce an extractor whose ingests always fail.
             parameters: Scalar parameters passed to the extractor.
+            exit_code_mappings: Fallback canonical errors for failed container exit codes. A valid
+                structured error in `/dev/termination-log` takes precedence over these mappings.
+                Defaults to no mappings.
 
         Returns:
             The newly registered image. Current backends push the image to the registry within this
@@ -233,6 +238,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             extractor_rid=self.rid,
             inputs=[i._to_proto() for i in inputs],
             parameters=[p._to_proto() for p in parameters],
+            exit_code_mappings=[m._to_proto() for m in exit_code_mappings],
             file_output_format=output_format._to_proto(),
             default_timestamp_metadata=timestamp_metadata._to_proto(),
         )

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nominal import core
 from nominal.core._utils.query_tools import create_search_container_images_query
 from nominal.core.container_image import (
     ContainerImage,
@@ -74,6 +75,24 @@ def test_image_from_proto_handles_minimal_proto() -> None:
 
     assert image.default_timestamp_metadata is None
     assert image.file_output_format is FileOutputFormat.UNSPECIFIED
+    assert image.exit_code_mappings == ()
+
+
+def test_image_refresh_replaces_and_clears_exit_code_mappings() -> None:
+    clients = _clients()
+    image = ContainerImage._from_proto(clients, "ri.ws", _img("ri.img"))
+    updated = _img("ri.img")
+    updated.exit_code_mappings.add(exit_code=2, code="INVALID_INPUT", message="Invalid input", retryable=True)
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=updated)
+
+    assert image.refresh() is image
+    assert image.exit_code_mappings == (
+        core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Invalid input", retryable=True),
+    )
+
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
+    image.refresh()
+    assert image.exit_code_mappings == ()
 
 
 def test_get_container_image_defaults_workspace_and_returns_image() -> None:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal import core
 from nominal.core.container_image import FileOutputFormat
 from nominal.core.containerized_extractor import (
     ContainerizedExtractor,
@@ -173,6 +174,46 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.registry.CreateImage.assert_not_called()
+
+
+@pytest.mark.parametrize("include_mappings", [False, True])
+def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(include_mappings: bool) -> None:
+    clients = _clients()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    mappings = (
+        [
+            core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+            core.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+        ]
+        if include_mappings
+        else []
+    )
+    expected = (
+        [
+            registry_pb2.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+            registry_pb2.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+        ]
+        if include_mappings
+        else []
+    )
+    response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
+    response_image.exit_code_mappings.extend(expected)
+    clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
+
+    with patch("nominal.core.containerized_extractor.upload_multipart_file", return_value="s3://image"):
+        image = extractor.register_image(
+            "extractor.tar",
+            tag="v1",
+            inputs=[],
+            default_timestamp_column="ts",
+            default_timestamp_type="iso_8601",
+            **({"exit_code_mappings": mappings} if include_mappings else {}),
+        )
+
+    request = clients.registry.CreateImage.call_args.args[0]
+    assert list(request.exit_code_mappings) == expected
+    assert tuple(image.exit_code_mappings) == tuple(mappings)
+    assert extractor.active_image is None
 
 
 def test_set_active_image_polls_then_activates() -> None:
