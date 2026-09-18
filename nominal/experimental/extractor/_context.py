@@ -459,6 +459,9 @@ class ManifestExtractorContext(ExtractorContext):
                 ingest_type=ingest_type._to_conjure(),
                 relative_path=relative,
                 tag_columns=dict(tag_columns or {}),
+                # TODO: thread units through the add_* methods, matching
+                # `IngestBuilder.add_tabular_data(units=...)`; sent empty until then.
+                units={},
                 channel_prefix=channel_prefix,
                 timestamp_metadata=timestamp_metadata,
             )

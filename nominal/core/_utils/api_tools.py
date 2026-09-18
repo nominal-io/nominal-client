@@ -5,12 +5,25 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Any, Generic, Literal, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import (
+    Any,
+    Generic,
+    Iterable,
+    Literal,
+    Mapping,
+    Protocol,
+    Sequence,
+    TypeAlias,
+    TypedDict,
+    TypeVar,
+    runtime_checkable,
+)
 
 from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.protos.types import types_pb2
 
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
 
@@ -82,6 +95,16 @@ def rid_from_instance_or_string(value: HasRid | str) -> str:
     elif isinstance(value, HasRid):
         return value.rid
     raise TypeError(f"{value!r} is not a string nor an instance with a 'rid' attribute")
+
+
+def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper | None:
+    """Wrap labels for a proto update request: None omits the field, any collection replaces it."""
+    return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
+
+
+def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyUpdateWrapper | None:
+    """Wrap properties for a proto update request: None omits the field, any mapping replaces it."""
+    return None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
 
 
 def construct_user_agent_string() -> str:

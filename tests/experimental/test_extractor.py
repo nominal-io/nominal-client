@@ -127,6 +127,7 @@ def test_manifest_mode_writes_manifest_from_outputs(
     entry = {
         "ingestType": "TABULAR",
         "tagColumns": {"vehicle": "veh_id"},
+        "units": {},
         "channelPrefix": None,
         "timestampMetadata": None,
     }
