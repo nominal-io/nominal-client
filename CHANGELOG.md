@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.169.0](https://github.com/nominal-io/nominal-client/compare/v1.168.0...v1.169.0) (2026-09-18)
+
+
+### Features
+
+* expose labels and properties on containerized extractors ([#981](https://github.com/nominal-io/nominal-client/issues/981)) ([b0b0d6f](https://github.com/nominal-io/nominal-client/commit/b0b0d6f351f4ddb1003053276355f94a4d038252))
+
+
+### Performance Improvements
+
+* use zstd for buffered HTTP requests ([#976](https://github.com/nominal-io/nominal-client/issues/976)) ([53c4c4c](https://github.com/nominal-io/nominal-client/commit/53c4c4c09f468a6073ff3939d825321e62e6dff4))
+
 ## [1.168.0](https://github.com/nominal-io/nominal-client/compare/v1.167.0...v1.168.0) (2026-09-14)
 
 
