@@ -14,6 +14,7 @@ from nominal.core.connection import Connection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
+    ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
     FileOutputFormat,
@@ -65,6 +66,7 @@ __all__ = [
     "DataStream",
     "Event",
     "EventType",
+    "ExitCodeMapping",
     "FileExtractionInput",
     "FileExtractionParameter",
     "FileOutputFormat",

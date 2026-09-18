@@ -204,6 +204,41 @@ class FileExtractionParameter:
 
 
 @dataclass(frozen=True)
+class ExitCodeMapping:
+    """Map a failed container's exit code to a canonical extractor error.
+
+    Registered on a container image and used when the extractor does not emit a valid structured
+    error in `/dev/termination-log`. A valid structured termination error takes precedence.
+    """
+
+    exit_code: int
+    """Container process exit code this mapping applies to."""
+    code: str
+    """Machine-readable error code chosen by the extractor author.
+
+    Do not use the platform-reserved codes `IMAGE_PULL_FAILED`, `EXTRACTOR_TIMEOUT`,
+    `EXTRACTOR_UNSCHEDULABLE`, `EXTRACTOR_OOM_KILLED`, `OUTPUT_UPLOAD_FAILED`, `INVALID_OUTPUT`,
+    or `UNKNOWN`.
+    """
+    message: str
+    """Human-readable fallback message for this error."""
+    retryable: bool = False
+    """Whether the platform may retry the ingest for this failure."""
+
+    def _to_proto(self) -> registry_pb2.ExitCodeMapping:
+        return registry_pb2.ExitCodeMapping(
+            exit_code=self.exit_code,
+            code=self.code,
+            message=self.message,
+            retryable=self.retryable,
+        )
+
+    @classmethod
+    def _from_proto(cls, msg: registry_pb2.ExitCodeMapping) -> Self:
+        return cls(exit_code=msg.exit_code, code=msg.code, message=msg.message, retryable=msg.retryable)
+
+
+@dataclass(frozen=True)
 class TimestampMetadata:
     """How timestamps in the extractor's output data are encoded (the timestamp column + its type)."""
 
@@ -243,6 +278,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     extractor_rid: str
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
+    exit_code_mappings: Sequence[ExitCodeMapping]
+    """Fallback errors for failed container exit codes; empty when no mappings are registered."""
     file_output_format: FileOutputFormat
     default_timestamp_metadata: TimestampMetadata | None
     """How timestamps in the extractor's output are encoded, when nothing more specific applies.
@@ -326,6 +363,7 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
             extractor_rid=msg.extractor_rid,
             inputs=tuple(FileExtractionInput._from_proto(i) for i in msg.inputs),
             parameters=tuple(FileExtractionParameter._from_proto(p) for p in msg.parameters),
+            exit_code_mappings=tuple(ExitCodeMapping._from_proto(m) for m in msg.exit_code_mappings),
             file_output_format=FileOutputFormat._from_proto(msg.file_output_format),
             default_timestamp_metadata=(
                 TimestampMetadata._from_proto(msg.default_timestamp_metadata)
