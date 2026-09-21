@@ -7,16 +7,22 @@ from typing import Iterable, Mapping, Protocol, Sequence
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
+from nominal.core._utils.api_tools import (
+    HasRid,
+    RefreshableGrpcMixin,
+    label_update,
+    property_update,
+    rid_from_instance_or_string,
+)
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
 from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
-from nominal.protos.types import types_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -24,6 +30,17 @@ from nominal.ts import (
     _SecondsNanos,
     _to_proto_duration,
 )
+
+
+@dataclass(frozen=True)
+class EventDisposition:
+    """The disposition opened on an event. On the wire it also carries state and assignees, not yet exposed here."""
+
+    priority: Priority | None
+
+    @classmethod
+    def _from_proto(cls, disposition: event_pb2.EventDisposition) -> Self:
+        return cls(priority=Priority._from_proto(disposition.priority))
 
 
 @dataclass(frozen=True)
@@ -38,6 +55,11 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     labels: Sequence[str]
     type: EventType
     is_archived: bool
+    disposition: EventDisposition | None
+    """None until the event is opened for disposition.
+
+    Checklist-fired events are opened automatically. Any event can be opened.
+    """
 
     _uuid: str = field(repr=False)
 
@@ -103,10 +125,6 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         )
         updated_timestamp = None if start is None else _SecondsNanos.from_flexible(start).to_proto()
         updated_duration = None if duration is None else _to_proto_duration(duration)
-        updated_labels = None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
-        updated_properties = (
-            None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
-        )
         updated_type = None if type is None else type._to_proto()
 
         request = event_pb2.BatchUpdateEventRequest(
@@ -115,10 +133,10 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
                     rid=self.rid,
                     asset_rids=updated_asset_rids,
                     duration=updated_duration,
-                    labels=updated_labels,
+                    labels=label_update(labels),
                     name=name,
                     description=description,
-                    properties=updated_properties,
+                    properties=property_update(properties),
                     timestamp=updated_timestamp,
                     type=updated_type,
                 )
@@ -158,6 +176,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             duration=_from_proto_duration(event.duration),
             type=EventType._from_proto(event.type),
             is_archived=event.is_archived,
+            disposition=EventDisposition._from_proto(event.disposition) if event.HasField("disposition") else None,
             properties=dict(event.properties),
             labels=list(event.labels),
             created_by_rid=event.created_by or None,

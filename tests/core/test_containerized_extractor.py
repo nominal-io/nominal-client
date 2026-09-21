@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from nominal import core
 from nominal.core.container_image import FileOutputFormat
 from nominal.core.containerized_extractor import (
     ContainerizedExtractor,
@@ -33,23 +35,49 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
     return registry_pb2.ContainerImage(rid=rid, tag="v1", extractor_rid="ri.ext", status=status)
 
 
+def _pages() -> list[containerized_extractor_pb2.SearchContainerizedExtractorsResponse]:
+    return [
+        containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
+            extractors=[_ext("a")], next_page_token="tok"
+        ),
+        containerized_extractor_pb2.SearchContainerizedExtractorsResponse(extractors=[_ext("b")], next_page_token=""),
+    ]
+
+
 def test_search_extractors_follows_pagination_cursors() -> None:
     """Search accumulates results across pages until the server returns an empty next_page_token."""
     clients = _clients()
-    page1 = containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
-        extractors=[_ext("a")], next_page_token="tok"
-    )
-    page2 = containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
-        extractors=[_ext("b")], next_page_token=""
-    )
-    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = [page1, page2]
+    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = _pages()
 
-    results = _search_containerized_extractors(clients, include_archived=False, file_extension=None, workspace_rid=None)
+    results = _search_containerized_extractors(
+        clients, include_archived=False, file_extension=None, labels=None, properties=None, workspace_rid=None
+    )
 
     assert [e.rid for e in results] == ["a", "b"]
     assert clients.containerized_extractor.SearchContainerizedExtractors.call_count == 2
     second_call_request = clients.containerized_extractor.SearchContainerizedExtractors.call_args_list[1].args[0]
     assert second_call_request.next_page_token == "tok"
+
+
+def test_search_repeats_metadata_filters_on_every_page() -> None:
+    """Metadata filters are materialized once, so a single-pass labels iterator still filters page two."""
+    clients = _clients()
+    clients.containerized_extractor.SearchContainerizedExtractors.side_effect = _pages()
+
+    _search_containerized_extractors(
+        clients,
+        include_archived=False,
+        file_extension=None,
+        labels=iter(["owned", "production"]),
+        properties={"team": "example-team"},
+        workspace_rid=None,
+    )
+
+    requests = [call.args[0] for call in clients.containerized_extractor.SearchContainerizedExtractors.call_args_list]
+    assert [(list(r.labels), dict(r.properties)) for r in requests] == [
+        (["owned", "production"], {"team": "example-team"}),
+        (["owned", "production"], {"team": "example-team"}),
+    ]
 
 
 def test_create_defaults_workspace_to_client_default() -> None:
@@ -59,10 +87,39 @@ def test_create_defaults_workspace_to_client_default() -> None:
         containerized_extractor_pb2.CreateContainerizedExtractorResponse(extractor=_ext("a"))
     )
 
-    _create_containerized_extractor(clients, "a", description=None)
+    _create_containerized_extractor(clients, "a", description=None, labels=None, properties=None)
 
     request = clients.containerized_extractor.CreateContainerizedExtractor.call_args.args[0]
     assert request.workspace_rid == "ri.workspace.default"
+
+
+@pytest.mark.parametrize(
+    ("labels", "properties", "expected"),
+    [
+        pytest.param(None, None, None, id="omitted"),
+        pytest.param([], {}, ([], {}), id="cleared"),
+        pytest.param(["owned"], {"team": "example-team"}, (["owned"], {"team": "example-team"}), id="replaced"),
+    ],
+)
+def test_update_distinguishes_omitted_metadata_from_explicit_values(
+    labels: list[str] | None,
+    properties: dict[str, str] | None,
+    expected: tuple[list[str], dict[str, str]] | None,
+) -> None:
+    """None omits metadata from the request; any collection sends wrappers that replace it."""
+    clients = _clients()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    clients.containerized_extractor.UpdateContainerizedExtractor.return_value = (
+        containerized_extractor_pb2.UpdateContainerizedExtractorResponse(extractor=_ext("ri.ext"))
+    )
+
+    extractor.update(labels=labels, properties=properties)
+
+    request = clients.containerized_extractor.UpdateContainerizedExtractor.call_args.args[0]
+    assert request.HasField("labels") is (expected is not None)
+    assert request.HasField("properties") is (expected is not None)
+    if expected is not None:
+        assert (list(request.labels.labels), dict(request.properties.properties)) == expected
 
 
 def test_extractor_refresh_updates_fields_in_place() -> None:
@@ -118,6 +175,43 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.registry.CreateImage.assert_not_called()
+
+
+def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(tmp_path: Path) -> None:
+    """Registration sends each error mapping and retains the mappings returned by the registry."""
+    clients = _clients()
+    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
+    clients.upload.list_parts.return_value = []
+    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
+    # No file chunks means no object-store requests; upload service calls use the mock client.
+    tarball = tmp_path / "extractor.tar"
+    tarball.touch()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    mappings = [
+        core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+        core.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+    ]
+    expected = [
+        registry_pb2.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
+        registry_pb2.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
+    ]
+    response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
+    response_image.exit_code_mappings.extend(expected)
+    clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
+
+    image = extractor.register_image(
+        tarball,
+        tag="v1",
+        inputs=[],
+        default_timestamp_column="ts",
+        default_timestamp_type="iso_8601",
+        exit_code_mappings=mappings,
+    )
+
+    request = clients.registry.CreateImage.call_args.args[0]
+    assert request.object_path == "s3://image"
+    assert list(request.exit_code_mappings) == expected
+    assert tuple(image.exit_code_mappings) == tuple(mappings)
 
 
 def test_set_active_image_polls_then_activates() -> None:

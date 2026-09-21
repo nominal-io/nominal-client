@@ -1,3 +1,4 @@
+from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
@@ -14,6 +15,7 @@ from nominal.core.connection import Connection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
+    ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
     FileOutputFormat,
@@ -25,7 +27,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol, SymbolKind
-from nominal.core.event import Event
+from nominal.core.event import Event, EventDisposition
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
@@ -63,7 +65,9 @@ __all__ = [
     "DataSource",
     "DataStream",
     "Event",
+    "EventDisposition",
     "EventType",
+    "ExitCodeMapping",
     "FileExtractionInput",
     "FileExtractionParameter",
     "FileOutputFormat",
@@ -80,6 +84,7 @@ __all__ = [
     "Marking",
     "Comment",
     "NominalClient",
+    "Priority",
     "Run",
     "SearchEventOriginType",
     "Secret",
