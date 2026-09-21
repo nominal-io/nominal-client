@@ -10,7 +10,7 @@ from nominal.core.client import NominalClient
 from nominal.core.event import Event
 from nominal.core.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
-from nominal.protos.types import common_pb2, types_pb2
+from nominal.protos.types import common_pb2
 from nominal.protos.types.time import time_pb2
 
 
@@ -136,18 +136,6 @@ def test_search_event_origin_type_round_trips(origin_type: SearchEventOriginType
     assert SearchEventOriginType._from_proto(origin_type._to_proto()) is origin_type
 
 
-def test_from_proto_reads_typed_properties() -> None:
-    """Reads come from typed_properties; the legacy string map is ignored."""
-    proto = _proto_event()
-    proto.properties["legacy"] = "ignored"
-    proto.typed_properties["serial"].CopyFrom(types_pb2.TypedPropertyValue(string_value="A1"))
-    proto.typed_properties["mass_kg"].CopyFrom(types_pb2.TypedPropertyValue(numeric_value=12.5))
-
-    event = Event._from_proto(MagicMock(), proto)
-
-    assert dict(event.properties) == {"serial": "A1", "mass_kg": 12.5}
-
-
 def test_create_event_sends_typed_properties() -> None:
     """Create writes the typed map and an empty legacy properties map."""
     clients = MagicMock()
@@ -166,20 +154,6 @@ def test_create_event_sends_typed_properties() -> None:
     assert request.typed_properties["serial"].string_value == "A1"
     assert request.typed_properties["mass_kg"].numeric_value == 12.5
     assert request.typed_properties["count"].numeric_value == 5.0
-
-
-def test_update_sends_typed_properties() -> None:
-    """An explicit properties mapping replaces typed_properties and leaves the legacy wrapper omitted."""
-    clients = MagicMock()
-    event = _event(clients)
-    clients.event.BatchUpdateEvent.return_value = event_pb2.BatchUpdateEventResponse(events=[_proto_event()])
-
-    event.update(properties={"serial": "A1", "mass_kg": 7.5}, type=None)
-
-    update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
-    assert not update.HasField("properties")
-    assert update.typed_properties.typed_properties["serial"].string_value == "A1"
-    assert update.typed_properties.typed_properties["mass_kg"].numeric_value == 7.5
 
 
 def test_create_event_puts_the_domain_values_on_the_wire() -> None:

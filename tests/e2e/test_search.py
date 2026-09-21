@@ -18,8 +18,7 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import ArchiveStatusFilter, EventType, NominalClient
-from nominal.core import properties as props
+from nominal.core import ArchiveStatusFilter, EventType, NominalClient, PropertyFilter
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
@@ -380,7 +379,7 @@ def test_search_runs_by_labels(client: NominalClient, search_context: SearchCont
 
 def test_search_runs_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the run that carries that property."""
-    results = client.search_runs(property_filters=[props.eq("search-tag", search_context.tag)])
+    results = client.search_runs(property_filters=[PropertyFilter.eq("search-tag", search_context.tag)])
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
@@ -422,7 +421,7 @@ def test_search_assets_by_labels(client: NominalClient, search_context: SearchCo
 
 def test_search_assets_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the asset that carries that property."""
-    results = client.search_assets(property_filters=[props.eq("search-tag", search_context.tag)])
+    results = client.search_assets(property_filters=[PropertyFilter.eq("search-tag", search_context.tag)])
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}
 
@@ -442,19 +441,19 @@ def test_numeric_property_search(client: NominalClient, archive: Callable[[objec
     assert {
         r.rid
         for r in client.search_runs(
-            property_filters=[props.eq("np-tag", tag), props.eq("mass_kg", 15.0)],
+            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.eq("mass_kg", 15.0)],
         )
     } == {run_mid.rid}
     assert {
         r.rid
         for r in client.search_runs(
-            property_filters=[props.eq("np-tag", tag), props.gt("mass_kg", 10.0)],
+            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.gt("mass_kg", 10.0)],
         )
     } == {run_mid.rid, run_hi.rid}
     assert {
         r.rid
         for r in client.search_runs(
-            property_filters=[props.eq("np-tag", tag), props.between("mass_kg", 10.0, 20.0)],
+            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.between("mass_kg", 10.0, 20.0)],
         )
     } == {run_mid.rid}
 

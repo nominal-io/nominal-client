@@ -23,6 +23,7 @@ from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.core._utils.properties import typed_properties_to_proto
 from nominal.core.properties import TypedProperties
 from nominal.protos.types import types_pb2
 
@@ -110,8 +111,6 @@ def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyU
 
 def typed_property_update(properties: TypedProperties | None) -> types_pb2.TypedPropertyUpdateWrapper | None:
     """Wrap typed properties for a proto update request: None omits the field, any mapping replaces it."""
-    from nominal.core._utils.properties import typed_properties_to_proto
-
     if properties is None:
         return None
     return types_pb2.TypedPropertyUpdateWrapper(typed_properties=typed_properties_to_proto(properties))

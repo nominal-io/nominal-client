@@ -113,7 +113,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.properties import PropertyFilter, TypedProperties, eq
+from nominal.core.properties import PropertyFilter, TypedProperties
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -415,12 +415,12 @@ class NominalClient:
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
-                ``eq()``. String values match string properties; float values match numeric equality.
-                Types are not coerced.
-            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float without coercing types, so
-                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
-                numeric values.
+                ``PropertyFilter.eq()``. String values match string properties; float values match numeric
+                equality. Types are not coerced.
+            property_filters: :class:`~nominal.core.PropertyFilter` instances (``eq``, ``gt``, ``between``,
+                ...) ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``PropertyFilter.eq("x", "1")`` matches only string values and
+                ``PropertyFilter.eq("x", 1.0)`` matches only numeric values.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -834,12 +834,12 @@ class NominalClient:
                 returned runs on their names.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
-                ``eq()``. String values match string properties; float values match numeric equality.
-                Types are not coerced.
-            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float without coercing types, so
-                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
-                numeric values.
+                ``PropertyFilter.eq()``. String values match string properties; float values match numeric
+                equality. Types are not coerced.
+            property_filters: :class:`~nominal.core.PropertyFilter` instances (``eq``, ``gt``, ``between``,
+                ...) ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``PropertyFilter.eq("x", "1")`` matches only string values and
+                ``PropertyFilter.eq("x", 1.0)`` matches only numeric values.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -1293,7 +1293,7 @@ class NominalClient:
             The existing or newly created asset.
         """
         assets = self.search_assets(
-            property_filters=[eq(name, value) for name, value in properties.items()],
+            property_filters=[PropertyFilter.eq(name, value) for name, value in properties.items()],
             workspace=WorkspaceSearchType.DEFAULT,
         )
 
@@ -1338,12 +1338,12 @@ class NominalClient:
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: Deprecated. Equality filters ANDed together; prefer ``property_filters`` with
-                ``eq()``. String values match string properties; float values match numeric equality.
-                Types are not coerced.
-            property_filters: Filters from ``nominal.core.properties`` (``eq``, ``gt``, ``between``, ...)
-                ANDed together. ``eq`` accepts string or float without coercing types, so
-                ``eq("x", "1")`` matches only string values and ``eq("x", 1.0)`` matches only
-                numeric values.
+                ``PropertyFilter.eq()``. String values match string properties; float values match numeric
+                equality. Types are not coerced.
+            property_filters: :class:`~nominal.core.PropertyFilter` instances (``eq``, ``gt``, ``between``,
+                ...) ANDed together. ``eq`` accepts string or float without coercing types, so
+                ``PropertyFilter.eq("x", "1")`` matches only string values and
+                ``PropertyFilter.eq("x", 1.0)`` matches only numeric values.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.

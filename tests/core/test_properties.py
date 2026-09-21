@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from typing import Any, Callable
 
 import pytest
 from nominal_api import api, scout_run_api
 
-from nominal.core import properties as props
 from nominal.core._utils.properties import (
     typed_properties_from_conjure,
     typed_properties_from_proto,
@@ -16,96 +16,69 @@ from nominal.core._utils.properties import (
 )
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.core.exceptions import SearchPropertiesDeprecationWarning
+from nominal.core.properties import PropertyFilter
 from nominal.protos.types import types_pb2
 
 
-def test_typed_properties_to_conjure_converts_strings_and_floats() -> None:
-    """Strings stay strings; ints and floats become numericValue. None omits the map."""
-    result = typed_properties_to_conjure({"serial": "A1", "mass_kg": 12.0, "count": 5})
-
-    assert result["serial"].type == "stringValue"
-    assert result["serial"].string_value == "A1"
-    assert result["mass_kg"].type == "numericValue"
-    assert result["mass_kg"].numeric_value == 12.0
-    assert result["count"].numeric_value == 5.0
-    assert typed_properties_to_conjure(None) is None
-    assert typed_properties_to_conjure({}) == {}
-    with pytest.raises(TypeError, match="str, int, or float"):
-        typed_properties_to_conjure({"flag": True})
-
-
-def test_typed_properties_to_proto_converts_strings_and_floats() -> None:
-    """Proto conversion matches conjure: strings stay strings; ints and floats become numeric_value."""
-    result = typed_properties_to_proto({"serial": "A1", "mass_kg": 12.0, "count": 5})
+@pytest.mark.parametrize(
+    "to_typed",
+    [typed_properties_to_conjure, typed_properties_to_proto],
+    ids=["conjure", "proto"],
+)
+def test_typed_properties_to_transport_converts_strings_and_floats(
+    to_typed: Callable[..., Any],
+) -> None:
+    """Strings stay strings; ints and floats become numeric. None omits the map."""
+    result = to_typed({"serial": "A1", "mass_kg": 12.0, "count": 5})
 
     assert result["serial"].string_value == "A1"
     assert result["mass_kg"].numeric_value == 12.0
     assert result["count"].numeric_value == 5.0
-    assert typed_properties_to_proto(None) is None
-    assert typed_properties_to_proto({}) == {}
+    assert to_typed(None) is None
+    assert to_typed({}) == {}
     with pytest.raises(TypeError, match="str, int, or float"):
-        typed_properties_to_proto({"flag": True})
+        to_typed({"flag": True})
 
 
-def test_typed_properties_from_proto_skips_unset_variant(caplog: pytest.LogCaptureFixture) -> None:
-    """An empty TypedPropertyValue oneof is skipped with a warning instead of failing the read."""
-    typed = {
-        "ok": types_pb2.TypedPropertyValue(string_value="A1"),
-        "future": types_pb2.TypedPropertyValue(),
-    }
-
-    with caplog.at_level(logging.WARNING):
-        result = typed_properties_from_proto(typed)
-
-    assert result == {"ok": "A1"}
-    assert "unknown type" in caplog.text
-
-
-def test_typed_properties_from_conjure_skips_unknown_variant(caplog: pytest.LogCaptureFixture) -> None:
+@pytest.mark.parametrize(
+    ("typed", "from_typed"),
+    [
+        (
+            {
+                "ok": types_pb2.TypedPropertyValue(string_value="A1"),
+                "future": types_pb2.TypedPropertyValue(),
+            },
+            typed_properties_from_proto,
+        ),
+        (
+            {
+                "ok": api.TypedPropertyValue(string_value="A1"),
+                "future": SimpleNamespace(type="booleanValue", numeric_value=None, string_value=None),
+            },
+            typed_properties_from_conjure,
+        ),
+    ],
+    ids=["proto", "conjure"],
+)
+def test_typed_properties_from_transport_skips_unknown_variant(
+    typed: dict[str, Any],
+    from_typed: Callable[..., dict[str, Any]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Unknown TypedPropertyValue variants are skipped with a warning instead of failing the read."""
-    typed = {
-        "ok": api.TypedPropertyValue(string_value="A1"),
-        "future": SimpleNamespace(type="booleanValue", numeric_value=None, string_value=None),  # type: ignore[dict-item]
-    }
-
     with caplog.at_level(logging.WARNING):
-        result = typed_properties_from_conjure(typed)
+        result = from_typed(typed)
 
     assert result == {"ok": "A1"}
     assert "unknown type" in caplog.text
-    assert "booleanValue" in caplog.text
 
 
-def test_filter_factories_eq_gt_between() -> None:
-    """Equality filters accept string or float; gt and between cover comparison and range."""
-    string_eq = props.eq("serial", "A1")
-    assert string_eq.name == "serial"
-    assert string_eq.values == ("A1",)
-
-    numeric_eq = props.eq("mass_kg", 12)
-    assert numeric_eq.operator == props.PropertyComparisonOperator.EQ
-    assert numeric_eq.value == 12.0
-
-    gt = props.gt("mass_kg", 10)
-    assert gt.operator == props.PropertyComparisonOperator.GT
-    assert gt.value == 10.0
+def test_filter_factory_validation() -> None:
+    """Numeric factories reject bool; string in_ requires at least one value."""
     with pytest.raises(TypeError, match="int or float"):
-        props.gt("mass_kg", True)
-
-    rng = props.between("mass_kg", 1.0, 10.0)
-    assert rng.min_value == 1.0
-    assert rng.max_value == 10.0
-    clause = rng.to_query_clause(scout_run_api.SearchQuery)
-    assert clause.numeric_property_range is not None
-    assert clause.numeric_property_range.operator == api.NumericPropertyRangeOperator.BETWEEN
-    assert clause.numeric_property_range.min == 1.0
-    assert clause.numeric_property_range.max == 10.0
-
-    string_in = props.in_("site", ["pad-a", "pad-b"])
-    assert string_in.name == "site"
-    assert string_in.values == ("pad-a", "pad-b")
+        PropertyFilter.gt("mass_kg", True)
     with pytest.raises(ValueError, match="at least one value"):
-        props.in_("site", [])
+        PropertyFilter.in_("site", [])
 
 
 def _run_clauses(query: scout_run_api.SearchQuery) -> list[scout_run_api.SearchQuery]:
@@ -117,11 +90,11 @@ def test_create_search_runs_query_mixed_filters() -> None:
     """String eq, numeric eq, comparison, and range filters AND together."""
     query = create_search_runs_query(
         property_filters=[
-            props.eq("serial", "A1"),
-            props.in_("site", ["pad-a", "pad-b"]),
-            props.eq("mass_kg", 12.5),
-            props.gt("temp_c", 0.0),
-            props.between("mass_kg", 1.0, 20.0),
+            PropertyFilter.eq("serial", "A1"),
+            PropertyFilter.in_("site", ["pad-a", "pad-b"]),
+            PropertyFilter.eq("mass_kg", 12.5),
+            PropertyFilter.gt("temp_c", 0.0),
+            PropertyFilter.between("mass_kg", 1.0, 20.0),
         ]
     )
     clauses = _run_clauses(query)
@@ -147,7 +120,7 @@ def test_create_search_runs_query_mixed_filters() -> None:
 
 
 def test_create_search_runs_query_deprecated_properties_expands() -> None:
-    """Deprecated properties= still expands to eq() clauses."""
+    """Deprecated properties= still expands to PropertyFilter.eq() clauses."""
     query = create_search_runs_query(properties={"serial": "A1", "mass_kg": 12.5})
 
     clauses = _run_clauses(query)

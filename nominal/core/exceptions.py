@@ -19,7 +19,7 @@ class LegacyVideoDeprecationWarning(DeprecationWarning):
 class SearchPropertiesDeprecationWarning(DeprecationWarning):
     """Emitted when ``properties=`` is passed to ``search_assets``, ``search_runs``, or ``search_datasets``.
 
-    Prefer ``property_filters`` with ``eq()``. Subclasses DeprecationWarning so it can be
+    Prefer ``property_filters`` with ``PropertyFilter.eq()``. Subclasses DeprecationWarning so it can be
     filtered on its own, e.g. ``warnings.filterwarnings("ignore", category=SearchPropertiesDeprecationWarning)``.
     """
 

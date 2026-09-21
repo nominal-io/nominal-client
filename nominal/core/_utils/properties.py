@@ -11,10 +11,11 @@ from nominal.core.exceptions import SearchPropertiesDeprecationWarning
 from nominal.core.properties import (
     PropertyFilter,
     PropertyValue,
-    StringInFilter,
     TypedProperties,
     _as_numeric_value,
-    eq,
+    _NumericComparisonFilter,
+    _NumericRangeFilter,
+    _StringInFilter,
 )
 from nominal.protos.types import types_pb2
 
@@ -24,8 +25,8 @@ _QueryT = TypeVar("_QueryT")
 
 _SEARCH_PROPERTIES_DEPRECATION = (
     "Passing properties= to search_assets, search_runs, or search_datasets is deprecated. "
-    "Use property_filters with eq() instead, for example: "
-    "property_filters=[eq('serial', 'A1'), eq('mass_kg', 12.0)]."
+    "Use property_filters with PropertyFilter.eq() instead, for example: "
+    "property_filters=[PropertyFilter.eq('serial', 'A1'), PropertyFilter.eq('mass_kg', 12.0)]."
 )
 
 
@@ -146,11 +147,13 @@ def iter_property_filter_clauses(
 ) -> Iterator[_QueryT]:
     filters: list[PropertyFilter] = []
     if properties is not None:
-        filters.extend(eq(name, value) for name, value in properties.items())
+        filters.extend(PropertyFilter.eq(name, value) for name, value in properties.items())
     if property_filters:
         filters.extend(property_filters)
     for filt in filters:
-        if isinstance(filt, StringInFilter):
+        if isinstance(filt, _StringInFilter):
             yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
-        else:
+        elif isinstance(filt, (_NumericComparisonFilter, _NumericRangeFilter)):
             yield filt.to_query_clause(query_cls)
+        else:
+            raise TypeError(f"unsupported property filter: {type(filt).__name__}")
