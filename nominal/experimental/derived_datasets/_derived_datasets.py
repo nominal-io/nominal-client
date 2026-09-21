@@ -446,6 +446,34 @@ class DerivedDataset:
 
         return _edit_inputs(self._clients, self.rid, without_the_target, message or f"Remove input dataset {rid}")
 
+    def set_input_datasets(
+        self, inputs: Sequence[DerivedDatasetInput], *, message: str | None = None
+    ) -> Sequence[DerivedDatasetInput]:
+        """Replace this derived dataset's input datasets wholesale, as a new commit on its definition.
+
+        Use this to change an input's transforms, reorder the inputs, or make several changes in one commit.
+        Start from `list_input_datasets` and pass back the edited sequence.
+
+        Args:
+            inputs: The inputs the definition should have after the change, in order. May be empty.
+            message: Commit message describing the change. Defaults to counting the inputs.
+
+        Returns:
+            The derived dataset's input datasets after the change.
+
+        Raises:
+            ValueError: If this dataset's definition was authored as something other than a combination of
+                input datasets, which this method would otherwise overwrite.
+            conjure_python_client.ConjureHTTPError: If the definition was committed to by someone else since
+                this call read it.
+        """
+        return _edit_inputs(
+            self._clients,
+            self.rid,
+            lambda _existing: tuple(inputs),
+            message or f"Set {len(inputs)} input dataset(s)",
+        )
+
 
 def _create_derived_dataset(
     clients: DataSource._Clients,

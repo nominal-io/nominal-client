@@ -592,6 +592,8 @@ def test_an_unreadable_definition_is_never_written_back(mock_dataset: DerivedDat
         mock_dataset.add_input_dataset(DerivedDatasetInput("ri.b"))
     with pytest.raises(ValueError, match="expected a saved dataset"):
         mock_dataset.remove_input_dataset("ri.b")
+    with pytest.raises(ValueError, match="expected a saved dataset"):
+        mock_dataset.set_input_datasets([DerivedDatasetInput("ri.b")])
     mock_clients.catalog.commit_derived_definition.assert_not_called()
 
 
@@ -668,6 +670,40 @@ def test_remove_input_dataset_rejects_a_dataset_that_is_not_an_input(
     with pytest.raises(ValueError, match="is not an input of derived dataset"):
         mock_dataset.remove_input_dataset("ri.b")
     mock_clients.catalog.commit_derived_definition.assert_not_called()
+
+
+def test_set_input_datasets_replaces_the_inputs_in_one_commit(
+    mock_dataset: DerivedDataset, mock_clients: MagicMock
+) -> None:
+    """Changing an input's transforms and reordering happens as a single commit based on the latest one."""
+    mock_clients.catalog.get_dataset_derived_definition.return_value = _definition(
+        _build_spec([DerivedDatasetInput("ri.a"), DerivedDatasetInput("ri.b")]), commit_id="c1"
+    )
+    replaced = (DerivedDatasetInput("ri.b"), DerivedDatasetInput("ri.a", offset=timedelta(seconds=5)))
+    mock_clients.catalog.commit_derived_definition.return_value = _definition(_build_spec(replaced))
+
+    assert mock_dataset.set_input_datasets(list(replaced), message="align a against b") == replaced
+
+    mock_clients.catalog.commit_derived_definition.assert_called_once()
+    _, _, request = mock_clients.catalog.commit_derived_definition.call_args[0]
+    assert request.spec == _build_spec(replaced)
+    assert request.message == "align a against b"
+    assert request.latest_commit == "c1"
+
+
+def test_set_input_datasets_defaults_the_message_to_a_count(
+    mock_dataset: DerivedDataset, mock_clients: MagicMock
+) -> None:
+    mock_clients.catalog.get_dataset_derived_definition.return_value = _definition(
+        _build_spec([DerivedDatasetInput("ri.a")])
+    )
+    mock_clients.catalog.commit_derived_definition.return_value = _definition(_build_spec([]))
+
+    assert mock_dataset.set_input_datasets([]) == ()
+
+    _, _, request = mock_clients.catalog.commit_derived_definition.call_args[0]
+    assert request.spec == _build_spec([])
+    assert request.message == "Set 0 input dataset(s)"
 
 
 # --- lookup ---
