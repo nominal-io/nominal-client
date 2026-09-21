@@ -144,6 +144,29 @@ def test_create_search_runs_query_with_labels():
     assert sub_query.labels.operator == api.SetOperator.AND
 
 
+def test_create_search_runs_query_with_properties():
+    """Test query creation with string equality property filters."""
+    properties = {"env": "production", "version": "1.0", "region": "us-east"}
+    query = create_search_runs_query(
+        property_filters=[PropertyFilter.eq(name, value) for name, value in properties.items()]
+    )
+
+    # Should create one PropertiesFilter per property (3 properties = 3 filters)
+    assert len(_and_queries(query)) == 3
+
+    # Collect all property filters
+    prop_filters = {}
+
+    for sub_query in _and_queries(query):
+        assert sub_query.properties is not None
+        # Each filter should have one value
+        assert len(sub_query.properties.values) == 1
+        prop_filters[sub_query.properties.name] = sub_query.properties.values[0]
+
+    # Verify all properties are present
+    assert prop_filters == properties
+
+
 def test_create_search_runs_query_with_name_substring():
     """Test query creation with name_substring filter."""
     name_substring = "test-run"

@@ -8,15 +8,7 @@ from typing import Callable, Iterator, Mapping, Sequence, TypeVar, overload
 from nominal_api import api
 
 from nominal.core.exceptions import SearchPropertiesDeprecationWarning
-from nominal.core.properties import (
-    PropertyFilter,
-    PropertyValue,
-    TypedProperties,
-    _as_numeric_value,
-    _NumericComparisonFilter,
-    _NumericRangeFilter,
-    _StringInFilter,
-)
+from nominal.core.properties import PropertyFilter, PropertyValue, TypedProperties, _as_numeric_value
 from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
@@ -151,9 +143,4 @@ def iter_property_filter_clauses(
     if property_filters:
         filters.extend(property_filters)
     for filt in filters:
-        if isinstance(filt, _StringInFilter):
-            yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
-        elif isinstance(filt, (_NumericComparisonFilter, _NumericRangeFilter)):
-            yield filt.to_query_clause(query_cls)
-        else:
-            raise TypeError(f"unsupported property filter: {type(filt).__name__}")
+        yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)

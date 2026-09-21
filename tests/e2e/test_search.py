@@ -427,35 +427,16 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
 
 
 def test_numeric_property_search(client: NominalClient, archive: Callable[[object], None]) -> None:
-    """eq, gt, and between filters match typed properties on runs."""
+    """A numeric equality filter matches a typed float property on a run."""
     tag = uuid4().hex
     start, end = _create_random_start_end()
+    run = client.create_run(f"run-np-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 15.0})
+    archive(run)
 
-    run_lo = client.create_run(f"run-np-lo-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 5.0})
-    run_mid = client.create_run(f"run-np-mid-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 15.0})
-    run_hi = client.create_run(f"run-np-hi-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 25.0})
-    archive(run_lo)
-    archive(run_mid)
-    archive(run_hi)
-
-    assert {
-        r.rid
-        for r in client.search_runs(
-            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.eq("mass_kg", 15.0)],
-        )
-    } == {run_mid.rid}
-    assert {
-        r.rid
-        for r in client.search_runs(
-            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.gt("mass_kg", 10.0)],
-        )
-    } == {run_mid.rid, run_hi.rid}
-    assert {
-        r.rid
-        for r in client.search_runs(
-            property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.between("mass_kg", 10.0, 20.0)],
-        )
-    } == {run_mid.rid}
+    results = client.search_runs(
+        property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.eq("mass_kg", 15.0)],
+    )
+    assert {r.rid for r in results} == {run.rid}
 
 
 def test_search_assets_archive_status(

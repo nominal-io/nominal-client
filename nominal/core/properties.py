@@ -16,7 +16,7 @@ Filters are constructed on :class:`PropertyFilter`:
 
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping, Sequence, TypeAlias, TypeVar
@@ -91,7 +91,11 @@ class PropertyFilter(ABC):
         """
         if isinstance(value, str):
             return _StringInFilter(name=name, values=(value,))
-        return _comparison(name, _PropertyComparisonOperator.EQ, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.EQ,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def in_(cls, name: str, values: Sequence[str]) -> PropertyFilter:
@@ -106,37 +110,76 @@ class PropertyFilter(ABC):
     @classmethod
     def neq(cls, name: str, value: float) -> PropertyFilter:
         """Inequality filter on a numeric property."""
-        return _comparison(name, _PropertyComparisonOperator.NEQ, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.NEQ,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def gt(cls, name: str, value: float) -> PropertyFilter:
         """Greater-than filter on a numeric property."""
-        return _comparison(name, _PropertyComparisonOperator.GT, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.GT,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def gte(cls, name: str, value: float) -> PropertyFilter:
         """Greater-than-or-equal filter on a numeric property."""
-        return _comparison(name, _PropertyComparisonOperator.GTE, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.GTE,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def lt(cls, name: str, value: float) -> PropertyFilter:
         """Less-than filter on a numeric property."""
-        return _comparison(name, _PropertyComparisonOperator.LT, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.LT,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def lte(cls, name: str, value: float) -> PropertyFilter:
         """Less-than-or-equal filter on a numeric property."""
-        return _comparison(name, _PropertyComparisonOperator.LTE, value)
+        return _NumericComparisonFilter(
+            name=name,
+            operator=_PropertyComparisonOperator.LTE,
+            value=_as_numeric_value(value, what="value"),
+        )
 
     @classmethod
     def between(cls, name: str, min_value: float, max_value: float) -> PropertyFilter:
         """Inclusive range filter: ``min_value <= property <= max_value``."""
-        return _range(name, _NumericPropertyRangeOperator.BETWEEN, min_value, max_value)
+        return _NumericRangeFilter(
+            name=name,
+            operator=_NumericPropertyRangeOperator.BETWEEN,
+            min_value=_as_numeric_value(min_value, what="min_value"),
+            max_value=_as_numeric_value(max_value, what="max_value"),
+        )
 
     @classmethod
     def not_between(cls, name: str, min_value: float, max_value: float) -> PropertyFilter:
         """Filter matching values outside the inclusive range ``[min_value, max_value]``."""
-        return _range(name, _NumericPropertyRangeOperator.NOT_BETWEEN, min_value, max_value)
+        return _NumericRangeFilter(
+            name=name,
+            operator=_NumericPropertyRangeOperator.NOT_BETWEEN,
+            min_value=_as_numeric_value(min_value, what="min_value"),
+            max_value=_as_numeric_value(max_value, what="max_value"),
+        )
+
+    @abstractmethod
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT],
+    ) -> _QueryT:
+        """Build the conjure search clause for this filter."""
 
 
 @dataclass(frozen=True)
@@ -160,7 +203,13 @@ class _NumericComparisonFilter(PropertyFilter):
     operator: _PropertyComparisonOperator
     value: float
 
-    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT],
+    ) -> _QueryT:
+        del string_in_clause
         return query_cls(
             numeric_property=api.NumericPropertyPredicate(
                 name=self.name,
@@ -177,7 +226,13 @@ class _NumericRangeFilter(PropertyFilter):
     min_value: float
     max_value: float
 
-    def to_query_clause(self, query_cls: Callable[..., _QueryT]) -> _QueryT:
+    def to_query_clause(
+        self,
+        query_cls: Callable[..., _QueryT],
+        *,
+        string_in_clause: Callable[[str, Sequence[str]], _QueryT],
+    ) -> _QueryT:
+        del string_in_clause
         return query_cls(
             numeric_property_range=api.NumericPropertyRangePredicate(
                 name=self.name,
@@ -186,25 +241,3 @@ class _NumericRangeFilter(PropertyFilter):
                 max=self.max_value,
             )
         )
-
-
-def _comparison(name: str, operator: _PropertyComparisonOperator, value: float) -> _NumericComparisonFilter:
-    return _NumericComparisonFilter(
-        name=name,
-        operator=operator,
-        value=_as_numeric_value(value, what="value"),
-    )
-
-
-def _range(
-    name: str,
-    operator: _NumericPropertyRangeOperator,
-    min_value: float,
-    max_value: float,
-) -> _NumericRangeFilter:
-    return _NumericRangeFilter(
-        name=name,
-        operator=operator,
-        min_value=_as_numeric_value(min_value, what="min_value"),
-        max_value=_as_numeric_value(max_value, what="max_value"),
-    )

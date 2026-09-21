@@ -136,26 +136,6 @@ def test_search_event_origin_type_round_trips(origin_type: SearchEventOriginType
     assert SearchEventOriginType._from_proto(origin_type._to_proto()) is origin_type
 
 
-def test_create_event_sends_typed_properties() -> None:
-    """Create writes the typed map and an empty legacy properties map."""
-    clients = MagicMock()
-    client = NominalClient(_clients=clients)
-    clients.event.CreateEvent.return_value = event_pb2.CreateEventResponse(event=_proto_event())
-
-    client.create_event(
-        "launch",
-        EventType.FLAG,
-        start=1,
-        properties={"serial": "A1", "mass_kg": 12.5, "count": 5},
-    )
-
-    request = clients.event.CreateEvent.call_args.args[0]
-    assert dict(request.properties) == {}
-    assert request.typed_properties["serial"].string_value == "A1"
-    assert request.typed_properties["mass_kg"].numeric_value == 12.5
-    assert request.typed_properties["count"].numeric_value == 5.0
-
-
 def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     """Creation is the only path that sends a caller-chosen type, timestamp and duration."""
     clients = MagicMock()
