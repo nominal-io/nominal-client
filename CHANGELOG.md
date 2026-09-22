@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.172.0](https://github.com/nominal-io/nominal-client/compare/v1.171.0...v1.172.0) (2026-09-22)
+
+
+### Features
+
+* bump nominal-streaming to 0.10.1 (opt-in metrics, faster enqueue, richer failure logging) ([#998](https://github.com/nominal-io/nominal-client/issues/998)) ([214c21d](https://github.com/nominal-io/nominal-client/commit/214c21d0a490f098d4594ff2f766a5a59182ba4b))
+
+
+### Bug Fixes
+
+* settle derived-dataset reads before asserting in e2e tests ([#1000](https://github.com/nominal-io/nominal-client/issues/1000)) ([23a713d](https://github.com/nominal-io/nominal-client/commit/23a713d68457f650d1fd171c0bb345e51865e72d))
+
 ## [1.171.0](https://github.com/nominal-io/nominal-client/compare/v1.170.0...v1.171.0) (2026-09-22)
 
 
