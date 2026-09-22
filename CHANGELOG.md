@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.170.0](https://github.com/nominal-io/nominal-client/compare/v1.169.0...v1.170.0) (2026-09-22)
+
+
+### Features
+
+* derived datasets composed from tag-filtered input datasets ([#982](https://github.com/nominal-io/nominal-client/issues/982)) ([d69a8ad](https://github.com/nominal-io/nominal-client/commit/d69a8ada865fc853d56fe0b162f0bb34784d699c))
+* **event:** expose event disposition priority ([#987](https://github.com/nominal-io/nominal-client/issues/987)) ([324510f](https://github.com/nominal-io/nominal-client/commit/324510f26aa6adb83e1a088d2d2935475e9cca72))
+* **event:** expose the event disposition with its priority ([324510f](https://github.com/nominal-io/nominal-client/commit/324510f26aa6adb83e1a088d2d2935475e9cca72))
+* improve extractor authoring and registration ([#994](https://github.com/nominal-io/nominal-client/issues/994)) ([b6426c5](https://github.com/nominal-io/nominal-client/commit/b6426c5f245f9f62620f96e0cb46cec735e73d90))
+* support container image exit code mappings ([#992](https://github.com/nominal-io/nominal-client/issues/992)) ([642e29c](https://github.com/nominal-io/nominal-client/commit/642e29c7a18328c6fea576beecfa35bc2ace2a3b))
+
 ## [1.169.0](https://github.com/nominal-io/nominal-client/compare/v1.168.0...v1.169.0) (2026-09-18)
 
 
