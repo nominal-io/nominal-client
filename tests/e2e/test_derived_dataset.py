@@ -16,11 +16,13 @@ different `vehicle` value, and reused by every test here.
 
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 from io import BytesIO
 from typing import Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 
+import pandas as pd
 import pytest
 
 from nominal.core import NominalClient
@@ -39,6 +41,9 @@ from tests.e2e import POLL_INTERVAL
 
 ArchiveFn = Callable[[object], None]
 
+EXPORT_TIMEOUT = timedelta(seconds=60)
+"""How long to keep retrying an export that comes back empty after ingest has reported success."""
+
 
 def _archive_all(datasets: Sequence[Dataset]) -> None:
     """Archive every dataset, so one failure cannot strand the rest, and report the ones that failed.
@@ -56,14 +61,29 @@ def _archive_all(datasets: Sequence[Dataset]) -> None:
         raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
 
 
+def _export_temperatures(dataset: Dataset, tags: Mapping[str, str] | None = None) -> pd.DataFrame:
+    """Export the temperature channel, retrying with backoff while the export comes back empty.
+
+    Ingest reports success before the export path can always serve the data, so an empty frame right after
+    ingest is usually lag rather than a wrong answer. `tags` narrows the export to the series carrying them.
+    """
+    deadline = time.monotonic() + EXPORT_TIMEOUT.total_seconds()
+    delay = 1.0
+    while True:
+        frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
+        if not frame.empty or time.monotonic() >= deadline:
+            return frame
+        time.sleep(delay)
+        delay = min(delay * 2, 10.0)
+
+
 def _temperatures(client: NominalClient, derived: DerivedDataset, tags: Mapping[str, str] | None = None) -> list[float]:
     """Every temperature reading in a derived dataset, sorted — the values identify which input they came from.
 
     A `DerivedDataset` is not a `Dataset`, so its data is read through the regular dataset lookup. `tags`
     narrows the export to the series carrying them, which is how a tag applied server-side is read back.
     """
-    dataset = client.get_dataset(derived.rid)
-    frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
+    frame = _export_temperatures(client.get_dataset(derived.rid), tags)
     return sorted(frame["temperature"].dropna().tolist())
 
 
@@ -274,8 +294,8 @@ def test_an_offset_shifts_the_input_in_time(
     )
     archive(shifted)
 
-    before = datasource_to_dataframe(client.get_dataset(unshifted.rid), channel_exact_match=["temperature"])
-    after = datasource_to_dataframe(client.get_dataset(shifted.rid), channel_exact_match=["temperature"])
+    before = _export_temperatures(client.get_dataset(unshifted.rid))
+    after = _export_temperatures(client.get_dataset(shifted.rid))
     assert _temperatures(client, shifted) == _temperatures(client, unshifted)
     assert after.index.min() - before.index.min() == offset
 
