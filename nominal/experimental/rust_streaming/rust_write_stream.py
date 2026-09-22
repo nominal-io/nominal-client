@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import pathlib
 import warnings
+from typing import Any
 
 from nominal_streaming import NominalDatasetStream
 
@@ -59,7 +60,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> RustWriteStream:
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if num_workers:
             kwargs["num_upload_workers"] = num_workers
             kwargs["num_runtime_workers"] = num_workers
