@@ -16,13 +16,11 @@ different `vehicle` value, and reused by every test here.
 
 from __future__ import annotations
 
-import time
 from datetime import timedelta
 from io import BytesIO
 from typing import Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 
-import pandas as pd
 import pytest
 
 from nominal.core import NominalClient
@@ -37,12 +35,9 @@ from nominal.experimental.derived_datasets import (
 )
 from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 ArchiveFn = Callable[[object], None]
-
-EXPORT_TIMEOUT = timedelta(seconds=60)
-"""How long to keep retrying an export that comes back empty after ingest has reported success."""
 
 
 def _archive_all(datasets: Sequence[Dataset]) -> None:
@@ -61,31 +56,15 @@ def _archive_all(datasets: Sequence[Dataset]) -> None:
         raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
 
 
-def _await_temperatures(
-    client: NominalClient, derived: DerivedDataset, expected: list[float], tags: Mapping[str, str] | None = None
-) -> pd.DataFrame:
-    """Export the temperature channel until its readings are exactly `expected`, or fail with what it settled on.
-
-    Ingest reports success before the export path can serve every series, so a frame that is empty or missing
-    an input right after ingest is usually lag rather than a wrong answer. Waiting for the expected values covers
-    both, at the cost of a genuinely wrong filter taking the full timeout to fail. The values identify which input
-    they came from, since the two CSVs share no temperature.
+def _temperatures(client: NominalClient, derived: DerivedDataset, tags: Mapping[str, str] | None = None) -> list[float]:
+    """Every temperature reading in a derived dataset, sorted — the values identify which input they came from.
 
     A `DerivedDataset` is not a `Dataset`, so its data is read through the regular dataset lookup. `tags`
     narrows the export to the series carrying them, which is how a tag applied server-side is read back.
     """
     dataset = client.get_dataset(derived.rid)
-    deadline = time.monotonic() + EXPORT_TIMEOUT.total_seconds()
-    delay = 1.0
-    while True:
-        frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
-        actual = sorted(frame["temperature"].dropna().tolist())
-        if actual == expected:
-            return frame
-        if time.monotonic() >= deadline:
-            pytest.fail(f"export for {derived.rid} settled on {actual} after {EXPORT_TIMEOUT}, expected {expected}")
-        time.sleep(delay)
-        delay = min(delay * 2, 10.0)
+    frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
+    return sorted(frame["temperature"].dropna().tolist())
 
 
 def _expected_temperatures(*csvs: bytes) -> list[float]:
@@ -98,7 +77,7 @@ def tagged_datasets(client: NominalClient, csv_data: bytes, csv_data2: bytes) ->
     datasets: list[Dataset] = []
     try:
         for vehicle, data in (("A", csv_data), ("B", csv_data2)):
-            dataset = client.create_dataset(f"derived-input-{vehicle.lower()}-{uuid4().hex[:8]}")
+            dataset = create_legacy_dataset(client, f"derived-input-{vehicle.lower()}-{uuid4().hex[:8]}")
             # Registered before the ingest it might not survive: a dataset that fails to ingest still exists.
             datasets.append(dataset)
             dataset_file = dataset.add_from_io(
@@ -113,7 +92,7 @@ def tagged_datasets(client: NominalClient, csv_data: bytes, csv_data2: bytes) ->
 @pytest.fixture(scope="session")
 def mixed_dataset(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[Dataset]:
     """One dataset holding both tag values, so filtering it proves series selection rather than input exclusion."""
-    dataset = client.create_dataset(f"derived-input-mixed-{uuid4().hex[:8]}")
+    dataset = create_legacy_dataset(client, f"derived-input-mixed-{uuid4().hex[:8]}")
     try:
         for vehicle, data in (("A", csv_data), ("B", csv_data2)):
             dataset_file = dataset.add_from_io(
@@ -235,7 +214,7 @@ def test_derived_dataset_reads_the_union_of_its_inputs(
     )
     archive(both)
 
-    _await_temperatures(client, both, _expected_temperatures(csv_data, csv_data2))
+    assert _temperatures(client, both) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_a_filter_selects_series_within_an_input(
@@ -249,7 +228,7 @@ def test_a_filter_selects_series_within_an_input(
     )
     archive(filtered)
 
-    _await_temperatures(client, filtered, _expected_temperatures(csv_data))
+    assert _temperatures(client, filtered) == _expected_temperatures(csv_data)
 
 
 def test_an_exclusion_filter_drops_the_matching_series(
@@ -263,7 +242,7 @@ def test_an_exclusion_filter_drops_the_matching_series(
     )
     archive(excluded)
 
-    _await_temperatures(client, excluded, _expected_temperatures(csv_data2))
+    assert _temperatures(client, excluded) == _expected_temperatures(csv_data2)
 
 
 def test_a_multi_value_filter_keeps_every_named_value(
@@ -276,16 +255,15 @@ def test_a_multi_value_filter_keeps_every_named_value(
     )
     archive(both_values)
 
-    _await_temperatures(client, both_values, _expected_temperatures(csv_data, csv_data2))
+    assert _temperatures(client, both_values) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_an_offset_shifts_the_input_in_time(
-    client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], csv_data: bytes, archive: ArchiveFn
+    client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
 ) -> None:
     """A time-shifted input reads back at moved timestamps, with its values untouched."""
     dataset_a, _ = tagged_datasets
     offset = timedelta(hours=1)
-    expected = _expected_temperatures(csv_data)
 
     unshifted = create_derived_dataset(
         client, f"derived-unshifted-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
@@ -296,8 +274,9 @@ def test_an_offset_shifts_the_input_in_time(
     )
     archive(shifted)
 
-    before = _await_temperatures(client, unshifted, expected)
-    after = _await_temperatures(client, shifted, expected)
+    before = datasource_to_dataframe(client.get_dataset(unshifted.rid), channel_exact_match=["temperature"])
+    after = datasource_to_dataframe(client.get_dataset(shifted.rid), channel_exact_match=["temperature"])
+    assert _temperatures(client, shifted) == _temperatures(client, unshifted)
     assert after.index.min() - before.index.min() == offset
 
 
@@ -323,9 +302,9 @@ def test_an_added_tag_labels_the_inputs_series(
     archive(labelled)
 
     assert labelled.list_input_datasets() == inputs
-    _await_temperatures(client, labelled, _expected_temperatures(csv_data), {"source": "daq1"})
-    _await_temperatures(client, labelled, _expected_temperatures(csv_data2), {"source": "daq2"})
-    _await_temperatures(client, labelled, _expected_temperatures(csv_data, csv_data2))
+    assert _temperatures(client, labelled, {"source": "daq1"}) == _expected_temperatures(csv_data)
+    assert _temperatures(client, labelled, {"source": "daq2"}) == _expected_temperatures(csv_data2)
+    assert _temperatures(client, labelled) == _expected_temperatures(csv_data, csv_data2)
 
 
 def test_a_dataset_can_be_listed_twice(
@@ -345,4 +324,4 @@ def test_a_dataset_can_be_listed_twice(
     archive(doubled)
 
     assert doubled.list_input_datasets() == inputs
-    _await_temperatures(client, doubled, _expected_temperatures(csv_data))
+    assert _temperatures(client, doubled) == _expected_temperatures(csv_data)

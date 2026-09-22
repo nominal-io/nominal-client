@@ -32,12 +32,11 @@ from typing import Iterator
 from uuid import uuid4
 
 import pytest
-from nominal_api import scout_catalog
 
 from nominal.core import NominalClient
-from nominal.core.dataset import Dataset, _create_dataset_request
+from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import IngestStatus
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 
 def pytest_addoption(parser):
@@ -89,15 +88,7 @@ def archive(request):
 @pytest.fixture(scope="session")
 def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset]:
     """A LEGACY-backed dataset shared across the read-only channel/pandas tests."""
-    # Pin the backing type so export tests do not depend on environment defaults
-    # or delayed read visibility after file ingestion reports success.
-    clients = client._clients
-    request = _create_dataset_request(
-        f"dataset-e2e-readonly-{uuid4().hex[:8]}",
-        workspace_rid=clients.resolve_default_workspace_rid(),
-        dataset_type=scout_catalog.DatasetBackingType.LEGACY,
-    )
-    ds = Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
+    ds = create_legacy_dataset(client, f"dataset-e2e-readonly-{uuid4().hex[:8]}")
     try:
         dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(
             interval=POLL_INTERVAL
