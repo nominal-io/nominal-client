@@ -5,7 +5,6 @@
 
 ### Features
 
-* add units and format-specific ingest options ([4d73047](https://github.com/nominal-io/nominal-client/commit/4d730470f1d255b6674e9a53fb54c391be6a7532))
 * expose ingest builder and extractor units options ([#986](https://github.com/nominal-io/nominal-client/issues/986)) ([4d73047](https://github.com/nominal-io/nominal-client/commit/4d730470f1d255b6674e9a53fb54c391be6a7532))
 
 ## [1.170.0](https://github.com/nominal-io/nominal-client/compare/v1.169.0...v1.170.0) (2026-09-22)
