@@ -22,6 +22,7 @@ from io import BytesIO
 from typing import Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 
+import pandas as pd
 import pytest
 
 from nominal.core import NominalClient
@@ -57,14 +58,20 @@ def _archive_all(datasets: Sequence[Dataset]) -> None:
         raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
 
 
-def _temperatures(client: NominalClient, derived: DerivedDataset, tags: Mapping[str, str] | None = None) -> list[float]:
-    """Every temperature reading in a derived dataset, sorted — the values identify which input they came from.
+def _export_frame(
+    client: NominalClient, derived: DerivedDataset, tags: Mapping[str, str] | None = None
+) -> pd.DataFrame:
+    """One export of a derived dataset's temperature channel.
 
     A `DerivedDataset` is not a `Dataset`, so its data is read through the regular dataset lookup. `tags`
     narrows the export to the series carrying them, which is how a tag applied server-side is read back.
     """
     dataset = client.get_dataset(derived.rid)
-    frame = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
+    return datasource_to_dataframe(dataset, channel_exact_match=["temperature"], tags=tags)
+
+
+def _temperatures(frame: pd.DataFrame) -> list[float]:
+    """Every temperature reading in an exported frame, sorted — the values identify which input they came from."""
     return sorted(frame["temperature"].dropna().tolist())
 
 
@@ -76,25 +83,39 @@ _EXPORT_POLL_SECONDS = 1.0
 _EXPORT_TIMEOUT_SECONDS = 90.0
 
 
-def _settled_temperatures(
+def _settled_frame(
     client: NominalClient,
     derived: DerivedDataset,
     expected: list[float],
     tags: Mapping[str, str] | None = None,
-) -> list[float]:
-    """The derived dataset's temperatures once the export has caught up with ingestion.
+) -> pd.DataFrame:
+    """An export of the derived dataset taken after the export path has caught up with ingestion.
 
     `poll_until_ingestion_completed` only covers the inputs' ingest; the export path a derived dataset is
     read through lags it, so a read issued too early returns a partial view — an empty frame, or one
-    input's series without the other's. Poll until the read matches what was uploaded, and hand back the
-    final read either way, so the caller's assert reports the real difference if it never settles.
+    input's series without the other's. Poll until two consecutive reads match what was uploaded: several
+    tests assert that filtered-out values are *absent*, and a single matching read could be the export
+    passing through `expected` on its way to a larger, wrong result. Hand back the final frame either way,
+    so on timeout the caller's assert reports the real difference.
     """
     deadline = time.monotonic() + _EXPORT_TIMEOUT_SECONDS
+    matched_once = False
     while True:
-        readings = _temperatures(client, derived, tags)
-        if readings == expected or time.monotonic() >= deadline:
-            return readings
+        frame = _export_frame(client, derived, tags)
+        matches = _temperatures(frame) == expected
+        if (matches and matched_once) or time.monotonic() >= deadline:
+            return frame
+        matched_once = matches
         time.sleep(_EXPORT_POLL_SECONDS)
+
+
+def _assert_temperatures(
+    client: NominalClient, derived: DerivedDataset, *csvs: bytes, tags: Mapping[str, str] | None = None
+) -> None:
+    """Assert the derived dataset exports exactly the temperatures in `csvs`, once the export settles."""
+    expected = _expected_temperatures(*csvs)
+    readings = _temperatures(_settled_frame(client, derived, expected, tags))
+    assert readings == expected, f"derived export did not settle within {_EXPORT_TIMEOUT_SECONDS:.0f}s"
 
 
 @pytest.fixture(scope="session")
@@ -240,8 +261,7 @@ def test_derived_dataset_reads_the_union_of_its_inputs(
     )
     archive(both)
 
-    expected = _expected_temperatures(csv_data, csv_data2)
-    assert _settled_temperatures(client, both, expected) == expected
+    _assert_temperatures(client, both, csv_data, csv_data2)
 
 
 def test_a_filter_selects_series_within_an_input(
@@ -255,8 +275,7 @@ def test_a_filter_selects_series_within_an_input(
     )
     archive(filtered)
 
-    expected = _expected_temperatures(csv_data)
-    assert _settled_temperatures(client, filtered, expected) == expected
+    _assert_temperatures(client, filtered, csv_data)
 
 
 def test_an_exclusion_filter_drops_the_matching_series(
@@ -270,8 +289,7 @@ def test_an_exclusion_filter_drops_the_matching_series(
     )
     archive(excluded)
 
-    expected = _expected_temperatures(csv_data2)
-    assert _settled_temperatures(client, excluded, expected) == expected
+    _assert_temperatures(client, excluded, csv_data2)
 
 
 def test_a_multi_value_filter_keeps_every_named_value(
@@ -284,8 +302,7 @@ def test_a_multi_value_filter_keeps_every_named_value(
     )
     archive(both_values)
 
-    expected = _expected_temperatures(csv_data, csv_data2)
-    assert _settled_temperatures(client, both_values, expected) == expected
+    _assert_temperatures(client, both_values, csv_data, csv_data2)
 
 
 def test_an_offset_shifts_the_input_in_time(
@@ -304,14 +321,13 @@ def test_an_offset_shifts_the_input_in_time(
     )
     archive(shifted)
 
-    # Settle both reads before touching the frames: an early export can be empty, which would crash the
-    # index arithmetic below rather than fail an assert.
+    # The index arithmetic runs on the same frames the poll settled on: an early export can be empty,
+    # which would crash `.min()` rather than fail an assert, and a re-read after settling could regress.
     expected = _expected_temperatures(csv_data)
-    assert _settled_temperatures(client, shifted, expected) == expected
-    assert _settled_temperatures(client, unshifted, expected) == expected
-
-    before = datasource_to_dataframe(client.get_dataset(unshifted.rid), channel_exact_match=["temperature"])
-    after = datasource_to_dataframe(client.get_dataset(shifted.rid), channel_exact_match=["temperature"])
+    before = _settled_frame(client, unshifted, expected)
+    after = _settled_frame(client, shifted, expected)
+    assert _temperatures(before) == expected, f"unshifted export did not settle within {_EXPORT_TIMEOUT_SECONDS:.0f}s"
+    assert _temperatures(after) == expected, f"shifted export did not settle within {_EXPORT_TIMEOUT_SECONDS:.0f}s"
     assert after.index.min() - before.index.min() == offset
 
 
@@ -337,12 +353,9 @@ def test_an_added_tag_labels_the_inputs_series(
     archive(labelled)
 
     assert labelled.list_input_datasets() == inputs
-    expected_a = _expected_temperatures(csv_data)
-    expected_b = _expected_temperatures(csv_data2)
-    assert _settled_temperatures(client, labelled, expected_a, {"source": "daq1"}) == expected_a
-    assert _settled_temperatures(client, labelled, expected_b, {"source": "daq2"}) == expected_b
-    expected_both = _expected_temperatures(csv_data, csv_data2)
-    assert _settled_temperatures(client, labelled, expected_both) == expected_both
+    _assert_temperatures(client, labelled, csv_data, tags={"source": "daq1"})
+    _assert_temperatures(client, labelled, csv_data2, tags={"source": "daq2"})
+    _assert_temperatures(client, labelled, csv_data, csv_data2)
 
 
 def test_a_dataset_can_be_listed_twice(
@@ -362,5 +375,4 @@ def test_a_dataset_can_be_listed_twice(
     archive(doubled)
 
     assert doubled.list_input_datasets() == inputs
-    expected = _expected_temperatures(csv_data)
-    assert _settled_temperatures(client, doubled, expected) == expected
+    _assert_temperatures(client, doubled, csv_data)
