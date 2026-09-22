@@ -73,15 +73,15 @@ This CSV example needs only the standard library and the SDK. Save it as `copy_c
 
 ```python
 from pathlib import Path
-from nominal.experimental import extractor as ex
+from nominal.experimental import extractor
 
-@ex.manifest_extractor(
+@extractor.manifest_extractor(
     default_timestamp_column="time",
     default_timestamp_type="epoch_seconds",
 )
-@ex.input("source", file_suffixes=["csv"])
-@ex.parameter("prefix", default="copied", description="Output file name without the extension")
-def copy_csv(ctx: ex.ManifestExtractorContext, *, source: Path, prefix: str) -> None:
+@extractor.input("source", file_suffixes=["csv"])
+@extractor.parameter("prefix", default="copied", description="Output file name without the extension")
+def copy_csv(ctx: extractor.ManifestExtractorContext, *, source: Path, prefix: str) -> None:
     output = ctx.output_dir / f"{prefix}.csv"
     output.write_bytes(source.read_bytes())
     ctx.add_tabular(output, timestamp_column="time", timestamp_type="epoch_seconds")
@@ -109,7 +109,7 @@ extraction.
 
 ### Choose the import style that fits your code
 
-The examples use `from nominal.experimental import extractor as ex` to keep declarations compact.
+The examples use `from nominal.experimental import extractor` to make the framework namespace explicit.
 The same objects also live in focused public modules:
 
 | Module | Public API |
@@ -143,15 +143,15 @@ metadata. Input `file_suffixes=` supplies the registration file filters.
 
 ```python
 from pathlib import Path
-from nominal.experimental import extractor as ex
+from nominal.experimental import extractor
 
-@ex.manifest_extractor
-@ex.input("recording", file_suffixes=["flight"])
-@ex.input("calibration", default=None)
-@ex.parameter("parts", type=int, default=2)
-@ex.parameter("enabled", type=bool, default=True)
+@extractor.manifest_extractor
+@extractor.input("recording", file_suffixes=["flight"])
+@extractor.input("calibration", default=None)
+@extractor.parameter("parts", type=int, default=2)
+@extractor.parameter("enabled", type=bool, default=True)
 def split(
-    ctx: ex.ManifestExtractorContext,
+    ctx: extractor.ManifestExtractorContext,
     *,
     recording: Path,
     calibration: Path | None,
@@ -210,14 +210,14 @@ decorator specifies a default. Without metadata, local runs use the declared env
 Use the built-in converters to express common constraints directly:
 
 ```python
-@ex.manifest_extractor
-@ex.input("source", file_suffixes=["csv"])
-@ex.parameter("mode", type=ex.Choice(["fast", "precise"]), default="fast")
-@ex.parameter("parts", type=ex.IntRange(min=1, max=64), default=2)
-@ex.parameter("gain", type=ex.FloatRange(min=0.0), default=1.0)
-@ex.parameter("enabled", default=True)
+@extractor.manifest_extractor
+@extractor.input("source", file_suffixes=["csv"])
+@extractor.parameter("mode", type=extractor.Choice(["fast", "precise"]), default="fast")
+@extractor.parameter("parts", type=extractor.IntRange(min=1, max=64), default=2)
+@extractor.parameter("gain", type=extractor.FloatRange(min=0.0), default=1.0)
+@extractor.parameter("enabled", default=True)
 def process(
-    ctx: ex.ManifestExtractorContext,
+    ctx: extractor.ManifestExtractorContext,
     *,
     source: Path,
     mode: str,
@@ -252,10 +252,10 @@ For application-specific validation, raise `BadParameter` with a message suitabl
 def positive_odd(value: str) -> int:
     result = int(value)
     if result <= 0 or result % 2 == 0:
-        raise ex.BadParameter("must be a positive odd integer")
+        raise extractor.BadParameter("must be a positive odd integer")
     return result
 
-# Use @ex.parameter("parts", type=positive_odd, default=3) above the callback.
+# Use @extractor.parameter("parts", type=positive_odd, default=3) above the callback.
 ```
 
 `BadParameter` becomes `ExtractorError` naming the argument and environment variable and including
@@ -349,15 +349,15 @@ requires, so a mismatch fails at the call rather than server-side after upload.
 
 ```python
 from pathlib import Path
-from nominal.experimental import extractor as ex
+from nominal.experimental import extractor
 
-@ex.manifest_extractor(
+@extractor.manifest_extractor(
     default_timestamp_column="ts",
     default_timestamp_type="epoch_nanoseconds",
 )
-@ex.input("recording", name="Recording", file_suffixes=["flight"])
-@ex.parameter("parts", name="Parts", type=int, default=2)
-def split(ctx: ex.ManifestExtractorContext, *, recording: Path, parts: int) -> None:
+@extractor.input("recording", name="Recording", file_suffixes=["flight"])
+@extractor.parameter("parts", name="Parts", type=int, default=2)
+def split(ctx: extractor.ManifestExtractorContext, *, recording: Path, parts: int) -> None:
     decoded = read_my_format(recording)
 
     for i, chunk in enumerate(chunks_of(decoded.telemetry, parts)):
@@ -425,15 +425,15 @@ registered that way; write new extractors as manifest extractors.
 ```python
 from pathlib import Path
 from nominal.core.container_image import FileOutputFormat
-from nominal.experimental import extractor as ex
+from nominal.experimental import extractor
 
-@ex.single_file_extractor(
+@extractor.single_file_extractor(
     output_format=FileOutputFormat.PARQUET,
     default_timestamp_column="ts",
     default_timestamp_type="epoch_nanoseconds",
 )
-@ex.input("recording", file_suffixes=["flight"])
-def convert(ctx: ex.SingleFileExtractorContext, *, recording: Path) -> None:
+@extractor.input("recording", file_suffixes=["flight"])
+def convert(ctx: extractor.SingleFileExtractorContext, *, recording: Path) -> None:
     table = read_my_format(recording)
     out = ctx.output_dir / "converted.parquet"
     write_parquet(table, out)
@@ -571,30 +571,30 @@ writes structured JSON to the termination log and stderr, and exits with the map
 
 ```python
 from pathlib import Path
-from nominal.experimental import extractor as ex
+from nominal.experimental import extractor
 
 class MalformedRecordingError(ValueError):
     pass
 
-@ex.manifest_extractor(
+@extractor.manifest_extractor(
     default_timestamp_column="ts",
     default_timestamp_type="epoch_nanoseconds",
 )
-@ex.error(
+@extractor.error(
     MalformedRecordingError,
     code="MALFORMED_INPUT",
     exit_code=64,
     message="The recording could not be decoded.",
 )
-@ex.error(
-    ex.ExtractorError,
+@extractor.error(
+    extractor.ExtractorError,
     code="EXTRACTOR_CONTRACT",
     exit_code=65,
     message="The extractor contract could not be satisfied.",
 )
-@ex.input("recording", file_suffixes=["flight"])
-@ex.parameter("parts", type=int, default=2)
-def convert(ctx: ex.ManifestExtractorContext, *, recording: Path, parts: int) -> None:
+@extractor.input("recording", file_suffixes=["flight"])
+@extractor.parameter("parts", type=int, default=2)
+def convert(ctx: extractor.ManifestExtractorContext, *, recording: Path, parts: int) -> None:
     ...  # Parse recording; raise MalformedRecordingError for invalid content; declare outputs.
 
 if __name__ == "__main__":
@@ -912,10 +912,10 @@ one logging warning per run. Migrate lookups into declarations and callback argu
 
 | Existing lookup | Declaration | Callback argument |
 |---|---|---|
-| `ctx.input("RECORDING")` | `@ex.input("recording", envvar="RECORDING")` | `recording: Path` |
-| `ctx.param("MODE")` | `@ex.parameter("mode", envvar="MODE")` | `mode: str` |
-| `int(ctx.get_param("PARTS", "2"))` | `@ex.parameter("parts", envvar="PARTS", type=int, default=2)` | `parts: int` |
-| `ctx.get_param("LABEL")` | `@ex.parameter("label", envvar="LABEL", default=None)` | `label: str \| None` |
+| `ctx.input("RECORDING")` | `@extractor.input("recording", envvar="RECORDING")` | `recording: Path` |
+| `ctx.param("MODE")` | `@extractor.parameter("mode", envvar="MODE")` | `mode: str` |
+| `int(ctx.get_param("PARTS", "2"))` | `@extractor.parameter("parts", envvar="PARTS", type=int, default=2)` | `parts: int` |
+| `ctx.get_param("LABEL")` | `@extractor.parameter("label", envvar="LABEL", default=None)` | `label: str \| None` |
 
 For unnamed `ctx.input()` or `ctx.inputs` discovery, declare each registered input explicitly using
 its actual environment variable. Lookups by display name must likewise map to the registered
