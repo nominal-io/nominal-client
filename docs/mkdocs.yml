@@ -34,6 +34,7 @@ nav:
       - Experimental:
         - Compute: reference/experimental/compute.md
         - Extractors: reference/experimental/extractors.md
+        - Ingestion: reference/experimental/ingest.md
         - Logging: reference/experimental/logging.md
         - Video Processing: reference/experimental/video_processing.md
   - Guides:

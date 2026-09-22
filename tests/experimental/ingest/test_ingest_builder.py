@@ -5,7 +5,7 @@ import logging
 import pathlib
 from concurrent.futures import Future
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -177,11 +177,12 @@ class TestSubmit:
         _video_path, manifest_path = fake.enqueued
         assert not manifest_path.exists()
 
-    def test_tabular_dispatches_on_extension(self, write_file: WriteFile) -> None:
+    @pytest.mark.parametrize("csv_name", ["a.csv", "a.csv.gz"])
+    def test_tabular_dispatches_on_extension(self, write_file: WriteFile, csv_name: str) -> None:
         """One method handles both tabular formats: the extension picks the wire options."""
         client = MagicMock()
         builder = IngestBuilder(client, "ri.catalog.test.dataset")
-        builder.add_tabular_data(write_file("a.csv", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
+        builder.add_tabular_data(write_file(csv_name, 1), timestamp_column="ts", timestamp_type="epoch_seconds")
         builder.add_tabular_data(write_file("b.parquet", 1), timestamp_column="ts", timestamp_type="epoch_seconds")
 
         with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
@@ -372,3 +373,107 @@ class TestSubmitAllowPartial:
                 builder.submit(allow_partial=True)
 
         client._clients.ingest_v2.Ingest.assert_not_called()
+
+
+@pytest.fixture
+def empty_builder() -> Iterator[tuple[MagicMock, IngestBuilder]]:
+    """Provide an empty builder whose uploads complete without network access."""
+    client = MagicMock()
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=FakeUploader({})):
+        yield client, IngestBuilder(client, "ri.catalog.test.dataset")
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        {},
+        {"header_row": None, "data_row": None, "units_row": None},
+        {"header_row": 1},
+        {"header_row": 2, "data_row": 4, "units_row": 3},
+        # Forward representable values unchanged; the backend owns CSV row validation.
+        {"header_row": 0, "data_row": -1, "units_row": 0},
+    ],
+)
+def test_csv_row_options_are_forwarded(
+    write_file: WriteFile, empty_builder: tuple[MagicMock, IngestBuilder], rows: dict[str, int | None]
+) -> None:
+    """CSV row selections reach ingestion unchanged, with omitted or None values left unset."""
+    client, builder = empty_builder
+    builder.add_csv(write_file("records.csv", 1), "time", "epoch_seconds", **rows).submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    options = request.items[0].file.ingest
+    for name in ("header_row", "data_row", "units_row"):
+        assert options.csv.HasField(name) == (rows.get(name) is not None)
+        if rows.get(name) is not None:
+            assert getattr(options.csv, name) == rows[name]
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".parquet"])
+def test_tabular_options_are_copied_at_registration(
+    write_file: WriteFile, empty_builder: tuple[MagicMock, IngestBuilder], suffix: str
+) -> None:
+    """Changing caller-owned mappings after registration does not change the file's ingest options."""
+    client, builder = empty_builder
+    units = {"speed": "m/s"}
+    tag_columns = {"source": "device"}
+    overrides = {"speed": "velocity"}
+    tags = {"run": "r1"}
+    builder.add_tabular_data(
+        write_file("records" + suffix, 1),
+        "time",
+        "epoch_seconds",
+        units=units,
+        tag_columns=tag_columns,
+        channel_name_overrides=overrides,
+        tags=tags,
+    )
+    units.clear()
+    tag_columns.clear()
+    overrides.clear()
+    tags.clear()
+    builder.submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    item = request.items[0]
+    options = item.file.ingest
+    assert dict(options.units) == {"speed": "m/s"}
+    assert dict(getattr(options, options.WhichOneof("ingest")).format.wide.tag_columns) == {"source": "device"}
+    assert dict(options.channel_name_overrides) == {"speed": "velocity"}
+    assert dict(item.tags) == {"run": "r1"}
+
+
+@pytest.mark.parametrize(
+    "suffix,archive",
+    [
+        (".parquet", False),
+        (".parquet.gz", False),
+        (".parquet.tar", True),
+        (".parquet.tar.gz", True),
+        (".parquet.zip", True),
+    ],
+)
+def test_parquet_archive_detection(
+    write_file: WriteFile, empty_builder: tuple[MagicMock, IngestBuilder], suffix: str, archive: bool
+) -> None:
+    """Parquet archive extensions request archive ingestion; ordinary Parquet files do not."""
+    client, builder = empty_builder
+    builder.add_parquet(write_file("records" + suffix, 1), "time", "epoch_seconds").submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    options = request.items[0].file.ingest
+    assert options.WhichOneof("ingest") == "parquet"
+    assert options.parquet.is_archive == archive
+
+
+def test_add_csv_rejects_parquet(empty_builder: tuple[MagicMock, IngestBuilder]) -> None:
+    """Registering a Parquet file as CSV fails before uploading it."""
+    _, builder = empty_builder
+    with pytest.raises(ValueError, match="CSV") as exc:
+        builder.add_csv("data.parquet", "time", "epoch_seconds")
+    assert ".csv.gz" in str(exc.value)
+
+
+def test_add_parquet_rejects_csv(empty_builder: tuple[MagicMock, IngestBuilder]) -> None:
+    """Registering a CSV file as Parquet fails before uploading it."""
+    _, builder = empty_builder
+    with pytest.raises(ValueError, match="Parquet") as exc:
+        builder.add_parquet("data.csv", "time", "epoch_seconds")
+    assert ".parquet.zip" in str(exc.value)

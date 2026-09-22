@@ -367,6 +367,7 @@ class ManifestExtractorContext(ExtractorContext):
         *,
         tag_columns: Mapping[str, str] | None = ...,
         channel_prefix: str | None = ...,
+        units: Mapping[str, str] | None = ...,
     ) -> Path: ...
     @overload
     def add_tabular(
@@ -375,6 +376,7 @@ class ManifestExtractorContext(ExtractorContext):
         *,
         tag_columns: Mapping[str, str] | None = ...,
         channel_prefix: str | None = ...,
+        units: Mapping[str, str] | None = ...,
         timestamp_column: str,
         timestamp_type: ts._AnyNumericTimestampType,
     ) -> Path: ...
@@ -384,6 +386,7 @@ class ManifestExtractorContext(ExtractorContext):
         *,
         tag_columns: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
+        units: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: ts._AnyNumericTimestampType | None = None,
     ) -> Path:
@@ -396,6 +399,9 @@ class ManifestExtractorContext(ExtractorContext):
         (:class:`ts.Epoch`) or offsets from a starting time (:class:`ts.Relative`). Outputs needing
         ISO 8601 or custom formats omit the pair and inherit the job-level metadata, which supports
         the full range. The overloads make passing only one of the pair a type error.
+
+        ``units`` maps channel names to unit symbols for this output. The mapping is copied when
+        declared, and symbols are passed through unchanged.
         """
         resolved, relative = self._relative_declarable_path(path)
         FileType.from_path_dataset(resolved)
@@ -405,6 +411,7 @@ class ManifestExtractorContext(ExtractorContext):
             IngestType.TABULAR,
             tag_columns=tag_columns,
             channel_prefix=channel_prefix,
+            units=units,
             timestamp_metadata=_optional_manifest_timestamp_metadata(timestamp_column, timestamp_type),
         )
 
@@ -413,6 +420,7 @@ class ManifestExtractorContext(ExtractorContext):
         path: str | os.PathLike[str],
         *,
         channel_prefix: str | None = None,
+        units: Mapping[str, str] | None = None,
         timestamp_type: ts._AnyNumericTimestampType | None = None,
     ) -> Path:
         """Declare an avro-stream file you wrote (``.avro`` or ``.avro.gz``).
@@ -428,6 +436,8 @@ class ManifestExtractorContext(ExtractorContext):
         read them.
 
         ``channel_prefix`` is prepended to every channel from this file.
+        ``units`` maps channel names to unit symbols for this output. The mapping is copied when
+        declared, and symbols are passed through unchanged.
         """
         resolved, relative = self._relative_declarable_path(path)
         FileType.from_avro_stream(resolved)
@@ -436,6 +446,7 @@ class ManifestExtractorContext(ExtractorContext):
             relative,
             IngestType.AVRO_STREAM,
             channel_prefix=channel_prefix,
+            units=units,
             timestamp_metadata=None
             if timestamp_type is None
             else _manifest_timestamp_metadata(_AVRO_TIMESTAMPS_FIELD, timestamp_type),
@@ -487,6 +498,7 @@ class ManifestExtractorContext(ExtractorContext):
         *,
         tag_columns: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
+        units: Mapping[str, str] | None = None,
         timestamp_metadata: ingest_manifest.ManifestTimestampMetadata | None = None,
     ) -> Path:
         """Record one manifest entry, shared by the per-format declaration methods.
@@ -500,9 +512,7 @@ class ManifestExtractorContext(ExtractorContext):
                 ingest_type=ingest_type._to_conjure(),
                 relative_path=relative,
                 tag_columns=dict(tag_columns or {}),
-                # TODO: thread units through the add_* methods, matching
-                # `IngestBuilder.add_tabular_data(units=...)`; sent empty until then.
-                units={},
+                units=dict(units or {}),
                 channel_prefix=channel_prefix,
                 timestamp_metadata=timestamp_metadata,
             )
