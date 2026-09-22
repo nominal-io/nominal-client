@@ -349,11 +349,11 @@ class IngestBuilder:
         channel_name_overrides: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> Self:
-        """Register a tabular file (CSV or Parquet), mirroring `Dataset.add_tabular_data`.
+        """Register a tabular file by forwarding to :meth:`add_csv` or :meth:`add_parquet`.
 
         Supported extensions: .csv / .csv.gz, .parquet / .parquet.gz, and the parquet-archive
         formats (.parquet.tar / .parquet.tar.gz / .parquet.zip). The format is inferred from
-        the extension.
+        the extension. Use :meth:`add_csv` for CSV-specific row options.
 
         Args:
             path: Path to the file on disk.
@@ -370,10 +370,70 @@ class IngestBuilder:
             This builder, for chaining.
 
         Raises:
-            ValueError: the path is not a supported tabular format.
+            ValueError: The path is not a supported tabular format.
         """
         file_path = Path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
+
+        add_file = self.add_csv if file_type.is_csv() else self.add_parquet
+        return add_file(
+            file_path,
+            timestamp_column,
+            timestamp_type,
+            tag_columns=tag_columns,
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
+            tags=tags,
+        )
+
+    def add_csv(
+        self,
+        path: PathLike,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        *,
+        tag_columns: Mapping[str, str] | None = None,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
+        header_row: int | None = None,
+        data_row: int | None = None,
+        units_row: int | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a CSV file (.csv or .csv.gz) with optional row selection.
+
+        All shared arguments follow :meth:`add_tabular_data`. Explicit ``units`` override
+        units read from ``units_row`` per channel; other channels retain their row units.
+        The backend validates row numbers and their ordering when the job is submitted.
+
+        Args:
+            path: Path to a .csv or .csv.gz file.
+            timestamp_column: Column containing timestamps; not ingested as a data channel.
+            timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
+            tag_columns: Mapping of tag keys to columns supplying their values.
+            units: Mapping of channel names to unit symbols, overriding the units record per channel.
+            channel_prefix: Prefix prepended to every ingested channel name.
+            channel_name_overrides: Mapping of original channel names to their ingested names.
+            tags: Key-value pairs applied as tags to all data from this file.
+            header_row: Positive, one-based header record number, defaulting to 1.
+                Blank lines are ignored; a multiline record counts as one record.
+            data_row: Positive, one-based first data record, defaulting to ``header_row + 1``.
+                Must follow the header; intervening records are skipped.
+            units_row: Positive, one-based units record, distinct from the header and before
+                the first data record. Set ``data_row`` past it. Unit cells match columns
+                by position, including a placeholder for the timestamp column. Empty
+                cells have no unit. Omit to read no units row.
+
+        Returns:
+            This builder, for chaining.
+
+        Raises:
+            ValueError: The path is not CSV.
+        """
+        file_path = Path(path)
+        file_type = FileType.from_csv(file_path)
 
         options = file_ingest_pb2.FileIngestOptions(
             timestamp_metadata=common_pb2.TimestampMetadata(
@@ -382,17 +442,63 @@ class IngestBuilder:
             units=units,
             channel_prefix=channel_prefix,
             channel_name_overrides=channel_name_overrides,
+            csv=file_ingest_pb2.CsvIngestOptions(
+                format=file_ingest_pb2.CsvFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
+                header_row=header_row,
+                data_row=data_row,
+                units_row=units_row,
+            ),
         )
-        wide_format = file_ingest_pb2.WideFormat(tag_columns=tag_columns or {})
-        if file_type.is_csv():
-            options.csv.CopyFrom(file_ingest_pb2.CsvIngestOptions(format=file_ingest_pb2.CsvFormat(wide=wide_format)))
-        else:
-            options.parquet.CopyFrom(
-                file_ingest_pb2.ParquetIngestOptions(
-                    format=file_ingest_pb2.ParquetFormat(wide=wide_format),
-                    is_archive=file_type.is_parquet_archive(),
-                )
-            )
+        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        return self
+
+    def add_parquet(
+        self,
+        path: PathLike,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        *,
+        tag_columns: Mapping[str, str] | None = None,
+        units: Mapping[str, str] | None = None,
+        channel_prefix: str | None = None,
+        channel_name_overrides: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Register a Parquet file or archive, inferring compression and archive format from its extension.
+
+        Supports .parquet, .parquet.gz, .parquet.tar, .parquet.tar.gz, and .parquet.zip.
+
+        Args:
+            path: Path to a Parquet file or archive.
+            timestamp_column: Column containing timestamps; not ingested as a data channel.
+            timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
+            tag_columns: Mapping of tag keys to columns supplying their values.
+            units: Mapping of channel names to unit symbols.
+            channel_prefix: Prefix prepended to every ingested channel name.
+            channel_name_overrides: Mapping of original channel names to their ingested names.
+            tags: Key-value pairs applied as tags to all data from this file.
+
+        Returns:
+            This builder, for chaining.
+
+        Raises:
+            ValueError: The path is not Parquet.
+        """
+        file_path = Path(path)
+        file_type = FileType.from_parquet(file_path)
+
+        options = file_ingest_pb2.FileIngestOptions(
+            timestamp_metadata=common_pb2.TimestampMetadata(
+                column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
+            ),
+            units=units,
+            channel_prefix=channel_prefix,
+            channel_name_overrides=channel_name_overrides,
+            parquet=file_ingest_pb2.ParquetIngestOptions(
+                format=file_ingest_pb2.ParquetFormat(wide=file_ingest_pb2.WideFormat(tag_columns=tag_columns)),
+                is_archive=file_type.is_parquet_archive(),
+            ),
+        )
         self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
         return self
 

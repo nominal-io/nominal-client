@@ -37,14 +37,14 @@ dataset = client.get_dataset("rid...")
 # tags here are applied as defaults to every file, overrideable per file
 builder = IngestBuilder(client, dataset, tags={"aircraft": "test-tail-1"})
 
-# add tabular files (csv or parquet, inferred from the extension)
-builder.add_tabular_data(
+# add Parquet files (use add_csv for CSV, or add_tabular_data to infer the format)
+builder.add_parquet(
     "test.parquet",
     timestamp_column="time",
     timestamp_type="epoch_seconds",
     tags={"subsystem": "nav"},
 )
-builder.add_tabular_data(
+builder.add_parquet(
     "test2.parquet",
     timestamp_column="time2",
     timestamp_type="epoch_nanoseconds",
@@ -117,3 +117,28 @@ ingested — this is what enables fast per-file deletes and group-bys over indiv
 reality that tag is per-*ingest-job*, not per-file, so all files in one job share the same value.
 If the previous behavior with per-file UUIDs was useful to you, opt in explicitly by passing your
 own per-file tag on each `add_*` call, e.g. `tags={"FILE_UUID": str(uuid.uuid4())}`.
+
+## Channel units and CSV units rows
+
+`add_csv`, `add_parquet`, `add_tabular_data`, and `add_avro_stream` accept `units={"pressure": "Pa"}`.
+Units are passed to ingestion; values are not converted by the client.
+
+On `add_csv`, `header_row`, `units_row`, and `data_row` are **one-based record
+numbers**, all positive. The backend validates these values and their ordering
+when the job is submitted. Blank lines are ignored and a quoted multiline record counts once.
+The header defaults to record 1 and data defaults to the next record. A units
+record must differ from the header and precede the first data record:
+
+```python
+builder.add_csv(
+    "readings.csv", "time", "epoch_seconds",
+    units_row=2, data_row=3,
+    units={"pressure": "kPa"},
+)
+```
+
+The units record needs a placeholder cell for the timestamp column. An empty
+cell supplies no unit. The explicit map overrides the units record per channel.
+`add_tabular_data` forwards to `add_csv` or `add_parquet` based on the file
+extension, exposing only their shared options. Parquet archives accept unit
+maps through this builder; the returned job tracks all extracted files.
