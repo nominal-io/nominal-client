@@ -59,6 +59,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        track_metrics: bool = False,
     ) -> RustWriteStream:
         kwargs: dict[str, Any] = {}
         if num_workers:
@@ -71,6 +72,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
             datasource_clients.storage_writer._uri,
             max_points_per_batch=batch_size,
             max_request_delay_secs=max_wait.total_seconds(),
+            track_metrics=track_metrics,
             **kwargs,
         ).with_core_consumer(datasource_rid)
 

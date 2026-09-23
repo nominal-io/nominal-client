@@ -133,15 +133,35 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
-    """'experimental' is not aliased away while it is the only implementation streaming metrics."""
-    from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+@pytest.mark.parametrize(("kwargs", "expected"), [({}, False), ({"track_metrics": True}, True)])
+def test_rust_stream_tracks_metrics_only_when_asked(mock_dataset: Dataset, kwargs: dict[str, bool], expected: bool):
+    """The rust stream emits runtime metrics when `track_metrics=True`, and not by default."""
+    with mock_dataset.get_write_stream(implementation="rust", **kwargs) as stream:
+        assert stream._opts.track_metrics is expected  # type: ignore[attr-defined]
 
+
+def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset):
+    """The superseded 'experimental' spelling yields a rust stream that keeps its runtime metrics."""
     with (
-        pytest.warns(UserWarning, match="does not carry streaming metrics yet"),
+        pytest.warns(UserWarning, match="use implementation='rust' with track_metrics=True"),
         mock_dataset.get_write_stream(implementation="experimental") as stream,
     ):
-        assert isinstance(stream, WriteStreamV2)
+        assert isinstance(stream, rust_write_stream_type())
+        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
+
+
+def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
+    """Asking for metrics refuses the python fallback, which cannot carry them."""
+    with pytest.raises(ImportError, match="track_metrics"):
+        mock_dataset.get_write_stream(track_metrics=True)
+
+
+def test_track_metrics_on_python_warns_it_has_no_effect(mock_dataset: Dataset, caplog: pytest.LogCaptureFixture):
+    """A rust-only argument passed to the python stream is reported as having no effect."""
+    with mock_dataset.get_write_stream(implementation="python", track_metrics=True):  # type: ignore[call-overload]
+        pass
+
+    assert "Argument track_metrics has no effect" in caplog.text
 
 
 def test_data_format_still_selects_an_implementation(mock_dataset: Dataset):
@@ -172,7 +192,7 @@ def test_implementation_and_data_format_together_is_an_error(mock_dataset: Datas
 
 def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
     """An unrecognized implementation names the ones that are actually supported."""
-    with pytest.raises(ValueError, match="python, rust, experimental"):
+    with pytest.raises(ValueError, match=r"\{python, rust\}"):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
