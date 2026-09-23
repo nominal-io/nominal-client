@@ -146,7 +146,11 @@ def _error_fallbacks(errors: Mapping[type[Exception], _ErrorMapping]) -> list[Ex
         fallback = ExitCodeMapping(
             exit_code=mapping.exit_code,
             code=mapping.code,
-            message=_text(mapping.message, f"error {mapping.code!r} message", 512),
+            message=_text(
+                mapping.code.replace("_", " ").capitalize() if mapping.message is None else mapping.message,
+                f"error {mapping.code!r} message",
+                512,
+            ),
             retryable=mapping.retryable,
         )
         if mapping.exit_code in fallbacks and fallbacks[mapping.exit_code] != fallback:

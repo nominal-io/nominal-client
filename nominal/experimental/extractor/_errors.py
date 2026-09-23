@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, ParamSpec
 
+from nominal.core.exceptions import ExtractorError
 from nominal.experimental.extractor._definition import _declare, _DeclaredCallback
 
 logger = logging.getLogger(__name__)
@@ -78,10 +79,15 @@ class _ErrorMapping:
         print(payload, file=sys.stderr)
 
 
+_FRAMEWORK_ERROR = _ErrorMapping(ExtractorError, "EXTRACTOR_CONTRACT", 1)
+
+
 def _resolve_error(errors: Mapping[type[Exception], _ErrorMapping], error: BaseException) -> _ErrorMapping | None:
-    """Use the closest mapped Exception class; never map process-control BaseExceptions."""
+    """Use the closest declaration, then the built-in framework policy."""
     if isinstance(error, Exception):
         for exception_type in type(error).__mro__:
             if (mapping := errors.get(exception_type)) is not None:
                 return mapping
+            if exception_type is ExtractorError:
+                return _FRAMEWORK_ERROR
     return None

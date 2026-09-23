@@ -78,6 +78,7 @@ def parameter(
     name: str | None = None,
     description: str | None = None,
     type: Callable[[str], object] | _Missing = _MISSING,
+    convert: Callable[[str], object] | _Missing = _MISSING,
     default: object = _MISSING,
 ) -> _Parameter:
     """Declare a setting so your callback receives a usable Python value.
@@ -97,9 +98,11 @@ def parameter(
         envvar: Parameter environment variable; defaults to the uppercase argument name.
         name: Registration display name; defaults to the argument name.
         description: Optional registration description.
-        type: Converter for supplied strings. When omitted, infer str/int/float/bool from
-            a concrete default, otherwise use str. Explicit converters take precedence;
-            annotations do not select conversion. Boolean conversion accepts true/false,
+        type: Built-in type or converter object for supplied strings, such as ``int`` or
+            ``IntRange(min=1)``. When omitted, infer str/int/float/bool from a concrete
+            default, otherwise use str. Existing callable values remain supported.
+        convert: Custom callable for supplied strings. Cannot be combined with ``type``.
+            Annotations do not select conversion. Boolean conversion accepts true/false,
             yes/no, on/off, and 1/0 case-insensitively. Float values must be finite.
         default: Already-converted Python value used when absent, including None; omit to
             require the parameter. Built-in types and constraints validate concrete defaults.
@@ -118,6 +121,10 @@ def parameter(
     or TypeError to sanitize them, or BadParameter with a message safe to display.
     """
     variable, display = _names(argument, envvar, name)
+    if type is not _MISSING and convert is not _MISSING:
+        raise TypeError("parameter type and convert cannot both be supplied")
+    if convert is not _MISSING:
+        type = convert
     if type is _MISSING:
         inferred = builtins.type(default)
         type = inferred if inferred in (str, int, float, bool) else str
@@ -161,8 +168,9 @@ def error(
     mapped failures retain their full traceback on stderr.
 
     Mappings cover startup, argument binding, extraction, and output finalization. They
-    configure runtime reporting. ``message`` supplies static fallback text required by both
-    :meth:`Extractor.registration_kwargs` and :meth:`Extractor.catalog_manifest`.
+    configure runtime reporting. ``message`` optionally supplies static fallback text for both
+    :meth:`Extractor.registration_kwargs` and :meth:`Extractor.catalog_manifest`;
+    when omitted, the fallback is derived from the code.
     Runtime messages come from the exception. Both exports validate and combine exit-code fallbacks.
     ``run(exit=False)`` and direct callback invocation propagate errors without reporting.
     """
