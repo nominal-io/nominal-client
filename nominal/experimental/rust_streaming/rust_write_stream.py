@@ -59,8 +59,9 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        track_metrics: bool = False,
     ) -> RustWriteStream:
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {"track_metrics": track_metrics}
         if num_workers:
             kwargs["num_upload_workers"] = num_workers
             kwargs["num_runtime_workers"] = num_workers

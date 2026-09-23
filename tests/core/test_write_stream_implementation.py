@@ -133,15 +133,27 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
-    """'experimental' is not aliased away while it is the only implementation streaming metrics."""
-    from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+@pytest.mark.parametrize("track_metrics", [False, True])
+def test_rust_stream_forwards_track_metrics(mock_dataset: Dataset, track_metrics: bool):
+    """`track_metrics` reaches the rust stream's options unchanged, and stays off unless asked for."""
+    with mock_dataset.get_write_stream(implementation="rust", track_metrics=track_metrics) as stream:
+        assert stream._opts.track_metrics is track_metrics  # type: ignore[attr-defined]
 
+
+def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset):
+    """The superseded 'experimental' spelling yields a rust stream that keeps its runtime metrics."""
     with (
-        pytest.warns(UserWarning, match="does not carry streaming metrics yet"),
+        pytest.warns(UserWarning, match="use implementation='rust' with track_metrics=True"),
         mock_dataset.get_write_stream(implementation="experimental") as stream,
     ):
-        assert isinstance(stream, WriteStreamV2)
+        assert isinstance(stream, rust_write_stream_type())
+        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
+
+
+def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
+    """Asking for metrics refuses the python fallback, which cannot carry them."""
+    with pytest.raises(ImportError, match="track_metrics"):
+        mock_dataset.get_write_stream(track_metrics=True)
 
 
 def test_data_format_still_selects_an_implementation(mock_dataset: Dataset):
@@ -172,7 +184,7 @@ def test_implementation_and_data_format_together_is_an_error(mock_dataset: Datas
 
 def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
     """An unrecognized implementation names the ones that are actually supported."""
-    with pytest.raises(ValueError, match="python, rust, experimental"):
+    with pytest.raises(ValueError, match=r"\{python, rust\}"):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
