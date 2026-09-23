@@ -7,6 +7,14 @@ import shlex
 import ffmpeg
 
 from nominal.core._types import PathLike
+from nominal.experimental.video_processing.audio_timeline import (
+    DEFAULT_MAX_AUDIO_HOLE_SECONDS,
+    AudioTimelineError,
+    audio_repair_filter,
+    measure_audio_timeline,
+    probe_audio_stream,
+    survives_strict_segmentation,
+)
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
     scale_factor_from_resolution,
@@ -27,6 +35,8 @@ def normalize_video(
     force: bool = True,
     resolution: AnyResolutionType | None = None,
     num_threads: int | None = None,
+    repair_audio: bool = True,
+    max_audio_hole_seconds: float = DEFAULT_MAX_AUDIO_HOLE_SECONDS,
 ) -> None:
     """Convert video file to an h264 encoded video file using ffmpeg.
 
@@ -37,6 +47,12 @@ def normalize_video(
         * Video is encoded with H264
         * Audio is encoded with AAC
         * Video has YUV4:2:0 planar color space
+        * Audio content is made to match the timeline the file declares, when the two disagree
+
+    Timestamps are preserved throughout: video timestamps pass through untouched, and audio packets
+    keep the timestamps the source gave them. Only the audio *content* is adjusted, by filling
+    silence where the file says sound is missing and dropping samples the file gives no time to
+    play. Audio whose timing is already coherent is converted with no audio filter at all.
 
     While this package includes bindings to use ffmpeg installed on your local system, it does not
     include ffmpeg as a dependency due to the GPLv3 licensing present in the standard H264 processing library
@@ -57,6 +73,15 @@ def normalize_video(
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
             NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
                   on the machine
+        repair_audio: If true, inspect the audio timeline, rebuild the audio onto it when the two
+            disagree, and verify the converted file can be segmented before returning.
+        max_audio_hole_seconds: Longest single run of missing audio that will be filled with
+            silence. Bounds how much silence one timestamp can introduce; audio containing a longer
+            gap is reported and left as it is. Raise it to fill such a gap.
+
+    Raises:
+        AudioTimelineError: If the converted file cannot be segmented, so the result is known
+            before any time is spent uploading it.
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -72,16 +97,16 @@ def normalize_video(
         else:
             raise FileExistsError(f"Cannot convert {input_path} to {output_path}: output path already exists!")
 
-    # Determine if input video has an audio track. If it doesn't, add in an empty audio track
-    # to allow for seamless play of this video content alongside content with audio tracks.
-    # While the backend will do this for you automatically, it dramatically faster to do it here
-    # than in the backend since we are already re-encoding video.
     output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,
         force_key_frames="source",
         pix_fmt=DEFAULT_PIXEL_FORMAT,
     )
+
+    # The filter is applied only to audio measured to need it.
+    if repair_audio and (audio_filter := audio_repair_filter(input_path, max_audio_hole_seconds)) is not None:
+        output_kwargs["af"] = audio_filter
 
     # If user has opted out of forcing key-frames, keep key frames at the same timestamps as
     # present in the initial video.
@@ -104,6 +129,9 @@ def normalize_video(
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()
 
+    if repair_audio:
+        _assert_output_will_segment(input_path, output_path)
+
     # Warn the user if the number of frames changes as a result of re-encoding the video
     frames_before = frame_count(input_path)
     frames_after = frame_count(output_path)
@@ -115,6 +143,24 @@ def normalize_video(
             frames_after,
             frames_before,
         )
+
+
+def _assert_output_will_segment(input_path: pathlib.Path, output_path: pathlib.Path) -> None:
+    """Confirm the converted file can be segmented, raising with the diagnosis when it cannot.
+
+    Costs a single sequential read, and establishes before upload whether the file is usable.
+    """
+    if probe_audio_stream(output_path) is None or survives_strict_segmentation(output_path):
+        return
+
+    # The measurement runs here to name what is still wrong in the error.
+    timeline = measure_audio_timeline(output_path)
+    detail = timeline.describe() if timeline is not None else "its audio timeline is unusable"
+    raise AudioTimelineError(
+        f"Normalized '{input_path}' to '{output_path}', but the result still cannot be segmented: "
+        f"{detail}. Uploading it would fail after the transfer, so it is being reported now. "
+        f"The output has been left in place for inspection."
+    )
 
 
 def frame_count(video_path: pathlib.Path) -> int:
