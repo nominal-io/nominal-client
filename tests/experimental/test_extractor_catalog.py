@@ -121,7 +121,7 @@ def test_fallbacks_group_by_exit_code_or_reject_ambiguity(same_fallback):
 @pytest.mark.parametrize(
     "options,match",
     [
-        ({"message": None}, "message"),
+        ({"message": ""}, "message"),
         ({"message": "x" * 513}, "message"),
         ({"code": "UNKNOWN"}, "reserved"),
         ({"code": "EXTRACTOR_UNSCHEDULABLE"}, "reserved"),
