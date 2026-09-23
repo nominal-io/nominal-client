@@ -164,8 +164,9 @@ def split(
 Arguments are required unless a decorator supplies a default. Optional inputs use `default=None`
 and arrive as `Path | None`; supplied input paths must exist as files. Parameter defaults are
 already-converted Python values and may be `None`. Keep defaults in decorators rather than the
-function signature. Supplied strings use `type=`. When omitted, a `str`, `int`, `float`, or `bool` default selects
-its converter; otherwise conversion defaults to `str`. An explicit converter always wins.
+function signature. Use `type=` for built-in types and converter objects, or `convert=` for a
+custom function. When both are omitted, a `str`, `int`, `float`, or `bool` default selects
+its converter; otherwise conversion defaults to `str`. An explicit choice always wins.
 An empty string is a supplied value, not a request for the default. Booleans accept `true/false`, `yes/no`, `on/off`, and `1/0`,
 case-insensitively. Custom converters may raise `ValueError` or `TypeError` to reject a value.
 All declared arguments resolve before user code runs. Binding failures raise `ExtractorError`
@@ -186,6 +187,7 @@ this runtime; the registration API currently stores neither as structured fields
 | `file_suffixes=` | Inputs | Registration suffix filters such as `["mcap", "csv"]`; empty accepts any suffix |
 | `default=None` | Inputs | Allow an omitted input and inject `None`; other input defaults are unsupported |
 | `type=` | Parameters | Convert a supplied string; infer from a basic default when omitted, otherwise use `str` |
+| `convert=` | Parameters | Custom callable that converts a supplied string; cannot be combined with `type=` |
 | `default=` | Parameters | Inject this Python value when absent; omitting it makes the parameter required |
 
 The first callback argument receives the context. Declare the remaining arguments explicitly;
@@ -237,7 +239,7 @@ def process(
 | `Choice([...])` | An exact, case-sensitive match from a nonempty collection of unique strings |
 | `IntRange(min=None, max=None)` | An integer within the inclusive bounds; either bound may be omitted |
 | `FloatRange(min=None, max=None)` | A finite number within the inclusive bounds; rejects NaN and infinity |
-| Custom callable | A string passed to your callable, returning the callback's Python value |
+| `convert=callable` | A string passed to your callable, returning the callback's Python value |
 
 Defaults are already-converted values: use `default=2`, not `default="2"`, with `type=int`.
 Basic built-in converters and the three constraints above validate non-`None` defaults when the
@@ -255,7 +257,7 @@ def positive_odd(value: str) -> int:
         raise extractor.BadParameter("must be a positive odd integer")
     return result
 
-# Use @extractor.parameter("parts", type=positive_odd, default=3) above the callback.
+# Use @extractor.parameter("parts", convert=positive_odd, default=3) above the callback.
 ```
 
 `BadParameter` becomes `ExtractorError` naming the argument and environment variable and including
@@ -602,12 +604,6 @@ class MalformedRecordingError(ValueError):
     exit_code=64,
     message="The recording could not be decoded.",
 )
-@extractor.error(
-    extractor.ExtractorError,
-    code="EXTRACTOR_CONTRACT",
-    exit_code=65,
-    message="The extractor contract could not be satisfied.",
-)
 @extractor.input("recording", file_suffixes=["flight"])
 @extractor.parameter("parts", type=int, default=2)
 def convert(ctx: extractor.ManifestExtractorContext, *, recording: Path, parts: int) -> None:
@@ -623,14 +619,16 @@ The payload contains `code`, `message` (from `str(exception)`), and `retryable` 
 extractor decorator must stay on top, but the relative order of `@error`, `@input`, and
 `@parameter` does not affect error matching. Use specific exception classes for expected failures
 so programming errors are not mislabeled. Subclasses match;
-the nearest registered class in Python's method resolution order wins. Mapping `ExtractorError`
-intentionally includes startup configuration, argument binding, and output-contract failures.
+the nearest registered class in Python's method resolution order wins. Framework `ExtractorError`
+failures automatically emit `EXTRACTOR_CONTRACT` with exit status 1, including startup,
+argument binding, and output-contract failures. An explicit `@error(ExtractorError, ...)`
+replaces that default policy.
 Use a separate application exception such as `MalformedRecordingError` for bad input contents,
 so a deployment fault does not receive a data-error code.
 
-The default destination is `/dev/termination-log`. For local tests or a custom container mount,
-pass an explicit trusted path to `run(termination_log_path=...)`. Environment variables, including
-`TERMINATION_LOG_PATH`, cannot change the destination. Writing the file is best-effort: if it
+Scout reads the Kubernetes default `/dev/termination-log` and does not inject a log-path
+environment variable. For local tests, pass an explicit path to `run(termination_log_path=...)`.
+Environment values, including `TERMINATION_LOG_PATH`, do not redirect it. Writing the file is best-effort: if it
 fails, the framework still emits JSON to stderr and exits with the mapped code.
 
 The JSON payload is limited to 4,096 UTF-8 bytes to fit Kubernetes'
@@ -638,14 +636,13 @@ The JSON payload is limited to 4,096 UTF-8 bytes to fit Kubernetes'
 are preserved. An error code that cannot fit even with an empty message is rejected when declaring
 `@error`. Stderr contains the structured JSON followed by the full traceback, retaining the
 original exception message for debugging. Exit codes
-must be integers from 1 through 255. Unmapped failures keep the traceback and exit status 1;
+must be integers from 1 through 255. Other unmapped failures keep the traceback and exit status 1;
 `exit=False` re-raises without writing a termination message. Direct calls to the decorated
 function likewise propagate exceptions; reporting belongs to `run()`.
 
-`message=` on `@error` supplies static fallback text. It is optional for runtime-only use,
-and does **not** replace `str(exception)` in runtime reports. Both `registration_kwargs()` and
-`catalog_manifest()` require it for each mapping, because the platform needs a useful message when
-no termination message is available. Both exports reject reserved codes and conflicting fallbacks
+`message=` on `@error` supplies static fallback text and does **not** replace
+`str(exception)` in runtime reports. When omitted, registration derives a fallback from
+the code (`MALFORMED_INPUT` becomes `Malformed input`). Both exports reject reserved codes and conflicting fallbacks
 for the same exit code; identical fallbacks are combined. Direct registration supplies typed
 `ExitCodeMapping` objects, while the catalog export serializes the same mappings.
 
@@ -771,8 +768,9 @@ required for generation; omitting them is allowed for runtime-only declarations.
 extractors also require an explicit output format for generation. The helper raises `ValueError`
 when these registration settings are incomplete.
 
-`type=` and `default=` remain runtime settings; the current platform registration schema does not
-store them. Error mappings supply both runtime reporting and registered exit-code fallbacks.
+`type=`, `convert=`, and `default=` remain runtime settings; the current platform registration
+schema does not store them. Error mappings supply both runtime reporting and registered
+exit-code fallbacks.
 The helper does not build or upload an image, choose its tag, create an extractor, or
 activate it. Keep those deployment decisions in registration code, as above.
 
