@@ -4,7 +4,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, overload
+from typing import Iterable, Literal, Mapping, NamedTuple, Protocol, Sequence, TypeAlias, overload
 
 from nominal_api import (
     api,
@@ -237,7 +237,7 @@ class DataSource(HasRid, MarkableMixin):
                 NOTE: only works with `implementation='rust'`
             track_metrics: Also stream runtime metrics about the upload (request round-trip time, and
                 how stale each request's points are before and after it is sent) as
-                `__nominal.metric.*` channels on the same dataset. Off by default.
+                `__nominal.metric.*` channels on the same dataset.
                 NOTE: only works with `implementation='rust'`
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
@@ -538,12 +538,26 @@ def _construct_export_request(
 # the literals out so they render in the docs; the plumbing below uses this.
 _AnyImplementation: TypeAlias = Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"]
 
-# Superseded spellings. Each still works and each warns; the value is the guidance in the warning.
-_DEPRECATED_IMPLEMENTATIONS = {
-    "json": "use implementation='python'",
-    "protobuf": "use implementation='python'",
-    "rust_experimental": "use implementation='rust'",
-    "experimental": "use implementation='rust' with track_metrics=True",
+
+class _ResolvedImplementation(NamedTuple):
+    """What a spelling of `implementation` means once the superseded spellings are mapped away.
+
+    `implementation` is `None` when the caller named nothing, meaning "pick one for me" -- that
+    choice depends on what is installed, so `_get_write_stream` makes it.
+    """
+
+    implementation: Literal["python", "rust"] | None
+    track_metrics: bool = False
+
+
+# Superseded spellings. Each still works and warns, pointing at what it now means.
+_DEPRECATED_IMPLEMENTATIONS: Mapping[_AnyImplementation, _ResolvedImplementation] = {
+    # Both were pure-python streams; 'python' is whichever of the two is worth having.
+    "json": _ResolvedImplementation("python"),
+    "protobuf": _ResolvedImplementation("python"),
+    "rust_experimental": _ResolvedImplementation("rust"),
+    # 'experimental' was the stream that carried runtime metrics, so its callers keep them.
+    "experimental": _ResolvedImplementation("rust", track_metrics=True),
 }
 
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the
@@ -559,12 +573,8 @@ _DEPRECATION_STACKLEVEL = 5
 def _resolve_implementation(
     implementation: _AnyImplementation | None,
     data_format: _AnyImplementation | None,
-) -> Literal["python", "rust"] | None:
-    """Map what the caller asked for onto a surviving implementation, warning about old spellings.
-
-    Returns `None` when the caller named nothing, which means "pick one for me" -- that choice
-    depends on what is installed, so `_get_write_stream` makes it.
-    """
+) -> _ResolvedImplementation:
+    """Map what the caller asked for onto a surviving implementation, warning about old spellings."""
     if data_format is not None:
         if implementation is not None:
             raise ValueError("Pass only `implementation`: `data_format` is its deprecated name")
@@ -572,26 +582,24 @@ def _resolve_implementation(
         # The deprecation itself is warned about by @warn_on_deprecated_argument on get_write_stream.
         implementation = data_format
 
-    if implementation in _DEPRECATED_IMPLEMENTATIONS:
-        warnings.warn(
-            f"implementation={implementation!r} is deprecated: {_DEPRECATED_IMPLEMENTATIONS[implementation]}.",
-            UserWarning,
-            stacklevel=_DEPRECATION_STACKLEVEL,
-        )
-
     match implementation:
-        case None:
-            return None
-        case "json" | "protobuf":
-            # Both were pure-python streams; 'python' is whichever of the two is worth having.
-            return "python"
-        case "rust_experimental" | "experimental":
-            # 'experimental' also turns metrics on; `_get_write_stream` handles that half.
-            return "rust"
-        case "python" | "rust":
-            return implementation
-        case _:
-            raise ValueError(f"Expected `implementation` to be one of {{python, rust}}, received {implementation!r}")
+        case None | "python" | "rust":
+            return _ResolvedImplementation(implementation)
+
+    if implementation not in _DEPRECATED_IMPLEMENTATIONS:
+        raise ValueError(f"Expected `implementation` to be one of {{python, rust}}, received {implementation!r}")
+
+    resolved = _DEPRECATED_IMPLEMENTATIONS[implementation]
+    guidance = f"use implementation={resolved.implementation!r}"
+    if resolved.track_metrics:
+        guidance += " with track_metrics=True"
+
+    warnings.warn(
+        f"implementation={implementation!r} is deprecated: {guidance}.",
+        UserWarning,
+        stacklevel=_DEPRECATION_STACKLEVEL,
+    )
+    return resolved
 
 
 def _python_write_stream(
@@ -622,12 +630,12 @@ def _get_write_stream(
     write_rid: str,
     clients: DataSource._Clients,
 ) -> DataStream:
-    requested = _resolve_implementation(implementation, data_format)
-    # 'experimental' was the metrics-carrying stream, so its callers keep their metrics.
-    track_metrics = track_metrics or "experimental" in (implementation, data_format)
+    requested, implies_metrics = _resolve_implementation(implementation, data_format)
+    track_metrics = track_metrics or implies_metrics
 
-    # The rust-only arguments the caller actually passed; each defaults to None, or False for flags.
-    used = sorted(
+    # The rust-only arguments in effect, whether passed or implied by 'experimental'. Each is unset
+    # when None, or False for the flag.
+    used = [
         key
         for key, value in {
             "file_fallback": file_fallback,
@@ -636,13 +644,12 @@ def _get_write_stream(
             "track_metrics": track_metrics,
         }.items()
         if value is not None and value is not False
-    )
+    ]
 
-    if requested is not None and requested != "rust":
+    if requested == "python":
         for key in used:
             logger.warning("Argument %s has no effect unless `implementation='rust'`", key)
 
-    if requested == "python":
         return _python_write_stream(batch_size, max_wait, write_rid, clients)
 
     # Rust, either named outright or chosen because nothing was. Delayed, and deliberately kept

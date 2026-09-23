@@ -133,11 +133,11 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-@pytest.mark.parametrize("track_metrics", [False, True])
-def test_rust_stream_forwards_track_metrics(mock_dataset: Dataset, track_metrics: bool):
-    """`track_metrics` reaches the rust stream's options unchanged, and stays off unless asked for."""
-    with mock_dataset.get_write_stream(implementation="rust", track_metrics=track_metrics) as stream:
-        assert stream._opts.track_metrics is track_metrics  # type: ignore[attr-defined]
+@pytest.mark.parametrize(("kwargs", "expected"), [({}, False), ({"track_metrics": True}, True)])
+def test_rust_stream_tracks_metrics_only_when_asked(mock_dataset: Dataset, kwargs: dict[str, bool], expected: bool):
+    """The rust stream emits runtime metrics when `track_metrics=True`, and not by default."""
+    with mock_dataset.get_write_stream(implementation="rust", **kwargs) as stream:
+        assert stream._opts.track_metrics is expected  # type: ignore[attr-defined]
 
 
 def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset):
@@ -154,6 +154,14 @@ def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, w
     """Asking for metrics refuses the python fallback, which cannot carry them."""
     with pytest.raises(ImportError, match="track_metrics"):
         mock_dataset.get_write_stream(track_metrics=True)
+
+
+def test_track_metrics_on_python_warns_it_has_no_effect(mock_dataset: Dataset, caplog: pytest.LogCaptureFixture):
+    """A rust-only argument passed to the python stream is reported as having no effect."""
+    with mock_dataset.get_write_stream(implementation="python", track_metrics=True):  # type: ignore[call-overload]
+        pass
+
+    assert "Argument track_metrics has no effect" in caplog.text
 
 
 def test_data_format_still_selects_an_implementation(mock_dataset: Dataset):
