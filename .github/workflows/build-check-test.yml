@@ -72,11 +72,14 @@ jobs:
         run: |
           python3 -m json.tool release-please-config.json
           python3 -m json.tool .release-please-manifest.json
-      # Validates config structure only — targets the PR branch, not main,
+      # Validates config structure only — targets the checked-out revision, not main,
       # so the computed version bump is not meaningful here.
       - name: Dry-run release-please
         run: |
-          TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          # Fork branches do not exist on origin. Preserve this checkout before
+          # release-please's local setup checks out and resets main.
+          TARGET="release-config-validation"
+          git branch "$TARGET" HEAD
           npx release-please release-pr \
             --dry-run \
             --local \
