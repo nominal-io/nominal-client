@@ -251,6 +251,40 @@ class ExitCodeMapping:
 
 
 @dataclass(frozen=True)
+class ContainerResources:
+    """Compute resources for an extractor container.
+
+    Each unset field uses the deployment-wide default. Bounds are enforced by the server;
+    a valid request may still exceed the resources available in the cluster.
+    """
+
+    cpu_cores: int | None = None
+    """CPU cores requested for the container (1–32)."""
+    memory_gib: int | None = None
+    """Memory in GiB, used as both the request and the limit (1–128)."""
+    disk_gib: int | None = None
+    """Size in GiB of each ephemeral input and output volume (1–512).
+
+    When set, the pod requests and limits ephemeral storage to twice this value.
+    """
+
+    def _to_proto(self) -> registry_pb2.ContainerResources:
+        return registry_pb2.ContainerResources(
+            cpu_cores=self.cpu_cores,
+            memory_gib=self.memory_gib,
+            disk_gib=self.disk_gib,
+        )
+
+    @classmethod
+    def _from_proto(cls, msg: registry_pb2.ContainerResources) -> Self:
+        return cls(
+            cpu_cores=msg.cpu_cores if msg.HasField("cpu_cores") else None,
+            memory_gib=msg.memory_gib if msg.HasField("memory_gib") else None,
+            disk_gib=msg.disk_gib if msg.HasField("disk_gib") else None,
+        )
+
+
+@dataclass(frozen=True)
 class TimestampMetadata:
     """How timestamps in the extractor's output data are encoded (the timestamp column + its type)."""
 
@@ -309,6 +343,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     """
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
+    resources: ContainerResources | None = None
+    """Resource overrides for the extractor container; unset values use deployment-wide defaults."""
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -376,6 +412,7 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
             inputs=tuple(FileExtractionInput._from_proto(i) for i in msg.inputs),
             parameters=tuple(FileExtractionParameter._from_proto(p) for p in msg.parameters),
             exit_code_mappings=tuple(ExitCodeMapping._from_proto(m) for m in msg.exit_code_mappings),
+            resources=ContainerResources._from_proto(msg.resources) if msg.HasField("resources") else None,
             file_output_format=FileOutputFormat._from_proto(msg.file_output_format),
             default_timestamp_metadata=(
                 TimestampMetadata._from_proto(msg.default_timestamp_metadata)

@@ -177,8 +177,31 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
     clients.registry.CreateImage.assert_not_called()
 
 
-def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(tmp_path: Path) -> None:
-    """Registration sends each error mapping and retains the mappings returned by the registry."""
+@pytest.mark.parametrize(
+    ("resources", "expected_resources"),
+    [
+        pytest.param(None, None, id="omitted"),
+        pytest.param(core.ContainerResources(), registry_pb2.ContainerResources(), id="defaults"),
+        pytest.param(core.ContainerResources(cpu_cores=4), registry_pb2.ContainerResources(cpu_cores=4), id="cpu-only"),
+        pytest.param(
+            core.ContainerResources(memory_gib=16), registry_pb2.ContainerResources(memory_gib=16), id="memory-only"
+        ),
+        pytest.param(
+            core.ContainerResources(disk_gib=64), registry_pb2.ContainerResources(disk_gib=64), id="disk-only"
+        ),
+        pytest.param(
+            core.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64),
+            registry_pb2.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64),
+            id="all-resources",
+        ),
+    ],
+)
+def test_register_image_sends_and_returns_metadata(
+    tmp_path: Path,
+    resources: core.ContainerResources | None,
+    expected_resources: registry_pb2.ContainerResources | None,
+) -> None:
+    """Registration preserves error mappings and resource overrides, including unset fields."""
     clients = _clients()
     clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
     clients.upload.list_parts.return_value = []
@@ -197,6 +220,8 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(t
     ]
     response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     response_image.exit_code_mappings.extend(expected)
+    if expected_resources is not None:
+        response_image.resources.CopyFrom(expected_resources)
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
 
     image = extractor.register_image(
@@ -206,12 +231,17 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(t
         default_timestamp_column="ts",
         default_timestamp_type="iso_8601",
         exit_code_mappings=mappings,
+        resources=resources,
     )
 
     request = clients.registry.CreateImage.call_args.args[0]
     assert request.object_path == "s3://image"
     assert list(request.exit_code_mappings) == expected
     assert tuple(image.exit_code_mappings) == tuple(mappings)
+    assert request.HasField("resources") is (expected_resources is not None)
+    if expected_resources is not None:
+        assert request.resources == expected_resources
+    assert image.resources == resources
 
 
 def test_set_active_image_polls_then_activates() -> None:
