@@ -313,6 +313,30 @@ def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: 
     clients.ingest.ingest.assert_not_called()
 
 
+def test_ingest_refuses_an_unreadable_colour_column_before_uploading(
+    clients: MagicMock, spatial: Spatial, tmp_path: Path
+) -> None:
+    """An unreadable colour column is rejected before anything is uploaded."""
+    with pytest.raises(ValueError, match="six hex digits"):
+        spatial.add_point_cloud_csv(_csv(tmp_path, "x,y,z,color\n0,0,0,#c04422\n"), rgb_column="color")
+
+    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.ingest.ingest.assert_not_called()
+
+
+def test_ingest_still_submits_a_cloud_with_nothing_to_colour_by(
+    clients: MagicMock, spatial: Spatial, tmp_path: Path
+) -> None:
+    """A cloud with no colourable attribute warns and is still submitted.
+
+    A constant attribute is valid, so this must not be escalated to an error.
+    """
+    with _stubbed_upload():
+        job = spatial.add_point_cloud_csv(_csv(tmp_path, "x,y,z,label\n0,0,0,kerb\n1,1,1,wall\n"))
+
+    assert job.rid == _JOB_RID
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

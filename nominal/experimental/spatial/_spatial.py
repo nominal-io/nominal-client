@@ -30,7 +30,10 @@ _POINT_CLOUD_CHANNEL = "point_cloud"
 
 
 class ScanPattern(Enum):
-    """Point-cloud scan pattern, wrapping `nominal_api.scout_spatial_api.ScanPattern`."""
+    """How the sensor swept the scene, recorded on the spatial's metadata.
+
+    An unrecognised pattern reads back as `UNKNOWN`.
+    """
 
     FLASH = "FLASH"
     MECHANICAL = "MECHANICAL"
@@ -235,6 +238,8 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
 
         The CSV must contain at minimum x, y, z columns (case-insensitive); remaining
         columns are classified as real or string by sampling the first ~1000 data rows.
+        Attribute slots are assigned by walking column types -- real, then int, then
+        string, then colour -- rather than header order.
         Numeric columns are always typed real -- pass ``column_types`` to ask for int on
         a column you know holds integers.
 
@@ -254,8 +259,9 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
                 way to get the Int wire type, which is never inferred.
             rgb_column: Name of a column holding a six-character hex colour ("rrggbb", no
                 leading #). It becomes an Rgb attribute, which is what per-point colouring
-                reads; separate 0-255 columns cannot drive colour, and are silently skipped
-                by the parser rather than rejected.
+                reads. Separate 0-255 columns cannot drive colour. A column with no
+                readable cell is rejected before the upload; individual unreadable cells
+                warn and are skipped per-point by the parser.
             rgb_attribute: Name for the resulting attribute.
             timestamp_column: Column holding per-point time. Measuring its extent costs one
                 extra pass over the file, so it is only read when named here.
@@ -282,8 +288,9 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
             ValueError: If only one of ``timestamp_column`` / ``timestamp_type`` is given,
                 ``timestamp_type`` reads the column in a unit the 3D panel cannot, the CSV
                 is empty or uses quoting, lacks x/y/z columns, ``column_types`` names a
-                column or type that does not exist, ``rgb_column`` is not in the header, or
-                ``timestamp_column`` is missing from the header or holds a non-numeric value.
+                column or type that does not exist, ``rgb_column`` is not in the header or
+                holds nothing readable as a six-digit hex colour, or ``timestamp_column``
+                is missing from the header or holds a non-numeric value.
         """
         # Everything the timestamp pair says is checked here, before the file is read and
         # long before it is uploaded. The ingest is irreversible -- a retry after a failure
@@ -343,8 +350,9 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
 
     def _submit_ingest(self, source_handle: str, described: _PointCloudCsv) -> IngestionJob:
         """Submit the uploaded CSV to the point-cloud ingest pipeline and return the job it created."""
-        # The target must already exist: the service rejects `PointCloudIngestTarget.new`,
-        # since this spatial's daggerUuid is what names the model the import writes into.
+        # The target must already exist: the service rejects a request that asks it to
+        # create one, since this spatial's uuid is what names the model the import
+        # writes into.
         #
         # `channel` and `tags` are required by the request but not yet read by the
         # backend, so they are not exposed: a caller passing tags that never appear

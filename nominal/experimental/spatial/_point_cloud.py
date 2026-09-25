@@ -263,8 +263,9 @@ def _describe_point_cloud_csv(
         FileNotFoundError: If `csv_path` does not exist.
         ValueError: If `time_unit` is one the 3D panel cannot read, the CSV is empty,
             uses quoting, lacks x/y/z columns, `column_types` names a column or type
-            that does not exist, `rgb_column` is not in the header, or
-            `timestamp_column` is missing from the header or holds a non-numeric value.
+            that does not exist, `rgb_column` is not in the header or holds nothing
+            readable as a six-digit hex colour, or `timestamp_column` is missing from
+            the header or holds a non-numeric value.
     """
     if time_unit not in _MICROSECONDS_PER_TIME_UNIT:
         raise ValueError(
@@ -421,13 +422,22 @@ def _build_import_config(
     rgb_column: str | None = None,
     rgb_attribute: str,
 ) -> _ImportConfig:
-    """Assign every column to a bucket and declare the archetype in the importer's walk order."""
+    """Assign every column to a bucket and declare the archetype in the importer's walk order.
+
+    Also runs the render checks. They live here rather than in `_scan_csv` so
+    they read the sampled rows already in memory, leaving the per-row loop a
+    single sequential walk.
+    """
     overrides = column_type_overrides or {}
     headers = scan.headers
     _validate_overrides(overrides, headers)
 
     geometry = _find_geometry_indices(headers)
+    _warn_if_geometry_looks_geodetic(scan.samples, geometry, headers)
+
     rgb = () if rgb_column is None else (_column_index(headers, rgb_column, "rgb_column"),)
+    if rgb:
+        _reject_unreadable_colour(scan.samples, rgb[0], str(rgb_column))
     # Geometry and colour columns are excluded from scalar classification: a hex
     # colour cell would otherwise be sampled as a string column.
     reserved = {*geometry, *rgb}
@@ -441,6 +451,8 @@ def _build_import_config(
         # Caller-supplied type wins; fall through to sample-based inference.
         kind = overrides.get(name) or _classify_column(row[i] for row in scan.samples)
         columns[kind].append((i, name))
+
+    _warn_unusable_attributes(scan.samples, columns, has_colour=bool(rgb))
 
     attributes = [_attribute(name, kind) for kind in _BUCKET_ORDER for _, name in columns[kind]]
     if rgb:
@@ -468,6 +480,167 @@ def _build_import_config(
             string=tuple(i for i, _ in columns["string"]),
             rgb=rgb,
         ),
+    )
+
+
+# --- render checks ------------------------------------------------------------
+#
+# These run against the rows `_scan_csv` already sampled, before the upload. They
+# see the sample rather than the whole file: a malformed colour format is written
+# by the producer for every row, so the sample is sufficient to detect it.
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _is_readable_colour(value: str) -> bool:
+    """Whether the importer can read this cell as a colour: exactly six hex digits."""
+    return len(value) == 6 and all(character in _HEX_DIGITS for character in value)
+
+
+def _populated(samples: Sequence[tuple[str, ...]], index: int) -> list[str]:
+    return [stripped for row in samples if (stripped := row[index].strip())]
+
+
+def _reject_unreadable_colour(samples: Sequence[tuple[str, ...]], index: int, column: str) -> None:
+    """Reject a colour column whose cells cannot be read as colour.
+
+    The importer reads each cell as three 2-character hex slices and skips any
+    cell that is not exactly six hex digits, rendering those points black.
+
+    Raises when no sampled cell is readable, which indicates the column is in the
+    wrong format throughout. Individual unreadable cells warn instead.
+    """
+    populated = _populated(samples, index)
+    if not populated:
+        if samples:
+            logger.warning(
+                "rgb_column %r is empty in the first %d rows, so no point will take a colour from it",
+                column,
+                len(samples),
+            )
+        return
+
+    unreadable = [value for value in populated if not _is_readable_colour(value)]
+    if not unreadable:
+        return
+
+    if len(unreadable) == len(populated):
+        raise ValueError(
+            f"rgb_column {column!r} holds no value readable as a colour, so every point would "
+            f"render black. Each cell must be exactly six hex digits ('rrggbb', no leading '#'); "
+            f"three separate 0-255 columns cannot drive colour. Sampled values: {unreadable[:3]}"
+        )
+    logger.warning(
+        "rgb_column %r has %d of %d sampled cells that are not six hex digits; those points render black. Examples: %s",
+        column,
+        len(unreadable),
+        len(populated),
+        unreadable[:3],
+    )
+
+
+def _varies(samples: Sequence[tuple[str, ...]], index: int) -> bool:
+    """Whether a column holds more than one distinct value, stopping at the second."""
+    seen: str | None = None
+    for row in samples:
+        value = row[index].strip()
+        if not value:
+            continue
+        if seen is None:
+            seen = value
+        elif value != seen:
+            return True
+    return False
+
+
+def _warn_unusable_attributes(
+    samples: Sequence[tuple[str, ...]],
+    columns: Mapping[ColumnDataType, list[tuple[int, str]]],
+    *,
+    has_colour: bool,
+) -> None:
+    """Warn about attributes that cannot drive colour or filtering.
+
+    A numeric attribute whose sampled values do not vary colours uniformly and
+    filters all-or-nothing. A cloud with no varying numeric attribute and no
+    colour column renders in a single colour.
+    """
+    if not samples:
+        return
+
+    flat: list[str] = []
+    varying: list[str] = []
+    for kind in ("real", "int"):
+        for index, name in columns[kind]:
+            (varying if _varies(samples, index) else flat).append(name)
+
+    nothing_to_show = not varying and not has_colour
+    if not flat and not nothing_to_show:
+        return
+
+    # A single line regardless of how many columns are flat.
+    message = ""
+    if flat:
+        message = (
+            f"point cloud attributes {sorted(flat)} hold a single value in the first {len(samples)} "
+            f"rows; an attribute that does not vary colours uniformly and filters all-or-nothing."
+        )
+    if nothing_to_show:
+        uncolourable = (
+            "no attribute in this CSV can drive colour: string attributes have no reductions, and "
+            "no rgb_column was named. The cloud will render in a single colour."
+        )
+        message = f"{message} {uncolourable.capitalize()}" if message else uncolourable.capitalize()
+    logger.warning("%s", message)
+
+
+def _warn_if_geometry_looks_geodetic(
+    samples: Sequence[tuple[str, ...]], geometry: tuple[int, int, int], headers: Sequence[str]
+) -> None:
+    """Warn when x/y hold geodetic degrees rather than a local metric frame.
+
+    x/y/z are read as one cartesian frame, so degrees against an altitude in
+    metres render as a near-flat sheet. The test is numeric rather than a check
+    on header names.
+    """
+    if not samples:
+        return
+
+    spans: list[tuple[float, float]] = []
+    for index in geometry:
+        values = []
+        for row in samples:
+            value = row[index].strip()
+            if not value or not _is_numeric(value):
+                # Geometry columns are never classified; a blank or non-numeric
+                # cell is not enough to judge the frame.
+                return
+            values.append(float(value))
+        spans.append((min(values), max(values)))
+
+    (x_min, x_max), (y_min, y_max), (z_min, z_max) = spans
+    x_span, y_span, z_span = x_max - x_min, y_max - y_min, z_max - z_min
+
+    in_degree_range = -180.0 <= x_min and x_max <= 180.0 and -90.0 <= y_min and y_max <= 90.0
+    horizontal = max(x_span, y_span)
+    # A span under one unit is either degrees or a very small cloud; the z test
+    # distinguishes the two.
+    cramped = x_span < 1.0 and y_span < 1.0
+    z_disagrees = z_span <= 1e-6 or z_span >= 100.0 * horizontal
+    if not (in_degree_range and cramped and z_disagrees):
+        return
+
+    names = [headers[index] for index in geometry]
+    logger.warning(
+        "%s look like geodetic degrees rather than a local metric frame: over the first %d rows "
+        "x spans %.6g and y spans %.6g while z spans %.6g. x/y/z are read as one cartesian frame, "
+        "so degrees against metres render as a near-flat sheet. Project to a local metric frame "
+        "before uploading; latitude and longitude can be carried as attribute columns.",
+        "/".join(names),
+        len(samples),
+        x_span,
+        y_span,
+        z_span,
     )
 
 

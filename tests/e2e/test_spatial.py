@@ -10,17 +10,16 @@ transport cannot read the Keychain:
 
     --trust-store-path "$(mkcert -CAROOT)/rootCA.pem"
 
-The point-cloud ingest tests need a backend that supports
-`PointCloudOpts.daggerImportConfig` AND a running point-cloud indexing service.
+The point-cloud ingest tests need a backend that supports the point-cloud import config
+AND a running point-cloud indexing service.
 
 An unreachable indexing service is NOT detected up front: the backend accepts the ingest
 and the job parks at IN_PROGRESS rather than failing, so `_ingest`'s skip guard never
 fires and each polling test burns the full INGEST_TIMEOUT before failing. The guard only
-catches the backend refusing outright ("Point-cloud ingestion is disabled because Dagger
-is not configured"), which is what a backend with no indexing service *configured*
-answers. The indexing service also needs its per-tenant bucket (``dag-tenant-<org-uuid>``)
-to exist in the object store, or every import fails with NoSuchBucket and the job never
-leaves IN_PROGRESS.
+catches the backend refusing outright, which is what a backend with no indexing service
+*configured* answers. The indexing service also needs its per-tenant bucket to exist in
+the object store, or every import fails with NoSuchBucket and the job never leaves
+IN_PROGRESS.
 """
 
 from __future__ import annotations
@@ -49,7 +48,8 @@ from nominal.experimental.spatial import (
     list_spatials_in_run,
 )
 
-DAGGER_UNAVAILABLE = "Dagger is not configured"
+# Matched against the backend's refusal, so the text has to stay as the backend words it.
+INGEST_UNAVAILABLE = "Ingest is not configured"
 
 TERMINAL_STATUSES = frozenset({IngestionJobStatus.COMPLETED, IngestionJobStatus.FAILED, IngestionJobStatus.CANCELLED})
 
@@ -103,7 +103,7 @@ def _ingest(spatial: Spatial, csv_path: Path, **kwargs) -> IngestionJob:
     try:
         return spatial.add_point_cloud_csv(csv_path, **kwargs)
     except Exception as e:
-        if DAGGER_UNAVAILABLE in str(e):
+        if INGEST_UNAVAILABLE in str(e):
             pytest.skip("the backend has no indexing service configured; point-cloud ingest unavailable")
         raise
 
@@ -158,12 +158,12 @@ def test_archive_and_unarchive(client: NominalClient) -> None:
 
 
 def test_point_cloud_ingest_completes(client: NominalClient, spatial: Spatial, point_cloud_csv: Path) -> None:
-    """The full pipeline: the backend accepts our daggerImportConfig and the import completes.
+    """The full pipeline: the backend accepts our import config and the import completes.
 
-    This is the load-bearing test for the migration. The backend deserializes
-    `daggerImportConfig` with FAIL_ON_UNKNOWN_PROPERTIES, so any drift in the v2 wire
-    shape (a stray field, a lowercased enum, geometry_type left at the top level)
-    fails the request outright rather than degrading quietly.
+    This is the load-bearing test for the migration. The backend deserializes the import
+    config with FAIL_ON_UNKNOWN_PROPERTIES, so any drift in the v2 wire shape (a stray
+    field, a lowercased enum, geometry_type left at the top level) fails the request
+    outright rather than degrading quietly.
     """
     job = _ingest(spatial, point_cloud_csv)
     status = _poll_ingest_job(job)

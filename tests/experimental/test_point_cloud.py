@@ -196,6 +196,143 @@ def test_without_rgb_column_a_hex_column_stays_a_string(tmp_path: Path) -> None:
     assert config["format"]["columns"]["string"] == [3, 6]
 
 
+# --- render checks ------------------------------------------------------------
+
+_LOGGER = "nominal.experimental.spatial._point_cloud"
+
+
+@pytest.mark.parametrize(
+    "cell",
+    ["#c04422", "0xc04422", "c0442", "c04422f", "ggaabb", "16711680", "255,0,0".replace(",", "")],
+)
+def test_a_colour_column_the_importer_cannot_read_is_refused(tmp_path: Path, cell: str) -> None:
+    """A colour column in an unreadable format is rejected before the upload."""
+    with pytest.raises(ValueError, match="six hex digits"):
+        _config(tmp_path, "x,y,z,color", [f"0,0,0,{cell}"], rgb_column="color")
+
+
+def test_the_refusal_names_the_column_and_the_remedy(tmp_path: Path) -> None:
+    """The error names the column, the required format, and the consequence."""
+    with pytest.raises(ValueError) as excinfo:
+        _config(tmp_path, "x,y,z,color", ["0,0,0,#c04422"], rgb_column="color")
+
+    message = str(excinfo.value)
+    assert "'color'" in message
+    assert "rrggbb" in message
+    assert "black" in message
+
+
+def test_a_mostly_readable_colour_column_warns_rather_than_refusing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A single unreadable cell warns; the parser skips it per-point."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        config = _config(tmp_path, "x,y,z,color", ["0,0,0,c04422", "1,1,1,nope"], rgb_column="color")
+
+    assert config["format"]["columns"]["rgb"] == [3]
+    assert "color" in caplog.text
+
+
+def test_a_readable_colour_column_is_silent(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A correctly formatted colour column produces no warning."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,color,intensity", ["0,0,0,c04422,0.5", "1,1,1,AABBCC,0.9"], rgb_column="color")
+
+    assert caplog.text == ""
+
+
+def test_attributes_that_never_vary_are_reported_together(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Flat columns are reported in a single warning, however many there are."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,scan_id,sensor,intensity", ["0,0,0,7,2,0.5", "1,1,1,7,2,0.9"])
+
+    assert len(caplog.records) == 1
+    assert "scan_id" in caplog.text
+    assert "sensor" in caplog.text
+
+
+def test_a_cloud_with_nothing_to_colour_by_says_so(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A cloud with no colourable attribute is reported as rendering in one colour."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,label", ["0,0,0,kerb", "1,1,1,wall"])
+
+    assert "single colour" in caplog.text
+
+
+def test_a_varying_attribute_is_not_reported_as_flat(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A column whose values vary produces no warning."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,intensity", ["0,0,0,0.5", "1,1,1,0.9"])
+
+    assert caplog.text == ""
+
+
+def test_degree_shaped_coordinates_are_reported(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Degree-shaped x/y coordinates are reported."""
+    rows = ["8.398104,49.008644,112.9,0.5", "8.398210,49.008701,180.4,0.9"]
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,intensity", rows)
+
+    assert "geodetic degrees" in caplog.text
+
+
+def test_a_small_metric_cloud_is_not_mistaken_for_degrees(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A sub-metre cloud whose z agrees with its x/y is not reported."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,intensity", ["0.0,0.0,0.0,0.5", "0.5,0.4,0.3,0.9"])
+
+    assert "geodetic" not in caplog.text
+
+
+def test_a_wide_metric_cloud_is_not_mistaken_for_degrees(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A cloud spanning hundreds of metres is not reported."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,intensity", ["0,0,0,0.5", "500,400,12,0.9"])
+
+    assert "geodetic" not in caplog.text
+
+
+def test_validation_never_changes_the_import_config(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The render checks do not alter the import config sent to the backend."""
+    header, rows = "x,y,z,scan_id,label", ["8.398104,49.008644,112.9,7,kerb", "8.398210,49.008701,180.4,7,wall"]
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        warned = _config(tmp_path, header, rows)
+
+    assert caplog.records
+    assert warned == {
+        "archetype": {
+            "attributes": [
+                {
+                    "header": {"name": "scan_id", "ty": {"Real": "IndependentValue"}},
+                    "reductions": ["Min", "Max", "Mean"],
+                },
+                {"header": {"name": "label", "ty": "String"}, "reductions": []},
+            ]
+        },
+        "format": {
+            "kind": "csv",
+            "geometry_type": "Point",
+            "columns": {
+                "geometry": [0, 1, 2],
+                "real": [3],
+                "int": [],
+                "string": [4],
+                "rgb": [],
+                "normal": [],
+                "bool": [],
+            },
+        },
+    }
+
+
+def test_a_header_only_csv_trips_no_validation(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """A CSV with no data rows produces no warnings."""
+    with caplog.at_level("WARNING", logger=_LOGGER):
+        _config(tmp_path, "x,y,z,color", [], rgb_column="color")
+
+    assert caplog.text == ""
+
+
 # --- the measured time range --------------------------------------------------
 
 
