@@ -341,10 +341,10 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     registered through this SDK (registration requires it); may be None on images from older
     registration paths, in which case every ingest must supply an override.
     """
+    resources: ContainerResources | None
+    """Resource overrides for the extractor container; unset values use deployment-wide defaults."""
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
-    resources: ContainerResources | None = None
-    """Resource overrides for the extractor container; unset values use deployment-wide defaults."""
 
     class _Clients(HasScoutParams, Protocol):
         @property
