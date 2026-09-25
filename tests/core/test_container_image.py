@@ -91,7 +91,9 @@ def test_image_refresh_replaces_and_clears_resources() -> None:
     updated.resources.memory_gib = 32
     clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=updated)
 
-    assert image.refresh() is image
+    refreshed = image.refresh()
+
+    assert refreshed is image
     assert image.resources == core.ContainerResources(memory_gib=32)
 
     clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
