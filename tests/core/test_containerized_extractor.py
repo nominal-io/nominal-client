@@ -214,6 +214,45 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(t
     assert tuple(image.exit_code_mappings) == tuple(mappings)
 
 
+def test_register_image_preserves_partial_and_omitted_resources(tmp_path: Path) -> None:
+    """Resource overrides round-trip without replacing unset fields with zero or defaults."""
+    clients = _clients()
+    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
+    clients.upload.list_parts.return_value = []
+    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
+    tarball = tmp_path / "extractor.tar"
+    tarball.touch()
+    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
+    response_image.resources.memory_gib = 16
+    clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
+
+    image = extractor.register_image(
+        tarball,
+        tag="v1",
+        inputs=[],
+        default_timestamp_column="ts",
+        default_timestamp_type="iso_8601",
+        resources=core.ContainerResources(memory_gib=16),
+    )
+
+    request = clients.registry.CreateImage.call_args.args[0]
+    assert request.resources == registry_pb2.ContainerResources(memory_gib=16)
+    assert image.resources == core.ContainerResources(memory_gib=16)
+
+    clients.registry.CreateImage.return_value.image.ClearField("resources")
+    image = extractor.register_image(
+        tarball,
+        tag="v2",
+        inputs=[],
+        default_timestamp_column="ts",
+        default_timestamp_type="iso_8601",
+    )
+
+    assert not clients.registry.CreateImage.call_args.args[0].HasField("resources")
+    assert image.resources is None
+
+
 def test_set_active_image_polls_then_activates() -> None:
     """By default, a rid is fetched in the extractor's workspace, awaited until READY, then activated."""
     clients = _clients()

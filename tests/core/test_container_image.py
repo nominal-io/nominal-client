@@ -76,6 +76,29 @@ def test_image_from_proto_handles_minimal_proto() -> None:
     assert image.default_timestamp_metadata is None
     assert image.file_output_format is FileOutputFormat.UNSPECIFIED
     assert image.exit_code_mappings == ()
+    assert image.resources is None
+
+
+def test_image_refresh_replaces_and_clears_resources() -> None:
+    """Refresh replaces resource overrides without carrying over previously configured fields."""
+    clients = _clients()
+    original = _img("ri.img")
+    original.resources.CopyFrom(registry_pb2.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64))
+    image = ContainerImage._from_proto(clients, "ri.ws", original)
+    assert image.resources == core.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64)
+
+    updated = _img("ri.img")
+    updated.resources.memory_gib = 32
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=updated)
+
+    refreshed = image.refresh()
+
+    assert refreshed is image
+    assert image.resources == core.ContainerResources(memory_gib=32)
+
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
+    image.refresh()
+    assert image.resources is None
 
 
 def test_image_refresh_replaces_and_clears_exit_code_mappings() -> None:
