@@ -208,7 +208,7 @@ class TestSpecExample:
             assert [c.name for c in group.channels()] == ["it's 'quoted'/odd"]
             assert f.properties == {"root": 1}
 
-    @pytest.mark.parametrize("path", ["Group", "/Group", "/'Group", "/'A'/'B'/'C'", "/'A'x"])
+    @pytest.mark.parametrize("path", ["", "Group", "/Group", "/'Group", "/'A'/'B'/'C'", "/'A'x"])
     def test_bad_object_paths_are_rejected(self, tmp_path, path):
         with pytest.raises(TdmsError, match="object path"):
             TdmsReader.open(write(tmp_path, segment([obj(path, u32(NO_RAW))])))
@@ -294,25 +294,38 @@ class TestByteOrder:
 class TestSegments:
     def test_incremental_metadata_keeps_and_extends_the_carried_list(self, tmp_path):
         seg1 = segment([obj("/'G'/'A'", index(U8, 2)), obj("/'G'/'B'", index(U8, 2))], bytes([1, 2, 11, 12]))
-        # No new-object-list flag: A gets a property and no raw data (stays in
-        # the list), C is appended, B is untouched.
+        # No new-object-list flag: A gets a property and, per NO_RAW, no raw
+        # data in this segment (its slot switches off); C is appended, B is
+        # untouched, per the format description's definition of 0xFFFFFFFF.
         seg2 = segment(
             [obj("/'G'/'A'", u32(NO_RAW), [prop("note", TYPE_STRING, tstring("x"))]), obj("/'G'/'C'", index(U8, 2))],
-            bytes([3, 4, 13, 14, 21, 22]),
+            bytes([13, 14, 21, 22]),
             toc=TOC_META | TOC_RAW,
         )
-        seg3 = segment(None, bytes([5, 6, 15, 16, 23, 24]), toc=TOC_RAW)  # no metadata at all
-        seg4 = segment([obj("/'G'/'B'", u32(SAME_AS_PREVIOUS))], bytes([17, 18]))  # new list: B only
-        with TdmsReader.open(write(tmp_path, seg1, seg2, seg3, seg4)) as f:
+        seg3 = segment(None, bytes([15, 16, 23, 24]), toc=TOC_RAW)  # no metadata at all
+        # Still no new-object-list flag: A rejoins in its original slot, ahead of B.
+        seg4 = segment([obj("/'G'/'A'", u32(SAME_AS_PREVIOUS))], bytes([5, 6, 17, 18, 25, 26]), toc=TOC_META | TOC_RAW)
+        seg5 = segment([obj("/'G'/'B'", u32(SAME_AS_PREVIOUS))], bytes([19, 20]))  # new list: B only
+        with TdmsReader.open(write(tmp_path, seg1, seg2, seg3, seg4, seg5)) as f:
             a, b, c = (f["G"][n] for n in "ABC")
             assert a.properties == {"note": "x"}
-            assert full(a).tolist() == [1, 2, 3, 4, 5, 6]
-            assert full(b).tolist() == [11, 12, 13, 14, 15, 16, 17, 18]
-            assert full(c).tolist() == [21, 22, 23, 24]
+            assert full(a).tolist() == [1, 2, 5, 6]
+            assert full(b).tolist() == [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+            assert full(c).tolist() == [21, 22, 23, 24, 25, 26]
 
     def test_same_as_previous_without_an_earlier_index_is_an_error(self, tmp_path):
         with pytest.raises(TdmsError, match="earlier segment"):
             TdmsReader.open(write(tmp_path, segment([obj("/'G'/'A'", u32(SAME_AS_PREVIOUS))])))
+
+    def test_an_object_listed_twice_with_raw_data_is_rejected(self, tmp_path):
+        # A doubled entry would take two blocks of every chunk and shift every
+        # later channel's values; there is no right reading of it.
+        seg = segment(
+            [obj("/'G'/'A'", index(I16, 2)), obj("/'G'/'A'", index(I16, 2)), obj("/'G'/'B'", index(I16, 2))],
+            values("<hhhhhh", 1, 2, 3, 4, 11, 12),
+        )
+        with pytest.raises(TdmsError, match="listed more than once"):
+            TdmsReader.open(write(tmp_path, seg))
 
     def test_a_raw_block_can_repeat_the_chunk_layout(self, tmp_path):
         chunk = values("<hh", 1, 2) + values("<d", 0.5)
@@ -592,7 +605,7 @@ class TestDaqmx:
             assert full(t).tolist() == [-9.0, -19.0]  # DAQmx's Subtract is right minus left
 
     def test_a_channel_whose_values_cannot_be_produced_is_marked_not_failed(self, tmp_path):
-        two_raw = daqmx_index(2, [(3, 0, 0), (3, 0, 2)], [4])  # two scalers, nothing to combine them
+        two_raw = daqmx_index(2, [(3, 0, 0, 0), (3, 0, 2, 2)], [4])  # two scalers, nothing to combine them
         unknown = daqmx_index(2, [(42, 0, 0)], [4])
         path = write(
             tmp_path,
@@ -614,6 +627,8 @@ class TestDaqmx:
             (daqmx_index(2, [(3, 1, 0)], [2]), "raw buffer 1 of 1"),
             (daqmx_index(2, [(5, 0, 0)], [2]), "overruns"),
             (digital_index(2, 9, width=1), "overruns"),
+            # Two scalers with one scale id would silently collapse to one raw stream.
+            (daqmx_index(2, [(3, 0, 0, 0), (3, 0, 2, 0)], [4]), "share a scale id"),
         ],
     )
     def test_indices_that_break_the_chunk_layout_are_rejected(self, tmp_path, bad_index, message):
@@ -628,6 +643,34 @@ class TestDaqmx:
         )
         with pytest.raises(TdmsError, match="disagree"):
             TdmsReader.open(write(tmp_path, seg))
+
+    def test_a_scaler_set_change_between_segments_excludes_the_channel(self, tmp_path):
+        # Segment 2 gives A a second scaler. Were A read anyway, a scale graph
+        # over both ids would KeyError on segment 1's runs; B still reads.
+        seg1 = segment(
+            [obj("/'G'/'A'", daqmx_index(2, [(3, 0, 0)], [4])), obj("/'G'/'B'", daqmx_index(2, [(3, 0, 2)], [4]))],
+            bytes(8),
+            toc=DAQMX,
+        )
+        seg2 = segment(
+            [
+                obj("/'G'/'A'", daqmx_index(2, [(3, 0, 0, 0), (3, 0, 2, 2)], [4])),
+                obj("/'G'/'B'", u32(SAME_AS_PREVIOUS)),
+            ],
+            bytes(8),
+            toc=DAQMX,
+        )
+        with TdmsReader.open(write(tmp_path, seg1, seg2)) as f:
+            assert "layout changed between segments" in f["G"]["A"].unsupported
+            assert f["G"]["A"].dtype is None and len(full(f["G"]["A"])) == 0
+            assert full(f["G"]["B"]).tolist() == [0, 0, 0, 0]
+
+    def test_a_scaler_type_change_between_segments_excludes_the_channel(self, tmp_path):
+        # int16 in segment 1, int32 in segment 2: one channel cannot be both.
+        seg1 = segment([obj("/'G'/'A'", daqmx_index(2, [(3, 0, 0)], [4]))], bytes(8), toc=DAQMX)
+        seg2 = segment([obj("/'G'/'A'", daqmx_index(2, [(5, 0, 0)], [4]))], bytes(8), toc=DAQMX)
+        with TdmsReader.open(write(tmp_path, seg1, seg2)) as f:
+            assert "layout changed between segments" in f["G"]["A"].unsupported
 
 
 class TestScaling:
@@ -727,6 +770,22 @@ class TestScaling:
             write(tmp_path, segment([obj("/'G'/'S'", index(F8, 1), props)], values("<d", 0.006)))
         ) as f:
             assert full(f["G"]["S"]).tolist() == pytest.approx([-(0.005 / 2.5) / 2.0])
+
+    def test_a_chain_of_thousands_of_stages_evaluates(self, tmp_path):
+        # Deeper than Python's recursion limit: parsing and applying the graph
+        # must both be iterative, or RecursionError escapes as neither a
+        # TdmsError nor an exclusion.
+        n = 3000
+        props = unscaled(n)
+        for i in range(1, n):
+            props += linear(i, 1.0, 1.0, source=i - 1)  # each stage adds 1
+        with TdmsReader.open(write(tmp_path, segment([obj("/'G'/'A'", index(I16, 1), props)], values("<h", 0)))) as f:
+            assert full(f["G"]["A"]).tolist() == [float(n - 1)]
+
+    def test_a_stage_cycle_excludes_the_channel(self, tmp_path):
+        props = unscaled(3) + linear(1, 1.0, 0.0, source=2) + linear(2, 1.0, 0.0, source=1)
+        with TdmsReader.open(write(tmp_path, segment([obj("/'G'/'A'", index(I16, 1), props)], values("<h", 0)))) as f:
+            assert "cycle" in f["G"]["A"].unsupported
 
     def test_an_unknown_scale_type_excludes_only_that_channel(self, tmp_path):
         props = UNSCALED + [scale_type(1, "Reciprocal")]
