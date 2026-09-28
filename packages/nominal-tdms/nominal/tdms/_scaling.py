@@ -43,6 +43,7 @@ class Stage:
 class Scaling:
     stages: dict[int, Stage]
     output: int
+    order: tuple[int, ...]  # the stages reachable from the output, inputs before their readers
 
     @property
     def raw_ids(self) -> frozenset[int]:
@@ -52,19 +53,12 @@ class Scaling:
     def apply(self, raw: dict[int, np.ndarray]) -> np.ndarray:
         """Evaluate the graph over the raw scaler arrays (keyed by scale id)."""
         values: dict[int, np.ndarray] = {}
-
-        def value(i: int) -> np.ndarray:
-            if i in values:
-                return values[i]
-            if i in self.stages:
-                stage = self.stages[i]
-                result = stage.apply(*(value(j) for j in stage.inputs))
-            else:
-                result = raw[i].astype(np.float64, copy=False)
-            values[i] = result
-            return result
-
-        return value(self.output)
+        for i in self.order:
+            stage = self.stages[i]
+            values[i] = stage.apply(
+                *(values[j] if j in self.stages else raw[j].astype(np.float64, copy=False) for j in stage.inputs)
+            )
+        return values[self.output]
 
 
 def _number(properties: dict[str, object], key: str, path: str) -> float:
@@ -157,6 +151,11 @@ def _rtd(properties: dict[str, object], n: int, path: str) -> Stage:
     a 2-wire connection. Above 0 degC the quadratic ``R = R0 (1 + A t + B t^2)``
     inverts in closed form; below, the quartic with the C term is solved by
     Newton's method from that starting point.
+
+    DAQmx itself never writes a 2-wire RTD scale -- its RTD modules refuse the
+    configuration (NI KB kA00Z0000019MQSSA2) -- so that branch has no recorded
+    ground truth; it follows the ``R - 2 R_lead`` convention the
+    daqmx_thermistor_iex_2wire recording pins for the thermistor scale.
     """
     p = f"NI_Scale[{n}]_RTD"
     current = _number(properties, f"{p}_Current_Excitation", path)
@@ -299,17 +298,26 @@ def parse_scaling(properties: dict[str, object], path: str) -> Scaling | None:
     output = (
         count - 1 if isinstance(count, int) and not isinstance(count, bool) and count - 1 in stages else numbers[-1]
     )
-    scaling = Scaling(stages, output)
-    # Every stage must be reachable from the output without cycles.
-    seen: set[int] = set()
-
-    def walk(i: int, trail: tuple[int, ...]) -> None:
-        if i in trail:
+    # Order the stages reachable from the output, inputs first, rejecting
+    # cycles. Iteratively: recursion would overflow on a graph thousands of
+    # stages deep, and RecursionError would escape as neither a TdmsError nor
+    # an exclusion.
+    order: list[int] = []
+    visiting: set[int] = set()
+    done: set[int] = set()
+    stack: list[tuple[int, bool]] = [(output, False)]
+    while stack:
+        i, inputs_ordered = stack.pop()
+        if i not in stages or i in done:
+            continue
+        if inputs_ordered:
+            visiting.discard(i)
+            done.add(i)
+            order.append(i)
+            continue
+        if i in visiting:
             raise UnsupportedScaling(f"{path}: NI scaling stages form a cycle")
-        if i in stages and i not in seen:
-            seen.add(i)
-            for j in stages[i].inputs:
-                walk(j, trail + (i,))
-
-    walk(output, ())
-    return scaling
+        visiting.add(i)
+        stack.append((i, True))
+        stack.extend((j, False) for j in stages[i].inputs)
+    return Scaling(stages, output, tuple(order))

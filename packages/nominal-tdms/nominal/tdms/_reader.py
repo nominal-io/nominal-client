@@ -257,6 +257,8 @@ def _split_path(path: str) -> tuple[str | None, str | None]:
             name.append(c)
             i += 1
         parts.append("".join(name))
+    if not parts:
+        raise TdmsError(f"malformed object path {path!r}")
     if len(parts) > 2:
         raise TdmsError(f"object path {path!r} has more than two levels")
     return parts[0], (parts[1] if len(parts) == 2 else None)
@@ -432,7 +434,18 @@ def _read_daqmx_index(cur: _Cursor, obj: _Object, digital: bool) -> _RawIndex:
                     f"{obj.path}: DAQmx scaler at byte {first_byte} overruns a {widths[buffer_index]}-byte sample"
                 )
         scalers.append(_Scaler(scale_id, buffer_index, offset, code, digital))
+    if len({s.scale_id for s in scalers}) != len(scalers):
+        raise TdmsError(f"{obj.path}: DAQmx scalers share a scale id")
+    # A channel is one dtype and one scale graph over every segment, so its
+    # value streams must keep their ids, types and kinds; where they sit within
+    # a sample is per segment and free to move.
+    if obj.index is not None and _scaler_layout(obj.index.scalers) != _scaler_layout(tuple(scalers)):
+        obj.unsupported = "DAQmx scaler layout changed between segments"
     return _RawIndex(type_code=TYPE_DAQMX, n_values=chunk_size, scalers=tuple(scalers), widths=widths)
+
+
+def _scaler_layout(scalers: tuple[_Scaler, ...]) -> list[tuple[int, str, bool]]:
+    return sorted((s.scale_id, s.numpy_code or "?", s.digital) for s in scalers)
 
 
 # Per object: (chunk-relative offset of its string block, or parts relative to the chunk start).
@@ -521,6 +534,29 @@ def _chunk_layout(raw_list: list[_Object], toc: int, big_endian: bool) -> tuple[
     return running, entries
 
 
+def _merge_carried(
+    previous: list[tuple["_Object", bool]], listed: list[tuple["_Object", bool]]
+) -> list[tuple["_Object", bool]]:
+    """A segment's object list merged into the carried one (no new-object-list flag).
+
+    The carried list keeps its order; objects new to it are appended, and a
+    listed object updates its own entry in place. NO_RAW means "no raw data in
+    this segment", so it switches the channel's data off without giving up its
+    position: a later index or same-as-previous header switches it back on in
+    its original slot.
+    """
+    result = list(previous)
+    position = {id(obj): k for k, (obj, _) in enumerate(result)}
+    for obj, has_raw in listed:
+        k = position.get(id(obj))
+        if k is None:
+            position[id(obj)] = len(result)
+            result.append((obj, has_raw))
+        else:
+            result[k] = (obj, has_raw)
+    return result
+
+
 class _Parser:
     def __init__(self, fh: BinaryIO, size: int) -> None:
         self._fh = fh
@@ -547,7 +583,7 @@ class _Parser:
 
     def parse(self) -> None:
         pos = 0
-        raw_list: list[_Object] = []
+        roster: list[tuple[_Object, bool]] = []  # carried object list: (object, has data this segment)
         while pos < self._size:
             if self._size - pos < LEAD_IN_SIZE:
                 if pos == 0:
@@ -578,8 +614,9 @@ class _Parser:
             if toc & TOC_META:
                 self._fh.seek(meta_start)
                 cursor = _Cursor(self._fh.read(raw_start - meta_start), big_endian, meta_start)
-                raw_list = self._read_metadata(cursor, toc, raw_list)
+                roster = self._read_metadata(cursor, toc, roster)
 
+            raw_list = [o for o, has_raw in roster if has_raw]
             if toc & TOC_RAW and raw_list:
                 self._place_raw_data(raw_list, toc, big_endian, raw_start, segment_end, truncated)
 
@@ -587,8 +624,11 @@ class _Parser:
                 break
             pos = segment_end
 
-    def _read_metadata(self, cursor: _Cursor, toc: int, previous: list[_Object]) -> list[_Object]:
+    def _read_metadata(
+        self, cursor: _Cursor, toc: int, previous: list[tuple[_Object, bool]]
+    ) -> list[tuple[_Object, bool]]:
         listed: list[tuple[_Object, bool]] = []
+        seen: dict[int, bool] = {}
         for _ in range(cursor.u32()):
             obj = self._object(cursor.string())
             header = cursor.u32()
@@ -604,23 +644,20 @@ class _Parser:
                 obj.index = _read_daqmx_index(cursor, obj, digital=True)
             else:
                 obj.index = _read_standard_index(cursor, obj)
+            # Listed twice with raw data, the object would take two blocks of
+            # every chunk and shift every later channel's values; there is no
+            # right reading of that, so it is malformed rather than guessed at.
+            if id(obj) in seen and (seen[id(obj)] or has_raw):
+                raise TdmsError(f"{obj.path}: listed more than once in one segment")
+            seen[id(obj)] = seen.get(id(obj), False) or has_raw
             for _ in range(cursor.u32()):
                 name = cursor.string()
                 obj.properties[name] = cursor.value(cursor.u32())
             listed.append((obj, has_raw))
 
         if toc & TOC_NEW_OBJ_LIST:
-            return [obj for obj, has_raw in listed if has_raw]
-        # Incremental: the carried list keeps its order; objects new to it are
-        # appended. An object listed without raw data is left where it was,
-        # since the spec requires a new object list when channels are dropped.
-        result = list(previous)
-        present = {id(obj) for obj in result}
-        for obj, has_raw in listed:
-            if has_raw and id(obj) not in present:
-                result.append(obj)
-                present.add(id(obj))
-        return result
+            return listed
+        return _merge_carried(previous, listed)
 
     def _place_raw_data(  # noqa: PLR0917 - the segment's extents, straight from the lead-in
         self, raw_list: list[_Object], toc: int, big_endian: bool, raw_start: int, segment_end: int, truncated: bool
