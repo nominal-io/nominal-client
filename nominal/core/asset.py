@@ -4,7 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
     scout,
@@ -13,7 +13,7 @@ from nominal_api import (
     scout_run_api,
     scout_spatial,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import Self, assert_never, deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
@@ -30,6 +30,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.frontend_urls import asset_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -40,7 +41,7 @@ from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -74,6 +75,8 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
+        @property
+        def assets_v2(self) -> asset_pb2_grpc.AssetServiceStub: ...
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
@@ -753,6 +756,40 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             _clients=clients,
             created_by_rid=asset.created_by if asset.HasField("created_by") else None,
         )
+
+
+def _create_or_update_asset_by_primary_key(
+    clients: Asset._Clients,
+    *,
+    type_rid: str,
+    name: str,
+    properties: Mapping[str, str],
+    description: str | None,
+    labels: Sequence[str],
+    if_exists: Literal["update", "return"],
+) -> Asset:
+    match if_exists:
+        case "update":
+            policy = asset_pb2.UPDATE_EXISTING
+        case "return":
+            policy = asset_pb2.RETURN_EXISTING
+        case _:
+            assert_never(if_exists)
+    request = asset_pb2.CreateOrUpdateAssetByPrimaryKeyRequest(
+        type_rid=type_rid,
+        asset=asset_pb2.CreateAssetRequest(
+            title=name,
+            description=description,
+            properties=dict(properties),
+            labels=list(labels),
+            types=[type_rid],
+            workspace=clients.resolve_default_workspace_rid(),
+        ),
+        if_exists=policy,
+    )
+    with translate_grpc_errors():
+        response = clients.assets_v2.CreateOrUpdateAssetByPrimaryKey(request)
+    return Asset._from_proto(clients, response.asset)
 
 
 # Moving to bottom to deal with circular dependencies

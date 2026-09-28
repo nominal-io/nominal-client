@@ -67,7 +67,7 @@ from nominal.core._utils.query_tools import (
     create_search_videos_query,
     create_search_workbook_templates_query,
 )
-from nominal.core.asset import Asset
+from nominal.core.asset import Asset, _create_or_update_asset_by_primary_key
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
@@ -121,7 +121,6 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -1309,21 +1308,15 @@ class NominalClient:
         Returns:
             The created, updated, or existing asset.
         """
-        request = asset_pb2.CreateOrUpdateAssetByPrimaryKeyRequest(
+        return _create_or_update_asset_by_primary_key(
+            self._clients,
             type_rid=type_rid,
-            asset=asset_pb2.CreateAssetRequest(
-                title=name,
-                description=description,
-                properties=dict(properties),
-                labels=list(labels),
-                types=[type_rid],
-                workspace=self._clients.resolve_default_workspace_rid(),
-            ),
-            if_exists=asset_pb2.UPDATE_EXISTING if if_exists == "update" else asset_pb2.RETURN_EXISTING,
+            name=name,
+            properties=properties,
+            description=description,
+            labels=labels,
+            if_exists=if_exists,
         )
-        with translate_grpc_errors():
-            response = self._clients.assets_v2.CreateOrUpdateAssetByPrimaryKey(request)
-        return Asset._from_proto(self._clients, response.asset)
 
     def _iter_search_assets(
         self,
