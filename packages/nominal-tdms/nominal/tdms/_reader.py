@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterator
 
 import numpy as np
+import numpy.typing as npt
 
 from nominal.tdms._scaling import Scaling, UnsupportedScaling, parse_scaling
 
@@ -138,9 +139,9 @@ def _type_name(code: int) -> str:
     return f"type {code:#x}"
 
 
-def _decode_extended(raw: np.ndarray, big_endian: bool) -> np.ndarray:
+def _decode_extended(raw: npt.NDArray[Any], big_endian: bool) -> npt.NDArray[np.float64]:
     """80-bit x87 extended values (10 bytes each) as float64."""
-    b = np.frombuffer(raw.tobytes(), dtype=np.uint8).reshape(-1, 10)
+    b: npt.NDArray[np.uint8] = np.frombuffer(raw.tobytes(), dtype=np.uint8).reshape(-1, 10)
     if big_endian:
         b = b[:, ::-1]
     mantissa = np.ascontiguousarray(b[:, :8]).view("<u8").reshape(-1)
@@ -155,7 +156,7 @@ def _decode_extended(raw: np.ndarray, big_endian: bool) -> np.ndarray:
     special = exponent == 0x7FFF
     if special.any():
         value = np.where(special, np.where((mantissa << np.uint64(1)) == 0, np.inf, np.nan), value)
-    result: np.ndarray = sign * value
+    result: npt.NDArray[np.float64] = sign * value
     return result
 
 
@@ -300,7 +301,7 @@ class _RawIndex:
     def is_timestamp(self) -> bool:
         return self.type_code == TYPE_TIMESTAMP
 
-    def disk_dtype(self, big_endian: bool) -> np.dtype | None:
+    def disk_dtype(self, big_endian: bool) -> np.dtype[Any] | None:
         """The on-disk element type of a non-DAQmx channel; None for strings."""
         if self.is_string:
             return None
@@ -310,7 +311,7 @@ class _RawIndex:
             return _EXTENDED_DTYPE
         return np.dtype((">" if big_endian else "<") + _FIXED_WIDTH[self.type_code])
 
-    def native_dtype(self) -> np.dtype | None:  # noqa: PLR0911 - one return per type family
+    def native_dtype(self) -> np.dtype[Any] | None:  # noqa: PLR0911 - one return per type family
         """The element type a caller sees before scaling; None when scaling is the only way to a value."""
         if self.is_string:
             return np.dtype(object)
@@ -334,7 +335,7 @@ class _Part:
     scale_id: int
     chunk_start: int  # file offset of the first value in chunk 0
     value_stride: int  # bytes from one value to the next
-    disk_dtype: np.dtype
+    disk_dtype: np.dtype[Any]
     bit: int  # for a digital line, which bit of the byte; -1 otherwise
 
 
@@ -701,8 +702,8 @@ class _Parser:
 
 
 def _read_strided(  # noqa: PLR0917 - a strided view needs all of these
-    fh: BinaryIO, start: int, shape: tuple[int, int], strides: tuple[int, int], dtype: np.dtype, data_end: int
-) -> np.ndarray:
+    fh: BinaryIO, start: int, shape: tuple[int, int], strides: tuple[int, int], dtype: np.dtype[Any], data_end: int
+) -> npt.NDArray[Any]:
     """Values at ``start + r*strides[0] + c*strides[1]`` for a rows x cols grid, flattened.
 
     Short when the segment ends first: then only whole values that are present
@@ -714,13 +715,13 @@ def _read_strided(  # noqa: PLR0917 - a strided view needs all of these
     fh.seek(start)
     buf = fh.read(max(0, min(nbytes, data_end - start)))
     if len(buf) == nbytes:
-        flat: np.ndarray = np.ndarray(shape, dtype, buffer=buf, strides=strides).reshape(-1)
+        flat: npt.NDArray[Any] = np.ndarray(shape, dtype, buffer=buf, strides=strides).reshape(-1)
         return flat
     if rows == 1:
         n = 0 if len(buf) < itemsize else (len(buf) - itemsize) // strides[1] + 1
         if n == 0:
             return np.empty(0, dtype)
-        row: np.ndarray = np.ndarray((n,), dtype, buffer=buf, strides=(strides[1],)).copy()
+        row: npt.NDArray[Any] = np.ndarray((n,), dtype, buffer=buf, strides=(strides[1],)).copy()
         return row
     parts = []
     for r in range(rows):
@@ -731,14 +732,14 @@ def _read_strided(  # noqa: PLR0917 - a strided view needs all of these
     return np.concatenate(parts)
 
 
-def _read_part(fh: BinaryIO, run: _ChunkRun, part: _Part, a: int, b: int) -> np.ndarray:
+def _read_part(fh: BinaryIO, run: _ChunkRun, part: _Part, a: int, b: int) -> npt.NDArray[Any]:
     """Values [a, b) of one raw stream of a run, still in on-disk dtype."""
     dtype = part.disk_dtype
     vpc = run.values_per_chunk
     k0, i0 = divmod(a, vpc)
     k1, i1 = divmod(b - 1, vpc)
 
-    def piece(k: int, i: int, n: int) -> np.ndarray:
+    def piece(k: int, i: int, n: int) -> npt.NDArray[Any]:
         return _read_strided(
             fh,
             part.chunk_start + k * run.chunk_stride + i * part.value_stride,
@@ -803,7 +804,7 @@ def _read_string_chunk(fh: BinaryIO, run: _ChunkRun, k: int, a: int, b: int) -> 
     return out
 
 
-def _read_string_run(fh: BinaryIO, run: _ChunkRun, a: int, b: int) -> np.ndarray:
+def _read_string_run(fh: BinaryIO, run: _ChunkRun, a: int, b: int) -> npt.NDArray[np.object_]:
     vpc = run.values_per_chunk
     values: list[str] = []
     k0, i0 = divmod(a, vpc)
@@ -840,7 +841,7 @@ class Channel:
         self.properties = obj.properties
         self.unsupported: str | None = obj.unsupported
         self._scaling: Scaling | None = None
-        self.dtype: np.dtype | None = None
+        self.dtype: np.dtype[Any] | None = None
         idx = obj.index
         if idx is None or self.unsupported is not None:
             return
@@ -875,7 +876,7 @@ class Channel:
         """Path, dtype and length, for logs and test failures."""
         return f"Channel({self.path!r}, dtype={self.dtype}, len={len(self)})"
 
-    def values(self, offset: int, count: int) -> np.ndarray:
+    def values(self, offset: int, count: int) -> npt.NDArray[Any]:
         """Values [offset, offset+count), clamped to the channel; short if the file is."""
         start = max(0, offset)
         end = min(len(self), start + max(0, count))
@@ -898,7 +899,7 @@ class Channel:
             return empty
         return pieces[0] if len(pieces) == 1 else np.concatenate(pieces)
 
-    def _read_values(self, run: _ChunkRun, a: int, b: int) -> np.ndarray:
+    def _read_values(self, run: _ChunkRun, a: int, b: int) -> npt.NDArray[Any]:
         """Values [a, b) of a numeric run: every raw stream read, then combined."""
         idx = self._obj.index
         assert idx is not None
@@ -917,7 +918,7 @@ class Channel:
         return values
 
 
-def _native(raw: np.ndarray, part: _Part, big_endian: bool) -> np.ndarray:
+def _native(raw: npt.NDArray[Any], part: _Part, big_endian: bool) -> npt.NDArray[Any]:
     """Native byte order, canonical timestamp layout, and the selected bit of a digital line."""
     if raw.dtype == _EXTENDED_DTYPE:
         return _decode_extended(raw, big_endian)

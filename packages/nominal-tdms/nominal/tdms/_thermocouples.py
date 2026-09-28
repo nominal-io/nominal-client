@@ -14,8 +14,10 @@ its own enumeration, mapped in ``DAQMX_TYPES``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 
 @dataclass(frozen=True)
@@ -266,7 +268,7 @@ _INVERSE: dict[str, tuple[_Range, ...]] = {
 DAQMX_TYPES = {10047: "B", 10055: "E", 10072: "J", 10073: "K", 10077: "N", 10082: "R", 10085: "S", 10086: "T"}
 
 
-def to_temperature(emf_mv: np.ndarray, letter: str) -> np.ndarray:
+def to_temperature(emf_mv: npt.NDArray[Any], letter: str) -> npt.NDArray[np.float64]:
     """Degrees Celsius for thermocouple emf in millivolts (cold junction already compensated).
 
     Each value uses the polynomial of the emf range it falls in; below the

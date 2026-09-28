@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from nominal.tdms._reader import NiTimestamp
 
@@ -37,7 +38,7 @@ def timestamp_to_ns(value: NiTimestamp) -> int:
     return seconds * NS_PER_SECOND + fraction_ns
 
 
-def timestamps_to_ns(values: np.ndarray) -> np.ndarray:
+def timestamps_to_ns(values: npt.NDArray[Any]) -> npt.NDArray[np.int64]:
     """Epoch nanoseconds for a TDMS timestamp channel's samples.
 
     The 2^-64 s fraction is a uint64, so `fraction * 1e9` overflows; split it
@@ -66,7 +67,7 @@ def timestamps_to_ns(values: np.ndarray) -> np.ndarray:
     return seconds * NS_PER_SECOND + fraction_ns
 
 
-def waveform_ns(start_ns: int, first_position: int, count: int, increment_ns: float) -> np.ndarray:
+def waveform_ns(start_ns: int, first_position: int, count: int, increment_ns: float) -> npt.NDArray[np.int64]:
     """Timestamps for `count` samples from sample index `first_position`.
 
     Each sample's offset from the start is rounded independently, so a

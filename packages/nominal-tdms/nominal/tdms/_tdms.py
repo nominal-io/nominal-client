@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence, Tuple
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from nominal import ts
@@ -131,7 +132,7 @@ def upload_tdms(
     )
 
 
-def _channel_values(channel: Channel) -> np.ndarray:
+def _channel_values(channel: Channel) -> npt.NDArray[Any]:
     """A channel's samples as a pandas-ready array.
 
     TDMS timestamp channels are read as raw seconds-and-fractions structs and
@@ -144,7 +145,7 @@ def _channel_values(channel: Channel) -> np.ndarray:
     return values
 
 
-def _waveform_index(channel: Channel) -> np.ndarray:
+def _waveform_index(channel: Channel) -> npt.NDArray[Any]:
     """Epoch-nanosecond timestamps implied by a channel's waveform properties.
 
     Sample i is stamped ``wf_start_time + wf_start_offset + i * wf_increment``,

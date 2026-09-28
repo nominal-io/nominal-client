@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
+import numpy.typing as npt
 
 from nominal.tdms import _thermocouples as thermocouples
 
@@ -36,7 +37,7 @@ class UnsupportedScaling(Exception):
 @dataclass(frozen=True)
 class Stage:
     inputs: tuple[int, ...]
-    apply: Callable[..., np.ndarray]  # one float64 array per input, in order
+    apply: Callable[..., npt.NDArray[Any]]  # one float64 array per input, in order
 
 
 @dataclass(frozen=True)
@@ -50,9 +51,9 @@ class Scaling:
         """The raw scaler ids the graph reads."""
         return frozenset(i for stage in self.stages.values() for i in stage.inputs if i not in self.stages)
 
-    def apply(self, raw: dict[int, np.ndarray]) -> np.ndarray:
+    def apply(self, raw: dict[int, npt.NDArray[Any]]) -> npt.NDArray[Any]:
         """Evaluate the graph over the raw scaler arrays (keyed by scale id)."""
-        values: dict[int, np.ndarray] = {}
+        values: dict[int, npt.NDArray[Any]] = {}
         for i in self.order:
             stage = self.stages[i]
             values[i] = stage.apply(
@@ -75,7 +76,7 @@ def _int(properties: dict[str, object], key: str, path: str) -> int:
     return value
 
 
-def _array(properties: dict[str, object], prefix: str, path: str) -> np.ndarray:
+def _array(properties: dict[str, object], prefix: str, path: str) -> npt.NDArray[Any]:
     size = _int(properties, f"{prefix}_Size", path)
     return np.array([_number(properties, f"{prefix}[{i}]", path) for i in range(size)], dtype=np.float64)
 
@@ -119,7 +120,7 @@ def _table(properties: dict[str, object], n: int, path: str) -> Stage:
 
 
 def _binary(
-    op: Callable[[np.ndarray, np.ndarray], np.ndarray], kind: str
+    op: Callable[[npt.NDArray[Any], npt.NDArray[Any]], npt.NDArray[Any]], kind: str
 ) -> Callable[[dict[str, object], int, str], Stage]:
     def build(properties: dict[str, object], n: int, path: str) -> Stage:
         p = f"NI_Scale[{n}]_{kind}"
@@ -166,7 +167,7 @@ def _rtd(properties: dict[str, object], n: int, path: str) -> Stage:
     if current == 0 or r0 == 0 or b == 0:
         raise UnsupportedScaling(f"{path}: RTD scale {n} has a zero excitation current, R0 or B coefficient")
 
-    def apply(voltage: np.ndarray) -> np.ndarray:
+    def apply(voltage: npt.NDArray[Any]) -> npt.NDArray[Any]:
         resistance = voltage / current - (2.0 * lead if wires == 2 else 0.0)
         ratio = resistance / r0
         with np.errstate(invalid="ignore"):
@@ -208,7 +209,7 @@ def _thermistor(properties: dict[str, object], n: int, path: str) -> Stage:
     if excitation == 0:
         raise UnsupportedScaling(f"{path}: thermistor scale {n} has zero excitation")
 
-    def apply(voltage: np.ndarray) -> np.ndarray:
+    def apply(voltage: npt.NDArray[Any]) -> npt.NDArray[Any]:
         with np.errstate(divide="ignore", invalid="ignore"):
             if excitation_type == _EXCITATION_VOLTAGE:
                 resistance = r1 * voltage / (excitation - voltage)
@@ -223,7 +224,7 @@ def _thermistor(properties: dict[str, object], n: int, path: str) -> Stage:
 
 # DAQmx StrainGageBridgeType codes -> strain from the bridge ratio Vr, gage factor
 # GF and Poisson ratio v, per NI's strain gauge measurement documentation.
-_STRAIN_BRIDGES: dict[int, Callable[[np.ndarray, float, float], np.ndarray]] = {
+_STRAIN_BRIDGES: dict[int, Callable[[npt.NDArray[Any], float, float], npt.NDArray[Any]]] = {
     10183: lambda vr, gf, v: -vr / gf,  # full bridge I
     10184: lambda vr, gf, v: -2.0 * vr / (gf * (v + 1.0)),  # full bridge II
     10185: lambda vr, gf, v: -2.0 * vr / (gf * ((v + 1.0) - vr * (v - 1.0))),  # full bridge III
@@ -254,7 +255,7 @@ def _strain(properties: dict[str, object], n: int, path: str) -> Stage:
         raise UnsupportedScaling(f"{path}: strain scale {n} has a zero excitation, gage factor or gage resistance")
     lead_factor = 1.0 + lead / gage_resistance if configuration in _STRAIN_LEAD_CORRECTED else 1.0
 
-    def apply(voltage: np.ndarray) -> np.ndarray:
+    def apply(voltage: npt.NDArray[Any]) -> npt.NDArray[Any]:
         vr = (voltage - initial) / excitation
         return formula(vr, gage_factor, poisson) * lead_factor * gain
 
