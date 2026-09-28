@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -121,6 +121,7 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -1236,6 +1237,7 @@ class NominalClient:
             attachments=[],
             data_scopes=[],
             links=[],
+            types=[],
             workspace=self._clients.resolve_default_workspace_rid(),
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
@@ -1279,6 +1281,49 @@ class NominalClient:
             return assets[0]
 
         return self.create_asset(name=name, description=description, properties=properties, labels=labels)
+
+    def create_or_update_asset_by_primary_key(
+        self,
+        type_rid: str,
+        *,
+        name: str,
+        properties: Mapping[str, str],
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        if_exists: Literal["update", "return"] = "update",
+    ) -> Asset:
+        """Create an asset of the given asset type, or resolve the existing one sharing its primary key.
+
+        The asset type defines a primary-key property; the server matches an existing asset by the value of
+        that property in `properties`, so `properties` must include it.
+
+        Args:
+            type_rid: RID of the asset type whose primary key identifies the asset.
+            name: Name of the asset.
+            properties: Key-value properties of the asset, including the type's primary-key property.
+            description: Description of the asset.
+            labels: Labels of the asset.
+            if_exists: What to do when an asset with the same primary key already exists:
+                "update" overwrites it with the given fields, "return" returns it unchanged.
+
+        Returns:
+            The created, updated, or existing asset.
+        """
+        request = asset_pb2.CreateOrUpdateAssetByPrimaryKeyRequest(
+            type_rid=type_rid,
+            asset=asset_pb2.CreateAssetRequest(
+                title=name,
+                description=description,
+                properties=dict(properties),
+                labels=list(labels),
+                types=[type_rid],
+                workspace=self._clients.resolve_default_workspace_rid(),
+            ),
+            if_exists=asset_pb2.UPDATE_EXISTING if if_exists == "update" else asset_pb2.RETURN_EXISTING,
+        )
+        with translate_grpc_errors():
+            response = self._clients.assets_v2.CreateOrUpdateAssetByPrimaryKey(request)
+        return Asset._from_proto(self._clients, response.asset)
 
     def _iter_search_assets(
         self,

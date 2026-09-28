@@ -40,6 +40,7 @@ from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -737,6 +738,20 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             is_archived=asset.is_archived,
             _clients=clients,
             created_by_rid=asset.created_by,
+        )
+
+    @classmethod
+    def _from_proto(cls, clients: _Clients, asset: asset_pb2.Asset) -> Self:
+        return cls(
+            rid=asset.rid,
+            name=asset.title,
+            description=asset.description if asset.HasField("description") else None,
+            properties=MappingProxyType(dict(asset.properties)),
+            labels=tuple(asset.labels),
+            created_at=asset.created_at.ToNanoseconds(),
+            is_archived=asset.is_archived,
+            _clients=clients,
+            created_by_rid=asset.created_by if asset.HasField("created_by") else None,
         )
 
 

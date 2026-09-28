@@ -6,7 +6,9 @@ import pytest
 
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
+from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.protos.asset.v2 import asset_pb2
 
 SCOPE_NAME = "test-scope"
 
@@ -140,3 +142,23 @@ def test_search_data_reviews_passes_archive_status(mock_asset):
     mock_reviews.assert_called_once()
     assert mock_reviews.call_args.kwargs["assets"] == [mock_asset.rid]
     assert mock_reviews.call_args.kwargs["archive_status"] == ArchiveStatusFilter.ARCHIVED
+
+
+def test_create_or_update_asset_by_primary_key(mock_clients):
+    """The request carries the type RID and if_exists policy, and the proto response becomes an Asset."""
+    mock_clients.resolve_default_workspace_rid.return_value = "workspace-rid-1"
+    mock_clients.assets_v2.CreateOrUpdateAssetByPrimaryKey.return_value = (
+        asset_pb2.CreateOrUpdateAssetByPrimaryKeyResponse(
+            asset=asset_pb2.Asset(rid="asset-rid-1", title="Robot 1"), created=True
+        )
+    )
+
+    asset = NominalClient(_clients=mock_clients).create_or_update_asset_by_primary_key(
+        "type-rid-1", name="Robot 1", properties={"serial": "r1"}, if_exists="return"
+    )
+
+    request = mock_clients.assets_v2.CreateOrUpdateAssetByPrimaryKey.call_args.args[0]
+    assert request.type_rid == "type-rid-1"
+    assert request.if_exists == asset_pb2.RETURN_EXISTING
+    assert request.asset.workspace == "workspace-rid-1"
+    assert (asset.rid, asset.name, asset.description) == ("asset-rid-1", "Robot 1", None)
