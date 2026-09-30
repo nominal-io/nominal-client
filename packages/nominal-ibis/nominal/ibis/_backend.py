@@ -155,8 +155,10 @@ class Backend(SQLBackend, NoUrl):
 
     @functools.cached_property
     def _catalog(self) -> sql_pb2.SqlCatalog:
+        request = sql_pb2.GetSqlCatalogRequest()
         with translate_grpc_errors():
-            return self._sql.GetSqlCatalog(sql_pb2.GetSqlCatalogRequest()).sql_catalog
+            response = self._sql.GetSqlCatalog(request)
+        return response.sql_catalog
 
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
         return self._filter_with_like(sorted(table.name for table in self._catalog.tables), like)
