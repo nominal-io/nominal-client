@@ -23,7 +23,7 @@ from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterator, Protocol, TypeVar, cast
+from typing import Any, Iterable, Iterator, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 import grpc
@@ -317,7 +317,11 @@ def _grpc_error_message(error: grpc.RpcError) -> str:
     If those details are missing or can't be decoded, we still report the original gRPC error.
     """
     message = f"{error.code()}: {error.details()}"
-    for key, value in cast("tuple[tuple[str, str | bytes], ...]", error.trailing_metadata() or ()):
+    metadata = error.trailing_metadata()
+    if metadata is None:
+        return message
+    # gRPC returns key/value pairs, but its RpcError stubs describe non-iterable entries even though they are iterable
+    for key, value in cast("Iterable[tuple[str, str | bytes]]", metadata):
         if key != "grpc-status-details-bin" or not isinstance(value, bytes):
             continue
         try:
