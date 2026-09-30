@@ -362,7 +362,7 @@ def _reject_quoted_fields(line: str, where: str) -> None:
 
 def _split_row(row: str, n_cols: int) -> tuple[str, ...]:
     """Split a sampled row and pad it to the header width, so column lookups cannot go out of range."""
-    fields = [value.strip() for value in row.split(",")]
+    fields = row.split(",")
     if len(fields) < n_cols:
         fields.extend([""] * (n_cols - len(fields)))
     return tuple(fields)
@@ -449,7 +449,7 @@ def _build_import_config(
         if i in reserved:
             continue
         # Caller-supplied type wins; fall through to sample-based inference.
-        kind = overrides.get(name) or _classify_column(row[i] for row in scan.samples)
+        kind = overrides.get(name) or _classify_column(row[i].strip() for row in scan.samples)
         columns[kind].append((i, name))
 
     _warn_unusable_attributes(scan.samples, columns, has_colour=bool(rgb))
@@ -498,7 +498,7 @@ def _is_readable_colour(value: str) -> bool:
 
 
 def _populated(samples: Sequence[tuple[str, ...]], index: int) -> list[str]:
-    return [stripped for row in samples if (stripped := row[index].strip())]
+    return [row[index] for row in samples if row[index].strip()]
 
 
 def _reject_unreadable_colour(samples: Sequence[tuple[str, ...]], index: int, column: str) -> None:
