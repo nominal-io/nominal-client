@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import grpc
 from conjure_python_client import ServiceConfiguration
 from google.protobuf.message import DecodeError
-from google.rpc import error_details_pb2, status_pb2  # type: ignore[import-untyped]
+from google.rpc import error_details_pb2, status_pb2
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict, validate_api_base_url
 from nominal.exceptions import (

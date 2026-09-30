@@ -182,6 +182,11 @@ no_implicit_optional = false
 disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
+module = ["google.rpc", "google.rpc.*"]
+# googleapis-common-protos ships stubs but no py.typed marker.
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
 module = "nptdms"
 ignore_missing_imports = true
 
