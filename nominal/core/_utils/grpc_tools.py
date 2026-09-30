@@ -305,6 +305,17 @@ _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
 
 
 def _grpc_error_message(error: grpc.RpcError) -> str:
+    """Include the server's detailed error alongside the gRPC status and message.
+
+    ``code()`` and ``details()`` can give us just "INVALID_ARGUMENT: SQL query is invalid", which doesn't
+    tell the caller what to fix. The actual cause, such as a missing column, can be in the response trailers.
+
+    ``grpc-status-details-bin`` contains a serialized ``google.rpc.Status``: a code, a message, and a list
+    of ``Any`` details. We unpack the ``ErrorInfo`` details and add their domain, reason, and metadata map
+    to the message. That map can include the SQL error text and query ID.
+
+    If those details are missing or can't be decoded, we still report the original gRPC error.
+    """
     message = f"{error.code()}: {error.details()}"
     for key, value in cast("tuple[tuple[str, str | bytes], ...]", error.trailing_metadata() or ()):
         if key != "grpc-status-details-bin" or not isinstance(value, bytes):
