@@ -72,6 +72,7 @@ dev = [
     "mkdocstrings>=0.29.1,<1",
     "mypy>=1.18.2,<2",
     "pandas-stubs~=2.0",
+    "pyarrow-stubs>=20.0.0.20260819",
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
     "ruff==0.12.1",
@@ -191,7 +192,7 @@ module = "nptdms"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["ibis", "ibis.*", "pyarrow", "pyarrow.*"]
+module = ["ibis", "ibis.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

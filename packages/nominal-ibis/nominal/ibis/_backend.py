@@ -244,7 +244,7 @@ class Backend(SQLBackend, NoUrl):
         params: Mapping[ir.Scalar, Any] | None = None,
         limit: int | str | None = None,
         **kwargs: Any,
-    ) -> pa.Table | pa.Array | pa.Scalar:
+    ) -> Any:
         self._run_pre_execute_hooks(expr)
         table = self._to_pyarrow_table(expr.as_table(), params=params, limit=limit)
         return expr.__pyarrow_result__(table)
