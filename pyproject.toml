@@ -175,6 +175,8 @@ ignore = [
 [tool.mypy]
 strict = true
 packages = ["nominal", "nominal.tdms", "nominal.ibis"]
+# Ibis leaves some functions unannotated.
+untyped_calls_exclude = ["ibis"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
@@ -193,13 +195,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["ibis", "ibis.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "nominal.ibis.*"
-disallow_subclassing_any = false
-disallow_untyped_decorators = false
-disable_error_code = ["no-any-return", "empty-body"]
+# Ibis has inline annotations but doesn't ship a py.typed marker.
+follow_untyped_imports = true
+# Its public API also re-exports names through dynamically populated __all__ lists.
+implicit_reexport = true
 
 [[tool.mypy.overrides]]
 module = "ffmpeg"
