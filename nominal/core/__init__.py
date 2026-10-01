@@ -15,6 +15,7 @@ from nominal.core.connection import Connection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
+    ContainerResources,
     ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
@@ -58,6 +59,7 @@ __all__ = [
     "ContainerImage",
     "ContainerImageStatus",
     "ContainerizedExtractor",
+    "ContainerResources",
     "DataReview",
     "DataReviewBuilder",
     "Dataset",
