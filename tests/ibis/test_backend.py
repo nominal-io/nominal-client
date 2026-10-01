@@ -243,6 +243,23 @@ def test_module_imports_cleanly_in_fresh_interpreter() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_to_pyarrow_returns_table_column_and_scalar_shapes() -> None:
+    con = nibis.connect(make_client(query_result=pa.table({"value": [1.5]})))
+    value = con.table("points_double").value
+
+    table = value.as_table().to_pyarrow()
+    assert isinstance(table, pa.Table)
+    assert table.equals(pa.table({"value": [1.5]}))
+
+    column = value.to_pyarrow()
+    assert isinstance(column, pa.ChunkedArray)
+    assert column.to_pylist() == [1.5]
+
+    scalar = value.max().name("value").to_pyarrow()
+    assert isinstance(scalar, pa.Scalar)
+    assert scalar.as_py() == 1.5
+
+
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
 def test_native_max_preserves_numeric_result(output: str) -> None:
     """Native Ibis aggregates retain their numeric type through every result path."""
