@@ -3,9 +3,9 @@ from typing import Mapping
 # Remove this import once the minimum supported Python version is 3.11+.
 from exceptiongroup import ExceptionGroup
 
-
-class NominalError(Exception):
-    """Base class for Nominal exceptions."""
+# Preserve the original public import paths.
+from nominal.config.exceptions import NominalConfigError as NominalConfigError
+from nominal.exceptions import NominalError as NominalError
 
 
 class LegacyVideoDeprecationWarning(DeprecationWarning):
@@ -71,10 +71,6 @@ class NominalIngestUploadFailed(NominalError, ExceptionGroup):
     Each member exception names the file it belongs to and carries the underlying failure as
     its `__cause__`.
     """
-
-
-class NominalConfigError(NominalError):
-    """An error occurred reading or writing the configuration."""
 
 
 class NominalPermissionDeniedError(NominalError):

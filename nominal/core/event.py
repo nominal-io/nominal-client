@@ -9,8 +9,8 @@ from typing_extensions import Self
 from nominal.core import asset as core_asset
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
-from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
+from nominal.core._event_types import EventType as EventType
+from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,

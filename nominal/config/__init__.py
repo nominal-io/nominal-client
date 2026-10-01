@@ -9,7 +9,7 @@ import yaml
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH
-from nominal.core.exceptions import NominalConfigError
+from nominal.config.exceptions import NominalConfigError as NominalConfigError
 
 DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
 logger = logging.getLogger(__name__)
