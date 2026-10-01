@@ -3,8 +3,9 @@ from __future__ import annotations
 import functools
 import io
 from contextlib import contextmanager
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, cast
 
+import ibis
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
@@ -38,6 +39,14 @@ class NominalSqlError(com.IbisError):
     """A catalog type or query result that cannot be represented by this backend."""
 
 
+def _resolve_limit(limit: int | str | None) -> int | None:
+    if limit == "default":
+        return ibis.options.sql.default_limit
+    if isinstance(limit, str):
+        raise ValueError(f"Invalid limit {limit!r}; expected an integer, None, or 'default'")
+    return limit
+
+
 def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.DataType:
     kind = data_type.WhichOneof("kind")
     if kind == "scalar":
@@ -54,7 +63,7 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
             "use con.sql() with an explicitly typed projection"
         )
     if kind == "array_element":
-        return dt.Array(_catalog_type(data_type.array_element, column))
+        return dt.Array(value_type=_catalog_type(data_type.array_element, column))
     if kind == "map":
         if (
             data_type.map.key.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
@@ -62,7 +71,10 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
         ):
             # Scout projects dynamic struct values as JSON text in Arrow.
             return dt.string
-        return dt.Map(_catalog_type(data_type.map.key, column), _catalog_type(data_type.map.value, column))
+        return dt.Map(
+            key_type=_catalog_type(data_type.map.key, column),
+            value_type=_catalog_type(data_type.map.value, column),
+        )
     raise NominalSqlError(
         f"Missing or unsupported catalog data_type for {column}; the server must provide recursive column types"
     )
@@ -75,12 +87,12 @@ class NominalCompiler(PostgresCompiler):
         self,
         expr: ir.Expr,
         *,
-        limit: str | None = None,
+        limit: int | str | None = None,
         params: Mapping[ir.Expr, Any] | None = None,
     ) -> Any:
         # Postgres casts map/JSON outputs to strings for its driver. Our Arrow
         # transport preserves these types, so bypass that preprocessing.
-        return super(PostgresCompiler, self).to_sqlglot(expr, limit=limit, params=params)
+        return super(PostgresCompiler, self).to_sqlglot(expr, limit=_resolve_limit(limit), params=params)
 
     def visit_MapGet(self, op: ops.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
         item = sge.Bracket(this=arg, expressions=[key])
@@ -135,7 +147,8 @@ class _PayloadReader(io.RawIOBase):
 class Backend(SQLBackend, NoUrl):
     """Ibis backend executing queries against the Nominal SQL API."""
 
-    name = "nominal"
+    # SQLBackend declares name as a class variable; NoUrl declares it as an instance variable.
+    name = "nominal"  # type: ignore[misc]
     compiler = NominalCompiler()
     supports_temporary_tables = False
     supports_python_udfs = False
@@ -172,7 +185,7 @@ class Backend(SQLBackend, NoUrl):
     ) -> sch.Schema:
         for table in self._catalog.tables:
             if table.name == table_name:
-                return sch.Schema(
+                return sch.schema(
                     {
                         column.name: _catalog_type(column.data_type, f"{table_name}.{column.name}").copy(
                             nullable=column.nullable
@@ -225,6 +238,17 @@ class Backend(SQLBackend, NoUrl):
                 f"query result schema {result.schema} is not castable to the expression schema {target}"
             ) from e
 
+    def _compile_table(
+        self,
+        table_expr: ir.Table,
+        *,
+        params: Mapping[ir.Scalar, Any] | None = None,
+        limit: int | str | None = None,
+    ) -> str:
+        # compile() takes Mapping[ir.Expr, Any] and an int limit; Mapping keys are invariant.
+        expr_params: dict[ir.Expr, Any] | None = dict(params.items()) if params is not None else None
+        return self.compile(table_expr, params=expr_params, limit=_resolve_limit(limit))
+
     def _to_pyarrow_table(
         self,
         table_expr: ir.Table,
@@ -232,7 +256,7 @@ class Backend(SQLBackend, NoUrl):
         params: Mapping[ir.Scalar, Any] | None = None,
         limit: int | str | None = None,
     ) -> pa.Table:
-        sql = self.compile(table_expr, params=params, limit=limit)
+        sql = self._compile_table(table_expr, params=params, limit=limit)
         result = self.raw_sql(sql)
         return self._cast_result(result, table_expr.schema().to_pyarrow())
 
@@ -247,7 +271,8 @@ class Backend(SQLBackend, NoUrl):
     ) -> Any:
         self._run_pre_execute_hooks(expr)
         table = self._to_pyarrow_table(expr.as_table(), params=params, limit=limit)
-        return expr.__pyarrow_result__(table)
+        # The result hooks live on the concrete expression classes, not Expr.
+        return cast(ir.Table | ir.Column | ir.Scalar, expr).__pyarrow_result__(table)
 
     def to_pyarrow_batches(
         self,
@@ -262,7 +287,7 @@ class Backend(SQLBackend, NoUrl):
         """Execute the expression, streaming record batches without materializing the result."""
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
-        sql = self.compile(table_expr, params=params, limit=limit)
+        sql = self._compile_table(table_expr, params=params, limit=limit)
         target = table_expr.schema().to_pyarrow()
 
         def converted_batches() -> Iterator[pa.RecordBatch]:
@@ -287,7 +312,7 @@ class Backend(SQLBackend, NoUrl):
         table_expr = expr.as_table()
         table = self._to_pyarrow_table(table_expr, params=params, limit=limit)
         df = PandasData.convert_table(table.to_pandas(timestamp_as_object=False), table_expr.schema())
-        return expr.__pandas_result__(df)
+        return cast(ir.Table | ir.Column | ir.Scalar, expr).__pandas_result__(df)
 
     def create_table(self, *args: Any, **kwargs: Any) -> ir.Table:
         raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
@@ -310,6 +335,7 @@ class Backend(SQLBackend, NoUrl):
 
 def connect(client: NominalClient) -> Backend:
     """Connect Ibis to the Nominal SQL API through an existing client; see `Backend.do_connect`."""
-    backend = Backend(client)
+    # Ibis's inherited constructor stores the arguments for reconnect(), but has no annotations.
+    backend = cast(Callable[[NominalClient], Backend], Backend)(client)
     backend.reconnect()
     return backend

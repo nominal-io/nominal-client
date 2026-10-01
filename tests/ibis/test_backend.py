@@ -261,6 +261,51 @@ def test_to_pyarrow_returns_table_column_and_scalar_shapes() -> None:
 
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+@pytest.mark.parametrize("limit, expected_limit", [(None, None), (3, 3), ("default", 7)])
+def test_bound_parameters_and_limits_reach_sql(
+    output: str, limit: int | str | None, expected_limit: int | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = make_client(query_result=pa.table({"value": [1.5]}))
+    con = nibis.connect(client)
+    points = con.table("points_double")
+    offset = ibis.param("float64")
+    expr = points.select((points.value + offset).name("value"))
+
+    monkeypatch.setattr(ibis.options.sql, "default_limit", 7)
+    if output == "pandas":
+        expr.to_pandas(params={offset: 2.0}, limit=limit)
+    elif output == "arrow":
+        expr.to_pyarrow(params={offset: 2.0}, limit=limit)
+    else:
+        with expr.to_pyarrow_batches(params={offset: 2.0}, limit=limit) as reader:
+            reader.read_all()
+
+    sql = client._clients.sql.Query.call_args.args[0].query
+    assert " + 2.0" in sql
+    if expected_limit is None:
+        assert "LIMIT" not in sql
+    else:
+        assert f"LIMIT {expected_limit}" in sql
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+def test_invalid_string_limit_rejected_before_query(output: str) -> None:
+    client = make_client(query_result=pa.table({"value": [1.5]}))
+    con = nibis.connect(client)
+    expr = con.table("points_double").select("value")
+
+    with pytest.raises(ValueError, match="Invalid limit"):
+        if output == "pandas":
+            expr.to_pandas(limit="10")
+        elif output == "arrow":
+            expr.to_pyarrow(limit="10")
+        else:
+            expr.to_pyarrow_batches(limit="10")
+
+    client._clients.sql.Query.assert_not_called()
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
 def test_native_max_preserves_numeric_result(output: str) -> None:
     """Native Ibis aggregates retain their numeric type through every result path."""
     con = nibis.connect(make_client(query_result=pa.table({"maximum": [1.5]})))
