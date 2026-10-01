@@ -53,7 +53,7 @@ def normalize_video(
                   can impact performance negatively-- typically, a value at or around 2s is considered
                   "best of both worlds" as a reasonable default value.
         force: If true, forcibly delete existing output path if already exists.
-        resolution: If provided, re-scale the video to the provided resolution
+        resolution: If provided, re-scale the video to fit within the provided resolution, preserving aspect ratio
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
             NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
                   on the machine
