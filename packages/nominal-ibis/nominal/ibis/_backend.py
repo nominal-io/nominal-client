@@ -164,6 +164,7 @@ class Backend(SQLBackend, NoUrl):
         """
         self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
         self.workspace_rid = client._clients.resolve_default_workspace_rid()
+        # Drop the cached catalog so reconnect() picks up table and schema changes.
         self.__dict__.pop("_catalog", None)
 
     @functools.cached_property

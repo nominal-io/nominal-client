@@ -109,6 +109,17 @@ def test_list_tables_from_catalog(backend: nibis.Backend) -> None:
     assert backend.list_tables() == ["datasets", "points_double"]
 
 
+def test_reconnect_refreshes_catalog(backend: nibis.Backend, client: NominalClient) -> None:
+    assert backend.list_tables() == ["datasets", "points_double"]
+
+    updated_response = sql_pb2.GetSqlCatalogResponse(sql_catalog=CATALOG)
+    updated_response.sql_catalog.tables.add(name="new_table", columns=[column("value", "INTEGER")])
+    client._clients.sql.GetSqlCatalog.return_value = updated_response
+    backend.reconnect()
+
+    assert backend.list_tables() == ["datasets", "new_table", "points_double"]
+
+
 def test_schema_types_from_catalog(backend: nibis.Backend) -> None:
     schema = backend.table("points_double").schema()
     assert schema["ts"].is_timestamp()
