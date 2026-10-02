@@ -41,6 +41,7 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
+    from nominal.core.workbook_template import WorkbookTemplate
 
 
 @dataclass(frozen=True)
@@ -644,8 +645,13 @@ def _create_run(
     links: Sequence[str | Link | LinkDict] | None,
     attachments: Iterable[Attachment] | Iterable[str] | None,
     asset_rids: Sequence[str] | None,
+    workbook_template: WorkbookTemplate | str | None = None,
 ) -> Run:
-    """Create a run."""
+    """Create a run and, if `workbook_template` is given, a workbook from that template linked to the run."""
+    from nominal.core.workbook_template import _resolve_workbook_template
+
+    # Resolve the template first, so that an invalid template RID does not leave a run behind.
+    template = None if workbook_template is None else _resolve_workbook_template(clients, workbook_template)
     request = scout_run_api.CreateRunRequest(
         attachments=[rid_from_instance_or_string(a) for a in attachments or ()],
         data_sources={},
@@ -661,4 +667,7 @@ def _create_run(
         workspace=clients.resolve_default_workspace_rid(),
     )
     response = clients.run.create_run(clients.auth_header, request)
-    return Run._from_conjure(clients, response)
+    run = Run._from_conjure(clients, response)
+    if template is not None:
+        template.create_workbook(run=run)
+    return run

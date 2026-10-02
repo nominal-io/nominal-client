@@ -261,6 +261,15 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         )
 
 
+def _resolve_workbook_template(
+    clients: WorkbookTemplate._Clients, template: WorkbookTemplate | str
+) -> WorkbookTemplate:
+    """Return `template` as a WorkbookTemplate, fetching it by RID if necessary."""
+    if isinstance(template, WorkbookTemplate):
+        return template
+    return WorkbookTemplate._from_conjure(clients, clients.template.get(clients.auth_header, template))
+
+
 def _create_workbook_template_with_content_and_layout(
     clients: WorkbookTemplate._Clients,
     title: str,

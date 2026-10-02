@@ -4,7 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
     scout,
@@ -42,6 +42,9 @@ from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    from nominal.core.workbook_template import WorkbookTemplate
 
 ScopeType: TypeAlias = Connection | Dataset | Video
 
@@ -456,6 +459,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
+        workbook_template: WorkbookTemplate | str | None = None,
     ) -> Run:
         """Create a run associated with this Asset for a given span of time.
 
@@ -468,6 +472,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             labels: Sequence of labels to use on the created run.
             links: Link metadata to add to the created run.
             attachments: Attachments to associate with the created run.
+            workbook_template: Workbook template (or its RID) to create a workbook from, linked to the created run.
+                The template finds data by ref name, so add data sources to the run with the ref names that the
+                template uses. Find the workbook later with `Run.search_workbooks`.
 
         Returns:
             Returns the created run
@@ -483,6 +490,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
             links=links,
             attachments=attachments,
             asset_rids=[self.rid],
+            workbook_template=workbook_template,
         )
 
     def get_dataset(self, data_scope_name: str) -> Dataset:

@@ -112,7 +112,7 @@ from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.core.workbook_template import WorkbookTemplate
+from nominal.core.workbook_template import WorkbookTemplate, _resolve_workbook_template
 from nominal.core.workspace import Workspace
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
@@ -695,6 +695,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
+        workbook_template: WorkbookTemplate | str | None = None,
     ) -> Run: ...
     @overload
     def create_run(
@@ -709,6 +710,7 @@ class NominalClient:
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
         assets: Sequence[Asset | str],
+        workbook_template: WorkbookTemplate | str | None = None,
     ) -> Run: ...
     def create_run(
         self,
@@ -722,6 +724,7 @@ class NominalClient:
         links: Sequence[str | Link | LinkDict] | None = None,
         attachments: Iterable[Attachment] | Iterable[str] | None = None,
         assets: Sequence[Asset | str] | None = None,
+        workbook_template: WorkbookTemplate | str | None = None,
     ) -> Run:
         """Create a run, which is is effectively a slice of time across a collection of assets and datasources.
 
@@ -735,6 +738,9 @@ class NominalClient:
             links: Link metadata to add to the created run
             attachments: Attachments to associate with the created run
             assets: Sequence of assets to associate with the run
+            workbook_template: Workbook template (or its RID) to create a workbook from, linked to the created run.
+                The template finds data by ref name, so add data sources to the run with the ref names that the
+                template uses. Find the workbook later with `Run.search_workbooks`.
 
         Returns:
             Reference to the created run object
@@ -758,6 +764,7 @@ class NominalClient:
             links=links,
             attachments=attachments,
             asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
+            workbook_template=workbook_template,
         )
 
     def get_run(self, rid: str) -> Run:
@@ -1225,8 +1232,24 @@ class NominalClient:
         *,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
+        workbook_template: WorkbookTemplate | str | None = None,
     ) -> Asset:
-        """Create an asset."""
+        """Create an asset.
+
+        Args:
+            name: Name of the asset to create
+            description: Optional description of the asset to create
+            properties: Optional key-value pairs to use as properties on the created asset
+            labels: Optional sequence of labels for the created asset
+            workbook_template: Workbook template (or its RID) to create a workbook from, linked to the created asset.
+                The template finds data by data scope name, so add data sources to the asset with the data scope
+                names that the template uses. Find the workbook later with `Asset.search_workbooks`.
+
+        Returns:
+            Reference to the created asset object
+        """
+        # Resolve the template first, so that an invalid template RID does not leave an asset behind.
+        template = None if workbook_template is None else _resolve_workbook_template(self._clients, workbook_template)
         request = scout_asset_api.CreateAssetRequest(
             description=description,
             labels=list(labels),
@@ -1239,7 +1262,10 @@ class NominalClient:
             workspace=self._clients.resolve_default_workspace_rid(),
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
-        return Asset._from_conjure(self._clients, response)
+        asset = Asset._from_conjure(self._clients, response)
+        if template is not None:
+            template.create_workbook(asset=asset)
+        return asset
 
     def get_asset(self, rid: str) -> Asset:
         """Retrieve an asset by its RID."""
