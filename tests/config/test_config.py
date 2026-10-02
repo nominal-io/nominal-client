@@ -13,7 +13,7 @@ from nominal.core.exceptions import NominalConfigError
 
 def test_config_import_in_fresh_interpreter() -> None:
     """Config imports must work before core is initialized."""
-    subprocess.run(
+    result = subprocess.run(
         [
             sys.executable,
             "-c",
@@ -28,10 +28,10 @@ def test_config_import_in_fresh_interpreter() -> None:
             "assert exceptions.NominalConfigError is NominalConfigError; "
             "assert issubclass(exceptions.NominalIngestError, NominalError)",
         ],
-        check=True,
         capture_output=True,
         text=True,
     )
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.fixture
