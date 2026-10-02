@@ -104,6 +104,8 @@ html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"
 
 html_theme_options = {
     "accent_color": "gray",
+    # dark unless the visitor picks light with the theme switch (remembered in localStorage)
+    "color_mode": "dark",
     "light_logo": "_static/logo/nominal-logo-light.svg",
     "dark_logo": "_static/logo/nominal-logo-dark.svg",
     "github_url": "https://github.com/nominal-io/nominal-client",
