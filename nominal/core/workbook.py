@@ -23,6 +23,15 @@ if TYPE_CHECKING:
     from nominal.core.workspace import Workspace
 
 
+def _replace_charts(
+    content: scout_workbookcommon_api.WorkbookContent,
+    charts: dict[str, scout_chartdefinition_api.VizDefinition],
+) -> scout_workbookcommon_api.WorkbookContent:
+    """Return a copy of `content` with `charts` replaced and every other field kept."""
+    fields = {name: getattr(content, name) for name in scout_workbookcommon_api.WorkbookContent._fields()}
+    return scout_workbookcommon_api.WorkbookContent(**{**fields, "charts": charts})
+
+
 def _strip_video_datasources(
     content: scout_workbookcommon_api.WorkbookContent,
 ) -> scout_workbookcommon_api.WorkbookContent:
@@ -57,13 +66,7 @@ def _strip_video_datasources(
     if not changed:
         return content
 
-    return scout_workbookcommon_api.WorkbookContent(
-        channel_variables=content.channel_variables,
-        charts=new_charts,
-        data_scope_inputs=content.data_scope_inputs,
-        inputs=content.inputs,
-        settings=content.settings,
-    )
+    return _replace_charts(content, new_charts)
 
 
 class WorkbookType(Enum):
