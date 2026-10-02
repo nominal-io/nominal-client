@@ -82,7 +82,6 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
-        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known
@@ -136,10 +135,12 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in video.labels:
-                new_labels.append(old_label)
-            video = video.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in video.labels:
+            new_labels.append(old_label)
+        video = video.update(labels=new_labels)
+        ```
         """
         request = scout_video_api.UpdateVideoMetadataRequest(
             description=description,

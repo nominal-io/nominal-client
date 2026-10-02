@@ -250,17 +250,18 @@ class NominalClient:
     ) -> Self:
         """Create a connection to the Nominal platform.
 
-        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
-            transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
-            store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
-            client works on corporate networks with no extra configuration. On macOS, point this at
-            your corporate CA PEM if you are behind a TLS-inspecting proxy.
-        connect_timeout: Timeout for any single request to the Nominal API.
-        workspace_rid: Optional workspace RID to pin the client to for operations that require a single
-            workspace. If not provided, those operations resolve a default workspace client-side when needed.
-        extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
+            connect_timeout: Timeout for any single request to the Nominal API.
+            workspace_rid: Optional workspace RID to pin the client to for operations that require a single
+                workspace. If not provided, those operations resolve a default workspace client-side when needed.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
@@ -418,10 +419,10 @@ class NominalClient:
             archive_status: Filter results to the given archive status.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
         Returns:
             All datasets which match all of the provided conditions
@@ -541,10 +542,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
 
         Returns:
@@ -666,10 +667,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
 
         Returns:
@@ -830,10 +831,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
 
         Returns:
@@ -965,7 +966,7 @@ class NominalClient:
         """Retrieve a datasource (connection or dataset) by its RID.
 
         NOTE: if specific methods / properties of a dataset / connection are desired,
-              it is preferable to use `get_dataset` or `get_connection`.
+        it is preferable to use `get_dataset` or `get_connection`.
         """
         if ".dataset." in rid:
             return self.get_dataset(rid)
@@ -1025,10 +1026,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
 
         Returns:
@@ -1127,10 +1128,9 @@ class NominalClient:
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
                 NOTE: This currently requires that units are formatted as laid out in
-                      the latest UCUM standards (see https://ucum.org/ucum)
+                the latest UCUM standards (see https://ucum.org/ucum)
 
         Returns:
-        -------
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
@@ -1313,10 +1313,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
         Returns:
             All assets which match all of the provided conditions
@@ -1365,10 +1365,10 @@ class NominalClient:
             workspace: Filters search to given workspace.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
         Returns:
             All ingest jobs matching all of the provided conditions, most recent first.
@@ -1512,10 +1512,10 @@ class NominalClient:
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
         Returns:
             All events which match all of the provided conditions
@@ -1688,10 +1688,10 @@ class NominalClient:
             archive_status: Archive status to filter results to. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
 
         Returns:
@@ -1756,10 +1756,10 @@ class NominalClient:
             workspace: Filters search to given workspace.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
-            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
-            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
-            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
-            RID is given, that value is used directly.
+        search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+        configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+        default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+        RID is given, that value is used directly.
 
         Returns:
             All workbook templates which match all of the provided conditions

@@ -81,7 +81,7 @@ def _grpc_root_certificates(trust_store_path: str | None) -> bytes | None:
     - Windows: the ``ROOT``/``CA`` system stores via ``SSLContext.load_default_certs`` (which honours
       per-cert SERVER_AUTH trust, so GPO/MDM-pushed enterprise roots are included).
     - macOS: nothing extra — OpenSSL ignores the Keychain, so ``trust_store_path`` is the only source
-      (corporate macOS users supply their CA via ``trust_store_path``; see docs/src/networking-tls.md).
+      (corporate macOS users supply their CA via ``trust_store_path``; see docs/guides/networking-tls.md).
     - Linux/other unix: the OS default CA bundle file (``ssl.get_default_verify_paths().cafile``).
 
     Returns ``None`` (not ``b""``) when no roots are found, so the caller falls back to gRPC's built-in

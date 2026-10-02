@@ -246,7 +246,7 @@ def _channel_points_per_second(
     via an internally-managed thread pool.
 
     NOTE: may take a long time for large channel counts. Takes approx. 30s for 1000 channels with good internet,
-          but varies based on how many points are within the query bounds.
+    but varies based on how many points are within the query bounds.
 
     Args:
         client: Nominal client to make requests with
@@ -597,6 +597,7 @@ class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
     Pipeline:
+
     * Filter to exportable channel types (DOUBLE/INT/STRING).
     * Confirm each channel has data in the range (via `filter_channels_with_data`) and
       estimate per-channel peak points-per-second.
