@@ -9,7 +9,7 @@ from typing import Any, Callable, Protocol, TypeVar
 import pytest
 
 from nominal import ts
-from nominal.core.exceptions import NominalVideoScaleModeError, NominalVideoTimestampModeError
+from nominal.exceptions import NominalVideoScaleModeError, NominalVideoTimestampModeError
 from nominal.experimental.extractor import (
     Extractor,
     ExtractorContext,

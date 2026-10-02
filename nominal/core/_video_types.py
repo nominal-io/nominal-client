@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from nominal_api import scout_video_api
 
-from nominal.core.exceptions import NominalVideoScaleModeError
+from nominal.exceptions import NominalVideoScaleModeError
 from nominal.ts import IntegralNanosecondsUTC, _InferrableTimestampType, _SecondsNanos
 
 

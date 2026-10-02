@@ -8,7 +8,7 @@ import grpc
 import pytest
 
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalNotFoundError
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 
 WORKSPACE_RID = "ri.security.desktop.workspace.local"

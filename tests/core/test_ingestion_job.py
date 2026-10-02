@@ -10,8 +10,8 @@ import pytest
 from nominal_api import api, ingest_api, scout_catalog
 
 from nominal.core.dataset_file import DatasetFile, IngestStatus
-from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
 
 DATASET_RID = "ri.catalog.test.dataset.def"
 

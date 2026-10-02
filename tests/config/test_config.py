@@ -8,7 +8,7 @@ import pytest
 
 import nominal.config as config_module
 from nominal.config import ConfigProfile, NominalConfig
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 
 
 def test_config_import_in_fresh_interpreter() -> None:
@@ -23,15 +23,29 @@ def test_config_import_in_fresh_interpreter() -> None:
             "from nominal.exceptions import NominalError; "
             "import sys; "
             "assert 'nominal.core' not in sys.modules; "
-            "from nominal.core import exceptions; "
-            "assert exceptions.NominalError is NominalError; "
+            "from nominal import exceptions; "
             "assert exceptions.NominalConfigError is NominalConfigError; "
             "assert issubclass(exceptions.NominalIngestError, NominalError)",
         ],
+        check=False,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_exception_import_compatibility() -> None:
+    """Legacy exception modules expose the same classes as the unified module."""
+    from nominal import exceptions
+    from nominal.config import exceptions as config_exceptions
+    from nominal.core import exceptions as core_exceptions
+
+    for name, value in vars(exceptions).items():
+        if isinstance(value, type) and value.__module__ == exceptions.__name__:
+            assert getattr(core_exceptions, name) is value
+    assert core_exceptions.ONE_TIMESTAMP_MODE_ERROR == exceptions.ONE_TIMESTAMP_MODE_ERROR
+    assert config_exceptions.NominalConfigError is exceptions.NominalConfigError
+    assert config_exceptions.NominalError is exceptions.NominalError
 
 
 @pytest.fixture

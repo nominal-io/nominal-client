@@ -12,7 +12,7 @@ import pytest
 if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
-from nominal.core.exceptions import NominalChecklistNotPublishedError
+from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext

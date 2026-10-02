@@ -37,7 +37,7 @@ from nominal.core.container_image import (
     TimestampMetadata,
     _search_container_images,
 )
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.ts import IntegralNanosecondsUTC

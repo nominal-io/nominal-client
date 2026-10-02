@@ -33,9 +33,9 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.exceptions import LegacyVideoDeprecationWarning
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 

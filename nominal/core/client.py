@@ -95,13 +95,6 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
-from nominal.core.exceptions import (
-    LegacyVideoDeprecationWarning,
-    NominalConfigError,
-    NominalError,
-    NominalInvalidArgumentError,
-    NominalNotFoundError,
-)
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.marking import (
@@ -121,6 +114,13 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.exceptions import (
+    LegacyVideoDeprecationWarning,
+    NominalConfigError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalNotFoundError,
+)
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2

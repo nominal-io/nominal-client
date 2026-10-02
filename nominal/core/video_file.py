@@ -12,7 +12,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions, _scale_parameter
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalIngestError,
     NominalIngestFailed,

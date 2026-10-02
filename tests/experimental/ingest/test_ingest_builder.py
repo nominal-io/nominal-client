@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal import ts
-from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType
+from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader
 
 WriteFile = Callable[[str, int], pathlib.Path]

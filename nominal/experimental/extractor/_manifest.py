@@ -8,7 +8,7 @@ from nominal_api import ingest_manifest
 from typing_extensions import assert_never
 
 from nominal import ts
-from nominal.core.exceptions import ExtractorError
+from nominal.exceptions import ExtractorError
 
 
 class IngestType(enum.Enum):

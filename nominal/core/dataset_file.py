@@ -24,7 +24,7 @@ from nominal.core._utils.multipart_downloader import (
     PresignedURLProvider,
 )
 from nominal.core.bounds import Bounds
-from nominal.core.exceptions import NominalIngestError
+from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     TypedTimestampType,

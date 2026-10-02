@@ -26,7 +26,7 @@ from typing import Callable, TypeVar
 
 import requests
 
-from nominal.core.exceptions import NominalRequestThrottledError
+from nominal.exceptions import NominalRequestThrottledError
 
 logger = logging.getLogger(__name__)
 

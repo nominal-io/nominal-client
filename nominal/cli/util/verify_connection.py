@@ -4,7 +4,7 @@ import click
 from conjure_python_client import ConjureHTTPError
 
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalNotFoundError
+from nominal.exceptions import NominalConfigError, NominalError, NominalNotFoundError
 
 
 def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:

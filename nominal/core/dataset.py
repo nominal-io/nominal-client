@@ -24,12 +24,12 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
+from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsUTC,

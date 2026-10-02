@@ -7,7 +7,7 @@ from typing import Iterable, Mapping, Sequence, TypeAlias
 from nominal_api import api, scout_compute_api
 
 from nominal.core import NominalClient
-from nominal.core.exceptions import NominalComputeError
+from nominal.exceptions import NominalComputeError
 from nominal.experimental.compute.dsl import exprs as _exprs
 from nominal.experimental.compute.dsl import params
 from nominal.ts import _SecondsNanos

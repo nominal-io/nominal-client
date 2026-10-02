@@ -16,8 +16,8 @@ from typing_extensions import deprecated
 from nominal import ts
 from nominal.core._video_types import _scale_parameter
 from nominal.core.container_image import TimestampMetadata
-from nominal.core.exceptions import ExtractorError, NominalVideoTimestampModeError
 from nominal.core.filetype import FileType
+from nominal.exceptions import ExtractorError, NominalVideoTimestampModeError
 from nominal.experimental.extractor._env import (
     _ADDITIONAL_TAGS_ENV,
     _DATASET_RID_ENV,

@@ -37,7 +37,7 @@ from nominal.core._utils.networking import (
     create_conjure_client_factory,
     validate_api_base_url,
 )
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc

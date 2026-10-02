@@ -20,7 +20,7 @@ if sys.version_info < (3, 13):
 import grpc
 from conjure_python_client import ConjureHTTPError
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     NominalError,
     NominalIngestFailed,
     NominalInvalidArgumentError,

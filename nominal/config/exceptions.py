@@ -1,5 +1,4 @@
-from nominal.exceptions import NominalError
+"""Compatibility re-exports; use nominal.exceptions for new code."""
 
-
-class NominalConfigError(NominalError):
-    """An error occurred reading or writing the configuration."""
+from nominal.exceptions import NominalConfigError as NominalConfigError
+from nominal.exceptions import NominalError as NominalError

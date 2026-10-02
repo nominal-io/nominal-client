@@ -14,7 +14,7 @@ from nominal.core.container_image import (
     _get_container_image,
     _search_container_images,
 )
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.types.time import timestamp_parsers_pb2
 

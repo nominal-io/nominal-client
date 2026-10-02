@@ -16,7 +16,7 @@ from nominal.core.dataset_file import (
     filename_from_uri,
     wait_for_files_to_ingest,
 )
-from nominal.core.exceptions import NominalIngestError
+from nominal.exceptions import NominalIngestError
 
 
 def _make_file(file_id: str, statuses: list[IngestStatus]) -> DatasetFile:
