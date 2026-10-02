@@ -1,4 +1,4 @@
-name: Build and deploy mkdocs site to Pages
+name: Build and deploy docs site to Pages
 
 on:
   push:
@@ -31,7 +31,8 @@ jobs:
           version: "0.8.x"
           enable-cache: false
           cache-dependency-glob: "uv.lock"
-          python-version: "3.12"
+          # the docs dependency group needs Python >=3.12 (Sphinx 9)
+          python-version: "3.13"
       - name: Install just
         uses: extractions/setup-just@v3
       - name: Install dependencies
@@ -40,13 +41,22 @@ jobs:
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
-      - name: Build docs
+      - name: Build docs (warnings fail the build)
         run: |
           just build-docs
+      # Download from the run's Artifacts to preview a PR's docs: unzip, then
+      # `python -m http.server -d <dir>` (the folder-style URLs need a server).
+      - name: Upload built site
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: ./docs/_build/dirhtml
+          retention-days: 7
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./docs/site
+          path: ./docs/_build/dirhtml
 
   # Deployment job
   deploy:

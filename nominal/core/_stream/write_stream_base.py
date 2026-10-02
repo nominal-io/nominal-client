@@ -13,6 +13,8 @@ StreamType = TypeVar("StreamType")
 
 
 class WriteStreamBase(abc.ABC, Generic[StreamType]):
+    """Interface for streams that write values to channels; use one as a context manager."""
+
     @abc.abstractmethod
     def __enter__(self) -> Self:
         """Create the stream as a context manager."""
