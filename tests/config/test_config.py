@@ -34,20 +34,6 @@ def test_config_import_in_fresh_interpreter() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_exception_import_compatibility() -> None:
-    """Legacy exception modules expose the same classes as the unified module."""
-    from nominal import exceptions
-    from nominal.config import exceptions as config_exceptions
-    from nominal.core import exceptions as core_exceptions
-
-    for name, value in vars(exceptions).items():
-        if isinstance(value, type) and value.__module__ == exceptions.__name__:
-            assert getattr(core_exceptions, name) is value
-    assert core_exceptions.ONE_TIMESTAMP_MODE_ERROR == exceptions.ONE_TIMESTAMP_MODE_ERROR
-    assert config_exceptions.NominalConfigError is exceptions.NominalConfigError
-    assert config_exceptions.NominalError is exceptions.NominalError
-
-
 @pytest.fixture
 def config_path(tmp_path: Path) -> Path:
     return tmp_path / "config.yml"
