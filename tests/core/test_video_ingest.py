@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conjure_python_client import ConjureEncoder
 
-from nominal.core.exceptions import NominalVideoTimestampModeError
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
+from nominal.exceptions import NominalVideoTimestampModeError
 
 
 @pytest.mark.parametrize(

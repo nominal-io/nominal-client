@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Callable, ParamSpec
 
 from nominal.core.container_image import FileExtractionInput, FileExtractionParameter
-from nominal.core.exceptions import ExtractorError
+from nominal.exceptions import ExtractorError
 from nominal.experimental.extractor._definition import _MISSING, _declare, _DeclaredCallback
 from nominal.experimental.extractor.context import ExtractorContext
 from nominal.experimental.extractor.types import BadParameter

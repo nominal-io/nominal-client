@@ -22,7 +22,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_container_images_paginated
 from nominal.core._utils.query_tools import create_search_container_images_query
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 

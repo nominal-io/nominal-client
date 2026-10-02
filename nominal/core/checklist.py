@@ -17,7 +17,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_f
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
-from nominal.core.exceptions import NominalChecklistNotPublishedError
+from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.ts import _to_api_duration
 
 

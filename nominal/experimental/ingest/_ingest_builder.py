@@ -30,9 +30,9 @@ from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalC
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
+from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,

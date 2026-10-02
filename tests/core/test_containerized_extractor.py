@@ -12,7 +12,7 @@ from nominal.core.containerized_extractor import (
     _create_containerized_extractor,
     _search_containerized_extractors,
 )
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2
 from nominal.protos.registry.v2 import registry_pb2
 

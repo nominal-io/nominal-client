@@ -8,7 +8,7 @@ from conjure_python_client import ConjureHTTPError
 from requests import HTTPError, Response
 
 from nominal.cli.util.verify_connection import validate_token_url
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalNotFoundError
+from nominal.exceptions import NominalConfigError, NominalError, NominalNotFoundError
 
 
 def _conjure_error(status_code: int) -> ConjureHTTPError:

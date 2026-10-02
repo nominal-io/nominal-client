@@ -30,7 +30,7 @@ import grpc
 from conjure_python_client import ServiceConfiguration
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict, validate_api_base_url
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     NominalAlreadyExistsError,
     NominalAuthenticationError,
     NominalError,

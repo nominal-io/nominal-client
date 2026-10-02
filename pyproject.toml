@@ -152,6 +152,7 @@ ignore = [
     "D401",    # imperative mood
     "D415",    # doc line ends in punctuation
     "FIX002",  # Ignore TODOs
+    "PLC0414", # allow explicit re-exports with same-name aliases
     "PLC0415", # import should be at top-level of a file
     "PLR0913", # too many arguments
     "PLR2004", # magic values
@@ -194,7 +195,7 @@ filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
     # The legacy standalone-video API is deprecated but still supported, and tests/e2e exercises it
     # on purpose to keep covering it. Scoped to that one migration by warning class.
-    "ignore::nominal.core.exceptions.LegacyVideoDeprecationWarning",
+    "ignore::nominal.exceptions.LegacyVideoDeprecationWarning",
 ]
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)

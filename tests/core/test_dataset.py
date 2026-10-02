@@ -10,10 +10,10 @@ import pytest
 
 from nominal import ts
 from nominal.core.dataset import Dataset, DatasetBounds, _DatasetWrapper
-from nominal.core.exceptions import NominalIngestError
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
+from nominal.exceptions import NominalIngestError
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),

@@ -16,7 +16,7 @@ from nominal.core.container_image import (
     REGISTERABLE_OUTPUT_FORMATS,
     FileOutputFormat,
 )
-from nominal.core.exceptions import ExtractorError
+from nominal.exceptions import ExtractorError
 from nominal.experimental.extractor._definition import _declare, _Definition
 from nominal.experimental.extractor._env import (
     _DEFAULT_INPUT_DIR,

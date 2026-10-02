@@ -15,7 +15,7 @@ if sys.version_info < (3, 13):
 import requests
 import urllib3.exceptions
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     NominalIngestError,
     NominalIngestFailed,
     NominalIngestTimeout,

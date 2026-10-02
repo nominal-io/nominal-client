@@ -13,7 +13,7 @@ from nominal.core._clientsbunch import (
     api_base_url_to_app_base_url,
 )
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 from nominal.experimental import as_user
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc

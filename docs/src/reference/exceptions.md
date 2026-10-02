@@ -1,1 +1,1 @@
-::: nominal.core.exceptions
+::: nominal.exceptions

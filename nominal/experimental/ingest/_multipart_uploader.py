@@ -33,12 +33,12 @@ from nominal.core._utils.multipart import (
     path_upload_name,
 )
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core.exceptions import (
+from nominal.core.filetype import FileType
+from nominal.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
     NominalRequestThrottledError,
 )
-from nominal.core.filetype import FileType
 from nominal.experimental.ingest._upload_pacing import (
     _ABORT_THROTTLE_DEADLINE_S,
     DEFAULT_MAX_BACKOFF_DURATION_S,

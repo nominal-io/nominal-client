@@ -18,16 +18,16 @@ from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
-from nominal.core.exceptions import (
+from nominal.core.filetype import FileType, FileTypes
+from nominal.core.marking import MarkableMixin
+from nominal.core.video_file import VideoFile
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalIngestError,
     NominalIngestFailed,
     NominalIngestTimeout,
     NominalVideoTimestampModeError,
 )
-from nominal.core.filetype import FileType, FileTypes
-from nominal.core.marking import MarkableMixin
-from nominal.core.video_file import VideoFile
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 

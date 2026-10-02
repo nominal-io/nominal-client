@@ -12,7 +12,7 @@ from conjure_python_client import ConjureHTTPError
 from nominal_api import scout_video_api
 from nominal_video import Sink, Src, Stream, StreamOptions
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalVideoStreamError,
     NominalVideoStreamNotOpenError,

@@ -9,8 +9,8 @@ from typing_extensions import Self
 from nominal.core import asset as core_asset
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
-from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
+from nominal.core._event_types import EventType as EventType
+from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,
@@ -21,7 +21,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
-from nominal.core.exceptions import NominalNotFoundError
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.ts import (
     IntegralNanosecondsDuration,

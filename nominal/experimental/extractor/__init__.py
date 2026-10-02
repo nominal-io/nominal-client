@@ -5,7 +5,7 @@ See the package README for the authoring walkthrough and registration examples.
 """
 
 from nominal.core.container_image import TimestampMetadata as TimestampMetadata
-from nominal.core.exceptions import ExtractorError as ExtractorError
+from nominal.exceptions import ExtractorError as ExtractorError
 from nominal.experimental.extractor.context import ExtractorContext as ExtractorContext
 from nominal.experimental.extractor.context import ManifestExtractorContext as ManifestExtractorContext
 from nominal.experimental.extractor.context import SingleFileExtractorContext as SingleFileExtractorContext

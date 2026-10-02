@@ -9,9 +9,9 @@ from nominal_api import scout_asset_api
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
-from nominal.core.exceptions import NominalChecklistNotPublishedError
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
+from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
