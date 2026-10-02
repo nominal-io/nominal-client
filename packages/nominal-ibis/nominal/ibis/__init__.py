@@ -5,8 +5,8 @@ them through an authenticated NominalClient, streaming results back as Arrow.
 
 Requires a server that returns recursive catalog column types and applies the
 final SQL projection. MAP<ANY, ANY> columns, including points_struct.value,
-are exposed as strings containing Scout's JSON text; use json.loads() after
-fetching to access their contents. Concretely typed maps remain Ibis maps.
+are returned as JSON strings; use json.loads() after fetching to access their
+contents. Concretely typed maps remain Ibis maps.
 Other unresolved ANY types require an explicitly typed projection via con.sql().
 
 Example:
