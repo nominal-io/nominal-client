@@ -337,6 +337,7 @@ class Backend(SQLBackend, NoUrl):
 def connect(client: NominalClient) -> Backend:
     """Connect Ibis to the Nominal SQL API through an existing client; see `Backend.do_connect`."""
     # Ibis's inherited constructor stores the arguments for reconnect(), but has no annotations.
-    backend = cast(Callable[[NominalClient], Backend], Backend)(client)
+    create_backend = cast(Callable[[NominalClient], Backend], Backend)
+    backend = create_backend(client)
     backend.reconnect()
     return backend
