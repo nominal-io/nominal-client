@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.172.1](https://github.com/nominal-io/nominal-client/compare/v1.172.0...v1.172.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* preserve display aspect ratio and even dimensions in normalize_video ([a03ebe7](https://github.com/nominal-io/nominal-client/commit/a03ebe769979bdf30fb4ba5076aa18db2f05b571))
+* remove circular import with config/exceptions ([#1010](https://github.com/nominal-io/nominal-client/issues/1010)) ([665ccf6](https://github.com/nominal-io/nominal-client/commit/665ccf6c115b8528cb3b22f9c7c38d274b63278f))
+* scale correctly in normalize video ([#1009](https://github.com/nominal-io/nominal-client/issues/1009)) ([a03ebe7](https://github.com/nominal-io/nominal-client/commit/a03ebe769979bdf30fb4ba5076aa18db2f05b571))
+
 ## [1.172.0](https://github.com/nominal-io/nominal-client/compare/v1.171.0...v1.172.0) (2026-09-22)
 
 
