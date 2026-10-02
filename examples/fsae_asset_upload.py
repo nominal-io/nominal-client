@@ -2,7 +2,7 @@
 
 Creates (or reuses) an FSAE vehicle asset, uploads the racecar CSV from the
 [quickstart](/guides/quickstart.md) as its dataset, and tags each channel with its unit.
-Run it with `python fsae_asset_upload.py --file racecar_dataset.csv --profile <profile>`.
+Run it with `python fsae_asset_upload.py --file racecar_dataset.csv.gz --profile <profile>`.
 """
 
 import logging
@@ -63,7 +63,7 @@ def get_or_create_asset_or_guide_cleanup(
     "filepath",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
-    help="Path to the racecar_dataset.csv file you downloaded.",
+    help="Path to the racecar_dataset.csv.gz file you downloaded.",
 )
 @client_options
 @global_options

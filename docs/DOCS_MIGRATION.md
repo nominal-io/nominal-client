@@ -16,11 +16,11 @@ Out of scope: hosting, domains and redirects. The `fern-docs` repo is unchanged;
   - Links to other Python pages are checked `{doc}`-style links; links to the old mkdocs reference became checked `{py:obj}` cross-references; links to the rest of the Fern site are absolute `https://docs.nominal.io/…` URLs.
   - The quickstart's interactive variables panel (Fern-only) became a table of placeholders.
   - Images are copied from Fern's LFS store. GIFs over 1 MB became MP4 (the largest, 45 MB, is now 1 MB), shown with a new `{video}` directive (`_ext/video.py`), which also replaced the raw `<video>` tags.
+- **Sample data.** The quickstart's `racecar_dataset.csv` (9.7 MB in Fern's LFS store) ships gzipped as `guides/data/racecar_dataset.csv.gz` (2.9 MB); Nominal ingests `.csv.gz` directly.
 - **Examples.** `examples/fsae_asset_upload.py` (the quickstart's script) is the first example; the quickstart includes it rather than keeping a copy. `_ext/examples.py` generates a page per script and a flat index. Ruff now lints `examples/` and `docs/`.
 
 ## Open items
 
-- [ ] **Sample CSV.** `guides/data/racecar_dataset.csv` (9.7 MB, the quickstart download) is not committed yet: decide whether to commit it, ship it gzipped (2.9 MB), or link to a hosted copy.
 - [ ] **External links, once the site has its final URL.** These still point at the Fern site, which keeps serving the old pages:
   - `README.md` (two links);
   - `docs_link` in `nominal/cli/util/verify_connection.py`;

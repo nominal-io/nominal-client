@@ -19,7 +19,7 @@ Commands on this page use these placeholders. Replace each with your own value a
 | `<NOMINAL_API_KEY>` | your Nominal API key (`nominal_api_...`) |
 | `<API_URL>` | the API base URL for your Nominal Core app (for example `https://api.gov.nominal.io/api`) |
 | `<PROFILE>` | a short name for your saved credentials (for example `default`) |
-| `<DATASET_FILE_PATH>` | full path to the CSV file you'll upload (`/full/path/to/racecar_dataset.csv`) |
+| `<DATASET_FILE_PATH>` | full path to the CSV file you'll upload (`/full/path/to/racecar_dataset.csv.gz`) |
 
 ## Gather your Nominal credentials
 
@@ -46,9 +46,9 @@ Go to API keys page
 
 Pick a short profile name (`<PROFILE>`) to save your Nominal credentials under. Then download the sample CSV you'll upload later in this guide.
 
-Download the `racecar_dataset.csv` sample data file; its full path is `<DATASET_FILE_PATH>` below:
+Download the `racecar_dataset.csv.gz` sample data file; its full path is `<DATASET_FILE_PATH>` below. It's a gzipped CSV, which Nominal ingests as is, so there's no need to unzip it:
 
-{download}`Download racecar_dataset.csv </guides/data/racecar_dataset.csv>`
+{download}`Download racecar_dataset.csv.gz </guides/data/racecar_dataset.csv.gz>`
 
 Set up a Python virtual environment so the SDK has an isolated place to live:
 
@@ -106,11 +106,11 @@ Verify that your Python script successfully created an asset and uploaded data t
 
     Go to Assets page
     ```
-1. Click on the `FSAE CT8 Vehicle` asset you created and verify the uploaded `racecar_dataset.csv` file appears under the **Data sources** tab:
+1. Click on the `FSAE CT8 Vehicle` asset you created and verify the uploaded `racecar_dataset` file appears under the **Data sources** tab:
 
     ```{video} https://res.cloudinary.com/didkpxvqu/image/upload/v1766096480/Documentation/quickstart/qq2_fast.mp4
     :loop:
-    :alt: The uploaded racecar_dataset.csv under the asset's Data sources tab
+    :alt: The uploaded racecar_dataset file under the asset's Data sources tab
     ```
 
 ## Stream data to Nominal
