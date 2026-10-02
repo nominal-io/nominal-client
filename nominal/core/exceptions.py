@@ -1,6 +1,5 @@
 """Compatibility re-exports; use nominal.exceptions for new code."""
 
-from nominal.exceptions import ONE_TIMESTAMP_MODE_ERROR as ONE_TIMESTAMP_MODE_ERROR
 from nominal.exceptions import ExtractorError as ExtractorError
 from nominal.exceptions import HeaderConflictError as HeaderConflictError
 from nominal.exceptions import LegacyVideoDeprecationWarning as LegacyVideoDeprecationWarning

@@ -1,8 +1,3 @@
-"""Exceptions and warnings raised by the Nominal client.
-
-Catch NominalError to handle any Nominal-defined error in this client.
-"""
-
 from typing import Mapping
 
 # Remove this import once the minimum supported Python version is 3.11+.
@@ -140,12 +135,6 @@ class ExtractorError(NominalError):
     """
 
 
-# Every surface that anchors a video offers the same choice under different names -- an absolute
-# start, per-frame timestamps -- and accepts exactly one. Shared so the wording cannot drift between
-# them, and used as the default message below.
-ONE_TIMESTAMP_MODE_ERROR = "exactly one of 'start' or 'frame_timestamps' must be provided"
-
-
 class NominalVideoTimestampModeError(NominalError, ValueError):
     """Neither or both of a video's timestamp modes were provided; exactly one is required.
 
@@ -156,7 +145,7 @@ class NominalVideoTimestampModeError(NominalError, ValueError):
     a third, `_build_video_file_timestamp_manifest`, passes its own.
     """
 
-    def __init__(self, message: str = ONE_TIMESTAMP_MODE_ERROR) -> None:
+    def __init__(self, message: str = "exactly one of 'start' or 'frame_timestamps' must be provided") -> None:
         """Initialize error."""
         super().__init__(message)
 
