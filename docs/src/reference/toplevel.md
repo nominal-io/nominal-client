@@ -2,6 +2,7 @@ Also see the [Python Quickstart guide](https://docs.nominal.io/core/sdk/python-c
 
 [`nominal.core`](./core.md) — platform client.  
 [`nominal.ts`](./ts.md) — timestamp utilities.  
+[`nominal.ibis`](./ibis.md) - query the Nominal SQL API with Ibis, installed with `nominal-ibis`.
 
 Third-party integrations:
 
