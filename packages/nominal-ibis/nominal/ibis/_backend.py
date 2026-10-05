@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import io
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Mapping, cast
@@ -156,7 +155,7 @@ class Backend(SQLBackend, NoUrl):
     workspace_rid: str
 
     def do_connect(self, client: NominalClient) -> None:
-        """Query the Nominal SQL API through an existing client.
+        """Use an existing client and fetch the SQL catalog.
 
         Args:
             client: Authenticated Nominal client. Queries run in its default workspace, either the one
@@ -164,15 +163,10 @@ class Backend(SQLBackend, NoUrl):
         """
         self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
         self.workspace_rid = client._clients.resolve_default_workspace_rid()
-        # Drop the cached catalog so reconnect() picks up table and schema changes.
-        self.__dict__.pop("_catalog", None)
-
-    @functools.cached_property
-    def _catalog(self) -> sql_pb2.SqlCatalog:
         request = sql_pb2.GetSqlCatalogRequest()
         with translate_grpc_errors():
             response = self._sql.GetSqlCatalog(request)
-        return response.sql_catalog
+        self._catalog = response.sql_catalog
 
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
         return self._filter_with_like(sorted(table.name for table in self._catalog.tables), like)

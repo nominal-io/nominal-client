@@ -97,7 +97,9 @@ def backend(client: NominalClient) -> nibis.Backend:
 def test_ibis_entry_point_connects_with_a_client(client: NominalClient) -> None:
     con = ibis.nominal.connect(client)
     assert isinstance(con, nibis.Backend)
+    client._clients.sql.GetSqlCatalog.assert_called_once_with(sql_pb2.GetSqlCatalogRequest())
     assert con.list_tables() == ["datasets", "points_double"]
+    client._clients.sql.GetSqlCatalog.assert_called_once()
 
 
 def test_workspace_comes_from_the_client(backend: nibis.Backend, client: NominalClient) -> None:
@@ -111,13 +113,16 @@ def test_list_tables_from_catalog(backend: nibis.Backend) -> None:
 
 def test_reconnect_refreshes_catalog(backend: nibis.Backend, client: NominalClient) -> None:
     assert backend.list_tables() == ["datasets", "points_double"]
+    client._clients.sql.GetSqlCatalog.assert_called_once()
 
     updated_response = sql_pb2.GetSqlCatalogResponse(sql_catalog=CATALOG)
     updated_response.sql_catalog.tables.add(name="new_table", columns=[column("value", "INTEGER")])
     client._clients.sql.GetSqlCatalog.return_value = updated_response
     backend.reconnect()
+    assert client._clients.sql.GetSqlCatalog.call_count == 2
 
     assert backend.list_tables() == ["datasets", "new_table", "points_double"]
+    assert client._clients.sql.GetSqlCatalog.call_count == 2
 
 
 def test_schema_types_from_catalog(backend: nibis.Backend) -> None:
