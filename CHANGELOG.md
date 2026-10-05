@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.172.1](https://github.com/nominal-io/nominal-client/compare/v1.172.0...v1.172.1) (2026-10-02)
+## [1.172.1](https://github.com/nominal-io/nominal-client/compare/v1.172.0...v1.172.1) (2026-10-05)
 
 
 ### Bug Fixes
