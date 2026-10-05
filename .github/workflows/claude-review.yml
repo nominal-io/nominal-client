@@ -20,10 +20,11 @@ concurrency:
 
 jobs:
   review:
-    # Skip draft PRs and PRs on forks
+    # Skip drafts, forks, and release-please PRs.
     if: |
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: depot-ubuntu-24.04-small
     permissions:
       contents: read
