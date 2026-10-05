@@ -10,7 +10,7 @@ license-files = ["LICENSE", "NOTICE"]
 readme = { text = "Ibis backend for the Nominal SQL API.", content-type = "text/markdown" }
 requires-python = ">=3.10,<4"
 dependencies = [
-    "nominal>=1.164.0",
+    "nominal>=1.168.0",
     "nominal-api-protos>=0.1441.0",
     "ibis-framework>=12,<13",
     "pyarrow>=14",
