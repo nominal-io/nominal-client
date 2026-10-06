@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import ibis
+import pandas as pd
+import pytest
 from ibis import _
 
 from nominal.ibis import Backend
 
 POINTS = ibis.table(
     {
-        "ts": "timestamp(9)",
+        "ts": "timestamp('UTC', 9)",
         "value": "float64",
         "channel": "!string",
         "dataset_rid": "!string",
@@ -66,3 +70,26 @@ def test_regex_search_renders_as_posix_match_operator() -> None:
     sql = compile_sql(POINTS.filter(_.channel.re_search("BATTERY")).select("ts"))
     assert " ~ " in sql
     assert "REGEXP_LIKE" not in sql.upper()
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [
+        datetime(2026, 6, 18, 15, 0, 36, 600000),
+        datetime(2026, 6, 18, 15, 0, 36, 600000, tzinfo=timezone.utc),
+        datetime(2026, 6, 18, 11, 0, 36, 600000, tzinfo=timezone(timedelta(hours=-4))),
+        pd.Timestamp("2026-06-18 15:00:36.6", tz="UTC"),
+    ],
+)
+def test_timestamp_bounds_render_as_utc_literals(bound: datetime) -> None:
+    """Zoned bounds, such as timestamps from a previous result, compile to the equivalent UTC literal."""
+    sql = compile_sql(POINTS.filter(_.ts > bound).select("ts"))
+    assert "> CAST('2026-06-18T15:00:36.600000' AS TIMESTAMP)" in sql
+
+
+def test_zoned_timestamp_casts_render_as_timestamp() -> None:
+    sql = compile_sql(
+        POINTS.select(missing=ibis.null("timestamp('UTC', 9)"), parsed=_.channel.cast("timestamp('UTC')"))
+    )
+    assert "CAST(NULL AS TIMESTAMP(9))" in sql
+    assert 'CAST("t0"."channel" AS TIMESTAMP)' in sql
