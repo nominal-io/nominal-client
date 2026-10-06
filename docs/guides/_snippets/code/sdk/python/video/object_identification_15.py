@@ -1,5 +1,6 @@
-import cv2
 from datetime import datetime, timedelta
+
+import cv2
 import polars as pl
 
 frame_timestamp_dict = dict(timestamps=[], frame=[])

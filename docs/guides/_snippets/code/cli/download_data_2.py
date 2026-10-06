@@ -1,5 +1,6 @@
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 # Read all parquet files
 data_files = Path("/Users/yourname/flight_data").glob("abc123-part_*.parquet")

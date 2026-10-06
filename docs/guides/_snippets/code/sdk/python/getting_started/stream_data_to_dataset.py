@@ -8,7 +8,6 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 
 import click
-
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, NominalClient
 
@@ -96,8 +95,8 @@ def main(client: NominalClient) -> None:
     )
     print(f"Dataset: {dataset.name}, RID: {dataset.rid}")
 
-    # For higher throughput, pass data_format="rust_experimental" and
-    # batch_size=200_000 or more (not compatible with enqueue_struct below).
+    # Streams through Rust when nominal-streaming is installed (it is by default on
+    # supported platforms), and falls back to pure Python otherwise.
     with dataset.get_write_stream() as stream:
         print(
             "Streaming all set up and queueing has started! Press ctrl+c to terminate streaming."
@@ -150,7 +149,7 @@ def main(client: NominalClient) -> None:
                     channel_name="cpu_info",
                     timestamp=now,
                     # Whole dict is stored as one nested value at (channel, timestamp).
-                    # Must be JSON-serializable; not supported with data_format="rust_experimental".
+                    # Must be JSON-serializable.
                     value={
                         "frequency_ghz": round(2.4 + random.uniform(0, 2), 2),
                         "active_cores": random.randint(2, 8),

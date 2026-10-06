@@ -1,4 +1,5 @@
 import datetime
+
 from nominal.core import NominalClient
 
 # Assumes authentication has already been performed

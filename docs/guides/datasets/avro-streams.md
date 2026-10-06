@@ -82,7 +82,7 @@ The `nominal` client exposes the same mechanism on its own write stream:
 
 ```python
 with dataset.get_write_stream(
-    data_format="rust_experimental",
+    implementation="rust",
     file_fallback="flight_backup.avro",
 ) as stream:
     stream.enqueue("altitude", timestamp, 1250.5)
@@ -90,9 +90,10 @@ with dataset.get_write_stream(
 
 :::{warning}
 
-On `get_write_stream()`, `file_fallback` only takes effect with
-`data_format="rust_experimental"`, and the path must end in `.avro`. Set on any other data format it
-is silently inactive, and a dropped batch is lost.
+On `get_write_stream()`, `file_fallback` only takes effect with the Rust stream
+(`implementation="rust"`, the default when `nominal-streaming` is installed), and the path must end
+in `.avro`. With `implementation="python"` it has no effect beyond a logged warning, and a dropped
+batch is lost.
 :::
 
 ### Writing the schema by hand

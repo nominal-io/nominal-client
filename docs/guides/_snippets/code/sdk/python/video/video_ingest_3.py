@@ -1,5 +1,6 @@
-from nominal.core import NominalClient
 from datetime import datetime
+
+from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 

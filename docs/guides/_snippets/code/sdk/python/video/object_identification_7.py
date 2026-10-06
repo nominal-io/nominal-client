@@ -1,5 +1,5 @@
-from nominal.core import NominalClient
 import nominal.thirdparty.pandas as npm
+from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 

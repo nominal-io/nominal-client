@@ -45,7 +45,7 @@ jobs:
         run: |
           just build-docs
       # Download from the run's Artifacts to preview a PR's docs: unzip, then
-      # `python -m http.server -d <dir>` (the folder-style URLs need a server).
+      # `uv run python -m http.server -d <dir>` (the folder-style URLs need a server).
       - name: Upload built site
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -1,8 +1,9 @@
 import os
+
+import imageio.v2 as imageio
 import numpy as np
 import plotly.graph_objs as go
 from scipy.integrate import solve_ivp
-import imageio.v2 as imageio
 
 # Parameters for the double pendulum
 m1, m2 = 1.0, 1.0

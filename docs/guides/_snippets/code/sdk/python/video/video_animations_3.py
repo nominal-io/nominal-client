@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
 from scipy.integrate import solve_ivp
-from datetime import datetime, timedelta
 
 # Parameters for the double pendulum
 m1, m2 = 1.0, 1.0  # masses of the pendulums

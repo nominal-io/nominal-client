@@ -1,5 +1,6 @@
-import polars as pl
 from pathlib import Path
+
+import polars as pl
 
 # Read all parquet files
 data_files = Path("/Users/yourname/flight_data").glob("abc123-part_*.parquet")

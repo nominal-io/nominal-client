@@ -1,5 +1,6 @@
-import cv2
 from datetime import datetime, timedelta
+
+import cv2
 
 video = cv2.VideoCapture(video_path)
 

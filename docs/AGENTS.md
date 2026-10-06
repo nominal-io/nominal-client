@@ -7,7 +7,7 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 - `just build-docs`: clean build into `docs/_build/dirhtml`; warnings are errors. CI (`build-deploy-docs.yml`) runs it on PRs, uploads the site as a `docs-site` artifact, and deploys on merge to `main`.
 - `just serve-docs`: live preview on http://127.0.0.1:8000, rebuilding on page, example and docstring edits.
 - Toolchain: the `docs` dependency group, which needs Python >=3.12. If the project env is older: `uv sync --python 3.13 --all-packages --all-extras --group docs`.
-- URLs are folder-style (`/guides/quickstart/`), so browse a finished build through a server: `python -m http.server -d docs/_build/dirhtml`.
+- URLs are folder-style (`/guides/quickstart/`), so browse a finished build through a server: `uv run python -m http.server -d docs/_build/dirhtml`.
 
 ## Structure
 
@@ -22,6 +22,7 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 | `sdk/` | API reference pages. Autosummary writes a page per class and member into gitignored `sdk/generated/`. |
 
 - **Sections:** the header tabs (Guides, Examples, SDK) are sections; the theme trims the sidebar to the current one by the tab URL's folder (`sdk/`, `examples/`, else guides).
+- **Redirects:** `redirects` in `conf.py` (`_ext/redirects.py`) keeps the former MkDocs URLs (`/reference/core/`, …) working. When moving or deleting a page, add its old path there.
 - **Page head:** `# Title`, then an optional `{.lead}` paragraph (grey subtitle), with `myst: html_meta: description:` in front matter.
 
 ## Guide pages (MyST Markdown)

@@ -24,6 +24,7 @@ extensions = [
     "markdown_docstrings",
     "examples",
     "video",
+    "redirects",
     "nominal_sphinx_theme",
 ]
 
@@ -115,6 +116,27 @@ html_theme_options = theme_options(
     toctree_maxdepth=1,
 )
 add_module_names = False
+
+# The former MkDocs site's pages (_ext/redirects.py), so links and bookmarks to them still work.
+redirects = {
+    "reference/toplevel": "sdk/index",
+    "reference/core": "sdk/core",
+    "reference/ts": "sdk/ts",
+    "reference/exceptions": "sdk/exceptions",
+    "reference/nom-cli": "sdk/cli",
+    "reference/thirdparty/matlab": "sdk/thirdparty/matlab",
+    "reference/thirdparty/pandas": "sdk/thirdparty/pandas",
+    "reference/thirdparty/tdms": "sdk/thirdparty/tdms",
+    "reference/experimental/compute": "sdk/experimental/compute",
+    "reference/experimental/extractors": "sdk/experimental/extractors",
+    "reference/experimental/ingest": "sdk/experimental/ingest",
+    "reference/experimental/logging": "sdk/experimental/logging",
+    "reference/experimental/video_processing": "sdk/experimental/video_processing",
+    "changelog": "sdk/changelog",
+    "networking-tls": "guides/networking-tls",
+    "license": "https://github.com/nominal-io/nominal-client/blob/main/LICENSE",
+    "contributing": "https://github.com/nominal-io/nominal-client/blob/main/CONTRIBUTING.md",
+}
 
 
 def _alias_reexports(app, env):

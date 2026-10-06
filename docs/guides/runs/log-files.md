@@ -61,7 +61,7 @@ To make the demo log entries visually interesting and distinct, add a random spa
 
 Nominal log entries are defined in Python as a list of {py:obj}`LogPoint <nominal.core.LogPoint>` objects:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/generate_logs.py
+```{literalinclude} /guides/_snippets/code/sdk/python/assets/generate_logs.py
 :language: python
 ```
 

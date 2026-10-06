@@ -1,7 +1,7 @@
+import polars as pl
 import torch
 from PIL import Image
 from transformers import RTDetrForObjectDetection, RTDetrImageProcessor
-import polars as pl
 
 
 def get_objects_from_pil_image(image, frame):

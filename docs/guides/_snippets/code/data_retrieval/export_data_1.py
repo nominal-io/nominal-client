@@ -2,7 +2,6 @@ import re
 from datetime import timedelta
 
 import polars as pl
-
 from nominal.core import NominalClient
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 

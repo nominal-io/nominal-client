@@ -1,10 +1,9 @@
-import pandas as pd
-import h5py
 import io
 
+import h5py
+import pandas as pd
 from nominal.core import NominalClient
 from nominal.thirdparty.pandas import upload_dataframe
-
 
 client = NominalClient.from_profile("default")
 
