@@ -138,7 +138,7 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
                 for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
                 `_NotProvided`), this will leave the unit unaffected.
                 NOTE: this is in contrast to other fields in other `update()` calls where `None` is treated as a
-                      "no-op".
+                "no-op".
         """
         request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
             channel_identifier=self._channel_identifier(),
@@ -268,21 +268,27 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
 
         Example:
             Given data with the following tags per-point within the specified time range:
-                {"tag_a": "123", "tag_b": "xyz"}
-                {"tag_a": "123", "tag_b": "abc"}
-                {"tag_a": "234", "tag_b": "qqq"}
 
-            We an initial filter of {"tag_a": "123"}, we would return:
-                {"tag_a": set(["123"]), "tag_b": set(["abc", "xyz"])}
+            ```python
+            {"tag_a": "123", "tag_b": "xyz"}
+            {"tag_a": "123", "tag_b": "abc"}
+            {"tag_a": "234", "tag_b": "qqq"}
+            ```
+
+            With an initial filter of `{"tag_a": "123"}`, we would return:
+
+            ```python
+            {"tag_a": set(["123"]), "tag_b": set(["abc", "xyz"])}
+            ```
 
             Because we filtered data to only include data where "tag_a" is "123"
 
         NOTE: it is not accurate to say that the cartesian product of all returned tag key-value pairs
-              is present in the data, only that for each unique key-value pair present, that specific tag key/value
-              pair is present on _at least_ one point in the data.
+        is present in the data, only that for each unique key-value pair present, that specific tag key/value
+        pair is present on *at least* one point in the data.
 
-        NOTE: this may be used to determine if the given set of initial tags _fully constrains_ data in a channel over
-              a given timespan by checking to see if the length of all of the tag-value sets is 1.
+        NOTE: this may be used to determine if the given set of initial tags *fully constrains* data in a channel over
+        a given timespan by checking to see if the length of all of the tag-value sets is 1.
         """
         if start_time is None:
             start_time = _MIN_TIMESTAMP.to_nanoseconds()
@@ -481,8 +487,8 @@ def _batch_check_channels_have_data(
         - names of channels with underconstrained tags (series_count > 1)
 
     NOTE: request may fail if rate limits are breached, too many series are queried, bounds are invalid
-        (such as end < start), timeouts are reached, or otherwise if tag filters are invalid or contradictory.
-        This will raise various ConjureHttpError exceptions.
+    (such as end < start), timeouts are reached, or otherwise if tag filters are invalid or contradictory.
+    This will raise various ConjureHttpError exceptions.
     """
     time_range = api.Range(start=start, end=end)
     request = datasource_api.BatchGetSeriesCountRequest(

@@ -96,7 +96,7 @@ class VideoDatasetFile(DatasetFile):
 
         NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         NOTE: video channels do not carry per-file descriptions, so unlike the legacy
-            `VideoFile.update` there is no `description` parameter.
+        `VideoFile.update` there is no `description` parameter.
         """
         if all(value is None for value in (name, starting_timestamp, ending_timestamp, true_frame_rate, scale_factor)):
             raise ValueError(

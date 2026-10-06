@@ -118,10 +118,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in asset.labels:
-                new_labels.append(old_label)
-            asset = asset.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in asset.labels:
+            new_labels.append(old_label)
+        asset = asset.update(labels=new_labels)
+        ```
         """
         request = scout_asset_api.UpdateAssetRequest(
             description=description,

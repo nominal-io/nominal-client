@@ -80,10 +80,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in dataset.labels:
-                new_labels.append(old_label)
-            dataset = dataset.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in dataset.labels:
+            new_labels.append(old_label)
+        dataset = dataset.update(labels=new_labels)
+        ```
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
@@ -184,7 +186,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             path: Path to the file on disk to add to the dataset.
             timestamp_column: Column within the file containing timestamp information.
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
-                      to set the timestamps for all other uploaded data channels.
+                to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file
@@ -296,41 +298,43 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         NOTE: If this schema is not used, will result in a failed ingestion.
 
-            {
-                "type": "record",
-                "name": "AvroStream",
-                "namespace": "io.nominal.ingest",
-                "fields": [
-                    {
-                        "name": "channel",
-                        "type": "string",
-                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                    },
-                    {
-                        "name": "timestamps",
-                        "type": {"type": "array", "items": "long"},
-                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
-                    },
-                    {
-                        "name": "values",
-                        "type": {"type": "array", "items": [
-                            "double",
-                            "string",
-                            "long",
-                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                        ]},
-                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                    },
-                    {
-                        "name": "tags",
-                        "type": {"type": "map", "values": "string"},
-                        "default": {},
-                        "doc": "Key-value metadata tags",
-                    },
-                ],
-            }
+        ```text
+        {
+            "type": "record",
+            "name": "AvroStream",
+            "namespace": "io.nominal.ingest",
+            "fields": [
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                },
+                {
+                    "name": "timestamps",
+                    "type": {"type": "array", "items": "long"},
+                    "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                },
+                {
+                    "name": "values",
+                    "type": {"type": "array", "items": [
+                        "double",
+                        "string",
+                        "long",
+                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                    ]},
+                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                },
+                {
+                    "name": "tags",
+                    "type": {"type": "map", "values": "string"},
+                    "default": {},
+                    "doc": "Key-value metadata tags",
+                },
+            ],
+        }
+        ```
 
         """
         avro_path = Path(path)
@@ -487,7 +491,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """Add an MCAP file to an existing dataset.
 
         Args:
-        ----
             path: Path to the MCAP file to add to this dataset
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
@@ -525,7 +528,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         If the file is not in binary-mode, the requests library blocks indefinitely.
 
         Args:
-        ----
             mcap: Binary file-like MCAP stream
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.

@@ -107,7 +107,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     This will add an option --profile which perform the aforementioned configurations before spawning a NominalClient.
 
     NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type
-        NominalClient.
+    NominalClient.
     """
     profile_option = click.option(
         "--profile",

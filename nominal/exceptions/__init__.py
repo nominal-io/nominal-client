@@ -28,7 +28,6 @@ class NominalIngestMultiError(NominalError):
     """Error(s) occurred during ingest.
 
     Attributes:
-    ----------
         errors: A mapping of dataset RIDs to the errors that occurred during ingest.
 
     """

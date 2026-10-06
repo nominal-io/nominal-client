@@ -158,7 +158,7 @@ def export_channels_to_matlab(
         )
         ```
 
-     Usage in MATLAB:
+    Usage in MATLAB:
         Once the `.mat` file is generated, you can load it directly into MATLAB using
         the built-in `load` function or by double-clicking the file in the MATLAB UI:
 
