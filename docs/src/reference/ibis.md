@@ -3,12 +3,12 @@
 Install the local workspace package from the repository root:
 
 ```sh
-uv sync --extra sql
-uv run --extra sql python
+uv sync --extra ibis
+uv run --extra ibis python
 ```
 
 Use an existing Nominal profile, or create one with
-`uv run --extra sql nom config profile add`. The server must provide recursive
+`uv run --extra ibis nom config profile add`. The server must provide recursive
 catalog types and apply the final SQL projection.
 
 ```python
@@ -46,7 +46,7 @@ For large results, `query.to_pyarrow_batches()` returns a standard PyArrow
 To test without contacting a server:
 
 ```sh
-uv run --extra sql pytest tests/ibis --no-cov -q
+uv run --extra ibis pytest tests/ibis --no-cov -q
 ```
 
 ::: nominal.ibis
