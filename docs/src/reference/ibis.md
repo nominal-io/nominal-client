@@ -40,6 +40,11 @@ print(df)
 `MAP<ANY, ANY>` columns such as `points_struct.value` are JSON strings in
 results, matching the SQL API's Arrow serialization.
 
+Timestamp columns are UTC (`timestamp('UTC', 9)`). Filters accept naive
+datetimes, read as UTC, and timezone-aware ones, converted to UTC. Ibis types
+`truncate()` and `bucket()` results without a zone, so they return naive UTC
+values; add `.cast("timestamp('UTC')")` for timezone-aware ones.
+
 For large results, `query.to_pyarrow_batches()` returns a standard PyArrow
 `RecordBatchReader` so you can process the result incrementally.
 

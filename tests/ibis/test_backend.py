@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import datetime, timezone
 from typing import Iterator
 from unittest.mock import MagicMock
 
@@ -387,7 +388,7 @@ def test_incompatible_result_type_raises(output: str) -> None:
         ("INTEGER", dt.int32),
         ("BIGINT", dt.int64),
         ("DOUBLE", dt.float64),
-        ("TIMESTAMP", dt.Timestamp(scale=9)),
+        ("TIMESTAMP", dt.Timestamp(timezone="UTC", scale=9)),
     ],
 )
 def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.DataType) -> None:
@@ -395,6 +396,28 @@ def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.D
         sql_pb2.SqlCatalog(tables=[sql_pb2.SqlCatalogTable(name="typed", columns=[column("value", scalar, True)])])
     )
     assert nibis.connect(client).table("typed").schema()["value"] == expected
+
+
+@pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
+@pytest.mark.parametrize("unit", ["us", "ns"])
+def test_timestamp_columns_are_utc(output: str, unit: str) -> None:
+    """Table timestamps match the UTC-tagged values the server returns, at either result precision."""
+    instant = datetime(2026, 6, 18, 15, 0, 36, 600000, tzinfo=timezone.utc)
+    result = pa.table({"ts": pa.array([instant], type=pa.timestamp(unit, tz="UTC"))})
+    expr = nibis.connect(make_client(result)).table("points_double").select("ts")
+    if output == "pandas":
+        column = expr.to_pandas()["ts"]
+        assert str(column.dtype) == "datetime64[ns, UTC]"
+        values = column.tolist()
+    else:
+        if output == "arrow":
+            table = expr.to_pyarrow()
+        else:
+            with expr.to_pyarrow_batches() as reader:
+                table = reader.read_all()
+        assert table.schema.field("ts").type == pa.timestamp("ns", tz="UTC")
+        values = table["ts"].to_pylist()
+    assert values == [instant]
 
 
 def test_nested_catalog_types_round_trip() -> None:
