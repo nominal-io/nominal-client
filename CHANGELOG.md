@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.173.0](https://github.com/nominal-io/nominal-client/compare/v1.172.1...v1.173.0) (2026-10-07)
+
+
+### Features
+
+* expose containerized extractor resource configuration ([#1006](https://github.com/nominal-io/nominal-client/issues/1006)) ([d011c85](https://github.com/nominal-io/nominal-client/commit/d011c8546db08580382eeb86facbc8dbf3de88ff))
+
 ## [1.172.1](https://github.com/nominal-io/nominal-client/compare/v1.172.0...v1.172.1) (2026-10-05)
 
 
