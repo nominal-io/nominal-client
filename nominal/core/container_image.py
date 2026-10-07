@@ -251,6 +251,37 @@ class ExitCodeMapping:
 
 
 @dataclass(frozen=True)
+class ContainerResources:
+    """Compute resources for an extractor container.
+
+    Each unset field uses the deployment-wide default. Bounds are enforced by the server;
+    a valid request may still exceed the resources available in the cluster.
+    """
+
+    cpu_cores: int | None = None
+    """CPU cores requested for the container (1–32)."""
+    memory_gib: int | None = None
+    """Memory in GiB, used as both the request and the limit (1–128)."""
+    disk_gib: int | None = None
+    """Size in GiB of each ephemeral input and output volume (1–512)."""
+
+    def _to_proto(self) -> registry_pb2.ContainerResources:
+        return registry_pb2.ContainerResources(
+            cpu_cores=self.cpu_cores,
+            memory_gib=self.memory_gib,
+            disk_gib=self.disk_gib,
+        )
+
+    @classmethod
+    def _from_proto(cls, msg: registry_pb2.ContainerResources) -> Self:
+        return cls(
+            cpu_cores=msg.cpu_cores if msg.HasField("cpu_cores") else None,
+            memory_gib=msg.memory_gib if msg.HasField("memory_gib") else None,
+            disk_gib=msg.disk_gib if msg.HasField("disk_gib") else None,
+        )
+
+
+@dataclass(frozen=True)
 class TimestampMetadata:
     """How timestamps in the extractor's output data are encoded (the timestamp column + its type)."""
 
@@ -307,6 +338,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     registered through this SDK (registration requires it); may be None on images from older
     registration paths, in which case every ingest must supply an override.
     """
+    resources: ContainerResources
+    """Resource overrides for the extractor container; fields left as None use deployment-wide defaults."""
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -382,6 +415,7 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
                 if msg.HasField("default_timestamp_metadata")
                 else None
             ),
+            resources=ContainerResources._from_proto(msg.resources),
             _workspace_rid=workspace_rid,
             _clients=clients,
         )
