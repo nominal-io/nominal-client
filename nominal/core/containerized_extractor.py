@@ -172,7 +172,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         output_format: FileOutputFormat = FileOutputFormat.PARQUET,
         parameters: Sequence[FileExtractionParameter] = (),
         exit_code_mappings: Sequence[ExitCodeMapping] = (),
-        resources: ContainerResources | None = None,
+        resources: ContainerResources = ContainerResources(),
     ) -> ContainerImage:
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
@@ -204,8 +204,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             exit_code_mappings: Fallback canonical errors for failed container exit codes. A valid
                 structured error in `/dev/termination-log` takes precedence over these mappings.
                 Defaults to no mappings.
-            resources: Compute resource overrides for this image's extractor container. Unset
-                fields use deployment-wide defaults.
+            resources: Compute resource overrides for this image's extractor container. Fields left
+                as None use deployment-wide defaults.
 
         Returns:
             The newly registered image. Current backends push the image to the registry within this
@@ -217,6 +217,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             ValueError: If `output_format` is not currently ingestible via containerized extraction.
             NominalAlreadyExistsError: If an image with this tag is already registered for this
                 extractor.
+            NominalInvalidArgumentError: If a `resources` field is outside its documented bounds.
+                The server enforces these, so this surfaces only after the tarball is uploaded.
         """
         if output_format not in REGISTERABLE_OUTPUT_FORMATS:
             supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
@@ -225,27 +227,27 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 f"extraction ingest; an image registered with it could never ingest data successfully. "
                 f"Supported formats: {supported}."
             )
-        s3_path = upload_multipart_file(
+        timestamp_metadata = TimestampMetadata(
+            series_name=default_timestamp_column, timestamp_type=default_timestamp_type
+        )
+        # Build the request before uploading so local conversion errors surface before a multi-GB upload.
+        request = registry_pb2.CreateImageRequest(
+            workspace_rid=self._workspace_rid,
+            tag=tag,
+            extractor_rid=self.rid,
+            inputs=[i._to_proto() for i in inputs],
+            parameters=[p._to_proto() for p in parameters],
+            exit_code_mappings=[m._to_proto() for m in exit_code_mappings],
+            file_output_format=output_format._to_proto(),
+            default_timestamp_metadata=timestamp_metadata._to_proto(),
+            resources=resources._to_proto(),
+        )
+        request.object_path = upload_multipart_file(
             self._clients.auth_header,
             self._workspace_rid,
             Path(tarball),
             self._clients.upload,
             header_provider=self._clients.header_provider,
-        )
-        timestamp_metadata = TimestampMetadata(
-            series_name=default_timestamp_column, timestamp_type=default_timestamp_type
-        )
-        request = registry_pb2.CreateImageRequest(
-            workspace_rid=self._workspace_rid,
-            tag=tag,
-            object_path=s3_path,
-            extractor_rid=self.rid,
-            inputs=[i._to_proto() for i in inputs],
-            parameters=[p._to_proto() for p in parameters],
-            exit_code_mappings=[m._to_proto() for m in exit_code_mappings],
-            resources=resources._to_proto() if resources is not None else None,
-            file_output_format=output_format._to_proto(),
-            default_timestamp_metadata=timestamp_metadata._to_proto(),
         )
         with translate_grpc_errors():
             response = self._clients.registry.CreateImage(request)

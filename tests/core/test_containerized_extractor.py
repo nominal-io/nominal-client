@@ -35,6 +35,16 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
     return registry_pb2.ContainerImage(rid=rid, tag="v1", extractor_rid="ri.ext", status=status)
 
 
+def _registrable_extractor(clients: MagicMock, tmp_path: Path) -> tuple[ContainerizedExtractor, Path]:
+    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
+    clients.upload.list_parts.return_value = []
+    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
+    # No file chunks means no object-store requests; upload service calls use the mock client.
+    tarball = tmp_path / "extractor.tar"
+    tarball.touch()
+    return ContainerizedExtractor._from_proto(clients, _ext("ri.ext")), tarball
+
+
 def _pages() -> list[containerized_extractor_pb2.SearchContainerizedExtractorsResponse]:
     return [
         containerized_extractor_pb2.SearchContainerizedExtractorsResponse(
@@ -180,13 +190,7 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
 def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(tmp_path: Path) -> None:
     """Registration sends each error mapping and retains the mappings returned by the registry."""
     clients = _clients()
-    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
-    clients.upload.list_parts.return_value = []
-    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
-    # No file chunks means no object-store requests; upload service calls use the mock client.
-    tarball = tmp_path / "extractor.tar"
-    tarball.touch()
-    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    extractor, tarball = _registrable_extractor(clients, tmp_path)
     mappings = [
         core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Input is invalid"),
         core.ExitCodeMapping(exit_code=75, code="SOURCE_UNAVAILABLE", message="Try again", retryable=True),
@@ -214,15 +218,10 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(t
     assert tuple(image.exit_code_mappings) == tuple(mappings)
 
 
-def test_register_image_preserves_partial_and_omitted_resources(tmp_path: Path) -> None:
-    """Resource overrides round-trip without replacing unset fields with zero or defaults."""
+def test_register_image_sends_only_the_resource_fields_it_was_given(tmp_path: Path) -> None:
+    """Registration sends each set resource field, omits unset ones rather than zeroing them, and adopts the echo."""
     clients = _clients()
-    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
-    clients.upload.list_parts.return_value = []
-    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
-    tarball = tmp_path / "extractor.tar"
-    tarball.touch()
-    extractor = ContainerizedExtractor._from_proto(clients, _ext("ri.ext"))
+    extractor, tarball = _registrable_extractor(clients, tmp_path)
     response_image = _img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     response_image.resources.memory_gib = 16
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=response_image)
@@ -233,24 +232,30 @@ def test_register_image_preserves_partial_and_omitted_resources(tmp_path: Path) 
         inputs=[],
         default_timestamp_column="ts",
         default_timestamp_type="iso_8601",
-        resources=core.ContainerResources(memory_gib=16),
+        resources=core.ContainerResources(cpu_cores=4, disk_gib=64),
     )
 
     request = clients.registry.CreateImage.call_args.args[0]
-    assert request.resources == registry_pb2.ContainerResources(memory_gib=16)
+    assert request.resources == registry_pb2.ContainerResources(cpu_cores=4, disk_gib=64)
     assert image.resources == core.ContainerResources(memory_gib=16)
 
-    clients.registry.CreateImage.return_value.image.ClearField("resources")
-    image = extractor.register_image(
-        tarball,
-        tag="v2",
-        inputs=[],
-        default_timestamp_column="ts",
-        default_timestamp_type="iso_8601",
-    )
 
-    assert not clients.registry.CreateImage.call_args.args[0].HasField("resources")
-    assert image.resources is None
+def test_register_image_rejects_unserializable_resources_before_uploading(tmp_path: Path) -> None:
+    """A resource value protobuf cannot encode fails registration before any tarball bytes are uploaded."""
+    clients = _clients()
+    extractor, tarball = _registrable_extractor(clients, tmp_path)
+
+    with pytest.raises(ValueError, match="out of range"):
+        extractor.register_image(
+            tarball,
+            tag="v1",
+            inputs=[],
+            default_timestamp_column="ts",
+            default_timestamp_type="iso_8601",
+            resources=core.ContainerResources(cpu_cores=-1),
+        )
+
+    clients.upload.initiate_multipart_upload.assert_not_called()
 
 
 def test_set_active_image_polls_then_activates() -> None:

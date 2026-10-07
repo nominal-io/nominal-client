@@ -263,10 +263,7 @@ class ContainerResources:
     memory_gib: int | None = None
     """Memory in GiB, used as both the request and the limit (1–128)."""
     disk_gib: int | None = None
-    """Size in GiB of each ephemeral input and output volume (1–512).
-
-    When set, the pod requests and limits ephemeral storage to twice this value.
-    """
+    """Size in GiB of each ephemeral input and output volume (1–512)."""
 
     def _to_proto(self) -> registry_pb2.ContainerResources:
         return registry_pb2.ContainerResources(
@@ -341,8 +338,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     registered through this SDK (registration requires it); may be None on images from older
     registration paths, in which case every ingest must supply an override.
     """
-    resources: ContainerResources | None
-    """Resource overrides for the extractor container; unset values use deployment-wide defaults."""
+    resources: ContainerResources
+    """Resource overrides for the extractor container; fields left as None use deployment-wide defaults."""
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -412,13 +409,13 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
             inputs=tuple(FileExtractionInput._from_proto(i) for i in msg.inputs),
             parameters=tuple(FileExtractionParameter._from_proto(p) for p in msg.parameters),
             exit_code_mappings=tuple(ExitCodeMapping._from_proto(m) for m in msg.exit_code_mappings),
-            resources=ContainerResources._from_proto(msg.resources) if msg.HasField("resources") else None,
             file_output_format=FileOutputFormat._from_proto(msg.file_output_format),
             default_timestamp_metadata=(
                 TimestampMetadata._from_proto(msg.default_timestamp_metadata)
                 if msg.HasField("default_timestamp_metadata")
                 else None
             ),
+            resources=ContainerResources._from_proto(msg.resources),
             _workspace_rid=workspace_rid,
             _clients=clients,
         )

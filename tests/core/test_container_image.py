@@ -76,7 +76,7 @@ def test_image_from_proto_handles_minimal_proto() -> None:
     assert image.default_timestamp_metadata is None
     assert image.file_output_format is FileOutputFormat.UNSPECIFIED
     assert image.exit_code_mappings == ()
-    assert image.resources is None
+    assert image.resources == core.ContainerResources()
 
 
 def test_image_refresh_replaces_and_clears_resources() -> None:
@@ -98,7 +98,7 @@ def test_image_refresh_replaces_and_clears_resources() -> None:
 
     clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
     image.refresh()
-    assert image.resources is None
+    assert image.resources == core.ContainerResources()
 
 
 def test_image_refresh_replaces_and_clears_exit_code_mappings() -> None:
