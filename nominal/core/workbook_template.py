@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, Sequence, overload
+from typing import Callable, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     scout,
@@ -19,6 +20,9 @@ from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
+from nominal.exceptions import NominalWorkbookCreationError
+
+logger = logging.getLogger(__name__)
 
 
 def _rebind_video_datasources(
@@ -190,43 +194,9 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             raise ValueError("One of `run` or `asset` must be provided to create a workbook from a template")
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
-        template_content = raw_template.content
-
-        # Re-bind video panel datasources that were stripped when the template was saved.
-        has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
-        if has_video:
-            run_rid = rid_from_instance_or_string(run) if run is not None else None
-            video_asset_rid = None
-            if asset is not None:
-                video_asset_rid = rid_from_instance_or_string(asset)
-            elif isinstance(run, Run) and run.assets:
-                video_asset_rid = run.assets[0]
-            elif run_rid is not None:
-                raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
-                video_asset_rid = raw_run.assets[0] if raw_run.assets else None
-            else:
-                raise ValueError(
-                    f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
-                )
-            if video_asset_rid is not None:
-                template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
-
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=f"Workbook from '{self.title}'" if title is None else title,
-            description=self.description if description is None else description,
-            is_draft=is_draft,
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(
-                run_rids=None if run is None else [rid_from_instance_or_string(run)],
-                asset_rids=None if asset is None else [rid_from_instance_or_string(asset)],
-            ),
-            layout=raw_template.layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template_content),
-            event_refs=[],
-            workspace=self._clients.resolve_default_workspace_rid(),
+        return _create_workbook_from_raw(
+            self._clients, raw_template, title=title, description=description, run=run, asset=asset, is_draft=is_draft
         )
-        raw_notebook = self._clients.notebook.create(self._clients.auth_header, request)
-        return Workbook._from_conjure(self._clients, raw_notebook)
 
     def is_published(self) -> bool:
         """Returns whether or not the workbook template has been published and can be viewed by other users."""
@@ -261,13 +231,92 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         )
 
 
-def _resolve_workbook_template(
+def _create_workbook_from_raw(
+    clients: WorkbookTemplate._Clients,
+    raw_template: scout_template_api.Template,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    run: Run | str | None = None,
+    asset: Asset | str | None = None,
+    is_draft: bool = False,
+) -> Workbook:
+    """Create a workbook from a fetched template, linked to `run` or `asset`. See `WorkbookTemplate.create_workbook`."""
+    template_content = raw_template.content
+
+    # Re-bind video panel datasources that were stripped when the template was saved.
+    has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
+    if has_video:
+        run_rid = rid_from_instance_or_string(run) if run is not None else None
+        video_asset_rid = None
+        if asset is not None:
+            video_asset_rid = rid_from_instance_or_string(asset)
+        elif isinstance(run, Run) and run.assets:
+            video_asset_rid = run.assets[0]
+        elif run_rid is not None:
+            raw_run = clients.run.get_run(clients.auth_header, run_rid)
+            video_asset_rid = raw_run.assets[0] if raw_run.assets else None
+        else:
+            raise ValueError(
+                f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
+            )
+        if video_asset_rid is not None:
+            template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
+
+    request = scout_notebook_api.CreateNotebookRequest(
+        title=f"Workbook from '{raw_template.metadata.title}'" if title is None else title,
+        description=raw_template.metadata.description if description is None else description,
+        is_draft=is_draft,
+        state_as_json="{}",
+        data_scope=scout_notebook_api.NotebookDataScope(
+            run_rids=None if run is None else [rid_from_instance_or_string(run)],
+            asset_rids=None if asset is None else [rid_from_instance_or_string(asset)],
+        ),
+        layout=raw_template.layout,
+        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template_content),
+        event_refs=[],
+        workspace=clients.resolve_default_workspace_rid(),
+    )
+    raw_notebook = clients.notebook.create(clients.auth_header, request)
+    return Workbook._from_conjure(clients, raw_notebook)
+
+
+def _get_raw_template(
     clients: WorkbookTemplate._Clients, template: WorkbookTemplate | str
-) -> WorkbookTemplate:
-    """Return `template` as a WorkbookTemplate, fetching it by RID if necessary."""
-    if isinstance(template, WorkbookTemplate):
-        return template
-    return WorkbookTemplate._from_conjure(clients, clients.template.get(clients.auth_header, template))
+) -> scout_template_api.Template:
+    """Fetch `template` with `clients`, so that a workbook made from it uses the caller's workspace."""
+    return clients.template.get(clients.auth_header, rid_from_instance_or_string(template))
+
+
+def _create_linked_workbook_or_archive(
+    clients: WorkbookTemplate._Clients,
+    raw_template: scout_template_api.Template,
+    *,
+    resource_rid: str,
+    archive: Callable[[], object],
+    run: Run | None = None,
+    asset: Asset | None = None,
+) -> None:
+    """Create a workbook linked to the new `run` or `asset`.
+
+    If that fails, call `archive` to archive the new run or asset with its linked workbooks, then re-raise the
+    original error. A workbook can exist even when its request failed, for example after a timeout, so the archive
+    must include linked workbooks.
+
+    Raises:
+        NominalWorkbookCreationError: the workbook was not created, and the archive also failed. Its cause is the
+            original error.
+    """
+    try:
+        _create_workbook_from_raw(clients, raw_template, run=run, asset=asset)
+    except Exception as error:
+        try:
+            archive()
+        except Exception:
+            logger.exception("Could not archive %s after workbook creation failed", resource_rid)
+            raise NominalWorkbookCreationError(resource_rid) from error
+        logger.warning("Workbook creation failed, so %s was archived with its linked workbooks", resource_rid)
+        raise
 
 
 def _create_workbook_template_with_content_and_layout(

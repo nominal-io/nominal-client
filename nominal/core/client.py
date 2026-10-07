@@ -112,7 +112,7 @@ from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.core.workbook_template import WorkbookTemplate, _resolve_workbook_template
+from nominal.core.workbook_template import WorkbookTemplate, _create_linked_workbook_or_archive, _get_raw_template
 from nominal.core.workspace import Workspace
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
@@ -748,6 +748,9 @@ class NominalClient:
         Raises:
             ValueError: both `asset` and `assets` provided
             ConjureHTTPError: error making request
+            NominalWorkbookCreationError: the run was created, but the workbook from `workbook_template` was not,
+                and the run could not be archived. The error holds the run's RID. If the archive succeeds, the
+                original error is raised instead.
 
         """
         if assets is None:
@@ -1247,9 +1250,14 @@ class NominalClient:
 
         Returns:
             Reference to the created asset object
+
+        Raises:
+            NominalWorkbookCreationError: the asset was created, but the workbook from `workbook_template` was not,
+                and the asset could not be archived. The error holds the asset's RID. If the archive succeeds, the
+                original error is raised instead.
         """
-        # Resolve the template first, so that an invalid template RID does not leave an asset behind.
-        template = None if workbook_template is None else _resolve_workbook_template(self._clients, workbook_template)
+        # Fetch the template first, so that an invalid template does not leave an asset behind.
+        raw_template = None if workbook_template is None else _get_raw_template(self._clients, workbook_template)
         request = scout_asset_api.CreateAssetRequest(
             description=description,
             labels=list(labels),
@@ -1263,8 +1271,16 @@ class NominalClient:
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
         asset = Asset._from_conjure(self._clients, response)
-        if template is not None:
-            template.create_workbook(asset=asset)
+        if raw_template is not None:
+            _create_linked_workbook_or_archive(
+                self._clients,
+                raw_template,
+                asset=asset,
+                resource_rid=asset.rid,
+                archive=lambda: self._clients.assets.archive(
+                    self._clients.auth_header, asset.rid, include_linked_workbooks=True
+                ),
+            )
         return asset
 
     def get_asset(self, rid: str) -> Asset:

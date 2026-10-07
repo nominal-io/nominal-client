@@ -204,3 +204,26 @@ class NominalParameterRemovedError(NominalError):
             return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
+
+
+class NominalWorkbookCreationError(NominalError):
+    """A run or asset was created, but the workbook from its template was not, and the run or asset is not archived.
+
+    The cause holds the original error.
+
+    Attributes:
+    ----------
+        resource_rid: RID of the run or asset that was created.
+
+    """
+
+    def __init__(self, resource_rid: str) -> None:
+        """Initialize error with the RID of the created run or asset."""
+        self.resource_rid = resource_rid
+
+    def __str__(self) -> str:
+        """String repr."""
+        return (
+            f"Could not create a workbook for {self.resource_rid}, and could not archive it. "
+            "Archive it manually, or add a workbook to it."
+        )

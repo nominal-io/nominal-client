@@ -478,6 +478,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
 
         Returns:
             Returns the created run
+
+        Raises:
+            NominalWorkbookCreationError: the run was created, but the workbook from `workbook_template` was not,
+                and the run could not be archived. The error holds the run's RID. If the archive succeeds, the
+                original error is raised instead.
         """
         return _create_run(
             self._clients,

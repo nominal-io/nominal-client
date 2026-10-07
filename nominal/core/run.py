@@ -648,10 +648,10 @@ def _create_run(
     workbook_template: WorkbookTemplate | str | None = None,
 ) -> Run:
     """Create a run and, if `workbook_template` is given, a workbook from that template linked to the run."""
-    from nominal.core.workbook_template import _resolve_workbook_template
+    from nominal.core.workbook_template import _create_linked_workbook_or_archive, _get_raw_template
 
-    # Resolve the template first, so that an invalid template RID does not leave a run behind.
-    template = None if workbook_template is None else _resolve_workbook_template(clients, workbook_template)
+    # Fetch the template first, so that an invalid template does not leave a run behind.
+    raw_template = None if workbook_template is None else _get_raw_template(clients, workbook_template)
     request = scout_run_api.CreateRunRequest(
         attachments=[rid_from_instance_or_string(a) for a in attachments or ()],
         data_sources={},
@@ -668,6 +668,12 @@ def _create_run(
     )
     response = clients.run.create_run(clients.auth_header, request)
     run = Run._from_conjure(clients, response)
-    if template is not None:
-        template.create_workbook(run=run)
+    if raw_template is not None:
+        _create_linked_workbook_or_archive(
+            clients,
+            raw_template,
+            run=run,
+            resource_rid=run.rid,
+            archive=lambda: clients.run.archive_run(clients.auth_header, run.rid, include_linked_workbooks=True),
+        )
     return run
