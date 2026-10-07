@@ -240,6 +240,27 @@ def test_register_image_sends_only_the_resource_fields_it_was_given(tmp_path: Pa
     assert image.resources == core.ContainerResources(memory_gib=16)
 
 
+def test_register_image_without_resources_sends_no_overrides(tmp_path: Path) -> None:
+    """Omitting resources sends no override fields, so every resource uses the deployment-wide default."""
+    clients = _clients()
+    extractor, tarball = _registrable_extractor(clients, tmp_path)
+    clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(
+        image=_img("ri.img", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
+    )
+
+    image = extractor.register_image(
+        tarball,
+        tag="v1",
+        inputs=[],
+        default_timestamp_column="ts",
+        default_timestamp_type="iso_8601",
+    )
+
+    request = clients.registry.CreateImage.call_args.args[0]
+    assert request.resources == registry_pb2.ContainerResources()
+    assert image.resources == core.ContainerResources()
+
+
 def test_register_image_rejects_unserializable_resources_before_uploading(tmp_path: Path) -> None:
     """A resource value protobuf cannot encode fails registration before any tarball bytes are uploaded."""
     clients = _clients()

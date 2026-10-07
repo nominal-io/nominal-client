@@ -172,7 +172,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         output_format: FileOutputFormat = FileOutputFormat.PARQUET,
         parameters: Sequence[FileExtractionParameter] = (),
         exit_code_mappings: Sequence[ExitCodeMapping] = (),
-        resources: ContainerResources = ContainerResources(),
+        resources: ContainerResources | None = None,
     ) -> ContainerImage:
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
@@ -205,7 +205,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 structured error in `/dev/termination-log` takes precedence over these mappings.
                 Defaults to no mappings.
             resources: Compute resource overrides for this image's extractor container. Fields left
-                as None use deployment-wide defaults.
+                as None use deployment-wide defaults. Defaults to no overrides.
 
         Returns:
             The newly registered image. Current backends push the image to the registry within this
@@ -227,6 +227,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 f"extraction ingest; an image registered with it could never ingest data successfully. "
                 f"Supported formats: {supported}."
             )
+        if resources is None:
+            resources = ContainerResources()
         timestamp_metadata = TimestampMetadata(
             series_name=default_timestamp_column, timestamp_type=default_timestamp_type
         )
