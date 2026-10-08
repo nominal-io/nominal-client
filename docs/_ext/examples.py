@@ -13,9 +13,6 @@ from typing import Any
 
 from sphinx.application import Sphinx
 
-# pagename -> repo-relative script path, filled by generate() for the edit link
-_SOURCES: dict[str, str] = {}
-
 
 def _script_docstring(py: Path) -> tuple[str, str]:
     """Extract a title and the remaining summary with one parse of the script."""
@@ -49,7 +46,6 @@ def generate(app: Sphinx) -> None:
     out = Path(app.srcdir) / "examples"
     files: dict[Path, str] = {}
 
-    _SOURCES.clear()
     entries: list[tuple[str, str]] = []
     for py in sorted((repo / "examples").rglob("*.py")):
         # Preserve the .py suffix so index.py never overwrites the landing page
@@ -57,7 +53,6 @@ def generate(app: Sphinx) -> None:
         name = py.relative_to(repo / "examples").as_posix()
         title, summary = _script_docstring(py)
         files[out / f"{name}.md"] = _page(app, py, repo, title, summary)
-        _SOURCES[f"examples/{name}"] = py.relative_to(repo).as_posix()
         entries.append((title, name))
 
     links = "".join(f"- [{title}]({name}.md)\n" for title, name in entries)
@@ -79,17 +74,18 @@ def generate(app: Sphinx) -> None:
     for stale in out.rglob("*.md"):
         if stale not in files:
             stale.unlink()
+            docname = stale.relative_to(app.srcdir).with_suffix("").as_posix()
+            Path(app.builder.get_outfilename(docname)).unlink(missing_ok=True)
 
 
 def _edit_link(app: Sphinx, pagename: str, templatename: str, context: dict[str, Any], doctree: Any) -> None:
     """Point the sidebar's "Edit this page" at the script; the generated .md isn't in the repo."""
     if not pagename.startswith("examples/"):
         return
-    script = _SOURCES.get(pagename)
-    if script is None:  # the index has no single source
+    if pagename == "examples/index":
         context["page_source_suffix"] = ""
         return
-    url = _source_url(app, script)
+    url = _source_url(app, pagename)
     context["edit_source_link"] = lambda filename: url
 
 

@@ -17,11 +17,9 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.viewcode",
     "sphinx_click",
     "sphinx_design",
     "sphinx_copybutton",
-    "markdown_docstrings",
     "examples",
     "api_reference",
     "nominal_sphinx_theme",
@@ -66,7 +64,6 @@ toc_object_entries_show_parents = "hide"
 # (the scikit-rf layout). Stubs are written to <page dir>/generated/.
 # api_reference calls the native generator and prunes only obsolete stubs.
 autosummary_generate = False
-autosummary_generate_overwrite = True
 # Public package exports are the API catalog; do not repeat them in docs pages.
 autosummary_ignore_module_all = False
 
