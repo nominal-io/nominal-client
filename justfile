@@ -85,7 +85,7 @@ clean:
 
 # build docs
 build-docs:
-    uv run --all-extras mkdocs build --config-file docs/mkdocs.yml
+    uv run --all-extras mkdocs build --config-file docs/mkdocs.yml --strict
 
 # serve docs locally
 serve-docs:
