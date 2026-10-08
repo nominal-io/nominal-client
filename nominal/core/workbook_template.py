@@ -255,7 +255,8 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             description=template.metadata.description,
             labels=template.metadata.labels,
             properties=template.metadata.properties,
-            workbook_type=WorkbookType.COMPARISON_WORKBOOK,
+            # Template content is always a standard workbook.
+            workbook_type=WorkbookType.WORKBOOK,
             _clients=clients,
             created_by_rid=template.metadata.created_by,
         )
