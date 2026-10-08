@@ -53,7 +53,7 @@ from nominal.core.integration import (
 )
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
-from nominal.core.resource_metadata import MetadataResourceType
+from nominal.core.resource_metadata import MetadataResourceType, NumericPropertyStatistics
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
@@ -108,6 +108,7 @@ __all__ = [
     "LogStream",
     "Marking",
     "MetadataResourceType",
+    "NumericPropertyStatistics",
     "Comment",
     "NominalClient",
     "NominalProperties",
