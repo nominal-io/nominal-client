@@ -20,13 +20,6 @@ class LegacyVideoDeprecationWarning(DeprecationWarning):
     """
 
 
-class SearchPropertiesDeprecationWarning(DeprecationWarning):
-    """Emitted when ``properties=`` is passed to asset, run, or dataset search.
-
-    Use ``property_filters`` with ``PropertyFilter.eq()`` instead.
-    """
-
-
 class NominalIngestError(NominalError):
     """An error occurred during ingest."""
 

@@ -173,8 +173,6 @@ def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     assert (request.timestamp.seconds, request.timestamp.nanos) == (1, 2)
     assert (request.duration.seconds, request.duration.nanos) == (3, 4)
     assert list(request.asset_rids) == ["ri.asset.1"]
-    assert dict(request.properties) == {}
-    assert dict(request.typed_properties) == {}
     assert not request.HasField("description")
 
 

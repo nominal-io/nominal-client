@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.core.client import NominalClient, WorkspaceSearchType
-from nominal.core.property_filter import PropertyFilter
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalConfigError
 
@@ -121,8 +120,5 @@ def test_get_or_create_asset_by_properties_uses_default_workspace_resolution_for
     ):
         assert client.get_or_create_asset_by_properties(properties, name="asset-name") is asset
 
-    search_assets.assert_called_once_with(
-        property_filters=[PropertyFilter.eq("k", "v")],
-        workspace=WorkspaceSearchType.DEFAULT,
-    )
+    search_assets.assert_called_once_with(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
     create_asset.assert_called_once_with(name="asset-name", description=None, properties=properties, labels=())

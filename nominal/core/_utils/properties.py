@@ -1,41 +1,23 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from types import MappingProxyType
-from typing import Callable, Iterator, Mapping, Sequence, TypeVar, overload
+from typing import Mapping, overload
 
 from nominal_api import api
 
 from nominal.core._utils.api_types import NominalProperties, PropertyValue
-from nominal.core.property_filter import PropertyFilter, _as_numeric_value
-from nominal.exceptions import SearchPropertiesDeprecationWarning
 from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
-
-_QueryT = TypeVar("_QueryT")
-
-_SEARCH_PROPERTIES_DEPRECATION = (
-    "Passing properties= to search_assets, search_runs, or search_datasets is deprecated. "
-    "Use property_filters with PropertyFilter.eq() instead, for example: "
-    "property_filters=[PropertyFilter.eq('serial', 'A1'), PropertyFilter.eq('mass_kg', 12.0)]."
-)
-
-
-def warn_deprecated_search_properties(properties: NominalProperties | None) -> None:
-    """Warn at the user call site. Call only from public ``search_*`` methods."""
-    if properties is not None:
-        warnings.warn(_SEARCH_PROPERTIES_DEPRECATION, SearchPropertiesDeprecationWarning, stacklevel=3)
 
 
 def check_property_value(value: object, *, name: str) -> PropertyValue:
     if isinstance(value, str):
         return value
-    try:
-        return _as_numeric_value(value, what=f"property {name!r}")
-    except TypeError as exc:
-        raise TypeError(f"property {name!r} must be str, int, or float, got {type(value).__name__}") from exc
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    raise TypeError(f"property {name!r} must be str, int, or float, got {type(value).__name__}")
 
 
 def typed_property_value_to_conjure(value: object, *, name: str) -> api.TypedPropertyValue:
@@ -129,19 +111,3 @@ def properties_from_proto(
     typed_properties: Mapping[str, types_pb2.TypedPropertyValue] | None,
 ) -> NominalProperties:
     return MappingProxyType(typed_properties_from_proto(typed_properties))
-
-
-def iter_property_filter_clauses(
-    properties: NominalProperties | None,
-    property_filters: Sequence[PropertyFilter] | None,
-    *,
-    query_cls: Callable[..., _QueryT],
-    string_in_clause: Callable[[str, Sequence[str]], _QueryT],
-) -> Iterator[_QueryT]:
-    filters: list[PropertyFilter] = []
-    if properties is not None:
-        filters.extend(PropertyFilter.eq(name, value) for name, value in properties.items())
-    if property_filters:
-        filters.extend(property_filters)
-    for filt in filters:
-        yield filt.to_query_clause(query_cls, string_in_clause=string_in_clause)
