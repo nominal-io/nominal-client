@@ -3,41 +3,18 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import (
-    scout,
-    scout_layout_api,
-    scout_notebook_api,
-    scout_template_api,
-    scout_versioning_api,
-    scout_workbookcommon_api,
-)
+from nominal_api import scout, scout_notebook_api, scout_template_api
 
 from nominal.core.workbook import WorkbookType
 from nominal.core.workbook_template import WorkbookTemplate
+from tests.core._workbook_fixtures import template_response
 
 
 def _api_template(
     rid: str = "source-template-rid", title: str = "Latest template", *, is_archived: bool = False
 ) -> scout_template_api.Template:
-    return scout_template_api.Template(
-        charts=[],
-        commit=scout_versioning_api.Commit(
-            committed_at="2026-10-07T00:00:00Z",
-            committed_by="creator-rid",
-            id="commit-id",
-            is_working_state=False,
-            message="Duplicate of Latest template",
-            resource_rid=rid,
-        ),
-        content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
-        layout=scout_layout_api.WorkbookLayout(
-            v1=scout_layout_api.WorkbookLayoutV1(
-                root_panel=scout_layout_api.Panel(
-                    tabbed=scout_layout_api.TabbedPanel(v1=scout_layout_api.TabbedPanelV1(id="root", tabs=[]))
-                )
-            )
-        ),
-        metadata=scout_template_api.TemplateMetadata(
+    return template_response(
+        scout_template_api.TemplateMetadata(
             created_at="2026-10-07T00:00:00Z",
             created_by="creator-rid",
             description="Latest description",
@@ -50,6 +27,7 @@ def _api_template(
             updated_at="2026-10-07T00:00:00Z",
         ),
         rid=rid,
+        commit_message="Duplicate of Latest template",
     )
 
 
