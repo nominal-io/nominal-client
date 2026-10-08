@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, overload
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
@@ -17,7 +17,10 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_w
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from nominal.core.asset import Asset
+    from nominal.core.run import Run
     from nominal.core.workbook_template import WorkbookTemplate
+    from nominal.core.workspace import Workspace
 
 
 def _strip_video_datasources(
@@ -84,7 +87,9 @@ class WorkbookType(Enum):
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
+class Workbook(
+    HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook | scout_notebook_api.NotebookMetadataWithRid]
+):
     rid: str
     title: str
     description: str
@@ -145,9 +150,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
                 workbook = workbook.update(labels=new_labels)
         """
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
-        # NOTE: not saving updated metadata response, as we deserialize from a notebook rather than
-        #       from metadata
-        self._clients.notebook.update_metadata(
+        metadata = self._clients.notebook.update_metadata(
             self._clients.auth_header,
             scout_notebook_api.UpdateNotebookMetadataRequest(
                 title=title,
@@ -158,40 +161,112 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             ),
             self.rid,
         )
-        return self.refresh()
+        return self._refresh_from_api(scout_notebook_api.NotebookMetadataWithRid(metadata=metadata, rid=self.rid))
+
+    @overload
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+        assets: None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Self: ...
+
+    @overload
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: None = None,
+        assets: Sequence[Asset | str] | None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Self: ...
 
     def clone(
         self,
         title: str | None = None,
         description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+        assets: Sequence[Asset | str] | None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
     ) -> Self:
         r"""Create a new workbook copy from this workbook and return a reference to the cloned version.
 
+        Copies the latest content and metadata from the source workbook, retaining its workbook type.
+        The cloned workbook is unlocked and is not a draft by default.
+
         Args:
-            title: New title for the cloned workbook.
-                Defaults to "Workbook clone from '[title]'" for the current workbook title.
-            description: New description for the cloned workbook. Defaults to the current description.
+            title: New title for the cloned workbook. Defaults to the source workbook's latest title
+                followed by " - copy". Copying an existing copy increments its suffix, e.g. " - copy (2)".
+            description: New description for the cloned workbook. Defaults to the source workbook's latest description.
+            title_suffix: Custom suffix for the server-generated title, e.g. "Run analysis" produces
+                "Source title - Run analysis". Defaults to "copy". Ignored when `title` is provided.
+            labels: Labels for the clone. None inherits the source labels; an empty sequence clears them.
+            properties: Properties for the clone. None inherits the source properties; an empty mapping clears them.
+            runs: Runs or run RIDs to use as the clone's data scope. Mutually exclusive with `assets`.
+                Defaults to the source data scope. An empty sequence clears the run scope.
+            assets: Assets or asset RIDs to use as the clone's data scope. Mutually exclusive with `runs`.
+                Defaults to the source data scope. An empty sequence clears the asset scope.
+            is_draft: Whether to create the clone as a draft. Defaults to False;
+                None inherits the source's draft status.
+            is_locked: Whether to lock the clone. Defaults to False, including when the source workbook is locked.
+            workspace: Workspace or workspace RID for the clone. Defaults to the client's default workspace.
+
+        Note:
+            Clones inherit labels and properties by default. Pass `labels=[]` and `properties={}`
+            to create a copy without either.
 
         Returns:
             Reference to the cloned workbook
         """
-        raw_workbook = self._get_latest_api()
-        new_workbook = self._clients.notebook.create(
+        if runs is not None and assets is not None:
+            raise ValueError("Only one of `runs` and `assets` may be used to clone a workbook")
+
+        data_scope = None
+        if runs is not None:
+            data_scope = scout_notebook_api.NotebookDataScope(
+                run_rids=[rid_from_instance_or_string(run) for run in runs]
+            )
+        elif assets is not None:
+            data_scope = scout_notebook_api.NotebookDataScope(
+                asset_rids=[rid_from_instance_or_string(asset) for asset in assets]
+            )
+
+        new_workbook = self._clients.notebook.duplicate(
             self._clients.auth_header,
-            scout_notebook_api.CreateNotebookRequest(
-                title=f"Workbook clone from '{self.title}'" if title is None else title,
-                description=self.description if description is None else description,
-                is_draft=False,
-                state_as_json=raw_workbook.state_as_json,
-                data_scope=scout_notebook_api.NotebookDataScope(
-                    run_rids=None if self.run_rids is None else [*self.run_rids],
-                    asset_rids=None if self.asset_rids is None else [*self.asset_rids],
-                ),
-                layout=raw_workbook.layout,
-                content_v2=raw_workbook.content_v2,
-                event_refs=raw_workbook.event_refs,
-                workspace=self._clients.resolve_default_workspace_rid(),
+            scout_notebook_api.DuplicateNotebookRequest(
+                title=title,
+                title_suffix=title_suffix,
+                description=description,
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                data_scope=data_scope,
+                is_draft=is_draft,
+                is_locked=is_locked,
+                workspace=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
             ),
+            self.rid,
         )
 
         return self._from_conjure(self._clients, new_workbook)
@@ -313,13 +388,9 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
         )
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
-        return cls._from_notebook_metadata(
-            clients, scout_notebook_api.NotebookMetadataWithRid(metadata=notebook.metadata, rid=notebook.rid)
-        )
-
-    @classmethod
-    def _from_notebook_metadata(cls, clients: _Clients, notebook: scout_notebook_api.NotebookMetadataWithRid) -> Self:
+    def _from_conjure(
+        cls, clients: _Clients, notebook: scout_notebook_api.Notebook | scout_notebook_api.NotebookMetadataWithRid
+    ) -> Self:
         workbook_type = WorkbookType._from_conjure(notebook.metadata.notebook_type)
         return cls(
             rid=notebook.rid,
@@ -343,7 +414,7 @@ def _iter_search_workbooks(
         query,
     ):
         try:
-            yield Workbook._from_notebook_metadata(clients, raw_workbook)
+            yield Workbook._from_conjure(clients, raw_workbook)
         except ValueError:
             logger.exception("Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook)
 
