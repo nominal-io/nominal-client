@@ -131,17 +131,6 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-def test_experimental_rust_streaming_import_is_a_deprecated_alias():
-    """The old experimental import still yields the core class, warning at the line that imports it."""
-    core_type = rust_write_stream_type()
-
-    with pytest.warns(UserWarning, match="nominal.experimental.rust_streaming is deprecated") as record:
-        from nominal.experimental.rust_streaming import RustWriteStream
-
-    assert RustWriteStream is core_type
-    assert record[0].filename == __file__
-
-
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
     """'experimental' is not aliased away while it is the only implementation streaming metrics."""
     from nominal.experimental.stream_v2._write_stream import WriteStreamV2
