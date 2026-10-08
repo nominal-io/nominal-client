@@ -33,6 +33,7 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.properties import NominalProperties
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
@@ -48,7 +49,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     links: Sequence[LinkDict]
     start: IntegralNanosecondsUTC
@@ -93,7 +94,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         assets: Sequence[Asset | str] | None = None,
@@ -234,7 +235,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         """Create an event associated with all associated assets of this run at a given point in time.
@@ -270,7 +271,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by_rid: str | None = None,
         workbook_rid: str | None = None,
         data_review_rid: str | None = None,
@@ -576,7 +577,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
         include_drafts: bool = False,
@@ -643,7 +644,7 @@ def _create_run(
     start: datetime | IntegralNanosecondsUTC,
     end: datetime | IntegralNanosecondsUTC | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     labels: Sequence[str] | None,
     links: Sequence[str | Link | LinkDict] | None,
     attachments: Iterable[Attachment] | Iterable[str] | None,

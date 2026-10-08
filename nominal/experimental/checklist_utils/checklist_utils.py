@@ -10,6 +10,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core.checklist import Checklist
 from nominal.core.client import WorkspaceSearchT, WorkspaceSearchType
+from nominal.core.properties import NominalProperties
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 
 
@@ -21,7 +22,7 @@ def _create_checklist_with_content(
     assignee_rid: str | None = None,
     description: str | None = None,
     checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None,
-    properties: dict[str, str] | None = None,
+    properties: NominalProperties | None = None,
     labels: list[str] | None = None,
     checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None,
     is_published: bool | None = False,
@@ -33,7 +34,7 @@ def _create_checklist_with_content(
         title=title,
         description=description or "",
         checks=checks or [],
-        properties=properties or {},
+        properties=dict(properties or {}),
         labels=labels or [],
         checklist_variables=checklist_variables or [],
         is_published=is_published,

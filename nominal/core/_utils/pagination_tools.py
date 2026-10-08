@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
@@ -21,6 +21,7 @@ from nominal_api import (
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.core.properties import NominalProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
@@ -361,7 +362,7 @@ def search_containerized_extractors_paginated(
     include_archived: bool = False,
     file_extension: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
 ) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
     # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
     # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.

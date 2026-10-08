@@ -17,6 +17,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.core.properties import NominalProperties
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def upload_dataframe(
     *,
     wait_until_complete: bool = True,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
 ) -> Dataset:

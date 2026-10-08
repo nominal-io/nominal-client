@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Sequence
 
 from nominal.core import NominalClient
+from nominal.core.properties import NominalProperties
 from nominal.core.video import Video
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class VideoCopyOptions(ResourceCopyOptions):
     new_video_name: str | None = None
     new_video_description: str | None = None
-    new_video_properties: dict[str, Any] | None = None
+    new_video_properties: NominalProperties | None = None
     new_video_labels: Sequence[str] | None = None
     include_files: bool = False
 

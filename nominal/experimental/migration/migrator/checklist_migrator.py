@@ -7,6 +7,7 @@ from nominal_api import scout_checks_api
 
 from nominal.core import NominalClient
 from nominal.core.checklist import Checklist
+from nominal.core.properties import NominalProperties
 from nominal.experimental.checklist_utils.checklist_utils import (
     _create_checklist_with_content,
     _to_create_checklist_entries,
@@ -27,7 +28,7 @@ class ChecklistCopyOptions(ResourceCopyOptions):
     """Destination-side user RID; bypasses the context's source→destination user mapping."""
     new_description: str | None = None
     new_checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None
-    new_properties: dict[str, str] | None = None
+    new_properties: NominalProperties | None = None
     new_labels: list[str] | None = None
     new_checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None
     new_is_published: bool | None = None

@@ -20,6 +20,7 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core.properties import NominalProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
@@ -168,7 +169,7 @@ def create_search_markings_query(id_substring: str | None = None) -> markings_pb
 def create_search_secrets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
 ) -> secrets_pb2.SearchSecretsQuery:
     queries = []
@@ -189,7 +190,7 @@ def create_search_secrets_query(
 def create_search_videos_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
 ) -> scout_video_api.SearchVideosQuery:
     queries = []
@@ -247,7 +248,7 @@ def create_search_container_images_query(
 def create_search_assets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
@@ -316,7 +317,7 @@ def create_search_ingest_jobs_query(
 def create_search_checklists_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
@@ -362,7 +363,7 @@ def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
@@ -408,7 +409,7 @@ def create_search_runs_query(
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -477,7 +478,7 @@ def create_search_workbooks_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
     author_rid: str | None = None,
@@ -527,7 +528,7 @@ def create_search_workbook_templates_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by: str | None = None,
     published: bool | None = None,
     workspace_rid: str | None = None,
@@ -568,7 +569,7 @@ def create_search_events_query(  # noqa: PLR0912
     asset_rids: Iterable[str] | None = None,
     asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,

@@ -27,6 +27,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.properties import NominalProperties
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
@@ -51,7 +52,7 @@ DatasetBounds: TypeAlias = Bounds
 class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
@@ -69,7 +70,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace dataset metadata.
@@ -1579,7 +1580,7 @@ def _create_dataset_request(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] = (),
     derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
@@ -1616,7 +1617,7 @@ def _create_dataset(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
@@ -1696,7 +1697,7 @@ def _construct_new_ingest_options(
     file_type: FileType,
     description: str | None,
     labels: Sequence[str],
-    properties: Mapping[str, str],
+    properties: NominalProperties,
     prefix_tree_delimiter: str | None,
     channel_prefix: str | None,
     tag_columns: Mapping[str, str] | None,

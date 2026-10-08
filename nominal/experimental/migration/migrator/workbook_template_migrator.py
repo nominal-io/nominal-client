@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Mapping, Sequence, cast
+from typing import Sequence, cast
 
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
@@ -13,6 +13,7 @@ from nominal_api import scout_layout_api, scout_template_api, scout_workbookcomm
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
+from nominal.core.properties import NominalProperties
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
 from nominal.experimental.id_utils.id_utils import UUID_RE
 from nominal.experimental.migration.dry_run import would_create_message
@@ -31,7 +32,7 @@ class WorkbookTemplateCopyOptions(ResourceCopyOptions):
     new_template_title: str | None = None
     new_template_description: str | None = None
     new_template_labels: Sequence[str] | None = None
-    new_template_properties: Mapping[str, str] | None = None
+    new_template_properties: NominalProperties | None = None
     include_content_and_layout: bool = False
 
 

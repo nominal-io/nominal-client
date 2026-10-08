@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from nominal_api import upload_api
 from typing_extensions import Self
@@ -38,6 +38,7 @@ from nominal.core.container_image import (
     TimestampMetadata,
     _search_container_images,
 )
+from nominal.core.properties import NominalProperties
 from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2
@@ -55,7 +56,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
     active_image: ContainerImage | None
     created_at: IntegralNanosecondsUTC
     labels: Sequence[str]
-    properties: Mapping[str, str]
+    properties: NominalProperties
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -81,7 +82,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         is_archived: bool | None = None,
         active_container_image: ContainerImage | str | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Self:
         """Update the extractor in-place.
 
@@ -303,7 +304,7 @@ def _create_containerized_extractor(
     *,
     description: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
 ) -> ContainerizedExtractor:
     request = containerized_extractor_pb2.CreateContainerizedExtractorRequest(
         workspace_rid=clients.resolve_default_workspace_rid(),
@@ -333,7 +334,7 @@ def _iter_search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     workspace_rid: str | None,
 ) -> Iterable[ContainerizedExtractor]:
     ws = clients.resolve_workspace(workspace_rid).rid
@@ -355,7 +356,7 @@ def _search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     workspace_rid: str | None,
 ) -> Sequence[ContainerizedExtractor]:
     return list(

@@ -105,6 +105,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
+from nominal.core.properties import NominalProperties
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -397,7 +398,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -483,7 +484,7 @@ class NominalClient:
         decrypted_value: str,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Secret:
         """Create a secret for the current user
 
@@ -528,7 +529,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Secret]:
@@ -654,7 +655,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Video]:
@@ -697,7 +698,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -710,7 +711,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -723,7 +724,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         attachments: Iterable[Attachment] | Iterable[str] | None = None,
@@ -777,7 +778,7 @@ class NominalClient:
         end: str | datetime | IntegralNanosecondsUTC | None,
         name_substring: str | None,
         labels: Sequence[str] | None,
-        properties: Mapping[str, str] | None,
+        properties: NominalProperties | None,
         exact_match: str | None,
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
@@ -807,7 +808,7 @@ class NominalClient:
         name_substring: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -868,7 +869,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         prefix_tree_delimiter: str | None = None,
         markings: Sequence[Marking | str] | None = None,
     ) -> Dataset:
@@ -914,7 +915,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         markings: Sequence[Marking | str] | None = None,
     ) -> Video:
         """Create an empty video to append video files to.
@@ -1013,7 +1014,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -1058,7 +1059,7 @@ class NominalClient:
         attachment_file: PathLike,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         attachment_path = Path(attachment_file)
@@ -1082,7 +1083,7 @@ class NominalClient:
         file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         """Upload an attachment.
@@ -1232,7 +1233,7 @@ class NominalClient:
         name: str,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Asset:
         """Create an asset."""
@@ -1260,7 +1261,7 @@ class NominalClient:
         return Asset._from_conjure(self._clients, response[rid])
 
     def get_or_create_asset_by_properties(
-        self, properties: Mapping[str, str], *, name: str, description: str | None = None, labels: Sequence[str] = ()
+        self, properties: NominalProperties, *, name: str, description: str | None = None, labels: Sequence[str] = ()
     ) -> Asset:
         """Searches for an asset using using properties. If no assets returned, create one.
            If multiple assets returned, throw error.
@@ -1302,7 +1303,7 @@ class NominalClient:
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
@@ -1423,7 +1424,7 @@ class NominalClient:
         *,
         description: str | None = None,
         assets: Iterable[Asset | str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         return _create_event(
@@ -1495,7 +1496,7 @@ class NominalClient:
         before: datetime | IntegralNanosecondsUTC | None = None,
         assets: Iterable[Asset | str] | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by: User | str | None = None,
         workbook: Workbook | str | None = None,
         data_review: DataReview | str | None = None,
@@ -1555,7 +1556,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> ContainerizedExtractor:
         """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
 
@@ -1596,7 +1597,7 @@ class NominalClient:
         include_archived: bool = False,
         file_extension: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
@@ -1674,7 +1675,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         asset: Asset | str | None = None,
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
@@ -1749,7 +1750,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by: User | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
         published: bool | None = None,
@@ -1796,7 +1797,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: list[str] | None = None,
-        properties: dict[str, str] | None = None,
+        properties: NominalProperties | None = None,
         commit_message: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
@@ -1825,7 +1826,7 @@ class NominalClient:
             title=title,
             description=description if description is not None else "",
             labels=labels if labels is not None else [],
-            properties=properties if properties is not None else {},
+            properties=dict(properties) if properties is not None else {},
             is_published=False,
             layout=scout_layout_api.WorkbookLayout(
                 v1=scout_layout_api.WorkbookLayoutV1(

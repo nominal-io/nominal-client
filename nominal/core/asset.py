@@ -37,6 +37,7 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.properties import NominalProperties
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
@@ -53,7 +54,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
     rid: str
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -105,7 +106,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
@@ -314,7 +315,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         name: str | None = None,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         prefix_tree_delimiter: str | None = None,
         series_tags: Mapping[str, str] | None = None,
     ) -> Dataset:
@@ -390,7 +391,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         name: str | None = None,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Video:
         """Retrieve a video by data scope name, or create a new one if it does not exist."""
         try:
@@ -417,7 +418,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Event:
         """Create an event associated with this Asset at a given point in time.
@@ -453,7 +454,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         end: datetime.datetime | IntegralNanosecondsUTC | None,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -616,7 +617,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         after: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         before: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by_rid: str | None = None,
         workbook_rid: str | None = None,
         data_review_rid: str | None = None,
@@ -667,7 +668,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
