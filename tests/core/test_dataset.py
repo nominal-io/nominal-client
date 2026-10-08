@@ -360,8 +360,8 @@ def test_add_journal_json_rejects_non_epoch_timestamps_before_uploading(
 class _StubWrapper(_DatasetWrapper):
     """The wrapper with scope resolution stubbed: what is under test is the delegation, not lookup."""
 
-    def _list_dataset_scopes(self):
-        return []
+    def _lookup_dataset_scope(self, data_scope_name):
+        return None
 
 
 def test_data_scope_avro_stream_merges_scope_tags() -> None:
