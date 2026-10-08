@@ -166,6 +166,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     end_timestamp: IntegralNanosecondsUTC | None
 
     _clients: _Clients = field(repr=False)
+    #: :meta private:
     created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(IngestionJob._Clients, HasScoutParams, Protocol):

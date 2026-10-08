@@ -84,7 +84,5 @@ html_theme_options = theme_options(
         {"title": "Documentation", "url": "https://docs.nominal.io/core/sdk/python-client/quickstart"},
         {"title": "Nominal", "url": "https://nominal.io"},
     ],
-    # Keep the existing page-level navigation; reference objects appear in the local contents.
-    toctree_maxdepth=1,
 )
 add_module_names = False

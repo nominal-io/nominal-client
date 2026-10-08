@@ -16,10 +16,12 @@ Members come from Python exports and render inline; do not maintain member lists
 generated source pages. Core keeps class/function-level local contents (`tocdepth: 2`);
 methods and attributes render inline. The reference presentation extension uses native
 Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
-and link targets. Explicit `autodata` directives cover imported type aliases and constants
+and link targets. Integrations and Experimental have folder indexes with native glob
+toctrees: adding a Markdown reference page to either folder automatically adds it to
+the group. Explicit `autodata` directives cover imported type aliases and constants
 that native `automodule` omits. Document constants at their declaration with `#:` comments
-so Sphinx discovers them automatically. Adding a reference page also requires an entry
-in the `index.md` toctree.
+so Sphinx discovers them automatically. Reference pages outside those groups need an
+entry in the root `index.md` toctree.
 
 Docstrings retain Google sections and reStructuredText markup. Single backticks link
 resolvable Python objects; double backticks render literal code. Triple-backtick code

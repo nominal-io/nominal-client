@@ -26,21 +26,15 @@ License <license>
 ```{toctree}
 :hidden:
 :caption: Reference
-:maxdepth: 1
+:maxdepth: 2
 
 High-level SDK <reference/toplevel>
-Timestamps <reference/ts>
 Core SDK <reference/core>
+Timestamps <reference/ts>
 Exceptions <reference/exceptions>
-nom cli <reference/nom-cli>
-matlab <reference/thirdparty/matlab>
-pandas <reference/thirdparty/pandas>
-tdms <reference/thirdparty/tdms>
-Compute <reference/experimental/compute>
-Extractors <reference/experimental/extractors>
-Ingestion <reference/experimental/ingest>
-Logging <reference/experimental/logging>
-Video Processing <reference/experimental/video_processing>
+nom CLI <reference/nom-cli>
+Integrations <reference/thirdparty/index>
+Experimental <reference/experimental/index>
 ```
 
 ```{toctree}
