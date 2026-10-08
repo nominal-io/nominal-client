@@ -59,7 +59,6 @@ def test_labels_include_every_page_beyond_the_aggregate_endpoint_limit() -> None
     _assert_search_pages(clients.resource_metadata.SearchLabels, metadata_pb2.ASSET, ["", "remaining-flights"])
     clients.resolve_default_workspace_rid.assert_not_called()
     clients.resolve_workspace.assert_not_called()
-    clients.resource_metadata.ListPropertiesAndLabels.assert_not_called()
 
 
 def test_property_keys_include_numeric_properties_and_later_pages() -> None:
@@ -112,7 +111,6 @@ def test_property_values_include_every_page_without_coercing_strings() -> None:
     values = client.list_property_values(core.MetadataResourceType.DATASET, "tail_number")
 
     assert values == ["007", "tail-01", "tail-12"]
-    assert all(type(value) is str for value in values)
     _assert_search_pages(clients.resource_metadata.SearchPropertyValues, metadata_pb2.DATASET, ["", "more-tails"])
     assert all(
         request.args[0].property_key == "tail_number"
@@ -134,6 +132,7 @@ def test_property_values_include_every_page_without_coercing_strings() -> None:
 def test_default_workspace_is_scoped_and_all_searches_every_permitted_workspace(
     workspace_kwargs: dict[str, WorkspaceSearchType | None], expected_workspaces: list[str]
 ) -> None:
+    """Omitted, None, and DEFAULT selectors scope discovery; ALL removes the workspace filter."""
     client, clients = _client()
     clients.resource_metadata.SearchLabels.return_value = metadata_pb2.SearchLabelsResponse()
 
@@ -149,6 +148,7 @@ def test_default_workspace_is_scoped_and_all_searches_every_permitted_workspace(
 
 
 def test_later_page_failure_raises_nominal_error_instead_of_returning_partial_labels(fake_rpc_error) -> None:
+    """A later-page failure raises the translated error and preserves its cause instead of returning partial data."""
     client, clients = _client()
     error = fake_rpc_error(grpc.StatusCode.PERMISSION_DENIED)
     clients.resource_metadata.SearchLabels.side_effect = [

@@ -331,7 +331,7 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[str]:
-        """List distinct resource labels in alphabetical order, retrieving every page.
+        """List distinct resource labels in alphabetical order.
 
         Metadata visibility follows the backend semantics described by `MetadataResourceType`.
 
@@ -339,6 +339,13 @@ class NominalClient:
             resource_type: Resource family whose labels to discover.
             workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
                 or ALL for every permitted workspace.
+
+        Returns:
+            Distinct resource labels sorted alphabetically.
+
+        Raises:
+            NominalConfigError: If the default workspace cannot be resolved.
+            NominalError: If a workspace lookup or indexed metadata request fails.
         """
         return _list_labels(self._clients, resource_type, self._workspace_rid_for_search(workspace))
 
@@ -348,7 +355,7 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[str]:
-        """List distinct resource property keys in alphabetical order, retrieving every page.
+        """List distinct resource property keys in alphabetical order.
 
         Keys may include numeric properties. Metadata visibility follows the backend semantics
         described by `MetadataResourceType`.
@@ -357,6 +364,13 @@ class NominalClient:
             resource_type: Resource family whose property keys to discover.
             workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
                 or ALL for every permitted workspace.
+
+        Returns:
+            Distinct resource property keys sorted alphabetically, including numeric property keys.
+
+        Raises:
+            NominalConfigError: If the default workspace cannot be resolved.
+            NominalError: If a workspace lookup or indexed metadata request fails.
         """
         return _list_property_keys(self._clients, resource_type, self._workspace_rid_for_search(workspace))
 
@@ -367,7 +381,7 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[str]:
-        """List distinct string values for a property key in alphabetical order, retrieving every page.
+        """List distinct string values for a property key in alphabetical order.
 
         Returns an empty sequence when the key has no string values. Metadata visibility follows
         the backend semantics described by `MetadataResourceType`.
@@ -377,6 +391,14 @@ class NominalClient:
             property_key: Property key whose string values to list.
             workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
                 or ALL for every permitted workspace.
+
+        Returns:
+            Distinct string property values sorted alphabetically, or an empty sequence when the key
+            has no string values.
+
+        Raises:
+            NominalConfigError: If the default workspace cannot be resolved.
+            NominalError: If a workspace lookup or indexed metadata request fails.
         """
         return _list_property_values(
             self._clients, resource_type, property_key, self._workspace_rid_for_search(workspace)
