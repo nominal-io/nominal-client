@@ -1741,7 +1741,7 @@ class NominalClient:
             self._clients.auth_header,
             query,
         ):
-            yield WorkbookTemplate._from_template_summary(self._clients, raw_template)
+            yield WorkbookTemplate._from_conjure(self._clients, raw_template)
 
     def search_workbook_templates(
         self,

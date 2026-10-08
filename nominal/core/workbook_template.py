@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     scout,
@@ -19,6 +19,9 @@ from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
+
+if TYPE_CHECKING:
+    from nominal.core.workspace import Workspace
 
 
 def _rebind_video_datasources(
@@ -65,7 +68,9 @@ def _rebind_video_datasources(
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Template]):
+class WorkbookTemplate(
+    HasRid, RefreshableConjureMixin[scout_template_api.Template | scout_template_api.TemplateSummary]
+):
     rid: str
     title: str
     description: str
@@ -113,9 +118,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
                     new_labels.append(old_label)
                 template = template.update(labels=new_labels)
         """
-        # NOTE: not saving updated metadata response, as we deserialize from a template rather than
-        #       from metadata
-        self._clients.template.update_metadata(
+        metadata = self._clients.template.update_metadata(
             self._clients.auth_header,
             scout_template_api.UpdateMetadataRequest(
                 description=description,
@@ -125,17 +128,74 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             ),
             self.rid,
         )
-        return self.refresh()
+        return self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""
         return self._clients.template.get_used_ref_names(self._clients.auth_header, self.rid)
 
     def update_refnames(self, refname_map: Mapping[str, str]) -> None:
-        """Updates refnames using a provided map of original refnames to the new refnames to replace them."""
-        self._clients.template.update_ref_names(
+        """Replace data source refnames used by this template.
+
+        Refreshes this instance from the returned template metadata.
+
+        Args:
+            refname_map: Mapping from existing refnames to their replacements.
+        """
+        updated = self._clients.template.update_ref_names(
             self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid
         )
+        self._refresh_from_api(updated)
+
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_published: bool = True,
+        workspace: Workspace | str | None = None,
+    ) -> Self:
+        """Create a copy of this template's latest main-branch content and metadata.
+
+        Copies the layout and channel variables on the server and returns a new template reference.
+        The copy is published by default.
+
+        Args:
+            title: New title. Defaults to the source's latest title followed by " - copy".
+                Copying an existing copy increments its suffix, e.g. " - copy (2)".
+            description: New description. None inherits the source's latest description.
+            title_suffix: Custom suffix for the server-generated title. Defaults to "copy".
+                Ignored when `title` is provided.
+            labels: New labels. None inherits the source labels; an empty sequence clears them.
+            properties: New properties. None inherits the source properties; an empty mapping clears them.
+            is_published: Whether to publish the copy. Defaults to True; pass False for an unpublished copy.
+            workspace: Workspace or workspace RID for the copy. Defaults to the client's default workspace.
+
+        Returns:
+            Reference to the newly created template.
+
+        Example:
+            copy = template.clone(title_suffix="Run analysis", labels=[], properties={})
+        """
+        duplicated = self._clients.template.duplicate(
+            self._clients.auth_header,
+            scout_template_api.DuplicateTemplateRequest(
+                title=title,
+                description=description,
+                title_suffix=title_suffix,
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                is_published=is_published,
+                workspace=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
+            ),
+            self.rid,
+        )
+        return self._from_conjure(self._clients, duplicated)
 
     @overload
     def create_workbook(
@@ -196,6 +256,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             raise ValueError("One of `run` or `asset` must be provided to create a workbook from a template")
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        self._refresh_from_api(raw_template)
         template_content = raw_template.content
 
         # Re-bind video panel datasources that were stripped when the template was saved.
@@ -235,26 +296,25 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         return Workbook._from_conjure(self._clients, raw_notebook)
 
     def is_published(self) -> bool:
-        """Returns whether or not the workbook template has been published and can be viewed by other users."""
+        """Return whether the template is published and refresh its metadata from the same response."""
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        self._refresh_from_api(raw_template)
         return raw_template.metadata.is_published
 
     def archive(self) -> None:
         """Archive this workbook template.
         Archived workbook templates are not deleted, but are hidden from the UI.
+        Refreshes this instance from the returned metadata.
         """
-        self._clients.template.update_metadata(
+        metadata = self._clients.template.update_metadata(
             self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=True), self.rid
         )
+        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
-        return cls._from_template_summary(
-            clients, scout_template_api.TemplateSummary(metadata=template.metadata, rid=template.rid)
-        )
-
-    @classmethod
-    def _from_template_summary(cls, clients: _Clients, template: scout_template_api.TemplateSummary) -> Self:
+    def _from_conjure(
+        cls, clients: _Clients, template: scout_template_api.Template | scout_template_api.TemplateSummary
+    ) -> Self:
         return cls(
             rid=template.rid,
             title=template.metadata.title,
