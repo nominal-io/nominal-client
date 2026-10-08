@@ -4,28 +4,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from conjure_python_client import ConjureEncoder
-from nominal_api import (
-    scout,
-    scout_layout_api,
-    scout_notebook_api,
-    scout_template_api,
-    scout_versioning_api,
-    scout_workbookcommon_api,
-)
+from nominal_api import scout, scout_notebook_api, scout_template_api
 
 from nominal.core.client import NominalClient
 from nominal.core.workbook import Workbook, WorkbookType
 from nominal.core.workbook_template import WorkbookTemplate
-
-
-def _layout() -> scout_layout_api.WorkbookLayout:
-    return scout_layout_api.WorkbookLayout(
-        v1=scout_layout_api.WorkbookLayoutV1(
-            root_panel=scout_layout_api.Panel(
-                tabbed=scout_layout_api.TabbedPanel(v1=scout_layout_api.TabbedPanelV1(id="root", tabs=[]))
-            )
-        )
-    )
+from tests.core._workbook_fixtures import notebook_response, template_response
 
 
 def _workbook_metadata(
@@ -47,19 +31,7 @@ def _workbook_metadata(
 
 
 def _notebook(metadata: scout_notebook_api.NotebookMetadata) -> scout_notebook_api.Notebook:
-    return scout_notebook_api.Notebook(
-        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(
-            workbook=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
-        ),
-        event_refs=[],
-        layout=_layout(),
-        metadata=metadata,
-        rid="workbook-rid",
-        snapshot_author_rid="server-creator-rid",
-        snapshot_created_at="2026-10-07T00:00:00Z",
-        snapshot_rid="snapshot-rid",
-        state_as_json="{}",
-    )
+    return notebook_response(metadata, rid="workbook-rid")
 
 
 def _template_metadata(
@@ -80,21 +52,7 @@ def _template_metadata(
 
 
 def _template(metadata: scout_template_api.TemplateMetadata) -> scout_template_api.Template:
-    return scout_template_api.Template(
-        charts=[],
-        commit=scout_versioning_api.Commit(
-            committed_at="2026-10-07T00:00:00Z",
-            committed_by="server-creator-rid",
-            id="commit-id",
-            is_working_state=False,
-            message="Initial version",
-            resource_rid="template-rid",
-        ),
-        content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
-        layout=_layout(),
-        metadata=metadata,
-        rid="template-rid",
-    )
+    return template_response(metadata, rid="template-rid")
 
 
 @pytest.fixture
