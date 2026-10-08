@@ -40,6 +40,7 @@ from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
+from nominal.protos.metadata.v2 import resource_metadata_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
@@ -167,6 +168,7 @@ class ClientsBunch:
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     integrations: integrations_pb2_grpc.IntegrationsServiceStub
     markings: markings_pb2_grpc.MarkingServiceStub
+    resource_metadata: resource_metadata_pb2_grpc.ResourceMetadataServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
     run: run_service_pb2_grpc.RunServiceStub
@@ -339,6 +341,7 @@ class ClientsBunch:
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),
             markings=grpc_factory(markings_pb2_grpc.MarkingServiceStub),
+            resource_metadata=grpc_factory(resource_metadata_pb2_grpc.ResourceMetadataServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
