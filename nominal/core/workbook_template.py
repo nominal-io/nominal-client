@@ -177,9 +177,9 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             is_draft: Whether to create the workbook in draft state. Defaults to False.
 
         NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
-        standard workbooks and not comparison workbooks.
+              standard workbooks and not comparison workbooks.
         NOTE: only supports singular `asset` instead of a list of `assets` because workbook templates only support
-        single asset workbooks.
+              single asset workbooks.
 
         Returns:
             The instantiated workbook

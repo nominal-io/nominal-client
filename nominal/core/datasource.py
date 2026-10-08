@@ -218,9 +218,9 @@ class DataSource(HasRid, MarkableMixin):
             implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
                 falling back to 'python' when `nominal-streaming` is not installed.
                 NOTE: 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
-                'python', 'python', and 'rust' respectively.
+                      'python', 'python', and 'rust' respectively.
                 NOTE: 'experimental' is deprecated too. It is not an alias while it remains the
-                only implementation that streams runtime metrics.
+                      only implementation that streams runtime metrics.
             file_fallback: Filepath to write failed batches to during streaming
                 NOTE: expects a .avro filename
                 NOTE: only works with `implementation='rust'`
