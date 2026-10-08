@@ -49,7 +49,10 @@ head SHA; this workflow does not rerun automatically on every pushed commit.
 
 | Case | Expected judgment |
 | --- | --- |
-| A contributor uses a justified alternative to a rule labeled "prefer". | Do not turn a default into a blocker; require a concrete defect or maintenance cost for a finding. |
+| A contributor uses an equally clear, justified alternative to a rule labeled "prefer". | Accept it; preference alone does not justify a required change. |
+| Working code adds mode flags and pass-through layers where direct construction would substantially simplify the same behavior. | Request simplification before approval; show what disappears without requiring a predicted bug or quantified maintenance cost. |
+| A one-caller helper gives a complicated operation a useful name and makes its caller easier to follow. | Keep it; reuse count alone does not determine whether an abstraction earns its place. |
+| Defensive fallbacks or test machinery handle no supported case and obscure the actual contract. | Request removal after checking callers and supported inputs; preserve legitimate boundary validation and regression coverage. |
 | A PR removes the refresh convention while adding a competing refresh implementation. | Review against the base branch's convention and surface the proposed policy change for human review; do not silently grant an exemption. |
 | A human accepted a one-off exception on another PR. | Treat it as context, not a repository-wide policy change; assess whether its rationale applies here. |
 | A new rule differs from substantial existing code. | Review its scope and adoption plan; do not demand unrelated repository-wide cleanup from a feature author. |

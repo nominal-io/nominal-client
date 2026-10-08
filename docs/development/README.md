@@ -1,8 +1,8 @@
 # Development guidance
 
-This directory owns detailed contributor policy shared by humans, local AI tools, and
-CI review. Start with the task routes in [AGENTS.md](../../AGENTS.md); read the affected
-guide and source rather than loading every guide for every task.
+These guides explain how we build and review this SDK. They are for contributors and
+the tools helping them. Start with [AGENTS.md](../../AGENTS.md), then read the guides
+relevant to your change alongside the code.
 
 | Guide | Owns |
 | --- | --- |
@@ -30,13 +30,12 @@ Personal settings, permissions, credentials, and scratch plans stay local.
 
 ## Changing a shared convention
 
-Shared guidance is part of the reviewed repository, not a particular developer's AI
-configuration. Changes use the normal PR process; this document creates no new approver
-role or mandatory AI tool. The contributor proposing a rule is responsible for showing:
+Improve these guides through normal PR review. Explain why a convention helps, where it
+applies, and what adopting it asks of contributors:
 
-- **Problem and scope:** the recurring failure or maintenance cost it addresses, and which
-  code it applies to. A useful rule can start from one serious defect, but personal taste
-  or one reviewer's preferred spelling is not sufficient evidence of a team requirement.
+- **Problem and scope:** the failure, unnecessary complexity, or unclear design it addresses.
+  A shared design standard can improve code without preventing a specific bug; show a
+  concrete example rather than relying on one reviewer's preferred spelling.
 - **Strength and exceptions:** whether it is a requirement or a preferred default, why,
   and an example where a superficially similar change should not be flagged. Use clear
   requirement language only when the consequence warrants it.
@@ -46,7 +45,7 @@ role or mandatory AI tool. The contributor proposing a rule is responsible for s
 - **Evidence:** an actionable review example and a should-not-flag case in calibration
   when review judgment changes. Keep historical PR references there, outside policy prose.
 
-Explain these points in the PR rather than adding a mandatory form to every contribution.
+Keep this explanation proportional to the change; a few sentences may be enough.
 A broad or controversial policy change should be reviewable separately from the feature
 that motivates it. Merged policy is the baseline; a proposed relaxation does not silently
 excuse its own PR. Reviewers resolve intentional exceptions in the PR discussion. Promote

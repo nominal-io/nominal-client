@@ -1,24 +1,27 @@
 # Repository conventions
 
-These conventions apply to new and changed code. Read neighboring implementations and
-scoped instructions before choosing a pattern. Do not demand unrelated cleanup or undo
-an explicitly agreed design decision without new evidence. Examples below illustrate
-contracts; they are not templates every class or test must reproduce.
+Write direct Python that makes its purpose clear. We value readable, well-typed, performant
+code, clear ownership, and tests that explain meaningful behavior. Follow PEP conventions
+and the repository's style configuration and supported Python versions. The
+[Python quality guide](docs/development/python.md) explains the details.
 
-Default to highly PEP-compliant, readable, maintainable, well-typed, and performant Python.
-Follow the repository's explicit style configuration and supported Python versions rather
-than imposing a different formatter or copying legacy patterns. Prefer direct implementations
-with clear ownership, bounded resource use, and meaningful tests. Passing lint is a baseline,
-not evidence of a good design. Read the [Python quality guide](docs/development/python.md)
-for the concrete standards and non-obvious constraints behind this expectation.
+Every abstraction should earn its place by making today's behavior easier to understand.
+A few repeated lines are fine when the contracts differ. A well-named helper can be useful
+with one caller; a generic layer for imagined future needs usually is not. Remove unnecessary
+wrappers, defensive scaffolding, and test machinery before asking for review.
+
+Working code and passing lint are the starting point. When a clearly better implementation
+substantially simplifies a change, we expect that simplification before approval. Explain
+what becomes easier to follow and show a viable alternative; no predicted bug or quantified
+maintenance cost is required. Keep speculative rewrites and equally good alternatives as
+suggestions. Apply this bar to the change at hand, preserving its contracts and agreed design.
 
 ## Shared standards, not personal preferences
 
-These guides serve all contributors, with or without AI. Requirements protect named
-contracts; defaults such as "prefer" allow a justified alternative. Reviewers must
-distinguish a defect or explicit requirement violation from an optional design suggestion.
-Do not turn a default, a personal instruction, or an isolated review comment into a blocker.
-For structural findings, identify the concrete maintenance cost and a simpler alternative.
+These guides serve all contributors, with or without AI. Be firm about correctness and
+the design bar above, and open to justified alternatives to defaults such as "prefer".
+Distinguish required changes from suggestions. An isolated review comment or personal
+preference does not establish a team rule.
 
 Use merged guidance as the team's baseline. Changes to these rules are reviewable proposals
 until accepted through the normal PR process; do not weaken a rule in a patch and then

@@ -54,22 +54,27 @@ For each meaningful change:
 
 Prefer removing indirection, reusing an existing owner, or narrowing a boundary before
 adding a new abstraction. A focused helper or module is valuable when it has a coherent
-responsibility; do not replace a direct implementation with speculative infrastructure.
+responsibility, even with one caller. Keep a few repeated lines when that is clearer than
+a shared layer. Avoid infrastructure whose only purpose is imagined future flexibility.
 
 ## Evidence bar
 
 For every structural finding, provide:
 
-- The changed code and concrete maintenance cost: competing sources of truth, repeated
-  changes required for one behavior, avoidable coupling, or an obscured invariant.
+- The changed code and what makes it harder to understand: unnecessary concepts, competing
+  sources of truth, avoidable coupling, or an obscured invariant.
 - A viable simpler alternative and the branches, layers, or dependencies it removes.
 - The contracts that alternative must preserve and any tradeoff requiring human judgment.
 
-Do not treat a smell, file size, personal preference, or merely plausible rewrite as a
-presumptive blocker. An explicit requirement violation or demonstrated structural regression
-can warrant changes even when tests pass. Label optional design improvements as suggestions;
-keep confidence and severity proportional to the evidence. Do not demand unrelated cleanup
-or reverse an accepted design without new evidence.
+Request changes when a clearly better implementation substantially simplifies the same
+behavior, or when unnecessary wrappers, defensive scaffolding, or test machinery obscure it.
+Working code is not sufficient for approval; a predicted bug or quantified maintenance cost
+is not required to uphold this design bar. Show a viable alternative and explain the gain.
+
+Keep equally good alternatives and speculative rewrites as suggestions. File size or reuse
+count alone does not establish a design problem. Match severity to the finding: a required
+design improvement is not automatically an urgent correctness defect. Stay within the change
+and preserve accepted decisions unless new evidence warrants revisiting them.
 
 ## Report and verify
 
