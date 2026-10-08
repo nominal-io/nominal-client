@@ -10,11 +10,12 @@ from html import escape
 
 from docutils import nodes
 from docutils.parsers.rst import directives
+from sphinx import addnodes
 from sphinx.application import Sphinx
 from sphinx.util.docutils import SphinxDirective
 
 
-class video(nodes.General, nodes.Element):
+class video(addnodes.download_reference):
     pass
 
 
@@ -23,19 +24,23 @@ class VideoDirective(SphinxDirective):
     option_spec = {"loop": directives.flag, "alt": directives.unchanged}
 
     def run(self) -> list[nodes.Node]:
-        src = self.arguments[0]
-        node = video(loop="loop" in self.options, alt=self.options.get("alt", ""))
-        if "://" in src:
-            node["uri"] = src
-        else:
-            rel, filename = self.env.relfn2path(src, self.env.docname)
-            self.env.note_dependency(rel)
-            node["download"] = self.env.dlfiles.add_file(self.env.docname, rel)
+        node = video(
+            reftarget=self.arguments[0],
+            loop="loop" in self.options,
+            alt=self.options.get("alt", ""),
+        )
+        self.set_source_info(node)
         return [node]
 
 
 def visit_video_html(self, node: video) -> None:
-    uri = node.get("uri") or posixpath.join(self.builder.dlpath, node["download"])
+    if "refuri" in node:
+        uri = node["refuri"]
+    elif "filename" in node:
+        uri = posixpath.join(self.builder.dlpath, node["filename"])
+    else:
+        # The native download collector already warned about an unreadable file.
+        raise nodes.SkipNode
     attrs = "autoplay loop muted playsinline" if node["loop"] else "controls"
     label = f' aria-label="{escape(node["alt"])}"' if node["alt"] else ""
     self.body.append(f'<video class="docs-video" {attrs} preload="metadata"{label} src="{escape(uri)}"></video>\n')
