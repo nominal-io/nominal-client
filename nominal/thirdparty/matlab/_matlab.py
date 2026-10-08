@@ -141,89 +141,84 @@ def export_channels_to_matlab(
             are specified, or if the output path does not have a `.mat` suffix.
 
     Example:
-        .. code-block:: python
+        ```python
+        # Export undecimated data over a given time range
+        export_channels_to_matlab(
+            client=client,
+            output_path=pathlib.Path("out/my_export.mat"),
+            channels=[channel_a, channel_b],
+            start_time=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+            end_time=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
+        )
 
-            # Export undecimated data over a given time range
-            export_channels_to_matlab(
-                client=client,
-                output_path=pathlib.Path("out/my_export.mat"),
-                channels=[channel_a, channel_b],
-                start_time=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
-                end_time=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
-            )
+        # Export with fixed resolution (100ms) and relative timestamps in microseconds
+        export_channels_to_matlab(
+            client=client,
+            output_path=pathlib.Path("out/resampled.mat"),
+            channels=[channel_a, channel_b],
+            resolution=100_000_000,
+            export_timestamp_type=Relative(
+                "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+            ),
+        )
 
-            # Export with fixed resolution (100ms) and relative timestamps in microseconds
-            export_channels_to_matlab(
-                client=client,
-                output_path=pathlib.Path("out/resampled.mat"),
-                channels=[channel_a, channel_b],
-                resolution=100_000_000,
-                export_timestamp_type=Relative(
-                    "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
-                ),
-            )
+        # Export with original resolution but timestamps as seconds since unix epoch
+        export_channels_to_matlab(
+            client=client,
+            output_path=pathlib.Path("out/epoch_seconds.mat"),
+            channels=[channel_a, channel_b],
+            export_timestamp_type="epoch_seconds",
+        )
 
-            # Export with original resolution but timestamps as seconds since unix epoch
-            export_channels_to_matlab(
-                client=client,
-                output_path=pathlib.Path("out/epoch_seconds.mat"),
-                channels=[channel_a, channel_b],
-                export_timestamp_type="epoch_seconds",
-            )
-
-            # Export bucketed data with forward fill up to 5 seconds
-            export_channels_to_matlab(
-                client=client,
-                output_path=pathlib.Path("out/bucketed.mat"),
-                channels=[channel_a, channel_b, channel_c],
-                num_buckets=3600,
-                forward_fill_lookback=5_000_000_000,
-            )
-
+        # Export bucketed data with forward fill up to 5 seconds
+        export_channels_to_matlab(
+            client=client,
+            output_path=pathlib.Path("out/bucketed.mat"),
+            channels=[channel_a, channel_b, channel_c],
+            num_buckets=3600,
+            forward_fill_lookback=5_000_000_000,
+        )
+        ```
 
     Usage in MATLAB:
         Once the `.mat` file is generated, you can load it directly into MATLAB using
         the built-in `load` function or by double-clicking the file in the MATLAB UI:
 
-        .. code-block:: matlab
-
-            >> result = load("out/my_export.mat");
-
+        ```matlab
+        >> result = load("out/my_export.mat");
+        ```
 
         The result contains a struct named `data`, where each field corresponds to a
         channel exported from Nominal, represented as a numeric array. You can convert
         this struct to a MATLAB table using `struct2table` for easier manipulation:
 
-        .. code-block:: matlab
-
-            >> T = struct2table(result.data);
-
+        ```matlab
+        >> T = struct2table(result.data);
+        ```
 
         If any channel name contains characters that are not valid MATLAB identifiers
         (for example, a period `"."`), you can still access it safely using the dynamic
         field reference syntax in either the struct or table form:
 
-        .. code-block:: matlab
-
-            >> data.("channel.name")
-            >> T.("channel.name")
-
+        ```matlab
+        >> data.("channel.name")
+        >> T.("channel.name")
+        ```
 
         If your export includes timestamps as ISO-8601 strings, they will often appear
         as a cell array of character vectors in the table. You can convert them into
         native MATLAB `datetime` objects like so (replace `timestamps` with the actual
         field name if different):
 
-        .. code-block:: matlab
-
-            % Normalize timestamps to always include a fractional second then convert to utc datetime
-            >> T.timestamps = datetime( ...
-                regexprep(T.timestamps, ':(\d{2})Z$', ':$1.000000Z'), ...
-                'InputFormat', ...
-                'yyyy-MM-dd''T''HH:mm:ss.SSSSSS''Z''', ...
-                'TimeZone', ...
-                'UTC');
-
+        ```matlab
+        % Normalize timestamps to always include a fractional second then convert to utc datetime
+        >> T.timestamps = datetime( ...
+            regexprep(T.timestamps, ':(\d{2})Z$', ':$1.000000Z'), ...
+            'InputFormat', ...
+            'yyyy-MM-dd''T''HH:mm:ss.SSSSSS''Z''', ...
+            'TimeZone', ...
+            'UTC');
+        ```
 
         After this conversion, you can use MATLAB's native time-series and plotting
         functions directly on the `timestamps` column.

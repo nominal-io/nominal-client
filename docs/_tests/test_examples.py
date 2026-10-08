@@ -1,8 +1,6 @@
 """Checks for generated examples before the content migration lands."""
 
 import importlib.util
-import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,7 +14,7 @@ def test_empty_examples_index_has_no_broken_source_link(tmp_path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     source = tmp_path / "docs/src"
-    source.mkdir(parents=True)
+    source.mkdir(parents=True, exist_ok=True)
     module.generate(SimpleNamespace(srcdir=source, confdir=source.parent))
     text = (source / "examples/index.md").read_text(encoding="utf-8")
     assert "No example scripts have been added yet." in text
@@ -24,11 +22,11 @@ def test_empty_examples_index_has_no_broken_source_link(tmp_path):
 
 
 @pytest.mark.parametrize("script", ["upload.py", "index.py", "nested/index.py"])
-def test_examples_build_with_separate_source_and_config_directories(tmp_path, script):
+def test_examples_build_with_separate_source_and_config_directories(tmp_path, script, build_docs):
     """Every script gets a distinct page with source links for the configured revision."""
     docs = tmp_path / "docs"
     source = docs / "src"
-    source.mkdir(parents=True)
+    source.mkdir(parents=True, exist_ok=True)
     scripts = tmp_path / "examples"
     scripts.mkdir()
     (scripts / script).parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +35,7 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     (docs / "conf.py").write_text(
         f"import sys\nsys.path.insert(0, {str(extensions)!r})\n"
         "extensions = ['myst_parser', 'sphinx.ext.autosummary', 'examples', 'api_reference']\n"
-        "autosummary_generate = False\n"
+        "autosummary_generate = True\n"
         "html_context = {'source_user': 'nominal-io', 'source_repo': 'nominal-client', "
         "'source_version': 'release/fixture'}\n",
         encoding="utf-8",
@@ -46,13 +44,8 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     obsolete = source / "examples/obsolete.md"
     obsolete.parent.mkdir(parents=True)
     obsolete.write_text("# Old generated example\n", encoding="utf-8")
-    output = tmp_path / "output"
-    result = subprocess.run(
-        [sys.executable, "-m", "sphinx", "-W", "-b", "dirhtml", "-c", str(docs), str(source), str(output)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    output = docs / "_build/dirhtml"
+    result = build_docs()
     assert result.returncode == 0, result.stdout + result.stderr
     page = source / f"examples/{script}.md"
     assert page.is_file()
@@ -64,14 +57,9 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     assert "Upload a dataset" in html
     assert "upload fixture" in html
 
-    # Removing a script must remove its output too during a live rebuild.
+    # Removing a script must remove its output too on the next clean rebuild.
     (scripts / script).unlink()
-    result = subprocess.run(
-        [sys.executable, "-m", "sphinx", "-W", "-b", "dirhtml", "-c", str(docs), str(source), str(output)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = build_docs()
     assert result.returncode == 0, result.stdout + result.stderr
     assert not page.exists()
     assert not (output / f"examples/{script}/index.html").exists()
@@ -87,7 +75,7 @@ def test_example_edit_links_are_independent_between_apps(tmp_path):
     for name in ("first", "second"):
         root = tmp_path / name
         source = root / "docs/src"
-        source.mkdir(parents=True)
+        source.mkdir(parents=True, exist_ok=True)
         apps.append(
             SimpleNamespace(
                 srcdir=source,

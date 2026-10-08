@@ -2,8 +2,8 @@
 
 Each ``examples/**/*.py`` becomes a page showing the script, titled from the first
 line of its module docstring, and the index links them all. Nothing here is
-hand-maintained: add a script and it appears. Files are only rewritten when their
-content changes, so live preview doesn't loop.
+hand-maintained: add a script and it appears. Build recipes clean these pages
+before each build; live preview ignores generated files.
 """
 
 import ast
@@ -44,7 +44,6 @@ def _page(app: Sphinx, py: Path, repo: Path, title: str, summary: str) -> str:
 def generate(app: Sphinx) -> None:
     repo = Path(app.confdir).parent
     out = Path(app.srcdir) / "examples"
-    files: dict[Path, str] = {}
 
     entries: list[tuple[str, str]] = []
     for py in sorted((repo / "examples").rglob("*.py")):
@@ -52,7 +51,9 @@ def generate(app: Sphinx) -> None:
         # or collides with dirhtml's special handling of index documents.
         name = py.relative_to(repo / "examples").as_posix()
         title, summary = _script_docstring(py)
-        files[out / f"{name}.md"] = _page(app, py, repo, title, summary)
+        page = out / f"{name}.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(_page(app, py, repo, title, summary), encoding="utf-8")
         entries.append((title, name))
 
     links = "".join(f"- [{title}]({name}.md)\n" for title, name in entries)
@@ -63,19 +64,11 @@ def generate(app: Sphinx) -> None:
         if entries
         else "No example scripts have been added yet. Add a script under `examples/` to generate its page."
     )
-    files[out / "index.md"] = (
-        f"# Examples\n\n{{.lead}}\n{introduction}\n\n{links}\n```{{toctree}}\n:hidden:\n\n{toc}```\n"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "index.md").write_text(
+        f"# Examples\n\n{{.lead}}\n{introduction}\n\n{links}\n```{{toctree}}\n:hidden:\n\n{toc}```\n",
+        encoding="utf-8",
     )
-
-    for path, text in files.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists() or path.read_text(encoding="utf-8") != text:
-            path.write_text(text, encoding="utf-8")
-    for stale in out.rglob("*.md"):
-        if stale not in files:
-            stale.unlink()
-            docname = stale.relative_to(app.srcdir).with_suffix("").as_posix()
-            Path(app.builder.get_outfilename(docname)).unlink(missing_ok=True)
 
 
 def _edit_link(app: Sphinx, pagename: str, templatename: str, context: dict[str, Any], doctree: Any) -> None:

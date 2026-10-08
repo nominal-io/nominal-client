@@ -62,8 +62,8 @@ toc_object_entries_show_parents = "hide"
 
 # Class pages list members in summary tables; each member gets its own page
 # (the scikit-rf layout). Stubs are written to <page dir>/generated/.
-# api_reference calls the native generator and prunes only obsolete stubs.
-autosummary_generate = False
+# Build recipes clear generated sources before native autosummary runs.
+autosummary_generate = True
 # Public package exports are the API catalog; do not repeat them in docs pages.
 autosummary_ignore_module_all = False
 
