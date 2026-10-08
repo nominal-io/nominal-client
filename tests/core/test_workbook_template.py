@@ -24,6 +24,7 @@ from nominal.core.workbook_template import WorkbookTemplate
     ],
 )
 def test_update_refreshes_in_place_from_returned_metadata(mock_clients: MagicMock, changes: dict[str, Any]) -> None:
+    """Template updates refresh metadata in place without a second content request."""
     mock_clients.template = MagicMock(spec=scout.TemplateService)
     mock_clients.template.get.side_effect = AssertionError(
         "Should use the route response without fetching the template"

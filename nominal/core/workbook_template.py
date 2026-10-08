@@ -13,7 +13,6 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_template_url
@@ -126,8 +125,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         updated = self._from_template_summary(
             self._clients, scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid)
         )
-        update_dataclass(self, updated, fields=self.__dataclass_fields__)
-        return self
+        return self._refresh_from(updated)
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""

@@ -59,9 +59,13 @@ class RefreshableMixin(Generic[T], abc.ABC):
     def _refresh_to_self(self, api_obj: T) -> Self:
         """Build a fresh instance from a server object; bound to the transport constructor by subclasses."""
 
-    def _refresh_from_api(self, api_obj: T) -> Self:
-        update_dataclass(self, self._refresh_to_self(api_obj), fields=self.__dataclass_fields__)
+    def _refresh_from(self, other: Self) -> Self:
+        """Update this instance in place from an already constructed resource."""
+        update_dataclass(self, other, fields=self.__dataclass_fields__)
         return self
+
+    def _refresh_from_api(self, api_obj: T) -> Self:
+        return self._refresh_from(self._refresh_to_self(api_obj))
 
     def refresh(self) -> Self:
         return self._refresh_from_api(self._get_latest_api())

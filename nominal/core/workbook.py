@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self
 
-from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
@@ -18,7 +17,10 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_w
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from nominal.core.asset import Asset
+    from nominal.core.run import Run
     from nominal.core.workbook_template import WorkbookTemplate
+    from nominal.core.workspace import Workspace
 
 
 def _strip_video_datasources(
@@ -159,34 +161,78 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
         updated = self._from_notebook_metadata(
             self._clients, scout_notebook_api.NotebookMetadataWithRid(metadata=metadata, rid=self.rid)
         )
-        update_dataclass(self, updated, fields=self.__dataclass_fields__)
-        return self
+        return self._refresh_from(updated)
 
     def clone(
         self,
         title: str | None = None,
         description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+        assets: Sequence[Asset | str] | None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
     ) -> Self:
         r"""Create a new workbook copy from this workbook and return a reference to the cloned version.
 
-        Copies the latest content, data scope, labels, and properties from the source workbook.
-        The cloned workbook is unlocked and is not a draft.
+        Copies the latest content and metadata from the source workbook, retaining its workbook type.
+        The cloned workbook is unlocked and is not a draft by default.
 
         Args:
-            title: New title for the cloned workbook.
-                Defaults to "Workbook clone from '[title]'" for the current workbook title.
+            title: New title for the cloned workbook. Defaults to the source workbook's latest title
+                followed by " - copy". Copying an existing copy increments its suffix, e.g. " - copy (2)".
             description: New description for the cloned workbook. Defaults to the source workbook's latest description.
+            title_suffix: Custom suffix for the server-generated title, e.g. "Run analysis" produces
+                "Source title - Run analysis". Defaults to "copy". Ignored when `title` is provided.
+            labels: Labels for the clone. None inherits the source labels; an empty sequence clears them.
+            properties: Properties for the clone. None inherits the source properties; an empty mapping clears them.
+            runs: Runs or run RIDs to use as the clone's data scope. Mutually exclusive with `assets`.
+                Defaults to the source data scope. An empty sequence clears the run scope.
+            assets: Assets or asset RIDs to use as the clone's data scope. Mutually exclusive with `runs`.
+                Defaults to the source data scope. An empty sequence clears the asset scope.
+            is_draft: Whether to create the clone as a draft. Defaults to False;
+                None inherits the source's draft status.
+            is_locked: Whether to lock the clone. Defaults to False, including when the source workbook is locked.
+            workspace: Workspace or workspace RID for the clone. Defaults to the client's default workspace.
+
+        Note:
+            Clones inherit labels and properties by default. Pass `labels=[]` and `properties={}`
+            to create a copy without either.
 
         Returns:
             Reference to the cloned workbook
         """
+        if runs is not None and assets is not None:
+            raise ValueError("Only one of `runs` and `assets` may be used to clone a workbook")
+
+        data_scope = None
+        if runs is not None:
+            data_scope = scout_notebook_api.NotebookDataScope(
+                run_rids=[rid_from_instance_or_string(run) for run in runs]
+            )
+        elif assets is not None:
+            data_scope = scout_notebook_api.NotebookDataScope(
+                asset_rids=[rid_from_instance_or_string(asset) for asset in assets]
+            )
+
         new_workbook = self._clients.notebook.duplicate(
             self._clients.auth_header,
             scout_notebook_api.DuplicateNotebookRequest(
-                title=f"Workbook clone from '{self.title}'" if title is None else title,
+                title=title,
+                title_suffix=title_suffix,
                 description=description,
-                is_draft=False,
-                workspace=self._clients.resolve_default_workspace_rid(),
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                data_scope=data_scope,
+                is_draft=is_draft,
+                is_locked=is_locked,
+                workspace=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
             ),
             self.rid,
         )
