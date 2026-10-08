@@ -158,7 +158,7 @@ def error(
     ``code`` is a nonempty catalog error code; ``exit_code`` is an integer from 1 through 255.
     ``retryable`` describes whether another attempt may succeed without changing the input.
     Codes must fit the 4,096-byte termination JSON envelope. Long messages are shortened;
-    mapped failures retain their full traceback on stderr.
+    mapped failures emit bounded JSON on stderr without a traceback.
 
     Mappings cover startup, argument binding, extraction, and output finalization. They
     configure runtime reporting. ``message`` supplies static fallback text required by both

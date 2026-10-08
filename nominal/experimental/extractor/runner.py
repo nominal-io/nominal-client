@@ -158,10 +158,10 @@ class Extractor(Generic[_CtxT]):
         the same error handling as startup, extraction, and finalization failures.
 
         On success returns the context. With ``exit=True`` (the default), mapped exceptions
-        write bounded structured JSON to the termination log and stderr, then print the full
-        traceback to stderr before exiting with their mapped status. The closest mapped class in the
-        exception's MRO wins. Other failures
-        print a traceback and exit 1. Pass ``exit=False`` to re-raise the original exception
+        write bounded structured JSON to the termination log and stderr, then exit with their
+        mapped status without a traceback. The closest mapped class in the exception's MRO
+        wins. Unmapped failures and process-control exceptions print a traceback and exit 1.
+        Pass ``exit=False`` to re-raise the original exception
         without reporting -- useful in tests. ``termination_log_path`` is a trusted explicit
         output path (default ``/dev/termination-log``), never read from the environment. Use a
         temporary path when testing mapped exits locally.
@@ -193,7 +193,6 @@ class Extractor(Generic[_CtxT]):
                 if (mapping := _resolve_error(self._definition.errors, error)) is not None:
                     logger.debug("mapped %s to code %s, exit %d", type(error).__name__, mapping.code, mapping.exit_code)
                     mapping.report(error, termination_log_path)
-                    traceback.print_exc()
                     sys.exit(mapping.exit_code)
                 logger.debug("unmapped %s; exiting with status 1", type(error).__name__)
                 traceback.print_exc()

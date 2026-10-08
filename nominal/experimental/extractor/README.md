@@ -636,11 +636,12 @@ fails, the framework still emits JSON to stderr and exits with the mapped code.
 The JSON payload is limited to 4,096 UTF-8 bytes to fit Kubernetes'
 [per-container termination message limit](https://kubernetes.io/docs/tasks/debug/debug-application/determine-reason-pod-failure/). Long messages are shortened on a Unicode boundary; the code and retryable flag
 are preserved. An error code that cannot fit even with an empty message is rejected when declaring
-`@error`. Stderr contains the structured JSON followed by the full traceback, retaining the
-original exception message for debugging. Exit codes
-must be integers from 1 through 255. Unmapped failures keep the traceback and exit status 1;
-`exit=False` re-raises without writing a termination message. Direct calls to the decorated
-function likewise propagate exceptions; reporting belongs to `run()`.
+`@error`. Mapped failures emit only the bounded JSON on stderr, without a traceback. Exit codes
+must be integers from 1 through 255. Unmapped failures and process-control exceptions such as
+`SystemExit` and `KeyboardInterrupt` retain their traceback and exit status 1, even with an
+`Exception` mapping. To debug a mapped failure locally, `exit=False` re-raises the original
+exception with its cause and traceback, without writing a termination message. Direct calls to
+the decorated function likewise propagate exceptions; reporting belongs to `run()`.
 
 `message=` on `@error` supplies static fallback text. It is optional for runtime-only use,
 and does **not** replace `str(exception)` in runtime reports. Both `registration_kwargs()` and
@@ -915,8 +916,9 @@ DEBUG events describe context lookup sources, argument binding, supplied-versus-
 parameter selection, callback invocation, output finalization, registration/catalog export,
 and error mapping and termination-log writes. Binding logs include argument and environment
 variable names, but never parameter values or defaults. Existing output logs include file names;
-exception reporting still includes the exception message and traceback. Your logging handlers
-must also allow DEBUG records if you configure handler-level filters.
+mapped failure reports contain the bounded exception message, while unmapped failures retain
+their traceback. Your logging handlers must also allow DEBUG records if you configure
+handler-level filters.
 
 ## Migrating context-based extractors
 

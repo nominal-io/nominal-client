@@ -29,11 +29,11 @@ def test_mapped_error(decorator, tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert exc.value.code == 65
     payload = {"code": "BAD_INPUT", "message": 'bad "input"\nwith unicode: λ', "retryable": True}
     assert json.loads(log.read_text()) == payload
-    assert json.loads(capsys.readouterr().err.splitlines()[0]) == payload
+    assert json.loads(capsys.readouterr().err) == payload
 
 
 @pytest.mark.parametrize("stage", ["startup", "finalization"])
-def test_framework_errors_are_mapped(stage: str, tmp_path: Path) -> None:
+def test_framework_errors_are_mapped(stage: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Startup and output-finalization contract failures use the configured mappings."""
 
     @manifest_extractor
@@ -47,21 +47,24 @@ def test_framework_errors_are_mapped(stage: str, tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exc:
         extract.run(env=env, termination_log_path=tmp_path / "termination")
     assert exc.value.code == 64
+    assert json.loads(capsys.readouterr().err) == json.loads((tmp_path / "termination").read_text())
 
 
 def test_exit_false_reraises_without_reporting(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Tests receive the original exception without termination output when exit is False."""
     error = ValueError("original")
+    cause = OSError("underlying failure")
 
     @manifest_extractor
     @ex.error(ValueError, code="INPUT", exit_code=64)
     def extract(ctx: ExtractorContext) -> None:
-        raise error
+        raise error from cause
 
     log = tmp_path / "termination"
     with pytest.raises(ValueError) as exc:
         extract.run(env={"OUTPUT_DIR": str(tmp_path)}, termination_log_path=log, exit=False)
     assert exc.value is error
+    assert exc.value.__cause__ is cause
     assert not log.exists()
     assert capsys.readouterr().err == ""
 
@@ -79,15 +82,18 @@ def test_unwritable_log_preserves_exit_and_stderr(tmp_path: Path, capsys: pytest
     assert "mapped ValueError to code INPUT, exit 64" in caplog.text
     assert "termination log write failed" in caplog.text
     assert exc.value.code == 64
-    assert json.loads(capsys.readouterr().err.splitlines()[0])["code"] == "INPUT"
+    assert json.loads(capsys.readouterr().err)["code"] == "INPUT"
 
 
-@pytest.mark.parametrize("error", [RuntimeError("bug"), SystemExit(0), KeyboardInterrupt()])
-def test_unmapped_errors_keep_existing_behavior(error: BaseException, tmp_path: Path, capsys) -> None:
+@pytest.mark.parametrize(
+    "error,mapped_class",
+    [(RuntimeError("bug"), ValueError), (SystemExit(0), Exception), (KeyboardInterrupt(), Exception)],
+)
+def test_unmapped_errors_keep_existing_behavior(error: BaseException, mapped_class, tmp_path: Path, capsys) -> None:
     """Unmapped errors and process-control exceptions keep traceback reporting and exit status 1."""
 
     @manifest_extractor
-    @ex.error(ValueError, code="INPUT", exit_code=64)
+    @ex.error(mapped_class, code="INPUT", exit_code=64)
     def extract(ctx: ExtractorContext) -> None:
         raise error
 
@@ -146,9 +152,8 @@ def test_long_error_keeps_valid_bounded_json(message, tmp_path, capsys):
     assert payload["message"] and message.startswith(payload["message"])
     assert len(payload["message"]) < len(message)
     stderr = capsys.readouterr().err
-    assert json.loads(stderr.splitlines()[0]) == payload
-    assert "Traceback" in stderr
-    assert "test_extractor_errors.py" in stderr
+    assert json.loads(stderr) == payload
+    assert len(stderr.encode("utf-8")) <= 4097
 
 
 @pytest.mark.parametrize("code", ["x" * 4096, "λ" * 1000], ids=["ascii", "unicode"])
