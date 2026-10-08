@@ -123,7 +123,8 @@ class MultipartFileDownloader:
 
         Args:
             max_workers: Maxmimum number of parallel threads to use.
-                Defaults to the number of CPU cores.
+
+                **Note:** Defaults to the number of CPU cores.
             timeout: Maximum amount of time before considering a connection dead
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)

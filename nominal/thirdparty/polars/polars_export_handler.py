@@ -175,7 +175,8 @@ def _batch_channel_points_per_second(
         end_ns: End of the time range to query over
         tags: Key-value pairs of tags to filter data with
         num_buckets: Number of buckets to use — more typically leads to better results.
-            Max number of buckets allowed is 1000.
+
+            **Note:** Max number of buckets allowed is 1000.
 
     Returns:
         Mapping of (data_source, channel_name) to peak points/second. A value of `None`

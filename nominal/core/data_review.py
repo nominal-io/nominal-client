@@ -177,7 +177,8 @@ class DataReviewBuilder:
             checklist: Instance or rid of the checklist to execute on the Run
             commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
             asset: Instance or rid of the asset to run the checklist on within the Run.
-                Only required for multi-asset runs.
+
+                **Note:** Only required for multi-asset runs.
 
         Returns:
             DataReviewBuilder instance to continue building a data review with

@@ -137,7 +137,8 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
             unit: Unit symbol to apply to the channel. If unit is a string or a `Unit`, this will update the unit symbol
                 for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
                 `_NotProvided`), this will leave the unit unaffected.
-                This is in contrast to other fields in other `update()` calls where `None` is treated as a
+
+                **Note:** This is in contrast to other fields in other `update()` calls where `None` is treated as a
                 "no-op".
         """
         request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
@@ -190,9 +191,11 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
 
         Args:
             regex_match: If provided, a regex match to filter potential log messages by.
-                Must not be present with `insensitive_match`.
+
+                **Note:** Must not be present with `insensitive_match`.
             insensitive_match: If provided, a case insensitive string that yielded logs match exactly.
-                Must not be present with `regex_match`.
+
+                **Note:** Must not be present with `regex_match`.
             tags: Tags to filter logs from the channel with
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.

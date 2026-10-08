@@ -457,11 +457,13 @@ class NominalClient:
             start: Inclusive lower bound of the search window. Files whose time range ends at or
                 after this timestamp are returned — including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
-                Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
                 before this timestamp are returned — including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
-                Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:
@@ -1133,7 +1135,8 @@ class NominalClient:
 
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
-                This currently requires that units are formatted as laid out in
+
+                **Note:** This currently requires that units are formatted as laid out in
                 the latest UCUM standards (see https://ucum.org/ucum).
 
         Returns:

@@ -217,19 +217,27 @@ class DataSource(HasRid, MarkableMixin):
             max_wait: How long a batch can exist before being flushed to Nominal.
             implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
                 falling back to 'python' when `nominal-streaming` is not installed.
-                'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+
+                **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
                 'python', 'python', and 'rust' respectively.
-                'experimental' is deprecated too. It is not an alias while it remains the
+
+                **Note:** 'experimental' is deprecated too. It is not an alias while it remains the
                 only implementation that streams runtime metrics.
             file_fallback: Filepath to write failed batches to during streaming.
-                Expects a .avro filename.
-                Only works with `implementation='rust'`.
+
+                **Note:** Expects a .avro filename.
+
+                **Note:** Only works with `implementation='rust'`.
             log_level: Log level to use in underlying rust streaming code.
-                Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                Only works with `implementation='rust'`.
+
+                **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+
+                **Note:** Only works with `implementation='rust'`.
             num_workers: Number of worker threads to use in underlying rust streaming code.
-                Use with care-- this may have large impacts on streaming performance.
-                Only works with `implementation='rust'`.
+
+                **Note:** Use with care-- this may have large impacts on streaming performance.
+
+                **Note:** Only works with `implementation='rust'`.
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
@@ -313,7 +321,8 @@ class DataSource(HasRid, MarkableMixin):
 
         Args:
             channels_to_units: A mapping of channel names to unit symbols.
-                Any existing units may be cleared from a channel by providing None as a symbol.
+
+                **Note:** Any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
             allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.

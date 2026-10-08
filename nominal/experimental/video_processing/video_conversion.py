@@ -46,9 +46,11 @@ def normalize_video(
     Args:
         input_path: Path to video file on local filesystem.
         output_path: Path to write converted video file to.
-            It is expected that the output file is either an mkv or a mp4 file.
+
+            **Note:** It is expected that the output file is either an mkv or a mp4 file.
         key_frame_interval: Number of seconds between keyframes allowed in the output video.
-            While this field is technically optional, setting the right value here
+
+            **Note:** While this field is technically optional, setting the right value here
             can be essential to allowing fluid playback on the frontend, in particular,
             in network constrained environments. Setting this value too low or too high
             can impact performance negatively-- typically, a value at or around 2s is considered
@@ -56,7 +58,8 @@ def normalize_video(
         force: If true, forcibly delete existing output path if already exists.
         resolution: If provided, re-scale the video to fit within the provided resolution, preserving aspect ratio
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
-            If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
+
+            **Note:** If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
             on the machine.
 
     Note:
