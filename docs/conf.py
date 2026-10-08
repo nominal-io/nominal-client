@@ -20,10 +20,14 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     "examples",
+    "video",
     "docstring_fences",
     "reference_presentation",
     "nominal_sphinx_theme",
 ]
+
+# Partials are included by guide pages rather than built as standalone pages.
+exclude_patterns = ["guides/_snippets"]
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
 # resolves and render as code otherwise.
@@ -60,7 +64,8 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
 html_title = "Nominal Python SDK"
-html_static_path = []
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_copy_source = False
 
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID

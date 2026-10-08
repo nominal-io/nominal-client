@@ -51,3 +51,8 @@ Scripts under the repository's `examples/` get pages automatically from
 `_ext/examples.py`. The first line of the module docstring supplies the title;
 the remainder supplies the introduction. Generated `src/examples/` pages are
 ignored by Git and the preview watcher. Edit the script rather than its page.
+
+Use `{video}` to embed local recordings or remote URLs. Local recordings use
+Sphinx's download collector for copying and missing-file warnings; `:loop:`
+plays muted like a GIF, otherwise the player shows controls. `_static/custom.css`
+keeps recordings within the content column; the shared theme owns site styling.
