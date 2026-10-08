@@ -655,7 +655,7 @@ def _get_write_stream(
     # apart from constructing the stream: a failed import means rust is unavailable on this machine,
     # while a failure building the stream is a real error that should surface.
     try:
-        from nominal.experimental.rust_streaming import RustWriteStream
+        from nominal.core._stream.rust_write_stream import RustWriteStream
     except ImportError as ex:
         if requested == "rust":
             raise

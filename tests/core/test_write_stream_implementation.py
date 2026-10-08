@@ -55,9 +55,7 @@ def without_nominal_streaming():
     import runs again and fails the way it would on such a machine.
     """
     with patch.dict(sys.modules):
-        for name in list(sys.modules):
-            if name.startswith("nominal.experimental.rust_streaming"):
-                del sys.modules[name]
+        sys.modules.pop("nominal.core._stream.rust_write_stream", None)
         sys.modules["nominal_streaming"] = None  # type: ignore[assignment]
         yield
 
@@ -69,7 +67,7 @@ def rust_write_stream_type() -> type:
     this whole file on the platforms whose fallback behavior it exists to pin down.
     """
     pytest.importorskip("nominal_streaming")
-    from nominal.experimental.rust_streaming import RustWriteStream
+    from nominal.core._stream.rust_write_stream import RustWriteStream
 
     return RustWriteStream
 
@@ -131,6 +129,17 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         mock_dataset.get_write_stream(implementation="rust_experimental") as stream,
     ):
         assert isinstance(stream, rust_write_stream_type())
+
+
+def test_experimental_rust_streaming_import_is_a_deprecated_alias():
+    """The old experimental import still yields the core class, warning at the line that imports it."""
+    core_type = rust_write_stream_type()
+
+    with pytest.warns(UserWarning, match="nominal.experimental.rust_streaming is deprecated") as record:
+        from nominal.experimental.rust_streaming import RustWriteStream
+
+    assert RustWriteStream is core_type
+    assert record[0].filename == __file__
 
 
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
