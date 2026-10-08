@@ -138,15 +138,13 @@ class Workbook(
         labels: Sequence[str] | None = None,
         is_draft: bool | None = None,
         is_locked: bool | None = None,
-        is_published: bool | None = None,
     ) -> Self:
         """Replace workbook metadata.
         Updates the current instance, and returns it.
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
-        State flags preserve their current values when None. `is_published` is the inverse of `is_draft`;
-        provide only one of these two flags. `is_locked` controls whether the workbook can be edited.
-        For example, `workbook.update(is_published=True, is_locked=True)` publishes and locks it in one request.
+        State flags preserve their current values when None. `is_locked` controls whether the workbook can be edited.
+        For example, `workbook.update(is_draft=False, is_locked=True)` publishes and locks it in one request.
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -156,15 +154,7 @@ class Workbook(
                 for old_label in workbook.labels:
                     new_labels.append(old_label)
                 workbook = workbook.update(labels=new_labels)
-
-        Raises:
-            ValueError: If both `is_draft` and `is_published` are provided.
         """
-        if is_draft is not None and is_published is not None:
-            raise ValueError("Only one of `is_draft` and `is_published` may be used to update a workbook")
-        if is_published is not None:
-            is_draft = not is_published
-
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
         metadata = self._clients.notebook.update_metadata(
             self._clients.auth_header,
@@ -318,17 +308,13 @@ class Workbook(
         self._refresh_from_api(raw_workbook)
         return raw_workbook.metadata.is_draft
 
-    def is_published(self) -> bool:
-        """Return whether the workbook is published, refreshing its metadata."""
-        return not self.is_draft()
-
     def publish(self) -> None:
         """Publish this workbook, making it visible to other users."""
-        self.update(is_published=True)
+        self.update(is_draft=False)
 
     def unpublish(self) -> None:
         """Return this workbook to draft state."""
-        self.update(is_published=False)
+        self.update(is_draft=True)
 
     def lock(self) -> None:
         """Locks the workbook, preventing changes from being made to it.

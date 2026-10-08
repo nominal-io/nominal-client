@@ -308,10 +308,6 @@ class WorkbookTemplate(
         """Unpublish this template."""
         self.update(is_published=False)
 
-    def is_draft(self) -> bool:
-        """Return whether the template is unpublished, refreshing its metadata."""
-        return not self.is_published()
-
     def is_published(self) -> bool:
         """Return whether the template is published and refresh its metadata from the same response."""
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
