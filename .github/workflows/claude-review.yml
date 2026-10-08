@@ -72,8 +72,8 @@ jobs:
 
             Review this pull request by running /code-review --comment and invoking the
             thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
-            Read the root CLAUDE.md and applicable scoped CLAUDE.md / AGENTS.md files before
-            reviewing. Their concrete quality, testing, wrapper, and docstring requirements are
+            Read the root CLAUDE.md, its imported AGENTS.md, and applicable scoped instructions before
+            reviewing. Pass these files to plugin reviewers as well. Their concrete quality, testing, wrapper, and docstring requirements are
             part of correctness for this repository, including when the plugin would otherwise
             filter out general quality or coverage feedback. This is ONE review; the rules below
             override the skill's output format. Do not emit a separate structural report.
@@ -84,7 +84,7 @@ jobs:
               Compare wrappers with neighboring resource implementations, not just the diff.
             - Assess API compatibility, wrapper/conversion ownership, test value and missing
               regression coverage, docstring/rendering contracts, and structural simplification
-              using CLAUDE.md. Mark an axis inapplicable when the change does not touch it.
+              using AGENTS.md (imported by CLAUDE.md). Mark an axis inapplicable when the change does not touch it.
             - Each finding needs a changed location, a concrete consequence, and either a
               demonstrated defect or an applicable convention. Quote the relevant convention
               for convention findings. Explain a practical remedy; do not prescribe speculative

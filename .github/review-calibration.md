@@ -5,6 +5,11 @@ without posting comments. Include enough surrounding code to establish the contr
 Record the model, instructions revision, findings, and misses; do not treat a prose
 checklist or a valid workflow file as proof of model performance.
 
+The conventions live in `AGENTS.md`, imported by `CLAUDE.md`. Confirm both the local
+implementation session and review session can identify that source and summarize a test,
+wrapper, and docstring rule. Plugin reviewers must receive the imported file too. Check
+that local implementation can run validation while the CI reviewer remains static/read-only.
+
 | Case | Expected judgment |
 | --- | --- |
 | A resource update duplicates field copying even though its existing refresh mixin accepts the authoritative response. | Flag the competing refresh path; point to `_refresh_from_api` and any context/identity requirement. |
