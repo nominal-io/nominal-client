@@ -99,4 +99,4 @@ build-docs: _check-docs-python _clean-docs
 # live-preview the docs on http://127.0.0.1:8000, rebuilding on page, example, or docstring changes
 serve-docs: _check-docs-python
     mkdir -p examples
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --watch nominal --watch packages --watch examples --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch CHANGELOG.md --watch LICENSE --ignore docs/src/examples --re-ignore "/generated(/|$)"
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --watch nominal --watch packages --watch examples --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch LICENSE --ignore docs/src/examples --re-ignore "/generated(/|$)"

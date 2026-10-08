@@ -21,6 +21,7 @@ extensions = [
     "sphinx_design",
     "sphinx_copybutton",
     "examples",
+    "video",
     "api_reference",
     "nominal_sphinx_theme",
 ]
@@ -34,6 +35,8 @@ exclude_patterns = [
         for prefix in ("", "**/")
         for name in ("README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md")
     ],
+    # partials pulled into guide pages with {include}, not pages of their own
+    "guides/_snippets",
 ]
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
@@ -77,7 +80,8 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
 html_title = "Nominal Python SDK"
-html_static_path = []
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_copy_source = False
 
 # published on its own (GitHub Pages), not under the docs hub, so the Nominal logo leads to the hub

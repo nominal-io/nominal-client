@@ -14,7 +14,7 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 
 | Path | Contents |
 |---|---|
-| `conf.py`, `_ext/`, `_templates/` | Config, extensions, autosummary templates. The header, logos, fonts, analytics and the rest of the styling come from nominal-sphinx-theme. |
+| `conf.py`, `_ext/`, `_templates/`, `_static/` | Config, extensions, autosummary templates, project-specific CSS. The header, logos, fonts, analytics and the rest of the styling come from nominal-sphinx-theme. |
 | `src/index.md` | Home page, and every sidebar group: one hidden `toctree` per caption, for all three sections. |
 | `src/networking-tls.md` | The existing Networking & TLS guide. |
 | `src/guides/` | How-to guides, migrated from the Fern docs. File paths mirror the old `docs.nominal.io/core/sdk/python-client/<path>` slugs. |
@@ -31,6 +31,7 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 
 - Link pages as `/guides/path.md` or `/guides/path.md#anchor`; link API objects with `` {py:class}`~nominal.core.Dataset` `` or `` {py:meth}`~nominal.core.Dataset.add_tabular_data` ``, never by URL.
 - Components: `:::{note}` / `tip` / `warning` admonitions; `::::{tab-set}` + `:::{tab-item}`; `:::{dropdown}`; `::::{grid}` + `:::{grid-item-card}`; `::::{container} steps` with `:::{container} step`; `` {abbr}`term (definition)` `` tooltips; `{button-link}`; `` {download}`text <path>` ``. An outer directive needs more colons than the ones it contains.
+- Videos: `` ```{video} /guides/images/x.mp4 `` (`:loop:` for GIF-like recordings, `:alt:`), or a URL. Don't commit GIFs; convert them to MP4.
 
 ## Examples
 
