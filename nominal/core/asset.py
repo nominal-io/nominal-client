@@ -194,7 +194,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Args:
             names: Names of datascopes to remove
             scopes: Rids or instances of scope types (dataset, video, connection) to remove.
-                A spatial or log set can be removed by passing its rid.
+                A spatial can be removed by passing its rid.
 
         Raises:
             NominalError: If retrieving or updating the asset's data scopes fails.
@@ -202,16 +202,22 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         scope_names_to_remove = names or []
         data_scopes_to_remove = scopes or []
 
-        scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove}
+        scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove if ds}
         latest_asset = self._get_latest_api()
 
         data_scopes_to_keep = []
         for ds in latest_asset.data_scopes:
             if ds.data_scope_name in scope_names_to_remove:
                 continue
-            # Unset oneof arms read as "", so only the active arm may be compared.
-            source_type = ds.data_source.WhichOneof("data_source")
-            if source_type is not None and getattr(ds.data_source, source_type) in scope_rids_to_remove:
+            if any(
+                rid in scope_rids_to_remove
+                for rid in (
+                    ds.data_source.dataset,
+                    ds.data_source.connection,
+                    ds.data_source.video,
+                    ds.data_source.spatial,
+                )
+            ):
                 continue
             data_scopes_to_keep.append(
                 asset_pb2.CreateAssetDataScope(
