@@ -106,6 +106,20 @@ def test_metadata_mutations_apply_server_state_in_place(
     assert template.created_by_rid == "creator-rid"
 
 
+def test_unarchive_applies_returned_metadata_in_place(template: WorkbookTemplate, mock_clients: MagicMock) -> None:
+    """Unarchiving restores the template and replaces stale metadata without another content fetch."""
+    template.unarchive()
+
+    request = mock_clients.template.update_metadata.call_args.args[1]
+    assert request.is_archived is False
+    assert template.rid == "source-template-rid"
+    assert template.title == "Latest template"
+    assert template.description == "Latest description"
+    assert template.labels == ["latest-label"]
+    assert template.properties == {"campaign": "latest"}
+    assert template.created_by_rid == "creator-rid"
+
+
 def test_refname_updates_refresh_returned_metadata(template: WorkbookTemplate) -> None:
     """Renaming refnames also catches the instance up to the metadata returned by the server."""
     template.update_refnames({"source": "replacement"})
@@ -127,6 +141,23 @@ def test_publication_query_refreshes_metadata(template: WorkbookTemplate, mock_c
     assert template.description == "Latest description"
     assert template.labels == ["latest-label"]
     assert template.properties == {"campaign": "latest"}
+
+
+@pytest.mark.parametrize("is_archived", [True, False])
+def test_archival_query_refreshes_metadata(
+    template: WorkbookTemplate, mock_clients: MagicMock, is_archived: bool
+) -> None:
+    """An archival query returns the current flag and refreshes metadata from that same response."""
+    mock_clients.template.get.side_effect = [_api_template(is_archived=is_archived)]
+
+    assert template.is_archived() is is_archived
+
+    assert template.rid == "source-template-rid"
+    assert template.title == "Latest template"
+    assert template.description == "Latest description"
+    assert template.labels == ["latest-label"]
+    assert template.properties == {"campaign": "latest"}
+    assert template.created_by_rid == "creator-rid"
 
 
 def test_create_workbook_uses_fresh_template_metadata(template: WorkbookTemplate, mock_clients: MagicMock) -> None:
