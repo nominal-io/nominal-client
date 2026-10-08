@@ -24,7 +24,7 @@ from rich.table import Column, Table
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
-from nominal.core.properties import NominalProperties
+from nominal.core._utils.api_types import NominalProperties
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 

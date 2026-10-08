@@ -23,6 +23,7 @@ from nominal.core._utils.api_tools import (
     property_update,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
@@ -38,7 +39,6 @@ from nominal.core.container_image import (
     TimestampMetadata,
     _search_container_images,
 )
-from nominal.core.properties import NominalProperties
 from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2

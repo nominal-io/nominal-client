@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from nominal.core import NominalClient
-from nominal.core.properties import NominalProperties
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.video import Video
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions

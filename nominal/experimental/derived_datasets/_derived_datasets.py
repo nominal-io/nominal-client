@@ -10,11 +10,11 @@ from nominal_api import scout_catalog, scout_compute_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.marking import Marking, _marking_rids
-from nominal.core.properties import NominalProperties
 from nominal.ts import IntegralNanosecondsDuration, _to_seconds_nanos_duration
 
 

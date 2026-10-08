@@ -10,10 +10,10 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
-from nominal.core.properties import NominalProperties
 
 logger = logging.getLogger(__name__)
 

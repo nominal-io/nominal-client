@@ -20,7 +20,7 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core.properties import NominalProperties
+from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2

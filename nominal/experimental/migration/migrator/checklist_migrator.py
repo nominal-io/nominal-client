@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from nominal_api import scout_checks_api
 
 from nominal.core import NominalClient
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.checklist import Checklist
-from nominal.core.properties import NominalProperties
 from nominal.experimental.checklist_utils.checklist_utils import (
     _create_checklist_with_content,
     _to_create_checklist_entries,

@@ -8,8 +8,8 @@ from nominal_api import scout_asset_api
 
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import Asset
-from nominal.core.properties import NominalProperties
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalChecklistNotPublishedError

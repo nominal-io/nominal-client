@@ -24,6 +24,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
@@ -33,7 +34,6 @@ from nominal.core.connection import Connection, _get_connection, _get_connection
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.properties import NominalProperties
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning

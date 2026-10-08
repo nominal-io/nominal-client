@@ -18,10 +18,10 @@ from nominal.core._utils.api_tools import (
     property_update,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
-from nominal.core.properties import NominalProperties
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.ts import (

@@ -16,11 +16,11 @@ from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.marking import _marking_rids
-from nominal.core.properties import NominalProperties
 from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
 

@@ -7,9 +7,9 @@ from typing import Iterable
 
 from nominal.core import NominalClient
 from nominal.core._event_types import EventType
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import Asset
 from nominal.core.event import Event
-from nominal.core.properties import NominalProperties
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType

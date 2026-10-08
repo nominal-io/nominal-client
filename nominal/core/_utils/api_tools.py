@@ -23,7 +23,7 @@ from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal.core.properties import NominalProperties
+from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.types import types_pb2
 
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]

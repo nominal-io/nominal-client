@@ -3,10 +3,10 @@ from collections.abc import Sequence
 from nominal_api import scout_catalog
 
 from nominal.core import Dataset, Marking, NominalClient, User
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.dataset import _create_dataset_request
 from nominal.core.marking import _marking_rids
-from nominal.core.properties import NominalProperties
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 

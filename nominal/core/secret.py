@@ -7,8 +7,8 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update, property_update
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.properties import NominalProperties
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 

@@ -13,7 +13,7 @@ from nominal_api import scout_notebook_api, scout_workbookcommon_api
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core.properties import NominalProperties
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.workbook import Workbook
 from nominal.experimental.id_utils.id_utils import UUID_RE
 from nominal.experimental.migration.dry_run import would_create_message

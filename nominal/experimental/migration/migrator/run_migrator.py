@@ -7,9 +7,9 @@ from typing import Iterable, Sequence
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import Link, LinkDict, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
-from nominal.core.properties import NominalProperties
 from nominal.core.run import Run
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator

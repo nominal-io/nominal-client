@@ -39,6 +39,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
@@ -105,7 +106,6 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.properties import NominalProperties
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists

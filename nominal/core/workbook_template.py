@@ -15,9 +15,9 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
-from nominal.core.properties import NominalProperties
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
 

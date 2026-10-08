@@ -9,8 +9,8 @@ from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.dataset import Dataset
-from nominal.core.properties import NominalProperties
 from nominal.experimental.derived_datasets._derived_datasets import (
     DerivedDataset,
     _commit_definition,

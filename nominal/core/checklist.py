@@ -14,10 +14,10 @@ from typing_extensions import Self
 
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
-from nominal.core.properties import NominalProperties
 from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.ts import _to_api_duration
 

@@ -19,9 +19,9 @@ from nominal_api import (
     scout_video_api,
 )
 
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.properties import NominalProperties
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc

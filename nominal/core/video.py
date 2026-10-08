@@ -16,11 +16,11 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.marking import MarkableMixin
-from nominal.core.properties import NominalProperties
 from nominal.core.video_file import VideoFile
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
