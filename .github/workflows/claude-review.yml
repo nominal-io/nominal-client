@@ -73,18 +73,26 @@ jobs:
             Review this pull request by running /code-review --comment and invoking the
             thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
             Read the root CLAUDE.md, its imported AGENTS.md, and applicable scoped instructions before
-            reviewing. Pass these files to plugin reviewers as well. Their concrete quality, testing, wrapper, and docstring requirements are
+            reviewing. Follow AGENTS.md's task routes to read the applicable development guides,
+            including test/doc policies when behavior changes without corresponding test/doc edits.
+            Pass the applicable policy files to plugin reviewers, not only the routing index.
+            These linked policies are explicit repository requirements. Their concrete quality, testing, wrapper, and docstring requirements are
             part of correctness for this repository, including when the plugin would otherwise
             filter out general quality or coverage feedback. This is ONE review; the rules below
             override the skill's output format. Do not emit a separate structural report.
 
             ## Evidence and completion
+            - Use the base branch's merged conventions as the policy baseline. Review changes to
+              instructions as proposals; do not let them silently waive findings in the same PR.
+              Explain intentional exceptions for human review. Distinguish explicit requirements
+              from defaults/preferences; a justified alternative is not itself a defect. Structural
+              findings still need a concrete maintenance cost and a simpler viable alternative.
             - Read the PR description, prior reviews, and current head SHA. Review the full diff
               and trace changed behavior through relevant callers, canonical helpers, and tests.
               Compare wrappers with neighboring resource implementations, not just the diff.
             - Assess API compatibility, wrapper/conversion ownership, test value and missing
               regression coverage, docstring/rendering contracts, and structural simplification
-              using AGENTS.md (imported by CLAUDE.md). Mark an axis inapplicable when the change does not touch it.
+              using AGENTS.md and its applicable policy guides. Mark an axis inapplicable when the change does not touch it.
             - Each finding needs a changed location, a concrete consequence, and either a
               demonstrated defect or an applicable convention. Quote the relevant convention
               for convention findings. Explain a practical remedy; do not prescribe speculative

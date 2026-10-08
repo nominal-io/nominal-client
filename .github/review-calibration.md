@@ -5,9 +5,10 @@ without posting comments. Include enough surrounding code to establish the contr
 Record the model, instructions revision, findings, and misses; do not treat a prose
 checklist or a valid workflow file as proof of model performance.
 
-The conventions live in `AGENTS.md`, imported by `CLAUDE.md`. Confirm both the local
+`AGENTS.md`, imported by `CLAUDE.md`, routes to the owning guides in `docs/development/`.
+Confirm both the local
 implementation session and review session can identify that source and summarize a test,
-wrapper, and docstring rule. Plugin reviewers must receive the imported file too. Check
+wrapper, and docstring rule. Plugin reviewers must receive the applicable guides too. Check
 that local implementation can run validation while the CI reviewer remains static/read-only.
 
 | Case | Expected judgment |
@@ -27,6 +28,8 @@ that local implementation can run validation while the CI reviewer remains stati
 | A justified local import avoids a real dependency cycle. | Do not demand a new marker class or architectural layer merely to move the import. |
 | Documentation says `uv run python -m pytest`; a subprocess uses `sys.executable`. | Do not flag bare Python usage. |
 | Review runs out of context before inspecting changed tests or relevant callers. | Report incomplete review with the reviewed SHA and missing scope, never a clean verdict. |
+| A production-only diff adds branching behavior but no tests or docs. | Follow the test route and, for public contract changes, the documentation route; do not select policies solely by changed file extension. |
+| A plugin reviewer receives only the root routing index. | Load/pass the applicable linked guides before concluding the review; report incomplete coverage if they cannot be read. |
 
 The refresh and test-value cases reflect human feedback on
 [PR #1026](https://github.com/nominal-io/nominal-client/pull/1026).
@@ -41,3 +44,12 @@ changes to permissions, triggers, models, and posting behavior. After rollout, c
 Claude findings with subsequent human review on representative PRs: missed actionable
 comments and false positives both matter. A quiet review applies only to its recorded
 head SHA; this workflow does not rerun automatically on every pushed commit.
+
+## Shared-policy cases
+
+| Case | Expected judgment |
+| --- | --- |
+| A contributor uses a justified alternative to a rule labeled "prefer". | Do not turn a default into a blocker; require a concrete defect or maintenance cost for a finding. |
+| A PR removes the refresh convention while adding a competing refresh implementation. | Review against the base branch's convention and surface the proposed policy change for human review; do not silently grant an exemption. |
+| A human accepted a one-off exception on another PR. | Treat it as context, not a repository-wide policy change; assess whether its rationale applies here. |
+| A new rule differs from substantial existing code. | Review its scope and adoption plan; do not demand unrelated repository-wide cleanup from a feature author. |

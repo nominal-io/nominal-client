@@ -28,10 +28,17 @@ uv run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 
 or with `just test-e2e-token <token>`.
 
+## Shared conventions
+
+All contributors use the same [SDK, test, and documentation conventions](https://github.com/nominal-io/nominal-client/blob/main/docs/development/README.md).
+Read the guide relevant to your change. These distinguish requirements from preferred
+defaults; explain a justified exception in the PR. Changes to shared standards follow the
+normal review process, including their rationale and adoption cost. AI use is optional.
+
 ## Working with AI
 
-[AGENTS.md](AGENTS.md) is the shared implementation and review guide. Codex loads it
-as repository instructions; [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
+[AGENTS.md](https://github.com/nominal-io/nominal-client/blob/main/AGENTS.md) is the shared implementation and review guide. Codex loads it
+as repository instructions; [CLAUDE.md](https://github.com/nominal-io/nominal-client/blob/main/CLAUDE.md) imports the same file for Claude Code.
 The CI reviewer uses these conventions too. Start a fresh session after instruction changes;
 ask the assistant which repository instructions it loaded if behavior seems inconsistent.
 For another editor, explicitly include `AGENTS.md` if it does not load that file itself.
@@ -50,17 +57,15 @@ Before opening a PR, use a fresh review context when practical:
 > callers and tests. Keep this review read-only and local; report actionable findings
 > with file locations, the reviewed commit and dirty-file scope, and validation gaps.
 
-The shared skills are [structural review](.agents/skills/thermo-nuclear-code-quality-review/SKILL.md)
-and [API dependency upgrades](.agents/skills/reviewing-nominal-api-bumps/SKILL.md).
+The shared skills are [structural review](https://github.com/nominal-io/nominal-client/blob/main/.agents/skills/thermo-nuclear-code-quality-review/SKILL.md)
+and [API dependency upgrades](https://github.com/nominal-io/nominal-client/blob/main/.agents/skills/reviewing-nominal-api-bumps/SKILL.md).
 They live in `.agents/skills/` with discovery links under `.claude/skills/`; edit the source
 files rather than making tool-specific copies. Local implementation should run the relevant
 checks above; CI's static-review restriction is specific to that job.
 
-When human review uncovers a recurring expectation, propose a concise rule or example in
-`AGENTS.md` (or a scoped instruction file for a local concern). Include its rationale and
-exceptions; do not turn every one-off preference into a repository-wide rule. Update the
-[review calibration cases](.github/review-calibration.md) when it changes what should be
-flagged. Keep credentials, private context, and personal preferences out of shared files.
+When review exposes a recurring gap, follow
+[changing a shared convention](https://github.com/nominal-io/nominal-client/blob/main/docs/development/README.md#changing-a-shared-convention).
+Keep the rule in its owning guide so local tools, human reviewers, and CI use the same standard.
 
 Instruction-loading references: [Codex](https://developers.openai.com/codex/guides/agents-md/)
 and [Claude Code](https://code.claude.com/docs/en/memory#share-one-file-with-other-coding-tools).
