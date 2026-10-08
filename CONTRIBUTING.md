@@ -77,3 +77,5 @@ Keep the rule in its owning guide so local tools, human reviewers, and CI use th
 
 Instruction-loading references: [Codex](https://developers.openai.com/codex/guides/agents-md/)
 and [Claude Code](https://code.claude.com/docs/en/memory#share-one-file-with-other-coding-tools).
+
+Docs live in `docs/`: one Sphinx site with the guides, examples (generated from the scripts in `examples/`), and the API reference. `just build-docs` builds it strictly (warnings fail, as in CI) and `just serve-docs` live-previews it; both need Python >=3.12. Since the API reference is built from docstrings, a docstring that isn't valid Google style fails the docs build. See [`docs/AGENTS.md`](docs/AGENTS.md) for the layout and conventions.

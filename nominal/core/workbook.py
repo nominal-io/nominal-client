@@ -145,7 +145,7 @@ class Workbook(
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+            calling this method. E.g.::
 
                 new_labels = ["new-label-a", "new-label-b"]
                 for old_label in workbook.labels:

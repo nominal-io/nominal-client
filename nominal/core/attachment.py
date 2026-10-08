@@ -50,7 +50,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+            calling this method. E.g.::
 
                 new_labels = ["new-label-a", "new-label-b", *attachment.labels]
                 attachment = attachment.update(labels=new_labels)

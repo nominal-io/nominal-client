@@ -131,8 +131,10 @@ def compute_buckets(
     Returns:
         Decimated data representing the provided numerical expression computed over the provided time range.
 
-            **Note:** It is not a safe guarantee that the number of buckets returned is the same as
-            the number requested.
+            .. note::
+
+                It is not a safe guarantee that the number of buckets returned is the same as
+                the number requested.
 
     """
     # TODO: expose context parameterization
@@ -170,8 +172,10 @@ def compute_enum_buckets(
     Returns:
         Decimated data representing the provided numerical expression computed over the provided time range.
 
-            **Note:** It is not a safe guarantee that the number of buckets returned is the same as
-            the number requested.
+            .. note::
+
+                It is not a safe guarantee that the number of buckets returned is the same as
+                the number requested.
     """
     request = _create_compute_request_buckets(
         expr._to_conjure(), {}, _timestamp_to_conjure(start), _timestamp_to_conjure(end), buckets
@@ -220,8 +224,10 @@ def batch_compute_enum_buckets(
             inner sequences correspond to the individual buckets for each input expression. The order of buckets
             returned matches the order of expressions provided.
 
-            **Note:** It is not a safe guarantee that the number of buckets returned is the same as
-            the number requested.
+            .. note::
+
+                It is not a safe guarantee that the number of buckets returned is the same as
+                the number requested.
     """
     # Create request
     api_start = _timestamp_to_conjure(start)
@@ -279,8 +285,10 @@ def batch_compute_buckets(
             inner sequences correspond to the individual buckets for each input expression. The order of buckets
             returned matches the order of expressions provided.
 
-            **Note:** It is not a safe guarantee that the number of buckets returned is the same as
-            the number requested.
+            .. note::
+
+                It is not a safe guarantee that the number of buckets returned is the same as
+                the number requested.
     """
     # Create request
     api_start = _timestamp_to_conjure(start)
