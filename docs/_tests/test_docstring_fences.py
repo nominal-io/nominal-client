@@ -1,0 +1,98 @@
+"""Fenced examples remain literal inside Google sections and native notes."""
+
+import pickle
+from pathlib import Path
+
+import pytest
+from docutils import nodes
+
+
+def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> None:
+    """Code stays literal and highlighted without flattening nested argument notes."""
+    source = tmp_path / "docs/src"
+    extensions = Path(__file__).resolve().parents[1] / "_ext"
+    (source.parent / "conf.py").write_text(
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'api_reference']\n",
+        encoding="utf-8",
+    )
+    (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")
+    (tmp_path / "fixture_api.py").write_text(
+        '''def example(value: str, other: int) -> str:
+    """Read ``value`` with :class:`str`.
+
+    Args:
+        value: Input value.
+
+            .. note::
+
+                Preserve the indentation and markup in code:
+
+                ```python
+                if value:
+                    print("[label](https://example.com) and ``literal``")
+                ```
+
+                This stays inside the note.
+        other: Other argument.
+
+    Returns:
+        Returned value.
+
+    Example:
+        ```matlab
+        >> result = load("example.mat");
+        ```
+        ```text
+        name,value
+        example,1
+        ```
+        ```
+        unhighlighted text
+        ```
+
+        After the examples.
+    """
+    return value
+''',
+        encoding="utf-8",
+    )
+    output = tmp_path / "docs/_build/dirhtml"
+    result = build_docs()
+    assert result.returncode == 0, result.stdout + result.stderr
+    doctree = pickle.loads((output / ".doctrees/index.doctree").read_bytes())
+    blocks = list(doctree.findall(nodes.literal_block))
+    assert [(block["language"], block.astext()) for block in blocks] == [
+        ("python", 'if value:\n    print("[label](https://example.com) and ``literal``")'),
+        ("matlab", '>> result = load("example.mat");'),
+        ("text", "name,value\nexample,1"),
+        ("text", "unhighlighted text"),
+    ]
+    note = next(doctree.findall(nodes.note))
+    assert blocks[0] in list(note.findall(nodes.literal_block))
+    assert "This stays inside the note." in note.astext()
+    html = (output / "index.html").read_text(encoding="utf-8")
+    assert "Other argument." in html
+    assert "Returned value." in html
+    assert "After the examples." in html
+    assert 'class="highlight-python' in html
+    assert 'class="highlight-matlab' in html
+
+
+@pytest.mark.parametrize("closing", ["", "    ```"])
+def test_invalid_fences_fail_the_strict_build(tmp_path: Path, build_docs, closing: str) -> None:
+    """Missing or misindented closing fences cannot silently publish as prose."""
+    source = tmp_path / "docs/src"
+    extensions = Path(__file__).resolve().parents[1] / "_ext"
+    (source.parent / "conf.py").write_text(
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'api_reference']\n",
+        encoding="utf-8",
+    )
+    (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")
+    (tmp_path / "fixture_api.py").write_text(
+        f'def example():\n    """Example.\n\n```python\nprint("hello")\n{closing}\n    """\n', encoding="utf-8"
+    )
+    result = build_docs()
+    assert result.returncode != 0
+    assert "Inline literal start-string without end-string" in result.stderr

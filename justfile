@@ -83,10 +83,20 @@ build:
 clean:
     uv cache clean
 
-# build docs
-build-docs:
-    uv run --all-extras mkdocs build --config-file docs/mkdocs.yml --strict
+# the docs group is empty below Python 3.12, so sphinx-build would fail with an opaque "not found"
+_check-docs-python:
+    uv run python -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else f'The docs toolchain needs Python >= 3.12 in the project environment (found {sys.version.split()[0]}). Recreate it with: uv sync --python 3.13 --all-packages --all-extras --group docs')"
 
-# serve docs locally
-serve-docs:
-    uv run --all-extras mkdocs serve --config-file docs/mkdocs.yml
+# Generated sources and HTML are disposable; always rebuild them from current Python exports and examples.
+_clean-docs:
+    find docs/src/reference -type d -name generated -prune -exec rm -rf {} +
+    rm -rf docs/src/examples docs/_build/dirhtml
+
+# build the docs site (guides, examples, API reference) into docs/_build/dirhtml; warnings fail the build
+build-docs: _check-docs-python _clean-docs
+    uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
+
+# live-preview the docs on http://127.0.0.1:8000, rebuilding on page, example, or docstring changes
+serve-docs: _check-docs-python
+    mkdir -p examples
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --watch nominal --watch packages --watch examples --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch CHANGELOG.md --watch LICENSE --ignore docs/src/examples --re-ignore "/generated(/|$)"

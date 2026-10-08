@@ -95,25 +95,37 @@ def export_channels_to_matlab(
         client: The Nominal client used to issue the data export request
         output_path: Location on disk to write the resulting `.mat` file.
 
-            **Note:** The parent directory will be created if it does not already exist.
+            .. note::
 
-            **Note:** Must have a `.mat` suffix.
+                The parent directory will be created if it does not already exist.
+
+                Must have a `.mat` suffix.
         channels: List of channels to export.
 
-            **Note:** Must be non-empty.
+            .. note::
+
+                Must be non-empty.
         tags: Optional dictionary of tags to apply when exporting each channel.
         start_time: The minimum timestamp to include in the export.
 
-            **Note:** If not provided, uses the earliest available timestamp.
+            .. note::
+
+                If not provided, uses the earliest available timestamp.
         end_time: The maximum timestamp to include in the export.
 
-            **Note:** If not provided, uses the latest available timestamp.
+            .. note::
+
+                If not provided, uses the latest available timestamp.
         resolution: Fixed resolution (in nanoseconds) to downsample the export data.
 
-            **Note:** Mutually exclusive with `num_buckets`.
+            .. note::
+
+                Mutually exclusive with `num_buckets`.
         num_buckets: Number of buckets to aggregate the selected time window into.
 
-            **Note:** Mutually exclusive with `resolution`.
+            .. note::
+
+                Mutually exclusive with `resolution`.
         export_timestamp_type: Format of exported timestamps. Defaults to string-based iso8601 timestamps.
         forward_fill_lookback: If provided, enables forward-filling of values at timestamps
             where data is missing, up to the given lookback duration. If not provided,
@@ -145,7 +157,9 @@ def export_channels_to_matlab(
             output_path=pathlib.Path("out/resampled.mat"),
             channels=[channel_a, channel_b],
             resolution=100_000_000,
-            export_timestamp_type=Relative("microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)),
+            export_timestamp_type=Relative(
+                "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+            ),
         )
 
         # Export with original resolution but timestamps as seconds since unix epoch
