@@ -106,11 +106,13 @@ class WorkbookTemplate(
         title: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        is_published: bool | None = None,
     ) -> Self:
         """Replace template metadata.
         Updates the current instance, and returns it.
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
+        Set `is_published` to publish or unpublish the template; None preserves its current state.
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -128,6 +130,7 @@ class WorkbookTemplate(
                 title=title,
                 labels=None if labels is None else [*labels],
                 properties=None if properties is None else {**properties},
+                is_published=is_published,
             ),
             self.rid,
         )
@@ -296,6 +299,18 @@ class WorkbookTemplate(
         )
         raw_notebook = self._clients.notebook.create(self._clients.auth_header, request)
         return Workbook._from_conjure(self._clients, raw_notebook)
+
+    def publish(self) -> None:
+        """Publish this template, making it visible to other users."""
+        self.update(is_published=True)
+
+    def unpublish(self) -> None:
+        """Unpublish this template."""
+        self.update(is_published=False)
+
+    def is_draft(self) -> bool:
+        """Return whether the template is unpublished, refreshing its metadata."""
+        return not self.is_published()
 
     def is_published(self) -> bool:
         """Return whether the template is published and refresh its metadata from the same response."""

@@ -1798,6 +1798,7 @@ class NominalClient:
         labels: list[str] | None = None,
         properties: dict[str, str] | None = None,
         commit_message: str | None = None,
+        is_published: bool = False,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
         """Create an empty workbook template.
@@ -1808,6 +1809,7 @@ class NominalClient:
             labels: Labels to attach to the workbook template
             properties: Properties to attach to the workbook template
             commit_message: An optional message to include with the creation of the template
+            is_published: Whether to publish the template so other users can view it. Defaults to False.
             workspace: Workspace to create the workbook template in. Pass `WorkspaceSearchType.DEFAULT` (or None)
                 to resolve a single workspace by preferring the client's configured `workspace_rid` and then falling
                 back to a client-side default-workspace lookup.
@@ -1826,7 +1828,7 @@ class NominalClient:
             description=description if description is not None else "",
             labels=labels if labels is not None else [],
             properties=properties if properties is not None else {},
-            is_published=False,
+            is_published=is_published,
             layout=scout_layout_api.WorkbookLayout(
                 v1=scout_layout_api.WorkbookLayoutV1(
                     root_panel=scout_layout_api.Panel(
