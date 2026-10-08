@@ -39,7 +39,7 @@ not optional background. Read only relevant routes; changes can need more than o
 | Task | Required guidance |
 | --- | --- |
 | Write or review Python, imports, dependencies, or performance-sensitive code | [Python quality](.agents/conventions/python.md), affected `pyproject.toml` and callers |
-| Change public behavior, resource wrappers, conversion, or failure semantics | [SDK contracts](.agents/conventions/sdk.md), relevant callers and neighboring wrappers |
+| Expose an API object, add a route, or change public behavior, conversion, or failure semantics | [SDK contracts](.agents/conventions/sdk.md), relevant callers and neighboring wrappers |
 | Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](.agents/conventions/testing.md), existing coverage for the affected contract |
 | Change public docstrings, examples, or documentation rendering | [Documentation policy](.agents/conventions/documentation.md), the branch's renderer configuration |
 | Upgrade `nominal-api` or `nominal-api-protos` | [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md), plus affected contracts above |
