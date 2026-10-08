@@ -15,6 +15,7 @@ guide and source rather than loading every guide for every task.
 | Information | One owning location |
 | --- | --- |
 | Setup and commands | `CONTRIBUTING.md`, backed by `justfile` and `pyproject.toml` |
+| PR descriptions and review evidence | `.github/pull_request_template.md`, linked from `CONTRIBUTING.md` for human and AI authors |
 | Shared defaults and task discovery | Root `AGENTS.md`; detailed SDK, test, and doc policy in the guides above |
 | Package-specific contracts | A `CONVENTIONS.md` beside the source, routed from `AGENTS.md` when needed |
 | Reusable multi-step procedures | `.agents/skills/<name>/SKILL.md`; tool discovery files only point to the source |

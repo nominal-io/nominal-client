@@ -34,6 +34,7 @@ not optional background. Read only relevant routes; changes can need more than o
 | Upgrade `nominal-api` or `nominal-api-protos` | [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md), plus affected contracts above |
 | Review or simplify structure | [Structural review skill](.agents/skills/thermo-nuclear-code-quality-review/SKILL.md), plus affected contracts above |
 | Change AI instructions, review automation, or shared skills | [Guidance ownership](docs/development/README.md), [review calibration](.github/review-calibration.md) |
+| Prepare or update a PR | [PR template](.github/pull_request_template.md), [contributor guidance](CONTRIBUTING.md#preparing-a-pull-request) |
 
 A production-code change needs the test route even if it changes no test files; a public
 contract change needs the documentation route even if it changes no documentation files.

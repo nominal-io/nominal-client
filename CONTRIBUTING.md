@@ -35,6 +35,14 @@ Read the guide relevant to your change. These distinguish requirements from pref
 defaults; explain a justified exception in the PR. Changes to shared standards follow the
 normal review process, including their rationale and adoption cost. AI use is optional.
 
+## Preparing a pull request
+
+Use the [PR template](https://github.com/nominal-io/nominal-client/blob/main/.github/pull_request_template.md)
+as a guide: explain the problem and resulting behavior, then give actual validation evidence
+and material gaps. Small changes need only a few sentences. Add compatibility or review notes
+when they matter; omit unused sections and boilerplate. CLI and AI-created PRs should follow
+the same guidance even when the template is not inserted automatically.
+
 ## Working with AI
 
 [AGENTS.md](https://github.com/nominal-io/nominal-client/blob/main/AGENTS.md) is the shared implementation and review guide. Codex loads it
