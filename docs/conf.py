@@ -19,6 +19,7 @@ extensions = [
     "sphinx_click",
     "sphinx_copybutton",
     "docstring_fences",
+    "reference_presentation",
     "nominal_sphinx_theme",
 ]
 
@@ -44,13 +45,13 @@ autodoc_default_options = {
 autoclass_content = "both"  # merge_init_into_class
 autodoc_typehints = "signature"
 autodoc_preserve_defaults = True
-python_maximum_signature_line_length = 72  # separate_signature + line_length
 python_use_unqualified_type_names = True  # show_root_full_path: false
 toc_object_entries_show_parents = "hide"
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_rtype = False
+napoleon_use_param = False  # keep the first paragraph inline when an argument contains a note
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 

@@ -55,6 +55,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
     is_archived: bool
 
     _clients: _Clients = field(repr=False)
+    #: :meta private:
     author_rid: str | None = field(default=None, repr=False)
 
     class _Clients(

@@ -31,6 +31,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     properties: NominalProperties
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
+    #: :meta private:
     author_rid: str | None = field(default=None, repr=False)
 
     class _Clients(DataReview._Clients, Protocol):

@@ -57,11 +57,9 @@ class ArchiveStatusFilter(Enum):
     ANY = "ANY"
 
     def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
-        """Convert to a list of conjure ArchivedStatus values for use in search requests.
-
-        TODO: delete once the remaining conjure search paths migrate to gRPC
-        (to_proto_archived_statuses is the successor).
-        """
+        """Convert to a list of conjure ArchivedStatus values for use in search requests."""
+        # TODO: delete once the remaining conjure search paths migrate to gRPC
+        # (to_proto_archived_statuses is the successor).
         if self == ArchiveStatusFilter.ARCHIVED:
             return [api.ArchivedStatus.ARCHIVED]
         elif self == ArchiveStatusFilter.NOT_ARCHIVED:

@@ -57,6 +57,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     is_archived: bool
 
     _clients: _Clients = field(repr=False)
+    #: :meta private:
     created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(

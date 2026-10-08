@@ -8,16 +8,18 @@ Development navigation declared in `src/index.md`. Sphinx reads configuration fr
 - `just serve-docs` previews at http://127.0.0.1:8000 and watches pages, docstrings and included files.
 - The `docs` dependency group requires Python >=3.12. For an older environment, run
   `uv sync --python 3.13 --all-packages --all-extras --group docs`.
-- Test fenced docstring rendering with
+- Test docstring and signature rendering with
   `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages. Core lists public exports in its local contents (`tocdepth: 2`),
-with methods and attributes rendered inline. Explicit `autodata` directives cover imported
-type aliases and constants that native `automodule` omits. Document constants at
-their declaration with `#:` comments so Sphinx discovers them automatically. Adding a new reference page also requires
-an entry in the `index.md` toctree.
+generated source pages. Core keeps class/function-level local contents (`tocdepth: 2`);
+methods and attributes render inline. The reference presentation extension uses native
+Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
+and link targets. Explicit `autodata` directives cover imported type aliases and constants
+that native `automodule` omits. Document constants at their declaration with `#:` comments
+so Sphinx discovers them automatically. Adding a reference page also requires an entry
+in the `index.md` toctree.
 
 Docstrings retain Google sections and reStructuredText markup. Single backticks link
 resolvable Python objects; double backticks render literal code. Triple-backtick code
@@ -26,3 +28,7 @@ blocks before Napoleon parses sections. Native `.. code-block::` also works.
 Standalone notes use Google `Note:` sections; notes within argument descriptions use
 native `.. note::` directives with an indented body. Preserve their position and
 formatting. See the [documentation policy](../.agents/conventions/documentation.md).
+
+`_ext/reference_presentation.py` displays unquoted dataclass annotations and omits
+`repr=False` constructor fields. Use native `#: :meta private:` comments to exclude
+those fields from the reference body too. Keep maintainer TODOs in code comments.

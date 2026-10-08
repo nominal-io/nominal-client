@@ -66,6 +66,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     _uuid: str = field(repr=False)
 
     # NOTE: may be missing for legacy events
+    #: :meta private:
     created_by_rid: str | None = field(repr=False)
 
     _clients: _Clients = field(repr=False)
