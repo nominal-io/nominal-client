@@ -106,6 +106,12 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
+from nominal.core.resource_metadata import (
+    MetadataResourceType,
+    _list_labels,
+    _list_property_keys,
+    _list_property_values,
+)
 from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
@@ -318,6 +324,63 @@ class NominalClient:
                     ) from exc
             case _:
                 raise ValueError(f"Unexpected workspace: {workspace}")
+
+    def list_labels(
+        self,
+        resource_type: MetadataResourceType,
+        *,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+    ) -> Sequence[str]:
+        """List distinct resource labels in alphabetical order, retrieving every page.
+
+        Metadata visibility follows the backend semantics described by `MetadataResourceType`.
+
+        Args:
+            resource_type: Resource family whose labels to discover.
+            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+                or ALL for every permitted workspace.
+        """
+        return _list_labels(self._clients, resource_type, self._workspace_rid_for_search(workspace))
+
+    def list_property_keys(
+        self,
+        resource_type: MetadataResourceType,
+        *,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+    ) -> Sequence[str]:
+        """List distinct resource property keys in alphabetical order, retrieving every page.
+
+        Keys may include numeric properties. Metadata visibility follows the backend semantics
+        described by `MetadataResourceType`.
+
+        Args:
+            resource_type: Resource family whose property keys to discover.
+            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+                or ALL for every permitted workspace.
+        """
+        return _list_property_keys(self._clients, resource_type, self._workspace_rid_for_search(workspace))
+
+    def list_property_values(
+        self,
+        resource_type: MetadataResourceType,
+        property_key: str,
+        *,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+    ) -> Sequence[str]:
+        """List distinct string values for a property key in alphabetical order, retrieving every page.
+
+        Returns an empty sequence when the key has no string values. Metadata visibility follows
+        the backend semantics described by `MetadataResourceType`.
+
+        Args:
+            resource_type: Resource family whose property values to discover.
+            property_key: Property key whose string values to list.
+            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+                or ALL for every permitted workspace.
+        """
+        return _list_property_values(
+            self._clients, resource_type, property_key, self._workspace_rid_for_search(workspace)
+        )
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.
