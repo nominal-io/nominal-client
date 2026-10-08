@@ -267,13 +267,13 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
             Mapping of all tag names to all tag values present
 
         Example:
-            Given data with the following tags per-point within the specified time range::
+            Given data with the following tags per-point within the specified time range:
 
                 {"tag_a": "123", "tag_b": "xyz"}
                 {"tag_a": "123", "tag_b": "abc"}
                 {"tag_a": "234", "tag_b": "qqq"}
 
-            With an initial filter of ``{"tag_a": "123"}``, we would return::
+            With an initial filter of ``{"tag_a": "123"}``, we would return:
 
                 {"tag_a": set(["123"]), "tag_b": set(["abc", "xyz"])}
 

@@ -13,7 +13,7 @@ class NominalLogHandler(logging.Handler):
     """A custom logging handler that batches log records and sends them to Nominal in a background thread.
 
     NOTE: to log custom args from a `logger.log(...)` statement, you can pass args as a dictionary via `extras`.
-    For example::
+    For example:
 
         logger.info("infotainment logs", extra={"nominal_args": {"country": "america", "count": 1234}})
 
