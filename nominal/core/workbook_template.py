@@ -13,6 +13,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_template_url
@@ -112,9 +113,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
                 new_labels.append(old_label)
             template = template.update(labels=new_labels)
         """
-        # NOTE: not saving updated metadata response, as we deserialize from a template rather than
-        #       from metadata
-        self._clients.template.update_metadata(
+        metadata = self._clients.template.update_metadata(
             self._clients.auth_header,
             scout_template_api.UpdateMetadataRequest(
                 description=description,
@@ -124,7 +123,11 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             ),
             self.rid,
         )
-        return self.refresh()
+        updated = self._from_template_summary(
+            self._clients, scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid)
+        )
+        update_dataclass(self, updated, fields=self.__dataclass_fields__)
+        return self
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""

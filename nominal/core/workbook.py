@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self
 
+from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import workbook_url
@@ -144,9 +145,7 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             workbook = workbook.update(labels=new_labels)
         """
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
-        # NOTE: not saving updated metadata response, as we deserialize from a notebook rather than
-        #       from metadata
-        self._clients.notebook.update_metadata(
+        metadata = self._clients.notebook.update_metadata(
             self._clients.auth_header,
             scout_notebook_api.UpdateNotebookMetadataRequest(
                 title=title,
@@ -157,7 +156,11 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             ),
             self.rid,
         )
-        return self.refresh()
+        updated = self._from_notebook_metadata(
+            self._clients, scout_notebook_api.NotebookMetadataWithRid(metadata=metadata, rid=self.rid)
+        )
+        update_dataclass(self, updated, fields=self.__dataclass_fields__)
+        return self
 
     def clone(
         self,
@@ -166,31 +169,26 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
     ) -> Self:
         r"""Create a new workbook copy from this workbook and return a reference to the cloned version.
 
+        Copies the latest content, data scope, labels, and properties from the source workbook.
+        The cloned workbook is unlocked and is not a draft.
+
         Args:
             title: New title for the cloned workbook.
                 Defaults to "Workbook clone from '[title]'" for the current workbook title.
-            description: New description for the cloned workbook. Defaults to the current description.
+            description: New description for the cloned workbook. Defaults to the source workbook's latest description.
 
         Returns:
             Reference to the cloned workbook
         """
-        raw_workbook = self._get_latest_api()
-        new_workbook = self._clients.notebook.create(
+        new_workbook = self._clients.notebook.duplicate(
             self._clients.auth_header,
-            scout_notebook_api.CreateNotebookRequest(
+            scout_notebook_api.DuplicateNotebookRequest(
                 title=f"Workbook clone from '{self.title}'" if title is None else title,
-                description=self.description if description is None else description,
+                description=description,
                 is_draft=False,
-                state_as_json=raw_workbook.state_as_json,
-                data_scope=scout_notebook_api.NotebookDataScope(
-                    run_rids=None if self.run_rids is None else [*self.run_rids],
-                    asset_rids=None if self.asset_rids is None else [*self.asset_rids],
-                ),
-                layout=raw_workbook.layout,
-                content_v2=raw_workbook.content_v2,
-                event_refs=raw_workbook.event_refs,
                 workspace=self._clients.resolve_default_workspace_rid(),
             ),
+            self.rid,
         )
 
         return self._from_conjure(self._clients, new_workbook)
