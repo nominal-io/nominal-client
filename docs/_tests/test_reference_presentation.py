@@ -9,8 +9,8 @@ from docutils import nodes
 from sphinx import addnodes
 
 
-def test_dataclass_signatures_follow_field_visibility(tmp_path: Path) -> None:
-    """Hide repr-disabled constructor fields, resolve annotations, and preserve authored prose."""
+def test_dataclass_reference_preserves_public_fields_and_member_order(tmp_path: Path) -> None:
+    """Keep public fields ahead of alphabetical methods while preserving signatures, prose, and links."""
     docs = tmp_path / "docs"
     docs.mkdir()
     extensions = Path(__file__).resolve().parents[1] / "_ext"
@@ -33,6 +33,19 @@ class Resource:
     label: str | None = None
     #: :meta private:
     hidden: str = field(default="internal", repr=False)
+
+    @classmethod
+    def create(cls) -> Resource:
+        """Create a resource."""
+        return cls("rid")
+
+    def archive(self) -> None:
+        """Archive the resource."""
+
+    @property
+    def name(self) -> str:
+        """The resource name."""
+        return self.label or self.rid
 
     def read(self) -> str:
         """Read the resource."""
@@ -71,6 +84,17 @@ Alias = str
     assert "fixture_api.Resource.hidden" not in signatures
     assert "normalize: bool = True" in signatures["fixture_api.Custom"]
     assert "Useful caller-facing documentation." in doctree.astext()
+
+    resource = next(node for node in doctree.findall(addnodes.desc) if node[0].get("ids") == ["fixture_api.Resource"])
+    members = [node[0]["ids"][0] for node in resource[-1] if isinstance(node, addnodes.desc)]
+    assert members == [
+        "fixture_api.Resource.label",
+        "fixture_api.Resource.name",
+        "fixture_api.Resource.rid",
+        "fixture_api.Resource.archive",
+        "fixture_api.Resource.create",
+        "fixture_api.Resource.read",
+    ]
 
     env = pickle.loads((output / ".doctrees/environment.pickle").read_bytes())
     contents = {node.get("anchorname") for node in env.tocs["index"].findall(nodes.reference)}

@@ -15,7 +15,8 @@ Development navigation declared in `src/index.md`. Sphinx reads configuration fr
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages. Core keeps class/function-level local contents (`tocdepth: 2`);
+generated source pages. Classes list attributes and properties first, then alphabetical
+methods. Core keeps class/function-level local contents (`tocdepth: 2`);
 methods and attributes render inline. The reference presentation extension uses native
 Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
 and link targets. Integrations and Experimental have folder indexes with native glob

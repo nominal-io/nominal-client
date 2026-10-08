@@ -1,4 +1,4 @@
-"""Display dataclass resource signatures using their declared public fields."""
+"""Format public API signatures, class member order, and navigation."""
 
 from dataclasses import fields, is_dataclass
 from inspect import signature
@@ -22,14 +22,23 @@ def _dataclass_signature(
     return stringify_signature(sig, show_return_annotation=False, unqualified_typehints=True), retann
 
 
-def _api_contents(app: Sphinx, doctree: nodes.document) -> None:
-    """Keep reference targets while omitting non-callable objects from navigation."""
+def _api_layout(app: Sphinx, doctree: nodes.document) -> None:
+    """Show attributes first and keep callable reference targets in navigation."""
     for node in doctree.findall(addnodes.desc):
         if node.get("domain") == "py" and node.get("objtype") in {"attribute", "property", "data", "type"}:
             node["no-contents-entry"] = True
+        if node.get("domain") == "py" and node.get("objtype") in {"class", "exception"}:
+            content = node[-1]
+            members = [child for child in content if isinstance(child, addnodes.desc)]
+            members.sort(key=lambda child: child.get("objtype") not in {"attribute", "property"})
+            ordered = iter(members)
+            # Reorder only member slots; preserve introductory prose and authored sections.
+            for index, child in enumerate(content):
+                if isinstance(child, addnodes.desc):
+                    content[index] = next(ordered)
 
 
 def setup(app: Sphinx) -> dict[str, bool]:
     app.connect("autodoc-process-signature", _dataclass_signature)
-    app.connect("doctree-read", _api_contents, priority=400)
+    app.connect("doctree-read", _api_layout, priority=400)
     return {"parallel_read_safe": True}
