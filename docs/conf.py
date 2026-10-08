@@ -1,11 +1,9 @@
 """Sphinx config for the Nominal Python SDK docs: guides (src/), examples, and the API reference (src/reference/)."""
 
-import shutil
 import sys
 from pathlib import Path
 
 from nominal_sphinx_theme import theme_options
-from pygments.lexers import TextLexer
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
@@ -25,7 +23,7 @@ extensions = [
     "sphinx_copybutton",
     "markdown_docstrings",
     "examples",
-    "video",
+    "api_reference",
     "nominal_sphinx_theme",
 ]
 
@@ -38,8 +36,6 @@ exclude_patterns = [
         for prefix in ("", "**/")
         for name in ("README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md")
     ],
-    # partials pulled into guide pages with {include}, not pages of their own
-    "guides/_snippets",
 ]
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
@@ -68,7 +64,8 @@ toc_object_entries_show_parents = "hide"
 
 # Class pages list members in summary tables; each member gets its own page
 # (the scikit-rf layout). Stubs are written to <page dir>/generated/.
-autosummary_generate = True
+# api_reference calls the native generator and prunes only obsolete stubs.
+autosummary_generate = False
 autosummary_generate_overwrite = True
 # Public package exports are the API catalog; do not repeat them in docs pages.
 autosummary_ignore_module_all = False
@@ -83,8 +80,7 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
 html_title = "Nominal Python SDK"
-html_static_path = ["_static"]
-html_css_files = ["custom.css"]
+html_static_path = []
 html_copy_source = False
 
 # published on its own (GitHub Pages), not under the docs hub, so the Nominal logo leads to the hub
@@ -115,52 +111,3 @@ html_theme_options = theme_options(
     toctree_maxdepth=1,
 )
 add_module_names = False
-
-
-def _drop_private_params(app, what, name, obj, options, signature, return_annotation):
-    """Hide underscore parameters (dataclass fields like ``_clients``) from class signatures.
-
-    Most nominal classes are dataclasses built by the client, not by users, so their
-    private fields would otherwise lead the constructor signature.
-    """
-    import inspect
-
-    from sphinx.util.inspect import stringify_signature
-
-    if what != "class" or not signature or "_" not in signature:
-        return None
-    try:
-        sig = inspect.signature(obj)
-    except (TypeError, ValueError):
-        return None
-    params = [p for p in sig.parameters.values() if not p.name.startswith("_")]
-    if len(params) == len(sig.parameters):
-        return None
-    return stringify_signature(sig.replace(parameters=params)), return_annotation
-
-
-def _drop_object_base(app, name, obj, options, bases):
-    """Drop `object` from the "Bases:" line; it says nothing."""
-    bases[:] = [b for b in bases if b is not object]
-
-
-def _hide_edit_link_on_stubs(app, pagename, templatename, context, doctree):
-    """Autosummary stubs under generated/ are gitignored, so "Edit this page" would 404."""
-    if "/generated/" in pagename:
-        context["page_source_suffix"] = ""
-
-
-def _clean_autosummary_stubs(app):
-    """Remove stale generated API pages before autosummary runs, including during live preview."""
-    for directory in (Path(app.srcdir) / "reference").rglob("generated"):
-        if directory.is_dir():
-            shutil.rmtree(directory)
-
-
-def setup(app):
-    # CSV examples are data, with no Pygments CSV lexer; retain their existing fences.
-    app.add_lexer("csv", TextLexer)
-    app.connect("builder-inited", _clean_autosummary_stubs, priority=100)
-    app.connect("autodoc-process-signature", _drop_private_params)
-    app.connect("autodoc-process-bases", _drop_object_base)
-    app.connect("html-page-context", _hide_edit_link_on_stubs, priority=600)

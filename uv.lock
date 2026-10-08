@@ -743,7 +743,7 @@ dev = [
 ]
 docs = [
     { name = "myst-parser", marker = "python_full_version >= '3.12'", specifier = ">=5.1.0" },
-    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme" },
+    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff" },
     { name = "sphinx", marker = "python_full_version >= '3.12'", specifier = ">=9.1.0" },
     { name = "sphinx-click", marker = "python_full_version >= '3.12'", specifier = ">=6.0.0" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'", specifier = ">=0.5.2" },
@@ -791,7 +791,7 @@ wheels = [
 [[package]]
 name = "nominal-sphinx-theme"
 version = "0.1.0"
-source = { git = "https://github.com/nominal-io/nominal-sphinx-theme#ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
+source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff#ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
 dependencies = [
     { name = "shibuya" },
     { name = "sphinx" },

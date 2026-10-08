@@ -7,10 +7,18 @@ blocks, which Sphinx and Napoleon parse directly.
 
 import re
 
+from pygments.lexers import TextLexer
 from sphinx.application import Sphinx
 
 _FENCE = re.compile(r"^(?P<indent>\s*)```(?P<lang>[\w+-]*)\s*$")
-_LINK = re.compile(r"(?<!`)\[(?P<text>[^\]\n]+)\]\((?P<url>https?://[^)\s]+)\)")
+_LINK = re.compile(
+    r"(?P<code>(?P<ticks>`+).*?(?P=ticks))|"
+    r"\[(?P<text>[^\]\n]+)\]\((?P<url>https?://[^)\s]+)\)"
+)
+
+
+def _convert_link(match: re.Match[str]) -> str:
+    return match["code"] or f"`{match['text']} <{match['url']}>`__"
 
 
 def _convert(lines: list[str]) -> list[str]:
@@ -21,7 +29,7 @@ def _convert(lines: list[str]) -> list[str]:
         if fence is None and match:
             fence = match["indent"]
             out += [f"{fence}.. code-block:: {match['lang'] or 'text'}", ""]
-        elif fence is not None and match and match["indent"] == fence:
+        elif fence is not None and match and not match["lang"]:
             fence = None
             out.append("")
         elif fence is not None:
@@ -29,7 +37,7 @@ def _convert(lines: list[str]) -> list[str]:
             body = line[len(fence) :] if line.startswith(fence) else line.lstrip()
             out.append(f"{fence}    {body}" if body.strip() else "")
         else:
-            out.append(_LINK.sub(r"`\g<text> <\g<url>>`__", line))
+            out.append(_LINK.sub(_convert_link, line))
     return out
 
 
@@ -38,6 +46,8 @@ def _process(app: Sphinx, what: str, name: str, obj: object, options: object, li
 
 
 def setup(app: Sphinx) -> dict[str, bool]:
+    # CSV examples are data, with no Pygments CSV lexer.
+    app.add_lexer("csv", TextLexer)
     # before napoleon (default priority 500), so it sees reST
     app.connect("autodoc-process-docstring", _process, priority=400)
     return {"parallel_read_safe": True}

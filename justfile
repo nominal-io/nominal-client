@@ -89,9 +89,10 @@ _check-docs-python:
 
 # build the docs site (guides, examples, API reference) into docs/_build/dirhtml; warnings fail the build
 build-docs: _check-docs-python
+    rm -rf docs/_build/dirhtml
     uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
 # live-preview the docs on http://127.0.0.1:8000, rebuilding on page, example, or docstring changes
 serve-docs: _check-docs-python
     mkdir -p examples
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --watch nominal --watch packages --watch examples --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch LICENSE --ignore "*/docs/src/examples/*" --ignore "*/generated" --ignore "*/generated/*"
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --watch nominal --watch packages --watch examples --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch CHANGELOG.md --watch LICENSE --ignore "*/docs/src/examples/*" --ignore "*/generated" --ignore "*/generated/*"
