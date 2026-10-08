@@ -5,8 +5,5 @@ from typing import Mapping, TypeAlias
 PropertyValue: TypeAlias = str | float
 """A stored property value. Integer inputs are converted to floats; booleans are rejected."""
 
-TypedProperties: TypeAlias = Mapping[str, PropertyValue]
-"""A mapping of property names to string or numeric values."""
-
-NominalProperties: TypeAlias = TypedProperties
-"""Properties for assets, runs, datasets, and events."""
+NominalProperties: TypeAlias = Mapping[str, PropertyValue]
+"""A mapping of string or numeric properties for assets, runs, datasets, and events."""
