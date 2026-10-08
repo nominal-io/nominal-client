@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     scout,
@@ -19,6 +19,9 @@ from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
+
+if TYPE_CHECKING:
+    from nominal.core.workspace import Workspace
 
 
 def _rebind_video_datasources(
@@ -126,15 +129,91 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         )
         return self.refresh()
 
-    def get_refnames(self) -> Sequence[str]:
-        """Get the list of refnames used within the workbook."""
-        return self._clients.template.get_used_ref_names(self._clients.auth_header, self.rid)
+    @overload
+    def get_refnames(self, *, branch: str | None = None, commit: None = None) -> Sequence[str]: ...
 
-    def update_refnames(self, refname_map: Mapping[str, str]) -> None:
-        """Updates refnames using a provided map of original refnames to the new refnames to replace them."""
-        self._clients.template.update_ref_names(
-            self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid
+    @overload
+    def get_refnames(self, *, branch: None = None, commit: str | None = None) -> Sequence[str]: ...
+
+    def get_refnames(self, *, branch: str | None = None, commit: str | None = None) -> Sequence[str]:
+        """Get the data source refnames used by this template's channel variables.
+
+        Args:
+            branch: Branch whose latest content to read. Mutually exclusive with `commit`.
+            commit: Commit ID whose content to read. Mutually exclusive with `branch`.
+
+        Returns:
+            Refnames from the selected version, or the latest main-branch content when neither selector is provided.
+
+        Raises:
+            ValueError: If both `branch` and `commit` are provided.
+        """
+        if branch is not None and commit is not None:
+            raise ValueError("Only one of `branch` and `commit` may be used to get template refnames")
+        return self._clients.template.get_used_ref_names(
+            self._clients.auth_header, self.rid, branch=branch, commit=commit
         )
+
+    def update_refnames(self, refname_map: Mapping[str, str], *, branch: str | None = None) -> None:
+        """Replace data source refnames in this template's channel variables.
+
+        Args:
+            refname_map: Mapping of original refnames to their replacements.
+            branch: Branch to update. Defaults to the main branch.
+        """
+        self._clients.template.update_ref_names(
+            self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid, branch=branch
+        )
+
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_published: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Self:
+        """Create a copy of this template's latest main-branch content and metadata.
+
+        Copies the layout and channel variables on the server and returns a new template reference.
+        The copy is unpublished by default, including when the source is published.
+
+        Args:
+            title: New title. Defaults to the source's latest title followed by " - copy".
+                Copying an existing copy increments its suffix, e.g. " - copy (2)".
+            description: New description. None inherits the source's latest description.
+            title_suffix: Custom suffix for the server-generated title. Defaults to "copy".
+                Ignored when `title` is provided.
+            labels: New labels. None inherits the source labels; an empty sequence clears them.
+            properties: New properties. None inherits the source properties; an empty mapping clears them.
+            is_published: Whether to publish the copy. Defaults to False.
+            workspace: Workspace or workspace RID for the copy. Defaults to the client's default workspace.
+
+        Returns:
+            Reference to the newly created template.
+
+        Example:
+            copy = template.clone(title_suffix="Run analysis", labels=[], properties={})
+        """
+        duplicated = self._clients.template.duplicate(
+            self._clients.auth_header,
+            scout_template_api.DuplicateTemplateRequest(
+                title=title,
+                description=description,
+                title_suffix=title_suffix,
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                is_published=is_published,
+                workspace=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
+            ),
+            self.rid,
+        )
+        return self._from_conjure(self._clients, duplicated)
 
     @overload
     def create_workbook(
