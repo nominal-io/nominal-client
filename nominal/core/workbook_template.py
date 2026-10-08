@@ -307,6 +307,15 @@ class WorkbookTemplate(
         self._refresh_from_api(raw_template)
         return raw_template.metadata.is_archived
 
+    def unarchive(self) -> None:
+        """Unarchive this workbook template, making it visible in the UI again.
+        Refreshes this instance from the returned metadata.
+        """
+        metadata = self._clients.template.update_metadata(
+            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=False), self.rid
+        )
+        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
+
     def archive(self) -> None:
         """Archive this workbook template.
         Archived workbook templates are not deleted, but are hidden from the UI.
@@ -314,15 +323,6 @@ class WorkbookTemplate(
         """
         metadata = self._clients.template.update_metadata(
             self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=True), self.rid
-        )
-        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
-
-    def unarchive(self) -> None:
-        """Unarchive this workbook template, making it visible in the UI again.
-        Refreshes this instance from the returned metadata.
-        """
-        metadata = self._clients.template.update_metadata(
-            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=False), self.rid
         )
         self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
