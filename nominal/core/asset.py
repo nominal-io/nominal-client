@@ -91,6 +91,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     def _list_dataset_scopes(self) -> Sequence[asset_pb2.DataScope]:
         return _filter_proto_scopes(self._get_latest_api().data_scopes, "dataset")
 
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+        for scope in self._list_dataset_scopes():
+            if scope.data_scope_name == data_scope_name:
+                return scope.data_source.dataset, dict(scope.series_tags)
+        return None
+
     def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
         asset = self._get_latest_api()
         return {
@@ -188,7 +194,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Args:
             names: Names of datascopes to remove
             scopes: Rids or instances of scope types (dataset, video, connection) to remove.
-                A spatial can be removed by passing its rid.
+                A spatial or log set can be removed by passing its rid.
 
         Raises:
             NominalError: If retrieving or updating the asset's data scopes fails.
@@ -196,22 +202,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         scope_names_to_remove = names or []
         data_scopes_to_remove = scopes or []
 
-        scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove if ds}
+        scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove}
         latest_asset = self._get_latest_api()
 
         data_scopes_to_keep = []
         for ds in latest_asset.data_scopes:
             if ds.data_scope_name in scope_names_to_remove:
                 continue
-            if any(
-                rid in scope_rids_to_remove
-                for rid in (
-                    ds.data_source.dataset,
-                    ds.data_source.connection,
-                    ds.data_source.video,
-                    ds.data_source.spatial,
-                )
-            ):
+            # Unset oneof arms read as "", so only the active arm may be compared.
+            source_type = ds.data_source.WhichOneof("data_source")
+            if source_type is not None and getattr(ds.data_source, source_type) in scope_rids_to_remove:
                 continue
             data_scopes_to_keep.append(
                 asset_pb2.CreateAssetDataScope(

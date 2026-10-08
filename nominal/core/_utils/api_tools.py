@@ -193,9 +193,3 @@ def filter_scopes(
     scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
 ) -> Sequence[scout_asset_api.DataScope]:
     return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
-
-
-def filter_scope_rids(scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in filter_scopes(scopes, scope_type)
-    }

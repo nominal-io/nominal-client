@@ -147,9 +147,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         for source_data_scope in source_data_scopes:
             source_data_scope_name = source_data_scope.data_scope_name
             source_dataset_rid = source_data_scope.data_source.dataset
-            if source_dataset_rid is None or source_dataset_rid not in source_datasets:
+            if source_dataset_rid not in source_datasets:
                 raise ValueError(
-                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} does not have a dataset"
+                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} references dataset "
+                    f"{source_dataset_rid}, which could not be resolved"
                 )
 
             source_dataset = source_datasets[source_dataset_rid]

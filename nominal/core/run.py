@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
     scout,
-    scout_asset_api,
     scout_run_api,
     scout_spatial,
 )
@@ -159,12 +158,18 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             response = self._clients.comments.CreateComment(request)
         return Comment._from_proto(response.comment)
 
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        return filter_scopes(api_run.asset_data_scopes, "dataset")
+        for scope in filter_scopes(api_run.asset_data_scopes, "dataset"):
+            if scope.data_scope_name != data_scope_name:
+                continue
+            if scope.data_source.dataset is None:
+                raise ValueError(f"data scope {data_scope_name!r} is typed as a dataset but carries no dataset rid")
+            return scope.data_source.dataset, scope.series_tags
+        return None
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
