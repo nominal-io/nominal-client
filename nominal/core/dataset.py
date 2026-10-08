@@ -184,7 +184,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             path: Path to the file on disk to add to the dataset.
             timestamp_column: Column within the file containing timestamp information.
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
-                      to set the timestamps for all other uploaded data channels.
+                to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file

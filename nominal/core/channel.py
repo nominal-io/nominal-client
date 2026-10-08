@@ -138,7 +138,7 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
                 for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
                 `_NotProvided`), this will leave the unit unaffected.
                 NOTE: this is in contrast to other fields in other `update()` calls where `None` is treated as a
-                      "no-op".
+                "no-op".
         """
         request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
             channel_identifier=self._channel_identifier(),

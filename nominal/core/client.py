@@ -1134,7 +1134,7 @@ class NominalClient:
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
                 NOTE: This currently requires that units are formatted as laid out in
-                      the latest UCUM standards (see https://ucum.org/ucum)
+                the latest UCUM standards (see https://ucum.org/ucum)
 
         Returns:
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
