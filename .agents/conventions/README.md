@@ -7,7 +7,7 @@ relevant to your change alongside the code.
 | Guide | Owns |
 | --- | --- |
 | [Python quality](python.md) | PEP/style baseline, compatibility, package ownership, and performance/resource contracts |
-| [SDK contracts](sdk.md) | Adding objects/routes, public compatibility, conversion/refresh, and failure ownership |
+| [SDK contracts](sdk.md) | Adding objects/routes, deprecation, public compatibility, conversion/refresh, and failure ownership |
 | [Test policy](testing.md) | Meaningful coverage, authoring, mocking, fixtures, and pruning |
 | [Documentation policy](documentation.md) | Docstring semantics, notes, rendering, and generator complexity |
 

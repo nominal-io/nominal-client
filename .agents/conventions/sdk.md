@@ -57,6 +57,39 @@ asynchronous operations. Test meaningful SDK decisions rather than forwarding al
 error translation, and pagination. Follow the [test](testing.md) and
 [documentation](documentation.md) guides, and use the validation commands in `AGENTS.md`.
 
+## Deprecating code
+
+Give callers a working migration path before removing a public API. Explain the replacement
+and any behavior that does not carry over; a rename and a change in semantics are different
+migrations. Keep supported imports, signatures, and behavior working during the transition.
+Private implementation details can be removed directly once their callers are updated.
+
+- Use `typing_extensions.deprecated` for whole APIs, following the existing decorators in
+  [VideoFile](../../nominal/core/video_file.py). For individual arguments, inspect the
+  [deprecation helpers](../../nominal/_utils/deprecation_tools.py) and choose one that fits
+  the actual signature. Verify positional and keyword handling rather than assuming every
+  helper supports every call shape. Preserve omitted-versus-explicit-value semantics.
+- Make warnings actionable: name the old API, the replacement, and any migration caveat.
+  Point the warning at the caller. Warn on use of the deprecated path, not normal use of
+  its replacement, and avoid stacking wrappers that warn repeatedly for one operation.
+  Reuse an appropriate warning category; introduce a dedicated category only when callers
+  need to filter a distinct migration. Do not use logging as a substitute for a warning.
+- Keep compatibility code small. Delegate to the canonical implementation when behavior
+  is equivalent, or preserve the old path when it is not. Keep aliases where needed;
+  do not build a compatibility framework for a single rename.
+- Update the public docstring and examples to explain the migration, and describe it in
+  the PR so release notes can communicate it. State a removal version or date only when
+  maintainers have agreed to it; a deprecation warning alone does not authorize removal.
+- Test what the transition could break: old calls still work, the warning has the intended
+  category/message and caller location, and replacement calls do not warn. Use focused
+  cases rather than repeating the replacement's entire test suite. See
+  [warning tests](../../tests/test_deprecation_tools.py). Keep warning filters narrow;
+  do not silence warnings globally to make legacy tests pass.
+
+When removal is agreed, check public exports, aliases, examples, and callers together.
+Remove obsolete compatibility tests and warning filters with the implementation, while
+keeping coverage for the replacement's behavior.
+
 ## Resource and API contracts
 
 - Preserve public signatures and behavior across releases; deprecate before removal.
