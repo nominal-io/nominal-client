@@ -135,9 +135,12 @@ class WorkbookTemplate(
         return self._clients.template.get_used_ref_names(self._clients.auth_header, self.rid)
 
     def update_refnames(self, refname_map: Mapping[str, str]) -> None:
-        """Replace refnames using a mapping of original refnames to their replacements.
+        """Replace data source refnames used by this template.
 
         Refreshes this instance from the returned template metadata.
+
+        Args:
+            refname_map: Mapping from existing refnames to their replacements.
         """
         updated = self._clients.template.update_ref_names(
             self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid
