@@ -137,20 +137,23 @@ class Workbook(
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         is_draft: bool | None = None,
+        is_locked: bool | None = None,
     ) -> Self:
-        """Replace workbook metadata.
-        Updates the current instance, and returns it.
+        """Replace workbook metadata and refresh this instance from the response.
 
-        Only the metadata passed in will be replaced, the rest will remain untouched.
+        None leaves a field unchanged. Labels and properties replace existing collections;
+        merge with their current values before calling this method to append entries.
 
-        Note:
-            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+        Args:
+            title: Replacement title.
+            description: Replacement description. An empty string clears it.
+            properties: Replacement properties. An empty mapping clears them.
+            labels: Replacement labels. An empty sequence clears them.
+            is_draft: True makes the workbook private; False publishes it.
+            is_locked: True locks content editing; False unlocks it.
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in workbook.labels:
-                    new_labels.append(old_label)
-                workbook = workbook.update(labels=new_labels)
+        Returns:
+            This instance with refreshed metadata, without an additional fetch.
         """
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
         metadata = self._clients.notebook.update_metadata(
@@ -161,6 +164,7 @@ class Workbook(
                 labels=None if labels is None else [*labels],
                 properties=None if properties is None else {**properties},
                 is_draft=is_draft,
+                is_locked=is_locked,
             ),
             self.rid,
         )
@@ -286,17 +290,31 @@ class Workbook(
 
     def is_locked(self) -> bool:
         """Return whether or not the workbook is currently locked."""
-        return self._get_latest_api().metadata.lock.is_locked
+        raw_workbook = self._get_latest_api()
+        self._refresh_from_api(raw_workbook)
+        return raw_workbook.metadata.lock.is_locked
 
     def is_archived(self) -> bool:
         """Return whether or not the workbook is currently archived."""
-        return self._get_latest_api().metadata.is_archived
+        raw_workbook = self._get_latest_api()
+        self._refresh_from_api(raw_workbook)
+        return raw_workbook.metadata.is_archived
 
     def is_draft(self) -> bool:
         """Return whether or not the workbook is currently a draft. Note that a workbook in draft state isn't visible
         to other users and shows up as Private in the UI.
         """
-        return self._get_latest_api().metadata.is_draft
+        raw_workbook = self._get_latest_api()
+        self._refresh_from_api(raw_workbook)
+        return raw_workbook.metadata.is_draft
+
+    def publish(self) -> None:
+        """Publish this workbook and refresh its metadata from the update response."""
+        self.update(is_draft=False)
+
+    def unpublish(self) -> None:
+        """Return this workbook to draft state and refresh its metadata from the update response."""
+        self.update(is_draft=True)
 
     def lock(self) -> None:
         """Locks the workbook, preventing changes from being made to it.
@@ -305,7 +323,7 @@ class Workbook(
             Locking is an idemponent operation-- calling lock() on a locked workbook
             will result in the workbook staying locked.
         """
-        self._clients.notebook.lock(self._clients.auth_header, self.rid)
+        self.update(is_locked=True)
 
     def unlock(self) -> None:
         """Unlocks the workbook, allowing changes to be made to it.
@@ -314,7 +332,7 @@ class Workbook(
             Unlocking is an idemponent operation-- calling unlock() on an unlocked workbook
             will result in the workbook staying unlocked.
         """
-        self._clients.notebook.unlock(self._clients.auth_header, self.rid)
+        self.update(is_locked=False)
 
     def archive(self) -> None:
         """Archive this workbook.
