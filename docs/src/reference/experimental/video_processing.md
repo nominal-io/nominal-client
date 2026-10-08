@@ -1,11 +1,20 @@
-# Video processing
-
-Experimental: inspect and normalize video files before upload. Needs `ffmpeg` on the `PATH`.
+# Video Processing
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
+.. automodule:: nominal.experimental.video_processing
+   :imported-members:
 
-   nominal.experimental.video_processing
+.. autodata:: nominal.experimental.video_processing.STANDARD_DEFINITION
+
+.. autodata:: nominal.experimental.video_processing.HIGH_DEFINITION
+
+.. autodata:: nominal.experimental.video_processing.FULL_HD
+
+.. autodata:: nominal.experimental.video_processing.QUAD_HD
+
+.. autodata:: nominal.experimental.video_processing.ULTRA_HD
+
+.. autodata:: nominal.experimental.video_processing.ResolutionSpecifier
+
+.. autodata:: nominal.experimental.video_processing.AnyResolutionType
 ```

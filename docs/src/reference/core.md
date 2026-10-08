@@ -1,11 +1,18 @@
-# Core
+---
+tocdepth: 2
+---
 
-The object-oriented client for the Nominal platform. Start with {py:class}`~nominal.core.NominalClient`.
+# Core SDK
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
+.. automodule:: nominal.core
+   :imported-members:
 
-   nominal.core
+.. autodata:: nominal.core.DataStream
+
+.. autodata:: nominal.core.LogStream
+
+.. autodata:: nominal.core.NominalProperties
+
+.. autodata:: nominal.core.UnitLike
 ```

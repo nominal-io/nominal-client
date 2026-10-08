@@ -1,10 +1,30 @@
 """Fenced examples remain literal inside Google sections and native notes."""
 
 import pickle
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from docutils import nodes
+
+
+@pytest.fixture
+def build_docs(tmp_path: Path):
+    docs = tmp_path / "docs"
+    source = docs / "src"
+    (source / "reference").mkdir(parents=True)
+    output = docs / "_build/dirhtml"
+
+    def build() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "sphinx", "-W", "-E", "-b", "dirhtml", "-c", str(docs), str(source), str(output)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    return build
 
 
 def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> None:
@@ -13,7 +33,7 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
     extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
         f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'api_reference']\n",
+        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'docstring_fences']\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")
@@ -86,7 +106,7 @@ def test_invalid_fences_fail_the_strict_build(tmp_path: Path, build_docs, closin
     extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
         f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx.ext.autodoc', 'api_reference']\n",
+        "extensions = ['sphinx.ext.autodoc', 'docstring_fences']\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")

@@ -1,11 +1,6 @@
 # Compute
 
-Experimental: compute bucketed summaries of channel data on the server.
-
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   nominal.experimental.compute
+.. automodule:: nominal.experimental.compute
+   :imported-members:
 ```

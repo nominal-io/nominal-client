@@ -40,7 +40,7 @@ jobs:
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
-      - name: Test docs extensions
+      - name: Test docstring rendering
         run: uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov
       - name: Build docs (warnings fail the build)
         run: |

@@ -1,4 +1,4 @@
-"""Sphinx config for the Nominal Python SDK docs: guides (src/), examples, and the API reference (src/reference/)."""
+"""Sphinx config for the Nominal Python SDK docs: the existing Markdown pages and inline API reference."""
 
 import sys
 from pathlib import Path
@@ -14,26 +14,12 @@ copyright = "Nominal, Inc."
 extensions = [
     "myst_parser",
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx_click",
-    "sphinx_design",
     "sphinx_copybutton",
-    "examples",
-    "api_reference",
+    "docstring_fences",
     "nominal_sphinx_theme",
-]
-
-templates_path = [str(HERE / "_templates")]
-exclude_patterns = [
-    "_build",
-    # contributor docs, at the top level and in any folder
-    *[
-        f"{prefix}{name}"
-        for prefix in ("", "**/")
-        for name in ("README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md")
-    ],
 ]
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
@@ -41,7 +27,6 @@ exclude_patterns = [
 default_role = "py:obj"
 
 # -- MyST ---------------------------------------------------------------------
-myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
 myst_heading_anchors = 6
 
 # -- autodoc -------------------------------------------------------------------
@@ -49,7 +34,10 @@ autodoc_default_options = {
     "members": True,
     "undoc-members": True,  # show_if_no_docstring
     # stop at these bases so enum/exception/builtin internals stay out
-    "inherited-members": "object,BaseException,Enum,str,int,float",
+    "inherited-members": (
+        "object,BaseException,BaseExceptionGroup,ExceptionGroup,Enum,str,int,float,dict,tuple,"
+        "Handler,StreamHandler,Filterer"
+    ),
     "member-order": "bysource",
     "show-inheritance": True,
 }
@@ -60,17 +48,9 @@ python_maximum_signature_line_length = 72  # separate_signature + line_length
 python_use_unqualified_type_names = True  # show_root_full_path: false
 toc_object_entries_show_parents = "hide"
 
-# Class pages list members in summary tables; each member gets its own page
-# (the scikit-rf layout). Stubs are written to <page dir>/generated/.
-# Build recipes clear generated sources before native autosummary runs.
-autosummary_generate = True
-# Public package exports are the API catalog; do not repeat them in docs pages.
-autosummary_ignore_module_all = False
-
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_rtype = False
-napoleon_use_ivar = True  # Attributes: sections as a field list, not duplicate targets
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
@@ -95,16 +75,16 @@ html_context = {
 # Right sidebar: on-page contents and edit link, no GitHub repo-stats box.
 html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"]}
 
+nominal_section_sidebar = False
+
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
     nav_socials=["github"],
-    # header tabs; the sidebar shows only the current tab's toctree groups
     nav_links=[
-        {"title": "Guides", "url": "index"},
-        {"title": "Examples", "url": "examples/index"},
-        {"title": "SDK", "url": "reference/toplevel"},
+        {"title": "Documentation", "url": "https://docs.nominal.io/core/sdk/python-client/quickstart"},
+        {"title": "Nominal", "url": "https://nominal.io"},
     ],
-    # left nav lists pages only; generated class/member pages are reached from their tables
+    # Keep the existing page-level navigation; reference objects appear in the local contents.
     toctree_maxdepth=1,
 )
 add_module_names = False

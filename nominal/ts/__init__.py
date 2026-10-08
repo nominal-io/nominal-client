@@ -147,7 +147,7 @@ temperature,timestamp
 ```python
 nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
     timestamp_type=nm.ts.Relative(
-        "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349Z")
+        "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349+00:00")
     )
 )
 ```
@@ -259,6 +259,7 @@ IntegralNanosecondsDuration: TypeAlias = int
 This value is a duration measured in nanoseconds."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
+"""Whether log timestamps are absolute or relative."""
 
 
 class _ConjureTimestampType(abc.ABC):
@@ -444,14 +445,23 @@ class Custom(_ConjureTimestampType):
 
 
 # constants for pedagogy, documentation, default arguments, etc.
+#: ISO 8601 timestamp format.
 ISO_8601 = Iso8601()
+#: Epoch timestamp format in picoseconds.
 EPOCH_PICOSECONDS = Epoch("picoseconds")
+#: Epoch timestamp format in nanoseconds.
 EPOCH_NANOSECONDS = Epoch("nanoseconds")
+#: Epoch timestamp format in microseconds.
 EPOCH_MICROSECONDS = Epoch("microseconds")
+#: Epoch timestamp format in milliseconds.
 EPOCH_MILLISECONDS = Epoch("milliseconds")
+#: Epoch timestamp format in seconds.
 EPOCH_SECONDS = Epoch("seconds")
+#: Epoch timestamp format in minutes.
 EPOCH_MINUTES = Epoch("minutes")
+#: Epoch timestamp format in hours.
 EPOCH_HOURS = Epoch("hours")
+#: Epoch timestamp format in days.
 EPOCH_DAYS = Epoch("days")
 
 _LiteralTimeUnit: TypeAlias = Literal[

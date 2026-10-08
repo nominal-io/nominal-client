@@ -10,45 +10,28 @@ reference. Their public objects are also available directly from `nominal.experi
 ## Decorators
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   nominal.experimental.extractor.decorators
+.. automodule:: nominal.experimental.extractor.decorators
 ```
 
 ## Output contexts
 
-{py:meth}`ManifestExtractorContext.add_tabular <nominal.experimental.extractor.context.ManifestExtractorContext.add_tabular>`
-and {py:meth}`~nominal.experimental.extractor.context.ManifestExtractorContext.add_avro_stream`
-accept `units=` maps from channel names to unit symbols. Each declaration copies its map into that
-output's manifest entry; units are output metadata, not image-registration settings. For direct
-file uploads, use the [ingestion builder](ingest.md#channel-units-and-csv-rows).
+`ManifestExtractorContext.add_tabular` and `add_avro_stream` accept `units=` maps from channel
+names to unit symbols. Each declaration copies its map into that output's manifest entry;
+units are output metadata, not image-registration settings. For direct file uploads, use
+the [ingestion builder](ingest.md#channel-units-and-csv-rows).
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   nominal.experimental.extractor.context
+.. automodule:: nominal.experimental.extractor.context
 ```
 
 ## Parameter types
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   nominal.experimental.extractor.types
+.. automodule:: nominal.experimental.extractor.types
 ```
 
 ## Execution and registration
 
 ```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :nosignatures:
-
-   nominal.experimental.extractor.runner
+.. automodule:: nominal.experimental.extractor.runner
 ```

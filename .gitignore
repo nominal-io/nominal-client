@@ -194,7 +194,3 @@ uv.toml
 .agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review
 !.agents/skills/reviewing-nominal-api-bumps
-
-# Sphinx docs: generated example pages and autosummary stubs
-docs/src/examples/
-docs/**/generated/
