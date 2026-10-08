@@ -52,7 +52,7 @@ def template(mock_clients: MagicMock) -> WorkbookTemplate:
 
 
 def test_clone_leaves_inherited_metadata_to_server(template: WorkbookTemplate, mock_clients: MagicMock) -> None:
-    """Clone inherits current server metadata and defaults to published, matching Galaxy."""
+    """Clone inherits current server metadata and defaults to published."""
     result = template.clone()
 
     request = mock_clients.template.duplicate.call_args.args[1]

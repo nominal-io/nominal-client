@@ -158,7 +158,7 @@ class WorkbookTemplate(
         """Create a copy of this template's latest main-branch content and metadata.
 
         Copies the layout and channel variables on the server and returns a new template reference.
-        The copy is published by default, matching Galaxy's template duplication behavior.
+        The copy is published by default.
 
         Args:
             title: New title. Defaults to the source's latest title followed by " - copy".
