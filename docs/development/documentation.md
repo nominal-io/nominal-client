@@ -19,6 +19,9 @@ callers alongside this guide; examples do not require unrelated code to be norma
   is renderer-dependent. Do not mechanically normalize single/double backticks or migrate
   every docstring to fix a local rendering problem. Confirm how the parser handles the
   construct before alleging a defect.
+- Mark placeholders and literal expressions using the renderer's supported code syntax;
+  unescaped `<placeholder>` text can disappear as HTML. Preserve useful operators and
+  examples rather than banning angle brackets, and inspect the rendered result.
 - Prefer native documentation-generator features and package exports over custom parsers,
   duplicated API catalogs, or manually synchronized member lists. A workaround must solve
   a demonstrated limitation with a bounded scope. Rendering changes need representative

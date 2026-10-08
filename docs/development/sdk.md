@@ -18,6 +18,9 @@ callers alongside this guide; examples do not require unrelated code to be norma
   `_Clients` protocol, `_clients` excluded from repr, and centralized `_from_conjure`
   or `_from_proto` conversion. Keep generated transport objects behind the public SDK
   boundary. Builders, sessions, and value objects need not be resource snapshots.
+- Expose the smallest useful public API for the caller's workflow. Keep transport-only
+  arguments and orchestration helpers private rather than exporting every backend operation.
+  A cleanup must preserve established aliases and signatures unless explicitly deprecated.
 - Reuse `RefreshableConjureMixin`, `RefreshableGrpcMixin`, or `RefreshableMixin` in
   `nominal/core/_utils/api_tools.py` as appropriate. Updates should refresh the same
   instance from the authoritative response through `_refresh_from_api`; do not add
@@ -31,6 +34,10 @@ callers alongside this guide; examples do not require unrelated code to be norma
 - Multi-step operations must have an explicit partial-failure contract. When a later
   request fails, account for already-created resources; do not imply atomicity the
   service does not provide. Recommend rollback only when its safety is established.
+- Validate known local preconditions before uploads or destructive changes. For overwrite
+  operations, account for input/output aliases before deleting a destination. Serialization
+  refactors must preserve readable persisted state, including field names and defaults;
+  removing a dependency does not remove its compatibility obligations.
 
 ## Semantics that need explicit attention
 

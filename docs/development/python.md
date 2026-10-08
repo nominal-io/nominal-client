@@ -44,6 +44,11 @@ request for reviewers to repeat formatter diagnostics or normalize untouched fil
   Do not add `nominal/__init__.py`. Add dependencies to the owning distribution and
   preserve platform/extra guards; an optional integration must not make unrelated imports
   fail. Do not promote experimental APIs or dependencies into the core as incidental cleanup.
+- Justify new runtime dependencies by the capability they provide and their installation,
+  version-resolution, and maintenance costs. Prefer the standard library for small, direct
+  implementations; use optional extras for optional integrations. Base version bounds on
+  required features and compatibility, and explain exact runtime pins. Reproducible tool
+  locks and generated-binding compatibility constraints serve different purposes.
 - Export public APIs from the appropriate package, following
   [nominal/core/__init__.py](../../nominal/core/__init__.py). Use leading underscores for
   implementation privacy, not new per-module export inventories. Preserve public import
@@ -75,6 +80,11 @@ request for reviewers to repeat formatter diagnostics or normalize untouched fil
   shutdown. Preserve failure propagation and the documented difference between queued,
   uploaded, and ingested data. Use monotonic time for elapsed deadlines. Do not make a
   path concurrent just because calls look independent; account for ordering and shared state.
+- Keep worker-local state inside its worker where practical, with explicit queue/event/lock
+  communication. Prefer stable configuration and references over shared mutable attributes;
+  a frozen wrapper around mutable state does not establish thread safety. Prefer blocking
+  synchronization over sleep-based polling when the producer can signal readiness. Trace
+  future failures to the caller and stop producers before closing the executors they submit to.
 - Cache only with a defined lifetime, invalidation policy, and concurrency contract.
   Frozen resource wrappers can refresh in place. The default-workspace cache in
   [ClientsBunch](../../nominal/core/_clientsbunch.py) is deliberately client-scoped;

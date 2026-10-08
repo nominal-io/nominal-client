@@ -65,3 +65,20 @@ head SHA; this workflow does not rerun automatically on every pushed commit.
 | A lossless timestamp conversion goes through float seconds. | Show the nanosecond precision loss and use the canonical integer conversion; ordinary datetime conversion has a different contract. |
 | A request wrapper adds retries around a transport that already retries. | Establish the combined budget and replay semantics before flagging; a documented recovery gap can justify another layer. |
 | A test inspects request fields to protect absent/false/empty protobuf semantics. | Keep the contract test; do not dismiss it as implementation coupling. |
+| A cohesive module grows from 995 to 1005 lines, without a useful separate ownership boundary. | Size alone is not a finding; do not manufacture an extraction to satisfy a threshold. |
+| Two short constructors differ in omission/empty semantics. | Keep direct implementations unless a shared abstraction demonstrably simplifies both contracts. |
+| A dependency-free exception lives in an orchestration module and forces a runtime import cycle. | Identify the dependency edge removed by moving the definition to the existing exception owner; preserve public aliases and class identity. |
+| A callback discards a failed future, or shutdown closes an executor before its producer stops submitting. | Trace a concrete lost failure or shutdown race and the caller-visible completion contract. |
+| Forced overwrite deletes a destination that aliases the source. | Flag destructive preflight ordering; protect same-path and relevant filesystem-alias cases before unlinking. |
+| A test uses a small fake instead of `MagicMock`, or a boundary mock protects request mapping. | Judge the behavior protected and setup complexity, not the choice of test-double tool. |
+| Removing a JSON dependency changes persisted keys from camelCase to snake_case. | Require compatible reads or an explicit migration; test an old-format fixture, not only a new-format round trip. |
+| An API already uses `0` for unbounded queues; a reviewer prefers `None`. | Preserve the established contract; preference alone does not justify a signature/default migration. |
+
+Historical examples: [#340](https://github.com/nominal-io/nominal-client/pull/340#discussion_r2094977681)
+preserves method aliases; [#427](https://github.com/nominal-io/nominal-client/pull/427)
+discusses worker ownership, public exports, and established queue defaults;
+[#524](https://github.com/nominal-io/nominal-client/pull/524#discussion_r2543615138)
+distinguishes a typing nicety from a blocker. Dependency removal in
+[#803](https://github.com/nominal-io/nominal-client/pull/803) required the persisted-state
+compatibility repair in [#823](https://github.com/nominal-io/nominal-client/pull/823).
+These examples supply context, not blanket adoption of every historical suggestion.

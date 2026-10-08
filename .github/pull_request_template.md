@@ -30,6 +30,8 @@ Label sample data and the revisions shown; screenshots do not prove runtime beha
 When relevant, add a short Compatibility or Review notes section:
 - Public signature/default/return/exception changes, deprecations, and migration impact.
 - Dependencies on other PRs, deliberate convention exceptions, or unresolved decisions.
+- New runtime dependencies or exact pins: capability gained, installation scope, and rationale.
+- Dependency upgrades: relevant behavior changes, not only old/new version numbers.
 - For shared-policy changes: rationale, scope, exceptions, and adoption cost.
 Do not leave empty sections, generic assurances, or checkboxes asserting everything is fine.
 -->
