@@ -152,7 +152,8 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     def archive(self) -> None:
         """Archives the event, preventing it from showing up in workbooks.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.event.BatchArchiveEvent(event_pb2.BatchArchiveEventRequest(event_rids=[self.rid]))
@@ -160,7 +161,8 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     def unarchive(self) -> None:
         """Unarchives the event, allowing it to show up in workbooks.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.event.BatchUnarchiveEvent(event_pb2.BatchUnarchiveEventRequest(event_rids=[self.rid]))

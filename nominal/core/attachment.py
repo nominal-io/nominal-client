@@ -48,11 +48,12 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b", *attachment.labels]
-            attachment = attachment.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b", *attachment.labels]
+                attachment = attachment.update(labels=new_labels)
         """
         request = attachments_api.UpdateAttachmentRequest(
             description=description,
@@ -87,14 +88,16 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         """Archive this attachment.
         Archived attachments are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.attachment.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
         """Unarchive this attachment, allowing it to be viewed in the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
 
