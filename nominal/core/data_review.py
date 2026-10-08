@@ -133,17 +133,6 @@ class CheckViolation:
     end: IntegralNanosecondsUTC | None
     priority: Priority | None
 
-    @classmethod
-    def _from_proto(cls, check_alert: data_review_pb2.CheckAlert) -> CheckViolation:
-        return cls(
-            rid=check_alert.rid,
-            check_rid=check_alert.check_rid,
-            name=check_alert.name,
-            start=check_alert.start.ToNanoseconds(),
-            end=check_alert.end.ToNanoseconds() if check_alert.HasField("end") else None,
-            priority=Priority._from_proto(check_alert.priority),
-        )
-
 
 @dataclass(frozen=True)
 class DataReviewBuilder:
@@ -260,9 +249,8 @@ def _iter_search_data_reviews(
 def _check_has_settled(state: data_review_pb2.AutomaticCheckEvaluationState) -> bool:
     """Whether a check evaluation has reached a terminal state.
 
-    The generated oneof types make this match exhaustive when the client updates its proto dependency.
-    Unknown states received from a newer server appear as an unset oneof and count as settled, preserving
-    the legacy behavior.
+    mypy checks this match against the generated oneof arms when the proto dependency is upgraded. At runtime,
+    a state added by a newer server arrives as an unset oneof and counts as settled, as does a check with no state.
     """
     match state.WhichOneof("automatic_check_evaluation_state"):
         case "pending_execution" | "executing":

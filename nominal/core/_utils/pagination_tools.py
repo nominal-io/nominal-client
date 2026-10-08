@@ -150,8 +150,8 @@ def search_data_reviews_paginated(
 
     def factory(page_token: str | None) -> data_review_pb2.FindDataReviewsRequest:
         return data_review_pb2.FindDataReviewsRequest(
-            asset_rids=list(assets or ()),
-            run_rids=list(runs or ()),
+            asset_rids=[] if assets is None else list(assets),
+            run_rids=[] if runs is None else list(runs),
             archived_statuses=data_review_pb2.ArchivedStatusSet(values=archive_status.to_proto_archived_statuses()),
             page_size=DEFAULT_PAGE_SIZE,
             next_page_token=page_token,

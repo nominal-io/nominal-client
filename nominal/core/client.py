@@ -1432,6 +1432,12 @@ class NominalClient:
         return DataReviewBuilder([], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
+        """Retrieve a data review by its RID.
+
+        Raises:
+            NominalNotFoundError: If no data review has that rid.
+            NominalError: If the retrieval request fails.
+        """
         return _get_data_review(self._clients, rid)
 
     def create_event(
