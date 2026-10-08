@@ -39,7 +39,6 @@ autodoc_default_options = {
         "object,BaseException,BaseExceptionGroup,ExceptionGroup,Enum,str,int,float,dict,tuple,"
         "Handler,StreamHandler,Filterer"
     ),
-    "member-order": "bysource",
     "show-inheritance": True,
 }
 autoclass_content = "both"  # merge_init_into_class
