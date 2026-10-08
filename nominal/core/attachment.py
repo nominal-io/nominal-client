@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
+from typing import BinaryIO, Iterable, Protocol, Sequence, cast
 
 from nominal_api import attachments_api
 from typing_extensions import Self
@@ -12,6 +12,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -20,7 +21,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -40,7 +41,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace attachment metadata.

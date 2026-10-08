@@ -9,7 +9,7 @@ import datetime
 import logging
 import pathlib
 import warnings
-from typing import Any, List, Mapping, Optional, Sequence
+from typing import Any, List, Optional, Sequence
 
 import click
 import pandas as pd
@@ -24,6 +24,7 @@ from rich.table import Column, Table
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
+from nominal.core._utils.api_types import NominalProperties
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------------
 
 
-def _render_properties(props: Optional[Mapping[str, str]]) -> str:
+def _render_properties(props: Optional[NominalProperties]) -> str:
     if not props:
         return "-"
     # show a compact key=value list

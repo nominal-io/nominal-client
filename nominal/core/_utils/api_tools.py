@@ -23,6 +23,7 @@ from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.types import types_pb2
 
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
@@ -102,7 +103,7 @@ def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper |
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
 
 
-def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyUpdateWrapper | None:
+def property_update(properties: NominalProperties | None) -> types_pb2.PropertyUpdateWrapper | None:
     """Wrap properties for a proto update request: None omits the field, any mapping replaces it."""
     return None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
 

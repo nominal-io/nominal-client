@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Sequence
 
 from nominal_api import scout_asset_api
 
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 class AssetCopyOptions(ResourceCopyOptions):
     new_asset_name: str | None = None
     new_asset_description: str | None = None
-    new_asset_properties: dict[str, Any] | None = None
+    new_asset_properties: NominalProperties | None = None
     new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
     include_attachments: bool = False

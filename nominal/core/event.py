@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from typing_extensions import Self
 
@@ -18,6 +18,7 @@ from nominal.core._utils.api_tools import (
     property_update,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
@@ -51,7 +52,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     description: str
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     type: EventType
     is_archived: bool
@@ -83,7 +84,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         assets: Iterable[core_asset.Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] | None = None,
         type: EventType | None,
     ) -> Self:
@@ -216,7 +217,7 @@ def _create_event(
     duration: timedelta | IntegralNanosecondsDuration,
     assets: Iterable[core_asset.Asset | str] | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     labels: Iterable[str] | None,
 ) -> Event:
     request = event_pb2.CreateEventRequest(
@@ -252,7 +253,7 @@ def _search_events(
     asset_rids: Iterable[str] | None = None,
     asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,

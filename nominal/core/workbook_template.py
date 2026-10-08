@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
@@ -78,7 +79,7 @@ class WorkbookTemplate(
     title: str
     description: str
     labels: Sequence[str]
-    properties: Mapping[str, str]
+    properties: NominalProperties
     workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -105,7 +106,7 @@ class WorkbookTemplate(
         description: str | None = None,
         title: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Self:
         """Replace template metadata.
         Updates the current instance, and returns it.
@@ -157,7 +158,7 @@ class WorkbookTemplate(
         *,
         title_suffix: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         is_published: bool = True,
         workspace: Workspace | str | None = None,
     ) -> Self:
@@ -354,7 +355,7 @@ def _create_workbook_template_with_content_and_layout(
     *,
     description: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     commit_message: str | None = None,
     is_published: bool = False,
 ) -> WorkbookTemplate:

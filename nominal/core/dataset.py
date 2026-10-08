@@ -16,6 +16,7 @@ from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
@@ -51,7 +52,7 @@ DatasetBounds: TypeAlias = Bounds
 class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
@@ -69,7 +70,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace dataset metadata.
@@ -1579,7 +1580,7 @@ def _create_dataset_request(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] = (),
     derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
@@ -1616,7 +1617,7 @@ def _create_dataset(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
@@ -1696,7 +1697,7 @@ def _construct_new_ingest_options(
     file_type: FileType,
     description: str | None,
     labels: Sequence[str],
-    properties: Mapping[str, str],
+    properties: NominalProperties,
     prefix_tree_delimiter: str | None,
     channel_prefix: str | None,
     tag_columns: Mapping[str, str] | None,
