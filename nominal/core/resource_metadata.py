@@ -14,8 +14,9 @@ class MetadataResourceType(Enum):
     """Resource families supported by label and property discovery.
 
     Assets, runs, datasets, events, and videos discover metadata on active indexed documents.
-    Workbooks, workbook templates, and checklists use dedicated backend routes and retain those
-    routes' archive and publication semantics.
+    Dedicated routes search permitted workspaces and include draft and archived workbooks,
+    unpublished and archived workbook templates, and retained metadata for archived or deleted
+    checklists.
     """
 
     ASSET = "ASSET"
@@ -44,7 +45,7 @@ def _search_params(
         resource_types=[_INDEXED_RESOURCE_TYPES[resource_type]],
         workspaces=[] if workspace_rid is None else [workspace_rid],
         sort_by=metadata_pb2.ALPHABETICAL,
-        page_token=token or "",
+        page_token=token,
     )
 
 

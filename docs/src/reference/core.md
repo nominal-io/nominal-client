@@ -23,7 +23,8 @@ search every permitted workspace.
 Assets, runs, datasets, events, and videos use paginated metadata searches across active indexed
 documents. Every page is retrieved, including results beyond the aggregate endpoint's 500-item
 limit. Workbooks, workbook templates, and checklists use their dedicated backend metadata
-routes and retain those routes' archive and publication semantics.
+routes scoped to permitted workspaces. These include draft and archived workbooks, unpublished
+and archived workbook templates, and retained metadata for archived or deleted checklists.
 
 Property key discovery may include numeric properties. Property value discovery returns
 string values only; it returns an empty list when a key has no string values. Discovery is

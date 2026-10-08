@@ -29,6 +29,9 @@ def _assert_search_pages(
     rpc: MagicMock, resource_type: metadata_pb2.ResourceType.ValueType, tokens: Sequence[str]
 ) -> None:
     assert [request.args[0].params.page_token for request in rpc.call_args_list] == list(tokens)
+    assert [request.args[0].params.HasField("page_token") for request in rpc.call_args_list] == [
+        bool(token) for token in tokens
+    ]
     for request in rpc.call_args_list:
         params = request.args[0].params
         assert list(params.resource_types) == [resource_type]
