@@ -109,13 +109,14 @@ class WorkbookTemplate(
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        NOTE: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in template.labels:
-                new_labels.append(old_label)
-            template = template.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b"]
+                for old_label in template.labels:
+                    new_labels.append(old_label)
+                template = template.update(labels=new_labels)
         """
         metadata = self._clients.template.update_metadata(
             self._clients.auth_header,
@@ -227,16 +228,21 @@ class WorkbookTemplate(
         Args:
             title: Title of the workbook to create. By default, uses the title of this template
             description: Description of the workbook to create. By default, uses the description of this template
-            run: Run to visualize in the workbook
-                NOTE: may not be provided alongside `asset`
-            asset: Asset to visualize in the workbook
-                NOTE: may not be provided alongside `run`
+            run: Run to visualize in the workbook.
+
+                **Note:** May not be provided alongside `asset`.
+            asset: Asset to visualize in the workbook.
+
+                **Note:** May not be provided alongside `run`.
             is_draft: Whether to create the workbook in draft state. Defaults to False.
 
-        NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
-              standard workbooks and not comparison workbooks.
-        NOTE: only supports singular `asset` instead of a list of `assets` because workbook templates only support
-              single asset workbooks.
+        Note:
+            Only supports singular `run` instead of a list of `runs` because workbook templates only support
+            standard workbooks and not comparison workbooks.
+
+        Note:
+            Only supports singular `asset` instead of a list of `assets` because workbook templates only support
+            single asset workbooks.
 
         Returns:
             The instantiated workbook

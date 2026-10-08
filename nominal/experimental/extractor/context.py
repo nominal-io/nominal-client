@@ -576,8 +576,9 @@ class ManifestExtractorContext(ExtractorContext):
         errors the rest of the client raises (all :class:`ValueError` subclasses) when the arguments
         themselves are malformed, which is what :meth:`Dataset.add_video` does too.
 
-        NOTE: video outputs require a recent version of the Nominal platform. An older ingest
-        pipeline ignores them, and rejects a manifest whose only outputs are videos.
+        Note:
+            Video outputs require a recent version of the Nominal platform. An older ingest
+            pipeline ignores them, and rejects a manifest whose only outputs are videos.
         """
         if not channel:
             raise ExtractorError("channel must be a non-empty channel name for the video")

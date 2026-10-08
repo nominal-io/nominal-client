@@ -82,7 +82,6 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
-        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known
@@ -133,13 +132,14 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in video.labels:
-                new_labels.append(old_label)
-            video = video.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b"]
+                for old_label in video.labels:
+                    new_labels.append(old_label)
+                video = video.update(labels=new_labels)
         """
         request = scout_video_api.UpdateVideoMetadataRequest(
             description=description,
@@ -159,7 +159,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         """Archive this video.
         Archived videos are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.video.archive(self._clients.auth_header, self.rid)
 
@@ -171,7 +172,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
     def unarchive(self) -> None:
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
@@ -218,7 +220,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
-                NOTE: this is currently not displayed to users and may be removed in the future.
+
+                **Note:** This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
 
@@ -303,7 +306,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
-                NOTE: this is currently not displayed to users and may be removed in the future.
+
+                **Note:** This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
@@ -382,7 +386,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             path: Path to the video file to add to an existing video within Nominal
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
-                NOTE: this is currently not displayed to users and may be removed in the future.
+
+                **Note:** This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
 
@@ -427,7 +432,8 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             name: Name of the file to create in S3 during upload
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
-                NOTE: this is currently not displayed to users and may be removed in the future.
+
+                **Note:** This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.

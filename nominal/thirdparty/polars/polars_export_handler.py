@@ -162,8 +162,11 @@ def _batch_channel_points_per_second(
     Supports all channel data types (DOUBLE, INT, STRING) by building the appropriate
     compute series for each and submitting a single BatchComputeWithUnitsRequest.
 
-    NOTE: Not intended for direct use — see `_channel_points_per_second`.
-    NOTE: Do not use with more than 300 channels, or 500 concurrently across all requests.
+    Note:
+        Not intended for direct use — see `_channel_points_per_second`.
+
+    Note:
+        Do not use with more than 300 channels, or 500 concurrently across all requests.
 
     Args:
         client: Nominal request client
@@ -172,7 +175,8 @@ def _batch_channel_points_per_second(
         end_ns: End of the time range to query over
         tags: Key-value pairs of tags to filter data with
         num_buckets: Number of buckets to use — more typically leads to better results.
-            NOTE: max number of buckets allowed is 1000
+
+            **Note:** Max number of buckets allowed is 1000.
 
     Returns:
         Mapping of (data_source, channel_name) to peak points/second. A value of `None`
@@ -245,8 +249,9 @@ def _channel_points_per_second(
     Splits channels into batches of `DEFAULT_CHANNELS_PER_REQUEST` and queries each batch in parallel
     via an internally-managed thread pool.
 
-    NOTE: may take a long time for large channel counts. Takes approx. 30s for 1000 channels with good internet,
-          but varies based on how many points are within the query bounds.
+    Note:
+        May take a long time for large channel counts. Takes approx. 30s for 1000 channels with good internet,
+        but varies based on how many points are within the query bounds.
 
     Args:
         client: Nominal client to make requests with
@@ -597,6 +602,7 @@ class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
     Pipeline:
+
     * Filter to exportable channel types (DOUBLE/INT/STRING).
     * Confirm each channel has data in the range (via `filter_channels_with_data`) and
       estimate per-channel peak points-per-second.

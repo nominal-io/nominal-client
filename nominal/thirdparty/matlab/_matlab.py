@@ -94,19 +94,26 @@ def export_channels_to_matlab(
     Args:
         client: The Nominal client used to issue the data export request
         output_path: Location on disk to write the resulting `.mat` file.
-            NOTE: The parent directory will be created if it does not already exist.
-            NOTE: Must have a `.mat` suffix.
+
+            **Note:** The parent directory will be created if it does not already exist.
+
+            **Note:** Must have a `.mat` suffix.
         channels: List of channels to export.
-            NOTE: Must be non-empty.
+
+            **Note:** Must be non-empty.
         tags: Optional dictionary of tags to apply when exporting each channel.
         start_time: The minimum timestamp to include in the export.
-            NOTE: If not provided, uses the earliest available timestamp.
+
+            **Note:** If not provided, uses the earliest available timestamp.
         end_time: The maximum timestamp to include in the export.
-            NOTE: If not provided, uses the latest available timestamp.
+
+            **Note:** If not provided, uses the latest available timestamp.
         resolution: Fixed resolution (in nanoseconds) to downsample the export data.
-            NOTE: Mutually exclusive with `num_buckets`.
+
+            **Note:** Mutually exclusive with `num_buckets`.
         num_buckets: Number of buckets to aggregate the selected time window into.
-            NOTE: Mutually exclusive with `resolution`.
+
+            **Note:** Mutually exclusive with `resolution`.
         export_timestamp_type: Format of exported timestamps. Defaults to string-based iso8601 timestamps.
         forward_fill_lookback: If provided, enables forward-filling of values at timestamps
             where data is missing, up to the given lookback duration. If not provided,
@@ -114,11 +121,12 @@ def export_channels_to_matlab(
         chunk_size: Size in bytes of the buffer used while streaming the decompressed
             export to disk. Defaults to 1 MiB.
 
+    Exceptions raised by the underlying API client or file I/O operations
+    (e.g. network errors, filesystem errors) propagate to the caller.
+
     Raises:
         ValueError: If no channels are provided, if both `resolution` and `num_buckets`
             are specified, or if the output path does not have a `.mat` suffix.
-        Any exceptions raised by the underlying API client or file I/O operations
-            (e.g. network errors, filesystem errors).
 
     Example:
         ```python
@@ -158,7 +166,7 @@ def export_channels_to_matlab(
         )
         ```
 
-     Usage in MATLAB:
+    Usage in MATLAB:
         Once the `.mat` file is generated, you can load it directly into MATLAB using
         the built-in `load` function or by double-clicking the file in the MATLAB UI:
 

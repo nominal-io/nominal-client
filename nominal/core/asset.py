@@ -115,13 +115,14 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
 
         Links can be URLs or tuples of (URL, name).
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in asset.labels:
-                new_labels.append(old_label)
-            asset = asset.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b"]
+                for old_label in asset.labels:
+                    new_labels.append(old_label)
+                asset = asset.update(labels=new_labels)
         """
         request = scout_asset_api.UpdateAssetRequest(
             description=description,
@@ -714,14 +715,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableConjureMixin[scout_asset_api.Ass
         """Archive this asset.
         Archived assets are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.assets.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
         """Unarchive this asset, allowing it to be viewed in the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
