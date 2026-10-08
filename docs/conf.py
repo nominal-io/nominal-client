@@ -62,7 +62,7 @@ core_topic_modules = {
     "automatic-validation": ("checklist", "_checklist_types", "data_review", "integration"),
     "workbooks": ("workbook", "workbook_template"),
     "markings": ("marking", "elements"),
-    "shared-types": ("bounds", "_utils.api_tools", "_utils.query_tools", "_utils.api_types"),
+    "shared-types": ("bounds", "_utils.api_tools", "_utils.query_tools", "_utils.api_types", "resource_metadata"),
 }
 # Keep deprecated object links working without listing them in the directory.
 core_legacy_modules = ("video", "video_file")

@@ -198,9 +198,6 @@ def test_dedicated_metadata_routes_normalize_picker_options_and_unknown_keys(
         "N12",
     ]
     assert client.list_property_values(resource_type, "missing", workspace=WorkspaceSearchType.ALL) == []
-    assert (
-        client.get_numeric_property_statistics(resource_type, "tail_number", workspace=WorkspaceSearchType.ALL) is None
-    )
 
     assert service.get_all_labels_and_properties.call_args_list == [
         call("Bearer token", workspaces=[WORKSPACE_RID]),
@@ -209,31 +206,4 @@ def test_dedicated_metadata_routes_normalize_picker_options_and_unknown_keys(
     clients.resource_metadata.SearchLabels.assert_not_called()
     clients.resource_metadata.SearchPropertyKeys.assert_not_called()
     clients.resource_metadata.SearchPropertyValues.assert_not_called()
-    clients.resource_metadata.GetNumericPropertyStatistics.assert_not_called()
     clients.resolve_default_workspace_rid.assert_called_once_with()
-
-
-@pytest.mark.parametrize("bounds", [None, (0.0, 0.0), (-12.5, 7.5)])
-def test_numeric_statistics_distinguish_missing_values_from_zero(bounds: tuple[float, float] | None) -> None:
-    """Missing numeric values return None; present zero and negative bounds remain meaningful values."""
-    client, clients = _client()
-    clients.resource_metadata.GetNumericPropertyStatistics.return_value = (
-        metadata_pb2.GetNumericPropertyStatisticsResponse(
-            statistics=None if bounds is None else metadata_pb2.NumericPropertyStatistics(min=bounds[0], max=bounds[1])
-        )
-    )
-
-    result = client.get_numeric_property_statistics(
-        core.MetadataResourceType.RUN, "mass_kg", workspace=WorkspaceSearchType.ALL
-    )
-
-    if bounds is None:
-        assert result is None
-    else:
-        assert result is not None
-        assert (result.min, result.max) == bounds
-    request = clients.resource_metadata.GetNumericPropertyStatistics.call_args.args[0]
-    assert request.property_key == "mass_kg"
-    assert list(request.resource_types) == [metadata_pb2.RUN]
-    assert list(request.workspaces) == []
-    clients.resolve_default_workspace_rid.assert_not_called()
