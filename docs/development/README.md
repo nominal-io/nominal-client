@@ -20,7 +20,7 @@ relevant to your change alongside the code.
 | Shared defaults and task discovery | Root `AGENTS.md`; detailed SDK, test, and doc policy in the guides above |
 | Package-specific contracts | A `CONVENTIONS.md` beside the source, routed from `AGENTS.md` when needed |
 | Reusable multi-step procedures | `.agents/skills/<name>/SKILL.md`; tool discovery files only point to the source |
-| Review execution and evaluation | `.github/workflows/claude-review.yml` owns CI behavior; `.github/review-calibration.md` owns examples and historical evidence |
+| Review execution and evaluation | `.github/workflows/claude-review.yml` owns CI behavior; `.github/review-calibration.md` explains how to check review quality |
 
 Start with an existing owner. Add a new guide only for a distinct topic with enough
 substance to justify another file. Add scoped `AGENTS.md` files only when they improve
@@ -42,8 +42,8 @@ applies, and what adopting it asks of contributors:
 - **Adoption cost:** whether existing code differs, whether a migration is needed, and
   how new changes should behave during it. Do not require unrelated cleanup or describe
   a target convention as established implementation behavior.
-- **Evidence:** an actionable review example and a should-not-flag case in calibration
-  when review judgment changes. Keep historical PR references there, outside policy prose.
+- **Evidence:** a concrete example of the improvement and where the rule should stop.
+  Put supporting review history and experiment results in the PR description.
 
 Keep this explanation proportional to the change; a few sentences may be enough.
 A broad or controversial policy change should be reviewable separately from the feature

@@ -108,4 +108,4 @@ Keep repository-wide defaults and task routes here. Put detailed policy in the o
 source, and reusable procedures in `.agents/skills/`. Link instead of copying rules.
 Update the owner and its routes in the same patch when behavior or paths change. Describe
 current contracts separately from proposed standards and unfinished migrations. Keep
-historical PR discussion in calibration/evidence records rather than normative policy.
+historical discussion and experiment results in PR descriptions rather than normative policy.
