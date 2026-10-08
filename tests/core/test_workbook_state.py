@@ -95,29 +95,15 @@ def template(state_clients: MagicMock) -> WorkbookTemplate:
 
 def test_workbook_update_distinguishes_false_from_omitted_flags(workbook: Workbook, state_clients: MagicMock) -> None:
     """Explicit False changes state; omitted flags leave the backend's state untouched."""
-    workbook.update(is_published=False, is_locked=False)
+    workbook.update(is_draft=False, is_locked=False)
     explicit = ConjureEncoder().default(state_clients.notebook.update_metadata.call_args.args[1])
-    assert explicit["isDraft"] is True
+    assert explicit["isDraft"] is False
     assert explicit["isLocked"] is False
 
     workbook.update(title="Rename without changing state")
     omitted = ConjureEncoder().default(state_clients.notebook.update_metadata.call_args.args[1])
     assert omitted["isDraft"] is None
     assert omitted["isLocked"] is None
-
-    workbook.update(is_draft=False)
-    assert state_clients.notebook.update_metadata.call_args.args[1].is_draft is False
-
-
-@pytest.mark.parametrize(("is_draft", "is_published"), [(False, True), (False, False), (True, False), (True, True)])
-def test_workbook_rejects_both_publication_aliases_before_io(
-    workbook: Workbook, state_clients: MagicMock, is_draft: bool, is_published: bool
-) -> None:
-    """Even consistent aliases are ambiguous when both are explicitly supplied."""
-    with pytest.raises(ValueError, match="is_draft.*is_published"):
-        workbook.update(is_draft=is_draft, is_published=is_published)
-
-    state_clients.notebook.update_metadata.assert_not_called()
 
 
 def test_lock_and_unlock_refresh_authoritative_metadata(workbook: Workbook, state_clients: MagicMock) -> None:
@@ -162,24 +148,25 @@ def test_workbook_lock_and_archive_queries_refresh_from_the_same_response(
 
 
 @pytest.mark.parametrize("published", [False, True])
-def test_publication_and_draft_queries_are_inverses_and_refresh_metadata(
+def test_state_queries_refresh_metadata(
     workbook: Workbook, template: WorkbookTemplate, state_clients: MagicMock, published: bool
 ) -> None:
-    """The common publication vocabulary maps to each resource's backend state flag."""
+    """State queries also adopt the fresh metadata returned by the backend."""
     state_clients.notebook.get.side_effect = None
     state_clients.notebook.get.return_value = _notebook(_workbook_metadata(is_draft=not published))
     state_clients.template.get.side_effect = None
     state_clients.template.get.return_value = _template(_template_metadata(is_published=published))
 
-    assert workbook.is_published() is published
-    assert workbook.title == "Server workbook"
     assert workbook.is_draft() is not published
-    assert template.is_draft() is not published
+    assert workbook.title == "Server workbook"
+    assert workbook.run_rids is None
+    assert workbook.asset_rids == ["server-asset-rid"]
+    assert workbook.created_by_rid == "server-creator-rid"
+    assert template.is_published() is published
     assert template.title == "Server template"
     assert template.labels == ["server-label"]
-    assert template.is_published() is published
-    assert state_clients.notebook.get.call_count == 2
-    assert state_clients.template.get.call_count == 2
+    assert state_clients.notebook.get.call_count == 1
+    assert state_clients.template.get.call_count == 1
 
 
 def test_template_update_refreshes_response_and_preserves_omitted_publication(
