@@ -18,7 +18,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_f
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
-from nominal.core.workbook import Workbook, WorkbookType, _replace_charts
+from nominal.core.workbook import Workbook, WorkbookType
 
 if TYPE_CHECKING:
     from nominal.core.workspace import Workspace
@@ -58,7 +58,16 @@ def _rebind_video_datasources(
         else:
             new_charts[chart_id] = viz
 
-    return _replace_charts(content, new_charts)
+    return scout_workbookcommon_api.WorkbookContent(
+        channel_variables=content.channel_variables,
+        charts=new_charts,
+        data_scope_inputs=content.data_scope_inputs,
+        inputs=content.inputs,
+        report_content=content.report_content,
+        settings=content.settings,
+        time_range_inputs=content.time_range_inputs,
+        version=content.version,
+    )
 
 
 @dataclass(frozen=True)

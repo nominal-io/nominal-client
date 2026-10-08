@@ -170,6 +170,7 @@ def _make_content_with_all_fields() -> scout_workbookcommon_api.WorkbookContent:
 
 
 def test_strip_keeps_non_chart_fields() -> None:
+    """Stripping video datasources keeps version, time_range_inputs, and report_content."""
     content = _make_content_with_all_fields()
     result = _strip_video_datasources(content)
     assert result.charts["vid"].video.v1.datasource is None  # type: ignore[union-attr]
@@ -177,6 +178,7 @@ def test_strip_keeps_non_chart_fields() -> None:
 
 
 def test_rebind_keeps_non_chart_fields() -> None:
+    """Rebinding video datasources keeps version, time_range_inputs, and report_content."""
     content = _make_content_with_all_fields()
     result = _rebind_video_datasources(content, _NEW_ASSET_RID, _NEW_RUN_RID)
     assert result.charts["vid"].video.v1.datasource.asset_rid == _NEW_ASSET_RID  # type: ignore[union-attr]
