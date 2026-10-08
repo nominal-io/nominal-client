@@ -39,7 +39,6 @@ nav:
         - Video Processing: reference/experimental/video_processing.md
   - Guides:
       - Networking & TLS: networking-tls.md
-      - Resource metadata: resource-metadata.md
   - Development:
       - Contributing: contributing.md
   - Documentation: https://docs.nominal.io/core/sdk/python-client/quickstart
