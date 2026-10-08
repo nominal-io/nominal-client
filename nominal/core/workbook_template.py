@@ -18,7 +18,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_f
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
-from nominal.core.workbook import Workbook, WorkbookType
+from nominal.core.workbook import Workbook, WorkbookType, _strip_video_datasources
 
 if TYPE_CHECKING:
     from nominal.core.workspace import Workspace
@@ -34,7 +34,7 @@ def _rebind_video_datasources(
     Templates strip datasource RIDs on save; this restores them so the video panel
     can load the correct asset.
 
-    # TODO(@seanmreidy): Remove once videos are migrated to channels.
+    # TODO(@seanmreidy): Remove after legacy v1 video panel definitions are migrated to channel variables.
     """
     new_charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
     for chart_id, viz in content.charts.items():
@@ -260,11 +260,14 @@ class WorkbookTemplate(
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
         self._refresh_from_api(raw_template)
-        template_content = raw_template.content
+        # Older templates may still contain video bindings to their source asset/run.
+        template_content = _strip_video_datasources(raw_template.content)
 
-        # Re-bind video panel datasources that were stripped when the template was saved.
-        has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
-        if has_video:
+        # Legacy v1 videos still use asset/run IDs directly rather than channel variables.
+        has_legacy_video = any(
+            viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values()
+        )
+        if has_legacy_video:
             run_rid = rid_from_instance_or_string(run) if run is not None else None
             video_asset_rid = None
             if asset is not None:
@@ -274,10 +277,6 @@ class WorkbookTemplate(
             elif run_rid is not None:
                 raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
                 video_asset_rid = raw_run.assets[0] if raw_run.assets else None
-            else:
-                raise ValueError(
-                    f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
-                )
             if video_asset_rid is not None:
                 template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
 

@@ -29,10 +29,10 @@ def _strip_video_datasources(
     """Strip asset/run RIDs from video panel v1 datasources before storing as a template.
 
     Preserves ref_name at the panel level (v1.ref_name) so it can be re-bound
-    on instantiation. The datasource is nulled out entirely to avoid a partial
-    object (ref_name only, no asset_rid) that would crash on load.
+    on instantiation. The datasource is nulled out entirely because a partial
+    object (ref_name only, no asset_rid) cannot resolve a video source.
 
-    # TODO(@seanmreidy): Remove once videos are migrated to channels.
+    # TODO(@seanmreidy): Remove after legacy v1 video panel definitions are migrated to channel variables.
     """
     new_charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
     changed = False
