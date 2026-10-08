@@ -89,14 +89,3 @@ def test_clone_preserves_explicit_empty_overrides(template: WorkbookTemplate, mo
     assert request.is_published is True
     assert request.workspace == "destination-rid"
     mock_clients.resolve_default_workspace_rid.assert_not_called()
-
-
-@pytest.mark.parametrize(("branch", "commit"), [("analysis", "commit-id"), ("", "")])
-def test_refnames_rejects_combined_version_selectors(
-    template: WorkbookTemplate, mock_clients: MagicMock, branch: str, commit: str
-) -> None:
-    """Selecting a branch and a commit together is invalid, even if both strings are empty."""
-    with pytest.raises(ValueError, match="Only one of `branch` and `commit`"):
-        template.get_refnames(branch=branch, commit=commit)  # type: ignore[call-overload]
-
-    mock_clients.template.get_used_ref_names.assert_not_called()

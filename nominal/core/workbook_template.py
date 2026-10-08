@@ -129,40 +129,14 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         )
         return self.refresh()
 
-    @overload
-    def get_refnames(self, *, branch: str | None = None, commit: None = None) -> Sequence[str]: ...
+    def get_refnames(self) -> Sequence[str]:
+        """Get the list of refnames used within the workbook."""
+        return self._clients.template.get_used_ref_names(self._clients.auth_header, self.rid)
 
-    @overload
-    def get_refnames(self, *, branch: None = None, commit: str | None = None) -> Sequence[str]: ...
-
-    def get_refnames(self, *, branch: str | None = None, commit: str | None = None) -> Sequence[str]:
-        """Get the data source refnames used by this template's channel variables.
-
-        Args:
-            branch: Branch whose latest content to read. Mutually exclusive with `commit`.
-            commit: Commit ID whose content to read. Mutually exclusive with `branch`.
-
-        Returns:
-            Refnames from the selected version, or the latest main-branch content when neither selector is provided.
-
-        Raises:
-            ValueError: If both `branch` and `commit` are provided.
-        """
-        if branch is not None and commit is not None:
-            raise ValueError("Only one of `branch` and `commit` may be used to get template refnames")
-        return self._clients.template.get_used_ref_names(
-            self._clients.auth_header, self.rid, branch=branch, commit=commit
-        )
-
-    def update_refnames(self, refname_map: Mapping[str, str], *, branch: str | None = None) -> None:
-        """Replace data source refnames in this template's channel variables.
-
-        Args:
-            refname_map: Mapping of original refnames to their replacements.
-            branch: Branch to update. Defaults to the main branch.
-        """
+    def update_refnames(self, refname_map: Mapping[str, str]) -> None:
+        """Updates refnames using a provided map of original refnames to the new refnames to replace them."""
         self._clients.template.update_ref_names(
-            self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid, branch=branch
+            self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid
         )
 
     def clone(
