@@ -4,7 +4,6 @@ import inspect
 from pathlib import Path
 
 from sphinx.application import Sphinx
-from sphinx.ext.autosummary import get_rst_suffix
 from sphinx.ext.autosummary.generate import generate_autosummary_docs
 from sphinx.util.inspect import stringify_signature
 
@@ -27,11 +26,6 @@ def _drop_private_params(app, what, name, obj, options, signature, return_annota
     return stringify_signature(sig.replace(parameters=params)), return_annotation
 
 
-def _drop_object_base(app, name, obj, options, bases):
-    """Drop `object` from the "Bases:" line; it says nothing."""
-    bases[:] = [b for b in bases if b is not object]
-
-
 def _hide_edit_link_on_stubs(app, pagename, templatename, context, doctree):
     """Autosummary stubs under generated/ are gitignored, so "Edit this page" would 404."""
     if "/generated/" in pagename:
@@ -44,19 +38,11 @@ def _generate_api_stubs(app: Sphinx) -> None:
     pending = [
         str(app.env.doc2path(name))
         for name in sorted(app.env.found_docs)
-        if "generated" not in Path(name).parts and app.env.doc2path(name).is_file()
+        if name.startswith("reference/") and "/generated/" not in name and app.env.doc2path(name).is_file()
     ]
     generated: set[Path] = set()
     while pending:
-        paths = generate_autosummary_docs(
-            pending,
-            suffix=get_rst_suffix(app),
-            base_path=app.srcdir,
-            app=app,
-            imported_members=app.config.autosummary_imported_members,
-            overwrite=app.config.autosummary_generate_overwrite,
-            encoding=app.config.source_encoding,
-        )
+        paths = generate_autosummary_docs(pending, app=app)
         discovered = set(paths) - generated
         generated.update(discovered)
         # Native recursion visits newly written files only. Visit existing ones
@@ -73,6 +59,5 @@ def _generate_api_stubs(app: Sphinx) -> None:
 def setup(app: Sphinx) -> dict[str, bool]:
     app.connect("builder-inited", _generate_api_stubs, priority=600)
     app.connect("autodoc-process-signature", _drop_private_params)
-    app.connect("autodoc-process-bases", _drop_object_base)
     app.connect("html-page-context", _hide_edit_link_on_stubs, priority=600)
     return {"parallel_read_safe": True}

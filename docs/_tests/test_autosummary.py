@@ -130,3 +130,23 @@ def test_guide_edit_preserves_unchanged_api_pages(tmp_path: Path) -> None:
     assert second.returncode == 0, second.stdout + second.stderr
     assert stubs == {p: p.stat().st_mtime_ns for p in reference.rglob("generated/*.rst")}
     assert html.stat().st_mtime_ns == modified
+
+
+def test_plain_class_has_no_empty_bases_heading(tmp_path: Path) -> None:
+    """Class headers do not contain a dangling Bases label."""
+    source = tmp_path / "source"
+    reference = source / "reference"
+    reference.mkdir(parents=True)
+    _configure(source, tmp_path)
+    with (source / "conf.py").open("a") as stream:
+        stream.write("autodoc_default_options = {'show-inheritance': True}\n")
+    (source / "index.rst").write_text("Home\n====\n\n.. toctree::\n\n   reference/api\n", encoding="utf-8")
+    (reference / "api.rst").write_text(
+        "API\n===\n\n.. autosummary::\n   :toctree: generated\n\n   fixture_api.Foo\n", encoding="utf-8"
+    )
+    (tmp_path / "fixture_api.py").write_text('class Foo:\n    """A plain class."""\n', encoding="utf-8")
+    output = tmp_path / "output"
+    result = _build(source, output)
+    assert result.returncode == 0, result.stdout + result.stderr
+    html = (output / "reference/generated/fixture_api.Foo/index.html").read_text(encoding="utf-8")
+    assert "<p>Bases:</p>" not in html

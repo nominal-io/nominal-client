@@ -63,3 +63,45 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     html = (output / f"examples/{script}/index.html").read_text(encoding="utf-8")
     assert "Upload a dataset" in html
     assert "upload fixture" in html
+
+    # Removing a script must remove its output too during a live rebuild.
+    (scripts / script).unlink()
+    result = subprocess.run(
+        [sys.executable, "-m", "sphinx", "-W", "-b", "dirhtml", "-c", str(docs), str(source), str(output)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not page.exists()
+    assert not (output / f"examples/{script}/index.html").exists()
+
+
+def test_example_edit_links_are_independent_between_apps(tmp_path):
+    """Building another site cannot erase the first site's example source links."""
+    extension = Path(__file__).resolve().parents[1] / "_ext/examples.py"
+    spec = importlib.util.spec_from_file_location("docs_examples", extension)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    apps = []
+    for name in ("first", "second"):
+        root = tmp_path / name
+        source = root / "docs/src"
+        source.mkdir(parents=True)
+        apps.append(
+            SimpleNamespace(
+                srcdir=source,
+                confdir=source.parent,
+                config=SimpleNamespace(
+                    html_context={"source_user": "nominal-io", "source_repo": name, "source_version": "main"}
+                ),
+            )
+        )
+    scripts = tmp_path / "first/examples"
+    scripts.mkdir()
+    (scripts / "upload.py").write_text('"""Upload example."""\n', encoding="utf-8")
+    for app in apps:
+        module.generate(app)
+    context = {}
+    module._edit_link(apps[0], "examples/upload.py", "page.html", context, None)
+    assert context["edit_source_link"]("ignored") == "https://github.com/nominal-io/first/blob/main/examples/upload.py"

@@ -15,7 +15,6 @@
    :no-members:
    :no-inherited-members:
 
-{% block attributes %}
 {% if attributes %}
 .. rubric:: Attributes
 
@@ -26,9 +25,7 @@
    ~{{ name }}.{{ item }}
 {%- endfor %}
 {% endif %}
-{% endblock %}
 
-{% block methods %}
 {% if public_methods %}
 .. rubric:: Methods
 
@@ -39,5 +36,4 @@
    ~{{ name }}.{{ item }}
 {%- endfor %}
 {% endif %}
-{% endblock %}
 {% endif %}
