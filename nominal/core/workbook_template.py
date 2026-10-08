@@ -65,7 +65,9 @@ def _rebind_video_datasources(
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Template]):
+class WorkbookTemplate(
+    HasRid, RefreshableConjureMixin[scout_template_api.Template | scout_template_api.TemplateSummary]
+):
     rid: str
     title: str
     description: str
@@ -122,10 +124,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             ),
             self.rid,
         )
-        updated = self._from_template_summary(
-            self._clients, scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid)
-        )
-        return self._refresh_from(updated)
+        return self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""
@@ -243,13 +242,9 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         )
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
-        return cls._from_template_summary(
-            clients, scout_template_api.TemplateSummary(metadata=template.metadata, rid=template.rid)
-        )
-
-    @classmethod
-    def _from_template_summary(cls, clients: _Clients, template: scout_template_api.TemplateSummary) -> Self:
+    def _from_conjure(
+        cls, clients: _Clients, template: scout_template_api.Template | scout_template_api.TemplateSummary
+    ) -> Self:
         return cls(
             rid=template.rid,
             title=template.metadata.title,

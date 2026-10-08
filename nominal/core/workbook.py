@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, overload
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self
@@ -87,7 +87,9 @@ class WorkbookType(Enum):
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
+class Workbook(
+    HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook | scout_notebook_api.NotebookMetadataWithRid]
+):
     rid: str
     title: str
     description: str
@@ -158,10 +160,39 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
             ),
             self.rid,
         )
-        updated = self._from_notebook_metadata(
-            self._clients, scout_notebook_api.NotebookMetadataWithRid(metadata=metadata, rid=self.rid)
-        )
-        return self._refresh_from(updated)
+        return self._refresh_from_api(scout_notebook_api.NotebookMetadataWithRid(metadata=metadata, rid=self.rid))
+
+    @overload
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+        assets: None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Self: ...
+
+    @overload
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        runs: None = None,
+        assets: Sequence[Asset | str] | None = None,
+        is_draft: bool | None = False,
+        is_locked: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Self: ...
 
     def clone(
         self,
@@ -356,13 +387,9 @@ class Workbook(HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook]):
         )
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
-        return cls._from_notebook_metadata(
-            clients, scout_notebook_api.NotebookMetadataWithRid(metadata=notebook.metadata, rid=notebook.rid)
-        )
-
-    @classmethod
-    def _from_notebook_metadata(cls, clients: _Clients, notebook: scout_notebook_api.NotebookMetadataWithRid) -> Self:
+    def _from_conjure(
+        cls, clients: _Clients, notebook: scout_notebook_api.Notebook | scout_notebook_api.NotebookMetadataWithRid
+    ) -> Self:
         workbook_type = WorkbookType._from_conjure(notebook.metadata.notebook_type)
         return cls(
             rid=notebook.rid,
@@ -386,7 +413,7 @@ def _iter_search_workbooks(
         query,
     ):
         try:
-            yield Workbook._from_notebook_metadata(clients, raw_workbook)
+            yield Workbook._from_conjure(clients, raw_workbook)
         except ValueError:
             logger.exception("Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook)
 
