@@ -1,7 +1,7 @@
 # Nominal Python SDK
 
 {.lead}
-The API reference for the `nominal` package. For installation, see the [overview](/index.md); additional how-to guides are at [docs.nominal.io](https://docs.nominal.io/core/sdk/python-client/quickstart).
+The API reference for the `nominal` package. For installation, quickstarts and how-to guides, see the [guides](/index.md).
 
 The main components of the SDK are:
 

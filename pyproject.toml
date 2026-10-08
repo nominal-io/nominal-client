@@ -122,7 +122,7 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "examples/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "examples/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py", "docs/src/guides/_snippets/code/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -165,6 +165,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Guide snippets are fragments shown one step at a time: names and imports often come from an
+# earlier or later step, and the code favours readability over lint style. Long strings and URLs
+# stay unwrapped; the formatter wraps the code itself (ruff.toml in the folder sets 88 columns).
+"docs/src/guides/_snippets/code/**" = ["D", "E501", "E731", "F401", "F821", "NPY002", "PLW2901"]
 "nominal/core/dataset.py" = [
     "E501", # allow long lines for avro schema in docstring
 ]

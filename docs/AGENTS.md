@@ -1,6 +1,6 @@
 # Docs: agent and contributor notes
 
-Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nominal-io/nominal-sphinx-theme), on Shibuya; MyST Markdown) holding the existing Networking & TLS guide (`src/networking-tls.md`), generated examples, and the API reference (`src/reference/`), deployed from `main` to GitHub Pages. The layout and styling follow `nominal-io/instro`'s docs.
+Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nominal-io/nominal-sphinx-theme), on Shibuya; MyST Markdown) holding the guides (`src/guides/`), generated examples, and the API reference (`src/reference/`), deployed from `main` to GitHub Pages. The layout and styling follow `nominal-io/instro`'s docs.
 
 ## Build
 
@@ -8,7 +8,7 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 - Extension regression tests: `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
 - `just serve-docs`: live preview on http://127.0.0.1:8000, rebuilding the full site on page, example and docstring edits. `--pre-build "just _clean-docs"` clears disposable output before each rebuild, and generated paths are ignored by the watcher.
 - Toolchain: the `docs` dependency group, which needs Python >=3.12. If the project env is older: `uv sync --python 3.13 --all-packages --all-extras --group docs`.
-- URLs are folder-style (`/reference/core/`), so browse a finished build through a server: `uv run python -m http.server -d docs/_build/dirhtml`.
+- URLs are folder-style (`/guides/quickstart/`), so browse a finished build through a server: `uv run python -m http.server -d docs/_build/dirhtml`.
 
 ## Structure
 
@@ -16,7 +16,10 @@ Scope: `docs/`, one Sphinx site ([nominal-sphinx-theme](https://github.com/nomin
 |---|---|
 | `conf.py`, `_ext/`, `_templates/` | Config, extensions, autosummary templates. The header, logos, fonts, analytics and the rest of the styling come from nominal-sphinx-theme. |
 | `src/index.md` | Home page, and every sidebar group: one hidden `toctree` per caption, for all three sections. |
-| `src/networking-tls.md` | The existing Networking & TLS guide. Additional guides and their assets are migrated in a separate PR. |
+| `src/networking-tls.md` | The existing Networking & TLS guide. |
+| `src/guides/` | How-to guides, migrated from the Fern docs. File paths mirror the old `docs.nominal.io/core/sdk/python-client/<path>` slugs. |
+| `src/guides/_snippets/` | Partials pulled in with `{include}` (excluded as pages), and `code/` scripts pulled in with `{literalinclude}`. |
+| `src/guides/images/`, `src/guides/data/` | Images, screen recordings (`.mp4`) and downloadable sample data. |
 | `src/examples/` | Generated at build time from the repo's `examples/*.py` by `_ext/examples.py` (gitignored). Never edit. |
 | `src/reference/` | API reference pages. Autosummary writes a page per class and member into gitignored `src/reference/**/generated/`. |
 

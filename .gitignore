@@ -198,3 +198,5 @@ uv.toml
 # Sphinx docs: generated example pages and autosummary stubs
 docs/src/examples/
 docs/**/generated/
+# the quickstart's sample data
+!docs/src/guides/data/racecar_dataset.csv.gz
