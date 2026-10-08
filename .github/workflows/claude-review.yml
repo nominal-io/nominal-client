@@ -73,7 +73,7 @@ jobs:
             Review this pull request by running /code-review --comment and invoking the
             thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
             Read the root CLAUDE.md, its imported AGENTS.md, and applicable scoped instructions before
-            reviewing. Follow AGENTS.md's task routes to read the applicable development guides,
+            reviewing. Follow AGENTS.md's task routes to read the applicable .agents/conventions/ guides,
             including test/doc policies when behavior changes without corresponding test/doc edits.
             Pass the applicable policy files to plugin reviewers, not only the routing index.
             These linked policies are explicit repository requirements. Their concrete quality, testing, wrapper, and docstring requirements are

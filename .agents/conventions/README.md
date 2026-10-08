@@ -1,4 +1,4 @@
-# Development guidance
+# Repository conventions
 
 These guides explain how we build and review this SDK. They are for contributors and
 the tools helping them. Start with [AGENTS.md](../../AGENTS.md), then read the guides
@@ -20,7 +20,7 @@ relevant to your change alongside the code.
 | Shared defaults and task discovery | Root `AGENTS.md`; detailed SDK, test, and doc policy in the guides above |
 | Package-specific contracts | A `CONVENTIONS.md` beside the source, routed from `AGENTS.md` when needed |
 | Reusable multi-step procedures | `.agents/skills/<name>/SKILL.md`; tool discovery files only point to the source |
-| Review execution and evaluation | `.github/workflows/claude-review.yml` owns CI behavior; `.github/review-calibration.md` explains how to check review quality |
+| Review execution and evaluation | `.github/workflows/claude-review.yml` owns CI behavior; PR descriptions record review experiments |
 
 Start with an existing owner. Add a new guide only for a distinct topic with enough
 substance to justify another file. Add scoped `AGENTS.md` files only when they improve
@@ -68,5 +68,7 @@ actionlint. When routing changes, verify that the CI prompt passes the actual po
 to reviewers and that local sessions can identify the relevant source. A valid link is
 necessary but does not prove a model read or applied the rule.
 
-These files live outside `docs/src/`, the published SDK site content. Contributor links
-included into that site should use repository URLs for these source-only guides.
+These conventions live in `.agents/conventions/` and serve human contributors, local agents,
+and CI review. `AGENTS.md` routes to them, and `CLAUDE.md` imports that entry point.
+Keep `docs/` for the published SDK documentation. Contributor links included in that site
+use repository URLs to reach these guides.

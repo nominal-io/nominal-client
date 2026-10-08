@@ -30,7 +30,7 @@ or with `just test-e2e-token <token>`.
 
 ## Shared conventions
 
-All contributors use the same [SDK, test, and documentation conventions](https://github.com/nominal-io/nominal-client/blob/main/docs/development/README.md).
+All contributors use the same [SDK, test, and documentation conventions](https://github.com/nominal-io/nominal-client/blob/main/.agents/conventions/README.md).
 Read the guide relevant to your change. These distinguish requirements from preferred
 defaults; explain a justified exception in the PR. Changes to shared standards follow the
 normal review process, including their rationale and adoption cost. AI use is optional.
@@ -72,7 +72,7 @@ files rather than making tool-specific copies. Local implementation should run t
 checks above; CI's static-review restriction is specific to that job.
 
 When review exposes a recurring gap, follow
-[changing a shared convention](https://github.com/nominal-io/nominal-client/blob/main/docs/development/README.md#changing-a-shared-convention).
+[changing a shared convention](https://github.com/nominal-io/nominal-client/blob/main/.agents/conventions/README.md#changing-a-shared-convention).
 Keep the rule in its owning guide so local tools, human reviewers, and CI use the same standard.
 
 Instruction-loading references: [Codex](https://developers.openai.com/codex/guides/agents-md/)

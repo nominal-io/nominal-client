@@ -3,7 +3,7 @@
 Write direct Python that makes its purpose clear. We value readable, well-typed, performant
 code, clear ownership, and tests that explain meaningful behavior. Follow PEP conventions
 and the repository's style configuration and supported Python versions. The
-[Python quality guide](docs/development/python.md) explains the details.
+[Python quality guide](.agents/conventions/python.md) explains the details.
 
 Every abstraction should earn its place by making today's behavior easier to understand.
 A few repeated lines are fine when the contracts differ. A well-named helper can be useful
@@ -28,7 +28,7 @@ until accepted through the normal PR process; do not weaken a rule in a patch an
 declare that patch compliant. Explain deliberate exceptions in the PR for human review.
 An accepted exception applies to that change, not every future use. When guidance conflicts,
 state the conflict rather than guessing a new team-wide policy. See
-[maintaining shared guidance](docs/development/README.md#changing-a-shared-convention).
+[maintaining shared guidance](.agents/conventions/README.md#changing-a-shared-convention).
 
 ## Read by task
 
@@ -38,13 +38,13 @@ not optional background. Read only relevant routes; changes can need more than o
 
 | Task | Required guidance |
 | --- | --- |
-| Write or review Python, imports, dependencies, or performance-sensitive code | [Python quality](docs/development/python.md), affected `pyproject.toml` and callers |
-| Change public behavior, resource wrappers, conversion, or failure semantics | [SDK contracts](docs/development/sdk.md), relevant callers and neighboring wrappers |
-| Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](docs/development/testing.md), existing coverage for the affected contract |
-| Change public docstrings, examples, or documentation rendering | [Documentation policy](docs/development/documentation.md), the branch's renderer configuration |
+| Write or review Python, imports, dependencies, or performance-sensitive code | [Python quality](.agents/conventions/python.md), affected `pyproject.toml` and callers |
+| Change public behavior, resource wrappers, conversion, or failure semantics | [SDK contracts](.agents/conventions/sdk.md), relevant callers and neighboring wrappers |
+| Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](.agents/conventions/testing.md), existing coverage for the affected contract |
+| Change public docstrings, examples, or documentation rendering | [Documentation policy](.agents/conventions/documentation.md), the branch's renderer configuration |
 | Upgrade `nominal-api` or `nominal-api-protos` | [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md), plus affected contracts above |
 | Review or simplify structure | [Structural review skill](.agents/skills/thermo-nuclear-code-quality-review/SKILL.md), plus affected contracts above |
-| Change AI instructions, review automation, or shared skills | [Guidance ownership](docs/development/README.md), [review calibration](.github/review-calibration.md) |
+| Change AI instructions, review automation, or shared skills | [Guidance ownership](.agents/conventions/README.md) |
 | Prepare or update a PR | [PR template](.github/pull_request_template.md), [contributor guidance](CONTRIBUTING.md#preparing-a-pull-request) |
 
 A production-code change needs the test route even if it changes no test files; a public
@@ -104,7 +104,7 @@ shared instructions.
 ## Maintaining this guidance
 
 Keep repository-wide defaults and task routes here. Put detailed policy in the owning
-[development guide](docs/development/README.md), package-specific contracts near their
+[development guide](.agents/conventions/README.md), package-specific contracts near their
 source, and reusable procedures in `.agents/skills/`. Link instead of copying rules.
 Update the owner and its routes in the same patch when behavior or paths change. Describe
 current contracts separately from proposed standards and unfinished migrations. Keep
