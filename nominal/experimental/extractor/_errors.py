@@ -24,7 +24,7 @@ class _ErrorMapping:
     ``code`` should match the extractor's registered catalog error code. ``retryable``
     describes whether retrying the ingest may succeed without changing the input. The code
     must fit the 4,096-byte termination JSON envelope; long messages are shortened to fit.
-    Mapped failures emit this bounded JSON on stderr without a traceback.
+    Mapped failures emit this bounded JSON on stderr; the runner logs their tracebacks at DEBUG.
     """
 
     exception_type: type[Exception]

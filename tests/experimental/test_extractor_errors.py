@@ -1,5 +1,6 @@
 import inspect
 import json
+import logging
 from functools import wraps
 from pathlib import Path
 
@@ -15,8 +16,11 @@ from nominal.experimental.extractor import (
 
 
 @pytest.mark.parametrize("decorator", [manifest_extractor, single_file_extractor])
-def test_mapped_error(decorator, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Both decorators write structured error metadata and use the mapped exit status."""
+@pytest.mark.parametrize("level", [logging.INFO, logging.DEBUG], ids=["info", "debug"])
+def test_mapped_error(
+    decorator, level: int, tmp_path: Path, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Both decorators report bounded JSON, with tracebacks available through DEBUG logging."""
 
     @decorator
     @ex.error(ValueError, code="BAD_INPUT", exit_code=65, retryable=True, message="Static catalog fallback")
@@ -24,12 +28,13 @@ def test_mapped_error(decorator, tmp_path: Path, capsys: pytest.CaptureFixture[s
         raise ValueError('bad "input"\nwith unicode: λ')
 
     log = tmp_path / "termination"
-    with pytest.raises(SystemExit) as exc:
+    with caplog.at_level(level, logger="nominal.experimental.extractor"), pytest.raises(SystemExit) as exc:
         extract.run(env={"OUTPUT_DIR": str(tmp_path)}, termination_log_path=log)
     assert exc.value.code == 65
     payload = {"code": "BAD_INPUT", "message": 'bad "input"\nwith unicode: λ', "retryable": True}
     assert json.loads(log.read_text()) == payload
     assert json.loads(capsys.readouterr().err) == payload
+    assert ("Traceback" in caplog.text) == (level == logging.DEBUG)
 
 
 @pytest.mark.parametrize("stage", ["startup", "finalization"])
