@@ -131,15 +131,35 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-def test_experimental_rust_streaming_import_is_a_deprecated_alias():
-    """The old experimental import still yields the core class, warning at the line that imports it."""
+@pytest.fixture
+def unimported_experimental_alias():
+    """Forget any earlier import of the deprecated alias, which only warns when it is first imported."""
+    with patch.dict(sys.modules):
+        sys.modules.pop("nominal.experimental.rust_streaming", None)
+        sys.modules.pop("nominal.experimental.rust_streaming.rust_write_stream", None)
+        yield
+
+
+def test_experimental_rust_streaming_import_is_a_deprecated_alias(unimported_experimental_alias: None):
+    """The old experimental import still yields the core class, warning once at the line that imports it."""
     core_type = rust_write_stream_type()
 
     with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
         from nominal.experimental.rust_streaming import RustWriteStream
 
     assert RustWriteStream is core_type
-    assert record[0].filename == __file__
+    assert [warning.filename for warning in record] == [__file__]
+
+
+def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimported_experimental_alias: None):
+    """The old submodule import still yields the core class, with the same single warning at the caller."""
+    core_type = rust_write_stream_type()
+
+    with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
+        from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+
+    assert RustWriteStream is core_type
+    assert [warning.filename for warning in record] == [__file__]
 
 
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
