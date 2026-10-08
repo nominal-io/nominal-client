@@ -94,19 +94,19 @@ def export_channels_to_matlab(
     Args:
         client: The Nominal client used to issue the data export request
         output_path: Location on disk to write the resulting `.mat` file.
-            NOTE: The parent directory will be created if it does not already exist.
-            NOTE: Must have a `.mat` suffix.
+            The parent directory will be created if it does not already exist.
+            Must have a `.mat` suffix.
         channels: List of channels to export.
-            NOTE: Must be non-empty.
+            Must be non-empty.
         tags: Optional dictionary of tags to apply when exporting each channel.
         start_time: The minimum timestamp to include in the export.
-            NOTE: If not provided, uses the earliest available timestamp.
+            If not provided, uses the earliest available timestamp.
         end_time: The maximum timestamp to include in the export.
-            NOTE: If not provided, uses the latest available timestamp.
+            If not provided, uses the latest available timestamp.
         resolution: Fixed resolution (in nanoseconds) to downsample the export data.
-            NOTE: Mutually exclusive with `num_buckets`.
+            Mutually exclusive with `num_buckets`.
         num_buckets: Number of buckets to aggregate the selected time window into.
-            NOTE: Mutually exclusive with `resolution`.
+            Mutually exclusive with `resolution`.
         export_timestamp_type: Format of exported timestamps. Defaults to string-based iso8601 timestamps.
         forward_fill_lookback: If provided, enables forward-filling of values at timestamps
             where data is missing, up to the given lookback duration. If not provided,

@@ -46,9 +46,9 @@ def normalize_video(
     Args:
         input_path: Path to video file on local filesystem.
         output_path: Path to write converted video file to.
-            NOTE: it is expected that the output file is either an mkv or a mp4 file.
+            It is expected that the output file is either an mkv or a mp4 file.
         key_frame_interval: Number of seconds between keyframes allowed in the output video.
-            NOTE: While this field is technically optional, setting the right value here
+            While this field is technically optional, setting the right value here
             can be essential to allowing fluid playback on the frontend, in particular,
             in network constrained environments. Setting this value too low or too high
             can impact performance negatively-- typically, a value at or around 2s is considered
@@ -56,10 +56,11 @@ def normalize_video(
         force: If true, forcibly delete existing output path if already exists.
         resolution: If provided, re-scale the video to fit within the provided resolution, preserving aspect ratio
         num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
-            NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
-            on the machine
+            If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
+            on the machine.
 
-    NOTE: this requires that you have installed ffmpeg on your system with support for H264.
+    Note:
+        This requires that you have installed ffmpeg on your system with support for H264.
     """
     input_path = pathlib.Path(input_path)
     output_path = pathlib.Path(output_path)
@@ -122,7 +123,7 @@ def frame_count(video_path: pathlib.Path) -> int:
     """Given a path to a video file, return the number of frames present in the video.
 
     Note:
-        if no streams are present, returns 0. If multiple streams are present, returns frame count
+        If no streams are present, returns 0. If multiple streams are present, returns frame count
         of the first video stream.
     """
     assert video_path.exists()

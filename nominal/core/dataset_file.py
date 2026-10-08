@@ -74,7 +74,8 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
     def delete(self) -> None:
         """Deletes the dataset file, removing its data permanently from Nominal.
 
-        NOTE: this cannot be undone outside of fully re-ingesting the file into Nominal.
+        Note:
+            This cannot be undone outside of fully re-ingesting the file into Nominal.
         """
         self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
@@ -206,7 +207,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             RuntimeError: Failed to determine metadata about files to download
 
         Note:
-            any file that fails to download will result in an error log and will not be returned
+            Any file that fails to download will result in an error log and will not be returned
             as an output path
         """
         output_directory = pathlib.Path(output_directory)

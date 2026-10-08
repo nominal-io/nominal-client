@@ -90,7 +90,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         Returns:
             Updated video file metadata.
 
-        NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
+        Note:
+            Only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         """
         scale_parameter = _scale_parameter(
             ending_timestamp=ending_timestamp, true_frame_rate=true_frame_rate, scale_factor=scale_factor

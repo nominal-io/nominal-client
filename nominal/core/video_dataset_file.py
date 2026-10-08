@@ -95,7 +95,7 @@ class VideoDatasetFile(DatasetFile):
                 scale_factor} was provided.
 
         Note:
-            only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
+            Only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
 
             video channels do not carry per-file descriptions, so unlike the legacy
             `VideoFile.update` there is no `description` parameter.

@@ -26,7 +26,8 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
     and colorizes log messages based on their severity. To disable this colorization, users may use the
     --no-color option.
 
-    NOTE: this must be invoked prior to any log messages being routed through a logger from the logging module.
+    Note:
+        This must be invoked prior to any log messages being routed through a logger from the logging module.
     """
     verbosity_option = click.option(
         "-v",
@@ -107,7 +108,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     This will add an option --profile which perform the aforementioned configurations before spawning a NominalClient.
 
     Note:
-        any click command utilizing this decorator MUST accept a key-value argument pair named client of type
+        Any click command utilizing this decorator MUST accept a key-value argument pair named client of type
         NominalClient.
     """
     profile_option = click.option(

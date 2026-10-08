@@ -137,7 +137,7 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
             unit: Unit symbol to apply to the channel. If unit is a string or a `Unit`, this will update the unit symbol
                 for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
                 `_NotProvided`), this will leave the unit unaffected.
-                NOTE: this is in contrast to other fields in other `update()` calls where `None` is treated as a
+                This is in contrast to other fields in other `update()` calls where `None` is treated as a
                 "no-op".
         """
         request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
@@ -189,10 +189,10 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
         """Yields logpoints from the current channel that match the provided arguments
 
         Args:
-            regex_match: If provided, a regex match to filter potential log messages by
-                NOTE: must not be present with `insensitive_match`
-            insensitive_match: If provided, a case insensitive string that yielded logs match exactly
-                NOTE: must not be present with `regex_match`
+            regex_match: If provided, a regex match to filter potential log messages by.
+                Must not be present with `insensitive_match`.
+            insensitive_match: If provided, a case insensitive string that yielded logs match exactly.
+                Must not be present with `regex_match`.
             tags: Tags to filter logs from the channel with
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
@@ -280,12 +280,12 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
             Because we filtered data to only include data where "tag_a" is "123"
 
         Note:
-            it is not accurate to say that the cartesian product of all returned tag key-value pairs
+            It is not accurate to say that the cartesian product of all returned tag key-value pairs
             is present in the data, only that for each unique key-value pair present, that specific tag key/value
             pair is present on *at least* one point in the data.
 
         Note:
-            this may be used to determine if the given set of initial tags *fully constrains* data in a channel over
+            This may be used to determine if the given set of initial tags *fully constrains* data in a channel over
             a given timespan by checking to see if the length of all of the tag-value sets is 1.
         """
         if start_time is None:
@@ -484,7 +484,8 @@ def _batch_check_channels_have_data(
         - channels confirmed to have data (series_count > 0)
         - names of channels with underconstrained tags (series_count > 1)
 
-    NOTE: request may fail if rate limits are breached, too many series are queried, bounds are invalid
+    Note:
+        Request may fail if rate limits are breached, too many series are queried, bounds are invalid
         (such as end < start), timeouts are reached, or otherwise if tag filters are invalid or contradictory.
         This will raise various ConjureHttpError exceptions.
     """

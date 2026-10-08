@@ -61,10 +61,10 @@ def upload_tdms_to_dataset(
     Args:
         dataset: Dataset to upload the dataframe to
         file: Path to the TDMS file to parse and upload
-        timestamp_column: Column containing timestamps to use for their respective rows
-            NOTE: if provided, only groups containing a signal of this name will be uploaded.
+        timestamp_column: Column containing timestamps to use for their respective rows.
+            If provided, only groups containing a signal of this name will be uploaded.
             Furthermore, the length of all data columns must match their respective timestamp columns.
-            NOTE: if not provided, TDMS channel properties must have botha `wf_increment` and `wf_start_time`
+            If not provided, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
             property to be uploaded.
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested
@@ -75,7 +75,8 @@ def upload_tdms_to_dataset(
 
     Channels will be named as f"{group_name}.{channel_name}", with spaces replaced with underscores.
 
-    NOTE: `timestamp_column` and `timestamp_type` must both be provided or excluded together.
+    Note:
+        `timestamp_column` and `timestamp_type` must both be provided or excluded together.
     """
     timestamp_column, timestamp_type, df = _tdms_to_dataframe(file, timestamp_column, timestamp_type)
     return upload_dataframe_to_dataset(
