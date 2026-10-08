@@ -478,14 +478,20 @@ def paginate_rpc(
             break
 
 
+class _HasGrpcNextPageToken(Protocol):
+    @property
+    def next_page_token(self) -> str: ...
+
+
 _GrpcRequestT = TypeVar("_GrpcRequestT")
+_GrpcResponseT = TypeVar("_GrpcResponseT", bound=_HasGrpcNextPageToken)
 
 
 def paginate_grpc(
-    rpc: Callable[[_GrpcRequestT], Any],
+    rpc: Callable[[_GrpcRequestT], _GrpcResponseT],
     *,
     request_factory: Callable[[str | None], _GrpcRequestT],
-) -> Iterable[Any]:
+) -> Iterable[_GrpcResponseT]:
     """Yield successive responses from a v2 gRPC search RPC, following next_page_token cursors.
 
     The gRPC sibling of `paginate_rpc`: `request_factory(token)` builds a fresh request for each page
