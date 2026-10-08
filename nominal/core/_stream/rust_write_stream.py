@@ -5,13 +5,7 @@ import pathlib
 import warnings
 from typing import Any
 
-try:
-    from nominal_streaming import NominalDatasetStream
-except ImportError as e:
-    raise ImportError(
-        "nominal-streaming is required for rust streaming. It ships pre-compiled binaries for a "
-        "subset of platforms and interpreters; install it with: pip install nominal-streaming"
-    ) from e
+from nominal_streaming import NominalDatasetStream
 
 from nominal.core._stream.write_stream import DataStream
 from nominal.core._types import PathLike

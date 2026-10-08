@@ -97,7 +97,7 @@ def test_falls_back_to_python_without_nominal_streaming(
 
 def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
     """Explicitly asking for rust without nominal-streaming installed is an error, not a silent downgrade."""
-    with pytest.raises(ImportError, match="nominal-streaming is required"):
+    with pytest.raises(ImportError, match="required to use get_write_stream with implementation='rust'"):
         mock_dataset.get_write_stream(implementation="rust")
 
 

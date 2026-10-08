@@ -657,14 +657,18 @@ def _get_write_stream(
     try:
         from nominal.core._stream.rust_write_stream import RustWriteStream
     except ImportError as ex:
+        # Falling back would drop rust-only arguments. `file_fallback` in particular is a durability
+        # feature, and silently turning it into a no-op is worse than refusing.
+        requires_rust = sorted(key for key, value in rust_only_arguments.items() if value is not None)
         if requested == "rust":
-            raise
+            requires_rust.insert(0, "implementation='rust'")
 
-        used = sorted(key for key, value in rust_only_arguments.items() if value is not None)
-        if used:
-            # Falling back would drop these. `file_fallback` in particular is a durability feature,
-            # and silently turning it into a no-op is worse than refusing.
-            raise ImportError(f"nominal-streaming is required to use get_write_stream with {', '.join(used)}") from ex
+        if requires_rust:
+            raise ImportError(
+                f"nominal-streaming is required to use get_write_stream with {', '.join(requires_rust)}. It ships "
+                "pre-compiled binaries for a subset of platforms and interpreters; install it with: "
+                "pip install nominal-streaming"
+            ) from ex
 
         logger.info(
             "nominal-streaming is unavailable, falling back to `implementation='python'` streaming. "
