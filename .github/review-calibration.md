@@ -53,3 +53,15 @@ head SHA; this workflow does not rerun automatically on every pushed commit.
 | A PR removes the refresh convention while adding a competing refresh implementation. | Review against the base branch's convention and surface the proposed policy change for human review; do not silently grant an exemption. |
 | A human accepted a one-off exception on another PR. | Treat it as context, not a repository-wide policy change; assess whether its rationale applies here. |
 | A new rule differs from substantial existing code. | Review its scope and adoption plan; do not demand unrelated repository-wide cleanup from a feature author. |
+
+## Python and SDK contract cases
+
+| Case | Expected judgment |
+| --- | --- |
+| New code uses an API introduced after the supported Python floor, despite passing on the author's interpreter. | Identify the incompatible API and use an existing backport/helper or compatible implementation; do not demand newer syntax as a style cleanup. |
+| An agent requests 79-column reformatting or NumPy docstrings in this repo. | Follow the configured 120-column Ruff/Google conventions; do not rewrite to a generic default. |
+| A fixed-size thread pool eagerly queues one future with a large buffer for every input file. | Inspect total retained data; worker count alone does not establish bounded memory. |
+| A refreshable resource gains a cached property derived from metadata without invalidation. | Trace a refresh that makes the cached value stale; prefer the established state/refresh owner. |
+| A lossless timestamp conversion goes through float seconds. | Show the nanosecond precision loss and use the canonical integer conversion; ordinary datetime conversion has a different contract. |
+| A request wrapper adds retries around a transport that already retries. | Establish the combined budget and replay semantics before flagging; a documented recovery gap can justify another layer. |
+| A test inspects request fields to protect absent/false/empty protobuf semantics. | Keep the contract test; do not dismiss it as implementation coupling. |

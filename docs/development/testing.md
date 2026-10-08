@@ -23,3 +23,16 @@ callers alongside this guide; examples do not require unrelated code to be norma
   fixture matrices, global fixtures, or helper layers for a single straightforward case.
   Use deterministic inputs and controlled clocks/synchronization rather than network access,
   wall-clock assumptions, or arbitrary sleeps in unit tests.
+
+- Inspect existing fixtures and regression coverage before adding new scaffolding. For
+  contract-sensitive changes, select representative cases such as field absence versus
+  empty updates, multi-page results, negative/submicrosecond timestamps, workspace ownership,
+  and worker failure/cleanup. Do not build the Cartesian product of every option without a
+  distinct behavior to protect. See [pagination tests](../../tests/core/test_pagination_tools.py),
+  [timestamp tests](../../tests/test_ts.py), and [workspace tests](../../tests/core/test_workspace_resolution.py).
+- Test the public boundary when practical, but a focused helper test can be the clearest
+  regression for conversion, retry classification, or normalization. Neither "mock assertion"
+  nor "private helper" automatically means low value; identify what failure the test detects.
+- The [pytest configuration](../../pyproject.toml) treats warnings as errors and excludes
+  credentialed e2e tests by default. Keep warning exceptions narrow and intentional. Report
+  local unit-test evidence separately from live-service behavior and supported-version coverage.

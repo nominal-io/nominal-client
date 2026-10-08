@@ -6,6 +6,8 @@ callers alongside this guide; examples do not require unrelated code to be norma
 - Public APIs need concise Google-style docstrings describing caller-visible behavior.
   Include `Args`, `Returns`, and `Raises` where they add information; simple properties or
   obvious accessors do not need boilerplate sections. Annotations own type declarations.
+  Ruff intentionally disables several missing-docstring rules in `pyproject.toml`; a clean
+  lint result does not establish that a new public API has adequate documentation.
 - Document consequential defaults, `None`/empty distinctions, units and time zones,
   in-place mutation, completion semantics, and actionable failure conditions. Examples
   must match the actual API. Do not narrate request-building internals as user documentation.

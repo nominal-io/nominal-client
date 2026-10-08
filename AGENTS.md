@@ -5,6 +5,13 @@ scoped instructions before choosing a pattern. Do not demand unrelated cleanup o
 an explicitly agreed design decision without new evidence. Examples below illustrate
 contracts; they are not templates every class or test must reproduce.
 
+Default to highly PEP-compliant, readable, maintainable, well-typed, and performant Python.
+Follow the repository's explicit style configuration and supported Python versions rather
+than imposing a different formatter or copying legacy patterns. Prefer direct implementations
+with clear ownership, bounded resource use, and meaningful tests. Passing lint is a baseline,
+not evidence of a good design. Read the [Python quality guide](docs/development/python.md)
+for the concrete standards and non-obvious constraints behind this expectation.
+
 ## Shared standards, not personal preferences
 
 These guides serve all contributors, with or without AI. Requirements protect named
@@ -28,6 +35,7 @@ not optional background. Read only relevant routes; changes can need more than o
 
 | Task | Required guidance |
 | --- | --- |
+| Write or review Python, imports, dependencies, or performance-sensitive code | [Python quality](docs/development/python.md), affected `pyproject.toml` and callers |
 | Change public behavior, resource wrappers, conversion, or failure semantics | [SDK contracts](docs/development/sdk.md), relevant callers and neighboring wrappers |
 | Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](docs/development/testing.md), existing coverage for the affected contract |
 | Change public docstrings, examples, or documentation rendering | [Documentation policy](docs/development/documentation.md), the branch's renderer configuration |
@@ -85,10 +93,6 @@ shared instructions.
   through shared paths. Do not add pass-through wrappers or inheritance layers without
   a clear responsibility. Apply the structural review skill in
   `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md` with this evidence bar.
-- Prefer top-level imports, but retain justified local imports for genuine cycles or optional
-  dependencies. Preserve the `nominal` namespace package; do not add a root `__init__.py` to
-  paper over an import problem. Use leading underscores for implementation privacy and
-  explicit exports in the appropriate package `__init__.py`, not new per-module `__all__` lists.
 - Repository development commands use `uv run` (or existing `just` recipes). `uv run python
   -m ...` and subprocesses using `sys.executable` are valid; do not flag them as bare Python.
   Ruff and mypy own mechanical formatting and type errors; review type boundaries rather

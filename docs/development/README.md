@@ -6,6 +6,7 @@ guide and source rather than loading every guide for every task.
 
 | Guide | Owns |
 | --- | --- |
+| [Python quality](python.md) | PEP/style baseline, compatibility, package ownership, and performance/resource contracts |
 | [SDK contracts](sdk.md) | Public compatibility, resource conversion/refresh, defaults, and failure ownership |
 | [Test policy](testing.md) | Meaningful coverage, authoring, mocking, fixtures, and pruning |
 | [Documentation policy](documentation.md) | Docstring semantics, notes, rendering, and generator complexity |

@@ -90,7 +90,8 @@ jobs:
             - Read the PR description, prior reviews, and current head SHA. Review the full diff
               and trace changed behavior through relevant callers, canonical helpers, and tests.
               Compare wrappers with neighboring resource implementations, not just the diff.
-            - Assess API compatibility, wrapper/conversion ownership, test value and missing
+            - Assess Python compatibility and maintainability, performance/resource costs,
+              API compatibility, wrapper/conversion ownership, test value and missing
               regression coverage, docstring/rendering contracts, and structural simplification
               using AGENTS.md and its applicable policy guides. Mark an axis inapplicable when the change does not touch it.
             - Each finding needs a changed location, a concrete consequence, and either a
