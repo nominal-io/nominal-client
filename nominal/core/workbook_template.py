@@ -108,20 +108,20 @@ class WorkbookTemplate(
         properties: Mapping[str, str] | None = None,
         is_published: bool | None = None,
     ) -> Self:
-        """Replace template metadata.
-        Updates the current instance, and returns it.
+        """Replace template metadata and refresh this instance from the response.
 
-        Only the metadata passed in will be replaced, the rest will remain untouched.
-        Set `is_published` to publish or unpublish the template; None preserves its current state.
+        None leaves a field unchanged. Labels and properties replace existing collections;
+        merge with their current values before calling this method to append entries.
 
-        Note:
-            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+        Args:
+            description: Replacement description. An empty string clears it.
+            title: Replacement title.
+            labels: Replacement labels. An empty sequence clears them.
+            properties: Replacement properties. An empty mapping clears them.
+            is_published: True publishes the template; False unpublishes it.
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in template.labels:
-                    new_labels.append(old_label)
-                template = template.update(labels=new_labels)
+        Returns:
+            This instance with refreshed metadata, without an additional fetch.
         """
         metadata = self._clients.template.update_metadata(
             self._clients.auth_header,
@@ -301,11 +301,11 @@ class WorkbookTemplate(
         return Workbook._from_conjure(self._clients, raw_notebook)
 
     def publish(self) -> None:
-        """Publish this template, making it visible to other users."""
+        """Publish this template and refresh its metadata from the update response."""
         self.update(is_published=True)
 
     def unpublish(self) -> None:
-        """Unpublish this template."""
+        """Unpublish this template and refresh its metadata from the update response."""
         self.update(is_published=False)
 
     def is_published(self) -> bool:
