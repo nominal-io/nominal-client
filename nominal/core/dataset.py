@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video_api
@@ -16,10 +15,14 @@ from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import NominalProperties, StringProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.properties import (
+    properties_from_conjure,
+    typed_properties_to_conjure,
+)
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
@@ -91,7 +94,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             description=description,
             labels=None if labels is None else list(labels),
             name=name,
-            properties=None if properties is None else dict(properties),
+            typed_properties=typed_properties_to_conjure(properties),
         )
         updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
         return self._refresh_from_api(updated_dataset)
@@ -1072,7 +1075,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
@@ -1597,8 +1600,8 @@ def _create_dataset_request(
         name=name,
         description=description,
         labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
+        properties={},
+        typed_properties=typed_properties_to_conjure(properties) or {},
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
@@ -1697,7 +1700,7 @@ def _construct_new_ingest_options(
     file_type: FileType,
     description: str | None,
     labels: Sequence[str],
-    properties: NominalProperties,
+    properties: StringProperties,
     prefix_tree_delimiter: str | None,
     channel_prefix: str | None,
     tag_columns: Mapping[str, str] | None,

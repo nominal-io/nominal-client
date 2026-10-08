@@ -4,7 +4,7 @@ from typing import Callable
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from nominal_api import scout_catalog, scout_compute_api
+from nominal_api import api, scout_catalog, scout_compute_api
 
 from nominal.experimental.compute_as_code import (
     commit_derived_definition,
@@ -71,7 +71,8 @@ def test_create_derived_dataset_sets_derived_definition(
     assert details.is_v2_dataset is True
     assert details.workspace == "ri.workspace.w"
     assert details.labels == ["a"]
-    assert details.properties == {"k": "v"}
+    assert details.properties == {}
+    assert details.typed_properties["k"].string_value == "v"
 
 
 def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> None:
@@ -81,6 +82,23 @@ def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> No
     assert client._clients.catalog.get_dataset_derived_definition.call_args == (
         ("Bearer test-token", "ri.catalog.ws.dataset.abc", None),
     )
+
+
+def test_derived_dataset_preserves_typed_properties(
+    mock_clients: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
+) -> None:
+    """Derived dataset snapshots retain string and numeric metadata from the typed wire map."""
+    response = make_enriched_dataset()
+    response.typed_properties.update(
+        {
+            "serial": api.TypedPropertyValue(string_value="A1"),
+            "mass_kg": api.TypedPropertyValue(numeric_value=12.5),
+        }
+    )
+
+    dataset = DerivedDataset._from_conjure(mock_clients, response)
+
+    assert dataset.properties == {"serial": "A1", "mass_kg": 12.5}
 
 
 def test_get_derived_definition_accepts_dataset_and_commit(client: MagicMock) -> None:

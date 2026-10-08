@@ -12,7 +12,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -21,7 +21,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: StringProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -41,7 +41,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: StringProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace attachment metadata.

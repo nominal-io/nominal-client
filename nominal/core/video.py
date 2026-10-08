@@ -16,7 +16,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core.filetype import FileType, FileTypes
@@ -43,7 +43,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
     rid: str
     name: str
     description: str | None
-    properties: NominalProperties
+    properties: StringProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -125,7 +125,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: StringProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace video metadata.
@@ -588,7 +588,7 @@ def _create_video(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: NominalProperties | None = None,
+    properties: StringProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_video_api.Video:

@@ -15,7 +15,7 @@ from nominal_api import (
     scout_video_api,
 )
 
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
@@ -360,7 +360,7 @@ def search_containerized_extractors_paginated(
     include_archived: bool = False,
     file_extension: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: StringProperties | None = None,
 ) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
     # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
     # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.

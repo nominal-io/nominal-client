@@ -8,7 +8,7 @@ from nominal.core import NominalClient
 from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.core.checklist import Checklist
 from nominal.core.client import WorkspaceSearchT, WorkspaceSearchType
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
@@ -22,7 +22,7 @@ def _create_checklist_with_content(
     assignee_rid: str | None = None,
     description: str | None = None,
     checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None,
-    properties: NominalProperties | None = None,
+    properties: StringProperties | None = None,
     labels: list[str] | None = None,
     checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None,
     is_published: bool | None = False,

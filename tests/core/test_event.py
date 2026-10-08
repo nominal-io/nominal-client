@@ -57,7 +57,8 @@ def test_update_omits_absent_fields_so_the_backend_leaves_them_unchanged() -> No
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert update.rid == event.rid
     assert update.name == "renamed"
-    for field in ("description", "labels", "properties", "asset_rids", "timestamp", "duration", "type"):
+    omitted = ("description", "labels", "properties", "typed_properties", "asset_rids", "timestamp", "duration", "type")
+    for field in omitted:
         assert not update.HasField(field), f"{field} should be absent when omitted"
     assert event.name == "renamed"
 
@@ -73,7 +74,9 @@ def test_update_sends_empty_collections_as_explicit_clears() -> None:
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert (update.HasField("asset_rids"), list(update.asset_rids.asset_rids)) == (True, [])
     assert (update.HasField("labels"), list(update.labels.labels)) == (True, [])
-    assert (update.HasField("properties"), dict(update.properties.properties)) == (True, {})
+    assert update.HasField("typed_properties")
+    assert dict(update.typed_properties.typed_properties) == {}
+    assert not update.HasField("properties")
 
 
 def test_from_proto_decodes_seconds_and_nanos() -> None:
@@ -170,6 +173,8 @@ def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     assert (request.timestamp.seconds, request.timestamp.nanos) == (1, 2)
     assert (request.duration.seconds, request.duration.nanos) == (3, 4)
     assert list(request.asset_rids) == ["ri.asset.1"]
+    assert dict(request.properties) == {}
+    assert dict(request.typed_properties) == {}
     assert not request.HasField("description")
 
 

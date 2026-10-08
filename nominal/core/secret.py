@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update, property_update
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
@@ -18,7 +18,7 @@ class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: StringProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
@@ -32,7 +32,7 @@ class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: StringProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Update the secret in-place.

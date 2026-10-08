@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import ArchiveStatusFilter, EventType, NominalClient
+from nominal.core import ArchiveStatusFilter, EventType, NominalClient, PropertyFilter
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
@@ -379,7 +379,7 @@ def test_search_runs_by_labels(client: NominalClient, search_context: SearchCont
 
 def test_search_runs_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the run that carries that property."""
-    results = client.search_runs(properties={"search-tag": search_context.tag})
+    results = client.search_runs(property_filters=[PropertyFilter.eq("search-tag", search_context.tag)])
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
@@ -421,9 +421,22 @@ def test_search_assets_by_labels(client: NominalClient, search_context: SearchCo
 
 def test_search_assets_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the asset that carries that property."""
-    results = client.search_assets(properties={"search-tag": search_context.tag})
+    results = client.search_assets(property_filters=[PropertyFilter.eq("search-tag", search_context.tag)])
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}
+
+
+def test_numeric_property_search(client: NominalClient, archive: Callable[[object], None]) -> None:
+    """A numeric equality filter matches a typed float property on a run."""
+    tag = uuid4().hex
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-np-{tag}", start, end, properties={"np-tag": tag, "mass_kg": 15.0})
+    archive(run)
+
+    results = client.search_runs(
+        property_filters=[PropertyFilter.eq("np-tag", tag), PropertyFilter.eq("mass_kg", 15.0)],
+    )
+    assert {r.rid for r in results} == {run.rid}
 
 
 def test_search_assets_archive_status(

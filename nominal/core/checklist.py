@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import StringProperties
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
@@ -28,7 +28,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: StringProperties
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)

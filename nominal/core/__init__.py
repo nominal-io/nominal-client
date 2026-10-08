@@ -2,7 +2,7 @@ from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import NominalProperties, PropertyValue
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
@@ -34,6 +34,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
+from nominal.core.property_filter import PropertyFilter
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
@@ -89,6 +90,8 @@ __all__ = [
     "NominalClient",
     "NominalProperties",
     "Priority",
+    "PropertyFilter",
+    "PropertyValue",
     "Run",
     "SearchEventOriginType",
     "Secret",
