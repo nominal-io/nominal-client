@@ -597,6 +597,7 @@ class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
     Pipeline:
+
     * Filter to exportable channel types (DOUBLE/INT/STRING).
     * Confirm each channel has data in the range (via `filter_channels_with_data`) and
       estimate per-channel peak points-per-second.

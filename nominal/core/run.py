@@ -105,7 +105,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Links can be URLs, tuples of (URL, name), or dicts of {url=URL, title=name}.
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        calling this method. E.g.::
 
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in run.labels:
@@ -113,7 +113,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             run = run.update(labels=new_labels)
 
         Note: When `assets` is provided it fully replaces the run's asset list. To append an asset, merge with
-        the existing list first:
+        the existing list first::
 
             run = run.update(assets=[*run.assets, new_asset])
         """

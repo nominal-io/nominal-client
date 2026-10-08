@@ -149,7 +149,6 @@ def channel_to_series(
     Use `relative_to` and `relative_resolution` to return timestamps relative to the given epoch.
 
     Example:
-    -------
     ```
     s = channel_to_series(channel)
     print(s.name, "mean:", s.mean())
@@ -277,7 +276,6 @@ def datasource_to_dataframe(
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
     Args:
-    ----
         datasource: The datasource to download data from
         channel_exact_match: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
@@ -305,12 +303,10 @@ def datasource_to_dataframe(
         relative_resolution: If providing timestamps in relative time, the resolution to use
 
     Returns:
-    -------
         A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
             channels.
 
     Example:
-    -------
     ```
     rid = "..." # Taken from the UI or via the SDK
     dataset = client.get_dataset(rid)

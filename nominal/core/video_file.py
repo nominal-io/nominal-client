@@ -130,7 +130,6 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
-        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known

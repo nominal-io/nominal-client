@@ -114,11 +114,12 @@ def export_channels_to_matlab(
         chunk_size: Size in bytes of the buffer used while streaming the decompressed
             export to disk. Defaults to 1 MiB.
 
+    Exceptions raised by the underlying API client or file I/O operations
+    (e.g. network errors, filesystem errors) propagate to the caller.
+
     Raises:
         ValueError: If no channels are provided, if both `resolution` and `num_buckets`
             are specified, or if the output path does not have a `.mat` suffix.
-        Any exceptions raised by the underlying API client or file I/O operations
-            (e.g. network errors, filesystem errors).
 
     Example:
         ```python
@@ -158,7 +159,7 @@ def export_channels_to_matlab(
         )
         ```
 
-     Usage in MATLAB:
+    Usage in MATLAB:
         Once the `.mat` file is generated, you can load it directly into MATLAB using
         the built-in `load` function or by double-clicking the file in the MATLAB UI:
 

@@ -63,9 +63,9 @@ def upload_tdms_to_dataset(
         file: Path to the TDMS file to parse and upload
         timestamp_column: Column containing timestamps to use for their respective rows
             NOTE: if provided, only groups containing a signal of this name will be uploaded.
-                  Furthermore, the length of all data columns must match their respective timestamp columns.
+            Furthermore, the length of all data columns must match their respective timestamp columns.
             NOTE: if not provided, TDMS channel properties must have botha `wf_increment` and `wf_start_time`
-                  property to be uploaded.
+            property to be uploaded.
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested
         file_name: Manually override the name of the filename given to the uploaded data.

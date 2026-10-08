@@ -105,7 +105,7 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         NOTE: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        calling this method. E.g.::
 
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in template.labels:
@@ -177,9 +177,9 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             is_draft: Whether to create the workbook in draft state. Defaults to False.
 
         NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
-              standard workbooks and not comparison workbooks.
+        standard workbooks and not comparison workbooks.
         NOTE: only supports singular `asset` instead of a list of `assets` because workbook templates only support
-              single asset workbooks.
+        single asset workbooks.
 
         Returns:
             The instantiated workbook
