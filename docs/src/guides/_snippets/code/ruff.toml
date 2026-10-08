@@ -1,0 +1,3 @@
+# Guide snippets are shown in docs code blocks, so they wrap narrower than the rest of the repo.
+extend = "../../../../../pyproject.toml"
+line-length = 88

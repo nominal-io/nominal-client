@@ -1,6 +1,6 @@
 # High-level SDK
 
-Start with the [Python Quickstart guide](https://docs.nominal.io/core/sdk/python-client/quickstart),
+Start with the [Python Quickstart guide](/guides/quickstart.md),
 then use these references to look up SDK types, methods, and functions.
 
 - [`nominal.core`](core.md) — the platform client and resource objects.

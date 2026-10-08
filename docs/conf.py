@@ -18,6 +18,8 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_click",
     "sphinx_copybutton",
+    "sphinx_design",
+    "examples",
     "docstring_fences",
     "reference_presentation",
     "nominal_sphinx_theme",
@@ -29,6 +31,7 @@ default_role = "py:obj"
 
 # -- MyST ---------------------------------------------------------------------
 myst_heading_anchors = 6
+myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
