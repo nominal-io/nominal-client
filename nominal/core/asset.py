@@ -455,7 +455,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Event:
         """Create an event associated with this Asset at a given point in time.

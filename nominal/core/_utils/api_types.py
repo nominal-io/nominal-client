@@ -6,4 +6,4 @@ PropertyValue: TypeAlias = str | float
 """A stored property value. Integer inputs are converted to floats; booleans are rejected."""
 
 NominalProperties: TypeAlias = Mapping[str, PropertyValue]
-"""A mapping of string or numeric properties for assets, runs, datasets, and events."""
+"""A mapping of string or numeric properties for assets, runs, datasets, and derived datasets."""

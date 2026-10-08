@@ -233,7 +233,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         """Create an event associated with all associated assets of this run at a given point in time.
