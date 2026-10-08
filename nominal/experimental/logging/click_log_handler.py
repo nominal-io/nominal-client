@@ -29,7 +29,6 @@ class ClickLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
         """Instantiate a ClickLogHandler
 
         Args:
-        ----
             stream: TextIO stream to pipe filtered and rendered log messages to
             no_color: If True, don't colorize/style log messages by level during rendering
 

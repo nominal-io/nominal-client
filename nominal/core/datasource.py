@@ -123,11 +123,9 @@ class DataSource(HasRid, MarkableMixin):
         """Look up the metadata for all matching channels associated with this datasource
 
         Args:
-        ----
             names: List of channel names to look up metadata for.
 
         Yields:
-        ------
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
@@ -215,34 +213,39 @@ class DataSource(HasRid, MarkableMixin):
         Data is written asynchronously.
 
         Args:
-        ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
             implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
                 falling back to 'python' when `nominal-streaming` is not installed.
-                NOTE: 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
-                      'python', 'python', and 'rust' respectively.
-                NOTE: 'experimental' is deprecated too. It is not an alias while it remains the
-                      only implementation that streams runtime metrics.
-            file_fallback: Filepath to write failed batches to during streaming
-                NOTE: expects a .avro filename
-                NOTE: only works with `implementation='rust'`
+
+                **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+                'python', 'python', and 'rust' respectively.
+
+                **Note:** 'experimental' is deprecated too. It is not an alias while it remains the
+                only implementation that streams runtime metrics.
+            file_fallback: Filepath to write failed batches to during streaming.
+
+                **Note:** Expects a .avro filename.
+
+                **Note:** Only works with `implementation='rust'`.
             log_level: Log level to use in underlying rust streaming code.
-                NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `implementation='rust'`
+
+                **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+
+                **Note:** Only works with `implementation='rust'`.
             num_workers: Number of worker threads to use in underlying rust streaming code.
-                NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `implementation='rust'`
+
+                **Note:** Use with care-- this may have large impacts on streaming performance.
+
+                **Note:** Only works with `implementation='rust'`.
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
-        --------
             Write stream object configured to send data to nominal. This may be used as a context manager
             (so that resources are automatically released upon exiting the context), or if not used as a context
             manager, should be explicitly `close()`-ed once no longer needed.
 
         Raises:
-        ------
             ValueError: both `implementation` and `data_format` were given, or the implementation is unknown.
             ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
                 explicitly via `implementation` or implicitly by passing a rust-only argument.
@@ -317,15 +320,14 @@ class DataSource(HasRid, MarkableMixin):
         """Set units for channels based on a provided mapping of channel names to units.
 
         Args:
-        ----
             channels_to_units: A mapping of channel names to unit symbols.
-                NOTE: any existing units may be cleared from a channel by providing None as a symbol.
+
+                **Note:** Any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
             allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.
 
         Raises:
-        ------
             ValueError: Unsupported unit symbol provided
             NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
             conjure_python_client.ConjureHTTPError: Error completing requests.

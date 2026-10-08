@@ -137,7 +137,8 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
         Archived markings are excluded from search but can still be retrieved by RID. Archiving fails
         if the marking is still applied to any resource.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.markings.ArchiveMarkings(markings_pb2.ArchiveMarkingsRequest(marking_rids=[self.rid]))
@@ -145,7 +146,8 @@ class Marking(HasRid, RefreshableGrpcMixin[markings_pb2.Marking]):
     def unarchive(self) -> None:
         """Unarchive the marking, restoring the ability to apply and modify it.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.markings.UnarchiveMarkings(markings_pb2.UnarchiveMarkingsRequest(marking_rids=[self.rid]))

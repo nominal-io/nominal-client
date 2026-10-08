@@ -74,7 +74,8 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
     def delete(self) -> None:
         """Deletes the dataset file, removing its data permanently from Nominal.
 
-        NOTE: this cannot be undone outside of fully re-ingesting the file into Nominal.
+        Note:
+            This cannot be undone outside of fully re-ingesting the file into Nominal.
         """
         self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
@@ -205,8 +206,9 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             FileExistsError: File already exists at destination
             RuntimeError: Failed to determine metadata about files to download
 
-        NOTE: any file that fails to download will result in an error log and will not be returned
-              as an output path
+        Note:
+            Any file that fails to download will result in an error log and will not be returned
+            as an output path
         """
         output_directory = pathlib.Path(output_directory)
         if output_directory.exists() and not output_directory.is_dir():
@@ -246,8 +248,9 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
     def get_file_size(self) -> int | None:
         """Retrieves the size of the file in bytes, or None if it could not be determined
 
-        NOTE: This has only been extensively tested on AWS-based environments, and may fail in some
-              self-hosted environments-- a RuntimeError will be thrown in this case.
+        Note:
+            This has only been extensively tested on AWS-based environments, and may fail in some
+            self-hosted environments-- a RuntimeError will be thrown in this case.
         """
         # TODO(drake): pull out functionality in a more re-usable way without requiring the downloader class
         with MultipartFileDownloader.create(max_workers=1, header_provider=self._clients.header_provider) as downloader:

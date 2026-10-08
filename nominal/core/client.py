@@ -250,17 +250,18 @@ class NominalClient:
     ) -> Self:
         """Create a connection to the Nominal platform.
 
-        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
-            transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
-            store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
-            client works on corporate networks with no extra configuration. On macOS, point this at
-            your corporate CA PEM if you are behind a TLS-inspecting proxy.
-        connect_timeout: Timeout for any single request to the Nominal API.
-        workspace_rid: Optional workspace RID to pin the client to for operations that require a single
-            workspace. If not provided, those operations resolve a default workspace client-side when needed.
-        extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
+            connect_timeout: Timeout for any single request to the Nominal API.
+            workspace_rid: Optional workspace RID to pin the client to for operations that require a single
+                workspace. If not provided, those operations resolve a default workspace client-side when needed.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
@@ -417,7 +418,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter results to the given archive status.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -455,11 +457,13 @@ class NominalClient:
             start: Inclusive lower bound of the search window. Files whose time range ends at or
                 after this timestamp are returned — including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
                 before this timestamp are returned — including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:
@@ -540,7 +544,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -665,7 +670,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -829,7 +835,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -964,8 +971,9 @@ class NominalClient:
     def get_datasource(self, rid: str) -> DataSource:
         """Retrieve a datasource (connection or dataset) by its RID.
 
-        NOTE: if specific methods / properties of a dataset / connection are desired,
-              it is preferable to use `get_dataset` or `get_connection`.
+        Note:
+            If specific methods / properties of a dataset / connection are desired,
+            it is preferable to use `get_dataset` or `get_connection`.
         """
         if ".dataset." in rid:
             return self.get_dataset(rid)
@@ -1024,7 +1032,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1126,11 +1135,11 @@ class NominalClient:
 
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
-                NOTE: This currently requires that units are formatted as laid out in
-                      the latest UCUM standards (see https://ucum.org/ucum)
+
+                **Note:** This currently requires that units are formatted as laid out in
+                the latest UCUM standards (see https://ucum.org/ucum).
 
         Returns:
-        -------
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
@@ -1312,7 +1321,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1364,7 +1374,8 @@ class NominalClient:
             start_time_before: Only jobs that started before this time (exclusive).
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1511,7 +1522,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1687,7 +1699,8 @@ class NominalClient:
             include_drafts: If true, include workbooks in draft state in results.
             archive_status: Archive status to filter results to. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1755,7 +1768,8 @@ class NominalClient:
             published: Searches for workbook templates that have been published if true
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
