@@ -1,9 +1,0 @@
-/* Project-specific styles; the Nominal look comes from nominal-sphinx-theme. */
-
-/* {video} directive (_ext/video.py): screen recordings at content width. */
-.yue video.docs-video {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 1rem 0;
-}

@@ -88,7 +88,7 @@ docs = [
 ]
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme" }
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 

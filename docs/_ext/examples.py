@@ -17,29 +17,30 @@ from sphinx.application import Sphinx
 _SOURCES: dict[str, str] = {}
 
 
-def _script_title(py: Path) -> str:
+def _script_docstring(py: Path) -> tuple[str, str]:
+    """Extract a title and the remaining summary with one parse of the script."""
     doc = ast.get_docstring(ast.parse(py.read_text(encoding="utf-8"))) or ""
-    first = doc.strip().splitlines()[0].strip() if doc.strip() else py.stem
-    if first.lower().startswith("example:"):
-        first = first[len("example:") :].strip()
-    return first.rstrip(".") or py.stem
+    lines = doc.strip().splitlines()
+    title = lines[0].strip() if lines else py.stem
+    if title.lower().startswith("example:"):
+        title = title[len("example:") :].strip()
+    return title.rstrip(".") or py.stem, "\n".join(lines[1:]).strip()
 
 
-def _script_summary(py: Path) -> str:
-    """The docstring after its title line, shown above the script."""
-    doc = ast.get_docstring(ast.parse(py.read_text(encoding="utf-8"))) or ""
-    return "\n".join(doc.strip().splitlines()[1:]).strip()
+def _source_url(app: Sphinx, relative: str, kind: str = "blob") -> str:
+    """Use the configured repository and revision for every generated source link."""
+    ctx = app.config.html_context
+    return f"https://github.com/{ctx['source_user']}/{ctx['source_repo']}/{kind}/{ctx['source_version']}/{relative}"
 
 
-def _page(py: Path, repo: Path, source: Path, title: str) -> str:
+def _page(app: Sphinx, py: Path, repo: Path, title: str, summary: str) -> str:
     rel = py.relative_to(repo).as_posix()
-    include = Path(os.path.relpath(py, source)).as_posix()
-    summary = _script_summary(py)
+    include = Path(os.path.relpath(py, app.srcdir)).as_posix()
     return (
         f"# {title}\n\n"
         + (f"{summary}\n\n" if summary else "")
         + f"```{{literalinclude}} /{include}\n:caption: {py.name}\n:language: python\n```\n\n"
-        f"Source: [`{rel}`](https://github.com/nominal-io/nominal-client/blob/main/{rel})\n"
+        f"Source: [`{rel}`]({_source_url(app, rel)})\n"
     )
 
 
@@ -48,13 +49,14 @@ def generate(app: Sphinx) -> None:
     out = Path(app.srcdir) / "examples"
     files: dict[Path, str] = {}
 
+    _SOURCES.clear()
     entries: list[tuple[str, str]] = []
     for py in sorted((repo / "examples").rglob("*.py")):
-        # pages keep the script's path under examples/, so same-named scripts in
-        # different subfolders don't collide
-        name = py.relative_to(repo / "examples").with_suffix("").as_posix()
-        title = _script_title(py)
-        files[out / f"{name}.md"] = _page(py, repo, Path(app.srcdir), title)
+        # Preserve the .py suffix so index.py never overwrites the landing page
+        # or collides with dirhtml's special handling of index documents.
+        name = py.relative_to(repo / "examples").as_posix()
+        title, summary = _script_docstring(py)
+        files[out / f"{name}.md"] = _page(app, py, repo, title, summary)
         _SOURCES[f"examples/{name}"] = py.relative_to(repo).as_posix()
         entries.append((title, name))
 
@@ -62,7 +64,7 @@ def generate(app: Sphinx) -> None:
     toc = "".join(f"{name}\n" for _, name in entries)
     introduction = (
         "Full, runnable scripts using the Nominal Python SDK. The source is in "
-        "[`examples/`](https://github.com/nominal-io/nominal-client/tree/main/examples)."
+        f"[`examples/`]({_source_url(app, 'examples', 'tree')})."
         if entries
         else "No example scripts have been added yet. Add a script under `examples/` to generate its page."
     )
@@ -87,8 +89,7 @@ def _edit_link(app: Sphinx, pagename: str, templatename: str, context: dict[str,
     if script is None:  # the index has no single source
         context["page_source_suffix"] = ""
         return
-    ctx = app.config.html_context
-    url = f"https://github.com/{ctx['source_user']}/{ctx['source_repo']}/blob/{ctx['source_version']}/{script}"
+    url = _source_url(app, script)
     context["edit_source_link"] = lambda filename: url
 
 
