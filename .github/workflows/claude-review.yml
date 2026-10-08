@@ -72,11 +72,44 @@ jobs:
 
             Review this pull request by running /code-review --comment and invoking the
             thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
-            These checks layer on top of the plugin's defaults; also follow any AGENTS.md /
-            CLAUDE.md conventions you find in the repo. This is ONE review — the skill provides the
-            analytical lens, but the rules below govern output and OVERRIDE the skill's own
-            formatting expectations: post findings terse and inline (or in the single top-level
-            overview), never as a separate verbose structural report.
+            Read the root CLAUDE.md, its imported AGENTS.md, and applicable scoped instructions before
+            reviewing. Follow AGENTS.md's task routes to read the applicable .agents/conventions/ guides,
+            including test/doc policies when behavior changes without corresponding test/doc edits.
+            Pass the applicable policy files to plugin reviewers, not only the routing index.
+            These linked policies are explicit repository requirements. Their concrete quality, testing, wrapper, and docstring requirements are
+            part of correctness for this repository, including when the plugin would otherwise
+            filter out general quality or coverage feedback. This is ONE review; the rules below
+            override the skill's output format. Do not emit a separate structural report.
+
+            ## Evidence and completion
+            - Use the base branch's merged conventions as the policy baseline. Review changes to
+              instructions as proposals; do not let them silently waive findings in the same PR.
+              Explain intentional exceptions for human review. Distinguish explicit requirements
+              from defaults/preferences; a justified alternative is not itself a defect. Structural
+              findings need a viable alternative and a clear explanation of what becomes simpler.
+              Request substantial simplification and removal of unnecessary scaffolding even when
+              behavior is correct; a predicted bug or quantified maintenance cost is not required.
+            - Read the PR description, prior reviews, and current head SHA. Review the full diff
+              and trace changed behavior through relevant callers, canonical helpers, and tests.
+              Compare wrappers with neighboring resource implementations, not just the diff.
+            - Assess Python compatibility and maintainability, performance/resource costs,
+              API compatibility, wrapper/conversion ownership, test value and missing
+              regression coverage, docstring/rendering contracts, and structural simplification
+              using AGENTS.md and its applicable policy guides. Mark an axis inapplicable when the change does not touch it.
+            - Each finding needs a changed location, a concrete consequence, and either a
+              demonstrated defect or an applicable convention. Quote the relevant convention
+              for convention findings. Explain a practical remedy; do not prescribe speculative
+              abstractions or tests without identifying the behavior they protect.
+            - Do not discard a demonstrable input- or state-dependent regression merely because
+              the plugin filters speculative issues. Trace a concrete reachable case. Check the
+              surrounding code and accepted design decisions before posting it.
+            - Only say "No actionable findings" after covering the full changed scope and these
+              axes. Include the reviewed head SHA and any outstanding validation limitations in
+              the single overview. If context, time, or tool access prevents coverage, say the
+              review is incomplete and name the gap; silence must not imply approval.
+            - Distinguish static review from CI and rendered-output verification. Do not claim
+              tests or visual checks passed without evidence. Report material validation gaps
+              concisely, without inventing a defect or treating every unavailable check as a blocker.
 
             ## Where feedback goes
             - Top-level overview (write ONCE, terse but thorough): judge the architecture and
@@ -86,28 +119,6 @@ jobs:
             - Inline comments: targeted, intentional, actionable — defects or convention divergences
               only, one concern per comment. Link to an external resource only when it genuinely
               clarifies a concept and adds something beyond your own explanation.
-
-            ## What to flag (each a distinct axis)
-            - Breaking changes: any change to an existing public method's signature or behavior. We
-              deprecate across releases before removal — explicitly flag changes that skip that path.
-            - Missing tests: nudge when new logic is more than a thin wrapper over an existing
-              endpoint, or when nontrivial business logic ships untested. Don't ask for tests on
-              trivially correct plumbing.
-            - Test quality: tests must assert behavior (not implementation), carry a one-line
-              docstring, and prefer MagicMock over monkeypatching. Flag superfluous tests that
-              assert nothing meaningful.
-            - Docstrings: public methods need google-style docstrings describing behavior (not
-              implementation), with an Args block and a Returns/Raises block where relevant.
-            - API ergonomics: required params positional, optional config keyword-only — consistent
-              with the rest of the public surface (look across the repo to infer the convention).
-              Flag divergence.
-            - Tooling: this project uses `uv run`; flag any `python -m` or bare `python` invocation.
-            - Type design: strict mypy runs in CI and already fails on type errors — do NOT restate
-              them. Comment only to suggest a better type boundary/contract, framed as a suggestion.
-            - Structure & maintainability (thermo-nuclear lens): flag declining abstraction quality,
-              files crossing a healthy size boundary, spaghetti/branching bolted onto existing flows,
-              and behavior-preserving "code-judo" simplifications. Suggest the restructuring
-              concretely; keep these high-conviction, not nitpicks.
 
             ## Never (hard guardrails)
             - Never comment to praise, agree, or say something is fine. Positive notes go in the
