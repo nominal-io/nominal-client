@@ -38,7 +38,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import NominalProperties, PropertyValue
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
@@ -108,8 +108,6 @@ from nominal.core.marking import (
 )
 from nominal.core.resource_metadata import (
     MetadataResourceType,
-    NumericPropertyStatistics,
-    _get_numeric_property_statistics,
     _list_labels,
     _list_property_keys,
     _list_property_values,
@@ -382,10 +380,10 @@ class NominalClient:
         property_key: str,
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
-    ) -> Sequence[str]:
+    ) -> Sequence[PropertyValue]:
         """List distinct string values for a property key in alphabetical order.
 
-        Numeric values are excluded. Use `get_numeric_property_statistics()` for their bounds.
+        The discovery route currently enumerates string values only; numeric values are not returned.
         Returns an empty sequence when the key has no string values. Metadata visibility follows
         the backend semantics described by `MetadataResourceType`.
 
@@ -404,36 +402,6 @@ class NominalClient:
             NominalError: If a workspace lookup or indexed metadata request fails.
         """
         return _list_property_values(
-            self._clients, resource_type, property_key, self._workspace_rid_for_search(workspace)
-        )
-
-    def get_numeric_property_statistics(
-        self,
-        resource_type: MetadataResourceType,
-        property_key: str,
-        *,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
-    ) -> NumericPropertyStatistics | None:
-        """Get the bounds of a numeric property on active indexed resources.
-
-        Numeric values cannot be enumerated with `list_property_values()`. Workbooks, workbook
-        templates, and checklists have string properties and return None.
-
-        Args:
-            resource_type: Resource family whose numeric property values to summarize.
-            property_key: Property key whose numeric bounds to retrieve.
-            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
-                or ALL for every permitted workspace.
-
-        Returns:
-            Minimum and maximum numeric values, or None when no active resource in scope has a
-            numeric value under this key. String values under the same key do not affect the bounds.
-
-        Raises:
-            NominalConfigError: If the default workspace cannot be resolved.
-            NominalError: If a workspace lookup or metadata request fails.
-        """
-        return _get_numeric_property_statistics(
             self._clients, resource_type, property_key, self._workspace_rid_for_search(workspace)
         )
 

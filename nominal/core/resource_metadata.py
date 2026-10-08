@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
 
 from nominal_api import scout_checks_api, scout_notebook_api, scout_template_api
-from typing_extensions import Self
 
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.api_types import PropertyValue
 from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.protos.metadata.v2 import resource_metadata_pb2 as metadata_pb2
 
@@ -30,18 +28,6 @@ class MetadataResourceType(Enum):
     WORKBOOK = "WORKBOOK"
     WORKBOOK_TEMPLATE = "WORKBOOK_TEMPLATE"
     CHECKLIST = "CHECKLIST"
-
-
-@dataclass(frozen=True)
-class NumericPropertyStatistics:
-    """Minimum and maximum numeric values stored under a property key."""
-
-    min: float
-    max: float
-
-    @classmethod
-    def _from_proto(cls, statistics: metadata_pb2.NumericPropertyStatistics) -> Self:
-        return cls(min=statistics.min, max=statistics.max)
 
 
 _INDEXED_RESOURCE_TYPES: dict[MetadataResourceType, metadata_pb2.ResourceType.ValueType] = {
@@ -113,7 +99,7 @@ def _list_property_keys(
 
 def _list_property_values(
     clients: ClientsBunch, resource_type: MetadataResourceType, property_key: str, workspace_rid: str | None
-) -> Sequence[str]:
+) -> Sequence[PropertyValue]:
     if resource_type in _INDEXED_RESOURCE_TYPES:
         responses = paginate_grpc(
             clients.resource_metadata.SearchPropertyValues,
@@ -124,20 +110,3 @@ def _list_property_values(
         return sorted({value.property_value for response in responses for value in response.property_values})
     response = _get_dedicated_metadata(clients, resource_type, workspace_rid)
     return sorted(set(response.properties.get(property_key, [])))
-
-
-def _get_numeric_property_statistics(
-    clients: ClientsBunch, resource_type: MetadataResourceType, property_key: str, workspace_rid: str | None
-) -> NumericPropertyStatistics | None:
-    if resource_type not in _INDEXED_RESOURCE_TYPES:
-        return None
-    request = metadata_pb2.GetNumericPropertyStatisticsRequest(
-        property_key=property_key,
-        resource_types=[_INDEXED_RESOURCE_TYPES[resource_type]],
-        workspaces=[] if workspace_rid is None else [workspace_rid],
-    )
-    with translate_grpc_errors():
-        response = clients.resource_metadata.GetNumericPropertyStatistics(request)
-    if not response.HasField("statistics"):
-        return None
-    return NumericPropertyStatistics._from_proto(response.statistics)
