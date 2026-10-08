@@ -3,15 +3,17 @@
 `nominal.ts` describes how timestamps in your data are encoded, for uploads and streams that take a `timestamp_type`.
 
 ```{eval-rst}
-.. include:: ../../../nominal/ts/__init__.py
-   :start-after: """
-   :end-before: """
+.. automodule:: nominal.ts
+   :no-members:
+   :no-index:
 ```
 
 ```{eval-rst}
+.. currentmodule:: nominal
+
 .. autosummary::
    :toctree: generated
    :nosignatures:
 
-   nominal.ts
+   ts
 ```

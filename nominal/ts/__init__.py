@@ -16,26 +16,25 @@ the client library allows you to specify timestamp formats with simple strings a
 Wherever you can specify a timestamp format (typically the `timestamp_type` parameter), these are all examples of
 valid formats:
 
-.. code-block:: python
-
-    "iso_8601"
-    "epoch_nanoseconds"
-    "epoch_microseconds"
-    "epoch_milliseconds"
-    "epoch_seconds"
-    "epoch_minutes"
-    "epoch_hours"
-    nm.ts.Iso8601()
-    nm.ts.Epoch("microseconds")
-    nm.ts.Epoch("seconds")
-    nm.ts.Epoch("hours")
-    nm.ts.Relative("nanoseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-    nm.ts.Relative("milliseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-    nm.ts.Relative("seconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-    nm.ts.Relative("minutes", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-    nm.ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
-    nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
-
+```python
+"iso_8601"
+"epoch_nanoseconds"
+"epoch_microseconds"
+"epoch_milliseconds"
+"epoch_seconds"
+"epoch_minutes"
+"epoch_hours"
+nm.ts.Iso8601()
+nm.ts.Epoch("microseconds")
+nm.ts.Epoch("seconds")
+nm.ts.Epoch("hours")
+nm.ts.Relative("nanoseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+nm.ts.Relative("milliseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+nm.ts.Relative("seconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+nm.ts.Relative("minutes", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+nm.ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
+nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
+```
 
 The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `nm.ts.Iso8601()` and
 `nm.ts.Epoch("{unit}")`.
@@ -59,25 +58,23 @@ ISO 8601
 Nominal requires ISO 8601 timestamps to include the time zone, e.g. `'2021-01-31T19:00:00Z'` or
 `'2021-01-31T19:00:00.123+00:00'`. For example:
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,2024-09-30T16:37:36.891349Z
+21,2024-09-30T16:37:36.990262Z
+22,2024-09-30T16:37:37.089310Z
+19,2024-09-30T16:37:37.190015Z
+23,2024-09-30T16:37:37.289585Z
+22,2024-09-30T16:37:37.388941Z
+28,2024-09-30T16:37:37.491115Z
+24,2024-09-30T16:37:37.590826Z
+```
 
-    temperature,timestamp
-    20,2024-09-30T16:37:36.891349Z
-    21,2024-09-30T16:37:36.990262Z
-    22,2024-09-30T16:37:37.089310Z
-    19,2024-09-30T16:37:37.190015Z
-    23,2024-09-30T16:37:37.289585Z
-    22,2024-09-30T16:37:37.388941Z
-    28,2024-09-30T16:37:37.491115Z
-    24,2024-09-30T16:37:37.590826Z
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type="iso_8601"  # or nm.ts.Iso8601()
-    )
-
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type="iso_8601"  # or nm.ts.Iso8601()
+)
+```
 
 Epoch timestamps
 ~~~~~~~~~~~~~~~~
@@ -89,48 +86,44 @@ The values can be integers or floating-point numbers.
 Floating-point seconds since epoch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,1727728656.891349
+21,1727728656.990262
+22,1727728657.08931
+19,1727728657.190015
+23,1727728657.289585
+22,1727728657.388941
+28,1727728657.491115
+24,1727728657.590826
+```
 
-    temperature,timestamp
-    20,1727728656.891349
-    21,1727728656.990262
-    22,1727728657.08931
-    19,1727728657.190015
-    23,1727728657.289585
-    22,1727728657.388941
-    28,1727728657.491115
-    24,1727728657.590826
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type="epoch_seconds"  # or nm.ts.Epoch("seconds")
-    )
-
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type="epoch_seconds"  # or nm.ts.Epoch("seconds")
+)
+```
 
 Integer nanoseconds since epoch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,1727728656891349000
+21,1727728656990262000
+22,1727728657089310000
+19,1727728657190015000
+23,1727728657289585000
+22,1727728657388941000
+28,1727728657491115000
+24,1727728657590826000
+```
 
-    temperature,timestamp
-    20,1727728656891349000
-    21,1727728656990262000
-    22,1727728657089310000
-    19,1727728657190015000
-    23,1727728657289585000
-    22,1727728657388941000
-    28,1727728657491115000
-    24,1727728657590826000
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type="epoch_nanoseconds"  # or nm.ts.Epoch("nanoseconds")
-    )
-
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type="epoch_nanoseconds"  # or nm.ts.Epoch("nanoseconds")
+)
+```
 
 Relative timestamps
 ~~~~~~~~~~~~~~~~~~~
@@ -139,27 +132,25 @@ Similar to epoch timestamps, Nominal supports relative timestamps in the same un
 hours, minutes, seconds, milliseconds, microseconds, and nanoseconds, and can be integer or floating-point values.
 Relative timestamps are *relative to* a specified start time.
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,0
+21,98913
+22,197961
+19,298666
+23,398236
+22,497592
+28,599766
+24,699477
+```
 
-    temperature,timestamp
-    20,0
-    21,98913
-    22,197961
-    19,298666
-    23,398236
-    22,497592
-    28,599766
-    24,699477
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type=nm.ts.Relative(
-            "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349Z")
-        )
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type=nm.ts.Relative(
+        "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349Z")
     )
-
+)
+```
 
 Custom Format
 ~~~~~~~~~~~~~
@@ -173,25 +164,23 @@ Customized ctime
 
 This time format is similar to the string format from `ctime()`, except with microsecond precision added.
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,Mon Sep 30 16:37:36.891349 2024
+21,Mon Sep 30 16:37:36.990262 2024
+22,Mon Sep 30 16:37:37.089310 2024
+19,Mon Sep 30 16:37:37.190015 2024
+23,Mon Sep 30 16:37:37.289585 2024
+22,Mon Sep 30 16:37:37.388941 2024
+28,Mon Sep 30 16:37:37.491115 2024
+24,Mon Sep 30 16:37:37.590826 2024
+```
 
-    temperature,timestamp
-    20,Mon Sep 30 16:37:36.891349 2024
-    21,Mon Sep 30 16:37:36.990262 2024
-    22,Mon Sep 30 16:37:37.089310 2024
-    19,Mon Sep 30 16:37:37.190015 2024
-    23,Mon Sep 30 16:37:37.289585 2024
-    22,Mon Sep 30 16:37:37.388941 2024
-    28,Mon Sep 30 16:37:37.491115 2024
-    24,Mon Sep 30 16:37:37.590826 2024
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type=nm.ts.Custom("EEE MMM dd HH:mm:ss.SSSSSS yyyy")
-    )
-
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type=nm.ts.Custom("EEE MMM dd HH:mm:ss.SSSSSS yyyy")
+)
+```
 
 IRIG time code
 ^^^^^^^^^^^^^^
@@ -199,24 +188,23 @@ IRIG time code
 IRIG time codes come in a variety of formats. A common IRIG format specifies a relative timestamp from the
 beginning of the year, expressed in `days:hours:minutes:seconds.ms`.
 
-.. code-block:: text
+```text
+temperature,timestamp
+20,274:16:37:36.891349
+21,274:16:37:36.990262
+22,274:16:37:37.089310
+19,274:16:37:37.190015
+23,274:16:37:37.289585
+22,274:16:37:37.388941
+28,274:16:37:37.491115
+24,274:16:37:37.590826
+```
 
-    temperature,timestamp
-    20,274:16:37:36.891349
-    21,274:16:37:36.990262
-    22,274:16:37:37.089310
-    19,274:16:37:37.190015
-    23,274:16:37:37.289585
-    22,274:16:37:37.388941
-    28,274:16:37:37.491115
-    24,274:16:37:37.590826
-
-
-.. code-block:: python
-
-    nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-        timestamp_type=nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
-    )
+```python
+nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
+    timestamp_type=nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
+)
+```
 
 """
 
