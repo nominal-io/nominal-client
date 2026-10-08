@@ -478,13 +478,8 @@ def paginate_rpc(
             break
 
 
-class _HasGrpcNextPageToken(Protocol):
-    @property
-    def next_page_token(self) -> str: ...
-
-
 _GrpcRequestT = TypeVar("_GrpcRequestT")
-_GrpcResponseT = TypeVar("_GrpcResponseT", bound=_HasGrpcNextPageToken)
+_GrpcResponseT = TypeVar("_GrpcResponseT", bound=_HasNextPageToken)
 
 
 def paginate_grpc(
