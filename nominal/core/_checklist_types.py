@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from enum import IntEnum
 
-from nominal.protos.types import common_pb2
-
 from nominal.protos.event.v2 import event_pb2
+from nominal.protos.types import common_pb2
 
 
 class Priority(IntEnum):
