@@ -116,7 +116,7 @@ class WorkbookTemplate(
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+            calling this method. E.g.::
 
                 new_labels = ["new-label-a", "new-label-b"]
                 for old_label in template.labels:
@@ -238,10 +238,14 @@ class WorkbookTemplate(
             description: Description of the workbook to create. By default, uses the description of this template
             run: Run to visualize in the workbook.
 
-                **Note:** May not be provided alongside `asset`.
+                .. note::
+
+                    May not be provided alongside `asset`.
             asset: Asset to visualize in the workbook.
 
-                **Note:** May not be provided alongside `run`.
+                .. note::
+
+                    May not be provided alongside `run`.
             is_draft: Whether to create the workbook in draft state. Defaults to False.
 
         Note:

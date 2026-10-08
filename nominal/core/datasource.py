@@ -219,26 +219,34 @@ class DataSource(HasRid, MarkableMixin):
                 if `nominal-streaming` is available, otherwise 'python'. Automatic selection cannot fall back
                 to 'python' when `file_fallback`, `log_level`, or `num_workers` is supplied.
 
-                **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
-                'python', 'python', and 'rust' respectively.
+                .. note::
 
-                **Note:** 'experimental' is deprecated too. It is not an alias while it remains the
-                only implementation that streams runtime metrics.
+                    'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+                    'python', 'python', and 'rust' respectively.
+
+                    'experimental' is deprecated too. It is not an alias while it remains the
+                    only implementation that streams runtime metrics.
             file_fallback: Filepath to write failed batches to during streaming.
 
-                **Note:** Expects a .avro filename.
+                .. note::
 
-                **Note:** Supported only by the Rust backend.
+                    Expects a .avro filename.
+
+                    Supported only by the Rust backend.
             log_level: Log level to use in underlying rust streaming code.
 
-                **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+                .. note::
 
-                **Note:** Supported only by the Rust backend.
+                    Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+
+                    Supported only by the Rust backend.
             num_workers: Number of worker threads to use in underlying rust streaming code.
 
-                **Note:** Use with care-- this may have large impacts on streaming performance.
+                .. note::
 
-                **Note:** Supported only by the Rust backend.
+                    Use with care-- this may have large impacts on streaming performance.
+
+                    Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
@@ -323,7 +331,9 @@ class DataSource(HasRid, MarkableMixin):
         Args:
             channels_to_units: A mapping of channel names to unit symbols.
 
-                **Note:** Any existing units may be cleared from a channel by providing None as a symbol.
+                .. note::
+
+                    Any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
             allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.

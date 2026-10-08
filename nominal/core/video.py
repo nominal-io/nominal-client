@@ -135,7 +135,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.:
+            calling this method. E.g.::
 
                 new_labels = ["new-label-a", "new-label-b"]
                 for old_label in video.labels:
@@ -222,7 +222,9 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
 
-                **Note:** This is currently not displayed to users and may be removed in the future.
+                .. note::
+
+                    This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
 
@@ -308,7 +310,9 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
 
-                **Note:** This is currently not displayed to users and may be removed in the future.
+                .. note::
+
+                    This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
@@ -388,7 +392,9 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
 
-                **Note:** This is currently not displayed to users and may be removed in the future.
+                .. note::
+
+                    This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
 
@@ -434,7 +440,9 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
 
-                **Note:** This is currently not displayed to users and may be removed in the future.
+                .. note::
+
+                    This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.

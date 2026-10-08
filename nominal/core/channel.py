@@ -138,8 +138,10 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
                 for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
                 `_NotProvided`), this will leave the unit unaffected.
 
-                **Note:** This is in contrast to other fields in other `update()` calls where `None` is treated as a
-                "no-op".
+                .. note::
+
+                    This is in contrast to other fields in other `update()` calls where `None` is treated as a
+                    "no-op".
         """
         request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
             channel_identifier=self._channel_identifier(),
@@ -192,10 +194,14 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
         Args:
             regex_match: If provided, a regex match to filter potential log messages by.
 
-                **Note:** Must not be present with `insensitive_match`.
+                .. note::
+
+                    Must not be present with `insensitive_match`.
             insensitive_match: If provided, a case insensitive string that yielded logs match exactly.
 
-                **Note:** Must not be present with `regex_match`.
+                .. note::
+
+                    Must not be present with `regex_match`.
             tags: Tags to filter logs from the channel with
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
@@ -270,13 +276,13 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
             Mapping of all tag names to all tag values present
 
         Example:
-            Given data with the following tags per-point within the specified time range:
+            Given data with the following tags per-point within the specified time range::
 
                 {"tag_a": "123", "tag_b": "xyz"}
                 {"tag_a": "123", "tag_b": "abc"}
                 {"tag_a": "234", "tag_b": "qqq"}
 
-            With an initial filter of ``{"tag_a": "123"}``, we would return:
+            With an initial filter of ``{"tag_a": "123"}``, we would return::
 
                 {"tag_a": set(["123"]), "tag_b": set(["abc", "xyz"])}
 
