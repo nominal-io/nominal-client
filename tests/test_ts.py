@@ -28,7 +28,6 @@ def test_time_conversions(t: ts._SecondsNanos):
 
     assert t.seconds == t.to_scout_run_api().seconds_since_epoch
     assert t.nanos == t.to_scout_run_api().offset_nanoseconds
-    assert t == t.from_scout_run_api(t.to_scout_run_api())
 
     assert t.seconds == t.to_ingest_api().seconds_since_epoch
     assert t.nanos == t.to_ingest_api().offset_nanoseconds

@@ -669,10 +669,6 @@ class _SecondsNanos(NamedTuple):
         return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds)
 
     @classmethod
-    def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
-        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)
-
-    @classmethod
     def from_api(cls, timestamp: api.Timestamp) -> Self:
         # TODO(alkasm): warn on pico-second precision loss
         return cls(timestamp.seconds, timestamp.nanos)
