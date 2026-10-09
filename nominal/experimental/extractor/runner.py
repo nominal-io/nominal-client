@@ -109,7 +109,7 @@ class Extractor(Generic[_CtxT]):
 
         Does not execute the callback or converters, inspect its body, read the environment,
         upload an image, or activate it. Parameter types/defaults remain runtime-only.
-        Error mappings require a static message and non-reserved code; identical exit-code
+        Error mappings derive a fallback message from the code when none is given; identical exit-code
         fallbacks are combined, while conflicting fallbacks raise ValueError.
         Legacy lookups add no metadata: no argument declarations yields empty
         inputs/parameters. Keep complete manual registration metadata for partially migrated
@@ -126,9 +126,9 @@ class Extractor(Generic[_CtxT]):
         a file, or publish a release. The publisher owns versioning and artifact identity.
 
         Catalog export requires at least one input with suffix filters, uppercase environment
-        variables, epoch or ISO 8601 timestamp defaults, and a ``message`` on each error
-        declaration. Error codes must be non-reserved catalog identifiers. Identical error
-        fallbacks sharing an exit code are combined; conflicting fallbacks are rejected.
+        variables, and epoch or ISO 8601 timestamp defaults. Error codes must be non-reserved
+        catalog identifiers. Identical error fallbacks sharing an exit code are combined;
+        conflicting fallbacks are rejected.
         Input display metadata, converters and defaults have no catalog schema fields.
         Incomplete or unrepresentable metadata raises ValueError before publication.
         """
@@ -160,11 +160,11 @@ class Extractor(Generic[_CtxT]):
         On success returns the context. With ``exit=True`` (the default), mapped exceptions
         write bounded structured JSON to the termination log and stderr, then print the full
         traceback to stderr before exiting with their mapped status. The closest mapped class in the
-        exception's MRO wins. Other failures
-        print a traceback and exit 1. Pass ``exit=False`` to re-raise the original exception
-        without reporting -- useful in tests. ``termination_log_path`` is a trusted explicit
-        output path (default ``/dev/termination-log``), never read from the environment. Use a
-        temporary path when testing mapped exits locally.
+        exception's MRO wins. Undeclared framework ``ExtractorError`` failures use the built-in
+        ``EXTRACTOR_CONTRACT`` code and exit 1; other failures print a traceback and exit 1.
+        Pass ``exit=False`` to re-raise the original exception without reporting -- useful in
+        tests. ``termination_log_path`` is an explicit local override; Scout uses the
+        Kubernetes default ``/dev/termination-log`` and does not inject a log-path variable.
         """
         environ = os.environ if env is None else env
         if env is None:

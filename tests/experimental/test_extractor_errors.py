@@ -49,6 +49,35 @@ def test_framework_errors_are_mapped(stage: str, tmp_path: Path) -> None:
     assert exc.value.code == 64
 
 
+@pytest.mark.parametrize("stage", ["startup", "finalization"])
+def test_framework_errors_have_structured_reporting_without_declaration(stage: str, tmp_path: Path) -> None:
+    @manifest_extractor
+    def extract(ctx: ExtractorContext) -> None:
+        pass
+
+    env = {"OUTPUT_DIR": str(tmp_path)} if stage == "finalization" else {}
+    log = tmp_path / "termination"
+    with pytest.raises(SystemExit) as exc:
+        extract.run(env=env, termination_log_path=log)
+
+    assert exc.value.code == 1
+    assert json.loads(log.read_text())["code"] == "EXTRACTOR_CONTRACT"
+
+
+def test_broad_application_error_mapping_does_not_override_framework_policy(tmp_path: Path) -> None:
+    @manifest_extractor
+    @ex.error(Exception, code="APPLICATION", exit_code=65)
+    def extract(ctx: ExtractorContext) -> None:
+        pass
+
+    log = tmp_path / "termination"
+    with pytest.raises(SystemExit) as exc:
+        extract.run(env={}, termination_log_path=log)
+
+    assert exc.value.code == 1
+    assert json.loads(log.read_text())["code"] == "EXTRACTOR_CONTRACT"
+
+
 def test_exit_false_reraises_without_reporting(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Tests receive the original exception without termination output when exit is False."""
     error = ValueError("original")
@@ -179,6 +208,32 @@ def test_environment_cannot_redirect_termination_output(tmp_path, monkeypatch):
     assert ambient.read_text() == "keep ambient"
     assert supplied.read_text() == "keep supplied"
     assert json.loads(actual.read_text())["code"] == "INPUT"
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "diagnostic"),
+    [
+        ("_NOMINAL_ADDITIONAL_TAGS", "secret-marker{bad-json", "is not valid JSON"),
+        ("_NOMINAL_INPUTS", '[{"path": "secret-marker"}]', "is not valid extractor contract metadata"),
+    ],
+)
+def test_invalid_metadata_does_not_echo_raw_value(
+    tmp_path: Path, capsys, variable: str, value: str, diagnostic: str
+) -> None:
+    @manifest_extractor
+    def extract(ctx: ExtractorContext) -> None:
+        _ = ctx.additional_tags
+
+    log = tmp_path / "termination"
+    with pytest.raises(SystemExit):
+        extract.run(
+            env={"OUTPUT_DIR": str(tmp_path), variable: value},
+            termination_log_path=log,
+        )
+
+    assert f"{variable} {diagnostic}" in json.loads(log.read_text())["message"]
+    assert "secret-marker" not in log.read_text()
+    assert "secret-marker" not in capsys.readouterr().err
 
 
 def test_termination_budget_boundary(tmp_path):
