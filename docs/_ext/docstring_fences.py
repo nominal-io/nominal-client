@@ -20,6 +20,12 @@ def _process_code_fences(app: Sphinx, what: str, name: str, obj: object, options
     lines[:] = _CODE_FENCE.sub(_expand_code_fence, "\n".join(lines)).split("\n")
 
 
+def _process_cli_code_fences(app: Sphinx, ctx: object, lines: list[str]) -> None:
+    lines[:] = _CODE_FENCE.sub(_expand_code_fence, "\n".join(lines)).split("\n")
+
+
 def setup(app: Sphinx) -> dict[str, bool]:
+    app.setup_extension("sphinx_click")
     app.connect("autodoc-process-docstring", _process_code_fences, priority=400)  # before Napoleon
+    app.connect("sphinx-click-process-description", _process_cli_code_fences)
     return {"parallel_read_safe": True}

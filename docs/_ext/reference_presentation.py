@@ -30,7 +30,13 @@ def _api_layout(app: Sphinx, doctree: nodes.document) -> None:
             node["no-contents-entry"] = True
         if node.get("domain") == "py" and node.get("objtype") in {"class", "exception"}:
             sig = node[0]
-            obj = resolve_name(f"{sig['module']}:{sig['fullname']}")
+            # Handwritten directives need not describe an importable Python object.
+            try:
+                obj = resolve_name(f"{sig['module']}:{sig['fullname']}") if sig["module"] else None
+            except (ImportError, AttributeError):
+                obj = None
+            if obj is None:
+                continue
             field_order = {field.name: index for index, field in enumerate(fields(obj))} if is_dataclass(obj) else {}
             content = node[-1]
             members = [child for child in content if isinstance(child, addnodes.desc)]

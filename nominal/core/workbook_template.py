@@ -117,12 +117,14 @@ class WorkbookTemplate(
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.::
+            calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in template.labels:
-                    new_labels.append(old_label)
-                template = template.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in template.labels:
+                new_labels.append(old_label)
+            template = template.update(labels=new_labels)
+            ```
         """
         metadata = self._clients.template.update_metadata(
             self._clients.auth_header,

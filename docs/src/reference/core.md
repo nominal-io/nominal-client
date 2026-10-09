@@ -6,7 +6,6 @@ tocdepth: 2
 
 ```{eval-rst}
 .. automodule:: nominal.core
-   :imported-members:
 
 .. autodata:: nominal.core.DataStream
 

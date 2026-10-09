@@ -7,7 +7,6 @@ See the [package walkthrough](https://github.com/nominal-io/nominal-client/blob/
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.compute
-   :imported-members:
 ```
 
 ## Expressions

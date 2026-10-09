@@ -116,3 +116,39 @@ def test_invalid_fences_fail_the_strict_build(tmp_path: Path, build_docs, closin
     result = build_docs()
     assert result.returncode != 0
     assert "Inline literal start-string without end-string" in result.stderr
+
+
+def test_cli_help_preserves_fenced_shell_examples(tmp_path: Path, build_docs) -> None:
+    """Click help uses the same fenced-code convention as API docstrings."""
+    source = tmp_path / "docs/src"
+    extensions = Path(__file__).resolve().parents[1] / "_ext"
+    (source.parent / "conf.py").write_text(
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
+        "extensions = ['sphinx_click', 'docstring_fences']\n",
+        encoding="utf-8",
+    )
+    (source / "index.rst").write_text(
+        "CLI\n===\n\n.. click:: fixture_cli:example\n   :prog: example\n", encoding="utf-8"
+    )
+    (tmp_path / "fixture_cli.py").write_text(
+        '''import click
+
+@click.command()
+def example():
+    """Register an image.
+
+    ```bash
+    IMAGE_RID=$(example register --file image.tar)
+    example activate --rid "$IMAGE_RID"
+    ```
+    """
+''',
+        encoding="utf-8",
+    )
+    result = build_docs()
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = tmp_path / "docs/_build/dirhtml"
+    doctree = pickle.loads((output / ".doctrees/index.doctree").read_bytes())
+    examples = [block for block in doctree.findall(nodes.literal_block) if block["language"] == "bash"]
+    assert len(examples) == 1
+    assert examples[0].astext() == 'IMAGE_RID=$(example register --file image.tar)\nexample activate --rid "$IMAGE_RID"'

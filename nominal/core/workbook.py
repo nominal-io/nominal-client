@@ -151,12 +151,14 @@ class Workbook(
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.::
+            calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in workbook.labels:
-                    new_labels.append(old_label)
-                workbook = workbook.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in workbook.labels:
+                new_labels.append(old_label)
+            workbook = workbook.update(labels=new_labels)
+            ```
         """
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
         metadata = self._clients.notebook.update_metadata(

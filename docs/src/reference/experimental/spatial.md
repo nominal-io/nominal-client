@@ -5,7 +5,6 @@ See the [package walkthrough](https://github.com/nominal-io/nominal-client/blob/
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.spatial
-   :imported-members:
 
 .. autodata:: nominal.experimental.spatial.ColumnDataType
 ```

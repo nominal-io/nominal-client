@@ -445,24 +445,24 @@ class Custom(_ConjureTimestampType):
 
 
 # constants for pedagogy, documentation, default arguments, etc.
-#: ISO 8601 timestamp format.
 ISO_8601 = Iso8601()
-#: Epoch timestamp format in picoseconds.
+"""ISO 8601 timestamp format."""
 EPOCH_PICOSECONDS = Epoch("picoseconds")
-#: Epoch timestamp format in nanoseconds.
+"""Epoch timestamp format in picoseconds."""
 EPOCH_NANOSECONDS = Epoch("nanoseconds")
-#: Epoch timestamp format in microseconds.
+"""Epoch timestamp format in nanoseconds."""
 EPOCH_MICROSECONDS = Epoch("microseconds")
-#: Epoch timestamp format in milliseconds.
+"""Epoch timestamp format in microseconds."""
 EPOCH_MILLISECONDS = Epoch("milliseconds")
-#: Epoch timestamp format in seconds.
+"""Epoch timestamp format in milliseconds."""
 EPOCH_SECONDS = Epoch("seconds")
-#: Epoch timestamp format in minutes.
+"""Epoch timestamp format in seconds."""
 EPOCH_MINUTES = Epoch("minutes")
-#: Epoch timestamp format in hours.
+"""Epoch timestamp format in minutes."""
 EPOCH_HOURS = Epoch("hours")
-#: Epoch timestamp format in days.
+"""Epoch timestamp format in hours."""
 EPOCH_DAYS = Epoch("days")
+"""Epoch timestamp format in days."""
 
 _LiteralTimeUnit: TypeAlias = Literal[
     "picoseconds",

@@ -2,7 +2,6 @@
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.video_processing
-   :imported-members:
 
 .. autodata:: nominal.experimental.video_processing.STANDARD_DEFINITION
 

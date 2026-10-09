@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from docutils import nodes
 from sphinx import addnodes
 
@@ -108,3 +109,37 @@ Alias = str
     assert "#fixture_api.Resource.rid" not in contents
     assert "#fixture_api.Alias" not in contents
     assert "fixture_api.Alias" in signatures
+
+
+@pytest.mark.parametrize("module", [None, "fixture_api", "not_installed"])
+def test_handwritten_class_references_need_no_importable_object(tmp_path: Path, module: str | None) -> None:
+    """Preserve authored class references with no module, a missing class, or an unavailable module."""
+    extensions = Path(__file__).resolve().parents[1] / "_ext"
+    (tmp_path / "conf.py").write_text(
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'reference_presentation']\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "fixture_api.py").write_text("", encoding="utf-8")
+    module_directive = f".. py:module:: {module}\n\n" if module else ""
+    (tmp_path / "index.rst").write_text(
+        "Types\n=====\n\n" + module_directive + ".. py:class:: Example(value)\n\n"
+        "   An authored class reference.\n\n"
+        "   .. py:attribute:: value\n\n"
+        "      The input value.\n\n"
+        "   .. py:method:: read()\n\n"
+        "      Read the value.\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "html"
+    result = subprocess.run(
+        [sys.executable, "-m", "sphinx", "-W", "-E", "-b", "html", str(tmp_path), str(output)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    html = (output / "index.html").read_text(encoding="utf-8")
+    assert "An authored class reference." in html
+    assert "The input value." in html
+    assert "Read the value." in html

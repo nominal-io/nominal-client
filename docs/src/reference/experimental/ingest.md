@@ -22,7 +22,6 @@ in the output manifest, rather than the image's registration contract.
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.ingest
-   :imported-members:
 
 .. autodata:: nominal.experimental.ingest.DEFAULT_FILE_RETRY_TIMEOUT_S
 

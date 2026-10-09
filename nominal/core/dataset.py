@@ -80,12 +80,14 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-            calling this method. E.g.::
+            calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in dataset.labels:
-                    new_labels.append(old_label)
-                dataset = dataset.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in dataset.labels:
+                new_labels.append(old_label)
+            dataset = dataset.update(labels=new_labels)
+            ```
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
@@ -304,43 +306,45 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Note:
             If this schema is not used, ingestion will fail.
 
-        The required schema is::
+        The required schema is:
 
-            {
-                "type": "record",
-                "name": "AvroStream",
-                "namespace": "io.nominal.ingest",
-                "fields": [
-                    {
-                        "name": "channel",
-                        "type": "string",
-                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                    },
-                    {
-                        "name": "timestamps",
-                        "type": {"type": "array", "items": "long"},
-                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
-                    },
-                    {
-                        "name": "values",
-                        "type": {"type": "array", "items": [
-                            "double",
-                            "string",
-                            "long",
-                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                        ]},
-                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                    },
-                    {
-                        "name": "tags",
-                        "type": {"type": "map", "values": "string"},
-                        "default": {},
-                        "doc": "Key-value metadata tags",
-                    },
-                ],
-            }
+        ```python
+        {
+            "type": "record",
+            "name": "AvroStream",
+            "namespace": "io.nominal.ingest",
+            "fields": [
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                },
+                {
+                    "name": "timestamps",
+                    "type": {"type": "array", "items": "long"},
+                    "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                },
+                {
+                    "name": "values",
+                    "type": {"type": "array", "items": [
+                        "double",
+                        "string",
+                        "long",
+                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                    ]},
+                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                },
+                {
+                    "name": "tags",
+                    "type": {"type": "map", "values": "string"},
+                    "default": {},
+                    "doc": "Key-value metadata tags",
+                },
+            ],
+        }
+        ```
 
         """
         avro_path = Path(path)
