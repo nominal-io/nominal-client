@@ -16,7 +16,6 @@ from nominal_api import (
     attachments_api,
     authentication_api,
     ingest_api,
-    scout_asset_api,
     scout_catalog,
     scout_checks_api,
     scout_datasource_connection_api,
@@ -39,6 +38,7 @@ from nominal.core._utils.api_tools import (
     construct_user_agent_string,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     upload_multipart_io,
@@ -67,7 +67,7 @@ from nominal.core._utils.query_tools import (
     create_search_videos_query,
     create_search_workbook_templates_query,
 )
-from nominal.core.asset import Asset
+from nominal.core.asset import Asset, _get_asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
@@ -83,7 +83,7 @@ from nominal.core.containerized_extractor import (
     _get_containerized_extractor,
     _search_containerized_extractors,
 )
-from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
+from nominal.core.data_review import DataReview, DataReviewBuilder, _get_data_review, _iter_search_data_reviews
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
@@ -93,18 +93,20 @@ from nominal.core.dataset import (
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
-from nominal.core.exceptions import (
-    LegacyVideoDeprecationWarning,
-    NominalConfigError,
-    NominalError,
-    NominalInvalidArgumentError,
-    NominalNotFoundError,
-)
 from nominal.core.file_store.drive import Drive, _create_drive, _get_drive, _get_drive_by_id, _list_drives
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
-from nominal.core.run import Run, _create_run
+from nominal.core.marking import (
+    Marking,
+    _create_marking,
+    _get_marking,
+    _get_marking_by_id,
+    _marking_rids,
+    _search_markings,
+)
+from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
@@ -113,6 +115,14 @@ from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
+from nominal.exceptions import (
+    LegacyVideoDeprecationWarning,
+    NominalConfigError,
+    NominalError,
+    NominalInvalidArgumentError,
+    NominalNotFoundError,
+)
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -160,6 +170,10 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -200,6 +214,10 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -234,17 +252,22 @@ class NominalClient:
     ) -> Self:
         """Create a connection to the Nominal platform.
 
-        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
-            transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
-            store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
-            client works on corporate networks with no extra configuration. On macOS, point this at
-            your corporate CA PEM if you are behind a TLS-inspecting proxy.
-        connect_timeout: Timeout for any single request to the Nominal API.
-        workspace_rid: Optional workspace RID to pin the client to for operations that require a single
-            workspace. If not provided, those operations resolve a default workspace client-side when needed.
-        extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
+            trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
+                transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
+                store (including enterprise/GPO/MDM-installed CAs) is automatically unioned in, so the
+                client works on corporate networks with no extra configuration. On macOS, point this at
+                your corporate CA PEM if you are behind a TLS-inspecting proxy.
+            connect_timeout: Timeout for any single request to the Nominal API.
+            workspace_rid: Optional workspace RID to pin the client to for operations that require a single
+                workspace. If not provided, those operations resolve a default workspace client-side when needed.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+
+        Raises:
+            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
+                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -427,7 +450,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -448,7 +471,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter results to the given archive status.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -486,11 +510,13 @@ class NominalClient:
             start: Inclusive lower bound of the search window. Files whose time range ends at or
                 after this timestamp are returned — including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
                 before this timestamp are returned — including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:
@@ -510,7 +536,7 @@ class NominalClient:
         decrypted_value: str,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Secret:
         """Create a secret for the current user
 
@@ -555,7 +581,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Secret]:
@@ -571,7 +597,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -588,6 +615,80 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_secrets(query, archive_status))
+
+    def create_marking(
+        self,
+        id: str,
+        *,
+        description: str | None = None,
+        authorized_groups: Sequence[str] = (),
+        symbol: Symbol | None = None,
+        color: str | None = None,
+    ) -> Marking:
+        """Create a marking in the current organization.
+
+        Args:
+            id: Human-readable identifier for the marking, unique within the organization. Must be
+                lowercase alphanumeric characters optionally separated by hyphens, starting with a
+                letter, e.g. `export-controlled`.
+            description: Human readable description of the marking.
+            authorized_groups: RIDs of the groups authorized to access data sources carrying
+                this marking.
+            symbol: Symbol identifying the marking in the Nominal app.
+            color: Six-digit hex color identifying the marking in the Nominal app, e.g. `#cc0000`.
+                Either case is accepted; the value is lowercased before being sent.
+
+        Returns:
+            Reference to the created marking.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id, or `color` is not a valid hex color.
+            NominalError: If creation fails, including when the caller is not an organization admin
+                or a marking with this id already exists.
+        """
+        return _create_marking(
+            self._clients,
+            id=id,
+            description=description,
+            authorized_groups=authorized_groups,
+            symbol=symbol,
+            color=color,
+        )
+
+    def get_marking(self, rid: str) -> Marking:
+        """Retrieve a marking by RID.
+
+        Raises:
+            NominalNotFoundError: If no marking with the given RID exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
+        """
+        return _get_marking(self._clients, rid)
+
+    def get_marking_by_id(self, id: str) -> Marking:
+        """Retrieve a marking by its human-readable id, unique within the organization.
+
+        Raises:
+            ValueError: If `id` is not a valid marking id.
+            NominalNotFoundError: If no marking with the given id exists.
+            NominalPermissionDeniedError: If the caller cannot read it.
+        """
+        return _get_marking_by_id(self._clients, id)
+
+    def search_markings(self, id_substring: str | None = None) -> Sequence[Marking]:
+        """Search markings in the current organization, oldest first.
+
+        Args:
+            id_substring: Substring that a marking's id must contain to be included.
+
+        Returns:
+            All markings matching the given conditions.
+
+        Note:
+            Markings are scoped to an organization rather than a workspace, so this search takes no
+            workspace filter. Archived markings are never returned; fetch them by RID with
+            `get_marking` instead.
+        """
+        return _search_markings(self._clients, id_substring=id_substring)
 
     def _iter_search_videos(
         self,
@@ -606,7 +707,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Video]:
@@ -622,7 +723,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -648,7 +750,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -661,7 +763,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
@@ -674,7 +776,7 @@ class NominalClient:
         end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         attachments: Iterable[Attachment] | Iterable[str] | None = None,
@@ -697,9 +799,8 @@ class NominalClient:
             Reference to the created run object
 
         Raises:
-            ValueError: both `asset` and `assets` provided
-            ConjureHTTPError: error making request
-
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If the run service request fails.
         """
         if assets is None:
             assets = []
@@ -718,9 +819,14 @@ class NominalClient:
         )
 
     def get_run(self, rid: str) -> Run:
-        """Retrieve a run by its RID."""
-        response = self._clients.run.get_run(self._clients.auth_header, rid)
-        return Run._from_conjure(self._clients, response)
+        """Retrieve a run by its RID.
+
+        Raises:
+            NominalNotFoundError: If no run has that RID.
+            NominalError: If the retrieval request fails.
+        """
+        response = _get_run(self._clients.run, rid)
+        return Run._from_proto(self._clients, response)
 
     def _iter_search_runs(
         self,
@@ -728,7 +834,7 @@ class NominalClient:
         end: str | datetime | IntegralNanosecondsUTC | None,
         name_substring: str | None,
         labels: Sequence[str] | None,
-        properties: Mapping[str, str] | None,
+        properties: NominalProperties | None,
         exact_match: str | None,
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
@@ -748,8 +854,8 @@ class NominalClient:
             created_before=created_before,
             workspace_rid=workspace_rid,
         )
-        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
-            yield Run._from_conjure(self._clients, run)
+        for run in search_runs_paginated(self._clients.run, query, archive_status):
+            yield Run._from_proto(self._clients, run)
 
     def search_runs(
         self,
@@ -758,7 +864,7 @@ class NominalClient:
         name_substring: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -786,7 +892,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -795,6 +902,10 @@ class NominalClient:
 
         Returns:
             All runs which match all of the provided conditions
+
+        Raises:
+            NominalConfigError: If the default workspace is requested but cannot be resolved.
+            NominalError: If a search request fails.
         """
         return list(
             self._iter_search_runs(
@@ -818,9 +929,9 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         prefix_tree_delimiter: str | None = None,
-        markings: Sequence[str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> Dataset:
         """Create an empty dataset.
 
@@ -830,7 +941,8 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            markings: If present, RIDs of markings to apply to the created dataset
+            markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -843,7 +955,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
-            marking_rids=markings,
+            marking_rids=_marking_rids(markings),
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
@@ -863,7 +975,8 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> Video:
         """Create an empty video to append video files to.
 
@@ -872,6 +985,8 @@ class NominalClient:
             description: Description of the video to create in nominal
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
+            markings: If present, markings (or marking RIDs) applied to the video. Sent as part of
+                the creation request rather than applied in a follow-up call.
 
         Returns:
             Handle to the created video
@@ -884,6 +999,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
+            marking_rids=_marking_rids(markings),
         )
         return Video._from_conjure(self._clients, response)
 
@@ -916,8 +1032,9 @@ class NominalClient:
     def get_datasource(self, rid: str) -> DataSource:
         """Retrieve a datasource (connection or dataset) by its RID.
 
-        NOTE: if specific methods / properties of a dataset / connection are desired,
-              it is preferable to use `get_dataset` or `get_connection`.
+        Note:
+            If specific methods / properties of a dataset / connection are desired,
+            it is preferable to use `get_dataset` or `get_connection`.
         """
         if ".dataset." in rid:
             return self.get_dataset(rid)
@@ -957,7 +1074,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -976,7 +1093,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1001,7 +1119,7 @@ class NominalClient:
         attachment_file: PathLike,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         attachment_path = Path(attachment_file)
@@ -1025,7 +1143,7 @@ class NominalClient:
         file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         """Upload an attachment.
@@ -1078,11 +1196,11 @@ class NominalClient:
 
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
-                NOTE: This currently requires that units are formatted as laid out in
-                      the latest UCUM standards (see https://ucum.org/ucum)
+
+                **Note:** This currently requires that units are formatted as laid out in
+                the latest UCUM standards (see https://ucum.org/ucum).
 
         Returns:
-        -------
             Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
@@ -1129,6 +1247,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
+        markings: Sequence[Marking | str] | None = None,
     ) -> StreamingConnection:
         workspace_rid = self._clients.resolve_default_workspace_rid()
         datasource_response = self._clients.storage.create(
@@ -1161,7 +1280,7 @@ class NominalClient:
                 available_tag_values={},
                 should_scrape=True,
                 workspace=workspace_rid,
-                marking_rids=[],
+                marking_rids=_marking_rids(markings),
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)
@@ -1174,35 +1293,38 @@ class NominalClient:
         name: str,
         description: str | None = None,
         *,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
     ) -> Asset:
-        """Create an asset."""
-        request = scout_asset_api.CreateAssetRequest(
+        """Create an asset.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If the creation request fails.
+        """
+        request = asset_pb2.CreateAssetRequest(
             description=description,
             labels=list(labels),
             properties={} if properties is None else dict(properties),
-            typed_properties={},
             title=name,
-            attachments=[],
-            data_scopes=[],
-            links=[],
             workspace=self._clients.resolve_default_workspace_rid(),
         )
-        response = self._clients.assets.create_asset(self._clients.auth_header, request)
-        return Asset._from_conjure(self._clients, response)
+        with translate_grpc_errors():
+            response = self._clients.assets.CreateAsset(request)
+        return Asset._from_proto(self._clients, response.asset)
 
     def get_asset(self, rid: str) -> Asset:
-        """Retrieve an asset by its RID."""
-        response = self._clients.assets.get_assets(self._clients.auth_header, [rid])
-        if len(response) == 0 or rid not in response:
-            raise ValueError(f"no asset found with RID {rid!r}: {response!r}")
-        if len(response) > 1:
-            raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
-        return Asset._from_conjure(self._clients, response[rid])
+        """Retrieve an asset by its RID.
+
+        Raises:
+            NominalNotFoundError: If no asset has that rid.
+            ValueError: If the backend returns multiple assets for the RID.
+            NominalError: If the retrieval request fails.
+        """
+        return Asset._from_proto(self._clients, _get_asset(self._clients, rid))
 
     def get_or_create_asset_by_properties(
-        self, properties: Mapping[str, str], *, name: str, description: str | None = None, labels: Sequence[str] = ()
+        self, properties: NominalProperties, *, name: str, description: str | None = None, labels: Sequence[str] = ()
     ) -> Asset:
         """Searches for an asset using using properties. If no assets returned, create one.
            If multiple assets returned, throw error.
@@ -1215,6 +1337,11 @@ class NominalClient:
 
         Returns:
             The existing or newly created asset.
+
+        Raises:
+            ValueError: If multiple assets match the properties.
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If searching for or creating the asset fails.
         """
         assets = self.search_assets(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
 
@@ -1233,18 +1360,18 @@ class NominalClient:
 
     def _iter_search_assets(
         self,
-        query: scout_asset_api.SearchAssetsQuery,
+        query: asset_pb2.SearchAssetsQuery,
         archive_status: ArchiveStatusFilter,
     ) -> Iterable[Asset]:
-        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query, archive_status):
-            yield Asset._from_conjure(self._clients, asset)
+        for asset in search_assets_paginated(self._clients.assets, query, archive_status):
+            yield Asset._from_proto(self._clients, asset)
 
     def search_assets(
         self,
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
@@ -1263,7 +1390,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1271,6 +1399,10 @@ class NominalClient:
 
         Returns:
             All assets which match all of the provided conditions
+
+        Raises:
+            NominalConfigError: If the default workspace is requested but cannot be resolved.
+            NominalError: If a search request fails.
         """
         query = create_search_assets_query(
             search_text=search_text,
@@ -1315,7 +1447,8 @@ class NominalClient:
             start_time_before: Only jobs that started before this time (exclusive).
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1351,8 +1484,13 @@ class NominalClient:
         return DataReviewBuilder([], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
-        response = self._clients.datareview.get(self._clients.auth_header, rid)
-        return DataReview._from_conjure(self._clients, response)
+        """Retrieve a data review by its RID.
+
+        Raises:
+            NominalNotFoundError: If no data review has that rid.
+            NominalError: If the retrieval request fails.
+        """
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, rid))
 
     def create_event(
         self,
@@ -1363,7 +1501,7 @@ class NominalClient:
         *,
         description: str | None = None,
         assets: Iterable[Asset | str] = (),
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         return _create_event(
@@ -1435,7 +1573,7 @@ class NominalClient:
         before: datetime | IntegralNanosecondsUTC | None = None,
         assets: Iterable[Asset | str] | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by: User | str | None = None,
         workbook: Workbook | str | None = None,
         data_review: DataReview | str | None = None,
@@ -1462,7 +1600,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1488,7 +1627,14 @@ class NominalClient:
             archive_status=archive_status,
         )
 
-    def create_containerized_extractor(self, name: str, *, description: str | None = None) -> ContainerizedExtractor:
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: NominalProperties | None = None,
+    ) -> ContainerizedExtractor:
         """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
 
         A newly created extractor has no container image: register one with
@@ -1497,11 +1643,19 @@ class NominalClient:
         Args:
             name: Name of the extractor.
             description: Human-readable description of the extractor.
+            labels: Labels to set on the extractor.
+            properties: Key-value properties to set on the extractor.
 
         Returns:
             The newly created extractor.
         """
-        return _create_containerized_extractor(self._clients, name, description=description)
+        return _create_containerized_extractor(
+            self._clients,
+            name,
+            description=description,
+            labels=labels,
+            properties=properties,
+        )
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
         """Get a containerized extractor by its RID.
@@ -1519,6 +1673,8 @@ class NominalClient:
         *,
         include_archived: bool = False,
         file_extension: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: NominalProperties | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
@@ -1527,6 +1683,9 @@ class NominalClient:
             include_archived: If true, include archived extractors in the results.
             file_extension: If provided, only include extractors whose active image declares an input
                 accepting files with this suffix (e.g. "csv" — no leading dot).
+            labels: Only include extractors carrying every requested label.
+            properties: Only include extractors carrying every requested name/value pair.
+                Extractors may carry additional labels and properties.
             workspace: Workspace to search within (the client's default workspace if not provided).
 
         Returns:
@@ -1536,6 +1695,8 @@ class NominalClient:
             self._clients,
             include_archived=include_archived,
             file_extension=file_extension,
+            labels=labels,
+            properties=properties,
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
 
@@ -1591,7 +1752,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         asset: Asset | str | None = None,
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
@@ -1616,7 +1777,8 @@ class NominalClient:
             include_drafts: If true, include workbooks in draft state in results.
             archive_status: Archive status to filter results to. Defaults to NOT_ARCHIVED.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1657,7 +1819,7 @@ class NominalClient:
             self._clients.auth_header,
             query,
         ):
-            yield WorkbookTemplate._from_template_summary(self._clients, raw_template)
+            yield WorkbookTemplate._from_conjure(self._clients, raw_template)
 
     def search_workbook_templates(
         self,
@@ -1665,7 +1827,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by: User | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
         published: bool | None = None,
@@ -1684,7 +1846,8 @@ class NominalClient:
             published: Searches for workbook templates that have been published if true
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
+        Note:
+            If WorkspaceSearchType.ALL is given for `workspace`, the workspace filter is omitted and the
             search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
             configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
             default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
@@ -1711,7 +1874,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: list[str] | None = None,
-        properties: dict[str, str] | None = None,
+        properties: NominalProperties | None = None,
         commit_message: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
@@ -1740,7 +1903,7 @@ class NominalClient:
             title=title,
             description=description if description is not None else "",
             labels=labels if labels is not None else [],
-            properties=properties if properties is not None else {},
+            properties=dict(properties) if properties is not None else {},
             is_published=False,
             layout=scout_layout_api.WorkbookLayout(
                 v1=scout_layout_api.WorkbookLayoutV1(

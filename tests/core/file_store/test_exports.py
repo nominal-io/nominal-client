@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from nominal import core
-from nominal.core.exceptions import FileStoreErrorCode, NominalError, NominalFileStoreError
+from nominal.core.file_store import FileStoreErrorCode, NominalFileStoreError
+from nominal.exceptions import NominalError
 
 
 def test_file_store_types_are_importable_from_nominal_core() -> None:
@@ -21,8 +22,10 @@ def test_file_store_types_are_importable_from_nominal_core() -> None:
         "FileChangeResult",
         "FileChangeSuccess",
         "FileDestination",
+        "FileStoreErrorCode",
         "ManagedDriveFile",
         "MoveFile",
+        "NominalFileStoreError",
         "RemoveFile",
         "RestoreFile",
         "VirtualDrive",
@@ -36,6 +39,7 @@ def test_file_store_types_are_importable_from_nominal_core() -> None:
         assert hasattr(core, name)
 
 
-def test_file_store_errors_are_importable_from_exceptions() -> None:
+def test_file_store_errors_subclass_the_sdk_base_error() -> None:
+    """`except NominalError` must keep catching File Store failures now that they live in their own package."""
     assert issubclass(NominalFileStoreError, NominalError)
     assert FileStoreErrorCode.UNKNOWN.value == "UNKNOWN"

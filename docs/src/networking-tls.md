@@ -1,9 +1,35 @@
 # Networking & TLS on corporate networks
 
 The Nominal client talks to the platform over two transports: HTTP (conjure services) and gRPC
-(e.g. the Role Service). Both verify the server's TLS certificate.
+(e.g. the Role Service). HTTPS URLs verify the server's TLS certificate on both transports.
 
-## How trust is established
+## Local plaintext HTTP deployments
+
+An `http://` API base URL is accepted only when its host is a literal loopback IP address:
+IPv4 `127.0.0.0/8` (normally `127.0.0.1`) or IPv6 `::1`. Use `https://` for remote deployments.
+Other HTTP hosts raise `NominalConfigError` during client construction, even if you only intend to use
+Conjure HTTP APIs. URLs with embedded user information are rejected for both HTTP and HTTPS; supply
+your API token separately.
+There is no remote-plaintext override or automatic fallback from TLS to plaintext.
+
+Use `127.0.0.1` or `[::1]` rather than `localhost` or another hostname; the check does not trust DNS
+resolution. Loopback HTTP still sends credentials and custom headers without TLS encryption.
+This client-wide restriction does not add TLS to the Conjure HTTP transport.
+
+For example, connect to a local runtime using its HTTP ingress URL, including `/api`:
+
+```python
+client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
+dataset = client.create_dataset("x")
+```
+
+For HTTP URLs, gRPC services use plaintext HTTP/2 on the same host and port as the HTTP API.
+The runtime ingress must support both ordinary HTTP and plaintext gRPC, including the workspace
+service used to resolve the client's workspace. Desktop Core provides these routes through its
+loopback ingress. Authentication, custom headers, retries, deadlines, and Nominal exception
+translation apply to both plaintext and TLS gRPC calls. HTTPS URLs continue to use TLS.
+
+## How trust is established for HTTPS
 
 - **HTTP** uses your operating system's trust store directly (via `truststore`), plus certifi.
 - **gRPC** cannot use the OS trust store on demand, so at startup the client builds a CA bundle by

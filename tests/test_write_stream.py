@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -340,7 +341,7 @@ def test_multiple_write_streams(mock_connection):
 
     # First stream
     with mock_connection.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="python"
     ) as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
@@ -348,7 +349,7 @@ def test_multiple_write_streams(mock_connection):
 
     # Second stream
     with mock_connection.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+        batch_size=2, max_wait=timedelta(seconds=1), implementation="python"
     ) as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
@@ -659,13 +660,13 @@ def test_multiple_write_streams_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # First stream
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream1:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), implementation="python") as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
         # Force a small sleep to allow the batch to be processed
 
     # Second stream
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream2:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), implementation="python") as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
@@ -850,7 +851,7 @@ def test_write_stream_enqueue_float_array(mock_dataset):
     """Test enqueue_float_array on a write stream."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), implementation="python") as stream:
         stream.enqueue_float_array("channel1", timestamp, [1.0, 2.0, 3.0])
         stream.enqueue_float_array("channel1", timestamp + timedelta(seconds=1), [4.0, 5.0, 6.0])
 
@@ -875,7 +876,7 @@ def test_write_stream_enqueue_string_array(mock_dataset):
     """Test enqueue_string_array on a write stream."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), implementation="python") as stream:
         stream.enqueue_string_array("channel1", timestamp, ["a", "b", "c"])
         stream.enqueue_string_array("channel1", timestamp + timedelta(seconds=1), ["d", "e", "f"])
 
@@ -1014,3 +1015,41 @@ def test_infer_point_type_dict():
     assert infer_point_type({"key": "value"}) == PointType.STRUCT
     assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
     assert infer_point_type({}) == PointType.STRUCT
+
+
+@pytest.mark.parametrize(
+    "max_wait, expected_timeout",
+    [
+        (timedelta(milliseconds=500), 0.5),
+        (timedelta(milliseconds=1500), 1.5),
+        (timedelta(minutes=2), 120.0),
+        (timedelta(days=1), 86400.0),
+    ],
+)
+def test_process_timeout_batches_waits_for_whole_max_wait(max_wait, expected_timeout):
+    """max_wait converts to seconds in full: days scale up, fractions are preserved."""
+    # Freeze the clock at the batch's last swap: no elapsed time to subtract, so the
+    # computed wait is exactly the converted max_wait rather than a wall-clock race.
+    now = 1000.0
+
+    batch = MagicMock()
+    batch.last_time = now
+    batch.swap.return_value = []
+
+    stop = MagicMock(spec=threading.Event)
+    stop.is_set.side_effect = [False, True]  # run exactly one iteration
+
+    stream = WriteStream(
+        batch_size=10,
+        max_wait=max_wait,
+        _process_batch=MagicMock(),
+        _executor=MagicMock(),
+        _thread_safe_batch=batch,
+        _stop=stop,
+        _pending_jobs=threading.BoundedSemaphore(3),
+    )
+    with patch("nominal.core._stream.write_stream.time.monotonic", return_value=now):
+        stream._process_timeout_batches()
+
+    stop.wait.assert_called_once()
+    assert stop.wait.call_args.kwargs["timeout"] == expected_timeout

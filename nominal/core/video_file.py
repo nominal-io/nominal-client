@@ -12,7 +12,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions, _scale_parameter
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalIngestError,
     NominalIngestFailed,
@@ -90,7 +90,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         Returns:
             Updated video file metadata.
 
-        NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
+        Note:
+            Only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         """
         scale_parameter = _scale_parameter(
             ending_timestamp=ending_timestamp, true_frame_rate=true_frame_rate, scale_factor=scale_factor
@@ -130,7 +131,6 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
-        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known
@@ -201,22 +201,22 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
                     f"video file {self.rid!r} has no segment metadata, so it cannot be re-ingested elsewhere"
                 )
             if (
-                api_video_file.segment_metadata.max_absolute_timestamp is None
+                api_video_file.segment_metadata.min_absolute_timestamp is None
                 or api_video_file.segment_metadata.scale_factor is None
-                or api_video_file.segment_metadata.media_frame_rate is None
             ):
                 raise NominalVideoFileMetadataError(
                     f"video file {self.rid!r} has incomplete segment metadata: {api_video_file.segment_metadata}"
                 )
+            # Both values come from segment metadata, never from the origin manifest's declared
+            # start: origin metadata is frozen at original ingest, while start-time and scale
+            # edits rewrite the segments — so the segments are the file's current timing truth,
+            # and mixing the two sources produces inconsistent options for any file whose start
+            # was corrected after ingest.
             video_file_ingest_options = TimestampOptions(
                 starting_timestamp=_SecondsNanos.from_api(
-                    api_video_file.origin_metadata.timestamp_manifest.no_manifest.starting_timestamp
-                ).to_nanoseconds(),
-                ending_timestamp=_SecondsNanos.from_api(
-                    api_video_file.segment_metadata.max_absolute_timestamp
+                    api_video_file.segment_metadata.min_absolute_timestamp
                 ).to_nanoseconds(),
                 scaling_factor=api_video_file.segment_metadata.scale_factor,
-                true_framerate=api_video_file.segment_metadata.media_frame_rate,
             )
             return (None, video_file_ingest_options)
 

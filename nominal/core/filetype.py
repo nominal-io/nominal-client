@@ -105,6 +105,25 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
+    def from_csv(cls, path: PathLike) -> FileType:
+        """Resolve a CSV path, rejecting other formats with the supported extensions."""
+        file_type = cls.from_path(path)
+        if not file_type.is_csv():
+            raise ValueError(f"CSV path '{path}' must end in one of {[f.extension for f in FileTypes._CSV_TYPES]}")
+
+        return file_type
+
+    @classmethod
+    def from_parquet(cls, path: PathLike) -> FileType:
+        """Resolve a Parquet file or archive path, rejecting other formats."""
+        file_type = cls.from_path(path)
+        if not file_type.is_parquet():
+            allowed_extensions = (*FileTypes._PARQUET_FILE_TYPES, *FileTypes._PARQUET_ARCHIVE_TYPES)
+            raise ValueError(f"Parquet path '{path}' must end in one of {[f.extension for f in allowed_extensions]}")
+
+        return file_type
+
+    @classmethod
     def from_avro_stream(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_avro_stream():

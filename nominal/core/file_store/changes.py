@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence, TypeAlias
 
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store._clients import _Clients
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import (
     DriveFileRevision,
     FileDestination,

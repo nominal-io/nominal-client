@@ -1,1 +1,5 @@
-::: nominal.tdms
+# TDMS
+
+```{eval-rst}
+.. automodule:: nominal.tdms
+```

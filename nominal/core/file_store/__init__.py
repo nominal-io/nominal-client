@@ -15,6 +15,7 @@ from nominal.core.file_store.enums import (
     DriveState,
     VirtualDriveState,
 )
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import (
     DriveDirectory,
     DriveEntry,
@@ -40,8 +41,10 @@ __all__ = [
     "FileChangeResult",
     "FileChangeSuccess",
     "FileDestination",
+    "FileStoreErrorCode",
     "ManagedDriveFile",
     "MoveFile",
+    "NominalFileStoreError",
     "RemoveFile",
     "RestoreFile",
     "VirtualDrive",

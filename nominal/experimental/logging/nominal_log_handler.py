@@ -12,10 +12,15 @@ from nominal.core.log import LogPoint
 class NominalLogHandler(logging.Handler):
     """A custom logging handler that batches log records and sends them to Nominal in a background thread.
 
-    NOTE: to log custom args from a `logger.log(...)` statement, you can pass args as a dictionary via `extras`
-          Example:
-            logger.info("infotainment logs", extra={"nominal_args": {"country": "america", "count": 1234}})
-          This would allow users to see the custom log args within the Nominal log panel.
+    Note:
+        To log custom args from a `logger.log(...)` statement, you can pass args as a dictionary via `extras`.
+        For example:
+
+        ```python
+        logger.info("infotainment logs", extra={"nominal_args": {"country": "america", "count": 1234}})
+        ```
+
+        This would allow users to see the custom log args within the Nominal log panel.
     """
 
     def __init__(

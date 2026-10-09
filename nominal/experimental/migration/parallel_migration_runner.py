@@ -175,6 +175,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     ctx = MigrationContext(
         destination_client=runner.destination_client,
         migration_state=runner.migration_state,
+        user_rid_mapping=runner.user_rid_mapping,
         source_asset_rids=frozenset(runner.migration_resources.source_assets.keys()),
         dry_run=runner.dry_run,
         video_ingest_timeout=runner.video_ingest_timeout,

@@ -9,13 +9,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog, scout_video_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
@@ -24,12 +25,12 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
+from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsUTC,
@@ -51,7 +52,7 @@ DatasetBounds: TypeAlias = Bounds
 class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
@@ -69,7 +70,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace dataset metadata.
@@ -77,13 +78,16 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
+            ```python
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in dataset.labels:
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
+            ```
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
@@ -183,8 +187,9 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Args:
             path: Path to the file on disk to add to the dataset.
             timestamp_column: Column within the file containing timestamp information.
-                NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
-                      to set the timestamps for all other uploaded data channels.
+
+                **Note:** This is omitted as a channel from the data added to Nominal, and is instead used
+                to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file
@@ -290,47 +295,54 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             ValueError: `path` does not end in .avro or .avro.gz, or `timestamp_type` has no numeric
                 representation (e.g. an ISO 8601 or custom string format).
 
-        NOTE: For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+        Note:
+            For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
 
-        NOTE: The previous schema with only "double" and "string" value types is still fully supported.
+        Note:
+            The previous schema with only "double" and "string" value types is still fully supported.
 
-        NOTE: If this schema is not used, will result in a failed ingestion.
+        Note:
+            If this schema is not used, ingestion will fail.
 
-            {
-                "type": "record",
-                "name": "AvroStream",
-                "namespace": "io.nominal.ingest",
-                "fields": [
-                    {
-                        "name": "channel",
-                        "type": "string",
-                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                    },
-                    {
-                        "name": "timestamps",
-                        "type": {"type": "array", "items": "long"},
-                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
-                    },
-                    {
-                        "name": "values",
-                        "type": {"type": "array", "items": [
-                            "double",
-                            "string",
-                            "long",
-                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                        ]},
-                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                    },
-                    {
-                        "name": "tags",
-                        "type": {"type": "map", "values": "string"},
-                        "default": {},
-                        "doc": "Key-value metadata tags",
-                    },
-                ],
-            }
+        The required schema is:
+
+        ```python
+        {
+            "type": "record",
+            "name": "AvroStream",
+            "namespace": "io.nominal.ingest",
+            "fields": [
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                },
+                {
+                    "name": "timestamps",
+                    "type": {"type": "array", "items": "long"},
+                    "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                },
+                {
+                    "name": "values",
+                    "type": {"type": "array", "items": [
+                        "double",
+                        "string",
+                        "long",
+                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                    ]},
+                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                },
+                {
+                    "name": "tags",
+                    "type": {"type": "map", "values": "string"},
+                    "default": {},
+                    "doc": "Key-value metadata tags",
+                },
+            ],
+        }
+        ```
 
         """
         avro_path = Path(path)
@@ -487,7 +499,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """Add an MCAP file to an existing dataset.
 
         Args:
-        ----
             path: Path to the MCAP file to add to this dataset
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
@@ -525,7 +536,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         If the file is not in binary-mode, the requests library blocks indefinitely.
 
         Args:
-        ----
             mcap: Binary file-like MCAP stream
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
@@ -947,24 +957,35 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """Add data from proprietary data formats using a pre-registered custom extractor.
 
         A containerized extraction runs asynchronously and may emit multiple output files, so this returns
-        the tracking `IngestionJob` immediately rather than a single file. Use `job.as_files_ingested()` or
-        `job.dataset_files()` to pull the produced files, `job.status` to poll, and `job.cancel()` to cancel.
+        the tracking `IngestionJob` immediately rather than a single file, and `job.cancel()` cancels it.
+
+        Waiting takes two stages: the container finishes producing files, then those files finish
+        ingesting. `job.as_files_ingested()` covers both — it re-reads the file list while the job runs,
+        so it picks up outputs that do not exist yet at the time of the call. `job.dataset_files()`, by
+        contrast, returns only the files that exist when it is called, which is empty until a manifest
+        extractor's container has exited; and `job.status` is a snapshot, so polling it requires
+        `job.refresh()` to advance it.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
-                NOTE: these must match the registered inputs of the active container image exactly
+
+                **Note:** These must match the registered inputs of the active container image exactly.
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the extractor's output that contains the timestamp data.
                 Provided together with `timestamp_type`, overrides the active container image's
                 `default_timestamp_metadata` for this ingest; if omitted, the image's default is
                 used. See `ContainerImage.default_timestamp_metadata` for the full resolution order.
-                NOTE: this is applied uniformly to all output files
-                NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
+
+                **Note:** This is applied uniformly to all output files.
+
+                Must be provided with a `timestamp_type` or a ValueError will be raised.
             timestamp_type: the type of timestamp data in the extractor's output.
-                NOTE: this is applied uniformly to all output files
-                NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
+
+                **Note:** This is applied uniformly to all output files.
+
+                Must be provided with a `timestamp_column` or a ValueError will be raised.
 
         Returns:
             An `IngestionJob` handle for the asynchronous containerized ingest.
@@ -1036,14 +1057,16 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         """Archive this dataset.
         Archived datasets are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
@@ -1115,11 +1138,13 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             start: Inclusive lower bound of the search window. Files whose time range ends at or
                 after this timestamp are returned — including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
                 before this timestamp are returned — including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
-                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:
@@ -1158,7 +1183,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Args:
             batch_size: Number of records to upload at a time to Nominal.
-                NOTE: Raising this may improve performance in high latency scenarios
+
+                **Note:** Raising this may improve performance in high latency scenarios.
             max_wait: Maximum number of seconds to allow data to be locally buffered
                 before streaming to Nominal.
 
@@ -1201,6 +1227,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             logs = parse_logs_from_file("logs.txt")
             dataset.write_logs(logs)
             ```
+
         """
         _write_logs(
             auth_header=self._clients.auth_header,
@@ -1226,18 +1253,18 @@ class _DatasetWrapper(abc.ABC):
     - Some formats cannot be safely tagged with scope tags; those wrapper methods raise `RuntimeError` when the selected
       scope requires tags.
 
-    Subclasses must implement `_list_dataset_scopes`, which is used to resolve scopes.
+    Subclasses must implement `_lookup_dataset_scope`, which is used to resolve scopes.
     """
 
     # static typing for required field
     _clients: Dataset._Clients
 
     @abc.abstractmethod
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
-        """Return the data scopes available to this wrapper.
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+        """The backing dataset rid and required series tags of the named scope, or None if there is none.
 
-        Subclasses provide the authoritative list of `scout_asset_api.DataScope` objects used to
-        resolve `data_scope_name` in wrapper methods.
+        Each subclass resolves the name against the data scopes its own transport returns, so this wrapper
+        never sees a wire type.
         """
 
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
@@ -1247,20 +1274,20 @@ class _DatasetWrapper(abc.ABC):
             A tuple of the resolved `Dataset` and the scope's required `series_tags`.
 
         Raises:
-            ValueError: If no scope exists with the given `data_scope_name`, or if the scope is not backed by a dataset.
+            ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
+            RuntimeError: If this is a run associated with multiple assets.
+            NominalError: If retrieving the resource's data scopes fails.
         """
-        dataset_scopes = {scope.data_scope_name: scope for scope in self._list_dataset_scopes()}
-        data_scope = dataset_scopes.get(data_scope_name)
+        data_scope = self._lookup_dataset_scope(data_scope_name)
         if data_scope is None:
             raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
-        elif data_scope.data_source.dataset is None:
-            raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
 
+        dataset_rid, series_tags = data_scope
         dataset = Dataset._from_conjure(
             self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
         )
-        return dataset, data_scope.series_tags
+        return dataset, series_tags
 
     ################
     # Add Data API #
@@ -1553,18 +1580,25 @@ def _get_dataset(
     return datasets[0]
 
 
-def _create_dataset(
-    auth_header: str,
-    client: scout_catalog.CatalogService,
+def _create_dataset_request(
     name: str,
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
-    marking_rids: Sequence[str] | None = None,
-) -> scout_catalog.EnrichedDataset:
-    request = scout_catalog.CreateDataset(
+    marking_rids: Sequence[str] = (),
+    derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
+    dataset_type: scout_catalog.DatasetBackingType | None = None,
+) -> scout_catalog.CreateDataset:
+    """Build the CreateDataset request shared by every dataset creation path.
+
+    Callers pass only the fields that differ between them; the rest is the shape the catalog API
+    expects for a client-created dataset. `channel_search_split_tag_keys` is empty because the server
+    rejects split keys on a dataset with no derived definition, and empty is what it already stores
+    for datasets created before that field existed.
+    """
+    return scout_catalog.CreateDataset(
         name=name,
         description=description,
         labels=list(labels),
@@ -1574,7 +1608,31 @@ def _create_dataset(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
-        marking_rids=list(marking_rids or []),
+        marking_rids=list(marking_rids),
+        channel_search_split_tag_keys=[],
+        derived_definition=derived_definition,
+        dataset_type=dataset_type,
+    )
+
+
+def _create_dataset(
+    auth_header: str,
+    client: scout_catalog.CatalogService,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: NominalProperties | None = None,
+    workspace_rid: str | None = None,
+    marking_rids: Sequence[str] | None = None,
+) -> scout_catalog.EnrichedDataset:
+    request = _create_dataset_request(
+        name,
+        description=description,
+        labels=labels,
+        properties=properties,
+        workspace_rid=workspace_rid,
+        marking_rids=marking_rids or (),
     )
     return client.create_dataset(auth_header, request)
 
@@ -1628,78 +1686,6 @@ def _create_mcap_channels(
     elif exclude_topics is not None:
         channels = ingest_api.McapChannels(exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics])
     return channels
-
-
-def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
-    if prefix_tree_delimiter is None:
-        return None
-    else:
-        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-
-
-def _construct_new_ingest_options(
-    name: str,
-    timestamp_column: str,
-    timestamp_type: _AnyTimestampType,
-    file_type: FileType,
-    description: str | None,
-    labels: Sequence[str],
-    properties: Mapping[str, str],
-    prefix_tree_delimiter: str | None,
-    channel_prefix: str | None,
-    tag_columns: Mapping[str, str] | None,
-    s3_path: str,
-    workspace_rid: str | None,
-    tags: Mapping[str, str] | None,
-) -> ingest_api.IngestOptions:
-    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-    target = ingest_api.DatasetIngestTarget(
-        new=ingest_api.NewDatasetIngestDestination(
-            labels=list(labels),
-            properties=dict(properties),
-            channel_config=_build_channel_config(prefix_tree_delimiter),
-            dataset_description=description,
-            dataset_name=name,
-            workspace=workspace_rid,
-            marking_rids=[],
-        )
-    )
-    timestamp_metadata = ingest_api.TimestampMetadata(
-        series_name=timestamp_column,
-        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-    )
-    tag_columns = dict(tag_columns) if tag_columns else None
-
-    if file_type.is_parquet():
-        return ingest_api.IngestOptions(
-            parquet=ingest_api.ParquetOpts(
-                source=source,
-                target=target,
-                timestamp_metadata=timestamp_metadata,
-                channel_prefix=channel_prefix,
-                tag_columns=tag_columns,
-                is_archive=file_type.is_parquet_archive(),
-                additional_file_tags={**tags} if tags else None,
-                exclude_columns=[],
-                channel_name_overrides={},
-            )
-        )
-    else:
-        if not file_type.is_csv():
-            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
-
-        return ingest_api.IngestOptions(
-            csv=ingest_api.CsvOpts(
-                source=source,
-                target=target,
-                timestamp_metadata=timestamp_metadata,
-                channel_prefix=channel_prefix,
-                tag_columns=tag_columns,
-                additional_file_tags={**tags} if tags else None,
-                exclude_columns=[],
-                channel_name_overrides={},
-            )
-        )
 
 
 def _construct_existing_ingest_options(

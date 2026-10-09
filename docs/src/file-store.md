@@ -233,7 +233,7 @@ File Store operations raise `NominalFileStoreError`, which carries a `code` (a `
 and a `message`:
 
 ```python
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 
 try:
     drive.put_file("local/readings.csv", "raw/2026-08/readings.csv")

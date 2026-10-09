@@ -5,8 +5,8 @@ import pathlib
 import pytest
 from nominal_api import ingest_api
 
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.drive import Drive
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import ManagedDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2
 from tests.core.file_store.test_changes import _success

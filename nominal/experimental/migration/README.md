@@ -61,6 +61,8 @@ Optional flags:
 - `--max-workers <n>` — number of assets/templates to migrate concurrently (default: 1). Start with 2–4
   workers and adjust based on performance and API rate limits.
 - `--dry-run` — log what would be created without writing anything to the destination tenant or state file.
+  Video files are evaluated through the real read path, so the end-of-run skip summary predicts what a
+  real run would flag (unusable files, timing payloads) before any bytes move.
 
 **`nom migrate summary`** — summarize a migration as a markdown table. Fully offline: no profiles or
 tokens required. Provide exactly one source:
@@ -115,6 +117,8 @@ Misc. configs:
    - `source_to_destination_user_rids` maps source user RIDs to destination user RIDs.
    - The destination profile should be a service user with permission to impersonate destination users.
    - Resources whose source user has no mapping are created as the destination service user.
+   - Checklist executions (data reviews) are re-executed as the mapped creator of the source data review, so `created_by` on the destination reflects the original executor.
+   - The checklist assignee is translated through the same user mapping; an unmapped assignee falls back to the user creating the checklist (the impersonated author or the service user).
 
 ## Resumable Migrations
 
@@ -123,6 +127,26 @@ The `nom migrate copy` command supports resumable migrations via the optional `-
 - On each run, a JSON file is written to the specified path recording the old→new RID mappings for every successfully migrated resource.
 - If the state file already exists from a previous run, already-migrated resources are automatically skipped, so it is safe to re-run after a failure without duplicating resources.
 - Previous state files are automatically versioned (e.g. `migration_state.json` → `migration_state_v2.json`) so no history is lost.
+
+## Failure handling
+
+Transient network failures (connection resets, read timeouts, 429/5xx responses) during video file
+transfer are retried automatically with exponential backoff, including status-poll failures after an
+upload has already succeeded — so a single dropped request does not abandon a finished upload.
+
+A video file that still cannot be copied is recorded in the end-of-run skip summary
+(`N resource(s) were skipped or could not be confirmed`) and the rest of its asset continues
+migrating. Whether a rerun re-attempts the file depends on the failure:
+
+- **Copy failed** (network failure that outlasted retries): no mapping is recorded, so a rerun
+  re-attempts the file.
+- **Unusable at source / ingest failed at destination / ingest timed out / timestamp update
+  rejected**: retrying cannot help (or the copy is already recorded), so a rerun does not
+  re-attempt it — check the file by hand as the summary line instructs.
+
+A video file appears in the summary at most once, with its latest outcome: a rerun that succeeds
+clears the stale skip entry from the earlier attempt. Checklist skips are still appended per
+attempt.
 
 Example — run with an explicit state path:
 

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Sequence
-
-from nominal_api import scout_asset_api
+from typing import Sequence
 
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
+from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
-from nominal.core.exceptions import NominalChecklistNotPublishedError
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
+from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX, would_create_message
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
@@ -23,6 +23,8 @@ from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions,
 from nominal.experimental.migration.migrator.video_migrator import VideoCopyOptions, VideoMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.retry_utils import is_transient_error
+from nominal.protos.asset.v2 import asset_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 class AssetCopyOptions(ResourceCopyOptions):
     new_asset_name: str | None = None
     new_asset_description: str | None = None
-    new_asset_properties: dict[str, Any] | None = None
+    new_asset_properties: NominalProperties | None = None
     new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
     include_attachments: bool = False
@@ -126,11 +128,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         )
 
         if source_asset._get_latest_api().is_staged:
-            new_asset._clients.assets.update_asset(
-                new_asset._clients.auth_header,
-                scout_asset_api.UpdateAssetRequest(is_staged=True),
-                new_asset.rid,
-            )
+            with translate_grpc_errors():
+                new_asset._clients.assets.UpdateAsset(
+                    asset_pb2.UpdateAssetRequest(asset_rid=new_asset.rid, is_staged=True)
+                )
 
         return new_asset
 
@@ -146,9 +147,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         for source_data_scope in source_data_scopes:
             source_data_scope_name = source_data_scope.data_scope_name
             source_dataset_rid = source_data_scope.data_source.dataset
-            if source_dataset_rid is None or source_dataset_rid not in source_datasets:
+            if source_dataset_rid not in source_datasets:
                 raise ValueError(
-                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} does not have a dataset"
+                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} references dataset "
+                    f"{source_dataset_rid}, which could not be resolved"
                 )
 
             source_dataset = source_datasets[source_dataset_rid]
@@ -252,7 +254,18 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                         ResourceType.DATA_REVIEW, source_data_review.rid, source_data_review.rid
                     )
                 else:
-                    new_data_review = destination_checklist.execute(destination_run_rid)
+                    # Execute via a client resolved from the source data review so the new data
+                    # review's created_by reflects the mapped executor, not the checklist author.
+                    # The refetch exists only to rebind credentials — skip it when the checklist
+                    # is already bound to the same clients bundle (no resolver, or the executor
+                    # maps to the same cached impersonated client as the author).
+                    executing_client = self.ctx.destination_client_for(source_data_review)
+                    executing_checklist = (
+                        destination_checklist
+                        if executing_client._clients is destination_checklist._clients
+                        else executing_client.get_checklist(destination_checklist.rid)
+                    )
+                    new_data_review = executing_checklist.execute(destination_run_rid)
                     self.ctx.migration_state.record_mapping(
                         ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
                     )
@@ -336,7 +349,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if not workbook.asset_rids:
                 continue
             if len(workbook.asset_rids) == 1:
-                workbook_migrator.copy_from(
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
                     workbook,
                     WorkbookCopyOptions(source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid}),
                 )
@@ -378,7 +392,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             # every reference to those other assets instead of waiting for a complete mapping.
             source_run_asset_rids = list(source_run.assets)
             if len(workbook.run_rids) == 1 and len(source_run_asset_rids) <= 1:
-                workbook_migrator.copy_from(
+                self._copy_workbook_containing_failures(
+                    workbook_migrator,
                     workbook,
                     WorkbookCopyOptions(
                         source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
@@ -387,6 +402,34 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
             else:
                 self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids), source_run_asset_rids)
+
+    def _copy_workbook_containing_failures(
+        self,
+        workbook_migrator: WorkbookMigrator,
+        workbook: Workbook,
+        options: WorkbookCopyOptions,
+    ) -> None:
+        """One bad workbook must not abort the whole asset task (observed in production: a
+        connection reset on a single workbook read killed the asset task and every sibling
+        resource behind it).
+
+        Transient errors propagate — the executor retries the whole task, which resumes
+        cheaply from migration state — while anything else records a skip for the end-of-run
+        summary and lets the asset's remaining resources migrate. With no mapping recorded,
+        a rerun re-attempts the workbook.
+        """
+        try:
+            workbook_migrator.copy_from(workbook, options)
+        except Exception as error:
+            if is_transient_error(error):
+                raise
+            logger.exception("Failed to copy workbook (rid: %s)", workbook.rid)
+            self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, f"copy failed: {error}")
+            return
+        # This attempt's outcome supersedes any copy-failure skip from an earlier run. Safe to
+        # clear unconditionally: terminal workbook skips are recorded only in the deferred
+        # multi-asset/multi-run flush, never on this single-scope path.
+        self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook.rid, None)
 
     def _enqueue_multi_asset_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> None:
         if not self._should_enqueue_deferred_workbook(workbook, source_asset_rids):

@@ -2,21 +2,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
-from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
+from nominal.core._event_types import EventType as EventType
+from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType
+from nominal.core._utils.api_tools import (
+    HasRid,
+    RefreshableGrpcMixin,
+    label_update,
+    property_update,
+    rid_from_instance_or_string,
+)
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
-from nominal.core.exceptions import NominalNotFoundError
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
-from nominal.protos.types import types_pb2
+from nominal.protos.types import common_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -27,6 +35,17 @@ from nominal.ts import (
 
 
 @dataclass(frozen=True)
+class EventDisposition:
+    """The disposition opened on an event. On the wire it also carries state and assignees, not yet exposed here."""
+
+    priority: Priority | None
+
+    @classmethod
+    def _from_proto(cls, disposition: event_pb2.EventDisposition) -> Self:
+        return cls(priority=Priority._from_proto(disposition.priority))
+
+
+@dataclass(frozen=True)
 class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     rid: str
     asset_rids: Sequence[str]
@@ -34,10 +53,15 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     description: str
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     type: EventType
     is_archived: bool
+    disposition: EventDisposition | None
+    """None until the event is opened for disposition.
+
+    Checklist-fired events are opened automatically. Any event can be opened.
+    """
 
     _uuid: str = field(repr=False)
 
@@ -61,7 +85,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         assets: Iterable[core_asset.Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] | None = None,
         type: EventType | None,
     ) -> Self:
@@ -70,10 +94,12 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         Metadata is replaced rather than appended. To add to labels or properties, merge them before
         calling. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in event.labels:
-                new_labels.append(old_label)
-            event = event.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in event.labels:
+            new_labels.append(old_label)
+        event = event.update(labels=new_labels)
+        ```
 
         Args:
             name: New name for the event.
@@ -102,11 +128,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             else event_pb2.AssetRidSet(asset_rids=[rid_from_instance_or_string(asset) for asset in assets])
         )
         updated_timestamp = None if start is None else _SecondsNanos.from_flexible(start).to_proto()
-        updated_duration = None if duration is None else _to_proto_duration(duration)
-        updated_labels = None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
-        updated_properties = (
-            None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
-        )
+        updated_duration = None if duration is None else _to_proto_duration(duration, common_pb2.Duration)
         updated_type = None if type is None else type._to_proto()
 
         request = event_pb2.BatchUpdateEventRequest(
@@ -115,10 +137,10 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
                     rid=self.rid,
                     asset_rids=updated_asset_rids,
                     duration=updated_duration,
-                    labels=updated_labels,
+                    labels=label_update(labels),
                     name=name,
                     description=description,
-                    properties=updated_properties,
+                    properties=property_update(properties),
                     timestamp=updated_timestamp,
                     type=updated_type,
                 )
@@ -134,7 +156,8 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     def archive(self) -> None:
         """Archives the event, preventing it from showing up in workbooks.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.event.BatchArchiveEvent(event_pb2.BatchArchiveEventRequest(event_rids=[self.rid]))
@@ -142,7 +165,8 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     def unarchive(self) -> None:
         """Unarchives the event, allowing it to show up in workbooks.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         with translate_grpc_errors():
             self._clients.event.BatchUnarchiveEvent(event_pb2.BatchUnarchiveEventRequest(event_rids=[self.rid]))
@@ -158,6 +182,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             duration=_from_proto_duration(event.duration),
             type=EventType._from_proto(event.type),
             is_archived=event.is_archived,
+            disposition=EventDisposition._from_proto(event.disposition) if event.HasField("disposition") else None,
             properties=dict(event.properties),
             labels=list(event.labels),
             created_by_rid=event.created_by or None,
@@ -195,7 +220,7 @@ def _create_event(
     duration: timedelta | IntegralNanosecondsDuration,
     assets: Iterable[core_asset.Asset | str] | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     labels: Iterable[str] | None,
 ) -> Event:
     request = event_pb2.CreateEventRequest(
@@ -203,7 +228,7 @@ def _create_event(
         description=description,
         asset_rids=[rid_from_instance_or_string(asset) for asset in (assets or [])],
         timestamp=_SecondsNanos.from_flexible(start).to_proto(),
-        duration=_to_proto_duration(duration),
+        duration=_to_proto_duration(duration, common_pb2.Duration),
         properties=dict(properties or {}),
         labels=list(labels or []),
         type=type._to_proto(),
@@ -231,7 +256,7 @@ def _search_events(
     asset_rids: Iterable[str] | None = None,
     asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,

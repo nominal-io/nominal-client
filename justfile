@@ -83,10 +83,11 @@ build:
 clean:
     uv cache clean
 
-# build docs
+# Build the existing docs into folder-style URLs; warnings fail the build.
 build-docs:
-    uv run --all-extras mkdocs build --config-file docs/mkdocs.yml
+    rm -rf docs/_build/dirhtml
+    uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
-# serve docs locally
+# Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
 serve-docs:
-    uv run --all-extras mkdocs serve --config-file docs/mkdocs.yml
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --ignore "**/__pycache__/**" --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE

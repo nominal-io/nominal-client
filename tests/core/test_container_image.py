@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nominal import core
 from nominal.core._utils.query_tools import create_search_container_images_query
 from nominal.core.container_image import (
     ContainerImage,
@@ -13,7 +14,7 @@ from nominal.core.container_image import (
     _get_container_image,
     _search_container_images,
 )
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.types.time import timestamp_parsers_pb2
 
@@ -74,6 +75,48 @@ def test_image_from_proto_handles_minimal_proto() -> None:
 
     assert image.default_timestamp_metadata is None
     assert image.file_output_format is FileOutputFormat.UNSPECIFIED
+    assert image.exit_code_mappings == ()
+    assert image.resources == core.ContainerResources()
+
+
+def test_image_refresh_replaces_and_clears_resources() -> None:
+    """Refresh replaces resource overrides without carrying over previously configured fields."""
+    clients = _clients()
+    original = _img("ri.img")
+    original.resources.CopyFrom(registry_pb2.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64))
+    image = ContainerImage._from_proto(clients, "ri.ws", original)
+    assert image.resources == core.ContainerResources(cpu_cores=4, memory_gib=16, disk_gib=64)
+
+    updated = _img("ri.img")
+    updated.resources.memory_gib = 32
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=updated)
+
+    refreshed = image.refresh()
+
+    assert refreshed is image
+    assert image.resources == core.ContainerResources(memory_gib=32)
+
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
+    image.refresh()
+    assert image.resources == core.ContainerResources()
+
+
+def test_image_refresh_replaces_and_clears_exit_code_mappings() -> None:
+    """refresh() adopts the server's exit code mappings, including clearing them when the server drops them."""
+    clients = _clients()
+    image = ContainerImage._from_proto(clients, "ri.ws", _img("ri.img"))
+    updated = _img("ri.img")
+    updated.exit_code_mappings.add(exit_code=2, code="INVALID_INPUT", message="Invalid input", retryable=True)
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=updated)
+
+    assert image.refresh() is image
+    assert image.exit_code_mappings == (
+        core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Invalid input", retryable=True),
+    )
+
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=_img("ri.img"))
+    image.refresh()
+    assert image.exit_code_mappings == ()
 
 
 def test_get_container_image_defaults_workspace_and_returns_image() -> None:

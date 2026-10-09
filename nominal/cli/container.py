@@ -204,11 +204,17 @@ def register_image(
     Prints the resulting container image RID on stdout (status messages go to stderr), suitable
     for capturing in CI:
 
-        IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
-            -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json)
-        nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
+    ```bash
+    IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
+        -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json)
+    nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
+    ```
 
     The registered image starts PENDING and must be activated with `set-active-image` once READY.
+
+    Build the image for amd64 (`docker build --platform linux/amd64`). Nominal runs extractor
+    images on amd64 and registration does not check the tarball's architecture, so an arm64 image
+    registers and activates, then fails at ingest with an exec format error.
     """
     parsed = _parse_config(_load_config(config_file))
     tag = tag if tag is not None else parsed.tag

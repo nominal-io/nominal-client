@@ -56,13 +56,40 @@ def pytest_addoption(parser):
     parser.addoption(
         "--impersonation-source-user-rid",
         default=None,
-        help="Source user RID for impersonation e2e test (must match the creator of source resources)",
+        help="Source user RID override for the impersonation e2e test. Defaults to the source client's "
+        "own user, which is the creator of the test's source resources — only override with a RID that "
+        "matches the source token's user, otherwise every mapping lookup misses.",
     )
     parser.addoption(
         "--impersonation-dest-user-rid",
         default=None,
         help="Destination user RID to impersonate in impersonation e2e test",
     )
+    parser.addoption(
+        "--fail-on-skip",
+        action="store_true",
+        default=False,
+        help="Treat skipped migration e2e tests as failures so missing prerequisites (e.g. impersonation "
+        "user RIDs) surface as red CI instead of silently shrinking coverage.",
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """With --fail-on-skip, convert skipped outcomes in this suite into failures.
+
+    Expected failures are exempt: pytest reports xfail as a skipped outcome (with `wasxfail`
+    set), but an xfail marker is a deliberate, visible expectation — not a silent gap.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.skipped and not hasattr(report, "wasxfail") and item.config.getoption("--fail-on-skip"):
+        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        report.outcome = "failed"
+        report.longrepr = (
+            f"Skipped, but --fail-on-skip is set for the migration e2e suite: {reason}\n"
+            "Provide the missing prerequisite (or drop --fail-on-skip for local runs)."
+        )
 
 
 @pytest.fixture(scope="session")

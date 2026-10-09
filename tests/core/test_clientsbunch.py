@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from conjure_python_client import ServiceConfiguration
@@ -13,17 +13,41 @@ from nominal.core._clientsbunch import (
     api_base_url_to_app_base_url,
 )
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 from nominal.experimental import as_user
+from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
+from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
+
+
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("http://localhost:20000/api", "Hostnames are not resolved"),
+        ("http://10.0.0.1/api", "https://"),
+        ("https://user:password@api.example.com/api", "must not contain user information"),
+        ("https://api.example.com:invalid/api", "hostname and port"),
+    ],
+)
+def test_client_rejects_invalid_url_before_building_transports(base_url: str, message: str) -> None:
+    with (
+        patch("nominal.core._clientsbunch.create_grpc_channel") as grpc_channel,
+        patch("nominal.core._clientsbunch.create_conjure_client_factory") as conjure_factory,
+        pytest.raises(NominalConfigError, match=message),
+    ):
+        NominalClient.from_token("token", base_url=base_url)
+    grpc_channel.assert_not_called()
+    conjure_factory.assert_not_called()
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
@@ -237,9 +261,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
 
 
 def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch):
-    """from_config builds `units`, `comments`, `workspace`, and `roles` as generated gRPC stubs, each bound
-    to a single shared channel.
-    """
+    """from_config builds every gRPC service as a generated stub bound to a single shared channel."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
     channel = MagicMock(name="grpc-channel")
     create_grpc_channel = MagicMock(return_value=channel)
@@ -253,6 +275,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         None,
     )
 
+    assert isinstance(clients.run, run_service_pb2_grpc.RunServiceStub)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
     assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
     assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
@@ -260,10 +283,13 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     )
+    assert isinstance(clients.assets, asset_pb2_grpc.AssetServiceStub)
+    assert isinstance(clients.datareview, data_review_pb2_grpc.DataReviewServiceStub)
     assert isinstance(clients.event, event_pb2_grpc.EventServiceStub)
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
     assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
+    assert isinstance(clients.sql, sql_pb2_grpc.SqlServiceStub)
     # Exactly one channel, built from the right transport params and shared by every gRPC stub.
     create_grpc_channel.assert_called_once()
     assert create_grpc_channel.call_args.kwargs["auth_header"] == "Bearer token"
@@ -295,7 +321,7 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
-    assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+    assert impersonated._clients.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
     # The impersonation header_provider must also reach the gRPC channel; the most

@@ -7,7 +7,7 @@ import pytest
 from conjure_python_client import ConjureEncoder
 
 from nominal.core._video_types import _scale_parameter
-from nominal.core.exceptions import NominalVideoScaleModeError
+from nominal.exceptions import NominalVideoScaleModeError
 
 _END = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
 

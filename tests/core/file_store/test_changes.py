@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import ManagedDriveFile, VirtualDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from tests.core.file_store.test_drive import _clients, _drive_proto

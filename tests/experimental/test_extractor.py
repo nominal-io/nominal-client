@@ -9,7 +9,7 @@ from typing import Any, Callable, Protocol, TypeVar
 import pytest
 
 from nominal import ts
-from nominal.core.exceptions import NominalVideoScaleModeError, NominalVideoTimestampModeError
+from nominal.exceptions import NominalVideoScaleModeError, NominalVideoTimestampModeError
 from nominal.experimental.extractor import (
     Extractor,
     ExtractorContext,
@@ -127,6 +127,7 @@ def test_manifest_mode_writes_manifest_from_outputs(
     entry = {
         "ingestType": "TABULAR",
         "tagColumns": {"vehicle": "veh_id"},
+        "units": {},
         "channelPrefix": None,
         "timestampMetadata": None,
     }
@@ -242,6 +243,32 @@ def test_avro_stream_accepts_gzipped(manifest_document: ReadManifest, run_extrac
     [entry] = manifest_document()["outputs"]
     assert entry["ingestType"] == "AVRO_STREAM"
     assert entry["channelPrefix"] == "sensors/"
+
+
+def test_manifest_output_units_are_copied_per_declaration(
+    manifest_document: ReadManifest, run_extractor: RunExtractor
+) -> None:
+    """Each output retains its declared units even when the caller later changes the shared map."""
+    units = {"pressure": "Pa"}
+
+    @manifest_extractor
+    def emit(ctx: ManifestExtractorContext) -> None:
+        table = ctx.output_dir / "telemetry.parquet"
+        table.write_bytes(b"table")
+        ctx.add_tabular(table, units=units)
+        units["pressure"] = "kPa"
+        records = ctx.output_dir / "records.avro"
+        records.write_bytes(b"records")
+        ctx.add_avro_stream(records, units=units)
+        units.clear()
+        ctx.add_tabular(table)
+
+    ctx = run_extractor(emit)
+    units["pressure"] = "bar"
+
+    expected_units = [{"pressure": "Pa"}, {"pressure": "kPa"}, {}]
+    assert [entry["units"] for entry in manifest_document()["outputs"]] == expected_units
+    assert [entry["units"] for entry in ctx.build_manifest()["outputs"]] == expected_units
 
 
 def test_manifest_mode_rejects_zero_outputs(run_extractor: RunExtractor) -> None:

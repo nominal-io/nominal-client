@@ -6,24 +6,24 @@ from time import sleep
 from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
-    scout,
-    scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_datareview_api,
-    scout_integrations_api,
 )
 from typing_extensions import Self
 
-from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event, _get_events
+from nominal.core.run import _get_run
+from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.protos.run.v1 import run_service_pb2_grpc
+from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
@@ -45,7 +45,7 @@ class DataReview(HasRid):
 
     class _Clients(HasScoutParams, Protocol):
         @property
-        def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        def datareview(self) -> data_review_pb2_grpc.DataReviewServiceStub: ...
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
@@ -53,12 +53,13 @@ class DataReview(HasRid):
         @property
         def event(self) -> event_pb2_grpc.EventServiceStub: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
+    def _from_proto(cls, clients: _Clients, data_review: data_review_pb2.DataReview) -> Self:
         executing_states = [
-            check.state._pending_execution or check.state._executing for check in data_review.check_evaluations
+            check.state.WhichOneof("automatic_check_evaluation_state") in ("pending_execution", "executing")
+            for check in data_review.check_evaluations
         ]
         completed = not any(executing_states)
         return cls(
@@ -67,9 +68,9 @@ class DataReview(HasRid):
             checklist_rid=data_review.checklist_ref.rid,
             checklist_commit=data_review.checklist_ref.commit,
             completed=completed,
-            created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
+            created_at=data_review.created_at.ToNanoseconds(),
             _clients=clients,
-            created_by_rid=data_review.created_by,
+            created_by_rid=data_review.created_by or None,
         )
 
     def get_checklist(self) -> "Checklist":
@@ -82,12 +83,11 @@ class DataReview(HasRid):
 
     def get_events(self) -> Sequence[Event]:
         """Retrieves the list of events for the data review."""
-        data_review_response = self._clients.datareview.get(self._clients.auth_header, self.rid).check_evaluations
         all_event_rids = [
             event_rid
-            for check in data_review_response
-            if check.state._generated_alerts
-            for event_rid in check.state._generated_alerts.event_rids
+            for check in _get_data_review(self._clients, self.rid).check_evaluations
+            if check.state.HasField("generated_alerts")
+            for event_rid in check.state.generated_alerts.event_rids
         ]
         return [
             Event._from_proto(self._clients, data_review_event)
@@ -96,9 +96,7 @@ class DataReview(HasRid):
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
-        return DataReview._from_conjure(
-            self._clients, self._clients.datareview.get(self._clients.auth_header, self.rid)
-        )
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, self.rid))
 
     def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
         """Polls the data review until it is completed."""
@@ -112,9 +110,13 @@ class DataReview(HasRid):
         """Archive this data review.
         Archived data reviews are not deleted, but are hidden from the UI.
 
-        NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
+        Note:
+            currently, it is not possible (yet) to unarchive a data review once archived.
         """
-        self._clients.datareview.archive_data_review(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.datareview.ArchiveDataReview(
+                data_review_pb2.ArchiveDataReviewRequest(data_review_rid=self.rid)
+            )
 
     @property
     def nominal_url(self) -> str:
@@ -136,24 +138,11 @@ class CheckViolation:
     end: IntegralNanosecondsUTC | None
     priority: Priority | None
 
-    @classmethod
-    def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> CheckViolation:
-        return cls(
-            rid=check_alert.rid,
-            check_rid=check_alert.check_rid,
-            name=check_alert.name,
-            start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
-            end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
-            priority=_conjure_priority_to_priority(check_alert.priority)
-            if check_alert.priority is not scout_api.Priority.UNKNOWN
-            else None,
-        )
-
 
 @dataclass(frozen=True)
 class DataReviewBuilder:
     _integration_rids: list[str]
-    _requests: list[scout_datareview_api.CreateDataReviewRequest]
+    _requests: list[data_review_pb2.CreateDataReviewRequest]
     _tags: list[str]
     _clients: DataReview._Clients = field(repr=False)
 
@@ -175,8 +164,9 @@ class DataReviewBuilder:
             run: Instance or rid of the Run to run the Checklist on
             checklist: Instance or rid of the checklist to execute on the Run
             commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
-            asset: Instance or rid of the asset to run the checklist on within the Run
-                NOTE: only required for multi-asset runs
+            asset: Instance or rid of the asset to run the checklist on within the Run.
+
+                **Note:** Only required for multi-asset runs.
 
         Returns:
             DataReviewBuilder instance to continue building a data review with
@@ -189,7 +179,7 @@ class DataReviewBuilder:
         run_rid = rid_from_instance_or_string(run)
         asset_rid = None if asset is None else rid_from_instance_or_string(asset)
 
-        raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+        raw_run = _get_run(self._clients.run, run_rid)
         if len(raw_run.assets) > 1 and asset is None:
             raise ValueError(
                 f"Cannot run data review on checklist {checklist_rid} and {run_rid} without specifying `asset_rid`: "
@@ -204,7 +194,7 @@ class DataReviewBuilder:
                 )
 
         self._requests.append(
-            scout_datareview_api.CreateDataReviewRequest(
+            data_review_pb2.CreateDataReviewRequest(
                 checklist_rid=checklist_rid,
                 run_rid=run_rid,
                 asset_rid=asset_rid,
@@ -222,18 +212,22 @@ class DataReviewBuilder:
 
         Args:
             wait_for_completion: If True, waits for the data review process to complete before returning.
+
+        Returns:
+            The initiated reviews, which may still be running unless wait_for_completion is True.
         """
-        request = scout_datareview_api.BatchInitiateDataReviewRequest(
+        request = data_review_pb2.BatchInitiateRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c, tags=self._tags) for c in self._integration_rids
+                data_review_pb2.NotificationConfiguration(integration_rid=c, tags=self._tags)
+                for c in self._integration_rids
             ],
             requests=self._requests,
         )
-        response = self._clients.datareview.batch_initiate(self._clients.auth_header, request)
+        with translate_grpc_errors():
+            response = self._clients.datareview.BatchInitiate(request)
 
         data_reviews = [
-            DataReview._from_conjure(self._clients, self._clients.datareview.get(self._clients.auth_header, rid))
-            for rid in response.rids
+            DataReview._from_proto(self._clients, _get_data_review(self._clients, rid)) for rid in response.rids
         ]
         if wait_for_completion:
             return poll_until_completed(data_reviews)
@@ -255,9 +249,19 @@ def _iter_search_data_reviews(
 ) -> Iterable[DataReview]:
     for review in search_data_reviews_paginated(
         clients.datareview,
-        clients.auth_header,
         assets=assets,
         runs=runs,
         archive_status=archive_status,
     ):
-        yield DataReview._from_conjure(clients, review)
+        yield DataReview._from_proto(clients, review)
+
+
+def _get_data_review(clients: DataReview._Clients, rid: str) -> data_review_pb2.DataReview:
+    """Retrieve the data review with the given RID.
+
+    Raises:
+        NominalNotFoundError: If no data review has that RID.
+        NominalError: If the retrieval request fails.
+    """
+    with translate_grpc_errors():
+        return clients.datareview.GetDataReview(data_review_pb2.GetDataReviewRequest(data_review_rid=rid)).data_review

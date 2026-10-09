@@ -8,20 +8,21 @@ from nominal_api import (
     api,
     authentication_api,
     ingest_api,
-    scout_asset_api,
     scout_catalog,
     scout_checks_api,
     scout_notebook_api,
-    scout_rids_api,
-    scout_run_api,
     scout_template_api,
     scout_video_api,
 )
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
+from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -56,11 +57,9 @@ class ArchiveStatusFilter(Enum):
     ANY = "ANY"
 
     def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
-        """Convert to a list of conjure ArchivedStatus values for use in search requests.
-
-        TODO: delete once the remaining conjure search paths migrate to gRPC
-        (to_proto_archived_statuses is the successor).
-        """
+        """Convert to a list of conjure ArchivedStatus values for use in search requests."""
+        # TODO: delete once the remaining conjure search paths migrate to gRPC
+        # (to_proto_archived_statuses is the successor).
         if self == ArchiveStatusFilter.ARCHIVED:
             return [api.ArchivedStatus.ARCHIVED]
         elif self == ArchiveStatusFilter.NOT_ARCHIVED:
@@ -152,10 +151,22 @@ def _backfill_workbook_template_archive_query_clause(
     raise ValueError(f"Unexpected archive_status for workbook template search: {archive_status}")
 
 
+def create_search_markings_query(id_substring: str | None = None) -> markings_pb2.SearchMarkingsQuery:
+    """Build a marking search query. With no arguments, matches every marking in the organization."""
+    queries = []
+    if id_substring is not None:
+        queries.append(markings_pb2.SearchMarkingsQuery(id_exact_substring_search=id_substring))
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    # Unlike most search queries in this API, `and` holds a message wrapping the list, not a repeated field.
+    return markings_pb2.SearchMarkingsQuery(
+        **{"and": markings_pb2.SearchMarkingsQueryList(queries=queries)}  # type: ignore[arg-type]
+    )
+
+
 def create_search_secrets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
 ) -> secrets_pb2.SearchSecretsQuery:
     queries = []
@@ -176,7 +187,7 @@ def create_search_secrets_query(
 def create_search_videos_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
 ) -> scout_video_api.SearchVideosQuery:
     queries = []
@@ -234,25 +245,28 @@ def create_search_container_images_query(
 def create_search_assets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
-) -> scout_asset_api.SearchAssetsQuery:
+) -> asset_pb2.SearchAssetsQuery:
     queries = []
     if search_text is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
+        queries.append(asset_pb2.SearchAssetsQuery(search_text=search_text))
     if exact_substring is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(exact_substring=exact_substring))
+        queries.append(asset_pb2.SearchAssetsQuery(exact_substring=exact_substring))
     if labels is not None:
         for label in labels:
-            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
+            queries.append(asset_pb2.SearchAssetsQuery(label=label))
     if properties:
         for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
+            queries.append(asset_pb2.SearchAssetsQuery(property=types_pb2.Property(name=name, value=value)))
     if workspace_rid is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
+        queries.append(asset_pb2.SearchAssetsQuery(workspace=workspace_rid))
 
-    return scout_asset_api.SearchAssetsQuery(and_=queries)
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return asset_pb2.SearchAssetsQuery(
+        **{"and": asset_pb2.SearchAssetsQueryList(queries=queries)}  # type: ignore[arg-type]
+    )
 
 
 def create_search_ingest_jobs_query(
@@ -303,7 +317,7 @@ def create_search_ingest_jobs_query(
 def create_search_checklists_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
@@ -349,7 +363,7 @@ def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
@@ -395,76 +409,76 @@ def create_search_runs_query(
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
-) -> scout_run_api.SearchQuery:
+) -> run_service_pb2.SearchQuery:
     queries = []
     if start is not None:
-        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
+        start_time = _SecondsNanos.from_flexible(start).to_run_proto()
         queries.append(
-            scout_run_api.SearchQuery(
-                start_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=start_time, end_time=None)
+            run_service_pb2.SearchQuery(
+                start_time=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(start_time=start_time, end_time=None)
                 )
             )
         )
     if end is not None:
-        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
+        end_time = _SecondsNanos.from_flexible(end).to_run_proto()
         queries.append(
-            scout_run_api.SearchQuery(
-                end_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=None, end_time=end_time)
+            run_service_pb2.SearchQuery(
+                end_time=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(start_time=None, end_time=end_time)
                 )
             )
         )
     if created_after is not None or created_before is not None:
         created_after_time = (
-            _SecondsNanos.from_flexible(created_after).to_scout_run_api() if created_after is not None else None
+            _SecondsNanos.from_flexible(created_after).to_run_proto() if created_after is not None else None
         )
         created_before_time = (
-            _SecondsNanos.from_flexible(created_before).to_scout_run_api() if created_before is not None else None
+            _SecondsNanos.from_flexible(created_before).to_run_proto() if created_before is not None else None
         )
         queries.append(
-            scout_run_api.SearchQuery(
-                created_at=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(
+            run_service_pb2.SearchQuery(
+                created_at=run_service_pb2.TimeframeFilter(
+                    custom=run_service_pb2.CustomTimeframeFilter(
                         start_time=created_after_time, end_time=created_before_time
                     )
                 )
             )
         )
     if name_substring is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
+        queries.append(run_service_pb2.SearchQuery(exact_match=name_substring))
     if labels:
         queries.append(
-            scout_run_api.SearchQuery(
-                labels=scout_rids_api.LabelsFilter(labels=list(labels), operator=api.SetOperator.AND)
+            run_service_pb2.SearchQuery(
+                labels=run_service_pb2.LabelsFilter(labels=list(labels), operator=run_service_pb2.SetOperator.AND)
             )
         )
     if properties:
         for name, value in properties.items():
             # original properties is a 1:1 map, so we will never have multiple values for the same name
             queries.append(
-                scout_run_api.SearchQuery(properties=scout_rids_api.PropertiesFilter(name=name, values=[value]))
+                run_service_pb2.SearchQuery(properties=run_service_pb2.PropertiesFilter(name=name, values=[value]))
             )
     if exact_match is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
+        queries.append(run_service_pb2.SearchQuery(exact_match=exact_match))
     if search_text is not None:
-        queries.append(scout_run_api.SearchQuery(search_text=search_text))
+        queries.append(run_service_pb2.SearchQuery(search_text=search_text))
     if workspace_rid is not None:
-        queries.append(scout_run_api.SearchQuery(workspace=workspace_rid))
-    return scout_run_api.SearchQuery(and_=queries)
+        queries.append(run_service_pb2.SearchQuery(workspace=workspace_rid))
+    return run_service_pb2.SearchQuery(all_of=run_service_pb2.SearchQueryList(queries=queries))
 
 
 def create_search_workbooks_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
     author_rid: str | None = None,
@@ -514,7 +528,7 @@ def create_search_workbook_templates_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by: str | None = None,
     published: bool | None = None,
     workspace_rid: str | None = None,
@@ -555,7 +569,7 @@ def create_search_events_query(  # noqa: PLR0912
     asset_rids: Iterable[str] | None = None,
     asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,

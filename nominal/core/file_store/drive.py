@@ -19,10 +19,10 @@ from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE, DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store._clients import _attribution, _basename, _Clients
 from nominal.core.file_store.changes import FileChange, FileChangeResult, _apply_changes
 from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import (
     DriveEntry,
     DriveFile,

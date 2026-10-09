@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import json
-from typing import Mapping, Sequence
+from typing import Sequence
 
 import nominal_compute
 from conjure_python_client import ConjureDecoder
 from nominal_api import scout_catalog, scout_compute_api
 
-from nominal.core import NominalClient
+from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.dataset import Dataset
+from nominal.experimental.derived_datasets._derived_datasets import (
+    DerivedDataset,
+    _commit_definition,
+    _create_derived_dataset,
+    _get_definition,
+)
 
 
 def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:
@@ -27,13 +34,19 @@ def create_derived_dataset(
     message: str = "Initial derived definition",
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
-) -> Dataset:
+    properties: NominalProperties | None = None,
+    markings: Sequence[Marking | str] | None = None,
+) -> DerivedDataset:
     """Create a derived dataset defined by a ``nominal_compute`` graph.
 
     A derived dataset is a regular dataset whose contents are computed from a
     ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned
-    as a core :class:`~nominal.core.dataset.Dataset`, exactly like a normal dataset.
+    as a :class:`~nominal.experimental.derived_datasets.DerivedDataset`, which is not a `Dataset`:
+    look it up with `NominalClient.get_dataset` to read its data or attach it to an asset.
+
+    For the common case of a union of tag-filtered input datasets,
+    `nominal.experimental.derived_datasets.create_derived_dataset` expresses the same thing without the
+    ``compute`` extra, and its inputs can be edited afterwards.
 
     Args:
         client: The NominalClient to use for creating the derived dataset.
@@ -43,25 +56,22 @@ def create_derived_dataset(
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
         properties: Key-value properties to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+            the creation request rather than applied in a follow-up call.
 
     Returns:
         Reference to the created derived dataset in Nominal.
     """
-    request = scout_catalog.CreateDataset(
-        name=name,
+    return _create_derived_dataset(
+        client._clients,
+        name,
+        _to_conjure_dataset(spec),
+        message=message,
         description=description,
-        labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=client._clients.resolve_default_workspace_rid(),
-        marking_rids=[],
-        derived_definition=scout_catalog.CreateDerivedDefinition(spec=_to_conjure_dataset(spec), message=message),
+        labels=labels,
+        properties=properties,
+        markings=markings,
     )
-    response = client._clients.catalog.create_dataset(client._clients.auth_header, request)
-    return Dataset._from_conjure(client._clients, response)
 
 
 def get_derived_definition(
@@ -80,8 +90,7 @@ def get_derived_definition(
     Returns:
         The dataset's derived definition: its compute spec and the commit that produced it.
     """
-    rid = rid_from_instance_or_string(dataset)
-    return client._clients.catalog.get_dataset_derived_definition(client._clients.auth_header, rid, commit)
+    return _get_definition(client._clients, rid_from_instance_or_string(dataset), commit)
 
 
 def commit_derived_definition(
@@ -105,10 +114,6 @@ def commit_derived_definition(
     Returns:
         The newly committed derived definition.
     """
-    rid = rid_from_instance_or_string(dataset)
-    request = scout_catalog.CommitDerivedDefinitionRequest(
-        spec=_to_conjure_dataset(spec),
-        message=message,
-        latest_commit=latest_commit,
+    return _commit_definition(
+        client._clients, rid_from_instance_or_string(dataset), _to_conjure_dataset(spec), message, latest_commit
     )
-    return client._clients.catalog.commit_derived_definition(client._clients.auth_header, rid, request)

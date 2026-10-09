@@ -1,9 +1,12 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from nominal_api import scout_catalog
 
-from nominal.core import Dataset, NominalClient, User
+from nominal.core import Dataset, Marking, NominalClient, User
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.dataset import _create_dataset_request
+from nominal.core.marking import _marking_rids
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
@@ -14,7 +17,8 @@ def create_dataset_with_uuid(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
+    markings: Sequence[Marking | str] | None = None,
 ) -> Dataset:
     """Create a dataset with a specific UUID.
 
@@ -31,24 +35,21 @@ def create_dataset_with_uuid(
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
         properties: Key-value properties to apply to the created dataset.
+        markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
+            the creation request rather than applied in a follow-up call.
 
     Returns:
         Reference to the created dataset in Nominal.
     """
-    create_dataset_request = scout_catalog.CreateDataset(
-        name=name,
-        description=description,
-        labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=client._clients.resolve_default_workspace_rid(),
-        marking_rids=[],
-    )
     request = scout_catalog.CreateDatasetWithUuidRequest(
-        create_dataset=create_dataset_request,
+        create_dataset=_create_dataset_request(
+            name,
+            description=description,
+            labels=labels,
+            properties=properties,
+            workspace_rid=client._clients.resolve_default_workspace_rid(),
+            marking_rids=_marking_rids(markings),
+        ),
         uuid=dataset_uuid,
     )
     response = client._clients.catalog.create_dataset_with_uuid(client._clients.auth_header, request)

@@ -22,7 +22,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_container_images_paginated
 from nominal.core._utils.query_tools import create_search_container_images_query
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -203,6 +203,84 @@ class FileExtractionParameter:
         )
 
 
+RESERVED_EXTRACTOR_ERROR_CODES = frozenset(
+    {
+        "IMAGE_PULL_FAILED",
+        "EXTRACTOR_TIMEOUT",
+        "EXTRACTOR_UNSCHEDULABLE",
+        "EXTRACTOR_OOM_KILLED",
+        "OUTPUT_UPLOAD_FAILED",
+        "INVALID_OUTPUT",
+        "UNKNOWN",
+    }
+)
+"""Platform-owned error codes that extractor declarations must not redefine."""
+
+
+@dataclass(frozen=True)
+class ExitCodeMapping:
+    """Map a failed container's exit code to a canonical extractor error.
+
+    Registered on a container image and used when the extractor does not emit a valid structured
+    error in `/dev/termination-log`. A valid structured termination error takes precedence.
+    """
+
+    exit_code: int
+    """Container process exit code this mapping applies to."""
+    code: str
+    """Machine-readable error code chosen by the extractor author.
+
+    Do not use platform-owned codes listed in :data:`RESERVED_EXTRACTOR_ERROR_CODES`.
+    """
+    message: str
+    """Human-readable fallback message for this error."""
+    retryable: bool = False
+    """Whether the platform may retry the ingest for this failure."""
+
+    def _to_proto(self) -> registry_pb2.ExitCodeMapping:
+        return registry_pb2.ExitCodeMapping(
+            exit_code=self.exit_code,
+            code=self.code,
+            message=self.message,
+            retryable=self.retryable,
+        )
+
+    @classmethod
+    def _from_proto(cls, msg: registry_pb2.ExitCodeMapping) -> Self:
+        return cls(exit_code=msg.exit_code, code=msg.code, message=msg.message, retryable=msg.retryable)
+
+
+@dataclass(frozen=True)
+class ContainerResources:
+    """Compute resources for an extractor container.
+
+    Each unset field uses the deployment-wide default. Bounds are enforced by the server;
+    a valid request may still exceed the resources available in the cluster.
+    """
+
+    cpu_cores: int | None = None
+    """CPU cores requested for the container (1–32)."""
+    memory_gib: int | None = None
+    """Memory in GiB, used as both the request and the limit (1–128)."""
+    disk_gib: int | None = None
+    """Size in GiB of each ephemeral input and output volume (1–512)."""
+
+    def _to_proto(self) -> registry_pb2.ContainerResources:
+        return registry_pb2.ContainerResources(
+            cpu_cores=self.cpu_cores,
+            memory_gib=self.memory_gib,
+            disk_gib=self.disk_gib,
+        )
+
+    @classmethod
+    def _from_proto(cls, msg: registry_pb2.ContainerResources) -> Self:
+        return cls(
+            cpu_cores=msg.cpu_cores if msg.HasField("cpu_cores") else None,
+            memory_gib=msg.memory_gib if msg.HasField("memory_gib") else None,
+            disk_gib=msg.disk_gib if msg.HasField("disk_gib") else None,
+        )
+
+
 @dataclass(frozen=True)
 class TimestampMetadata:
     """How timestamps in the extractor's output data are encoded (the timestamp column + its type)."""
@@ -243,6 +321,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     extractor_rid: str
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
+    exit_code_mappings: Sequence[ExitCodeMapping]
+    """Fallback errors for failed container exit codes; empty when no mappings are registered."""
     file_output_format: FileOutputFormat
     default_timestamp_metadata: TimestampMetadata | None
     """How timestamps in the extractor's output are encoded, when nothing more specific applies.
@@ -258,6 +338,8 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
     registered through this SDK (registration requires it); may be None on images from older
     registration paths, in which case every ingest must supply an override.
     """
+    resources: ContainerResources
+    """Resource overrides for the extractor container; fields left as None use deployment-wide defaults."""
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -326,12 +408,14 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
             extractor_rid=msg.extractor_rid,
             inputs=tuple(FileExtractionInput._from_proto(i) for i in msg.inputs),
             parameters=tuple(FileExtractionParameter._from_proto(p) for p in msg.parameters),
+            exit_code_mappings=tuple(ExitCodeMapping._from_proto(m) for m in msg.exit_code_mappings),
             file_output_format=FileOutputFormat._from_proto(msg.file_output_format),
             default_timestamp_metadata=(
                 TimestampMetadata._from_proto(msg.default_timestamp_metadata)
                 if msg.HasField("default_timestamp_metadata")
                 else None
             ),
+            resources=ContainerResources._from_proto(msg.resources),
             _workspace_rid=workspace_rid,
             _clients=clients,
         )

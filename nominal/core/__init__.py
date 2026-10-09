@@ -1,6 +1,8 @@
+from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
@@ -14,6 +16,8 @@ from nominal.core.connection import Connection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
+    ContainerResources,
+    ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
     FileOutputFormat,
@@ -24,7 +28,8 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event
+from nominal.core.elements import Symbol, SymbolKind
+from nominal.core.event import Event, EventDisposition
 from nominal.core.file_store import (
     Drive,
     DriveDirectory,
@@ -40,8 +45,10 @@ from nominal.core.file_store import (
     FileChangeResult,
     FileChangeSuccess,
     FileDestination,
+    FileStoreErrorCode,
     ManagedDriveFile,
     MoveFile,
+    NominalFileStoreError,
     RemoveFile,
     RestoreFile,
     VirtualDrive,
@@ -52,6 +59,7 @@ from nominal.core.file_store import (
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
+from nominal.core.marking import Marking
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
@@ -78,6 +86,7 @@ __all__ = [
     "ContainerImage",
     "ContainerImageStatus",
     "ContainerizedExtractor",
+    "ContainerResources",
     "DataReview",
     "DataReviewBuilder",
     "Dataset",
@@ -94,12 +103,15 @@ __all__ = [
     "DriveSource",
     "DriveState",
     "Event",
+    "EventDisposition",
     "EventType",
+    "ExitCodeMapping",
     "FileChange",
     "FileChangeFailure",
     "FileChangeResult",
     "FileChangeSuccess",
     "FileDestination",
+    "FileStoreErrorCode",
     "FileExtractionInput",
     "FileExtractionParameter",
     "FileOutputFormat",
@@ -113,15 +125,21 @@ __all__ = [
     "LinkDict",
     "LogPoint",
     "LogStream",
+    "Marking",
     "Comment",
     "ManagedDriveFile",
     "MoveFile",
     "NominalClient",
+    "NominalFileStoreError",
+    "NominalProperties",
+    "Priority",
     "RemoveFile",
     "RestoreFile",
     "Run",
     "SearchEventOriginType",
     "Secret",
+    "Symbol",
+    "SymbolKind",
     "TimestampMetadata",
     "Unit",
     "UnitLike",

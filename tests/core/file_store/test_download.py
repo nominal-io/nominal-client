@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nominal.core._utils.multipart_downloader import DownloadItem
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import DriveFileRevision, ManagedDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from tests.core.file_store.test_drive import _clients

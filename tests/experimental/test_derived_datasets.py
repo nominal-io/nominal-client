@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, Mock, patch
+from typing import Callable
+from unittest.mock import MagicMock, Mock
 
 import pytest
-from nominal_api import scout_compute_api
+from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.experimental.compute_as_code import (
     commit_derived_definition,
@@ -11,6 +12,7 @@ from nominal.experimental.compute_as_code import (
     get_derived_definition,
 )
 from nominal.experimental.compute_as_code._derived_datasets import _to_conjure_dataset
+from nominal.experimental.derived_datasets import DerivedDataset
 
 
 @pytest.fixture
@@ -48,21 +50,19 @@ def test_bridge_decodes_dataset_transform() -> None:
 # --- lifecycle functions ---
 
 
-def test_create_derived_dataset_sets_derived_definition(client: MagicMock) -> None:
+def test_create_derived_dataset_sets_derived_definition(
+    client: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
+) -> None:
     """create_derived_dataset bridges the spec and sets it as the create request's derived definition."""
     nc = pytest.importorskip("nominal_compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc")
-    sentinel = object()
     client._clients.resolve_default_workspace_rid.return_value = "ri.workspace.w"
-    client._clients.catalog.create_dataset = Mock()
+    client._clients.catalog.create_dataset = Mock(return_value=make_enriched_dataset("ri.catalog.ws.dataset.new"))
 
-    with patch(
-        "nominal.experimental.compute_as_code._derived_datasets.Dataset._from_conjure",
-        return_value=sentinel,
-    ):
-        result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})
+    result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})
 
-    assert result is sentinel
+    assert isinstance(result, DerivedDataset)
+    assert result.rid == "ri.catalog.ws.dataset.new"
     auth, details = client._clients.catalog.create_dataset.call_args[0]
     assert auth == "Bearer test-token"
     # The nominal_compute spec is bridged to the conjure wire type.

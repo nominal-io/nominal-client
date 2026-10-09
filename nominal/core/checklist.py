@@ -2,22 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Mapping, Protocol, Sequence
+from typing import Protocol, Sequence
 
 from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_datareview_api,
     scout_integrations_api,
 )
 from typing_extensions import Self
 
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
-from nominal.core.data_review import DataReview
-from nominal.core.exceptions import NominalChecklistNotPublishedError
+from nominal.core.data_review import DataReview, _get_data_review
+from nominal.exceptions import NominalChecklistNotPublishedError
+from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.ts import _to_api_duration
 
 
@@ -26,7 +28,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
@@ -36,8 +38,6 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
-        @property
-        def datareview(self) -> scout_datareview_api.DataReviewService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -72,26 +72,15 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         """
         run_rid = rid_from_instance_or_string(run)
 
-        response = self._clients.datareview.batch_initiate(
-            self._clients.auth_header,
-            scout_datareview_api.BatchInitiateDataReviewRequest(
-                notification_configurations=[],
-                requests=[
-                    scout_datareview_api.CreateDataReviewRequest(
-                        checklist_rid=self.rid,
-                        run_rid=run_rid,
-                        commit=commit,
-                    )
-                ],
-            ),
+        request = data_review_pb2.BatchInitiateRequest(
+            requests=[data_review_pb2.CreateDataReviewRequest(checklist_rid=self.rid, run_rid=run_rid, commit=commit)],
         )
+        with translate_grpc_errors():
+            response = self._clients.datareview.BatchInitiate(request)
         if len(response.rids) != 1:
-            raise RuntimeError(f"Expected exactly one response from batch_initiate, received {len(response.rids)}")
+            raise RuntimeError(f"Expected exactly one response from BatchInitiate, received {len(response.rids)}")
 
-        return DataReview._from_conjure(
-            self._clients,
-            self._clients.datareview.get(self._clients.auth_header, response.rids[0]),
-        )
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, response.rids[0]))
 
     def execute_streaming(
         self,

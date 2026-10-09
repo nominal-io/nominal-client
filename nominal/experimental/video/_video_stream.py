@@ -12,7 +12,7 @@ from conjure_python_client import ConjureHTTPError
 from nominal_api import scout_video_api
 from nominal_video import Sink, Src, Stream, StreamOptions
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalVideoStreamError,
     NominalVideoStreamNotOpenError,
@@ -36,8 +36,8 @@ class VideoStream:
 
     Requires ``pip install 'nominal[video]'`` and GStreamer 1.20+ on your system.
 
-    Example::
-
+    Example:
+        ```python
         from nominal.experimental.video import VideoStream, Src, StreamOptions
 
         dataset = client.create_dataset("my stream")
@@ -69,6 +69,7 @@ class VideoStream:
             while capturing:
                 frame_bytes: bytes = capture_rgb_frame()  # 1280 * 720 * 3 bytes
                 stream.send_frame(frame_bytes, timestamp_ns=time.time_ns())
+        ```
     """
 
     rid: str

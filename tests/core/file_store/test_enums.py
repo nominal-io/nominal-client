@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.enums import (
     DriveFileState,
     DriveMutability,
@@ -8,6 +7,7 @@ from nominal.core.file_store.enums import (
     DriveState,
     VirtualDriveState,
 )
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.protos.file_store.v1 import file_store_pb2
 
 

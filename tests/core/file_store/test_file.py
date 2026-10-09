@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core.exceptions import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.drive import Drive
 from nominal.core.file_store.enums import DriveFileState, DriveSource
+from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.core.file_store.file import (
     DriveDirectory,
     DriveFile,

@@ -1,12 +1,37 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import nominal.config as config_module
 from nominal.config import ConfigProfile, NominalConfig
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
+
+
+def test_config_import_in_fresh_interpreter() -> None:
+    """Config imports must work before core is initialized."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from nominal.config import NominalConfig; "
+            "from nominal.config._config import NominalConfigV1; "
+            "from nominal.config import NominalConfigError; "
+            "from nominal.exceptions import NominalError; "
+            "import sys; "
+            "assert 'nominal.core' not in sys.modules; "
+            "from nominal import exceptions; "
+            "assert exceptions.NominalConfigError is NominalConfigError; "
+            "assert issubclass(exceptions.NominalIngestError, NominalError)",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.fixture

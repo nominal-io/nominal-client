@@ -19,8 +19,8 @@ from nominal.core._utils.multipart import (
     _put_part,
     _sign_and_put_part,
 )
-from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileTypes
+from nominal.exceptions import NominalMultipartUploadFailed
 
 
 def _filename_passed_downstream(name: str) -> str:

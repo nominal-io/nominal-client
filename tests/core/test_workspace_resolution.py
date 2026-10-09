@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.core.client import NominalClient, WorkspaceSearchType
-from nominal.core.exceptions import NominalConfigError
 from nominal.core.workspace import Workspace
+from nominal.exceptions import NominalConfigError
 
 
 def _make_client() -> tuple[NominalClient, MagicMock]:

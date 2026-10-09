@@ -1,1 +1,5 @@
-::: nominal.thirdparty.pandas
+# pandas
+
+```{eval-rst}
+.. automodule:: nominal.thirdparty.pandas
+```
