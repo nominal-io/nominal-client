@@ -9,6 +9,8 @@ tocdepth: 2
 
 .. autodata:: nominal.core.DataStream
 
+.. autodata:: nominal.core.FileDestination
+
 .. autodata:: nominal.core.LogStream
 
 .. autodata:: nominal.core.NominalProperties

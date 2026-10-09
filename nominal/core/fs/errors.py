@@ -7,7 +7,7 @@ from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 
 
 class FileStoreErrorCode(Enum):
-    """Why a File Store change was rejected, by the backend or by this SDK before sending it.
+    """Why a drive operation was rejected, by the backend or by this SDK before sending it.
 
     `UNKNOWN` covers an unset code and any code a newer server sends that this SDK
     does not yet model.
@@ -70,7 +70,7 @@ class FileStoreErrorCode(Enum):
 
 
 class NominalFileStoreError(NominalError):
-    """A File Store change was rejected.
+    """A drive operation was rejected.
 
     Raised both for failures the backend reports in-band for a change (which carry no gRPC
     status of their own) and for checks this SDK makes before spending a request, so one

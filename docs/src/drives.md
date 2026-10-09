@@ -1,8 +1,8 @@
-# File Store
+# Nominal Drives
 
-The File Store gives a workspace a place to keep arbitrary files, organized into **drives**.
+Nominal Drives give a workspace a place to keep arbitrary files, organized into **drives**.
 A drive is a namespace with its own path hierarchy — think of it as a single bucket or shared
-folder that files live in.
+folder that files live in. The SDK exposes them from `nominal.core` (and `nominal.core.fs`).
 
 Drives come in two flavors:
 
@@ -28,9 +28,19 @@ uploaded = drive.put_file("local/readings.csv", "raw/2026-08/readings.csv")
 print(uploaded.rid, uploaded.path, uploaded.size_bytes)
 ```
 
-`put_file` always creates a new file at `destination_path`, which must be free — if something
-already exists there, the call raises `NominalFileStoreError` instead of overwriting it. To replace
-what's at a path, upload the new content to a free path and then move it into place — see
+To upload bytes that aren't in a local file, pass a seekable binary stream to `put_file_obj`.
+It uploads from the stream's current position to its end:
+
+```python
+import io
+
+drive.put_file_obj(io.BytesIO(csv_bytes), "raw/2026-08/generated.csv")
+```
+
+Both methods name and type the stored file after `destination_path`, and both always create a
+new file there, which must be free — if something already exists at that path, the call raises
+`NominalFileStoreError` instead of overwriting it. To replace what's at a path, upload the new
+content to a free path and then move it into place — see
 [Destinations and their preconditions](#destinations-and-their-preconditions) below.
 
 An existing drive can be retrieved instead of created:
@@ -80,9 +90,20 @@ You can also fetch a single file directly, without listing its parent directory:
 file = drive.get_file("raw/2026-08/readings.csv")
 ```
 
+## Downloading a file
+
+`download` writes a file's current content into an existing directory, named after the file's
+path in the drive:
+
+```python
+local_path = file.download("downloads/")
+```
+
+A `DriveFileRevision` downloads the same way, with the content and name of that revision.
+
 ## Path rules
 
-Every path in the File Store is drive-relative:
+Every path in a drive is drive-relative:
 
 - no leading or trailing `/`;
 - no `.` or `..` segments;
@@ -91,8 +112,8 @@ Every path in the File Store is drive-relative:
 
 ## Destinations and their preconditions
 
-Several operations — `put_file`, moving a file, restoring a revision — need to say *where* a file
-should end up. That's expressed as a `FileDestination`, which is one of three things:
+Moving a file and restoring a revision need to say *where* a file should end up. That's
+expressed as a `FileDestination`, which is one of three things:
 
 - a `str`: a drive-relative path, and the operation expects **nothing** to already be there;
 - a `ManagedDriveFile`: replace this file, at its current revision;
@@ -147,48 +168,11 @@ If the file the revision belongs to is still active, the destination must replac
 the `ManagedDriveFile` or its current revision); if the file was removed, a free `str` path works,
 since removal frees the path it occupied.
 
-## Batch changes with `apply_changes`
-
-`Drive.apply_changes` sends several changes — moves, removals, restores — in a single call, each
-expressed as one of `MoveFile`, `RemoveFile`, or `RestoreFile`:
-
-```python
-from nominal.core import FileChangeFailure, FileChangeSuccess, MoveFile, RemoveFile, RestoreFile
-
-results = drive.apply_changes(
-    [
-        MoveFile(file=some_file, destination="archive/some_file.csv"),
-        RemoveFile(file=another_file),
-        RestoreFile(revision=old_revision, destination="restored/path.csv"),
-    ]
-)
-
-for result in results:
-    if isinstance(result, FileChangeSuccess):
-        print("applied:", result.file.path, result.revision.rid)
-    else:
-        assert isinstance(result, FileChangeFailure)
-        print("rejected:", result.code, result.message)
-```
-
-The call returns a `FileChangeResult` **per change** — a `FileChangeSuccess` (carrying the updated
-`ManagedDriveFile` and the `DriveFileRevision` it produced) or a `FileChangeFailure` (carrying a
-`FileStoreErrorCode` and a message) — rather than raising on the first problem.
-
-This is deliberate: changes are applied in order, and each one sees the effect of the ones before
-it. If change 3 of 5 fails, changes 1, 2, 4, and 5 still went through — raising an exception at that
-point would discard the results of the changes that already succeeded, leaving you unsure what
-actually happened to the drive. Getting a result per change means you always know exactly which
-ones landed.
-
-At most 1000 changes can be applied in one call; passing more raises `ValueError` before any
-request is sent. Calling `apply_changes` on a read-only drive raises `NominalFileStoreError`
-immediately, for the same reason.
-
 ## Virtual drives
 
-A `VirtualDrive` mirrors an external provider and is fully readable: `list_files`, `get_file`, and
-reading fields off the files it returns all work exactly as they do on a managed drive.
+A `VirtualDrive` mirrors an external provider and is fully readable: `list_files`, `get_file`,
+reading fields off the files it returns, and downloading them all work as they do on a managed
+drive.
 
 Use `status()` to check on the provider it mirrors — useful for diagnosing why reads are failing or
 stale:
@@ -202,18 +186,17 @@ print(status.state, status.message, status.last_successful_check_at)
 `INVALID_CONFIGURATION` — and `last_successful_check_at` is `None` if the provider has never been
 reached successfully.
 
+`VirtualDriveFile.resolve()` pins the file's content as observed when you retrieved it and returns
+the RID of that pinned revision, as a durable reference — resolving the same observed content
+always returns the same RID, even after the file changes further upstream. Downloading a virtual
+file resolves it first and downloads that pinned revision.
+
 Everything that would modify a virtual drive or a file mirrored into it raises
 `NominalFileStoreError` instead of sending a request:
 
-- `VirtualDrive.put_file` and `VirtualDrive.apply_changes`;
+- `put_file` and `put_file_obj` on a `VirtualDrive`;
 - `move_to` and `remove` on a `VirtualDriveFile`;
-- `download` on a `VirtualDriveFile` — content for a provider-backed file isn't served through
-  this API;
 - `revisions()` on a `VirtualDriveFile` — a mirrored file has no history to list.
-
-`VirtualDriveFile.resolve()` is a read: it pins the file's currently-observed content and returns
-the RID of that pinned revision, as a durable reference — resolving the same observed content
-always returns the same RID, even after the file changes further upstream.
 
 ## Renaming, archiving, and unarchiving a drive
 
@@ -229,11 +212,12 @@ see them); unarchiving restores it.
 
 ## Errors
 
-File Store operations raise `NominalFileStoreError`, which carries a `code` (a `FileStoreErrorCode`)
-and a `message`:
+Writes that the backend rejects for a single file, and checks the SDK makes before sending a
+request, raise `NominalFileStoreError`, which carries a `code` (a `FileStoreErrorCode`) and a
+`message`:
 
 ```python
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core import FileStoreErrorCode, NominalFileStoreError
 
 try:
     drive.put_file("local/readings.csv", "raw/2026-08/readings.csv")
@@ -244,10 +228,9 @@ except NominalFileStoreError as e:
         raise
 ```
 
-The same `FileStoreErrorCode` values appear in a `FileChangeFailure` from `apply_changes`, so both
-the raising and the per-change-result paths can be handled the same way. `FileStoreErrorCode.UNKNOWN`
-covers an unset code or one a newer server sends that this version of the SDK doesn't yet model.
+`FileStoreErrorCode.UNKNOWN` covers an unset code or one a newer server sends that this version of
+the SDK doesn't yet model.
 
-Not every failure is File Store-specific, though — for example, looking up a path that doesn't
-exist with `get_file` raises the general `NominalNotFoundError`, since "not found" isn't unique to
-the File Store.
+Other failures raise the SDK's general errors: looking up a path that doesn't exist with `get_file`
+raises `NominalNotFoundError`, as does downloading a revision whose bytes have been reclaimed by
+retention or an administrator.

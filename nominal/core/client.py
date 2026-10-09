@@ -349,7 +349,7 @@ class NominalClient:
         return [Workspace._from_proto(workspace) for workspace in response.workspaces]
 
     def create_drive(self, id: str, *, workspace_rid: str | None = None) -> Drive:
-        """Create a managed File Store drive.
+        """Create a managed drive.
 
         Args:
             id: Identifier for the drive, unique within the workspace. May contain only

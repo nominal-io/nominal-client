@@ -1,4 +1,4 @@
-"""Files and revisions within a File Store drive (nominal.file_store.v1).
+"""Files and revisions within a drive (nominal.file_store.v1).
 
 Listing a drive yields `DriveEntry` values — a `DriveDirectory`, or a `DriveFile`. Files
 come in two concrete kinds, because the backend models them differently: a
@@ -232,8 +232,8 @@ class DriveFile(DriveEntry, abc.ABC):
     ) -> pathlib.Path:
         """Download this file's current content into a directory.
 
-        A virtual file's content is pinned first (see `VirtualDriveFile.resolve`), so the
-        download is the content observed when this file was retrieved.
+        A virtual file is resolved first (see `VirtualDriveFile.resolve`), and the revision
+        that pins is what downloads.
 
         Args:
             output_directory: Directory to write into. The file is named after its path in
