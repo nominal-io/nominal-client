@@ -95,8 +95,8 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
-from nominal.core.file_store.drive import Drive, _create_drive, _get_drive, _get_drive_by_id, _list_drives
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.fs.drive import Drive, _create_drive, _get_drive, _get_drive_by_id, _list_drives
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.marking import (
     Marking,

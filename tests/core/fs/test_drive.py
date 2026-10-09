@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from nominal.core.file_store.drive import (
+from nominal.core.fs.drive import (
     Drive,
     VirtualDrive,
     _create_drive,
@@ -10,7 +10,7 @@ from nominal.core.file_store.drive import (
     _get_drive_by_id,
     _list_drives,
 )
-from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
+from nominal.core.fs.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
 from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2
 
 

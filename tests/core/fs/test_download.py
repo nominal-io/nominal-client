@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.core._utils.multipart_downloader import DownloadItem, MultipartFileDownloader
-from nominal.core.file_store.errors import NominalFileStoreError
-from nominal.core.file_store.file import DriveFileRevision, ManagedDriveFile, VirtualDriveFile
+from nominal.core.fs.errors import NominalFileStoreError
+from nominal.core.fs.file import DriveFileRevision, ManagedDriveFile, VirtualDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
-from tests.core.file_store.test_drive import _clients
-from tests.core.file_store.test_file import _managed_drive, _managed_file_proto, _virtual_drive, _virtual_file_proto
+from tests.core.fs.test_drive import _clients
+from tests.core.fs.test_file import _managed_drive, _managed_file_proto, _virtual_drive, _virtual_file_proto
 
 
 def _download_file_via_the_provider(item: DownloadItem) -> pathlib.Path:

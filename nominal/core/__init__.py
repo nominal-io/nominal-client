@@ -30,7 +30,8 @@ from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_inge
 from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event, EventDisposition
-from nominal.core.file_store import (
+from nominal.core.filetype import FileType, FileTypes
+from nominal.core.fs import (
     Drive,
     DriveDirectory,
     DriveEntry,
@@ -49,7 +50,6 @@ from nominal.core.file_store import (
     VirtualDriveState,
     VirtualDriveStatus,
 )
-from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking

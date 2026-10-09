@@ -21,10 +21,11 @@ from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE, DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.pagination_tools import list_drives_paginated, list_files_paginated
-from nominal.core.file_store._clients import _attribution, _basename, _Clients
-from nominal.core.file_store.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store.file import (
+from nominal.core.filetype import FileType, FileTypes
+from nominal.core.fs._clients import _attribution, _basename, _Clients
+from nominal.core.fs.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.file import (
     DriveEntry,
     DriveFile,
     ManagedDriveFile,
@@ -34,7 +35,6 @@ from nominal.core.file_store.file import (
     _file_from_proto,
     _managed_file_from_proto,
 )
-from nominal.core.filetype import FileType, FileTypes
 from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
 

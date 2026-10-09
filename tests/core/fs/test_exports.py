@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from nominal import core
-from nominal.core.file_store import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs import FileStoreErrorCode, NominalFileStoreError
 from nominal.exceptions import NominalError
 
 

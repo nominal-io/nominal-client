@@ -22,9 +22,9 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import DownloadItem, MultipartFileDownloader, PresignedURLProvider
 from nominal.core._utils.pagination_tools import list_file_revisions_paginated
-from nominal.core.file_store._clients import _attribution, _basename, _Clients
-from nominal.core.file_store.enums import DriveFileState, DriveSource
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs._clients import _attribution, _basename, _Clients
+from nominal.core.fs.enums import DriveFileState, DriveSource
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
 

@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nominal_api import ingest_api
 
-from nominal.core.file_store import drive as drive_module
-from nominal.core.file_store.drive import Drive
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store.file import ManagedDriveFile
+from nominal.core.fs import drive as drive_module
+from nominal.core.fs.drive import Drive
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.file import ManagedDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2
-from tests.core.file_store.test_changes import _success
-from tests.core.file_store.test_drive import _clients, _drive_proto
-from tests.core.file_store.test_file import _managed_drive, _virtual_drive
+from tests.core.fs.test_changes import _success
+from tests.core.fs.test_drive import _clients, _drive_proto
+from tests.core.fs.test_file import _managed_drive, _virtual_drive
 
 UPLOADED_KEY = "0f9a5c2e-0000-4000-8000-000000000000"
 

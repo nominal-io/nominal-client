@@ -4,17 +4,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core.file_store.drive import Drive
-from nominal.core.file_store.enums import DriveFileState, DriveSource
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store.file import (
+from nominal.core.fs.drive import Drive
+from nominal.core.fs.enums import DriveFileState, DriveSource
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.file import (
     DriveDirectory,
     DriveFile,
     ManagedDriveFile,
     VirtualDriveFile,
 )
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
-from tests.core.file_store.test_drive import _clients, _drive_proto
+from tests.core.fs.test_drive import _clients, _drive_proto
 
 
 def _managed_file_proto(

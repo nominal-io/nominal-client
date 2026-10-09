@@ -1,13 +1,13 @@
-from nominal.core.file_store.drive import Drive, VirtualDrive, VirtualDriveStatus
-from nominal.core.file_store.enums import (
+from nominal.core.fs.drive import Drive, VirtualDrive, VirtualDriveStatus
+from nominal.core.fs.enums import (
     DriveFileState,
     DriveMutability,
     DriveSource,
     DriveState,
     VirtualDriveState,
 )
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store.file import (
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.file import (
     DriveDirectory,
     DriveEntry,
     DriveFile,

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from nominal.core.file_store.enums import (
+from nominal.core.fs.enums import (
     DriveFileState,
     DriveMutability,
     DriveSource,
     DriveState,
     VirtualDriveState,
 )
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 
 

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.core.file_store.file import ManagedDriveFile, VirtualDriveFile
+from nominal.core.fs.errors import FileStoreErrorCode, NominalFileStoreError
+from nominal.core.fs.file import ManagedDriveFile, VirtualDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
-from tests.core.file_store.test_drive import _clients, _drive_proto
-from tests.core.file_store.test_file import (
+from tests.core.fs.test_drive import _clients, _drive_proto
+from tests.core.fs.test_file import (
     _managed_drive,
     _managed_file_proto,
     _virtual_drive,
@@ -139,7 +139,7 @@ def test_a_destination_in_another_drive_is_rejected_before_any_request() -> None
     clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(
         file=_managed_file_proto(path="x.csv", rid="ri.drive-file.9", revision_rid="ri.rev.9")
     )
-    from nominal.core.file_store.drive import Drive
+    from nominal.core.fs.drive import Drive
 
     elsewhere = Drive._from_proto(clients, _drive_proto(rid="ri.drive.OTHER"))
     destination = elsewhere.get_file("x.csv")
