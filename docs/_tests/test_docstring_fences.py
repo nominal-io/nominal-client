@@ -1,4 +1,4 @@
-"""Fenced examples remain literal inside Google sections and native notes."""
+"""Fenced examples remain literal inside Google sections and notes."""
 
 import pickle
 import subprocess
@@ -28,12 +28,13 @@ def build_docs(tmp_path: Path):
 
 
 def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> None:
-    """Code stays literal and highlighted without flattening nested argument notes."""
+    """Code stays literal and highlighted inside standard Google note sections."""
     source = tmp_path / "docs/src"
     extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
         f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'docstring_fences']\n",
+        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'docstring_fences']\n"
+        "napoleon_use_param = False\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")
@@ -43,21 +44,23 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
 
     Args:
         value: Input value.
-
-            .. note::
-
-                Preserve the indentation and markup in code:
-
-                ```python
-                if value:
-                    print("[label](https://example.com) and ``literal``")
-                ```
-
-                This stays inside the note.
         other: Other argument.
+
+    Note:
+        For ``value``, preserve the indentation and markup in code:
+
+        ```python
+        if value:
+            print("[label](https://example.com) and ``literal``")
+        ```
+
+        This stays inside the note.
 
     Returns:
         Returned value.
+
+    Note:
+        This note describes the return value.
 
     Example:
         ```matlab
@@ -89,8 +92,13 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
         ("text", "unhighlighted text"),
     ]
     note = next(doctree.findall(nodes.note))
+    assert note.astext().startswith("For value, preserve")
+    assert "Other argument." not in note.astext()
     assert blocks[0] in list(note.findall(nodes.literal_block))
     assert "This stays inside the note." in note.astext()
+    notes = list(doctree.findall(nodes.note))
+    assert len(notes) == 2
+    assert notes[1].astext() == "This note describes the return value."
     html = (output / "index.html").read_text(encoding="utf-8")
     assert "Other argument." in html
     assert "Returned value." in html

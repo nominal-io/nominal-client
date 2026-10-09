@@ -32,9 +32,10 @@ Docstrings retain Google sections and reStructuredText markup. Single backticks 
 resolvable Python objects; double backticks render literal code. Prefer triple-backtick
 code fences with a language. `_ext/docstring_fences.py` converts only fenced blocks
 before Napoleon parses sections and uses sphinx-click's description event for CLI help.
-Standalone notes use Google `Note:` sections; notes within argument descriptions use
-native `.. note::` directives with an indented body. Preserve their position and
-formatting. See the [documentation policy](../.agents/conventions/documentation.md).
+Use standard Google `Note:` sections after `Args:` or `Returns:` for caveats, naming
+the affected parameters explicitly. These render as note boxes, including multiple
+paragraphs and fenced examples, without custom section aliases or nested directives.
+See the [documentation policy](../.agents/conventions/documentation.md).
 
 `_ext/reference_presentation.py` displays unquoted dataclass annotations and omits
 `repr=False` fields from both constructors and reference bodies, using dataclass

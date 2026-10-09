@@ -50,7 +50,7 @@ toc_object_entries_show_parents = "hide"
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_rtype = False
-napoleon_use_param = False  # keep the first paragraph inline when an argument contains a note
+napoleon_use_param = False
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 

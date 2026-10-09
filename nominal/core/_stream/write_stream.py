@@ -346,9 +346,8 @@ class WriteStream(WriteStreamBase[StreamType]):
             wait: If true, wait for the batch to complete uploading before returning
             timeout: If wait is true, the time to wait for flush completion in seconds.
 
-                .. note::
-
-                    If None, waits indefinitely.
+        Note:
+            ``timeout``: If None, waits indefinitely.
 
         """
         future = self._flush()

@@ -223,12 +223,11 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
-
-                .. note::
-
-                    This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
+
+        Note:
+            ``description``: This is currently not displayed to users and may be removed in the future.
 
         Returns:
             Reference to the created video file.
@@ -311,13 +310,12 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
-
-                .. note::
-
-                    This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
+
+        Note:
+            ``description``: This is currently not displayed to users and may be removed in the future.
 
         Returns:
             Reference to the created video file.
@@ -393,12 +391,11 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             path: Path to the video file to add to an existing video within Nominal
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
-
-                .. note::
-
-                    This is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
+
+        Note:
+            ``description``: This is currently not displayed to users and may be removed in the future.
 
         Returns:
             Reference to the created video file.
@@ -441,13 +438,12 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             name: Name of the file to create in S3 during upload
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
-
-                .. note::
-
-                    This is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
                 with the newly added file will be deleted before inserting the new segments.
+
+        Note:
+            ``description``: This is currently not displayed to users and may be removed in the future.
 
         Returns:
             Reference to the created video file.
