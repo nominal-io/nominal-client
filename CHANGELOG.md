@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.175.1](https://github.com/nominal-io/nominal-client/compare/v1.175.0...v1.175.1) (2026-10-09)
+
+
+### Documentation
+
+* codify Sphinx docstring authoring conventions ([#1079](https://github.com/nominal-io/nominal-client/issues/1079)) ([27e193e](https://github.com/nominal-io/nominal-client/commit/27e193e80cc265a47ea1e9f1320c95f2f3741a5a))
+
 ## [1.175.0](https://github.com/nominal-io/nominal-client/compare/v1.174.0...v1.175.0) (2026-10-09)
 
 
