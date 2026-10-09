@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Sequence
-
-from nominal_api import scout_asset_api
+from typing import Sequence
 
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
+from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
@@ -24,6 +24,7 @@ from nominal.experimental.migration.migrator.video_migrator import VideoCopyOpti
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.retry_utils import is_transient_error
+from nominal.protos.asset.v2 import asset_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 class AssetCopyOptions(ResourceCopyOptions):
     new_asset_name: str | None = None
     new_asset_description: str | None = None
-    new_asset_properties: dict[str, Any] | None = None
+    new_asset_properties: NominalProperties | None = None
     new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
     include_attachments: bool = False
@@ -127,11 +128,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         )
 
         if source_asset._get_latest_api().is_staged:
-            new_asset._clients.assets.update_asset(
-                new_asset._clients.auth_header,
-                scout_asset_api.UpdateAssetRequest(is_staged=True),
-                new_asset.rid,
-            )
+            with translate_grpc_errors():
+                new_asset._clients.assets.UpdateAsset(
+                    asset_pb2.UpdateAssetRequest(asset_rid=new_asset.rid, is_staged=True)
+                )
 
         return new_asset
 
@@ -147,9 +147,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         for source_data_scope in source_data_scopes:
             source_data_scope_name = source_data_scope.data_scope_name
             source_dataset_rid = source_data_scope.data_source.dataset
-            if source_dataset_rid is None or source_dataset_rid not in source_datasets:
+            if source_dataset_rid not in source_datasets:
                 raise ValueError(
-                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} does not have a dataset"
+                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} references dataset "
+                    f"{source_dataset_rid}, which could not be resolved"
                 )
 
             source_dataset = source_datasets[source_dataset_rid]

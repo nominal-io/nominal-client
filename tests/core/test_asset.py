@@ -7,6 +7,7 @@ import pytest
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.protos.asset.v2 import asset_pb2
 
 SCOPE_NAME = "test-scope"
 
@@ -140,3 +141,45 @@ def test_search_data_reviews_passes_archive_status(mock_asset):
     mock_reviews.assert_called_once()
     assert mock_reviews.call_args.kwargs["assets"] == [mock_asset.rid]
     assert mock_reviews.call_args.kwargs["archive_status"] == ArchiveStatusFilter.ARCHIVED
+
+
+@pytest.fixture
+def asset_with_scopes(mock_asset, mock_clients):
+    """An asset with one dataset-backed and one video-backed scope, neither carrying an offset."""
+    api_asset = asset_pb2.Asset(
+        rid=mock_asset.rid,
+        title=mock_asset.name,
+        data_scopes=[
+            asset_pb2.DataScope(
+                data_scope_name="ds",
+                data_source=asset_pb2.DataSource(dataset="ri.dataset.1"),
+                series_tags={"vehicle": "a"},
+            ),
+            asset_pb2.DataScope(data_scope_name="vid", data_source=asset_pb2.DataSource(video="ri.video.1")),
+        ],
+    )
+    mock_clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(responses={mock_asset.rid: api_asset})
+    mock_clients.assets.UpdateAsset.return_value = asset_pb2.UpdateAssetResponse(asset=api_asset)
+    return mock_asset
+
+
+def test_remove_data_scopes_resends_survivors_unchanged(asset_with_scopes, mock_clients):
+    """Surviving scopes are re-sent as they were; an unset proto offset must not become an explicit zero."""
+    asset_with_scopes.remove_data_scopes(scopes=["ri.video.1"])
+
+    kept = mock_clients.assets.UpdateAsset.call_args.args[0].data_scopes.data_scopes
+    assert list(kept) == [
+        asset_pb2.CreateAssetDataScope(
+            data_scope_name="ds",
+            data_source=asset_pb2.DataSource(dataset="ri.dataset.1"),
+            series_tags={"vehicle": "a"},
+        )
+    ]
+
+
+def test_remove_data_scopes_ignores_unset_source_fields(asset_with_scopes, mock_clients):
+    """Unset oneof fields read as "", so an empty rid must not match, and remove, every scope."""
+    asset_with_scopes.remove_data_scopes(scopes=[""])
+
+    kept = mock_clients.assets.UpdateAsset.call_args.args[0].data_scopes.data_scopes
+    assert [scope.data_scope_name for scope in kept] == ["ds", "vid"]

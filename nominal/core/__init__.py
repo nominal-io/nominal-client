@@ -2,6 +2,7 @@ from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
@@ -86,6 +87,7 @@ __all__ = [
     "Marking",
     "Comment",
     "NominalClient",
+    "NominalProperties",
     "Priority",
     "Run",
     "SearchEventOriginType",

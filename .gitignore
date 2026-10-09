@@ -191,6 +191,7 @@ uv.toml
 
 # Agent-neutral skills home (Codex, Cursor, etc. read here; .claude/skills symlinks into it).
 .agents/*
+!.agents/conventions/
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review

@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
     scout,
-    scout_asset_api,
-    scout_assets,
     scout_run_api,
     scout_spatial,
 )
@@ -24,6 +22,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
@@ -36,6 +35,7 @@ from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
+from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -48,7 +48,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     links: Sequence[LinkDict]
     start: IntegralNanosecondsUTC
@@ -70,7 +70,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         Protocol,
     ):
         @property
-        def assets(self) -> scout_assets.AssetService: ...
+        def assets(self) -> asset_pb2_grpc.AssetServiceStub: ...
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
@@ -93,7 +93,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
         assets: Sequence[Asset | str] | None = None,
@@ -104,18 +104,20 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
         Links can be URLs, tuples of (URL, name), or dicts of {url=URL, title=name}.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in run.labels:
-                new_labels.append(old_label)
-            run = run.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b"]
+                for old_label in run.labels:
+                    new_labels.append(old_label)
+                run = run.update(labels=new_labels)
 
-        Note: When `assets` is provided it fully replaces the run's asset list. To append an asset, merge with
-        the existing list first:
+        Note:
+            When `assets` is provided it fully replaces the run's asset list. To append an asset, merge with
+            the existing list first:
 
-            run = run.update(assets=[*run.assets, new_asset])
+                run = run.update(assets=[*run.assets, new_asset])
         """
         request = scout_run_api.UpdateRunRequest(
             description=description,
@@ -156,12 +158,18 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
             response = self._clients.comments.CreateComment(request)
         return Comment._from_proto(response.comment)
 
-    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        return filter_scopes(api_run.asset_data_scopes, "dataset")
+        for scope in filter_scopes(api_run.asset_data_scopes, "dataset"):
+            if scope.data_scope_name != data_scope_name:
+                continue
+            if scope.data_source.dataset is None:
+                raise ValueError(f"data scope {data_scope_name!r} is typed as a dataset but carries no dataset rid")
+            return scope.data_source.dataset, scope.series_tags
+        return None
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
@@ -232,7 +240,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         """Create an event associated with all associated assets of this run at a given point in time.
@@ -268,7 +276,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         created_by_rid: str | None = None,
         workbook_rid: str | None = None,
         data_review_rid: str | None = None,
@@ -546,13 +554,13 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         return list(self._iter_list_attachments())
 
     def _iter_list_assets(self) -> Iterable["Asset"]:
-        from nominal.core.asset import Asset
+        from nominal.core.asset import Asset, _get_assets
 
         clients = cast(Asset._Clients, self._clients)
         run = self._get_latest_api()
-        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
+        assets = _get_assets(clients, run.assets)
         for a in assets.values():
-            yield Asset._from_conjure(clients, a)
+            yield Asset._from_proto(clients, a)
 
     def list_assets(self) -> Sequence["Asset"]:
         """List assets associated with this run."""
@@ -574,7 +582,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
         include_drafts: bool = False,
@@ -598,14 +606,16 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
         """Unarchive this run, allowing it to appear on the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
 
@@ -639,7 +649,7 @@ def _create_run(
     start: datetime | IntegralNanosecondsUTC,
     end: datetime | IntegralNanosecondsUTC | None,
     description: str | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     labels: Sequence[str] | None,
     links: Sequence[str | Link | LinkDict] | None,
     attachments: Iterable[Attachment] | Iterable[str] | None,

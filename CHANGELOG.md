@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.174.0](https://github.com/nominal-io/nominal-client/compare/v1.173.0...v1.174.0) (2026-10-08)
+
+
+### Features
+
+* change workbook clone defaults and add metadata overrides ([#1026](https://github.com/nominal-io/nominal-client/issues/1026)) ([2a11ac6](https://github.com/nominal-io/nominal-client/commit/2a11ac6ec0395c79e81c8903828c9c5f2ae3801c))
+* clone workbook templates and refresh returned metadata ([#1029](https://github.com/nominal-io/nominal-client/issues/1029)) ([17b7d6f](https://github.com/nominal-io/nominal-client/commit/17b7d6f18625a52147aad27eea71266e6b4eb692))
+
+
+### Bug Fixes
+
+* report workbook templates as standard workbooks ([#1019](https://github.com/nominal-io/nominal-client/issues/1019)) ([879647a](https://github.com/nominal-io/nominal-client/commit/879647ad3c8fa7229d11a0d4498b1d19fb73d813))
+
 ## [1.173.0](https://github.com/nominal-io/nominal-client/compare/v1.172.1...v1.173.0) (2026-10-07)
 
 

@@ -694,7 +694,7 @@ wheels = [
 
 [[package]]
 name = "mkdocstrings-python"
-version = "1.18.2"
+version = "2.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "griffe" },
@@ -702,9 +702,9 @@ dependencies = [
     { name = "mkdocstrings" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/ae/58ab2bfbee2792e92a98b97e872f7c003deb903071f75d8d83aa55db28fa/mkdocstrings_python-1.18.2.tar.gz", hash = "sha256:4ad536920a07b6336f50d4c6d5603316fafb1172c5c882370cbbc954770ad323", size = 207972, upload-time = "2025-08-28T16:11:19.847Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/84/78243847ad9d5c21d30a2842720425b17e880d99dfe824dee11d6b2149b4/mkdocstrings_python-2.0.2.tar.gz", hash = "sha256:4a32ccfc4b8d29639864698e81cfeb04137bce76bb9f3c251040f55d4b6e1ad8", size = 199124, upload-time = "2026-02-09T15:12:01.543Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/8f/ce008599d9adebf33ed144e7736914385e8537f5fc686fdb7cceb8c22431/mkdocstrings_python-1.18.2-py3-none-any.whl", hash = "sha256:944fe6deb8f08f33fa936d538233c4036e9f53e840994f6146e8e94eb71b600d", size = 138215, upload-time = "2025-08-28T16:11:18.176Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/31/7ee938abbde2322e553a2cb5f604cdd1e4728e08bba39c7ee6fae9af840b/mkdocstrings_python-2.0.2-py3-none-any.whl", hash = "sha256:31241c0f43d85a69306d704d5725786015510ea3f3c4bdfdb5a5731d83cdc2b0", size = 104900, upload-time = "2026-02-09T15:12:00.166Z" },
 ]
 
 [[package]]
@@ -763,7 +763,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.173.0"
+version = "1.174.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -860,7 +860,7 @@ dev = [
     { name = "mkdocs-click", specifier = ">=0.9.0" },
     { name = "mkdocs-material", specifier = ">=9.5.34,<10" },
     { name = "mkdocstrings", specifier = ">=0.29.1,<1" },
-    { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
+    { name = "mkdocstrings-python", specifier = ">=2.0.2,<3" },
     { name = "mypy", specifier = ">=1.18.2,<2" },
     { name = "pandas-stubs", specifier = "~=2.0" },
     { name = "pyarrow-stubs", specifier = ">=20.0.0.20260819" },

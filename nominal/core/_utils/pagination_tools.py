@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     authentication_api,
     ingest_api,
     scout,
-    scout_asset_api,
-    scout_assets,
     scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
@@ -19,8 +17,10 @@ from nominal_api import (
     scout_video_api,
 )
 
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
@@ -98,24 +98,25 @@ def search_dataset_files_paginated(
 
 
 def search_assets_paginated(
-    client: scout_assets.AssetService,
-    auth_header: str,
-    query: scout_asset_api.SearchAssetsQuery,
+    client: asset_pb2_grpc.AssetServiceStub,
+    query: asset_pb2.SearchAssetsQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[scout_asset_api.Asset]:
-    def factory(page_token: str | None) -> scout_asset_api.SearchAssetsRequest:
-        return scout_asset_api.SearchAssetsRequest(
+) -> Iterable[asset_pb2.Asset]:
+    def factory(page_token: str | None) -> asset_pb2.SearchAssetsRequest:
+        return asset_pb2.SearchAssetsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort=scout_asset_api.AssetSortOptions(
-                field=scout_asset_api.AssetSortField.CREATED_AT,
+            sort=asset_pb2.AssetSortOptions(
+                field=asset_pb2.AssetSortField.CREATED_AT,
                 is_descending=True,
             ),
-            archived_statuses=archive_status.to_api_archived_statuses(),
+            archived_statuses=asset_pb2.ArchivedStatusSet(
+                archived_statuses=archive_status.to_proto_archived_statuses()
+            ),
             next_page_token=page_token,
         )
 
-    for response in paginate_rpc(client.search_assets, auth_header, request_factory=factory):
+    for response in paginate_grpc(client.SearchAssets, request_factory=factory):
         yield from response.results
 
 
@@ -324,7 +325,11 @@ def search_workbooks_paginated(
     auth_header: str,
     query: scout_notebook_api.SearchNotebooksQuery,
 ) -> Iterable[scout_notebook_api.NotebookMetadataWithRid]:
-    """NOTE: relies upon the query correctly filtering out drafts / archived if not desired"""
+    """Search workbooks across all result pages.
+
+    Note:
+        Relies upon the query correctly filtering out drafts / archived if not desired.
+    """
 
     def factory(page_token: str | None) -> scout_notebook_api.SearchNotebooksRequest:
         # TODO(drake): show_drafts and show_archived will soon be archived. Remove in the future.
@@ -357,7 +362,7 @@ def search_containerized_extractors_paginated(
     include_archived: bool = False,
     file_extension: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
 ) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
     # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
     # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.
@@ -475,13 +480,14 @@ def paginate_rpc(
 
 
 _GrpcRequestT = TypeVar("_GrpcRequestT")
+_GrpcResponseT = TypeVar("_GrpcResponseT", bound=_HasNextPageToken)
 
 
 def paginate_grpc(
-    rpc: Callable[[_GrpcRequestT], Any],
+    rpc: Callable[[_GrpcRequestT], _GrpcResponseT],
     *,
     request_factory: Callable[[str | None], _GrpcRequestT],
-) -> Iterable[Any]:
+) -> Iterable[_GrpcResponseT]:
     """Yield successive responses from a v2 gRPC search RPC, following next_page_token cursors.
 
     The gRPC sibling of `paginate_rpc`: `request_factory(token)` builds a fresh request for each page

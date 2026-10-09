@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Sequence
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import Link, LinkDict, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
@@ -25,7 +26,7 @@ class RunCopyOptions(ResourceCopyOptions):
     new_start: datetime | IntegralNanosecondsUTC | None = None
     new_end: datetime | IntegralNanosecondsUTC | None = None
     new_description: str | None = None
-    new_properties: Mapping[str, str] | None = None
+    new_properties: NominalProperties | None = None
     new_labels: Sequence[str] | None = None
     new_links: Sequence[str | Link | LinkDict] | None = None
     new_attachments: Iterable[Attachment] | Iterable[str] | None = None

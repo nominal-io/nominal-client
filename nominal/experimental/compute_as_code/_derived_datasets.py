@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Mapping, Sequence
+from typing import Sequence
 
 import nominal_compute
 from conjure_python_client import ConjureDecoder
@@ -9,6 +9,7 @@ from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.dataset import Dataset
 from nominal.experimental.derived_datasets._derived_datasets import (
     DerivedDataset,
@@ -33,7 +34,7 @@ def create_derived_dataset(
     message: str = "Initial derived definition",
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> DerivedDataset:
     """Create a derived dataset defined by a ``nominal_compute`` graph.

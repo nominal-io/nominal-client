@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     scout,
@@ -15,10 +15,14 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run
-from nominal.core.workbook import Workbook, WorkbookType
+from nominal.core.workbook import Workbook, WorkbookType, _strip_video_datasources
+
+if TYPE_CHECKING:
+    from nominal.core.workspace import Workspace
 
 
 def _rebind_video_datasources(
@@ -31,7 +35,7 @@ def _rebind_video_datasources(
     Templates strip datasource RIDs on save; this restores them so the video panel
     can load the correct asset.
 
-    # TODO(@seanmreidy): Remove once videos are migrated to channels.
+    # TODO(@seanmreidy): Remove after legacy v1 video panel definitions are migrated to channel variables.
     """
     new_charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
     for chart_id, viz in content.charts.items():
@@ -60,17 +64,22 @@ def _rebind_video_datasources(
         charts=new_charts,
         data_scope_inputs=content.data_scope_inputs,
         inputs=content.inputs,
+        report_content=content.report_content,
         settings=content.settings,
+        time_range_inputs=content.time_range_inputs,
+        version=content.version,
     )
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Template]):
+class WorkbookTemplate(
+    HasRid, RefreshableConjureMixin[scout_template_api.Template | scout_template_api.TemplateSummary]
+):
     rid: str
     title: str
     description: str
     labels: Sequence[str]
-    properties: Mapping[str, str]
+    properties: NominalProperties
     workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -97,24 +106,23 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         description: str | None = None,
         title: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Self:
         """Replace template metadata.
         Updates the current instance, and returns it.
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        NOTE: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in template.labels:
-                new_labels.append(old_label)
-            template = template.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b"]
+                for old_label in template.labels:
+                    new_labels.append(old_label)
+                template = template.update(labels=new_labels)
         """
-        # NOTE: not saving updated metadata response, as we deserialize from a template rather than
-        #       from metadata
-        self._clients.template.update_metadata(
+        metadata = self._clients.template.update_metadata(
             self._clients.auth_header,
             scout_template_api.UpdateMetadataRequest(
                 description=description,
@@ -124,17 +132,74 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             ),
             self.rid,
         )
-        return self.refresh()
+        return self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""
         return self._clients.template.get_used_ref_names(self._clients.auth_header, self.rid)
 
     def update_refnames(self, refname_map: Mapping[str, str]) -> None:
-        """Updates refnames using a provided map of original refnames to the new refnames to replace them."""
-        self._clients.template.update_ref_names(
+        """Replace data source refnames used by this template.
+
+        Refreshes this instance from the returned template metadata.
+
+        Args:
+            refname_map: Mapping from existing refnames to their replacements.
+        """
+        updated = self._clients.template.update_ref_names(
             self._clients.auth_header, scout_template_api.UpdateRefNameRequest({**refname_map}), self.rid
         )
+        self._refresh_from_api(updated)
+
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+        *,
+        title_suffix: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: NominalProperties | None = None,
+        is_published: bool = True,
+        workspace: Workspace | str | None = None,
+    ) -> Self:
+        """Create a copy of this template's latest main-branch content and metadata.
+
+        Copies the layout and channel variables on the server and returns a new template reference.
+        The copy is published by default.
+
+        Args:
+            title: New title. Defaults to the source's latest title followed by " - copy".
+                Copying an existing copy increments its suffix, e.g. " - copy (2)".
+            description: New description. None inherits the source's latest description.
+            title_suffix: Custom suffix for the server-generated title. Defaults to "copy".
+                Ignored when `title` is provided.
+            labels: New labels. None inherits the source labels; an empty sequence clears them.
+            properties: New properties. None inherits the source properties; an empty mapping clears them.
+            is_published: Whether to publish the copy. Defaults to True; pass False for an unpublished copy.
+            workspace: Workspace or workspace RID for the copy. Defaults to the client's default workspace.
+
+        Returns:
+            Reference to the newly created template.
+
+        Example:
+            copy = template.clone(title_suffix="Run analysis", labels=[], properties={})
+        """
+        duplicated = self._clients.template.duplicate(
+            self._clients.auth_header,
+            scout_template_api.DuplicateTemplateRequest(
+                title=title,
+                description=description,
+                title_suffix=title_suffix,
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                is_published=is_published,
+                workspace=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
+            ),
+            self.rid,
+        )
+        return self._from_conjure(self._clients, duplicated)
 
     @overload
     def create_workbook(
@@ -170,16 +235,21 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         Args:
             title: Title of the workbook to create. By default, uses the title of this template
             description: Description of the workbook to create. By default, uses the description of this template
-            run: Run to visualize in the workbook
-                NOTE: may not be provided alongside `asset`
-            asset: Asset to visualize in the workbook
-                NOTE: may not be provided alongside `run`
+            run: Run to visualize in the workbook.
+
+                **Note:** May not be provided alongside `asset`.
+            asset: Asset to visualize in the workbook.
+
+                **Note:** May not be provided alongside `run`.
             is_draft: Whether to create the workbook in draft state. Defaults to False.
 
-        NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
-              standard workbooks and not comparison workbooks.
-        NOTE: only supports singular `asset` instead of a list of `assets` because workbook templates only support
-              single asset workbooks.
+        Note:
+            Only supports singular `run` instead of a list of `runs` because workbook templates only support
+            standard workbooks and not comparison workbooks.
+
+        Note:
+            Only supports singular `asset` instead of a list of `assets` because workbook templates only support
+            single asset workbooks.
 
         Returns:
             The instantiated workbook
@@ -190,11 +260,15 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             raise ValueError("One of `run` or `asset` must be provided to create a workbook from a template")
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
-        template_content = raw_template.content
+        self._refresh_from_api(raw_template)
+        # Older templates may still contain video bindings to their source asset/run.
+        template_content = _strip_video_datasources(raw_template.content)
 
-        # Re-bind video panel datasources that were stripped when the template was saved.
-        has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
-        if has_video:
+        # Legacy v1 videos still use asset/run IDs directly rather than channel variables.
+        has_legacy_video = any(
+            viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values()
+        )
+        if has_legacy_video:
             run_rid = rid_from_instance_or_string(run) if run is not None else None
             video_asset_rid = None
             if asset is not None:
@@ -204,10 +278,6 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
             elif run_rid is not None:
                 raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
                 video_asset_rid = raw_run.assets[0] if raw_run.assets else None
-            else:
-                raise ValueError(
-                    f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
-                )
             if video_asset_rid is not None:
                 template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
 
@@ -229,26 +299,40 @@ class WorkbookTemplate(HasRid, RefreshableConjureMixin[scout_template_api.Templa
         return Workbook._from_conjure(self._clients, raw_notebook)
 
     def is_published(self) -> bool:
-        """Returns whether or not the workbook template has been published and can be viewed by other users."""
+        """Return whether the template is published and refresh its metadata from the same response."""
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        self._refresh_from_api(raw_template)
         return raw_template.metadata.is_published
+
+    def is_archived(self) -> bool:
+        """Return whether the template is archived and refresh its metadata from the same response."""
+        raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        self._refresh_from_api(raw_template)
+        return raw_template.metadata.is_archived
+
+    def unarchive(self) -> None:
+        """Unarchive this workbook template, making it visible in the UI again.
+        Refreshes this instance from the returned metadata.
+        """
+        metadata = self._clients.template.update_metadata(
+            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=False), self.rid
+        )
+        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     def archive(self) -> None:
         """Archive this workbook template.
         Archived workbook templates are not deleted, but are hidden from the UI.
+        Refreshes this instance from the returned metadata.
         """
-        self._clients.template.update_metadata(
+        metadata = self._clients.template.update_metadata(
             self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=True), self.rid
         )
+        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
-        return cls._from_template_summary(
-            clients, scout_template_api.TemplateSummary(metadata=template.metadata, rid=template.rid)
-        )
-
-    @classmethod
-    def _from_template_summary(cls, clients: _Clients, template: scout_template_api.TemplateSummary) -> Self:
+    def _from_conjure(
+        cls, clients: _Clients, template: scout_template_api.Template | scout_template_api.TemplateSummary
+    ) -> Self:
         return cls(
             rid=template.rid,
             title=template.metadata.title,
@@ -271,7 +355,7 @@ def _create_workbook_template_with_content_and_layout(
     *,
     description: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     commit_message: str | None = None,
     is_published: bool = False,
 ) -> WorkbookTemplate:

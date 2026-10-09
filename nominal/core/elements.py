@@ -15,7 +15,7 @@ class SymbolKind(Enum):
     ICON = "ICON"
     """A named icon, e.g. `castle`."""
     EMOJI = "EMOJI"
-    """An emoji name, e.g. `:castle:`."""
+    """An emoji name, e.g. ``:castle:``."""
     IMAGE = "IMAGE"
     """A URL pointing at an image."""
 
@@ -38,7 +38,7 @@ class Symbol:
 
     @classmethod
     def emoji(cls, name: str) -> Self:
-        """A symbol from an emoji name, e.g. `:castle:`."""
+        """A symbol from an emoji name, e.g. ``:castle:``."""
         return cls(SymbolKind.EMOJI, name)
 
     @classmethod

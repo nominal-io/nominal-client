@@ -367,11 +367,15 @@ class Relative(_ConjureTimestampType):
         )
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        """Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond prec.
-        The Python type for the field is just a str.
-        Ref:
-        - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
-        - https://github.com/palantir/conjure/pull/1643
+        """Convert the relative timestamp type to its Conjure ingest representation.
+
+        Note:
+            The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond prec.
+            The Python type for the field is just a str.
+            Ref:
+
+            - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
+            - https://github.com/palantir/conjure/pull/1643
         """
         return ingest_api.TimestampType(relative=self._to_conjure_relative_timestamp())
 
@@ -619,8 +623,9 @@ class _SecondsNanos(NamedTuple):
     def to_scout_catalog(self) -> scout_catalog.UtcTimestamp:
         """Convert to a scout_catalog.UtcTimestamp.
 
-        NOTE: scout_catalog.UtcTimestamp only supports second-level precision;
-        any sub-second component (nanos) will be truncated and a warning will be logged.
+        Note:
+            scout_catalog.UtcTimestamp only supports second-level precision;
+            any sub-second component (nanos) will be truncated and a warning will be logged.
         """
         self._warn_if_nanos_truncated()
         return scout_catalog.UtcTimestamp(seconds_since_epoch=self.seconds)

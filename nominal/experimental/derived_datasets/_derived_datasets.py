@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
 from nominal.core.datasource import DataSource
@@ -317,7 +318,7 @@ class DerivedDataset:
     rid: str
     name: str
     description: str | None
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     is_archived: bool
     _clients: DataSource._Clients = field(repr=False)
@@ -483,7 +484,7 @@ def _create_derived_dataset(
     message: str,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> DerivedDataset:
     """Create a dataset whose contents are computed from `spec` rather than ingested from files.
@@ -510,7 +511,7 @@ def create_derived_dataset(
     inputs: Sequence[DerivedDatasetInput] = (),
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
     message: str = "Initial derived definition",
 ) -> DerivedDataset:

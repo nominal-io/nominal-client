@@ -307,7 +307,8 @@ def upload_multipart_io(
 
     Returns: Path to the uploaded object in S3
 
-    Note: see put_multipart_upload for more details
+    Note:
+        see put_multipart_upload for more details
 
     """
     validate_upload_filename(name)
@@ -349,7 +350,8 @@ def upload_multipart_file(
 
     Returns: Path to the uploaded object in S3
 
-    Note: see put_multipart_upload for more details
+    Note:
+        see put_multipart_upload for more details
 
     """
     if file_type is None:

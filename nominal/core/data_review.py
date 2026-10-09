@@ -112,7 +112,8 @@ class DataReview(HasRid):
         """Archive this data review.
         Archived data reviews are not deleted, but are hidden from the UI.
 
-        NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
+        Note:
+            currently, it is not possible (yet) to unarchive a data review once archived.
         """
         self._clients.datareview.archive_data_review(self._clients.auth_header, self.rid)
 
@@ -175,8 +176,9 @@ class DataReviewBuilder:
             run: Instance or rid of the Run to run the Checklist on
             checklist: Instance or rid of the checklist to execute on the Run
             commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
-            asset: Instance or rid of the asset to run the checklist on within the Run
-                NOTE: only required for multi-asset runs
+            asset: Instance or rid of the asset to run the checklist on within the Run.
+
+                **Note:** Only required for multi-asset runs.
 
         Returns:
             DataReviewBuilder instance to continue building a data review with

@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
+from typing import BinaryIO, Iterable, Protocol, Sequence, cast
 
 from nominal_api import attachments_api
 from typing_extensions import Self
@@ -12,6 +12,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -20,7 +21,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
-    properties: Mapping[str, str]
+    properties: NominalProperties
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -40,7 +41,7 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace attachment metadata.
@@ -48,11 +49,12 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
+        Note:
+            This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+            calling this method. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b", *attachment.labels]
-            attachment = attachment.update(labels=new_labels)
+                new_labels = ["new-label-a", "new-label-b", *attachment.labels]
+                attachment = attachment.update(labels=new_labels)
         """
         request = attachments_api.UpdateAttachmentRequest(
             description=description,
@@ -87,14 +89,16 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
         """Archive this attachment.
         Archived attachments are not deleted, but are hidden from the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.attachment.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
         """Unarchive this attachment, allowing it to be viewed in the UI.
 
-        Note: this does not update the instance in place; call `refresh()` to see the change reflected.
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
         """
         self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
 
