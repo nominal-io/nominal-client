@@ -76,6 +76,10 @@ jobs:
             reviewing. Follow AGENTS.md's task routes to read the applicable .agents/conventions/ guides,
             including test/doc policies when behavior changes without corresponding test/doc edits.
             Pass the applicable policy files to plugin reviewers, not only the routing index.
+            For public docstring or rendering changes, also read and pass docs/AGENTS.md and
+            docs/conf.py even when no docs/ files changed. Apply the documentation policy's
+            authoring and generator guidance to the changed scope; do not request unrelated
+            docstring normalization or infer rendering defects from syntax alone.
             These linked policies are explicit repository requirements. Their concrete quality, testing, wrapper, and docstring requirements are
             part of correctness for this repository, including when the plugin would otherwise
             filter out general quality or coverage feedback. This is ONE review; the rules below
