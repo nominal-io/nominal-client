@@ -85,6 +85,12 @@ class WorkbookType(Enum):
         else:
             raise ValueError(f"Unknown workbook type: {workbook_type}")
 
+    def _to_conjure(self) -> scout_notebook_api.NotebookType:
+        return {
+            "WORKBOOK": scout_notebook_api.NotebookType.WORKBOOK,
+            "COMPARISON_WORKBOOK": scout_notebook_api.NotebookType.COMPARISON_WORKBOOK,
+        }[self.value]
+
 
 @dataclass(frozen=True)
 class Workbook(

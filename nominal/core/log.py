@@ -37,6 +37,14 @@ class LogPoint:
         )
 
     @classmethod
+    def _from_conjure(cls, point: storage_writer_api.LogPoint) -> Self:
+        return cls(
+            timestamp=_SecondsNanos.from_api(point.timestamp).to_nanoseconds(),
+            message=point.value.message,
+            args=MappingProxyType(point.value.args),
+        )
+
+    @classmethod
     def _from_compute_api(cls, point: scout_compute_api.LogValue, timestamp: api.Timestamp) -> Self:
         return cls(
             timestamp=_SecondsNanos.from_api(timestamp).to_nanoseconds(),

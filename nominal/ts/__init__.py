@@ -264,6 +264,35 @@ class _ConjureTimestampType(abc.ABC):
         enum, so implementations encode units via `_time_unit_to_conjure(...).value`.
         """
 
+    @classmethod
+    def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> TypedTimestampType:
+        if conjure_type.absolute is not None:
+            abs_timestamp_type = conjure_type.absolute
+            if abs_timestamp_type.iso8601 is not None:
+                return Iso8601()
+            elif abs_timestamp_type.epoch_of_time_unit is not None:
+                time_unit = abs_timestamp_type.epoch_of_time_unit
+                return Epoch._from_time_unit(time_unit.time_unit)
+            elif abs_timestamp_type.custom_format is not None:
+                custom_format = abs_timestamp_type.custom_format
+                return Custom(
+                    format=custom_format.format,
+                    default_year=custom_format.default_year,
+                    default_day_of_year=custom_format.default_day_of_year,
+                )
+            else:
+                raise ValueError(f"Unknown absolute timestamp type: {abs_timestamp_type.type}")
+        elif conjure_type.relative is not None:
+            rel_timestamp_type = conjure_type.relative
+            epoch = Epoch._from_time_unit(rel_timestamp_type.time_unit)
+
+            return Relative(
+                unit=epoch.unit,
+                start=datetime.fromisoformat(rel_timestamp_type.offset) if rel_timestamp_type.offset else 0,
+            )
+        else:
+            raise ValueError(f"Unknown timestamp type: {conjure_type.type}")
+
 
 def _str_to_literal_time_unit(value: str) -> _LiteralTimeUnit:
     lowered = value.lower()
