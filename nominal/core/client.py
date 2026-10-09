@@ -105,7 +105,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.run import Run, _create_run, _get_run_proto
+from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
@@ -773,7 +773,7 @@ class NominalClient:
             NominalNotFoundError: If no run has that RID.
             NominalError: If the retrieval request fails.
         """
-        response = _get_run_proto(self._clients.run, rid)
+        response = _get_run(self._clients.run, rid)
         return Run._from_proto(self._clients, response)
 
     def _iter_search_runs(

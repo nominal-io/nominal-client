@@ -80,7 +80,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         return run_url(self._clients, self.rid)
 
     def _get_latest_api(self) -> run_service_pb2.Run:
-        return _get_run_proto(self._clients.run, self.rid)
+        return _get_run(self._clients.run, self.rid)
 
     def update(
         self,
@@ -710,7 +710,7 @@ def _create_run(
     return Run._from_proto(clients, response.run)
 
 
-def _get_run_proto(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_service_pb2.Run:
+def _get_run(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_service_pb2.Run:
     """Retrieve the run with the given RID.
 
     Raises:

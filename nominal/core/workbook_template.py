@@ -18,7 +18,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_f
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
-from nominal.core.run import Run, _get_run_proto
+from nominal.core.run import Run, _get_run
 from nominal.core.workbook import Workbook, WorkbookType, _strip_video_datasources
 from nominal.protos.run.v1 import run_service_pb2_grpc
 
@@ -277,7 +277,7 @@ class WorkbookTemplate(
             elif isinstance(run, Run) and run.assets:
                 video_asset_rid = run.assets[0]
             elif run_rid is not None:
-                raw_run = _get_run_proto(self._clients.run, run_rid)
+                raw_run = _get_run(self._clients.run, run_rid)
                 video_asset_rid = raw_run.assets[0] if raw_run.assets else None
             if video_asset_rid is not None:
                 template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)

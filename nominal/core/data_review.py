@@ -21,7 +21,7 @@ from nominal.core._utils.frontend_urls import data_review_events_url, data_revie
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event, _get_events
-from nominal.core.run import _get_run_proto
+from nominal.core.run import _get_run
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -192,7 +192,7 @@ class DataReviewBuilder:
         run_rid = rid_from_instance_or_string(run)
         asset_rid = None if asset is None else rid_from_instance_or_string(asset)
 
-        raw_run = _get_run_proto(self._clients.run, run_rid)
+        raw_run = _get_run(self._clients.run, run_rid)
         if len(raw_run.assets) > 1 and asset is None:
             raise ValueError(
                 f"Cannot run data review on checklist {checklist_rid} and {run_rid} without specifying `asset_rid`: "
