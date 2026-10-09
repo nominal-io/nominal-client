@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -97,14 +98,36 @@ def test_falls_back_to_python_without_nominal_streaming(
 
 def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
     """Explicitly asking for rust without nominal-streaming installed is an error, not a silent downgrade."""
-    with pytest.raises(ImportError, match="required to use get_write_stream with implementation='rust'"):
+    with pytest.raises(ImportError, match="implementation='rust' requires nominal-streaming") as exc_info:
         mock_dataset.get_write_stream(implementation="rust")
 
+    assert "pip install nominal-streaming" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
-def test_rust_only_argument_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
-    """A rust-only argument is never silently dropped by the fallback."""
-    with pytest.raises(ImportError, match="file_fallback"):
-        mock_dataset.get_write_stream(file_fallback="fallback.avro")
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"file_fallback": "fallback.avro"},
+        {"log_level": "info"},
+        {"num_workers": 2},
+        {"file_fallback": "fallback.avro", "log_level": "info", "num_workers": 2},
+    ],
+    ids=["file-fallback", "logging", "workers", "combined-options"],
+)
+def test_rust_only_arguments_raise_without_nominal_streaming(
+    mock_dataset: Dataset, without_nominal_streaming: None, arguments: dict[str, str | int]
+):
+    """Rust-only options explain why automatic selection cannot fall back without claiming an explicit selection."""
+    with pytest.raises(ImportError, match="requires the Rust streaming backend") as exc_info:
+        mock_dataset.get_write_stream(**arguments)
+
+    message = str(exc_info.value)
+    for argument in arguments:
+        assert argument in message
+    assert "implementation=" not in message
+    assert "pip install nominal-streaming" in message
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
 @pytest.mark.parametrize("implementation", ["json", "protobuf"])
@@ -145,10 +168,12 @@ def test_experimental_rust_streaming_import_is_a_deprecated_alias(unimported_exp
     core_type = rust_write_stream_type()
 
     with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
+        expected_lineno = inspect.currentframe().f_lineno + 1
         from nominal.experimental.rust_streaming import RustWriteStream
 
     assert RustWriteStream is core_type
     assert [warning.filename for warning in record] == [__file__]
+    assert record[0].lineno == expected_lineno
 
 
 def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimported_experimental_alias: None):
@@ -156,10 +181,12 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
     core_type = rust_write_stream_type()
 
     with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
+        expected_lineno = inspect.currentframe().f_lineno + 1
         from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
 
     assert RustWriteStream is core_type
     assert [warning.filename for warning in record] == [__file__]
+    assert record[0].lineno == expected_lineno
 
 
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):

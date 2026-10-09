@@ -215,8 +215,9 @@ class DataSource(HasRid, MarkableMixin):
         Args:
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
-                falling back to 'python' when `nominal-streaming` is not installed.
+            implementation: Streaming implementation to use: 'rust' or 'python'. When omitted, uses 'rust'
+                if `nominal-streaming` is available, otherwise 'python'. Automatic selection cannot fall back
+                to 'python' when `file_fallback`, `log_level`, or `num_workers` is supplied.
 
                 **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
                 'python', 'python', and 'rust' respectively.
@@ -227,17 +228,17 @@ class DataSource(HasRid, MarkableMixin):
 
                 **Note:** Expects a .avro filename.
 
-                **Note:** Only works with `implementation='rust'`.
+                **Note:** Supported only by the Rust backend.
             log_level: Log level to use in underlying rust streaming code.
 
                 **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
 
-                **Note:** Only works with `implementation='rust'`.
+                **Note:** Supported only by the Rust backend.
             num_workers: Number of worker threads to use in underlying rust streaming code.
 
                 **Note:** Use with care-- this may have large impacts on streaming performance.
 
-                **Note:** Only works with `implementation='rust'`.
+                **Note:** Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
@@ -659,15 +660,16 @@ def _get_write_stream(
     except ImportError as ex:
         # Falling back would drop rust-only arguments. `file_fallback` in particular is a durability
         # feature, and silently turning it into a no-op is worse than refusing.
-        requires_rust = sorted(key for key, value in rust_only_arguments.items() if value is not None)
-        if requested == "rust":
-            requires_rust.insert(0, "implementation='rust'")
-
-        if requires_rust:
+        used = sorted(key for key, value in rust_only_arguments.items() if value is not None)
+        if requested == "rust" or used:
+            reason = (
+                f"Using {', '.join(used)} requires the Rust streaming backend. nominal-streaming could not be imported."
+                if used
+                else "implementation='rust' requires nominal-streaming, which could not be imported."
+            )
             raise ImportError(
-                f"nominal-streaming is required to use get_write_stream with {', '.join(requires_rust)}. It ships "
-                "pre-compiled binaries for a subset of platforms and interpreters; install it with: "
-                "pip install nominal-streaming"
+                f"{reason} It ships pre-compiled binaries for a subset of platforms and interpreters; "
+                "install it with: pip install nominal-streaming"
             ) from ex
 
         logger.info(
