@@ -49,4 +49,6 @@ To test without contacting a server:
 uv run --extra ibis pytest tests/ibis --no-cov -q
 ```
 
-::: nominal.ibis
+```{eval-rst}
+.. automodule:: nominal.ibis
+```

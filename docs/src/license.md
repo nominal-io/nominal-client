@@ -1,1 +1,5 @@
---8<-- "LICENSE"
+# License
+
+```{literalinclude} ../../LICENSE
+:language: text
+```

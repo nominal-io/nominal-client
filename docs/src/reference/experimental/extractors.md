@@ -9,7 +9,9 @@ reference. Their public objects are also available directly from `nominal.experi
 
 ## Decorators
 
-::: nominal.experimental.extractor.decorators
+```{eval-rst}
+.. automodule:: nominal.experimental.extractor.decorators
+```
 
 ## Output contexts
 
@@ -18,12 +20,18 @@ names to unit symbols. Each declaration copies its map into that output's manife
 units are output metadata, not image-registration settings. For direct file uploads, use
 the [ingestion builder](ingest.md#channel-units-and-csv-rows).
 
-::: nominal.experimental.extractor.context
+```{eval-rst}
+.. automodule:: nominal.experimental.extractor.context
+```
 
 ## Parameter types
 
-::: nominal.experimental.extractor.types
+```{eval-rst}
+.. automodule:: nominal.experimental.extractor.types
+```
 
 ## Execution and registration
 
-::: nominal.experimental.extractor.runner
+```{eval-rst}
+.. automodule:: nominal.experimental.extractor.runner
+```

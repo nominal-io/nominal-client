@@ -16,7 +16,9 @@ class NominalLogHandler(logging.Handler):
         To log custom args from a `logger.log(...)` statement, you can pass args as a dictionary via `extras`.
         For example:
 
-            logger.info("infotainment logs", extra={"nominal_args": {"country": "america", "count": 1234}})
+        ```python
+        logger.info("infotainment logs", extra={"nominal_args": {"country": "america", "count": 1234}})
+        ```
 
         This would allow users to see the custom log args within the Nominal log panel.
     """

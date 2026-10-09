@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.175.0](https://github.com/nominal-io/nominal-client/compare/v1.174.0...v1.175.0) (2026-10-09)
+
+
+### Features
+
+* expose workbook labels and properties ([#1042](https://github.com/nominal-io/nominal-client/issues/1042)) ([5b7abbc](https://github.com/nominal-io/nominal-client/commit/5b7abbc5d589b244a06072d618e54607be41b04b))
+* migrate asset service to gRPC ([#915](https://github.com/nominal-io/nominal-client/issues/915)) ([195a6e9](https://github.com/nominal-io/nominal-client/commit/195a6e95de403b95e58bb5a0d6d1e1cf5579a56b))
+* migrate data review service to gRPC ([#916](https://github.com/nominal-io/nominal-client/issues/916)) ([7b07269](https://github.com/nominal-io/nominal-client/commit/7b072690ea82e552c30506686ee540b721cfd4db))
+* migrate RunService to gRPC ([#962](https://github.com/nominal-io/nominal-client/issues/962)) ([d652b17](https://github.com/nominal-io/nominal-client/commit/d652b172c885c0e4f5146e932cdb4ba2f143317c))
+* promote rust streaming from nominal.experimental into nominal.core ([#1072](https://github.com/nominal-io/nominal-client/issues/1072)) ([d92c200](https://github.com/nominal-io/nominal-client/commit/d92c200d582e9488234e8cdd415f119376712448))
+
 ## [1.174.0](https://github.com/nominal-io/nominal-client/compare/v1.173.0...v1.174.0) (2026-10-08)
 
 

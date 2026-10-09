@@ -139,11 +139,6 @@ class _ThrottleGate:
         self._sleep = sleep
         self._jitter = jitter if jitter is not None else (lambda delay: random.uniform(0.0, delay))
 
-    @property
-    def current_backoff(self) -> float:
-        """The shared damper's current delay, in seconds (0.0 when the lane is healthy)."""
-        return self._backoff.current
-
     def call(self, op: Callable[[], T], *, deadline_seconds: float | None = None) -> T:
         """Run `op` under lane admission, retrying for as long as the server throttles it.
 

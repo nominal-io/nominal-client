@@ -216,8 +216,8 @@ def single_file_extractor(
     timestamp, tag-column, or channel-prefix control, and changing an image's output format later
     requires registering a new image.
 
-    Example::
-
+    Example:
+        ```python
         from pathlib import Path
 
         from nominal.core.container_image import FileOutputFormat
@@ -237,6 +237,7 @@ def single_file_extractor(
 
         if __name__ == "__main__":
             convert.run()
+        ```
     """
 
     def decorate(function: Callable[..., None]) -> Extractor[SingleFileExtractorContext]:
@@ -294,8 +295,8 @@ def manifest_extractor(
     output methods. Register the image with ``MANIFEST``; the runner rejects a different
     injected output format at startup.
 
-    Example::
-
+    Example:
+        ```python
         from pathlib import Path
 
         from nominal.experimental.extractor import ManifestExtractorContext, input, manifest_extractor, parameter
@@ -319,6 +320,7 @@ def manifest_extractor(
 
         if __name__ == "__main__":
             split.run()
+        ```
     """
 
     def decorate(function: Callable[..., None]) -> Extractor[ManifestExtractorContext]:

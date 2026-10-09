@@ -97,7 +97,7 @@ def export_channels_to_matlab(
 
             **Note:** The parent directory will be created if it does not already exist.
 
-            **Note:** Must have a `.mat` suffix.
+            Must have a `.mat` suffix.
         channels: List of channels to export.
 
             **Note:** Must be non-empty.
@@ -145,7 +145,9 @@ def export_channels_to_matlab(
             output_path=pathlib.Path("out/resampled.mat"),
             channels=[channel_a, channel_b],
             resolution=100_000_000,
-            export_timestamp_type=Relative("microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)),
+            export_timestamp_type=Relative(
+                "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+            ),
         )
 
         # Export with original resolution but timestamps as seconds since unix epoch

@@ -150,10 +150,11 @@ def channel_to_series(
     Use `relative_to` and `relative_resolution` to return timestamps relative to the given epoch.
 
     Example:
-    ```
-    s = channel_to_series(channel)
-    print(s.name, "mean:", s.mean())
-    ```
+        ```python
+        s = channel_to_series(channel)
+        print(s.name, "mean:", s.mean())
+        ```
+
 
     """
     start_time = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
@@ -227,17 +228,6 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
-def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
-    return {
-        "nanoseconds": "ns",
-        "microseconds": "us",
-        "milliseconds": "ms",
-        "seconds": "s",
-        "minutes": "m",
-        "hours": "h",
-    }[unit]
-
-
 _EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 
 
@@ -308,12 +298,13 @@ def datasource_to_dataframe(
             channels.
 
     Example:
-    ```
-    rid = "..." # Taken from the UI or via the SDK
-    dataset = client.get_dataset(rid)
-    df = datasource_to_dataframe(dataset)
-    print(df.head())  # Show first few rows of data
-    ```
+        ```python
+        rid = "..." # Taken from the UI or via the SDK
+        dataset = client.get_dataset(rid)
+        df = datasource_to_dataframe(dataset)
+        print(df.head())  # Show first few rows of data
+        ```
+
 
     """
     start_time = ts._SecondsNanos.from_flexible(start).to_api() if start else ts._MIN_TIMESTAMP.to_api()
