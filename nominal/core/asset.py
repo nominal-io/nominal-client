@@ -6,10 +6,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
-from nominal_api import (
-    scout,
-    scout_spatial,
-)
+from nominal_api import scout_spatial
 from typing_extensions import Self, deprecated
 
 from nominal.core import data_review, streaming_checklist
@@ -41,6 +38,7 @@ from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -76,7 +74,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         @property
         def comments(self) -> comments_pb2_grpc.CommentsServiceStub: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
         def spatial(self) -> scout_spatial.SpatialService: ...
 
@@ -639,14 +637,13 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         return list(self._iter_list_attachments())
 
     def list_runs(self) -> Sequence[Run]:
-        """List all runs associated with this Asset."""
+        """List all runs associated with this Asset.
+
+        Raises:
+            NominalError: If a run search request fails.
+        """
         return [
-            Run._from_conjure(self._clients, run)
-            for run in search_runs_by_asset_paginated(
-                self._clients.run,
-                self._clients.auth_header,
-                self.rid,
-            )
+            Run._from_proto(self._clients, run) for run in search_runs_by_asset_paginated(self._clients.run, self.rid)
         ]
 
     def search_events(

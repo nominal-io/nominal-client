@@ -201,17 +201,20 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
+from typing import Callable, Literal, Mapping, NamedTuple, TypeAlias, TypeVar, cast, get_args
 
 import dateutil.parser
 from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, assert_never
 
+from nominal.protos.run.v1 import run_pb2
 from nominal.protos.types import common_pb2
 from nominal.protos.types.time import time_pb2, timestamp_parsers_pb2
 
 logger = logging.getLogger(__name__)
+
+_DurationT = TypeVar("_DurationT")
 
 __all__ = [
     "Iso8601",
@@ -617,6 +620,9 @@ class _SecondsNanos(NamedTuple):
                 self.nanos,
             )
 
+    def to_run_proto(self) -> run_pb2.UtcTimestamp:
+        return run_pb2.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
+
     def to_scout_run_api(self) -> scout_run_api.UtcTimestamp:
         return scout_run_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
 
@@ -661,8 +667,8 @@ class _SecondsNanos(NamedTuple):
         return datetime.fromtimestamp(self.seconds + self.nanos * 1e-9, timezone.utc)
 
     @classmethod
-    def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
-        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)
+    def from_run_proto(cls, ts: run_pb2.UtcTimestamp) -> Self:
+        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds)
 
     @classmethod
     def from_api(cls, timestamp: api.Timestamp) -> Self:
@@ -729,9 +735,16 @@ def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout
     return scout_run_api.Duration(seconds=seconds, nanos=nanos)
 
 
-def _to_proto_duration(duration: timedelta | IntegralNanosecondsDuration) -> common_pb2.Duration:
+def _to_proto_duration(
+    duration: timedelta | IntegralNanosecondsDuration, duration_type: Callable[..., _DurationT]
+) -> _DurationT:
+    """Convert a duration to `duration_type`, the calling service's proto `Duration` message.
+
+    Run messages declare their own `Duration` rather than sharing `common_pb2.Duration`, so the caller
+    names the message to build.
+    """
     seconds, nanos = _to_seconds_nanos_duration(duration)
-    return common_pb2.Duration(seconds=seconds, nanos=nanos)
+    return duration_type(seconds=seconds, nanos=nanos)
 
 
 def _from_proto_duration(duration: common_pb2.Duration) -> IntegralNanosecondsDuration:

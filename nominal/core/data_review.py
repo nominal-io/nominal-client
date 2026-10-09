@@ -6,7 +6,6 @@ from time import sleep
 from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
-    scout,
     scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
@@ -22,7 +21,9 @@ from nominal.core._utils.frontend_urls import data_review_events_url, data_revie
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event, _get_events
+from nominal.core.run import _get_run
 from nominal.protos.event.v2 import event_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -53,7 +54,7 @@ class DataReview(HasRid):
         @property
         def event(self) -> event_pb2_grpc.EventServiceStub: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
@@ -191,7 +192,7 @@ class DataReviewBuilder:
         run_rid = rid_from_instance_or_string(run)
         asset_rid = None if asset is None else rid_from_instance_or_string(asset)
 
-        raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+        raw_run = _get_run(self._clients.run, run_rid)
         if len(raw_run.assets) > 1 and asset is None:
             raise ValueError(
                 f"Cannot run data review on checklist {checklist_rid} and {run_rid} without specifying `asset_rid`: "
