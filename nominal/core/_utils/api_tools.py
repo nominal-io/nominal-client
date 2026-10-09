@@ -24,6 +24,8 @@ from nominal_api import scout_compute_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.properties import typed_properties_to_proto
 from nominal.protos.types import types_pb2
 
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
@@ -101,6 +103,12 @@ def rid_from_instance_or_string(value: HasRid | str) -> str:
 def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper | None:
     """Wrap labels for a proto update request: None omits the field, any collection replaces it."""
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
+
+
+def typed_property_update(properties: NominalProperties | None) -> types_pb2.TypedPropertyUpdateWrapper | None:
+    if properties is None:
+        return None
+    return types_pb2.TypedPropertyUpdateWrapper(typed_properties=typed_properties_to_proto(properties))
 
 
 def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyUpdateWrapper | None:

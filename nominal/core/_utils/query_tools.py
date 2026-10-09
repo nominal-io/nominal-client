@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, overload
 
 from nominal_api import (
     api,
@@ -17,7 +17,8 @@ from nominal_api import (
 
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_types import NominalProperties, PropertyValue
+from nominal.core._utils.properties import check_property_value
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
@@ -77,6 +78,46 @@ class ArchiveStatusFilter(Enum):
             return [types_pb2.ArchivedStatus.NOT_ARCHIVED]
         else:  # ANY
             return [types_pb2.ArchivedStatus.ARCHIVED, types_pb2.ArchivedStatus.NOT_ARCHIVED]
+
+
+@overload
+def _build_property_search_clause(
+    *, name: str, value: PropertyValue, search_type: type[asset_pb2.SearchAssetsQuery]
+) -> asset_pb2.SearchAssetsQuery: ...
+@overload
+def _build_property_search_clause(
+    *, name: str, value: PropertyValue, search_type: type[scout_catalog.SearchDatasetsQuery]
+) -> scout_catalog.SearchDatasetsQuery: ...
+@overload
+def _build_property_search_clause(
+    *, name: str, value: PropertyValue, search_type: type[run_service_pb2.SearchQuery]
+) -> run_service_pb2.SearchQuery: ...
+def _build_property_search_clause(
+    *,
+    name: str,
+    value: PropertyValue,
+    search_type: type[asset_pb2.SearchAssetsQuery | scout_catalog.SearchDatasetsQuery | run_service_pb2.SearchQuery],
+) -> asset_pb2.SearchAssetsQuery | scout_catalog.SearchDatasetsQuery | run_service_pb2.SearchQuery:
+    """Build property equality using the selected resource's string or numeric query shape."""
+    checked_value = check_property_value(value, name=name)
+    if isinstance(checked_value, str):
+        if search_type is asset_pb2.SearchAssetsQuery:
+            return asset_pb2.SearchAssetsQuery(property=types_pb2.Property(name=name, value=checked_value))
+        if search_type is scout_catalog.SearchDatasetsQuery:
+            return scout_catalog.SearchDatasetsQuery(properties=api.Property(name=name, value=checked_value))
+        return run_service_pb2.SearchQuery(
+            properties=run_service_pb2.PropertiesFilter(name=name, values=[checked_value])
+        )
+    if search_type is scout_catalog.SearchDatasetsQuery:
+        return scout_catalog.SearchDatasetsQuery(
+            numeric_property=api.NumericPropertyPredicate(
+                name=name, operator=api.PropertyComparisonOperator.EQ, value=checked_value
+            )
+        )
+    predicate = types_pb2.NumericPropertyPredicate(name=name, operator=types_pb2.EQ, value=checked_value)
+    if search_type is asset_pb2.SearchAssetsQuery:
+        return asset_pb2.SearchAssetsQuery(numeric_property=predicate)
+    return run_service_pb2.SearchQuery(numeric_property=predicate)
 
 
 def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> scout_catalog.SearchDatasetsQuery:
@@ -168,7 +209,7 @@ def create_search_markings_query(id_substring: str | None = None) -> markings_pb
 def create_search_secrets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
 ) -> secrets_pb2.SearchSecretsQuery:
     queries = []
@@ -189,7 +230,7 @@ def create_search_secrets_query(
 def create_search_videos_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
 ) -> scout_video_api.SearchVideosQuery:
     queries = []
@@ -261,7 +302,9 @@ def create_search_assets_query(
             queries.append(asset_pb2.SearchAssetsQuery(label=label))
     if properties:
         for name, value in properties.items():
-            queries.append(asset_pb2.SearchAssetsQuery(property=types_pb2.Property(name=name, value=value)))
+            queries.append(
+                _build_property_search_clause(name=name, value=value, search_type=asset_pb2.SearchAssetsQuery)
+            )
     if workspace_rid is not None:
         queries.append(asset_pb2.SearchAssetsQuery(workspace=workspace_rid))
 
@@ -319,7 +362,7 @@ def create_search_ingest_jobs_query(
 def create_search_checklists_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
@@ -383,8 +426,10 @@ def create_search_datasets_query(
             queries.append(scout_catalog.SearchDatasetsQuery(label=label))
 
     if properties is not None:
-        for prop_key, prop_value in properties.items():
-            queries.append(scout_catalog.SearchDatasetsQuery(properties=api.Property(prop_key, prop_value)))
+        for name, value in properties.items():
+            queries.append(
+                _build_property_search_clause(name=name, value=value, search_type=scout_catalog.SearchDatasetsQuery)
+            )
 
     if ingested_before_inclusive is not None:
         queries.append(
@@ -463,9 +508,8 @@ def create_search_runs_query(
         )
     if properties:
         for name, value in properties.items():
-            # original properties is a 1:1 map, so we will never have multiple values for the same name
             queries.append(
-                run_service_pb2.SearchQuery(properties=run_service_pb2.PropertiesFilter(name=name, values=[value]))
+                _build_property_search_clause(name=name, value=value, search_type=run_service_pb2.SearchQuery)
             )
     if exact_match is not None:
         queries.append(run_service_pb2.SearchQuery(exact_match=exact_match))
@@ -480,7 +524,7 @@ def create_search_workbooks_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
     author_rid: str | None = None,
@@ -530,7 +574,7 @@ def create_search_workbook_templates_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     created_by: str | None = None,
     published: bool | None = None,
     workspace_rid: str | None = None,
@@ -571,7 +615,7 @@ def create_search_events_query(  # noqa: PLR0912
     asset_rids: Iterable[str] | None = None,
     asset_match: AssetMatch = AssetMatch.ALL,
     labels: Iterable[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     created_by_rid: str | None = None,
     workbook_rid: str | None = None,
     data_review_rid: str | None = None,
