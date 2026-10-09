@@ -1683,13 +1683,6 @@ def _create_mcap_channels(
     return channels
 
 
-def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
-    if prefix_tree_delimiter is None:
-        return None
-    else:
-        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-
-
 def _construct_existing_ingest_options(
     target_rid: str,
     timestamp_column: str,
