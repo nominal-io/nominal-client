@@ -85,4 +85,3 @@ html_theme_options = theme_options(
         {"title": "Nominal", "url": "https://nominal.io"},
     ],
 )
-add_module_names = False
