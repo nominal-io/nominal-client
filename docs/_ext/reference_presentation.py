@@ -2,6 +2,7 @@
 
 from dataclasses import fields, is_dataclass
 from inspect import signature
+from pkgutil import resolve_name
 
 from docutils import nodes
 from sphinx import addnodes
@@ -23,14 +24,22 @@ def _dataclass_signature(
 
 
 def _api_layout(app: Sphinx, doctree: nodes.document) -> None:
-    """Show attributes first and keep callable reference targets in navigation."""
+    """Show dataclass fields in declaration order and keep callable reference targets in navigation."""
     for node in doctree.findall(addnodes.desc):
         if node.get("domain") == "py" and node.get("objtype") in {"attribute", "property", "data", "type"}:
             node["no-contents-entry"] = True
         if node.get("domain") == "py" and node.get("objtype") in {"class", "exception"}:
+            sig = node[0]
+            obj = resolve_name(f"{sig['module']}:{sig['fullname']}")
+            field_order = {field.name: index for index, field in enumerate(fields(obj))} if is_dataclass(obj) else {}
             content = node[-1]
             members = [child for child in content if isinstance(child, addnodes.desc)]
-            members.sort(key=lambda child: child.get("objtype") not in {"attribute", "property"})
+            members.sort(
+                key=lambda child: (
+                    child.get("objtype") not in {"attribute", "property"},
+                    field_order.get(child[0]["fullname"].rsplit(".", 1)[-1], len(field_order)),
+                )
+            )
             ordered = iter(members)
             # Reorder only member slots; preserve introductory prose and authored sections.
             for index, child in enumerate(content):

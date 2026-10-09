@@ -10,14 +10,14 @@ from sphinx import addnodes
 
 
 def test_dataclass_reference_preserves_public_fields_and_member_order(tmp_path: Path) -> None:
-    """Keep public fields ahead of alphabetical methods while preserving signatures, prose, and links."""
+    """Keep inherited and non-init fields in declaration order ahead of properties and alphabetical methods."""
     docs = tmp_path / "docs"
     docs.mkdir()
     extensions = Path(__file__).resolve().parents[1] / "_ext"
     (docs / "conf.py").write_text(
         f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
         "extensions = ['sphinx.ext.autodoc', 'reference_presentation']\n"
-        "autodoc_default_options = {'members': True, 'undoc-members': True}\n",
+        "autodoc_default_options = {'members': True, 'undoc-members': True, 'inherited-members': 'object'}\n",
         encoding="utf-8",
     )
     (docs / "index.rst").write_text(
@@ -28,9 +28,13 @@ def test_dataclass_reference_preserves_public_fields_and_member_order(tmp_path: 
 from dataclasses import dataclass, field
 
 @dataclass
-class Resource:
+class _ResourceBase:
     rid: str
+
+@dataclass
+class Resource(_ResourceBase):
     label: str | None = None
+    state: str = field(default="ready", init=False)
     #: :meta private:
     hidden: str = field(default="internal", repr=False)
 
@@ -88,9 +92,10 @@ Alias = str
     resource = next(node for node in doctree.findall(addnodes.desc) if node[0].get("ids") == ["fixture_api.Resource"])
     members = [node[0]["ids"][0] for node in resource[-1] if isinstance(node, addnodes.desc)]
     assert members == [
-        "fixture_api.Resource.label",
-        "fixture_api.Resource.name",
         "fixture_api.Resource.rid",
+        "fixture_api.Resource.label",
+        "fixture_api.Resource.state",
+        "fixture_api.Resource.name",
         "fixture_api.Resource.archive",
         "fixture_api.Resource.create",
         "fixture_api.Resource.read",
