@@ -8,7 +8,7 @@ from nominal.core.file_store.enums import (
     VirtualDriveState,
 )
 from nominal.core.file_store.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.protos.file_store.v1 import file_store_pb2
+from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 
 
 def test_unset_and_unrecognized_enum_values_become_unknown() -> None:
@@ -19,7 +19,7 @@ def test_unset_and_unrecognized_enum_values_become_unknown() -> None:
     assert DriveMutability._from_proto(999) is DriveMutability.UNKNOWN
     assert DriveFileState._from_proto(999) is DriveFileState.UNKNOWN
     assert VirtualDriveState._from_proto(999) is VirtualDriveState.UNKNOWN
-    assert FileStoreErrorCode._from_proto(999) is FileStoreErrorCode.UNKNOWN
+    assert FileStoreErrorCode._from_failure(files_pb2.FileChangeFailure(change=999)) is FileStoreErrorCode.UNKNOWN
 
 
 def test_gcs_source_is_modelled() -> None:
@@ -34,19 +34,18 @@ def test_writability_is_tested_against_writable_not_read_only() -> None:
         assert DriveMutability._from_proto(value) is not DriveMutability.WRITABLE
 
 
-def test_file_store_error_code_maps_known_backend_codes() -> None:
-    assert (
-        FileStoreErrorCode._from_proto(file_store_pb2.FILE_STORE_ERROR_PATH_ALREADY_EXISTS)
-        is FileStoreErrorCode.PATH_ALREADY_EXISTS
-    )
-    assert (
-        FileStoreErrorCode._from_proto(file_store_pb2.FILE_STORE_ERROR_READ_ONLY_DRIVE)
-        is FileStoreErrorCode.READ_ONLY_DRIVE
-    )
-    assert FileStoreErrorCode._from_proto(file_store_pb2.FILE_STORE_ERROR_UNSPECIFIED) is FileStoreErrorCode.UNKNOWN
+def test_file_store_error_code_maps_both_failure_arms() -> None:
+    """A change can fail with a common error or a change-specific one; both must keep their meaning."""
+    common = files_pb2.FileChangeFailure(common=file_store_pb2.FILE_STORE_COMMON_ERROR_PERMISSION_DENIED)
+    change = files_pb2.FileChangeFailure(change=files_pb2.FILE_CHANGE_ERROR_READ_ONLY_DRIVE)
+
+    assert FileStoreErrorCode._from_failure(common) is FileStoreErrorCode.PERMISSION_DENIED
+    assert FileStoreErrorCode._from_failure(change) is FileStoreErrorCode.READ_ONLY_DRIVE
+    assert FileStoreErrorCode._from_failure(files_pb2.FileChangeFailure()) is FileStoreErrorCode.UNKNOWN
 
 
 def test_file_store_error_carries_code_and_message() -> None:
+    """Callers branch on `code` and show `message`, so both must survive onto the exception."""
     error = NominalFileStoreError(FileStoreErrorCode.PATH_ALREADY_EXISTS, "Path already exists")
 
     assert error.code is FileStoreErrorCode.PATH_ALREADY_EXISTS

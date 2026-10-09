@@ -100,7 +100,8 @@ def _sign_and_put_part(
     part: int,
     data: bytes,
     num_retries: int = 3,
-    bucket: str | None = None,
+    *,
+    bucket: str,
 ) -> requests.Response:
     """Sign and PUT a single in-memory part to S3, retrying transient failures.
 
@@ -152,7 +153,8 @@ def _sign_and_upload_part_job(
     q: Queue[bytes],
     part: int,
     num_retries: int = 3,
-    bucket: str | None = None,
+    *,
+    bucket: str,
 ) -> requests.Response:
     data = q.get()
     try:
@@ -185,7 +187,8 @@ def _complete_multipart_upload(
     key: str,
     upload_id: str,
     etags: Mapping[int, str],
-    bucket: str | None = None,
+    *,
+    bucket: str,
 ) -> str:
     """Complete an upload from a caller-supplied {part_number: etag} mapping.
 
@@ -447,7 +450,8 @@ def _abort(
     key: str,
     upload_id: str,
     e: BaseException,
-    bucket: str | None = None,
+    *,
+    bucket: str,
 ) -> None:
     logger.error(
         "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}

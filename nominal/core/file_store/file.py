@@ -29,29 +29,29 @@ from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from nominal.ts import IntegralNanosecondsUTC
 
 
-def _download_revision(
-    clients: _Clients,
-    revision_rid: str,
-    filename: str,
-    output_directory: PathLike,
-    *,
-    part_size: int,
-    num_retries: int,
-) -> pathlib.Path:
-    """Download a revision's bytes into `output_directory`, named `filename`.
-
-    The presigned URL the backend issues is short-lived, so it is fetched through a provider
-    that refreshes it rather than being resolved once up front.
-    """
-    if "/" in filename or "\\" in filename:
+def _download_destination(output_directory: PathLike, drive_path: str) -> pathlib.Path:
+    """Where downloading `drive_path` into `output_directory` writes, checked before any request."""
+    filename = _basename(drive_path)
+    if "\\" in filename:
         # The backend rejects `.`/`..` as path *segments*, but a single legal segment can still
-        # carry a separator (e.g. a path of `data/..\..\evil.csv` has one legal-looking last
+        # carry a backslash (e.g. a path of `data/..\..\evil.csv` has one legal-looking last
         # segment, `..\..\evil.csv`) — and `directory / filename` would follow it off a Windows
         # machine's filesystem right out of `output_directory`.
         raise ValueError(f"refusing to download to {filename!r}: a filename must not contain a path separator")
     directory = pathlib.Path(output_directory)
     if directory.exists() and not directory.is_dir():
         raise NotADirectoryError(f"Output directory is not a directory: {directory}")
+    return directory / filename
+
+
+def _download_revision(
+    clients: _Clients, revision_rid: str, destination: pathlib.Path, *, part_size: int, num_retries: int
+) -> pathlib.Path:
+    """Download a revision's bytes to `destination`.
+
+    The presigned URL the backend issues is short-lived, so it is fetched through a provider
+    that refreshes it rather than being resolved once up front.
+    """
 
     def fetch() -> str:
         with translate_grpc_errors():
@@ -61,7 +61,7 @@ def _download_revision(
 
     item = DownloadItem(
         provider=PresignedURLProvider(fetch_fn=fetch, ttl_secs=60.0, skew_secs=20.0),
-        destination=directory / filename,
+        destination=destination,
         part_size=part_size,
     )
     with MultipartFileDownloader.create(
@@ -142,12 +142,7 @@ class DriveFileRevision(HasRid):
             )
         )
         success = _apply_one(self._clients, self._drive_rid, change)
-        restored = _file_from_proto(self._clients, self._drive_rid, success.file)
-        if not isinstance(restored, ManagedDriveFile):
-            raise NominalFileStoreError(
-                FileStoreErrorCode.UNKNOWN, "restore returned a file that is not a managed file"
-            )
-        return restored
+        return _managed_file_from_proto(self._clients, self._drive_rid, success.file)
 
     def download(
         self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
@@ -165,16 +160,12 @@ class DriveFileRevision(HasRid):
 
         Raises:
             NotADirectoryError: `output_directory` exists but is not a directory.
-            NominalFileStoreError: This revision's bytes are no longer retained.
+            FileNotFoundError: `output_directory` does not exist.
+            FileExistsError: A file already exists at the destination.
+            NominalNotFoundError: This revision's bytes are no longer retained.
         """
-        return _download_revision(
-            self._clients,
-            self.rid,
-            _basename(self.path),
-            output_directory,
-            part_size=part_size,
-            num_retries=num_retries,
-        )
+        destination = _download_destination(output_directory, self.path)
+        return _download_revision(self._clients, self.rid, destination, part_size=part_size, num_retries=num_retries)
 
 
 @dataclass(frozen=True)
@@ -233,10 +224,16 @@ class DriveFile(DriveEntry, abc.ABC):
         """
 
     @abc.abstractmethod
+    def _content_revision_rid(self) -> str:
+        """RID of the revision holding the content this file currently shows."""
+
     def download(
         self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
     ) -> pathlib.Path:
         """Download this file's current content into a directory.
+
+        A virtual file's content is pinned first (see `VirtualDriveFile.resolve`), so the
+        download is the content observed when this file was retrieved.
 
         Args:
             output_directory: Directory to write into. The file is named after its path in
@@ -249,9 +246,15 @@ class DriveFile(DriveEntry, abc.ABC):
 
         Raises:
             NotADirectoryError: `output_directory` exists but is not a directory.
-            NominalFileStoreError: This file's content cannot be served — it is in a virtual
-                drive, or its bytes are no longer retained.
+            FileNotFoundError: `output_directory` does not exist.
+            FileExistsError: A file already exists at the destination.
+            NominalFileStoreError: This managed file has no current revision.
+            NominalNotFoundError: This file's bytes are no longer retained.
         """
+        destination = _download_destination(output_directory, self.path)
+        return _download_revision(
+            self._clients, self._content_revision_rid(), destination, part_size=part_size, num_retries=num_retries
+        )
 
 
 @dataclass(frozen=True)
@@ -275,13 +278,7 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
         # LogicalFile does not echo its drive, so the drive is re-supplied here; a managed file
         # cannot move between drives, so that is stable. The cast is needed for the same reason as
         # in `Drive`: the factory picks a concrete class the type system cannot tie back to `Self`.
-        refreshed = _file_from_proto(self._clients, self._drive_rid, api_obj)
-        if not isinstance(refreshed, ManagedDriveFile):
-            raise NominalFileStoreError(
-                FileStoreErrorCode.UNKNOWN,
-                f"File {self.rid!r} came back from the server as a different kind of file",
-            )
-        return cast("Self", refreshed)
+        return cast("Self", _managed_file_from_proto(self._clients, self._drive_rid, api_obj))
 
     def revisions(self) -> Sequence[DriveFileRevision]:
         """List this file's revision history, in the order the backend returns it.
@@ -301,6 +298,9 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
                 f"{self.path!r} has no current revision to act on",
             )
         return self.current_revision_rid
+
+    def _content_revision_rid(self) -> str:
+        return self._require_current_revision()
 
     def move_to(self, destination: FileDestination) -> Self:
         """Move this file, refreshing it in place.
@@ -338,34 +338,6 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
         change = files_pb2.FileChange(remove=files_pb2.RemoveFile(revision_rid=self._require_current_revision()))
         return self._refresh_from_api(_apply_one(self._clients, self._drive_rid, change).file)
 
-    def download(
-        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
-    ) -> pathlib.Path:
-        """Download this file's current content into a directory.
-
-        Args:
-            output_directory: Directory to write into. The file is named after its path in
-                the drive.
-            part_size: Size in bytes of each ranged download request.
-            num_retries: Retries per part.
-
-        Returns:
-            Path the file was written to.
-
-        Raises:
-            NotADirectoryError: `output_directory` exists but is not a directory.
-            NominalFileStoreError: This file has no current revision, or its bytes are no
-                longer retained.
-        """
-        return _download_revision(
-            self._clients,
-            self._require_current_revision(),
-            _basename(self.path),
-            output_directory,
-            part_size=part_size,
-            num_retries=num_retries,
-        )
-
 
 @dataclass(frozen=True)
 class VirtualDriveFile(DriveFile):
@@ -388,6 +360,9 @@ class VirtualDriveFile(DriveFile):
         request = files_pb2.ResolveFileRevisionRequest(source_ref=self._revision_ref)
         with translate_grpc_errors():
             return self._clients.drive_files.ResolveFileRevision(request).file_revision_rid
+
+    def _content_revision_rid(self) -> str:
+        return self.resolve()
 
     def revisions(self) -> Sequence[DriveFileRevision]:
         """Not supported: files mirrored from an external provider have no history.
@@ -421,20 +396,6 @@ class VirtualDriveFile(DriveFile):
             NominalFileStoreError: Always, with code `READ_ONLY_DRIVE`.
         """
         raise self._read_only()
-
-    def download(
-        self, output_directory: PathLike, *, part_size: int = DEFAULT_CHUNK_SIZE, num_retries: int = 3
-    ) -> pathlib.Path:
-        """Not supported: content for a provider-backed file is not served through this API.
-
-        Raises:
-            NominalFileStoreError: Always, with code `FILE_HISTORY_NOT_AVAILABLE`.
-        """
-        raise NominalFileStoreError(
-            FileStoreErrorCode.FILE_HISTORY_NOT_AVAILABLE,
-            f"{self.path!r} is in a drive backed by {self.provider.value}, "
-            "which does not serve file content through this API",
-        )
 
 
 _VIRTUAL_PROVIDERS = {
@@ -482,6 +443,17 @@ def _file_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.Logi
     )
 
 
+def _managed_file_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.LogicalFile) -> ManagedDriveFile:
+    """Convert a file the backend can only have returned from a managed drive, such as a change's result."""
+    file = _file_from_proto(clients, drive_rid, msg)
+    if not isinstance(file, ManagedDriveFile):
+        # Guarding keeps the narrowing honest rather than asserting in library code.
+        raise NominalFileStoreError(
+            FileStoreErrorCode.UNKNOWN, f"expected a managed file at {file.path!r}, got a {type(file).__name__}"
+        )
+    return file
+
+
 def _entry_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.FileEntry) -> DriveEntry:
     if msg.WhichOneof("entry") == "directory":
         return DriveDirectory(path=msg.directory.path.path)
@@ -515,15 +487,6 @@ def _destination_to_proto(destination: FileDestination, drive_rid: str) -> files
     return files_pb2.Destination(file_revision_rid=destination.current_revision_rid)
 
 
-def _apply(
-    clients: _Clients, drive_rid: str, changes: Sequence[files_pb2.FileChange]
-) -> Sequence[files_pb2.FileChangeResult]:
-    """Send one ApplyFileChanges request and return its per-change results, in order."""
-    request = files_pb2.ApplyFileChangesRequest(drive_rid=drive_rid, changes=list(changes))
-    with translate_grpc_errors():
-        return clients.drive_files.ApplyFileChanges(request).results
-
-
 def _apply_one(clients: _Clients, drive_rid: str, change: files_pb2.FileChange) -> files_pb2.FileChangeSuccess:
     """Apply a single change, raising the backend's in-band failure as an exception.
 
@@ -531,11 +494,9 @@ def _apply_one(clients: _Clients, drive_rid: str, change: files_pb2.FileChange) 
     here. A stale-revision failure is surfaced rather than retried: it means the caller's
     view of the file is out of date, which they need to see.
     """
-    results = _apply(clients, drive_rid, [change])
-    result = results[0]
+    request = files_pb2.ApplyFileChangesRequest(drive_rid=drive_rid, changes=[change])
+    with translate_grpc_errors():
+        (result,) = clients.drive_files.ApplyFileChanges(request).results
     if result.WhichOneof("result") == "failure":
-        raise NominalFileStoreError(
-            FileStoreErrorCode._from_proto(result.failure.code),
-            result.failure.message,
-        )
+        raise NominalFileStoreError(FileStoreErrorCode._from_failure(result.failure), result.failure.message)
     return result.success

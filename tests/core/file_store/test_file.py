@@ -63,7 +63,10 @@ def _managed_drive(clients: MagicMock) -> Drive:
 
 
 def _virtual_drive(clients: MagicMock) -> Drive:
-    return Drive._from_proto(clients, _drive_proto(source=file_store_pb2.DRIVE_SOURCE_S3))
+    return Drive._from_proto(
+        clients,
+        _drive_proto(source=file_store_pb2.DRIVE_SOURCE_S3, mutability=file_store_pb2.DRIVE_MUTABILITY_READ_ONLY),
+    )
 
 
 def test_get_file_returns_a_managed_file_with_its_identity() -> None:

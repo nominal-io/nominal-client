@@ -80,7 +80,7 @@ def test_sign_and_put_part_raises_after_retries() -> None:
     session.put.side_effect = requests.ConnectionError("boom")
 
     with pytest.raises(NominalMultipartUploadFailed):
-        _sign_and_put_part(client, session, "auth", "key", "uid", 3, b"chunk", num_retries=2)
+        _sign_and_put_part(client, session, "auth", "key", "uid", 3, b"chunk", num_retries=2, bucket="UPLOADS")
 
     assert session.put.call_count == 2
 
@@ -90,7 +90,9 @@ def test_complete_multipart_upload_builds_parts_from_etags_in_order() -> None:
     client = MagicMock(spec=["complete_multipart_upload"])
     client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
 
-    location = _complete_multipart_upload(client, "auth", "key", "uid", {3: '"c"', 1: '"a"', 2: '"b"'})
+    location = _complete_multipart_upload(
+        client, "auth", "key", "uid", {3: '"c"', 1: '"a"', 2: '"b"'}, bucket="UPLOADS"
+    )
 
     assert location == "s3://bucket/key"
     _, _, _, parts = client.complete_multipart_upload.call_args[0]
@@ -103,7 +105,7 @@ def test_complete_multipart_upload_raises_when_location_missing() -> None:
     client.complete_multipart_upload.return_value = MagicMock(location=None)
 
     with pytest.raises(NominalMultipartUploadFailed):
-        _complete_multipart_upload(client, "auth", "key", "uid", {1: '"e"'})
+        _complete_multipart_upload(client, "auth", "key", "uid", {1: '"e"'}, bucket="UPLOADS")
 
 
 def test_put_multipart_upload_completes_via_list_parts() -> None:
