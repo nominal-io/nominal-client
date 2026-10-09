@@ -135,4 +135,4 @@ def _spatial_scope_rids(asset: Asset) -> dict[str, str]:
 
 def _spatial_datasource_rids(run: Run) -> dict[str, str]:
     """Spatial rids by ref name, read from one fetch of the run."""
-    return dict(run._list_datasource_rids("spatial"))
+    return dict(run._scope_rids("spatial"))

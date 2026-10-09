@@ -11,7 +11,9 @@ from typing_extensions import Self, deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._scope_resolution import group_scope_rids, resolve_dataset_scope
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -30,10 +32,10 @@ from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.video import Video, _create_video, _get_video
+from nominal.core.video import Video, _create_video, _get_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
@@ -47,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
+class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     rid: str
     name: str
     description: str | None
@@ -89,18 +91,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     def _list_dataset_scopes(self) -> Sequence[asset_pb2.DataScope]:
         return _filter_proto_scopes(self._get_latest_api().data_scopes, "dataset")
 
-    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
-        for scope in self._list_dataset_scopes():
-            if scope.data_scope_name == data_scope_name:
-                return scope.data_source.dataset, dict(scope.series_tags)
-        return None
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
+        return resolve_dataset_scope(self._clients, self._get_latest_api().data_scopes, data_scope_name)
+
+    def _scope_rids_by_type(self) -> Mapping[ScopeTypeSpecifier, Mapping[str, str]]:
+        return group_scope_rids(
+            (scope.data_scope_name, scope.data_source) for scope in self._get_latest_api().data_scopes
+        )
 
     def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-        asset = self._get_latest_api()
-        return {
-            scope.data_scope_name: getattr(scope.data_source, scope_type)
-            for scope in _filter_proto_scopes(asset.data_scopes, scope_type)
-        }
+        return self._scope_rids_by_type()[scope_type]
 
     def update(
         self,
@@ -166,9 +166,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
-        for scope, data in self.list_data_scopes():
-            if scope == data_scope_name:
-                return data
+        named_rids = {
+            scope_type: {name: rid for name, rid in rids_by_name.items() if name == data_scope_name}
+            for scope_type, rids_by_name in self._scope_rids_by_type().items()
+        }
+        for _, data in _resolve_scopes(self._clients, named_rids):
+            return data
 
         raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
 
@@ -181,7 +184,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             Spatials are not included: they live in `nominal.experimental.spatial`, whose
             `list_spatials_in_asset` lists them.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
+        return _resolve_scopes(self._clients, self._scope_rids_by_type())
 
     def remove_data_scopes(
         self,
@@ -595,40 +598,19 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
-        scope_rid = self._scope_rids(scope_type="dataset")
-        if not scope_rid:
-            return []
-
-        datasets_map = {
-            dataset.rid: dataset
-            for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
-        }
-        return [
-            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
-            for name, rid in scope_rid.items()
-            if rid in datasets_map
-        ]
+        return _resolve_datasets(self._clients, self._scope_rids("dataset"))
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this asset.
         Returns (data_scope_name, connection) pairs for each connection.
         """
-        scope_rid = self._scope_rids(scope_type="connection")
-        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
-        return [
-            (scope, Connection._from_conjure(self._clients, connection))
-            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
-        ]
+        return _resolve_connections(self._clients, self._scope_rids("connection"))
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this asset.
         Returns (data_scope_name, dataset) pairs for each video.
         """
-        scope_rid = self._scope_rids(scope_type="video")
-        return [
-            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
-            for (scope, rid) in scope_rid.items()
-        ]
+        return _resolve_videos(self._clients, self._scope_rids("video"))
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         asset = self._get_latest_api()
@@ -828,6 +810,44 @@ def _get_asset(clients: Asset._Clients, rid: str) -> asset_pb2.Asset:
     if len(assets) > 1:
         raise ValueError(f"multiple assets found with RID {rid!r}: {assets!r}")
     return assets[rid]
+
+
+def _resolve_datasets(clients: Dataset._Clients, rids_by_name: Mapping[str, str]) -> Sequence[tuple[str, Dataset]]:
+    """Resolve dataset scopes by RID, omitting results the catalog does not return."""
+    if not rids_by_name:
+        return []
+    by_rid = {
+        dataset.rid: dataset for dataset in _get_datasets(clients.auth_header, clients.catalog, rids_by_name.values())
+    }
+    return [(name, Dataset._from_conjure(clients, by_rid[rid])) for name, rid in rids_by_name.items() if rid in by_rid]
+
+
+def _resolve_connections(
+    clients: DataSource._Clients,
+    rids_by_name: Mapping[str, str],
+) -> Sequence[tuple[str, Connection]]:
+    """Resolve connection scopes by RID."""
+    connections = _get_connections(clients, list(rids_by_name.values()))
+    return [
+        (name, Connection._from_conjure(clients, connection)) for name, connection in zip(rids_by_name, connections)
+    ]
+
+
+def _resolve_videos(clients: Video._Clients, rids_by_name: Mapping[str, str]) -> Sequence[tuple[str, Video]]:
+    """Resolve video scopes by RID."""
+    videos = _get_videos(clients, list(rids_by_name.values()))
+    return [(name, Video._from_conjure(clients, video)) for name, video in zip(rids_by_name, videos)]
+
+
+def _resolve_scopes(
+    clients: Asset._Clients, rids_by_type: Mapping[ScopeTypeSpecifier, Mapping[str, str]]
+) -> tuple[tuple[str, ScopeType], ...]:
+    """Resolve dataset, connection, and video scopes, with one request per type that has any."""
+    return (
+        *_resolve_datasets(clients, rids_by_type["dataset"]),
+        *_resolve_connections(clients, rids_by_type["connection"]),
+        *_resolve_videos(clients, rids_by_type["video"]),
+    )
 
 
 # Moving to bottom to deal with circular dependencies

@@ -24,6 +24,7 @@ from rich.table import Column, Table
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
+from nominal.core._scope_resolution import lookup_dataset_scope
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import _get_assets
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
@@ -418,7 +419,7 @@ class DataDownloader(abc.ABC):
             return
 
         # get tags from dataset & asset combo
-        data_scope = asset._lookup_dataset_scope(refname)
+        data_scope = lookup_dataset_scope(asset._get_latest_api().data_scopes, refname)
         if data_scope is None:
             logger.error("Failed to retrieve datascope details for refname %s", refname)
             return

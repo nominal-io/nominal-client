@@ -8,12 +8,15 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import scout_spatial
 from typing_extensions import Self, deprecated
 
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._scope_resolution import group_scope_rids, resolve_dataset_scope
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
     RefreshableGrpcMixin,
+    ScopeTypeSpecifier,
     create_proto_links,
     rid_from_instance_or_string,
 )
@@ -24,10 +27,10 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.video import Video, _get_video
+from nominal.core.video import Video, _get_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.exceptions import LegacyVideoDeprecationWarning
 from nominal.protos.asset.v2 import asset_pb2_grpc
@@ -40,7 +43,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngestMixin):
     rid: str
     name: str
     description: str
@@ -165,24 +168,15 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
             response = self._clients.comments.CreateComment(request)
         return Comment._from_proto(response.comment)
 
-    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
+        return resolve_dataset_scope(self._clients, api_run.asset_data_scopes, data_scope_name)
 
-        for scope in api_run.asset_data_scopes:
-            if scope.data_source.WhichOneof("data_source") == "dataset" and scope.data_scope_name == data_scope_name:
-                return scope.data_source.dataset, dict(scope.series_tags)
-        return None
-
-    def _list_datasource_rids(self, datasource_type: str | None = None) -> Mapping[str, str]:
-        enriched_run = self._get_latest_api()
-        datasource_rids_by_ref_name = {}
-        for ref_name, source in enriched_run.data_sources.items():
-            kind = source.data_source.WhichOneof("data_source")
-            if kind is not None and (datasource_type is None or kind == datasource_type):
-                datasource_rids_by_ref_name[ref_name] = getattr(source.data_source, kind)
-        return datasource_rids_by_ref_name
+    def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
+        api_run = self._get_latest_api()
+        return group_scope_rids((name, source.data_source) for name, source in api_run.data_sources.items())[scope_type]
 
     def remove_data_sources(
         self,
@@ -451,55 +445,37 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         with translate_grpc_errors():
             self._clients.run.UpdateRunAttachment(request)
 
-    def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
-        datasets_by_rids = {
-            ds.rid: Dataset._from_conjure(self._clients, ds)
-            for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
-        }
-        for ref_name, rid in dataset_rids_by_ref_name.items():
-            dataset = datasets_by_rids[rid]
-            yield (ref_name, dataset)
-
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this run.
         Returns (ref_name, dataset) pairs for each dataset.
         """
-        return list(self._iter_list_datasets())
-
-    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
-        conn_rids_by_ref_name = self._list_datasource_rids("connection")
-        connections_by_rids = {
-            conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
+        dataset_rids_by_ref_name = self._scope_rids("dataset")
+        datasets_by_rids = {
+            ds.rid: Dataset._from_conjure(self._clients, ds)
+            for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
         }
-
-        for ref_name, rid in conn_rids_by_ref_name.items():
-            connection = connections_by_rids[rid]
-            yield (ref_name, connection)
+        return [(ref_name, datasets_by_rids[rid]) for ref_name, rid in dataset_rids_by_ref_name.items()]
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this run.
         Returns (ref_name, connection) pairs for each connection
         """
-        return list(self._iter_list_connections())
-
-    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
-        video_rids_by_ref_name = self._list_datasource_rids("video")
-        videos_by_rids = {
-            rid: Video._from_conjure(
-                self._clients,
-                _get_video(self._clients, rid),
-            )
-            for rid in video_rids_by_ref_name.values()
+        conn_rids_by_ref_name = self._scope_rids("connection")
+        connections_by_rids = {
+            conn.rid: Connection._from_conjure(self._clients, conn)
+            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
         }
-        for ref_name, rid in video_rids_by_ref_name.items():
-            video = videos_by_rids[rid]
-            yield (ref_name, video)
+
+        return [(ref_name, connections_by_rids[rid]) for ref_name, rid in conn_rids_by_ref_name.items()]
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List a sequence of refname, Video tuples associated with this Run."""
-        return list(self._iter_list_videos())
+        video_rids_by_ref_name = self._scope_rids("video")
+        videos = _get_videos(self._clients, list(video_rids_by_ref_name.values()))
+        return [
+            (ref_name, Video._from_conjure(self._clients, video))
+            for ref_name, video in zip(video_rids_by_ref_name, videos)
+        ]
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
@@ -513,7 +489,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         Raises:
             ValueError: If no dataset reference exists with the provided name.
         """
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        dataset_rids_by_ref_name = self._scope_rids("dataset")
         dataset_rid = dataset_rids_by_ref_name.get(ref_name)
         if dataset_rid is None:
             raise ValueError(f"No dataset with ref name '{ref_name}' found for this run")
@@ -535,7 +511,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         Raises:
             ValueError: If no connection reference exists with the provided name.
         """
-        connection_rids_by_ref_name = self._list_datasource_rids("connection")
+        connection_rids_by_ref_name = self._scope_rids("connection")
         connection_rid = connection_rids_by_ref_name.get(ref_name)
         if connection_rid is None:
             raise ValueError(f"No connection with ref name '{ref_name}' found for this run")
@@ -559,7 +535,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
         Raises:
             ValueError: If no video reference exists with the provided name.
         """
-        video_rids_by_ref_name = self._list_datasource_rids("video")
+        video_rids_by_ref_name = self._scope_rids("video")
         video_rid = video_rids_by_ref_name.get(ref_name)
         if video_rid is None:
             raise ValueError(f"No video with ref name '{ref_name}' found for this run")
