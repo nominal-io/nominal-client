@@ -34,10 +34,11 @@ myst_heading_anchors = 6
 autodoc_default_options = {
     "members": True,
     "undoc-members": True,  # show_if_no_docstring
-    # stop at these bases so enum/exception/builtin internals stay out
+    # stop at these bases so enum/exception/builtin/Ibis backend internals stay out
     "inherited-members": (
         "object,BaseException,BaseExceptionGroup,ExceptionGroup,Enum,str,int,float,dict,tuple,"
-        "Handler,StreamHandler,Filterer"
+        "Handler,StreamHandler,Filterer,"
+        "SQLBackend,BaseBackend,_FileIOHandler,CacheHandler,NoUrl"
     ),
     "show-inheritance": True,
 }
