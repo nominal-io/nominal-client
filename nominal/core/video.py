@@ -583,6 +583,19 @@ def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video
     return clients.video.get(clients.auth_header, video_rid)
 
 
+def _get_videos(clients: Video._Clients, video_rids: Sequence[str]) -> Sequence[scout_video_api.Video]:
+    """The videos with these RIDs, in request order, fetched in one request when all are readable.
+
+    The batch endpoint silently drops RIDs that are missing or unreadable, so each RID it omits is fetched
+    on its own to raise the same not-found error as `_get_video`.
+    """
+    if not video_rids:
+        return []
+    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+    by_rid = {video.rid: video for video in clients.video.batch_get(clients.auth_header, request).responses}
+    return [by_rid[rid] if rid in by_rid else _get_video(clients, rid) for rid in video_rids]
+
+
 def _create_video(
     auth_header: str,
     client: scout_video.VideoService,
