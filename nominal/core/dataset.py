@@ -187,13 +187,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Args:
             path: Path to the file on disk to add to the dataset.
             timestamp_column: Column within the file containing timestamp information.
+
+                **Note:** This is omitted as a channel from the data added to Nominal, and is instead used
+                to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file
-
-        Note:
-            ``timestamp_column``: This is omitted as a channel from the data added to Nominal, and is instead used
-            to set the timestamps for all other uploaded data channels.
         """
         path = Path(path)
         file_type = FileType.from_tabular(path)
@@ -970,24 +969,23 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
+
+                **Note:** These must match the registered inputs of the active container image exactly.
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the extractor's output that contains the timestamp data.
                 Provided together with `timestamp_type`, overrides the active container image's
                 `default_timestamp_metadata` for this ingest; if omitted, the image's default is
                 used. See `ContainerImage.default_timestamp_metadata` for the full resolution order.
+
+                **Note:** This is applied uniformly to all output files.
+
+                Must be provided with a `timestamp_type` or a ValueError will be raised.
             timestamp_type: the type of timestamp data in the extractor's output.
 
-        Note:
-            * ``sources``: These must match the registered inputs of the active container image exactly.
+                **Note:** This is applied uniformly to all output files.
 
-            * ``timestamp_column``: This is applied uniformly to all output files.
-
-              Must be provided with a `timestamp_type` or a ValueError will be raised.
-
-            * ``timestamp_type``: This is applied uniformly to all output files.
-
-              Must be provided with a `timestamp_column` or a ValueError will be raised.
+                Must be provided with a `timestamp_column` or a ValueError will be raised.
 
         Returns:
             An `IngestionJob` handle for the asynchronous containerized ingest.
@@ -1140,15 +1138,14 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             start: Inclusive lower bound of the search window. Files whose time range ends at or
                 after this timestamp are returned — including files that started before `start`
                 but still overlap the window. Files ending entirely before `start` are excluded.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             end: Inclusive upper bound of the search window. Files whose time range starts at or
                 before this timestamp are returned — including files that end after `end` but
                 still overlap the window. Files starting entirely after `end` are excluded.
+
+                **Note:** Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
-
-        Note:
-            * ``start``: Truncated to whole seconds — sub-second precision is dropped.
-
-            * ``end``: Truncated to whole seconds — sub-second precision is dropped.
 
         Returns:
             All dataset files within this dataset which match all of the provided conditions
@@ -1186,11 +1183,10 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Args:
             batch_size: Number of records to upload at a time to Nominal.
+
+                **Note:** Raising this may improve performance in high latency scenarios.
             max_wait: Maximum number of seconds to allow data to be locally buffered
                 before streaming to Nominal.
-
-        Note:
-            ``batch_size``: Raising this may improve performance in high latency scenarios.
 
         Returns:
             Write stream object configured to send logs to nominal. This may be used as a context manager

@@ -243,13 +243,12 @@ class WorkbookTemplate(
             title: Title of the workbook to create. By default, uses the title of this template
             description: Description of the workbook to create. By default, uses the description of this template
             run: Run to visualize in the workbook.
+
+                **Note:** May not be provided alongside `asset`.
             asset: Asset to visualize in the workbook.
+
+                **Note:** May not be provided alongside `run`.
             is_draft: Whether to create the workbook in draft state. Defaults to False.
-
-        Note:
-            * ``run``: May not be provided alongside `asset`.
-
-            * ``asset``: May not be provided alongside `run`.
 
         Note:
             Only supports singular `run` instead of a list of `runs` because workbook templates only support

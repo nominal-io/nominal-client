@@ -28,7 +28,7 @@ def build_docs(tmp_path: Path):
 
 
 def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> None:
-    """Code stays literal and highlighted inside standard Google note sections."""
+    """Fenced code and bold inner notes stay attached to the correct argument."""
     source = tmp_path / "docs/src"
     extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
@@ -44,17 +44,16 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
 
     Args:
         value: Input value.
+
+            **Note:** Preserve the indentation and markup in code:
+
+            ```python
+            if value:
+                print("[label](https://example.com) and ``literal``")
+            ```
+
+            This stays with the argument.
         other: Other argument.
-
-    Note:
-        For ``value``, preserve the indentation and markup in code:
-
-        ```python
-        if value:
-            print("[label](https://example.com) and ``literal``")
-        ```
-
-        This stays inside the note.
 
     Returns:
         Returned value.
@@ -91,14 +90,16 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
         ("text", "name,value\nexample,1"),
         ("text", "unhighlighted text"),
     ]
-    note = next(doctree.findall(nodes.note))
-    assert note.astext().startswith("For value, preserve")
-    assert "Other argument." not in note.astext()
-    assert blocks[0] in list(note.findall(nodes.literal_block))
-    assert "This stays inside the note." in note.astext()
+    argument = next(
+        item for item in doctree.findall(nodes.list_item) if item.astext().startswith("value – Input value.")
+    )
+    assert any(label.astext() == "Note:" for label in argument.findall(nodes.strong))
+    assert "Other argument." not in argument.astext()
+    assert blocks[0] in list(argument.findall(nodes.literal_block))
+    assert "This stays with the argument." in argument.astext()
     notes = list(doctree.findall(nodes.note))
-    assert len(notes) == 2
-    assert notes[1].astext() == "This note describes the return value."
+    assert len(notes) == 1
+    assert notes[0].astext() == "This note describes the return value."
     html = (output / "index.html").read_text(encoding="utf-8")
     assert "Other argument." in html
     assert "Returned value." in html
