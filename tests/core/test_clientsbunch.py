@@ -16,6 +16,7 @@ from nominal.core.client import NominalClient
 from nominal.exceptions import NominalConfigError
 from nominal.experimental import as_user
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
@@ -286,6 +287,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
     assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
     assert isinstance(clients.sql, sql_pb2_grpc.SqlServiceStub)
+    assert isinstance(clients.users, users_pb2_grpc.UserServiceStub)
     # Exactly one channel, built from the right transport params and shared by every gRPC stub.
     create_grpc_channel.assert_called_once()
     assert create_grpc_channel.call_args.kwargs["auth_header"] == "Bearer token"

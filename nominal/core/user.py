@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nominal_api import authentication_api
 from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid
+from nominal.protos.authentication.users.v1 import users_pb2
 
 
 @dataclass(frozen=True)
@@ -15,5 +15,5 @@ class User(HasRid):
     email: str
 
     @classmethod
-    def _from_conjure(cls, raw_user: authentication_api.UserV2) -> Self:
+    def _from_proto(cls, raw_user: users_pb2.User) -> Self:
         return cls(rid=raw_user.rid, display_name=raw_user.display_name, email=raw_user.email)
