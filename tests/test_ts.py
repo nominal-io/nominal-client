@@ -29,10 +29,6 @@ def test_time_conversions(t: ts._SecondsNanos):
     assert t.seconds == t.to_scout_run_api().seconds_since_epoch
     assert t.nanos == t.to_scout_run_api().offset_nanoseconds
 
-    assert t.seconds == t.to_ingest_api().seconds_since_epoch
-    assert t.nanos == t.to_ingest_api().offset_nanoseconds
-    # no from_ingest_api method
-
     assert t == t.from_flexible(t.to_nanoseconds())
 
     # datetime objects don't have nanosecond precision

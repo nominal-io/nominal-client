@@ -636,9 +636,6 @@ class _SecondsNanos(NamedTuple):
         self._warn_if_nanos_truncated()
         return scout_catalog.UtcTimestamp(seconds_since_epoch=self.seconds)
 
-    def to_ingest_api(self) -> ingest_api.UtcTimestamp:
-        return ingest_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
-
     def to_api(self) -> api.Timestamp:
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 

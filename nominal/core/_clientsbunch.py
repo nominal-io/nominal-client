@@ -119,15 +119,6 @@ class ProtoWriteService(Service):
             smallest_latency_after_request=(after_req - newest_timestamp) / 1e9,
         )
 
-    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
-        _headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/x-protobuf",
-            "Authorization": auth_header,
-        }
-        _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
-
 
 @dataclass(frozen=True)
 class ClientsBunch:
