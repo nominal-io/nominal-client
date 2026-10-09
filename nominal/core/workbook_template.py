@@ -184,7 +184,11 @@ class WorkbookTemplate(
             Reference to the newly created template.
 
         Example:
-            copy = template.clone(title_suffix="Run analysis", labels=[], properties={})
+            ```python
+            copy = template.clone(
+                title_suffix="Run analysis", labels=[], properties={}
+            )
+            ```
         """
         duplicated = self._clients.template.duplicate(
             self._clients.auth_header,

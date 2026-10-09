@@ -77,14 +77,16 @@ dev = [
     "types-requests>=2.32.0.20240712,<3",
     "types-tabulate>=0.9.0.20241207,<0.10",
 ]
-# Sphinx 9 needs Python >=3.12; below that the group is empty and `just build-docs` says so
 docs = [
-    "sphinx>=9.1.0; python_version >= '3.12'",
-    "nominal-sphinx-theme; python_version >= '3.12'",
-    "myst-parser>=5.1.0; python_version >= '3.12'",
-    "sphinx-copybutton>=0.5.2; python_version >= '3.12'",
-    "sphinx-click>=6.0.0; python_version >= '3.12'",
+    "sphinx>=9.1.0",
+    "nominal-sphinx-theme",
+    "myst-parser>=5.1.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-click>=6.0.0",
 ]
+
+[tool.uv.dependency-groups]
+docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
 nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }

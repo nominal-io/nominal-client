@@ -83,15 +83,11 @@ build:
 clean:
     uv cache clean
 
-# the docs group is empty below Python 3.12, so sphinx-build would fail with an opaque "not found"
-_check-docs-python:
-    uv run python -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else f'The docs toolchain needs Python >= 3.12 in the project environment (found {sys.version.split()[0]}). Recreate it with: uv sync --python 3.13 --all-packages --all-extras --group docs')"
-
 # Build the existing docs into folder-style URLs; warnings fail the build.
-build-docs: _check-docs-python
+build-docs:
     rm -rf docs/_build/dirhtml
     uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
 # Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
-serve-docs: _check-docs-python
+serve-docs:
     uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --ignore "**/__pycache__/**" --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE
