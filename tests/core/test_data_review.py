@@ -12,6 +12,7 @@ from nominal.core.client import NominalClient
 from nominal.core.data_review import DataReview
 from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.protos.event.v2 import event_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.protos.types import types_pb2
 
 PENDING = data_review_pb2.AutomaticCheckEvaluationState(pending_execution=data_review_pb2.PendingExecutionState())
@@ -144,7 +145,7 @@ def test_builder_leaves_omitted_asset_and_commit_absent(
     clients, batch_initiate, asset: str | None, commit: str | None
 ) -> None:
     """An omitted asset or commit stays absent from the request rather than empty, keeping the backend defaults."""
-    clients.run.get_run.return_value.assets = ["ri.asset.1"]
+    clients.run.GetRun.return_value = run_service_pb2.GetRunResponse(run=run_service_pb2.Run(assets=["ri.asset.1"]))
     builder = NominalClient(_clients=clients).data_review_builder()
 
     builder.execute_checklist("ri.run.1", "ri.checklist.1", asset=asset, commit=commit).initiate(
