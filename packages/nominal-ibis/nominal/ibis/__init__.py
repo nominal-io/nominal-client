@@ -10,6 +10,7 @@ contents. Concretely typed maps remain Ibis maps.
 Other unresolved ANY types require an explicitly typed projection via con.sql().
 
 Example:
+    ```python
     import ibis
     from ibis import _
     from nominal.core import NominalClient
@@ -24,6 +25,7 @@ Example:
         .to_pandas()
     )
     print(per_minute.head())
+    ```
 
 """
 

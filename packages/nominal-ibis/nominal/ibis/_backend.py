@@ -264,6 +264,7 @@ class Backend(SQLBackend, NoUrl):
         limit: int | str | None = None,
         **kwargs: Any,
     ) -> Any:
+        """Execute the expression and return its result as a PyArrow Table, ChunkedArray, or Scalar."""
         self._run_pre_execute_hooks(expr)
         table = self._to_pyarrow_table(expr.as_table(), params=params, limit=limit)
         # The result hooks live on the concrete expression classes, not Expr.
