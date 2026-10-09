@@ -24,19 +24,14 @@ Sphinx contents flags to omit attributes and aliases from navigation, preserving
 and link targets. Integrations and Experimental have folder indexes with native glob
 toctrees: adding a Markdown reference page to either folder automatically adds it to
 the group. Explicit `autodata` directives cover imported type aliases and constants
-that native `automodule` omits. Document public constants with attribute docstrings
-immediately after their assignment; keep implementation comments ordinary.
+that native `automodule` omits.
 Reference pages outside those groups need an entry in the root `index.md` toctree.
 
-Docstrings retain Google sections and reStructuredText markup. Single backticks link
-resolvable Python objects; double backticks render literal code. Prefer triple-backtick
-code fences with a language. `_ext/docstring_fences.py` converts only fenced blocks
-before Napoleon parses sections and uses sphinx-click's description event for CLI help.
-Keep parameter caveats within their argument descriptions as separate paragraphs
-starting with `**Note:**`. Standalone notes use standard Google `Note:` sections,
-which render as note boxes. Preserve additional paragraphs and fenced examples.
-See the [documentation policy](../.agents/conventions/documentation.md).
+Author SDK docstrings using the shared [documentation policy](../.agents/conventions/documentation.md#docstring-markup),
+including when changing SDK files outside `docs/`. `_ext/docstring_fences.py` converts
+fenced blocks before Napoleon parses sections and uses sphinx-click's description event
+for CLI help.
 
 `_ext/reference_presentation.py` displays unquoted dataclass annotations and omits
 `repr=False` fields from both constructors and reference bodies, using dataclass
-metadata without per-field documentation markers. Keep maintainer TODOs in code comments.
+metadata without per-field documentation markers.
