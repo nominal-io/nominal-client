@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Protocol, Sequence, overload
+from typing import BinaryIO, Mapping, Protocol, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
 from typing_extensions import Self, deprecated
@@ -16,7 +16,6 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core.filetype import FileType, FileTypes
@@ -43,7 +42,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
     rid: str
     name: str
     description: str | None
-    properties: NominalProperties
+    properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -125,7 +124,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace video metadata.
@@ -588,7 +587,7 @@ def _create_video(
     *,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
 ) -> scout_video_api.Video:

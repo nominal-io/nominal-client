@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Mapping
 
 from nominal_api import scout_checks_api
 
 from nominal.core import NominalClient
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core.checklist import Checklist
 from nominal.experimental.checklist_utils.checklist_utils import (
     _create_checklist_with_content,
@@ -28,7 +28,7 @@ class ChecklistCopyOptions(ResourceCopyOptions):
     """Destination-side user RID; bypasses the context's source→destination user mapping."""
     new_description: str | None = None
     new_checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None
-    new_properties: NominalProperties | None = None
+    new_properties: Mapping[str, str] | None = None
     new_labels: list[str] | None = None
     new_checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None
     new_is_published: bool | None = None

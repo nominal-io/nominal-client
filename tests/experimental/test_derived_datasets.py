@@ -4,7 +4,7 @@ from typing import Callable
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from nominal_api import scout_catalog, scout_compute_api
+from nominal_api import api, scout_catalog, scout_compute_api
 
 from nominal.experimental.compute_as_code import (
     commit_derived_definition,
@@ -53,16 +53,22 @@ def test_bridge_decodes_dataset_transform() -> None:
 def test_create_derived_dataset_sets_derived_definition(
     client: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
 ) -> None:
-    """create_derived_dataset bridges the spec and sets it as the create request's derived definition."""
+    """create_derived_dataset sends the derived definition and retains typed property metadata."""
     nc = pytest.importorskip("nominal_compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc")
     client._clients.resolve_default_workspace_rid.return_value = "ri.workspace.w"
-    client._clients.catalog.create_dataset = Mock(return_value=make_enriched_dataset("ri.catalog.ws.dataset.new"))
+    response = make_enriched_dataset("ri.catalog.ws.dataset.new")
+    response.typed_properties.update(
+        k=api.TypedPropertyValue(string_value="v"), mass_kg=api.TypedPropertyValue(numeric_value=12.5)
+    )
+    client._clients.catalog.create_dataset = Mock(return_value=response)
+    properties = {"k": "v", "mass_kg": 12.5}
 
-    result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties={"k": "v"})
+    result = create_derived_dataset(client, "deriv", spec, message="init", labels=["a"], properties=properties)
 
     assert isinstance(result, DerivedDataset)
     assert result.rid == "ri.catalog.ws.dataset.new"
+    assert result.properties == properties
     auth, details = client._clients.catalog.create_dataset.call_args[0]
     assert auth == "Bearer test-token"
     # The nominal_compute spec is bridged to the conjure wire type.
@@ -71,7 +77,9 @@ def test_create_derived_dataset_sets_derived_definition(
     assert details.is_v2_dataset is True
     assert details.workspace == "ri.workspace.w"
     assert details.labels == ["a"]
-    assert details.properties == {"k": "v"}
+    assert details.properties == {}
+    assert details.typed_properties["k"].string_value == "v"
+    assert details.typed_properties["mass_kg"].numeric_value == 12.5
 
 
 def test_get_derived_definition_forwards_rid_and_commit(client: MagicMock) -> None:

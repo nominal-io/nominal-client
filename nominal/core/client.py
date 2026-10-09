@@ -55,6 +55,7 @@ from nominal.core._utils.pagination_tools import (
     search_videos_paginated,
     search_workbook_templates_paginated,
 )
+from nominal.core._utils.properties import typed_properties_to_proto
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
@@ -413,7 +414,8 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -484,7 +486,7 @@ class NominalClient:
         decrypted_value: str,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Secret:
         """Create a secret for the current user
 
@@ -529,7 +531,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Secret]:
@@ -655,7 +657,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Video]:
@@ -830,7 +832,8 @@ class NominalClient:
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
             labels: A sequence of labels that must ALL be present on a run to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -923,7 +926,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         markings: Sequence[Marking | str] | None = None,
     ) -> Video:
         """Create an empty video to append video files to.
@@ -1022,7 +1025,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -1067,7 +1070,7 @@ class NominalClient:
         attachment_file: PathLike,
         *,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         attachment_path = Path(attachment_file)
@@ -1091,7 +1094,7 @@ class NominalClient:
         file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         """Upload an attachment.
@@ -1253,7 +1256,7 @@ class NominalClient:
         request = asset_pb2.CreateAssetRequest(
             description=description,
             labels=list(labels),
-            properties={} if properties is None else dict(properties),
+            typed_properties=typed_properties_to_proto(properties),
             title=name,
             workspace=self._clients.resolve_default_workspace_rid(),
         )
@@ -1332,7 +1335,8 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
@@ -1449,7 +1453,7 @@ class NominalClient:
         *,
         description: str | None = None,
         assets: Iterable[Asset | str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         return _create_event(
@@ -1521,7 +1525,7 @@ class NominalClient:
         before: datetime | IntegralNanosecondsUTC | None = None,
         assets: Iterable[Asset | str] | None = None,
         labels: Iterable[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
         workbook: Workbook | str | None = None,
         data_review: DataReview | str | None = None,
@@ -1581,7 +1585,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> ContainerizedExtractor:
         """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
 
@@ -1622,7 +1626,7 @@ class NominalClient:
         include_archived: bool = False,
         file_extension: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
@@ -1700,7 +1704,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         asset: Asset | str | None = None,
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
@@ -1775,7 +1779,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
         published: bool | None = None,
@@ -1822,7 +1826,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: list[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         commit_message: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:

@@ -751,7 +751,8 @@ def test_create_derived_dataset_sets_the_definition_on_the_create_request(
     assert request.derived_definition.message == "Initial derived definition"
     assert request.workspace == "ri.workspace.w"
     assert request.labels == ["a"]
-    assert request.properties == {"k": "v"}
+    assert request.properties == {}
+    assert request.typed_properties["k"].string_value == "v"
 
 
 def test_create_derived_dataset_defaults_to_no_inputs(

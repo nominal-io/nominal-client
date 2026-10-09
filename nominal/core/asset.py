@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import scout_spatial
@@ -20,13 +19,14 @@ from nominal.core._utils.api_tools import (
     ScopeTypeSpecifier,
     create_proto_links,
     label_update,
-    property_update,
     rid_from_instance_or_string,
+    typed_property_update,
 )
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.properties import properties_from_proto
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
@@ -134,7 +134,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             asset_rid=self.rid,
             description=description,
             labels=label_update(labels),
-            properties=property_update(properties),
+            typed_properties=typed_property_update(properties),
             title=name,
             links=updated_links,
         )
@@ -428,7 +428,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         name: str | None = None,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Video:
         """Retrieve a video by data scope name, or create a new one if it does not exist."""
         try:
@@ -455,7 +455,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Event:
         """Create an event associated with this Asset at a given point in time.
@@ -653,7 +653,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         after: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         before: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         workbook_rid: str | None = None,
         data_review_rid: str | None = None,
@@ -704,7 +704,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
@@ -785,7 +785,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             rid=asset.rid,
             name=asset.title,
             description=asset.description if asset.HasField("description") else None,
-            properties=MappingProxyType(dict(asset.properties)),
+            properties=properties_from_proto(asset.typed_properties),
             labels=tuple(asset.labels),
             created_at=asset.created_at.ToNanoseconds(),
             is_archived=asset.is_archived,

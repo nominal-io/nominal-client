@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
-from types import MappingProxyType
 from typing import Any, Callable, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
@@ -11,6 +10,7 @@ from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.properties import properties_from_conjure
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
 from nominal.core.datasource import DataSource
@@ -329,7 +329,7 @@ class DerivedDataset:
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             is_archived=dataset.is_archived,
             _clients=clients,
