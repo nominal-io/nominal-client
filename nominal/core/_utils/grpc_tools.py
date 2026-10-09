@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator, Protocol, TypeVar
+from urllib.parse import urlparse
 
 import grpc
 from conjure_python_client import ServiceConfiguration
@@ -59,6 +60,14 @@ _MAX_MESSAGE_LENGTH = 2**31 - 1
 _RETRYABLE_STATUS = ("UNAVAILABLE", "RESOURCE_EXHAUSTED")
 # Backoff ceiling; matches urllib3 Retry.DEFAULT_BACKOFF_MAX, the cap conjure's RetryWithJitter uses.
 _MAX_BACKOFF_S = 120
+
+
+def api_base_url_to_grpc_target(api_base_url: str) -> str:
+    """Derive a gRPC target (``host:port``) from an API base URL, e.g. ``https://api.x/api`` -> ``api.x``."""
+    parsed = urlparse(api_base_url)
+    if not parsed.netloc:
+        raise ValueError(f"Could not derive gRPC target from API base URL: {api_base_url}")
+    return parsed.netloc
 
 
 @lru_cache(maxsize=None)

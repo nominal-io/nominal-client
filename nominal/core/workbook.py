@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
     from nominal.core.run import Run
+    from nominal.core.workbook_template import WorkbookTemplate
     from nominal.core.workspace import Workspace
 
 
@@ -336,6 +337,57 @@ class Workbook(
     def delete(self) -> None:
         """Delete the workbook permanently."""
         self._clients.notebook.delete(self._clients.auth_header, self.rid)
+
+    def _create_template_from_workbook(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: NominalProperties | None = None,
+        workspace_rid: str | None = None,
+    ) -> WorkbookTemplate:
+        """Create a workbook template from this workbook.
+
+        Args:
+            title: Title for the new template. Defaults to "Template from {title}" (or "workbook" if empty).
+            description: Description for the new template. Defaults to the current workbook description.
+            labels: Labels for the new template. Defaults to the current workbook labels.
+            properties: Properties for the new template. Defaults to the current workbook properties.
+            workspace_rid: Workspace RID to create the template in. Defaults to the current workbook's workspace.
+
+        Returns:
+            The created WorkbookTemplate
+        """
+        from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
+
+        raw_workbook = self._get_latest_api()
+        content_v2 = raw_workbook.content_v2
+        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
+            raise ValueError("Unexpected content_v2 type")
+        if self.workbook_type == WorkbookType.COMPARISON_WORKBOOK or (
+            content_v2 is not None and content_v2.comparison_workbook is not None
+        ):
+            raise ValueError("Comparison workbook types not yet supported")
+
+        content = (content_v2.workbook if content_v2 is not None else None) or raw_workbook.content
+        if content is None:
+            raise ValueError("Missing content for workbook")
+
+        workbook_title = raw_workbook.metadata.title or "workbook"
+        workspace_rid = workspace_rid or self._clients.resolve_default_workspace_rid()
+
+        return _create_workbook_template_with_content_and_layout(
+            self._clients,
+            title=title or f"Template from {workbook_title}",
+            layout=raw_workbook.layout,
+            content=_strip_video_datasources(content),
+            workspace_rid=workspace_rid,
+            description=description or raw_workbook.metadata.description,
+            labels=raw_workbook.metadata.labels if labels is None else [*labels],
+            properties=raw_workbook.metadata.properties if properties is None else {**properties},
+            commit_message="Initial version",
+        )
 
     @classmethod
     def _from_conjure(
