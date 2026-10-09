@@ -15,8 +15,9 @@ from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
-from nominal.core.data_review import DataReview, _initiate_data_reviews
+from nominal.core.data_review import DataReview, _get_data_review
 from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.ts import _to_api_duration
@@ -71,13 +72,15 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         """
         run_rid = rid_from_instance_or_string(run)
 
-        reviews = _initiate_data_reviews(
-            self._clients,
-            [data_review_pb2.CreateDataReviewRequest(checklist_rid=self.rid, run_rid=run_rid, commit=commit)],
+        request = data_review_pb2.BatchInitiateRequest(
+            requests=[data_review_pb2.CreateDataReviewRequest(checklist_rid=self.rid, run_rid=run_rid, commit=commit)],
         )
-        if len(reviews) != 1:
-            raise RuntimeError(f"Expected exactly one response from BatchInitiate, received {len(reviews)}")
-        return reviews[0]
+        with translate_grpc_errors():
+            response = self._clients.datareview.BatchInitiate(request)
+        if len(response.rids) != 1:
+            raise RuntimeError(f"Expected exactly one response from BatchInitiate, received {len(response.rids)}")
+
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, response.rids[0]))
 
     def execute_streaming(
         self,

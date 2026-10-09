@@ -1438,7 +1438,7 @@ class NominalClient:
             NominalNotFoundError: If no data review has that rid.
             NominalError: If the retrieval request fails.
         """
-        return _get_data_review(self._clients, rid)
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, rid))
 
     def create_event(
         self,

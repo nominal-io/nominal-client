@@ -57,12 +57,17 @@ class DataReview(HasRid):
 
     @classmethod
     def _from_proto(cls, clients: _Clients, data_review: data_review_pb2.DataReview) -> Self:
+        executing_states = [
+            check.state.WhichOneof("automatic_check_evaluation_state") in ("pending_execution", "executing")
+            for check in data_review.check_evaluations
+        ]
+        completed = not any(executing_states)
         return cls(
             rid=data_review.rid,
             run_rid=data_review.run_rid,
             checklist_rid=data_review.checklist_ref.rid,
             checklist_commit=data_review.checklist_ref.commit,
-            completed=all(_check_has_settled(check.state) for check in data_review.check_evaluations),
+            completed=completed,
             created_at=data_review.created_at.ToNanoseconds(),
             _clients=clients,
             created_by_rid=data_review.created_by or None,
@@ -80,7 +85,7 @@ class DataReview(HasRid):
         """Retrieves the list of events for the data review."""
         all_event_rids = [
             event_rid
-            for check in _get_data_review_proto(self._clients, self.rid).check_evaluations
+            for check in _get_data_review(self._clients, self.rid).check_evaluations
             if check.state.HasField("generated_alerts")
             for event_rid in check.state.generated_alerts.event_rids
         ]
@@ -91,7 +96,7 @@ class DataReview(HasRid):
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
-        return _get_data_review(self._clients, self.rid)
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, self.rid))
 
     def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
         """Polls the data review until it is completed."""
@@ -211,14 +216,19 @@ class DataReviewBuilder:
         Returns:
             The initiated reviews, which may still be running unless wait_for_completion is True.
         """
-        data_reviews = _initiate_data_reviews(
-            self._clients,
-            self._requests,
-            [
+        request = data_review_pb2.BatchInitiateRequest(
+            notification_configurations=[
                 data_review_pb2.NotificationConfiguration(integration_rid=c, tags=self._tags)
                 for c in self._integration_rids
             ],
+            requests=self._requests,
         )
+        with translate_grpc_errors():
+            response = self._clients.datareview.BatchInitiate(request)
+
+        data_reviews = [
+            DataReview._from_proto(self._clients, _get_data_review(self._clients, rid)) for rid in response.rids
+        ]
         if wait_for_completion:
             return poll_until_completed(data_reviews)
         else:
@@ -246,46 +256,12 @@ def _iter_search_data_reviews(
         yield DataReview._from_proto(clients, review)
 
 
-def _check_has_settled(state: data_review_pb2.AutomaticCheckEvaluationState) -> bool:
-    """Whether a check evaluation has reached a terminal state.
-
-    mypy checks this match against the generated oneof arms when the proto dependency is upgraded. At runtime,
-    a state added by a newer server arrives as an unset oneof and counts as settled, as does a check with no state.
-    """
-    match state.WhichOneof("automatic_check_evaluation_state"):
-        case "pending_execution" | "executing":
-            return False
-        case "failed_to_execute" | "passing" | "generated_alerts" | "too_many_alerts":
-            return True
-        case None:
-            return True
-
-
-def _initiate_data_reviews(
-    clients: DataReview._Clients,
-    requests: Sequence[data_review_pb2.CreateDataReviewRequest],
-    notification_configurations: Sequence[data_review_pb2.NotificationConfiguration] = (),
-) -> Sequence[DataReview]:
-    """Initiate the requested data reviews and return them hydrated."""
-    request = data_review_pb2.BatchInitiateRequest(
-        requests=requests,
-        notification_configurations=notification_configurations,
-    )
-    with translate_grpc_errors():
-        rids = clients.datareview.BatchInitiate(request).rids
-    return [_get_data_review(clients, rid) for rid in rids]
-
-
-def _get_data_review(clients: DataReview._Clients, rid: str) -> DataReview:
-    """The data review with the given rid.
+def _get_data_review(clients: DataReview._Clients, rid: str) -> data_review_pb2.DataReview:
+    """Retrieve the data review with the given RID.
 
     Raises:
-        NominalNotFoundError: If no data review has that rid.
+        NominalNotFoundError: If no data review has that RID.
+        NominalError: If the retrieval request fails.
     """
-    return DataReview._from_proto(clients, _get_data_review_proto(clients, rid))
-
-
-def _get_data_review_proto(clients: DataReview._Clients, rid: str) -> data_review_pb2.DataReview:
     with translate_grpc_errors():
-        response = clients.datareview.GetDataReview(data_review_pb2.GetDataReviewRequest(data_review_rid=rid))
-    return response.data_review
+        return clients.datareview.GetDataReview(data_review_pb2.GetDataReviewRequest(data_review_rid=rid)).data_review
