@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from docutils import nodes
 from sphinx import addnodes
+from sphinx.util.inventory import InventoryFile
 
 
 def test_dataclass_reference_preserves_public_fields_and_member_order(tmp_path: Path) -> None:
@@ -31,18 +32,18 @@ from dataclasses import dataclass, field
 @dataclass
 class _ResourceBase:
     rid: str
+    secret: str = field(repr=False)
 
 @dataclass
 class Resource(_ResourceBase):
     label: str | None = None
     state: str = field(default="ready", init=False)
-    #: :meta private:
     hidden: str = field(default="internal", repr=False)
 
     @classmethod
     def create(cls) -> Resource:
         """Create a resource."""
-        return cls("rid")
+        return cls("rid", "internal")
 
     def archive(self) -> None:
         """Archive the resource."""
@@ -69,6 +70,16 @@ class Custom:
         self.value = value
 
 Alias = str
+
+@dataclass
+class Visible:
+    hidden: str = "caller-visible"
+
+class Container:
+    @dataclass
+    class Nested:
+        value: int
+        hidden: int = field(repr=False)
 ''',
         encoding="utf-8",
     )
@@ -83,10 +94,25 @@ Alias = str
     doctree = pickle.loads((output / ".doctrees/index.doctree").read_bytes())
     signatures = {node["ids"][0]: node.astext() for node in doctree.findall(addnodes.desc_signature) if node["ids"]}
     assert "hidden" not in signatures["fixture_api.Resource"]
+    assert "secret" not in signatures["fixture_api.Resource"]
     assert "rid: str" in signatures["fixture_api.Resource"]
     assert "label: str | None = None" in signatures["fixture_api.Resource"]
     assert "fixture_api.Resource.rid" in signatures
-    assert "fixture_api.Resource.hidden" not in signatures
+    assert "hidden" not in signatures["fixture_api.Container.Nested"]
+    assert "fixture_api.Container.Nested.value" in signatures
+    assert "fixture_api.Visible.hidden" in signatures
+    hidden_targets = [
+        "fixture_api.Resource.hidden",
+        "fixture_api.Resource.secret",
+        "fixture_api.Container.Nested.hidden",
+    ]
+    inventory = InventoryFile.loads((output / "objects.inv").read_bytes(), uri="").data
+    index = (output / "genindex.html").read_text(encoding="utf-8")
+    for target in hidden_targets:
+        assert target not in signatures
+        assert target not in inventory["py:attribute"]
+        assert target not in index
+    assert "fixture_api.Visible.hidden" in inventory["py:attribute"]
     assert "normalize: bool = True" in signatures["fixture_api.Custom"]
     assert "Useful caller-facing documentation." in doctree.astext()
 

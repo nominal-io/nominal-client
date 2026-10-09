@@ -37,5 +37,5 @@ native `.. note::` directives with an indented body. Preserve their position and
 formatting. See the [documentation policy](../.agents/conventions/documentation.md).
 
 `_ext/reference_presentation.py` displays unquoted dataclass annotations and omits
-`repr=False` constructor fields. Use native `#: :meta private:` comments to exclude
-those fields from the reference body too. Keep maintainer TODOs in code comments.
+`repr=False` fields from both constructors and reference bodies, using dataclass
+metadata without per-field documentation markers. Keep maintainer TODOs in code comments.

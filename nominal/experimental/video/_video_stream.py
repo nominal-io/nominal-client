@@ -75,7 +75,6 @@ class VideoStream:
     rid: str
     src: Src
     options: StreamOptions | None
-    #: :meta private:
     whip_sink: Sink = field(repr=False)
     _stream: Stream | None = field(default=None, init=False, repr=False)
 

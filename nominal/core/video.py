@@ -48,7 +48,6 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
     created_at: IntegralNanosecondsUTC
     is_archived: bool
     _clients: _Clients = field(repr=False)
-    #: :meta private:
     created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
