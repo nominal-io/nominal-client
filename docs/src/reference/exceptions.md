@@ -1,1 +1,5 @@
-::: nominal.exceptions
+# Exceptions
+
+```{eval-rst}
+.. automodule:: nominal.exceptions
+```

@@ -66,7 +66,7 @@ def upload_tdms_to_dataset(
             **Note:** If provided, only groups containing a signal of this name will be uploaded.
             Furthermore, the length of all data columns must match their respective timestamp columns.
 
-            **Note:** If not provided, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
+            If not provided, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
             property to be uploaded.
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested

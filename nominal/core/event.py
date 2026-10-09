@@ -94,10 +94,12 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         Metadata is replaced rather than appended. To add to labels or properties, merge them before
         calling. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in event.labels:
-                new_labels.append(old_label)
-            event = event.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in event.labels:
+            new_labels.append(old_label)
+        event = event.update(labels=new_labels)
+        ```
 
         Args:
             name: New name for the event.

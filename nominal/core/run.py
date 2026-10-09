@@ -104,16 +104,20 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in run.labels:
-                    new_labels.append(old_label)
-                run = run.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in run.labels:
+                new_labels.append(old_label)
+            run = run.update(labels=new_labels)
+            ```
 
         Note:
             When `assets` is provided it fully replaces the run's asset list. To append an asset, merge with
             the existing list first:
 
-                run = run.update(assets=[*run.assets, new_asset])
+            ```python
+            run = run.update(assets=[*run.assets, new_asset])
+            ```
 
         Raises:
             NominalError: If the update request fails.

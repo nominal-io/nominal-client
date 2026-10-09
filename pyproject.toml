@@ -65,11 +65,6 @@ members = ["packages/*"]
 [dependency-groups]
 dev = [
     "coverage[toml]>=7.0.0",
-    "mkdocs-click>=0.9.0",
-    "mkdocs-material>=9.5.34,<10",
-    "mkdocs>=1.6.1,<2",
-    "mkdocstrings-python>=2.0.2,<3",
-    "mkdocstrings>=0.29.1,<1",
     "mypy>=1.18.2,<2",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
@@ -82,8 +77,19 @@ dev = [
     "types-requests>=2.32.0.20240712,<3",
     "types-tabulate>=0.9.0.20241207,<0.10",
 ]
+docs = [
+    "sphinx>=9.1.0",
+    "nominal-sphinx-theme",
+    "myst-parser>=5.1.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-click>=6.0.0",
+]
+
+[tool.uv.dependency-groups]
+docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 
@@ -117,7 +123,7 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

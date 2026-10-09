@@ -204,9 +204,11 @@ def register_image(
     Prints the resulting container image RID on stdout (status messages go to stderr), suitable
     for capturing in CI:
 
-        IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
-            -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json)
-        nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
+    ```bash
+    IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
+        -f image.tar -t $(git rev-parse --short HEAD) -c extractor-config.json)
+    nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
+    ```
 
     The registered image starts PENDING and must be activated with `set-active-image` once READY.
 

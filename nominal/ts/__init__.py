@@ -1,6 +1,6 @@
 """The `nominal.ts` module provides timestamp format specifications and utilities.
 
-When you _upload_ a dataset to nominal, the dataset may have timestamps in a variety of formats. For example:
+When you *upload* a dataset to nominal, the dataset may have timestamps in a variety of formats. For example:
 
 - ISO 8601 strings like '2021-01-31T19:00:00Z'
 - Epoch timestamps in floating-point seconds since epoch like 1612137600.123
@@ -42,19 +42,23 @@ The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types 
 Relative and custom formats require additional parameters, so they can't be specified with a string.
 Relative timestamps require a start time that they are relative to, e.g. `nm.ts.Relative("{unit}", start=start_time)`.
 Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see java
-[docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
+`docs <https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns>`__.
 
-## Examples
+.. _examples:
+
+Timestamp examples
+------------------
 
 All of the examples use the same data (timestamp and value) expressed with different timestamp formats,
 and showcase how to upload them to Nominal.
 
-### ISO 8601
+ISO 8601
+~~~~~~~~
 
 Nominal requires ISO 8601 timestamps to include the time zone, e.g. `'2021-01-31T19:00:00Z'` or
 `'2021-01-31T19:00:00.123+00:00'`. For example:
 
-```csv
+```text
 temperature,timestamp
 20,2024-09-30T16:37:36.891349Z
 21,2024-09-30T16:37:36.990262Z
@@ -72,15 +76,17 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 )
 ```
 
-### Epoch timestamps
+Epoch timestamps
+~~~~~~~~~~~~~~~~
 
 Nominal supports epoch timestamps in different units:
 hours, minutes, seconds, milliseconds, microseconds, and nanoseconds.
 The values can be integers or floating-point numbers.
 
-#### Floating-point seconds since epoch
+Floating-point seconds since epoch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-```csv
+```text
 temperature,timestamp
 20,1727728656.891349
 21,1727728656.990262
@@ -98,9 +104,10 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 )
 ```
 
-#### Integer nanoseconds since epoch
+Integer nanoseconds since epoch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-```csv
+```text
 temperature,timestamp
 20,1727728656891349000
 21,1727728656990262000
@@ -118,13 +125,14 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 )
 ```
 
-### Relative timestamps
+Relative timestamps
+~~~~~~~~~~~~~~~~~~~
 
 Similar to epoch timestamps, Nominal supports relative timestamps in the same units:
 hours, minutes, seconds, milliseconds, microseconds, and nanoseconds, and can be integer or floating-point values.
-Relative timestamps are _relative to_ a specified start time.
+Relative timestamps are *relative to* a specified start time.
 
-```csv
+```text
 temperature,timestamp
 20,0
 21,98913
@@ -138,21 +146,25 @@ temperature,timestamp
 
 ```python
 nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type=nm.ts.Relative("microseconds", since=datetime.fromtimestamp(1727728656.891349))
+    timestamp_type=nm.ts.Relative(
+        "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349+00:00")
+    )
 )
 ```
 
-### Custom Format
+Custom Format
+~~~~~~~~~~~~~
 
 Nominal supports custom timestamp formats. The format string should be in the format of the `DateTimeFormatter`
 class in Java: see java
-[docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
+`docs <https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns>`__.
 
-#### Customized ctime
+Customized ctime
+^^^^^^^^^^^^^^^^
 
 This time format is similar to the string format from `ctime()`, except with microsecond precision added.
 
-```csv
+```text
 temperature,timestamp
 20,Mon Sep 30 16:37:36.891349 2024
 21,Mon Sep 30 16:37:36.990262 2024
@@ -170,12 +182,13 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 )
 ```
 
-#### IRIG time code
+IRIG time code
+^^^^^^^^^^^^^^
 
 IRIG time codes come in a variety of formats. A common IRIG format specifies a relative timestamp from the
 beginning of the year, expressed in `days:hours:minutes:seconds.ms`.
 
-```csv
+```text
 temperature,timestamp
 20,274:16:37:36.891349
 21,274:16:37:36.990262
@@ -192,6 +205,7 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
     timestamp_type=nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
 )
 ```
+
 """
 
 from __future__ import annotations
@@ -245,6 +259,7 @@ IntegralNanosecondsDuration: TypeAlias = int
 This value is a duration measured in nanoseconds."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
+"""Whether log timestamps are absolute or relative."""
 
 
 class _ConjureTimestampType(abc.ABC):
@@ -431,14 +446,23 @@ class Custom(_ConjureTimestampType):
 
 # constants for pedagogy, documentation, default arguments, etc.
 ISO_8601 = Iso8601()
+"""ISO 8601 timestamp format."""
 EPOCH_PICOSECONDS = Epoch("picoseconds")
+"""Epoch timestamp format in picoseconds."""
 EPOCH_NANOSECONDS = Epoch("nanoseconds")
+"""Epoch timestamp format in nanoseconds."""
 EPOCH_MICROSECONDS = Epoch("microseconds")
+"""Epoch timestamp format in microseconds."""
 EPOCH_MILLISECONDS = Epoch("milliseconds")
+"""Epoch timestamp format in milliseconds."""
 EPOCH_SECONDS = Epoch("seconds")
+"""Epoch timestamp format in seconds."""
 EPOCH_MINUTES = Epoch("minutes")
+"""Epoch timestamp format in minutes."""
 EPOCH_HOURS = Epoch("hours")
+"""Epoch timestamp format in hours."""
 EPOCH_DAYS = Epoch("days")
+"""Epoch timestamp format in days."""
 
 _LiteralTimeUnit: TypeAlias = Literal[
     "picoseconds",
