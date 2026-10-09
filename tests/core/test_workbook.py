@@ -65,6 +65,8 @@ def workbook(mock_clients: MagicMock) -> Workbook:
         rid="source-workbook-rid",
         title="Flight review",
         description="Cached description",
+        labels=("cached-label",),
+        properties={"campaign": "cached"},
         workbook_type=WorkbookType.WORKBOOK,
         run_rids=["cached-run-rid"],
         asset_rids=None,
@@ -93,11 +95,15 @@ def test_clone_leaves_inherited_metadata_to_server(workbook: Workbook, mock_clie
     assert request.is_locked is False
     assert result.title == "Latest flight review - copy"
     assert result.description == "Latest description"
+    assert result.labels == ("flight",)
+    assert result.properties == {"campaign": "October"}
     assert result.run_rids is None
     assert result.asset_rids == ["latest-asset-rid"]
     assert result is not workbook
     assert workbook.title == "Flight review"
     assert workbook.run_rids == ["cached-run-rid"]
+    assert workbook.labels == ("cached-label",)
+    assert workbook.properties == {"campaign": "cached"}
     mock_clients.notebook.create.assert_not_called()
 
 
@@ -156,3 +162,15 @@ def test_update_applies_server_metadata_in_place(workbook: Workbook, mock_client
     assert workbook.run_rids is None
     assert workbook.asset_rids == ["latest-asset-rid"]
     assert workbook.created_by_rid == "creator-rid"
+    assert workbook.labels == ("flight",)
+    assert workbook.properties == {"campaign": "October"}
+
+    cleared = _metadata(scout_notebook_api.NotebookDataScope(asset_rids=["latest-asset-rid"]))
+    cleared.labels.clear()
+    cleared.properties.clear()
+    mock_clients.notebook.update_metadata.return_value = cleared
+
+    workbook.update(labels=[], properties={})
+
+    assert workbook.labels == ()
+    assert workbook.properties == {}
