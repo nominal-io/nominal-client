@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, overload
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
@@ -97,6 +98,8 @@ class Workbook(
     rid: str
     title: str
     description: str
+    labels: Sequence[str]
+    properties: Mapping[str, str]
     workbook_type: WorkbookType
 
     run_rids: Sequence[str] | None
@@ -400,6 +403,8 @@ class Workbook(
             rid=notebook.rid,
             title=notebook.metadata.title,
             description=notebook.metadata.description,
+            labels=tuple(notebook.metadata.labels),
+            properties=MappingProxyType(notebook.metadata.properties),
             run_rids=notebook.metadata.data_scope.run_rids,
             asset_rids=notebook.metadata.data_scope.asset_rids,
             workbook_type=workbook_type,
