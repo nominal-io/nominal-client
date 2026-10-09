@@ -76,29 +76,6 @@ class SearchEventOriginType(NamedTuple):
         return event_pb2.SearchEventOriginType.Value(self.name)
 
     @classmethod
-    def _from_proto(cls, event: event_pb2.SearchEventOriginType.ValueType) -> SearchEventOriginType:
-        """The origin type named by a proto value.
-
-        Raises:
-            ValueError: If the value is unspecified or names an origin type this client does not know.
-        """
-        match event:
-            case event_pb2.WORKBOOK:
-                return SearchEventOriginTypes.WORKBOOK
-            case event_pb2.TEMPLATE:
-                return SearchEventOriginTypes.TEMPLATE
-            case event_pb2.API:
-                return SearchEventOriginTypes.API
-            case event_pb2.DATA_REVIEW:
-                return SearchEventOriginTypes.DATA_REVIEW
-            case event_pb2.PROCEDURE:
-                return SearchEventOriginTypes.PROCEDURE
-            case event_pb2.STREAMING_CHECKLIST:
-                return SearchEventOriginTypes.STREAMING_CHECKLIST
-            case _:
-                raise ValueError(f"Unexpected Event Origin {event}")
-
-    @classmethod
     def get_manual_origin_types(cls) -> Iterable[SearchEventOriginType]:
         """Return all origin types that are manually created."""
         return [

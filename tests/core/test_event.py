@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nominal.core._checklist_types import Priority
-from nominal.core._event_types import EventType, SearchEventOriginType, SearchEventOriginTypes
+from nominal.core._event_types import EventType
 from nominal.core.client import NominalClient
 from nominal.core.event import Event, EventDisposition
 from nominal.exceptions import NominalNotFoundError
@@ -131,29 +131,6 @@ def test_event_type_maps_to_and_from_the_wire(event_type: EventType, wire_value:
     assert event_type._to_proto() == wire_value
     if event_type is not EventType.UNKNOWN:
         assert EventType._from_proto(wire_value) is event_type
-
-
-# Derived rather than listed so a newly declared origin type is round-tripped without editing this file.
-_DECLARED_ORIGIN_TYPES = [
-    origin_type
-    for origin_type in vars(SearchEventOriginTypes).values()
-    if isinstance(origin_type, SearchEventOriginType)
-]
-
-
-def test_every_declared_origin_type_is_discovered() -> None:
-    """Guards the reflection below: a broken derivation would silently parametrize nothing."""
-    assert len(_DECLARED_ORIGIN_TYPES) >= 6
-
-
-@pytest.mark.parametrize("origin_type", _DECLARED_ORIGIN_TYPES, ids=lambda o: o.name)
-def test_search_event_origin_type_round_trips(origin_type: SearchEventOriginType) -> None:
-    """_to_proto resolves by name while _from_proto is a hand-written table.
-
-    A member added to SearchEventOriginTypes but not to that table fails here, which is what keeps the
-    two sides from drifting now that no shared lookup derives one from the other.
-    """
-    assert SearchEventOriginType._from_proto(origin_type._to_proto()) is origin_type
 
 
 def test_create_event_puts_the_domain_values_on_the_wire() -> None:

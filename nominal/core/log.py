@@ -5,11 +5,11 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
-from nominal_api import api, datasource, scout_compute_api, storage_writer_api
+from nominal_api import api, scout_compute_api, storage_writer_api
 from typing_extensions import Self
 
 from nominal._utils import batched
-from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 _EMPTY_MAP: Mapping[str, str] = MappingProxyType({})
 
@@ -34,14 +34,6 @@ class LogPoint:
             timestamp=_SecondsNanos.from_flexible(timestamp).to_nanoseconds(),
             message=message,
             args=_EMPTY_MAP if args is None else MappingProxyType(args),
-        )
-
-    @classmethod
-    def _from_conjure(cls, point: storage_writer_api.LogPoint) -> Self:
-        return cls(
-            timestamp=_SecondsNanos.from_api(point.timestamp).to_nanoseconds(),
-            message=point.value.message,
-            args=MappingProxyType(point.value.args),
         )
 
     @classmethod
@@ -93,19 +85,3 @@ def _write_logs(
             channel=channel_name,
         )
         client.write_logs(auth_header, data_source_rid, request)
-
-
-def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
-    if log_timestamp_type == "absolute":
-        return datasource.TimestampType.ABSOLUTE
-    elif log_timestamp_type == "relative":
-        return datasource.TimestampType.RELATIVE
-    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
-
-
-def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
-    if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
-        return "absolute"
-    elif log_timestamp_type == datasource.TimestampType.RELATIVE:
-        return "relative"
-    raise ValueError(f"unhandled timestamp type {log_timestamp_type}")

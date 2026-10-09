@@ -227,17 +227,6 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
-def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
-    return {
-        "nanoseconds": "ns",
-        "microseconds": "us",
-        "milliseconds": "ms",
-        "seconds": "s",
-        "minutes": "m",
-        "hours": "h",
-    }[unit]
-
-
 _EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 
 

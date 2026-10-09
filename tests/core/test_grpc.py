@@ -14,7 +14,6 @@ from nominal.core._utils.grpc_tools import (
     _DefaultDeadlineInterceptor,
     _grpc_root_certificates,
     _service_config_json,
-    api_base_url_to_grpc_target,
     create_grpc_channel,
     translate_grpc_errors,
 )
@@ -37,19 +36,6 @@ def _config() -> ServiceConfiguration:
 
 def _details(timeout: float | None = None, metadata: list[tuple[str, str]] | None = None) -> _ClientCallDetails:
     return _ClientCallDetails("/svc/Method", timeout, metadata, None, None, None)
-
-
-def test_api_base_url_to_grpc_target_strips_scheme_and_api_suffix() -> None:
-    """api_base_url_to_grpc_target reduces an API base URL to its host:port target."""
-    assert api_base_url_to_grpc_target("https://api.gov.nominal.io/api") == "api.gov.nominal.io"
-    assert api_base_url_to_grpc_target("https://api.gov.nominal.io") == "api.gov.nominal.io"
-    assert api_base_url_to_grpc_target("http://localhost:8080/api") == "localhost:8080"
-
-
-def test_api_base_url_to_grpc_target_rejects_url_without_netloc() -> None:
-    """api_base_url_to_grpc_target rejects a URL it cannot derive a host from."""
-    with pytest.raises(ValueError, match="Could not derive gRPC target"):
-        api_base_url_to_grpc_target("not-a-url")
 
 
 def test_root_certificates_on_macos_use_the_trust_store_only(tmp_path, monkeypatch) -> None:
