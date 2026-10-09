@@ -5,7 +5,7 @@ from typing import cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core.attachment import Attachment
+from nominal.core.attachment import Attachment, _get_attachment
 from nominal.core.filetype import FileType, FileTypes
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -30,8 +30,7 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         objects. We still materialize the source attachment so resolver-based
         destination routing stays consistent for already-mapped attachments.
         """
-        raw = source_clients.attachment.get(source_clients.auth_header, attachment_rid)
-        source_attachment = Attachment._from_conjure(source_clients, raw)
+        source_attachment = Attachment._from_proto(source_clients, _get_attachment(source_clients, attachment_rid))
         existing_attachment = self.get_existing_destination_resource(source_attachment)
         if existing_attachment is not None:
             return existing_attachment
@@ -52,7 +51,7 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
 
         destination_client = self.destination_client_for(source)
         source_clients = cast(ClientsBunch, source._clients)
-        raw = source_clients.attachment.get(source_clients.auth_header, source.rid)
+        raw = _get_attachment(source_clients, source.rid)
         content = source_clients.attachment.get_content(source_clients.auth_header, source.rid)
         file_type = FileType("", raw.file_type) if raw.file_type else FileTypes.BINARY
         new_attachment = destination_client.create_attachment_from_io(

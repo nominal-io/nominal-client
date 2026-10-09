@@ -38,6 +38,7 @@ from nominal.core._utils.networking import (
 )
 from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -174,6 +175,7 @@ class ClientsBunch:
 
     # GRPC services
     assets: asset_pb2_grpc.AssetServiceStub
+    attachment_v2: attachments_pb2_grpc.AttachmentServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     event: event_pb2_grpc.EventServiceStub
@@ -341,6 +343,7 @@ class ClientsBunch:
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
+            attachment_v2=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),

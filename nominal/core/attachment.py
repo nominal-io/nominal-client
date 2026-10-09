@@ -6,18 +6,25 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Protocol, Sequence, cast
 
+from google.protobuf import field_mask_pb2
 from nominal_api import attachments_api
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.api_types import NominalProperties
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.attachments.v2 import attachments_pb2, attachments_pb2_grpc
+from nominal.ts import IntegralNanosecondsUTC
+
+# BatchGetAttachments accepts at most this many RIDs per request; the Conjure endpoint it replaces had no limit.
+_BATCH_GET_LIMIT = 1000
 
 
 @dataclass(frozen=True)
-class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
+class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
     rid: str
     name: str
     description: str
@@ -30,11 +37,14 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
     created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
+        # Conjure service kept only for streaming contents, which has no gRPC counterpart.
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
+        @property
+        def attachment_v2(self) -> attachments_pb2_grpc.AttachmentServiceStub: ...
 
-    def _get_latest_api(self) -> attachments_api.Attachment:
-        return self._clients.attachment.get(self._clients.auth_header, self.rid)
+    def _get_latest_api(self) -> attachments_pb2.Attachment:
+        return _get_attachment(self._clients, self.rid)
 
     def update(
         self,
@@ -55,15 +65,30 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
 
                 new_labels = ["new-label-a", "new-label-b", *attachment.labels]
                 attachment = attachment.update(labels=new_labels)
+
+        Raises:
+            NominalError: If the update request fails.
         """
-        request = attachments_api.UpdateAttachmentRequest(
-            description=description,
-            labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
-            title=name,
+        # The update mask, not the message, decides which fields are replaced: a listed empty value clears that field.
+        updates = {"title": name, "description": description, "properties": properties, "labels": labels}
+        paths = [path for path, value in updates.items() if value is not None]
+        if not paths:
+            # gRPC rejects an empty update mask; refresh to keep returning the latest server state.
+            return self.refresh()
+
+        request = attachments_pb2.UpdateAttachmentRequest(
+            attachment=attachments_pb2.Attachment(
+                rid=self.rid,
+                title=name or "",
+                description=description or "",
+                properties=properties,
+                labels=labels,
+            ),
+            update_mask=field_mask_pb2.FieldMask(paths=paths),
         )
-        updated_attachment = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
-        return self._refresh_from_api(updated_attachment)
+        with translate_grpc_errors():
+            response = self._clients.attachment_v2.UpdateAttachment(request)
+        return self._refresh_from_api(response.attachment)
 
     def get_contents(self) -> BinaryIO:
         """Retrieve the contents of this attachment.
@@ -91,35 +116,68 @@ class Attachment(HasRid, RefreshableConjureMixin[attachments_api.Attachment]):
 
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalError: If the archive request fails.
         """
-        self._clients.attachment.archive(self._clients.auth_header, self.rid)
+        self._set_archived(True)
 
     def unarchive(self) -> None:
         """Unarchive this attachment, allowing it to be viewed in the UI.
 
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalError: If the unarchive request fails.
         """
-        self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
+        self._set_archived(False)
+
+    def _set_archived(self, is_archived: bool) -> None:
+        request = attachments_pb2.UpdateAttachmentRequest(
+            attachment=attachments_pb2.Attachment(rid=self.rid, is_archived=is_archived),
+            update_mask=field_mask_pb2.FieldMask(paths=["is_archived"]),
+        )
+        with translate_grpc_errors():
+            self._clients.attachment_v2.UpdateAttachment(request)
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:
+    def _from_proto(cls, clients: _Clients, attachment: attachments_pb2.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
             description=attachment.description,
-            properties=MappingProxyType(attachment.properties),
+            properties=MappingProxyType(dict(attachment.properties)),
             labels=tuple(attachment.labels),
-            created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
+            created_at=attachment.created_at.ToNanoseconds(),
             is_archived=attachment.is_archived,
             _clients=clients,
             created_by_rid=attachment.created_by,
         )
 
 
-def _iter_get_attachments(
-    auth_header: str, client: attachments_api.AttachmentService, rids: Iterable[str]
-) -> Iterable[attachments_api.Attachment]:
-    request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
-    response = client.get_batch(auth_header, request)
-    yield from response.response
+def _get_attachment(clients: Attachment._Clients, rid: str) -> attachments_pb2.Attachment:
+    """The attachment with the given RID.
+
+    Raises:
+        NominalNotFoundError: If no attachment with that RID is accessible.
+        NominalError: If the retrieval request fails.
+    """
+    request = attachments_pb2.GetAttachmentRequest(attachment_rid=rid)
+    with translate_grpc_errors():
+        return clients.attachment_v2.GetAttachment(request).attachment
+
+
+def _iter_get_attachments(clients: Attachment._Clients, rids: Iterable[str]) -> Iterable[Attachment]:
+    """The attachments with the given RIDs, in no particular order.
+
+    Raises:
+        NominalNotFoundError: If any RID does not resolve to an accessible attachment.
+        NominalError: If a retrieval request fails.
+    """
+    for rid_batch in batched(rids, _BATCH_GET_LIMIT):
+        request = attachments_pb2.BatchGetAttachmentsRequest(attachment_rids=rid_batch)
+        with translate_grpc_errors():
+            response = clients.attachment_v2.BatchGetAttachments(request)
+        for attachment in response.attachments:
+            yield Attachment._from_proto(clients, attachment)
