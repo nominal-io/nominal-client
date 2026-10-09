@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from contextlib import contextmanager
+from datetime import timezone
 from typing import Any, Callable, Iterator, Mapping, cast
 
 import ibis
@@ -15,6 +16,7 @@ import sqlglot.expressions as sge
 from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
+from ibis.backends.sql.datatypes import PostgresType
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 
@@ -25,7 +27,8 @@ from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
 _CATALOG_SCALAR_TYPES: dict[int, dt.DataType] = {
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: dt.Timestamp(scale=9),
+    # The catalog's TIMESTAMP names no zone, but its values are UTC and query results are tagged UTC.
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: dt.Timestamp(timezone="UTC", scale=9),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_DOUBLE: dt.Float64(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_BIGINT: dt.Int64(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: dt.Int32(),
@@ -79,8 +82,17 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
     )
 
 
+class NominalType(PostgresType):
+    @classmethod
+    def _from_ibis_Timestamp(cls, dtype: dt.Timestamp) -> sge.DataType:
+        # The API has no TIMESTAMPTZ; its TIMESTAMP values are UTC.
+        return super()._from_ibis_Timestamp(dtype.copy(timezone=None))
+
+
 class NominalCompiler(PostgresCompiler):
     """Postgres-flavored SQL adjusted for the Nominal SQL API's dialect."""
+
+    type_mapper = NominalType
 
     def to_sqlglot(
         self,
@@ -92,6 +104,12 @@ class NominalCompiler(PostgresCompiler):
         # Postgres casts map/JSON outputs to strings for its driver. Our Arrow
         # transport preserves these types, so bypass that preprocessing.
         return super(PostgresCompiler, self).to_sqlglot(expr, limit=_resolve_limit(limit), params=params)
+
+    def visit_NonNullLiteral(self, op: ops.Literal[Any], *, value: Any, dtype: dt.DataType) -> Any:
+        if dtype.is_timestamp() and value.tzinfo is not None:
+            # Older servers reject offsets in timestamp strings, so send the UTC wall time.
+            return self.cast(value.astimezone(timezone.utc).replace(tzinfo=None).isoformat(), dtype)
+        return PostgresCompiler.visit_NonNullLiteral(self, op, value=value, dtype=dtype)
 
     def visit_MapGet(self, op: ops.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
         item = sge.Bracket(this=arg, expressions=[key])
