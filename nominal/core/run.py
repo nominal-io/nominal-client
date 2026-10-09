@@ -546,8 +546,7 @@ class Run(HasRid, RefreshableConjureMixin[scout_run_api.Run], _DatasetWrapper):
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
-        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
-            yield Attachment._from_conjure(self._clients, a)
+        yield from _iter_get_attachments(self._clients, run.attachments)
 
     def list_attachments(self) -> Sequence[Attachment]:
         """List a sequence of Attachments associated with this Run."""

@@ -632,8 +632,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         asset = self._get_latest_api()
-        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, asset.attachments):
-            yield Attachment._from_conjure(self._clients, a)
+        yield from _iter_get_attachments(self._clients, asset.attachments)
 
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self._iter_list_attachments())

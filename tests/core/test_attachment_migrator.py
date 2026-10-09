@@ -15,6 +15,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.protos.attachments.v2 import attachments_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,23 +46,22 @@ def _make_raw_attachment(
     description: str = "",
     properties: dict[str, str] | None = None,
     labels: list[str] | None = None,
-) -> MagicMock:
-    raw = MagicMock()
-    raw.rid = rid
-    raw.title = title
-    raw.file_type = file_type
-    raw.description = description
-    raw.properties = properties or {}
-    raw.labels = labels or []
-    raw.created_at = 1000000000  # 1 second in nanoseconds
-    return raw
+) -> attachments_pb2.Attachment:
+    return attachments_pb2.Attachment(
+        rid=rid,
+        title=title,
+        file_type=file_type,
+        description=description,
+        properties=properties,
+        labels=labels,
+    )
 
 
-def _make_source_clients(raw_attachment: MagicMock, content: bytes = b"image-bytes") -> MagicMock:
+def _make_source_clients(raw_attachment: attachments_pb2.Attachment, content: bytes = b"image-bytes") -> MagicMock:
     """Create mock source clients that return the given raw attachment and content."""
     clients = MagicMock()
     clients.auth_header = "Bearer source"
-    clients.attachment.get.return_value = raw_attachment
+    clients.attachment_v2.GetAttachment.return_value = attachments_pb2.GetAttachmentResponse(attachment=raw_attachment)
     clients.attachment.get_content.return_value = io.BytesIO(content)
     return clients
 
@@ -91,11 +91,11 @@ class TestAttachmentMigrator:
         raw = _make_raw_attachment(old_rid)
         source_clients = _make_source_clients(raw)
 
-        # Stub Attachment._from_conjure to return a mock with the old RID
+        # Stub Attachment._from_proto to return a mock with the old RID
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
         mock_source_att.name = "image.png"
-        mock_attachment_cls._from_conjure.return_value = mock_source_att
+        mock_attachment_cls._from_proto.return_value = mock_source_att
 
         # Stub the destination upload
         new_att = MagicMock()
@@ -110,10 +110,12 @@ class TestAttachmentMigrator:
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
         # Raw attachment was fetched from source
-        source_clients.attachment.get.assert_called_with("Bearer source", old_rid)
+        source_clients.attachment_v2.GetAttachment.assert_called_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
 
-        # Attachment._from_conjure was called to construct the source Attachment
-        mock_attachment_cls._from_conjure.assert_called_once_with(source_clients, raw)
+        # Attachment._from_proto was called to construct the source Attachment
+        mock_attachment_cls._from_proto.assert_called_once_with(source_clients, raw)
 
         # Destination upload occurred
         ctx.destination_client.create_attachment_from_io.assert_called_once()
@@ -143,7 +145,9 @@ class TestAttachmentMigrator:
         source_clients = _make_source_clients(raw)
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
-        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
+        source_clients.attachment_v2.GetAttachment.assert_called_once_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
 
         # Returned the existing destination attachment
         assert result.rid == new_rid
@@ -164,7 +168,7 @@ class TestAttachmentMigrator:
         source_attachment = MagicMock()
         source_attachment.rid = old_rid
         source_attachment.name = "image.png"
-        mock_attachment_cls._from_conjure.return_value = source_attachment
+        mock_attachment_cls._from_proto.return_value = source_attachment
 
         resolved_client = MagicMock()
         resolved_client._clients.workspace_rid = "resolved-ws-rid"
@@ -180,8 +184,10 @@ class TestAttachmentMigrator:
 
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
-        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
-        mock_attachment_cls._from_conjure.assert_called_once_with(source_clients, raw)
+        source_clients.attachment_v2.GetAttachment.assert_called_once_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
+        mock_attachment_cls._from_proto.assert_called_once_with(source_clients, raw)
         resolved_client.get_attachment.assert_called_once_with(new_rid)
         ctx.destination_client.get_attachment.assert_not_called()
         assert result is resolved_attachment
@@ -195,10 +201,7 @@ class TestAttachmentMigrator:
         new_rid = _rid(100)
         raw = _make_raw_attachment(old_rid)
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw, b"bytes")
 
         # Create a mock source Attachment
         mock_source_att = MagicMock()
@@ -246,10 +249,7 @@ class TestAttachmentMigrator:
         old_rid = _rid(1)
         raw = _make_raw_attachment(old_rid, title="data.bin", file_type="")
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw, b"bytes")
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
@@ -272,10 +272,7 @@ class TestAttachmentMigrator:
         old_rid = _rid(1)
         raw = _make_raw_attachment(old_rid, title="photo.png", file_type="image/png")
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw, b"bytes")
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
@@ -305,10 +302,7 @@ class TestAttachmentMigrator:
             labels=["report", "monthly"],
         )
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"pdf-bytes")
+        source_clients = _make_source_clients(raw, b"pdf-bytes")
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid

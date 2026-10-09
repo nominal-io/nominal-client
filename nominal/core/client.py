@@ -13,7 +13,6 @@ import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
-    attachments_api,
     authentication_api,
     ingest_api,
     scout_catalog,
@@ -68,7 +67,7 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.attachment import Attachment, _get_attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.container_image import (
@@ -122,6 +121,7 @@ from nominal.exceptions import (
     NominalNotFoundError,
 )
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.attachments.v2 import attachments_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -1089,6 +1089,9 @@ class NominalClient:
         """Upload an attachment.
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Raises:
+            NominalError: If creating the attachment from the uploaded file fails.
         """
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
@@ -1104,28 +1107,37 @@ class NominalClient:
             self._clients.upload,
             header_provider=self._clients.header_provider,
         )
-        request = attachments_api.CreateAttachmentRequest(
-            description=description or "",
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            s3_path=s3_path,
-            title=name,
-            workspace=workspace_rid,
+        request = attachments_pb2.CreateAttachmentRequest(
+            attachment=attachments_pb2.Attachment(
+                s3_path=s3_path,
+                title=name,
+                description=description or "",
+                properties=properties,
+                labels=labels,
+            ),
+            workspace_rid=workspace_rid,
         )
-        response = self._clients.attachment.create(self._clients.auth_header, request)
-        return Attachment._from_conjure(self._clients, response)
+        with translate_grpc_errors():
+            response = self._clients.attachment_v2.CreateAttachment(request)
+        return Attachment._from_proto(self._clients, response.attachment)
 
     def get_attachment(self, rid: str) -> Attachment:
-        """Retrieve an attachment by its RID."""
-        response = self._clients.attachment.get(self._clients.auth_header, rid)
-        return Attachment._from_conjure(self._clients, response)
+        """Retrieve an attachment by its RID.
+
+        Raises:
+            NominalNotFoundError: If no attachment with that RID is accessible.
+            NominalError: If the retrieval request fails.
+        """
+        return Attachment._from_proto(self._clients, _get_attachment(self._clients, rid))
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
-        """Retrive attachments by their RIDs."""
-        return [
-            Attachment._from_conjure(self._clients, a)
-            for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
-        ]
+        """Retrieve attachments by their RIDs.
+
+        Raises:
+            NominalNotFoundError: If any RID does not resolve to an accessible attachment.
+            NominalError: If a retrieval request fails.
+        """
+        return list(_iter_get_attachments(self._clients, rids))
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
