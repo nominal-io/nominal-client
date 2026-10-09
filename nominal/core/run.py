@@ -33,7 +33,7 @@ from nominal.exceptions import LegacyVideoDeprecationWarning
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
-from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_run_duration
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_proto_duration
 
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
@@ -370,7 +370,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
             ref_name: run_service_pb2.CreateRunDataSource(
                 data_source=run_service_pb2.DataSource(dataset=rid_from_instance_or_string(dataset)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_run_duration(offset),
+                offset=None if offset is None else _to_proto_duration(offset, run_service_pb2.Duration),
             )
             for ref_name, dataset in datasets.items()
         }
@@ -405,7 +405,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
             ref_name: run_service_pb2.CreateRunDataSource(
                 data_source=run_service_pb2.DataSource(connection=rid_from_instance_or_string(connection)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=None if offset is None else _to_run_duration(offset),
+                offset=None if offset is None else _to_proto_duration(offset, run_service_pb2.Duration),
             )
         }
         request = run_service_pb2.AddDataSourcesToRunRequest(run_rid=self.rid, data_sources=data_sources)
