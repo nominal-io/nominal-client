@@ -14,7 +14,6 @@ from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
-    authentication_api,
     ingest_api,
     scout_catalog,
     scout_checks_api,
@@ -122,6 +121,7 @@ from nominal.exceptions import (
     NominalNotFoundError,
 )
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -355,17 +355,22 @@ class NominalClient:
 
         Returns:
             Details on the requested user, or the current user if no user rid is provided.
+
+        Raises:
+            NominalError: If the user request fails, including when the user does not exist or is not a member or
+                guest of the caller's organization.
         """
-        if user_rid is None:
-            raw_user = self._clients.authentication.get_my_profile(self._clients.auth_header)
-        else:
-            raw_user = self._clients.authentication.get_user(self._clients.auth_header, user_rid)
+        with translate_grpc_errors():
+            if user_rid is None:
+                raw_user = self._clients.users.GetCurrentUser(users_pb2.GetCurrentUserRequest()).user
+            else:
+                raw_user = self._clients.users.GetUser(users_pb2.GetUserRequest(user_rid=user_rid)).user
 
-        return User._from_conjure(raw_user)
+        return User._from_proto(raw_user)
 
-    def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
-        for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
-            yield User._from_conjure(raw_user)
+    def _iter_search_users(self, query: users_pb2.SearchUsersQuery) -> Iterable[User]:
+        for raw_user in search_users_paginated(self._clients.users, query):
+            yield User._from_proto(raw_user)
 
     def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
         """Search for users meeting the specified filters.
@@ -377,6 +382,9 @@ class NominalClient:
 
         Returns:
             All users which match all of the provided conditions
+
+        Raises:
+            NominalError: If the user search request fails.
         """
         query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))

@@ -4,17 +4,15 @@ from unittest.mock import MagicMock, patch
 
 import click
 import pytest
-from conjure_python_client import ConjureHTTPError
-from requests import HTTPError, Response
 
 from nominal.cli.util.verify_connection import validate_token_url
-from nominal.exceptions import NominalConfigError, NominalError, NominalNotFoundError
-
-
-def _conjure_error(status_code: int) -> ConjureHTTPError:
-    response = Response()
-    response.status_code = status_code
-    return ConjureHTTPError(HTTPError(response=response))
+from nominal.exceptions import (
+    NominalAuthenticationError,
+    NominalConfigError,
+    NominalError,
+    NominalNotFoundError,
+    NominalPermissionDeniedError,
+)
 
 
 def test_validate_token_url_reports_invalid_base_url() -> None:
@@ -48,17 +46,17 @@ def test_validate_token_url_accepts_valid_credentials() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status_code", "expected_message"),
+    ("exc", "expected_message"),
     [
-        (401, "authorization token may be invalid"),
-        (404, "base_url may be incorrect"),
-        (500, "misconfiguration between the base_url and token"),
+        (NominalAuthenticationError("16: unauthenticated"), "authorization token may be invalid"),
+        (NominalPermissionDeniedError("7: permission denied"), "misconfiguration between the base_url and token"),
+        (NominalError("12: unimplemented"), "misconfiguration between the base_url and token"),
     ],
 )
-def test_validate_token_url_surfaces_user_lookup_failures(status_code: int, expected_message: str) -> None:
-    """User lookup failures should be translated into actionable click errors."""
+def test_validate_token_url_surfaces_user_lookup_failures(exc: NominalError, expected_message: str) -> None:
+    """gRPC-translated user lookup failures should be translated into actionable click errors."""
     client = MagicMock()
-    client.get_user.side_effect = _conjure_error(status_code)
+    client.get_user.side_effect = exc
 
     with (
         patch("nominal.cli.util.verify_connection.NominalClient.create", return_value=client),

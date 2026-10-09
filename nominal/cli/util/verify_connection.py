@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import click
-from conjure_python_client import ConjureHTTPError
 
 from nominal.core.client import NominalClient
-from nominal.exceptions import NominalConfigError, NominalError, NominalNotFoundError
+from nominal.exceptions import NominalAuthenticationError, NominalConfigError, NominalError, NominalNotFoundError
 
 
 def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
-    status_code = 200
     err_msg = ""
     try:
         client = NominalClient.create(base_url, token)
@@ -21,18 +19,14 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
     # current user using the api key
     try:
         client.get_user()
-    except ConjureHTTPError as err:
-        status_code = err.response.status_code
-        if status_code == 401:
-            err_msg = f"The authorization token may be invalid. Read the docs on how to get a new token: {docs_link}"
-        elif status_code == 404:
-            err_msg = "The base_url may be incorrect. Ensure the url subdomain begins with 'api' (not 'app')."
-        elif status_code != 200:
-            err_msg = (
-                f"There is likely a misconfiguration between the base_url and token. "
-                f"Ensure the url subdomain begins with 'api' (not 'app'), "
-                f"and create a new token: {docs_link} ({status_code})"
-            )
+    except NominalAuthenticationError:
+        err_msg = f"The authorization token may be invalid. Read the docs on how to get a new token: {docs_link}"
+    except NominalError as err:
+        err_msg = (
+            f"There is likely a misconfiguration between the base_url and token. "
+            f"Ensure the url subdomain begins with 'api' (not 'app'), "
+            f"and create a new token: {docs_link} ({err})"
+        )
     if err_msg:
         click.secho(err_msg, err=True, fg="red")
         raise click.ClickException("Failed to authenticate. See above for details")

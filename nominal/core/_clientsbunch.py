@@ -8,7 +8,6 @@ from typing import Protocol, TypeVar
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
-    authentication_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -38,6 +37,7 @@ from nominal.core._utils.networking import (
 )
 from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -148,7 +148,6 @@ class ClientsBunch:
 
     # Conjure services
     attachment: attachments_api.AttachmentService
-    authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
@@ -185,6 +184,7 @@ class ClientsBunch:
     secrets: secrets_pb2_grpc.SecretServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
+    users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
 
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
@@ -316,7 +316,6 @@ class ClientsBunch:
             _service_config=cfg,
             # Conjure Service Stubs
             attachment=client_factory(attachments_api.AttachmentService),
-            authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
@@ -352,6 +351,7 @@ class ClientsBunch:
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
+            users=grpc_factory(users_pb2_grpc.UserServiceStub),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
         )
 

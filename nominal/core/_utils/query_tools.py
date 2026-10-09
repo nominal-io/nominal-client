@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 from nominal_api import (
     api,
-    authentication_api,
     ingest_api,
     scout_catalog,
     scout_checks_api,
@@ -21,6 +20,7 @@ from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.markings.v1 import markings_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
@@ -210,14 +210,17 @@ def create_search_videos_query(
 def create_search_users_query(
     exact_match: str | None = None,
     search_text: str | None = None,
-) -> authentication_api.SearchUsersQuery:
+) -> users_pb2.SearchUsersQuery:
     queries = []
     if exact_match is not None:
-        queries.append(authentication_api.SearchUsersQuery(exact_match=exact_match))
+        queries.append(users_pb2.SearchUsersQuery(exact_email=exact_match))
     if search_text is not None:
-        queries.append(authentication_api.SearchUsersQuery(search_text=search_text))
+        queries.append(users_pb2.SearchUsersQuery(search_text=search_text))
 
-    return authentication_api.SearchUsersQuery(and_=queries)
+    # `and` is a Python keyword, and generated typing stubs cannot expose it as a named argument.
+    return users_pb2.SearchUsersQuery(
+        **{"and": users_pb2.SearchUsersQueries(queries=queries)}  # type: ignore[arg-type]
+    )
 
 
 def create_search_container_images_query(
