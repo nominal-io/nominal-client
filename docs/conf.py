@@ -60,8 +60,6 @@ html_title = "Nominal Python SDK"
 html_static_path = []
 html_copy_source = False
 
-# published on its own (GitHub Pages), not under the docs hub, so the Nominal logo leads to the hub
-nominal_hub_url = "https://dev.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
 
 html_context = {
