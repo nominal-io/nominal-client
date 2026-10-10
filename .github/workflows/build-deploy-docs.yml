@@ -62,6 +62,8 @@ jobs:
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: ./docs/_build/dirhtml
+          # kept so the developer docs hub (nominal-io/pub-docs) can pull it on its daily run
+          retention-days: 30
 
   # Deployment job
   deploy:
