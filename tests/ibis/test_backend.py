@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Iterator
+from typing import Callable, Iterator
 from unittest.mock import MagicMock
 
 import grpc
@@ -15,7 +15,7 @@ from google.rpc import error_details_pb2, status_pb2
 
 import nominal.ibis as nibis
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalInvalidArgumentError
+from nominal.exceptions import NominalError, NominalInvalidArgumentError
 from nominal.protos.sql.v1 import sql_pb2
 
 WORKSPACE_RID = "ri.security.x.workspace.1"
@@ -222,7 +222,10 @@ def test_write_operations_are_rejected(backend: nibis.Backend) -> None:
 
 @pytest.mark.parametrize("rich_details", [False, True])
 def test_grpc_errors_surface_as_nominal_errors(
-    backend: nibis.Backend, client: NominalClient, rich_details: bool
+    backend: nibis.Backend,
+    client: NominalClient,
+    rich_details: bool,
+    fake_rpc_error: Callable[..., grpc.RpcError],
 ) -> None:
     """Query failures raise Nominal exceptions that include the server's error details and release the RPC."""
     status = status_pb2.Status(code=3, message="Invalid query")
@@ -232,18 +235,14 @@ def test_grpc_errors_surface_as_nominal_errors(
         )
     )
 
-    class InvalidQuery(grpc.RpcError):
-        def code(self) -> grpc.StatusCode:
-            return grpc.StatusCode.INVALID_ARGUMENT
-
-        def details(self) -> str:
-            return "Invalid query" if rich_details else "unknown column"
-
-        def trailing_metadata(self) -> tuple[tuple[str, bytes], ...]:
-            return (("grpc-status-details-bin", status.SerializeToString()),) if rich_details else ()
+    error = fake_rpc_error(
+        grpc.StatusCode.INVALID_ARGUMENT,
+        status.message if rich_details else "unknown column",
+        (("grpc-status-details-bin", status.SerializeToString()),) if rich_details else (),
+    )
 
     def failing_query(request: sql_pb2.SqlServiceQueryRequest) -> Iterator[sql_pb2.SqlServiceQueryResponse]:
-        raise InvalidQuery()
+        raise error
         yield
 
     call = MagicMock()
@@ -254,8 +253,48 @@ def test_grpc_errors_surface_as_nominal_errors(
         backend.table("datasets").select("name").to_pandas()
     if rich_details:
         assert "query-123" in str(exc_info.value)
-    assert isinstance(exc_info.value.__cause__, InvalidQuery)
+    assert exc_info.value.__cause__ is error
     call.cancel.assert_called_once_with()
+
+
+def test_query_submission_error_includes_sql_details(
+    backend: nibis.Backend, client: NominalClient, fake_rpc_error: Callable[..., grpc.RpcError]
+) -> None:
+    """SQL details and the original cause survive a failure before the response stream opens."""
+    status = status_pb2.Status(code=3, message="Invalid query")
+    status.details.add().Pack(
+        error_details_pb2.ErrorInfo(
+            domain="sql", reason="INVALID_QUERY", metadata={"detail": "unknown column", "sqlQueryId": "query-123"}
+        )
+    )
+    error = fake_rpc_error(
+        grpc.StatusCode.INVALID_ARGUMENT, status.message, (("grpc-status-details-bin", status.SerializeToString()),)
+    )
+    client._clients.sql.Query.side_effect = error
+
+    with pytest.raises(NominalInvalidArgumentError, match="unknown column") as exc_info:
+        backend.table("datasets").select("name").to_pyarrow()
+    assert "query-123" in str(exc_info.value)
+    assert exc_info.value.__cause__ is error
+
+
+def test_catalog_error_includes_sql_details(
+    client: NominalClient, fake_rpc_error: Callable[..., grpc.RpcError]
+) -> None:
+    """Catalog failures include SQL service details while retaining the standard SDK exception type."""
+    status = status_pb2.Status(code=13, message="Catalog request failed")
+    status.details.add().Pack(
+        error_details_pb2.ErrorInfo(domain="sql", reason="CATALOG_FAILURE", metadata={"detail": "catalog unavailable"})
+    )
+    error = fake_rpc_error(
+        grpc.StatusCode.INTERNAL, status.message, (("grpc-status-details-bin", status.SerializeToString()),)
+    )
+    client._clients.sql.GetSqlCatalog.side_effect = error
+
+    with pytest.raises(NominalError, match="catalog unavailable") as exc_info:
+        nibis.connect(client)
+    assert type(exc_info.value) is NominalError
+    assert exc_info.value.__cause__ is error
 
 
 def test_module_imports_cleanly_in_fresh_interpreter() -> None:

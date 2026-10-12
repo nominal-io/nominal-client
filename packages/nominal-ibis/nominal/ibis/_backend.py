@@ -19,9 +19,8 @@ from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 from sqlglot.dialects.postgres import Postgres
 
-from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.client import NominalClient
-from nominal.ibis.exceptions import NominalSqlError
+from nominal.ibis.exceptions import NominalSqlError, _translate_sql_errors
 from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
@@ -149,7 +148,7 @@ class _PayloadReader(io.RawIOBase):
 
     def readinto(self, target: Any) -> int:
         while not self._pending:
-            with translate_grpc_errors():
+            with _translate_sql_errors():
                 response = next(self._responses, None)
             if response is None:
                 return 0
@@ -181,7 +180,7 @@ class Backend(SQLBackend, NoUrl):
         self._sql: sql_pb2_grpc.SqlServiceStub = client._clients.sql
         self.workspace_rid = client._clients.resolve_default_workspace_rid()
         request = sql_pb2.GetSqlCatalogRequest()
-        with translate_grpc_errors():
+        with _translate_sql_errors():
             response = self._sql.GetSqlCatalog(request)
         self._catalog = response.sql_catalog
 
@@ -224,7 +223,7 @@ class Backend(SQLBackend, NoUrl):
         )
         if max_rows is not None:
             request.max_rows = max_rows
-        with translate_grpc_errors():
+        with _translate_sql_errors():
             responses = self._sql.Query(request)
         try:
             with io.BufferedReader(_PayloadReader(iter(responses))) as source, pa.ipc.open_stream(source) as reader:
