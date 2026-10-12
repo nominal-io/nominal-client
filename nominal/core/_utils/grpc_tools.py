@@ -316,10 +316,8 @@ def _grpc_error_message(error: grpc.RpcError) -> str:
 
     If those details are missing or can't be decoded, we still report the original gRPC error.
     """
-    message = f"{error.code()}: {error.details()}"
-    metadata = error.trailing_metadata()
-    if metadata is None:
-        return message
+    lines = [f"{error.code()}: {error.details()}"]
+    metadata = error.trailing_metadata() or ()
     # gRPC returns key/value pairs, but its RpcError stubs describe non-iterable entries even though they are iterable
     for key, value in cast("Iterable[tuple[str, str | bytes]]", metadata):
         if key != "grpc-status-details-bin" or not isinstance(value, bytes):
@@ -329,13 +327,12 @@ def _grpc_error_message(error: grpc.RpcError) -> str:
             for detail in status.details:
                 info = error_details_pb2.ErrorInfo()
                 if detail.Unpack(info):
-                    message += f"\n{info.domain}/{info.reason}"
-                    for name, text in sorted(info.metadata.items()):
-                        message += f"\n{name}: {text}"
+                    lines.append(f"{info.domain}/{info.reason}")
+                    lines.extend(f"{name}: {text}" for name, text in sorted(info.metadata.items()))
         except DecodeError:
             # Malformed rich details must not hide the original RPC failure.
             continue
-    return message
+    return "\n".join(lines)
 
 
 @contextmanager
