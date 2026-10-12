@@ -5,7 +5,10 @@ from __future__ import annotations
 import io
 from unittest.mock import MagicMock, patch
 
-from nominal.experimental.migration.migration_state import MigrationState
+import pytest
+import urllib3.exceptions
+
+from nominal.experimental.migration.migration_state import MigrationState, SkippedResource
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
@@ -314,3 +317,58 @@ class TestAttachmentMigrator:
         assert call_args[1]["description"] == "Monthly report"
         assert call_args[1]["properties"] == {"team": "eng"}
         assert call_args[1]["labels"] == ["report", "monthly"]
+
+
+# ---------------------------------------------------------------------------
+# copy_attachments: archived filtering and failure containment
+# ---------------------------------------------------------------------------
+
+
+def _make_source_attachment(n: int, is_archived: bool = False) -> MagicMock:
+    attachment = MagicMock()
+    attachment.rid = _rid(n)
+    attachment.name = f"file-{n}.png"
+    attachment.is_archived = is_archived
+    attachment._clients = _make_source_clients(_make_raw_attachment(attachment.rid, title=attachment.name))
+    return attachment
+
+
+def test_copy_attachments_skips_archived() -> None:
+    """Archived attachments are neither uploaded nor returned."""
+    ctx = _make_context()
+    active, archived = _make_source_attachment(1), _make_source_attachment(2, is_archived=True)
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    copied = AttachmentMigrator(ctx).copy_attachments([active, archived], "asset a")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(ValueError("upload rejected"), id="permanent"),
+        pytest.param(urllib3.exceptions.ProtocolError("connection reset"), id="transient-exhausted"),
+    ],
+)
+def test_copy_attachments_contains_upload_failure(error: Exception, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed upload is recorded as a skip, left unmapped, and does not stop the next attachment."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    failing, healthy = _make_source_attachment(1), _make_source_attachment(2)
+
+    def upload(content: object, title: str, *args: object, **kwargs: object) -> MagicMock:
+        if title == failing.name:
+            raise error
+        return MagicMock(rid=f"dest-{title}")
+
+    ctx.destination_client.create_attachment_from_io.side_effect = upload
+
+    copied = AttachmentMigrator(ctx).copy_attachments([failing, healthy], "run r")
+
+    assert [a.rid for a in copied] == [f"dest-{healthy.name}"]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, failing.rid) is None
+    assert ctx.migration_state.skipped_resources == [
+        SkippedResource(ResourceType.ATTACHMENT.value, failing.rid, f"copy failed: {error}")
+    ]
