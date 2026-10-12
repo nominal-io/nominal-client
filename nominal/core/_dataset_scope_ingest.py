@@ -20,20 +20,9 @@ from nominal.ts import (
 
 
 class _DatasetScopeIngestMixin(abc.ABC):
-    """A lightweight façade over `nominal.core.Dataset` that routes ingest calls through a *data scope*.
+    """Delegate scoped ingest to Dataset, merging scope tags with caller tags.
 
-    `_DatasetScopeIngestMixin` resolves `data_scope_name` to a backing `nominal.core.Dataset` and then delegates to the
-    corresponding `Dataset` method.
-
-    How this differs from `Dataset`
-    -------------------------------
-    - All "add data" methods take an extra first argument, `data_scope_name`, which selects the target dataset.
-    - For methods that accept `tags`, this wrapper merges the scope's required tags into the provided tags.
-      User-provided tags take precedence on key collisions.
-    - Some formats cannot be safely tagged with scope tags; those wrapper methods raise `RuntimeError` when the selected
-      scope requires tags.
-
-    Subclasses must implement `_lookup_dataset_scope`, which is used to resolve scopes.
+    Subclasses look up the named scope's dataset RID and tags. Caller tags take precedence.
     """
 
     # static typing for required field
@@ -43,7 +32,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
     def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
         """The backing dataset rid and required series tags of the named scope, or None if there is none.
 
-        Each subclass resolves the name against the data scopes its own transport returns, so this wrapper
+        Each subclass resolves the name against the data scopes its own transport returns, so this mixin
         never sees a wire type.
         """
 
@@ -97,7 +86,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
             timestamp_column=timestamp_column,
             timestamp_type=timestamp_type,
             tag_columns=tag_columns,
-            tags=_unify_tags(scope_tags, tags),
+            tags=_merge_scope_tags(scope_tags, tags),
         )
 
     def add_avro_stream(
@@ -119,7 +108,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         `nominal.core.Dataset.add_avro_stream`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        return dataset.add_avro_stream(path, timestamp_type=timestamp_type, tags=_unify_tags(scope_tags, tags))
+        return dataset.add_avro_stream(path, timestamp_type=timestamp_type, tags=_merge_scope_tags(scope_tags, tags))
 
     @overload
     def add_journal_json(self, data_scope_name: str, path: PathLike, *, channel: str | None = ...) -> DatasetFile: ...
@@ -150,8 +139,15 @@ class _DatasetScopeIngestMixin(abc.ABC):
         ingesting logs that would be missing them. The file can still be ingested on the dataset directly, if
         its own contents already carry what the scope needs.
 
+        Pass both ``timestamp_column`` and ``timestamp_type``, or neither; this wrapper enforces that before
+        delegating.
+
         For file expectations, timestamp argument semantics, and return value details, see
         `nominal.core.Dataset.add_journal_json`.
+
+        Raises:
+            RuntimeError: If the data scope requires series tags.
+            ValueError: If only one of ``timestamp_column`` and ``timestamp_type`` is given.
         """
         # Checked here as well as in the delegate, so a mispaired call fails on its own arguments rather
         # than after a round trip to resolve the scope.
@@ -166,16 +162,11 @@ class _DatasetScopeIngestMixin(abc.ABC):
                 f"tags, so the logs would not get the scope's required tags {scope_tags}"
             )
 
-        # `Dataset.add_journal_json`'s overloads take the timestamp pair together or not at all, but this
-        # pass-through holds each half as its own optional -- a shape no overload can accept, since the two
-        # are only correlated at runtime. Forwarding in one call gives up static checking here; the check
-        # above and the delegate's own conversion enforce the contract.
-        return dataset.add_journal_json(
-            path,
-            channel=channel,
-            timestamp_column=timestamp_column,  # type: ignore[arg-type]
-            timestamp_type=timestamp_type,  # type: ignore[arg-type]
-        )
+        if timestamp_column is not None and timestamp_type is not None:
+            return dataset.add_journal_json(
+                path, channel=channel, timestamp_column=timestamp_column, timestamp_type=timestamp_type
+            )
+        return dataset.add_journal_json(path, channel=channel)
 
     def add_mcap(
         self,
@@ -200,7 +191,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
             path,
             include_topics=include_topics,
             exclude_topics=exclude_topics,
-            tags=_unify_tags(scope_tags, tags),
+            tags=_merge_scope_tags(scope_tags, tags),
             ignore_invalid_topics=ignore_invalid_topics,
         )
 
@@ -220,7 +211,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         `nominal.core.Dataset.add_ardupilot_dataflash`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        return dataset.add_ardupilot_dataflash(path, tags=_unify_tags(scope_tags, tags))
+        return dataset.add_ardupilot_dataflash(path, tags=_merge_scope_tags(scope_tags, tags))
 
     @overload
     def add_containerized(
@@ -260,11 +251,14 @@ class _DatasetScopeIngestMixin(abc.ABC):
         This method behaves like `nominal.core.Dataset.add_containerized`, except that the data scope's required
         tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
 
-        Pass both `timestamp_column` and `timestamp_type`, or neither; this wrapper enforces that before
+        Pass both ``timestamp_column`` and ``timestamp_type``, or neither; this wrapper enforces that before
         delegating.
 
         For extractor inputs, tagging semantics, timestamp metadata behavior, and return value details, see
         `nominal.core.Dataset.add_containerized`.
+
+        Raises:
+            ValueError: If only one of ``timestamp_column`` and ``timestamp_type`` is given.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
 
@@ -274,7 +268,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
                 extractor,
                 sources,
                 arguments=arguments,
-                tags=_unify_tags(scope_tags, tags),
+                tags=_merge_scope_tags(scope_tags, tags),
                 timestamp_column=timestamp_column,
                 timestamp_type=timestamp_type,
             )
@@ -282,7 +276,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
             extractor,
             sources,
             arguments=arguments,
-            tags=_unify_tags(scope_tags, tags),
+            tags=_merge_scope_tags(scope_tags, tags),
         )
 
     def add_from_io(
@@ -313,9 +307,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
             file_type=file_type,
             file_name=file_name,
             tag_columns=tag_columns,
-            tags=_unify_tags(scope_tags, tags),
+            tags=_merge_scope_tags(scope_tags, tags),
         )
 
 
-def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
-    return {**datascope_tags, **(provided_tags or {})}
+def _merge_scope_tags(scope_tags: Mapping[str, str], tags: Mapping[str, str] | None) -> Mapping[str, str]:
+    return {**scope_tags, **(tags or {})}

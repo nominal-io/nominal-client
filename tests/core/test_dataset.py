@@ -409,21 +409,6 @@ def test_data_scope_journal_json_still_refuses_a_tagged_scope() -> None:
     dataset.add_journal_json.assert_not_called()
 
 
-def test_data_scope_journal_json_default_call_forwards_an_explicit_none_pair() -> None:
-    """The default call shape forwards both halves as None, which is the shape the delegation suppresses.
-
-    The suppressed argument types are only sound while this holds: the delegate must accept a pair of
-    Nones as "no timestamp metadata". If that ever changes, this test is what fails.
-    """
-    dataset = MagicMock()
-    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {})):
-        _StubWrapper().add_journal_json("scope", "logs.jsonl")
-
-    dataset.add_journal_json.assert_called_once_with(
-        "logs.jsonl", channel=None, timestamp_column=None, timestamp_type=None
-    )
-
-
 @pytest.mark.parametrize(
     "kwargs",
     [
