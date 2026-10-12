@@ -37,6 +37,7 @@ _CATALOG_SCALAR_TYPES: dict[int, ibis_datatypes.DataType] = {
 
 
 def _resolve_limit(limit: int | str | None) -> int | None:
+    """Resolve 'default' to ibis.options.sql.default_limit. `None` adds no row limit."""
     if limit == "default":
         return ibis.options.sql.default_limit
     if isinstance(limit, str):
