@@ -5,13 +5,13 @@ from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Mapping, cast
 
 import ibis
-import ibis.common.exceptions as com
-import ibis.expr.datatypes as dt
-import ibis.expr.operations as ops
-import ibis.expr.schema as sch
-import ibis.expr.types as ir
+import ibis.common.exceptions as ibis_exceptions
+import ibis.expr.datatypes as ibis_datatypes
+import ibis.expr.operations as ibis_operations
+import ibis.expr.schema as ibis_schema
+import ibis.expr.types as ibis_types
 import pyarrow as pa
-import sqlglot.expressions as sge
+import sqlglot.expressions as sqlglot_expressions
 from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
@@ -26,13 +26,13 @@ from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
-_CATALOG_SCALAR_TYPES: dict[int, dt.DataType] = {
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: dt.Timestamp(scale=9),
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_DOUBLE: dt.Float64(),
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BIGINT: dt.Int64(),
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: dt.Int32(),
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BOOLEAN: dt.Boolean(),
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR: dt.String(),
+_CATALOG_SCALAR_TYPES: dict[int, ibis_datatypes.DataType] = {
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: ibis_datatypes.Timestamp(scale=9),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_DOUBLE: ibis_datatypes.Float64(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BIGINT: ibis_datatypes.Int64(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: ibis_datatypes.Int32(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_BOOLEAN: ibis_datatypes.Boolean(),
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR: ibis_datatypes.String(),
 }
 
 
@@ -44,7 +44,7 @@ def _resolve_limit(limit: int | str | None) -> int | None:
     return limit
 
 
-def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.DataType:
+def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> ibis_datatypes.DataType:
     match data_type.WhichOneof("kind"):
         case "scalar":
             if data_type.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY:
@@ -60,14 +60,14 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
                 "use con.sql() with an explicitly typed projection"
             )
         case "array_element":
-            return dt.Array(value_type=_catalog_type(data_type.array_element, column))
+            return ibis_datatypes.Array(value_type=_catalog_type(data_type.array_element, column))
         case "map":
             if (
                 data_type.map.key.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
                 and data_type.map.value.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
             ):
-                return dt.string
-            return dt.Map(
+                return ibis_datatypes.string
+            return ibis_datatypes.Map(
                 key_type=_catalog_type(data_type.map.key, column),
                 value_type=_catalog_type(data_type.map.value, column),
             )
@@ -89,17 +89,17 @@ class NominalCompiler(PostgresCompiler):
 
     def to_sqlglot(
         self,
-        expr: ir.Expr,
+        expr: ibis_types.Expr,
         *,
         limit: int | str | None = None,
-        params: Mapping[ir.Expr, Any] | None = None,
+        params: Mapping[ibis_types.Expr, Any] | None = None,
     ) -> Any:
         # Postgres casts map/JSON outputs to strings for its driver. Our Arrow
         # transport preserves these types, so bypass that preprocessing.
         return super(PostgresCompiler, self).to_sqlglot(expr, limit=_resolve_limit(limit), params=params)
 
-    def visit_MapGet(self, op: ops.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
-        item = sge.Bracket(this=arg, expressions=[key])
+    def visit_MapGet(self, op: ibis_operations.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
+        item = sqlglot_expressions.Bracket(this=arg, expressions=[key])
         if default is None:
             return item
         return self.f.coalesce(item, default)
@@ -107,27 +107,31 @@ class NominalCompiler(PostgresCompiler):
     def _anon_agg(self, name: str, *args: Any, where: Any = None) -> Any:
         func = self.f.anon[name](*args)
         if where is not None:
-            return sge.Filter(this=func, expression=sge.Where(this=where))
+            return sqlglot_expressions.Filter(this=func, expression=sqlglot_expressions.Where(this=where))
         return func
 
-    def visit_ArgMax(self, op: ops.ArgMax, *, arg: Any, key: Any, where: Any) -> Any:
+    def visit_ArgMax(self, op: ibis_operations.ArgMax, *, arg: Any, key: Any, where: Any) -> Any:
         # Anonymous rendering: sqlglot canonicalizes max_by to ARG_MAX, which the API rejects.
         return self._anon_agg("max_by", arg, key, where=where)
 
-    def visit_ArgMin(self, op: ops.ArgMin, *, arg: Any, key: Any, where: Any) -> Any:
+    def visit_ArgMin(self, op: ibis_operations.ArgMin, *, arg: Any, key: Any, where: Any) -> Any:
         return self._anon_agg("min_by", arg, key, where=where)
 
-    def visit_TimestampBucket(self, op: ops.TimestampBucket, *, arg: Any, interval: Any, offset: Any) -> Any:
+    def visit_TimestampBucket(
+        self, op: ibis_operations.TimestampBucket, *, arg: Any, interval: Any, offset: Any
+    ) -> Any:
         # The API has no MAKE_TIMESTAMP; use a timestamp literal for the epoch origin.
-        origin = self.cast(sge.convert("1970-01-01 00:00:00"), dt.timestamp)
+        origin = self.cast(sqlglot_expressions.convert("1970-01-01 00:00:00"), ibis_datatypes.timestamp)
         if offset is not None:
             origin += offset
         return self.f.date_bin(interval, arg, origin)
 
     @staticmethod
-    def _minimize_spec(op: ops.WindowFunction, spec: Any) -> Any:
+    def _minimize_spec(op: ibis_operations.WindowFunction, spec: Any) -> Any:
         # The API rejects ROW/RANGE frames on RANK/ROW_NUMBER/LAG/LEAD.
-        if isinstance(op.func, ops.Analytic) and not isinstance(op.func, (ops.First, ops.Last, ops.NthValue)):
+        if isinstance(op.func, ibis_operations.Analytic) and not isinstance(
+            op.func, (ibis_operations.First, ibis_operations.Last, ibis_operations.NthValue)
+        ):
             return None
         return spec
 
@@ -189,10 +193,10 @@ class Backend(SQLBackend, NoUrl):
         *,
         catalog: str | None = None,
         database: str | None = None,
-    ) -> sch.Schema:
+    ) -> ibis_schema.Schema:
         for table in self._catalog.tables:
             if table.name == table_name:
-                return sch.schema(
+                return ibis_schema.schema(
                     {
                         column.name: _catalog_type(column.data_type, f"{table_name}.{column.name}").copy(
                             nullable=column.nullable
@@ -200,9 +204,9 @@ class Backend(SQLBackend, NoUrl):
                         for column in table.columns
                     }
                 )
-        raise com.TableNotFound(table_name)
+        raise ibis_exceptions.TableNotFound(table_name)
 
-    def _get_schema_using_query(self, query: str) -> sch.Schema:
+    def _get_schema_using_query(self, query: str) -> ibis_schema.Schema:
         with self._open_stream(query, max_rows=1) as reader:
             return PyArrowSchema.to_ibis(reader.schema)
 
@@ -247,20 +251,20 @@ class Backend(SQLBackend, NoUrl):
 
     def _compile_table(
         self,
-        table_expr: ir.Table,
+        table_expr: ibis_types.Table,
         *,
-        params: Mapping[ir.Scalar, Any] | None = None,
+        params: Mapping[ibis_types.Scalar, Any] | None = None,
         limit: int | str | None = None,
     ) -> str:
-        # compile() takes Mapping[ir.Expr, Any] and an int limit; Mapping keys are invariant.
-        expr_params: dict[ir.Expr, Any] | None = dict(params.items()) if params is not None else None
+        # compile() takes Mapping[ibis_types.Expr, Any] and an int limit; Mapping keys are invariant.
+        expr_params: dict[ibis_types.Expr, Any] | None = dict(params.items()) if params is not None else None
         return self.compile(table_expr, params=expr_params, limit=_resolve_limit(limit))
 
     def _to_pyarrow_table(
         self,
-        table_expr: ir.Table,
+        table_expr: ibis_types.Table,
         *,
-        params: Mapping[ir.Scalar, Any] | None = None,
+        params: Mapping[ibis_types.Scalar, Any] | None = None,
         limit: int | str | None = None,
     ) -> pa.Table:
         sql = self._compile_table(table_expr, params=params, limit=limit)
@@ -269,10 +273,10 @@ class Backend(SQLBackend, NoUrl):
 
     def to_pyarrow(
         self,
-        expr: ir.Expr,
+        expr: ibis_types.Expr,
         /,
         *,
-        params: Mapping[ir.Scalar, Any] | None = None,
+        params: Mapping[ibis_types.Scalar, Any] | None = None,
         limit: int | str | None = None,
         **kwargs: Any,
     ) -> Any:
@@ -280,14 +284,14 @@ class Backend(SQLBackend, NoUrl):
         self._run_pre_execute_hooks(expr)
         table = self._to_pyarrow_table(expr.as_table(), params=params, limit=limit)
         # The result hooks live on the concrete expression classes, not Expr.
-        return cast(ir.Table | ir.Column | ir.Scalar, expr).__pyarrow_result__(table)
+        return cast(ibis_types.Table | ibis_types.Column | ibis_types.Scalar, expr).__pyarrow_result__(table)
 
     def to_pyarrow_batches(
         self,
-        expr: ir.Expr,
+        expr: ibis_types.Expr,
         /,
         *,
-        params: Mapping[ir.Scalar, Any] | None = None,
+        params: Mapping[ibis_types.Scalar, Any] | None = None,
         limit: int | str | None = None,
         chunk_size: int = 1_000_000,
         **kwargs: Any,
@@ -309,10 +313,10 @@ class Backend(SQLBackend, NoUrl):
 
     def execute(
         self,
-        expr: ir.Expr,
+        expr: ibis_types.Expr,
         /,
         *,
-        params: Mapping[ir.Scalar, Any] | None = None,
+        params: Mapping[ibis_types.Scalar, Any] | None = None,
         limit: int | str | None = None,
         **kwargs: Any,
     ) -> Any:
@@ -320,22 +324,22 @@ class Backend(SQLBackend, NoUrl):
         table_expr = expr.as_table()
         table = self._to_pyarrow_table(table_expr, params=params, limit=limit)
         df = PandasData.convert_table(table.to_pandas(timestamp_as_object=False), table_expr.schema())
-        return cast(ir.Table | ir.Column | ir.Scalar, expr).__pandas_result__(df)
+        return cast(ibis_types.Table | ibis_types.Column | ibis_types.Scalar, expr).__pandas_result__(df)
 
-    def create_table(self, *args: Any, **kwargs: Any) -> ir.Table:
-        raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
+    def create_table(self, *args: Any, **kwargs: Any) -> ibis_types.Table:
+        raise ibis_exceptions.UnsupportedOperationError("The Nominal SQL API is read-only")
 
     def drop_table(self, *args: Any, **kwargs: Any) -> None:
-        raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
+        raise ibis_exceptions.UnsupportedOperationError("The Nominal SQL API is read-only")
 
-    def create_view(self, *args: Any, **kwargs: Any) -> ir.Table:
-        raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
+    def create_view(self, *args: Any, **kwargs: Any) -> ibis_types.Table:
+        raise ibis_exceptions.UnsupportedOperationError("The Nominal SQL API is read-only")
 
     def drop_view(self, *args: Any, **kwargs: Any) -> None:
-        raise com.UnsupportedOperationError("The Nominal SQL API is read-only")
+        raise ibis_exceptions.UnsupportedOperationError("The Nominal SQL API is read-only")
 
-    def _register_in_memory_table(self, op: ops.InMemoryTable) -> None:
-        raise com.UnsupportedOperationError("In-memory tables cannot be uploaded to the Nominal SQL API")
+    def _register_in_memory_table(self, op: ibis_operations.InMemoryTable) -> None:
+        raise ibis_exceptions.UnsupportedOperationError("In-memory tables cannot be uploaded to the Nominal SQL API")
 
     def disconnect(self) -> None:
         """No-op: the gRPC channel belongs to the NominalClient."""
