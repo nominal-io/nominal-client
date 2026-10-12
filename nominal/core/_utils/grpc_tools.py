@@ -23,11 +23,13 @@ from collections import namedtuple
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterator, Protocol, TypeVar
+from typing import Any, Iterable, Iterator, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 import grpc
 from conjure_python_client import ServiceConfiguration
+from google.protobuf.message import DecodeError
+from google.rpc import error_details_pb2, status_pb2
 
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict, validate_api_base_url
 from nominal.exceptions import (
@@ -302,18 +304,52 @@ _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
 }
 
 
+def _grpc_error_message(error: grpc.RpcError) -> str:
+    """Include the server's detailed error alongside the gRPC status and message.
+
+    ``code()`` and ``details()`` can give us just "INVALID_ARGUMENT: SQL query is invalid", which doesn't
+    tell the caller what to fix. The actual cause, such as a missing column, can be in the response trailers.
+
+    ``grpc-status-details-bin`` contains a serialized ``google.rpc.Status``: a code, a message, and a list
+    of ``Any`` details. We unpack the ``ErrorInfo`` details and add their domain, reason, and metadata map
+    to the message. That map can include the SQL error text and query ID.
+
+    If those details are missing or can't be decoded, we still report the original gRPC error.
+    """
+    message = f"{error.code()}: {error.details()}"
+    metadata = error.trailing_metadata()
+    if metadata is None:
+        return message
+    # gRPC returns key/value pairs, but its RpcError stubs describe non-iterable entries even though they are iterable
+    for key, value in cast("Iterable[tuple[str, str | bytes]]", metadata):
+        if key != "grpc-status-details-bin" or not isinstance(value, bytes):
+            continue
+        try:
+            status = status_pb2.Status.FromString(value)
+            for detail in status.details:
+                info = error_details_pb2.ErrorInfo()
+                if detail.Unpack(info):
+                    message += f"\n{info.domain}/{info.reason}"
+                    for name, text in sorted(info.metadata.items()):
+                        message += f"\n{name}: {text}"
+        except DecodeError:
+            # Malformed rich details must not hide the original RPC failure.
+            continue
+    return message
+
+
 @contextmanager
 def translate_grpc_errors() -> Iterator[None]:
     """Re-raise any ``grpc.RpcError`` raised in the block as a ``NominalError``.
 
     Maps the common status codes to dedicated ``NominalError`` subclasses and falls back to the base
-    ``NominalError`` otherwise, preserving the gRPC status code/details in the message and chaining the
-    original error. Wrap gRPC calls with this so callers never see ``grpc.RpcError``. A call site needing
-    status-specific behavior may either catch the mapped subclass around this block, or ``except
-    grpc.RpcError`` itself inside the block (its handler runs first).
+    ``NominalError`` otherwise, preserving the gRPC status code, message, and rich ``ErrorInfo`` metadata
+    in the message and chaining the original error. Wrap gRPC calls with this so callers never see
+    ``grpc.RpcError``. A call site needing status-specific behavior may either catch the mapped subclass
+    around this block, or ``except grpc.RpcError`` itself inside the block (its handler runs first).
     """
     try:
         yield
     except grpc.RpcError as e:
         exc_type = _GRPC_STATUS_TO_EXCEPTION.get(e.code(), NominalError)
-        raise exc_type(f"{e.code()}: {e.details()}") from e
+        raise exc_type(_grpc_error_message(e)) from e

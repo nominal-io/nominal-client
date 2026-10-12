@@ -31,6 +31,7 @@ License <license>
 High-level SDK <reference/toplevel>
 Core SDK <reference/core>
 Timestamps <reference/ts>
+Ibis <reference/ibis>
 Exceptions <reference/exceptions>
 nom CLI <reference/nom-cli>
 Integrations <reference/thirdparty/index>
