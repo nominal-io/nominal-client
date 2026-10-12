@@ -319,7 +319,7 @@ def _grpc_error_message(error: grpc.RpcError) -> str:
     lines = [f"{error.code()}: {error.details()}"]
     metadata = error.trailing_metadata() or ()
     # gRPC returns key/value pairs, but its RpcError stubs describe non-iterable entries even though they are iterable
-    for key, value in cast("Iterable[tuple[str, str | bytes]]", metadata):
+    for key, value in cast(Iterable[tuple[str, str | bytes]], metadata):
         if key != "grpc-status-details-bin" or not isinstance(value, bytes):
             continue
         try:
