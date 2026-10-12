@@ -418,11 +418,11 @@ class DataDownloader(abc.ABC):
             return
 
         # get tags from dataset & asset combo
-        data_scope = asset._lookup_dataset_scope(refname)
+        data_scope = asset._scopes().datasets.get(refname)
         if data_scope is None:
             logger.error("Failed to retrieve datascope details for refname %s", refname)
             return
-        _, scope_tags = data_scope
+        scope_tags = data_scope.series_tags
 
         # Select channels (exact-name matching with iterative queries) to download
         channels = self._select_channels(dataset)

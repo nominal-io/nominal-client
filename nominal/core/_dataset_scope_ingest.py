@@ -7,7 +7,7 @@ from typing import BinaryIO, Iterable, Mapping, overload
 
 from nominal.core._types import PathLike
 from nominal.core.containerized_extractor import ContainerizedExtractor
-from nominal.core.dataset import Dataset, _get_dataset
+from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileType
 from nominal.core.ingestion_job import IngestionJob
@@ -22,41 +22,12 @@ from nominal.ts import (
 class _DatasetScopeIngestMixin(abc.ABC):
     """Delegate scoped ingest to Dataset, merging scope tags with caller tags.
 
-    Subclasses look up the named scope's dataset RID and tags. Caller tags take precedence.
+    Subclasses resolve the dataset and scope tags. Caller tags take precedence.
     """
 
-    # static typing for required field
-    _clients: Dataset._Clients
-
     @abc.abstractmethod
-    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
-        """The backing dataset rid and required series tags of the named scope, or None if there is none.
-
-        Each subclass resolves the name against the data scopes its own transport returns, so this mixin
-        never sees a wire type.
-        """
-
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
-        """Resolve a data scope name to its backing dataset and required series tags.
-
-        Returns:
-            A tuple of the resolved `Dataset` and the scope's required `series_tags`.
-
-        Raises:
-            ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
-            RuntimeError: If this is a run associated with multiple assets.
-            NominalError: If retrieving the resource's data scopes fails.
-        """
-        data_scope = self._lookup_dataset_scope(data_scope_name)
-        if data_scope is None:
-            raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
-
-        dataset_rid, series_tags = data_scope
-        dataset = Dataset._from_conjure(
-            self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
-        )
-        return dataset, series_tags
+        """Resolve the named dataset and its scope tags."""
 
     ################
     # Add Data API #
@@ -79,6 +50,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         For supported file types, argument semantics, and return value details, see
         `nominal.core.Dataset.add_tabular_data`.
+
+        Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
         return dataset.add_tabular_data(
@@ -106,6 +80,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         For schema requirements, argument semantics, and return value details, see
         `nominal.core.Dataset.add_avro_stream`.
+
+        Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
         return dataset.add_avro_stream(path, timestamp_type=timestamp_type, tags=_merge_scope_tags(scope_tags, tags))
@@ -146,6 +123,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         `nominal.core.Dataset.add_journal_json`.
 
         Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
             RuntimeError: If the data scope requires series tags.
             ValueError: If only one of ``timestamp_column`` and ``timestamp_type`` is given.
         """
@@ -185,6 +163,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         For topic-filtering semantics and return value details, see
         `nominal.core.Dataset.add_mcap`.
+
+        Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
         return dataset.add_mcap(
@@ -209,6 +190,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         For file expectations and return value details, see
         `nominal.core.Dataset.add_ardupilot_dataflash`.
+
+        Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
         return dataset.add_ardupilot_dataflash(path, tags=_merge_scope_tags(scope_tags, tags))
@@ -258,6 +242,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         `nominal.core.Dataset.add_containerized`.
 
         Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
             ValueError: If only one of ``timestamp_column`` and ``timestamp_type`` is given.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
@@ -298,6 +283,9 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         For stream requirements, supported file types, argument semantics, and return value details, see
         `nominal.core.Dataset.add_from_io`.
+
+        Raises:
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
         return dataset.add_from_io(

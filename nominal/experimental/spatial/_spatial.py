@@ -520,3 +520,11 @@ def _create_spatial_request(
 
 def _get_spatial(clients: Spatial._Clients, rid: str) -> scout_spatial_api.Spatial:
     return clients.spatial.get(clients.auth_header, rid)
+
+
+def _get_spatials(clients: Spatial._Clients, rids: Sequence[str]) -> Sequence[scout_spatial_api.Spatial]:
+    """The spatials with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not rids:
+        return []
+    request = scout_spatial_api.GetSpatialsRequest(spatial_rids=list(rids))
+    return list(clients.spatial.batch_get(clients.auth_header, request).responses)

@@ -64,8 +64,7 @@ class StreamingConnection(Connection):
 def _get_connections(
     clients: Connection._Clients, connection_rids: Sequence[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
-    return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
-
-
-def _get_connection(clients: Connection._Clients, connection_rid: str) -> scout_datasource_connection_api.Connection:
-    return clients.connection.get_connection(clients.auth_header, connection_rid)
+    """The connections with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not connection_rids:
+        return []
+    return list(clients.connection.get_connections(clients.auth_header, list(connection_rids)))

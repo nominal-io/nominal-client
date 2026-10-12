@@ -7,6 +7,7 @@ import pytest
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 
 SCOPE_NAME = "test-scope"
@@ -45,55 +46,80 @@ def mock_dataset(mock_clients):
     )
 
 
-def test_get_or_create_dataset_returns_existing_when_no_tags(mock_asset, mock_dataset):
-    """When a dataset exists with no tags and no tags are requested, it is returned as-is."""
-    with patch.object(Asset, "_get_dataset_scope", return_value=(mock_dataset, {})):
-        result = mock_asset.get_or_create_dataset(SCOPE_NAME)
+def _stub_scopes(mock_clients, *scopes: asset_pb2.DataScope, readable_rids: tuple[str, ...] = ()) -> None:
+    """Serve the asset with these data scopes, and the catalog with only the readable datasets."""
+    asset = asset_pb2.Asset(rid="asset-rid-1", data_scopes=list(scopes))
+    mock_clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(responses={asset.rid: asset})
+    mock_clients.catalog.get_enriched_datasets.return_value = [MagicMock(rid=rid) for rid in readable_rids]
+
+
+def _dataset_scope(series_tags: dict[str, str]) -> asset_pb2.DataScope:
+    return asset_pb2.DataScope(
+        data_scope_name=SCOPE_NAME, data_source=asset_pb2.DataSource(dataset="dataset-rid-1"), series_tags=series_tags
+    )
+
+
+@pytest.mark.parametrize("tags", [{}, {"env": "prod", "robot": "r2"}])
+def test_get_or_create_dataset_returns_existing_when_tags_match(mock_asset, mock_dataset, mock_clients, tags):
+    """An existing dataset scope with the requested tags is returned as-is."""
+    _stub_scopes(mock_clients, _dataset_scope(tags), readable_rids=("dataset-rid-1",))
+    with patch.object(Dataset, "_from_conjure", return_value=mock_dataset):
+        result = mock_asset.get_or_create_dataset(SCOPE_NAME, series_tags=tags or None)
     assert result == mock_dataset
 
 
-def test_get_or_create_dataset_returns_existing_when_tags_match(mock_asset, mock_dataset):
-    """When a dataset exists with tags and the same tags are requested, it is returned as-is."""
-    tags = {"env": "prod", "robot": "r2"}
-    with patch.object(Asset, "_get_dataset_scope", return_value=(mock_dataset, tags)):
-        result = mock_asset.get_or_create_dataset(SCOPE_NAME, series_tags=tags)
-    assert result == mock_dataset
-
-
-def test_get_or_create_dataset_raises_when_tags_mismatch(mock_asset, mock_dataset):
-    """When a dataset exists with different tags than requested, a ValueError is raised."""
+@pytest.mark.parametrize(
+    ("existing", "requested"),
+    [({"env": "prod"}, {"env": "staging"}), ({"env": "prod"}, None), ({}, {"env": "prod"})],
+)
+def test_get_or_create_dataset_raises_when_tags_mismatch(mock_asset, mock_dataset, mock_clients, existing, requested):
+    """An existing dataset scope with different tags than requested is an error, not a silent reuse."""
+    _stub_scopes(mock_clients, _dataset_scope(existing), readable_rids=("dataset-rid-1",))
     with (
-        patch.object(Asset, "_get_dataset_scope", return_value=(mock_dataset, {"env": "prod"})),
+        patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
         pytest.raises(ValueError, match="datascope already exists"),
     ):
-        mock_asset.get_or_create_dataset(SCOPE_NAME, series_tags={"env": "staging"})
+        mock_asset.get_or_create_dataset(SCOPE_NAME, series_tags=requested)
 
 
-def test_get_or_create_dataset_raises_when_existing_has_tags_but_none_requested(mock_asset, mock_dataset):
-    """When a dataset exists with tags but the caller requests no tags, a ValueError is raised."""
+def test_get_or_create_dataset_refuses_a_taken_name_whose_dataset_is_unreadable(mock_asset, mock_clients):
+    """A scope name that exists but does not resolve is taken: raise rather than create an orphaned dataset."""
+    _stub_scopes(mock_clients, _dataset_scope({}))
     with (
-        patch.object(Asset, "_get_dataset_scope", return_value=(mock_dataset, {"env": "prod"})),
-        pytest.raises(ValueError, match="datascope already exists"),
+        patch("nominal.core.asset._create_dataset") as mock_create,
+        pytest.raises(NominalNotFoundError, match=f"No dataset named '{SCOPE_NAME}' found on asset asset-rid-1"),
     ):
         mock_asset.get_or_create_dataset(SCOPE_NAME)
+    mock_create.assert_not_called()
 
 
-def test_get_or_create_dataset_raises_when_caller_has_tags_but_existing_has_none(mock_asset, mock_dataset):
-    """When a dataset exists with no tags but the caller requests tags, a ValueError is raised."""
+@pytest.mark.parametrize(
+    ("get_or_create", "create", "held_by"),
+    [
+        (Asset.get_or_create_dataset, "_create_dataset", asset_pb2.DataSource(connection="connection-rid-1")),
+        (Asset.get_or_create_video, "_create_video", asset_pb2.DataSource(dataset="dataset-rid-1")),
+    ],
+)
+def test_get_or_create_refuses_a_name_held_by_another_scope_type(
+    mock_asset, mock_clients, get_or_create, create, held_by
+):
+    """Scope names are unique across types, so raise before creating a resource the asset would then reject."""
+    _stub_scopes(mock_clients, asset_pb2.DataScope(data_scope_name=SCOPE_NAME, data_source=held_by))
     with (
-        patch.object(Asset, "_get_dataset_scope", return_value=(mock_dataset, {})),
-        pytest.raises(ValueError, match="datascope already exists"),
+        patch(f"nominal.core.asset.{create}") as mock_create,
+        pytest.raises(ValueError, match="a data scope of another type on asset asset-rid-1 has that name"),
     ):
-        mock_asset.get_or_create_dataset(SCOPE_NAME, series_tags={"env": "prod"})
+        get_or_create(mock_asset, SCOPE_NAME)
+    mock_create.assert_not_called()
 
 
-def test_get_or_create_dataset_creates_when_not_found(mock_asset, mock_dataset, mock_clients):
-    """When no dataset scope exists, a new dataset is created and added to the asset."""
+@pytest.mark.parametrize("series_tags", [{"env": "prod"}, None])
+def test_get_or_create_dataset_creates_when_the_name_is_free(mock_asset, mock_dataset, mock_clients, series_tags):
+    """When no dataset scope has the name, a new dataset is created and added to the asset with the given tags."""
+    _stub_scopes(mock_clients)
     mock_clients.resolve_default_workspace_rid.return_value = "workspace-rid"
-    series_tags = {"env": "prod"}
 
     with (
-        patch.object(Asset, "_get_dataset_scope", side_effect=ValueError("not found")),
         patch("nominal.core.asset._create_dataset", return_value=MagicMock()) as mock_create,
         patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
         patch.object(Asset, "add_dataset") as mock_add,
@@ -103,22 +129,6 @@ def test_get_or_create_dataset_creates_when_not_found(mock_asset, mock_dataset, 
     assert result == mock_dataset
     mock_create.assert_called_once()
     mock_add.assert_called_once_with(SCOPE_NAME, mock_dataset, series_tags=series_tags)
-
-
-def test_get_or_create_dataset_creates_without_tags(mock_asset, mock_dataset, mock_clients):
-    """When no dataset scope exists and no tags are given, add_dataset is called with series_tags=None."""
-    mock_clients.resolve_default_workspace_rid.return_value = "workspace-rid"
-
-    with (
-        patch.object(Asset, "_get_dataset_scope", side_effect=ValueError("not found")),
-        patch("nominal.core.asset._create_dataset", return_value=MagicMock()),
-        patch.object(Dataset, "_from_conjure", return_value=mock_dataset),
-        patch.object(Asset, "add_dataset") as mock_add,
-    ):
-        result = mock_asset.get_or_create_dataset(SCOPE_NAME)
-
-    assert result == mock_dataset
-    mock_add.assert_called_once_with(SCOPE_NAME, mock_dataset, series_tags=None)
 
 
 def test_search_events_passes_archive_status(mock_asset):

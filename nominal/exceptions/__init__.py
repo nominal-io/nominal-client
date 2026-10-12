@@ -88,6 +88,14 @@ class NominalNotFoundError(NominalError):
     """The requested resource does not exist."""
 
 
+class NominalDataScopeNotFoundError(NominalNotFoundError, ValueError):
+    """No readable resource has this data scope name on an asset, or this ref name on a run.
+
+    Also a `ValueError`, which is what these lookups raised before this type existed, so
+    `except ValueError` keeps working.
+    """
+
+
 class NominalAlreadyExistsError(NominalError):
     """The resource being created already exists (e.g. a container image tag already registered)."""
 

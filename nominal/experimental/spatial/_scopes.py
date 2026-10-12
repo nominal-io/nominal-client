@@ -8,12 +8,12 @@ a spatial added here shows up in the platform exactly as any other data source d
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from nominal.core import Asset, Run
+from nominal.core._scope_resolution import DataScopeRef, only_resolved
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.experimental.spatial._spatial import Spatial, _get_spatial
+from nominal.experimental.spatial._spatial import Spatial, _get_spatials
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.run.v1 import run_service_pb2
 
@@ -30,18 +30,7 @@ def add_spatial_to_asset(asset: Asset, data_scope_name: str, spatial: Spatial | 
         data_scope_name: Name for the data within the asset.
         spatial: Spatial, or spatial rid, to add.
     """
-    request = asset_pb2.AddDataScopesToAssetRequest(
-        asset_rid=asset.rid,
-        data_scopes=[
-            asset_pb2.CreateAssetDataScope(
-                data_scope_name=data_scope_name,
-                data_source=asset_pb2.DataSource(spatial=rid_from_instance_or_string(spatial)),
-                series_tags={},
-            ),
-        ],
-    )
-    with translate_grpc_errors():
-        asset._clients.assets.AddDataScopesToAsset(request)
+    asset._add_data_scope(data_scope_name, asset_pb2.DataSource(spatial=rid_from_instance_or_string(spatial)))
 
 
 def get_spatial_from_asset(asset: Asset, data_scope_name: str) -> Spatial:
@@ -55,12 +44,14 @@ def get_spatial_from_asset(asset: Asset, data_scope_name: str) -> Spatial:
         The spatial associated with the data scope name.
 
     Raises:
-        ValueError: If no spatial data scope exists with the provided name.
+        NominalNotFoundError: If no readable spatial has this data scope name.
     """
-    rid = _spatial_scope_rids(asset).get(data_scope_name)
-    if rid is None:
-        raise ValueError(f"No spatial with data scope name '{data_scope_name}' found for asset {asset.rid}")
-    return Spatial._from_conjure(asset._clients, _get_spatial(asset._clients, rid))
+    return only_resolved(
+        _resolve_spatials(asset._clients, asset._scopes().named(data_scope_name).spatials),
+        noun="spatial",
+        name=data_scope_name,
+        owner=f"asset {asset.rid}",
+    )
 
 
 def list_spatials_in_asset(asset: Asset) -> Sequence[tuple[str, Spatial]]:
@@ -70,12 +61,9 @@ def list_spatials_in_asset(asset: Asset) -> Sequence[tuple[str, Spatial]]:
     core knows about.
 
     Returns:
-        (data_scope_name, spatial) pairs for each spatial scope.
+        (data_scope_name, spatial) pairs. Data scopes whose spatial is missing or not readable are left out.
     """
-    return [
-        (name, Spatial._from_conjure(asset._clients, _get_spatial(asset._clients, rid)))
-        for name, rid in _spatial_scope_rids(asset).items()
-    ]
+    return _resolve_spatials(asset._clients, asset._scopes().spatials)
 
 
 def add_spatial_to_run(run: Run, ref_name: str, spatial: Spatial | str) -> None:
@@ -86,15 +74,7 @@ def add_spatial_to_run(run: Run, ref_name: str, spatial: Spatial | str) -> None:
         ref_name: Name for the data source within the run.
         spatial: Spatial, or spatial rid, to add.
     """
-    request = run_service_pb2.CreateRunDataSource(
-        data_source=run_service_pb2.DataSource(spatial=rid_from_instance_or_string(spatial)),
-        series_tags={},
-        offset=None,
-    )
-    with translate_grpc_errors():
-        run._clients.run.AddDataSourcesToRun(
-            run_service_pb2.AddDataSourcesToRunRequest(run_rid=run.rid, data_sources={ref_name: request})
-        )
+    run._add_data_sources({ref_name: run_service_pb2.DataSource(spatial=rid_from_instance_or_string(spatial))})
 
 
 def get_spatial_from_run(run: Run, ref_name: str) -> Spatial:
@@ -108,31 +88,30 @@ def get_spatial_from_run(run: Run, ref_name: str) -> Spatial:
         The spatial associated with the ref name.
 
     Raises:
-        ValueError: If no spatial reference exists with the provided name.
+        NominalNotFoundError: If no readable spatial has this ref name.
     """
-    rid = _spatial_datasource_rids(run).get(ref_name)
-    if rid is None:
-        raise ValueError(f"No spatial with ref name '{ref_name}' found for run {run.rid}")
-    return Spatial._from_conjure(run._clients, _get_spatial(run._clients, rid))
+    return only_resolved(
+        _resolve_spatials(run._clients, run._scopes().named(ref_name).spatials),
+        noun="spatial",
+        name=ref_name,
+        owner=f"run {run.rid}",
+    )
 
 
 def list_spatials_in_run(run: Run) -> Sequence[tuple[str, Spatial]]:
     """List the spatials associated with a run.
 
     Returns:
-        (ref_name, spatial) pairs for each spatial data source.
+        (ref_name, spatial) pairs. Refs whose spatial is missing or not readable are left out.
     """
+    return _resolve_spatials(run._clients, run._scopes().spatials)
+
+
+def _resolve_spatials(clients: Spatial._Clients, scopes: Mapping[str, DataScopeRef]) -> Sequence[tuple[str, Spatial]]:
+    """Resolve spatial scopes in one request, leaving out any that do not resolve."""
+    by_rid = {spatial.rid: spatial for spatial in _get_spatials(clients, [scope.rid for scope in scopes.values()])}
     return [
-        (name, Spatial._from_conjure(run._clients, _get_spatial(run._clients, rid)))
-        for name, rid in _spatial_datasource_rids(run).items()
+        (name, Spatial._from_conjure(clients, by_rid[scope.rid]))
+        for name, scope in scopes.items()
+        if scope.rid in by_rid
     ]
-
-
-def _spatial_scope_rids(asset: Asset) -> dict[str, str]:
-    """Spatial rids by data scope name, read from one fetch of the asset."""
-    return dict(asset._scope_rids("spatial"))
-
-
-def _spatial_datasource_rids(run: Run) -> dict[str, str]:
-    """Spatial rids by ref name, read from one fetch of the run."""
-    return dict(run._list_datasource_rids("spatial"))

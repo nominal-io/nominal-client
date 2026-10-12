@@ -8,14 +8,22 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nominal_api import api, ingest_api, scout_spatial_api
 
+from nominal.core import Asset, Run
+from nominal.exceptions import NominalNotFoundError
 from nominal.experimental.spatial import (
     PointCloudMetadata,
     ScanPattern,
     Spatial,
     create_point_cloud_spatial,
     get_spatial,
+    get_spatial_from_asset,
+    get_spatial_from_run,
+    list_spatials_in_asset,
+    list_spatials_in_run,
 )
 from nominal.experimental.spatial._spatial import _PointCloudTimeMetadata
+from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.ts import Epoch, Relative
 
 _SPATIAL_RID = "ri.scout.x.spatial.abc"
@@ -378,3 +386,52 @@ def test_ingest_rejects_units_the_panel_cannot_read(
 
     clients.upload.initiate_multipart_upload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
+
+
+def _asset_with_spatials(clients: MagicMock, *rids: str) -> Asset:
+    """An asset with one spatial data scope per RID, each named after its RID."""
+    api = asset_pb2.Asset(
+        rid="asset",
+        data_scopes=[
+            asset_pb2.DataScope(data_scope_name=rid, data_source=asset_pb2.DataSource(spatial=rid)) for rid in rids
+        ],
+    )
+    clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(responses={"asset": api})
+    return Asset._from_proto(clients, api)
+
+
+def _run_with_spatials(clients: MagicMock, *rids: str) -> Run:
+    """A run with one spatial ref per RID, each named after its RID."""
+    api = run_service_pb2.Run(
+        rid="run",
+        data_sources={
+            rid: run_service_pb2.RunDataSource(data_source=run_service_pb2.DataSource(spatial=rid)) for rid in rids
+        },
+    )
+    clients.run.GetRun.return_value = run_service_pb2.GetRunResponse(run=api)
+    return Run._from_proto(clients, api)
+
+
+@pytest.mark.parametrize(
+    ("make_parent", "list_spatials", "get_spatial_from", "owner"),
+    [
+        (_asset_with_spatials, list_spatials_in_asset, get_spatial_from_asset, "asset asset"),
+        (_run_with_spatials, list_spatials_in_run, get_spatial_from_run, "run run"),
+    ],
+)
+def test_spatial_scopes_resolve_in_one_request_and_leave_out_unreadable_spatials(
+    clients: MagicMock, make_parent, list_spatials, get_spatial_from, owner: str
+) -> None:
+    """Spatial scopes resolve in one batch request; an unreadable one is left out of lists and not found by lookup."""
+    readable = _raw_spatial()
+    readable.rid = "readable"
+    clients.spatial.batch_get.return_value.responses = [readable]
+    parent = make_parent(clients, "readable", "unreadable")
+
+    assert [(name, spatial.rid) for name, spatial in list_spatials(parent)] == [("readable", "readable")]
+    (_, request), _ = clients.spatial.batch_get.call_args
+    assert set(request.spatial_rids) == {"readable", "unreadable"}
+    clients.spatial.get.assert_not_called()
+
+    with pytest.raises(NominalNotFoundError, match=f"No spatial named 'unreadable' found on {owner}"):
+        get_spatial_from(parent, "unreadable")
