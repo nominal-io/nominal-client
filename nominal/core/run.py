@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import scout_spatial
 from typing_extensions import Self, deprecated
 
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -24,7 +25,7 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _get_video
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetWrapper):
+class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngestMixin):
     rid: str
     name: str
     description: str

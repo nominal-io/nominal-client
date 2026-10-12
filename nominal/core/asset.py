@@ -11,6 +11,7 @@ from typing_extensions import Self, deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -30,7 +31,7 @@ from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _get_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
+class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     rid: str
     name: str
     description: str | None
