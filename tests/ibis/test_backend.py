@@ -194,22 +194,23 @@ def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, op
     client._clients.sql.Query.side_effect = None
     client._clients.sql.Query.return_value = call
     con = nibis.connect(client)
-    if operation == "raw_sql":
-        assert con.raw_sql("SELECT * FROM datasets").equals(QUERY_RESULT)
-    elif operation == "batches":
-        reader = con.table("datasets").to_pyarrow_batches()
-        assert isinstance(reader, pa.RecordBatchReader)
-        assert reader.read_all().to_pydict() == QUERY_RESULT.to_pydict()
-    elif operation == "schema_probe":
-        con.sql("SELECT * FROM datasets")
-    elif operation == "invalid_stream":
-        with pytest.raises(pa.ArrowInvalid):
-            con.raw_sql("SELECT * FROM datasets")
-    else:
-        expr = con.table("points_double").select("value")
-        reader = expr.to_pyarrow_batches()
-        with pytest.raises(nibis.NominalSqlError):
-            reader.read_all()
+    match operation:
+        case "raw_sql":
+            assert con.raw_sql("SELECT * FROM datasets").equals(QUERY_RESULT)
+        case "batches":
+            reader = con.table("datasets").to_pyarrow_batches()
+            assert isinstance(reader, pa.RecordBatchReader)
+            assert reader.read_all().to_pydict() == QUERY_RESULT.to_pydict()
+        case "schema_probe":
+            con.sql("SELECT * FROM datasets")
+        case "invalid_stream":
+            with pytest.raises(pa.ArrowInvalid):
+                con.raw_sql("SELECT * FROM datasets")
+        case "invalid_columns" | "invalid_cast":
+            expr = con.table("points_double").select("value")
+            reader = expr.to_pyarrow_batches()
+            with pytest.raises(nibis.NominalSqlError):
+                reader.read_all()
     call.cancel.assert_called_once_with()
 
 
@@ -302,13 +303,14 @@ def test_bound_parameters_and_limits_reach_sql(
     expr = points.select((points.value + offset).name("value"))
 
     monkeypatch.setattr(ibis.options.sql, "default_limit", 7)
-    if output == "pandas":
-        expr.to_pandas(params={offset: 2.0}, limit=limit)
-    elif output == "arrow":
-        expr.to_pyarrow(params={offset: 2.0}, limit=limit)
-    else:
-        with expr.to_pyarrow_batches(params={offset: 2.0}, limit=limit) as reader:
-            reader.read_all()
+    match output:
+        case "pandas":
+            expr.to_pandas(params={offset: 2.0}, limit=limit)
+        case "arrow":
+            expr.to_pyarrow(params={offset: 2.0}, limit=limit)
+        case "batches":
+            with expr.to_pyarrow_batches(params={offset: 2.0}, limit=limit) as reader:
+                reader.read_all()
 
     sql = client._clients.sql.Query.call_args.args[0].query
     assert " + 2.0" in sql
@@ -326,12 +328,13 @@ def test_invalid_string_limit_rejected_before_query(output: str) -> None:
     expr = con.table("points_double").select("value")
 
     with pytest.raises(ValueError, match="Invalid limit"):
-        if output == "pandas":
-            expr.to_pandas(limit="10")
-        elif output == "arrow":
-            expr.to_pyarrow(limit="10")
-        else:
-            expr.to_pyarrow_batches(limit="10")
+        match output:
+            case "pandas":
+                expr.to_pandas(limit="10")
+            case "arrow":
+                expr.to_pyarrow(limit="10")
+            case "batches":
+                expr.to_pyarrow_batches(limit="10")
 
     client._clients.sql.Query.assert_not_called()
 
@@ -343,18 +346,20 @@ def test_native_max_preserves_numeric_result(output: str) -> None:
     points = con.table("points_double")
     expr = points.aggregate(maximum=points.value.max())
     assert expr.schema()["maximum"].is_float64()
-    if output == "pandas":
-        result = expr.to_pandas()
-        assert result["maximum"].dtype.kind == "f"
-        assert result["maximum"].tolist() == [1.5]
-    else:
-        if output == "arrow":
+    match output:
+        case "pandas":
+            result = expr.to_pandas()
+            assert result["maximum"].dtype.kind == "f"
+            assert result["maximum"].tolist() == [1.5]
+        case "arrow":
             table = expr.to_pyarrow()
-        else:
+            assert table.schema.field("maximum").type == pa.float64()
+            assert table.column("maximum").to_pylist() == [1.5]
+        case "batches":
             with expr.to_pyarrow_batches() as reader:
                 table = reader.read_all()
-        assert table.schema.field("maximum").type == pa.float64()
-        assert table.column("maximum").to_pylist() == [1.5]
+            assert table.schema.field("maximum").type == pa.float64()
+            assert table.column("maximum").to_pylist() == [1.5]
 
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
@@ -370,13 +375,14 @@ def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: lis
     )
     expr = con.table("datasets")
     with pytest.raises(nibis.NominalSqlError, match="Server returned columns"):
-        if output == "pandas":
-            expr.to_pandas()
-        elif output == "arrow":
-            expr.to_pyarrow()
-        else:
-            with expr.to_pyarrow_batches() as reader:
-                reader.read_all()
+        match output:
+            case "pandas":
+                expr.to_pandas()
+            case "arrow":
+                expr.to_pyarrow()
+            case "batches":
+                with expr.to_pyarrow_batches() as reader:
+                    reader.read_all()
 
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
@@ -385,13 +391,14 @@ def test_incompatible_result_type_raises(output: str) -> None:
     con = nibis.connect(make_client(pa.table({"value": ["not a number"]})))
     expr = con.table("points_double").select("value")
     with pytest.raises(nibis.NominalSqlError, match="not castable"):
-        if output == "pandas":
-            expr.to_pandas()
-        elif output == "arrow":
-            expr.to_pyarrow()
-        else:
-            with expr.to_pyarrow_batches() as reader:
-                reader.read_all()
+        match output:
+            case "pandas":
+                expr.to_pandas()
+            case "arrow":
+                expr.to_pyarrow()
+            case "batches":
+                with expr.to_pyarrow_batches() as reader:
+                    reader.read_all()
 
 
 @pytest.mark.parametrize(
@@ -496,12 +503,13 @@ def test_points_struct_value_is_json_text(output: str) -> None:
     assert expr.schema()["value"] == dt.string
     assert con.table("points_double").schema()["tags"].is_map()
     assert "CAST" not in con.compile(expr)
-    if output == "pandas":
-        values = expr.to_pandas()["value"].tolist()
-    elif output == "arrow":
-        values = expr.to_pyarrow()["value"].to_pylist()
-    else:
-        with expr.to_pyarrow_batches() as reader:
-            values = reader.read_all()["value"].to_pylist()
+    match output:
+        case "pandas":
+            values = expr.to_pandas()["value"].tolist()
+        case "arrow":
+            values = expr.to_pyarrow()["value"].to_pylist()
+        case "batches":
+            with expr.to_pyarrow_batches() as reader:
+                values = reader.read_all()["value"].to_pylist()
     assert values == [text, None]
     assert json.loads(values[0]) == value
