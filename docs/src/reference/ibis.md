@@ -1,15 +1,13 @@
 # Ibis
 
-Install the local workspace package from the repository root:
+Install the Ibis backend with the `ibis` extra:
 
 ```sh
-uv sync --extra ibis
-uv run --extra ibis python
+pip install "nominal[ibis]"
 ```
 
 Use an existing Nominal profile, or create one with
-`uv run --extra ibis nom config profile add`. The server must provide recursive
-catalog types and apply the final SQL projection.
+`nom config profile add`.
 
 ```python
 import json
@@ -37,17 +35,11 @@ df["parsed_value"] = df["value"].map(lambda value: None if value is None else js
 print(df)
 ```
 
-`MAP<ANY, ANY>` columns such as `points_struct.value` are JSON strings in
-results, matching the SQL API's Arrow serialization.
+Structured channel values, such as `points_struct.value`, are returned as JSON
+strings. Use `json.loads()` to parse them.
 
-For large results, `query.to_pyarrow_batches()` returns a standard PyArrow
-`RecordBatchReader` so you can process the result incrementally.
-
-To test without contacting a server:
-
-```sh
-uv run --extra ibis pytest tests/ibis --no-cov -q
-```
+For large results, use `query.to_pyarrow_batches()` to process rows in batches
+without loading the entire result into memory.
 
 ```{eval-rst}
 .. automodule:: nominal.ibis
