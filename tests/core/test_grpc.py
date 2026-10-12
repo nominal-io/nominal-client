@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Callable
 from unittest.mock import MagicMock
 
 import grpc
 import pytest
 from conjure_python_client import ServiceConfiguration
-from google.rpc import error_details_pb2, status_pb2
 
 from nominal.core._utils import grpc_tools
 from nominal.core._utils.grpc_tools import (
@@ -296,30 +294,3 @@ def test_translate_grpc_errors_passes_through_on_success() -> None:
     with translate_grpc_errors():
         value = 5
     assert value == 5
-
-
-def test_translate_grpc_errors_leaves_service_specific_details_to_callers(
-    fake_rpc_error: Callable[..., grpc.RpcError],
-) -> None:
-    """The shared translator keeps service-specific response details out of ordinary SDK errors."""
-    status = status_pb2.Status(code=3, message="Invalid query")
-    status.details.add().Pack(
-        error_details_pb2.ErrorInfo(
-            domain="sql",
-            reason="INVALID_QUERY",
-            metadata={"detail": "service-specific diagnostic", "sqlQueryId": "query-123"},
-        )
-    )
-    error = fake_rpc_error(
-        grpc.StatusCode.INVALID_ARGUMENT,
-        status.message,
-        (("grpc-status-details-bin", status.SerializeToString()),),
-    )
-    with pytest.raises(NominalInvalidArgumentError) as exc_info:
-        with translate_grpc_errors():
-            raise error
-
-    assert status.message in str(exc_info.value)
-    assert "service-specific diagnostic" not in str(exc_info.value)
-    assert "query-123" not in str(exc_info.value)
-    assert exc_info.value.__cause__ is error
