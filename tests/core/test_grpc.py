@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Callable
 from unittest.mock import MagicMock
 
 import grpc
@@ -297,7 +298,8 @@ def test_translate_grpc_errors_passes_through_on_success() -> None:
     assert value == 5
 
 
-def test_translate_grpc_errors_preserves_rich_error_info(fake_rpc_error) -> None:
+def test_translate_grpc_errors_preserves_rich_error_info(fake_rpc_error: Callable[..., grpc.RpcError]) -> None:
+    """Errors include the server's ErrorInfo domain, reason, and metadata below the original status line."""
     status = status_pb2.Status(code=3, message="Invalid query")
     status.details.add().Pack(
         error_details_pb2.ErrorInfo(
@@ -334,7 +336,10 @@ def test_translate_grpc_errors_preserves_rich_error_info(fake_rpc_error) -> None
         (("grpc-status-details-bin", "not binary"),),
     ],
 )
-def test_translate_grpc_errors_preserves_plain_error_with_missing_or_invalid_metadata(metadata, fake_rpc_error) -> None:
+def test_translate_grpc_errors_preserves_plain_error_with_missing_or_invalid_metadata(
+    metadata: tuple[tuple[str, str | bytes], ...] | None, fake_rpc_error: Callable[..., grpc.RpcError]
+) -> None:
+    """Missing, unrelated, or undecodable error details leave the original status message unchanged."""
     error = fake_rpc_error(grpc.StatusCode.INTERNAL, "original failure", metadata)
     with pytest.raises(NominalError) as exc_info:
         with translate_grpc_errors():
@@ -344,7 +349,10 @@ def test_translate_grpc_errors_preserves_plain_error_with_missing_or_invalid_met
 
 
 @pytest.mark.parametrize("malformed", [False, True])
-def test_translate_grpc_errors_ignores_unknown_or_malformed_detail(malformed, fake_rpc_error) -> None:
+def test_translate_grpc_errors_ignores_unknown_or_malformed_detail(
+    malformed: bool, fake_rpc_error: Callable[..., grpc.RpcError]
+) -> None:
+    """Detail entries that are not a readable ErrorInfo are skipped without hiding the original error."""
     status = status_pb2.Status(code=13, message="original failure")
     if malformed:
         status.details.add(type_url="type.googleapis.com/google.rpc.ErrorInfo", value=b"\xff")

@@ -95,6 +95,7 @@ def backend(client: NominalClient) -> nibis.Backend:
 
 
 def test_ibis_entry_point_connects_with_a_client(client: NominalClient) -> None:
+    """ibis.nominal.connect returns a backend that fetches the SQL catalog once and lists its tables."""
     con = ibis.nominal.connect(client)
     assert isinstance(con, nibis.Backend)
     client._clients.sql.GetSqlCatalog.assert_called_once_with(sql_pb2.GetSqlCatalogRequest())
@@ -103,15 +104,18 @@ def test_ibis_entry_point_connects_with_a_client(client: NominalClient) -> None:
 
 
 def test_workspace_comes_from_the_client(backend: nibis.Backend, client: NominalClient) -> None:
+    """Queries run in the client's default workspace."""
     assert backend.workspace_rid == WORKSPACE_RID
     client._clients.resolve_default_workspace_rid.assert_called_once_with()
 
 
 def test_list_tables_from_catalog(backend: nibis.Backend) -> None:
+    """list_tables returns the catalog's table names in sorted order."""
     assert backend.list_tables() == ["datasets", "points_double"]
 
 
 def test_reconnect_refreshes_catalog(backend: nibis.Backend, client: NominalClient) -> None:
+    """Reconnecting fetches the catalog again so newly added tables become visible."""
     assert backend.list_tables() == ["datasets", "points_double"]
     client._clients.sql.GetSqlCatalog.assert_called_once()
 
@@ -126,6 +130,7 @@ def test_reconnect_refreshes_catalog(backend: nibis.Backend, client: NominalClie
 
 
 def test_schema_types_from_catalog(backend: nibis.Backend) -> None:
+    """Table schemas use the catalog's column types and nullability."""
     schema = backend.table("points_double").schema()
     assert schema["ts"].is_timestamp()
     assert schema["value"].is_float64()
@@ -135,11 +140,13 @@ def test_schema_types_from_catalog(backend: nibis.Backend) -> None:
 
 
 def test_unknown_table_raises(backend: nibis.Backend) -> None:
+    """Opening a table that is not in the catalog raises TableNotFound."""
     with pytest.raises(com.TableNotFound):
         backend.table("nope")
 
 
 def test_query_request_carries_workspace_and_arrow_format(backend: nibis.Backend, client: NominalClient) -> None:
+    """Queries request Arrow results in the client's workspace without a row cap."""
     backend.table("datasets").select("dataset_rid", "name").to_pandas()
     request = client._clients.sql.Query.call_args.args[0]
     assert request.workspace_rid == WORKSPACE_RID
@@ -148,17 +155,20 @@ def test_query_request_carries_workspace_and_arrow_format(backend: nibis.Backend
 
 
 def test_raw_sql_schema_probe_sets_max_rows(backend: nibis.Backend, client: NominalClient) -> None:
+    """con.sql learns the result schema by fetching at most one row."""
     backend.sql("SELECT dataset_rid, name FROM datasets")
     assert client._clients.sql.Query.call_args.args[0].max_rows == 1
 
 
 def test_execute_returns_selected_columns(backend: nibis.Backend) -> None:
+    """to_pandas returns exactly the selected columns and their values."""
     df = backend.table("datasets").select("dataset_rid", "name").to_pandas()
     assert list(df.columns) == ["dataset_rid", "name"]
     assert df["name"][0] == "flight"
 
 
 def test_fewer_columns_than_requested_raises() -> None:
+    """A result that is missing a requested column raises NominalSqlError."""
     con = nibis.connect(make_client(query_result=pa.table({"dataset_rid": ["ri.catalog.x.dataset.1"]})))
     with pytest.raises(nibis.NominalSqlError, match="expected"):
         con.table("datasets").select("dataset_rid", "name").to_pandas()
@@ -204,6 +214,7 @@ def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, op
 
 
 def test_write_operations_are_rejected(backend: nibis.Backend) -> None:
+    """Write operations raise UnsupportedOperationError because the SQL API is read-only."""
     with pytest.raises(com.UnsupportedOperationError):
         backend.create_table("t", schema={"a": "int64"})
 
@@ -212,6 +223,7 @@ def test_write_operations_are_rejected(backend: nibis.Backend) -> None:
 def test_grpc_errors_surface_as_nominal_errors(
     backend: nibis.Backend, client: NominalClient, rich_details: bool
 ) -> None:
+    """Query failures raise Nominal exceptions that include the server's error details and release the RPC."""
     status = status_pb2.Status(code=3, message="Invalid query")
     status.details.add().Pack(
         error_details_pb2.ErrorInfo(
@@ -260,6 +272,7 @@ def test_module_imports_cleanly_in_fresh_interpreter() -> None:
 
 
 def test_to_pyarrow_returns_table_column_and_scalar_shapes() -> None:
+    """to_pyarrow returns a Table, ChunkedArray, or Scalar matching the expression's shape."""
     con = nibis.connect(make_client(query_result=pa.table({"value": [1.5]})))
     value = con.table("points_double").value
 
@@ -281,6 +294,7 @@ def test_to_pyarrow_returns_table_column_and_scalar_shapes() -> None:
 def test_bound_parameters_and_limits_reach_sql(
     output: str, limit: int | str | None, expected_limit: int | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Bound parameters and row limits are compiled into the SQL sent for every output path."""
     client = make_client(query_result=pa.table({"value": [1.5]}))
     con = nibis.connect(client)
     points = con.table("points_double")
@@ -306,6 +320,7 @@ def test_bound_parameters_and_limits_reach_sql(
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
 def test_invalid_string_limit_rejected_before_query(output: str) -> None:
+    """A string limit other than 'default' raises ValueError without sending a query."""
     client = make_client(query_result=pa.table({"value": [1.5]}))
     con = nibis.connect(client)
     expr = con.table("points_double").select("value")
@@ -391,6 +406,7 @@ def test_incompatible_result_type_raises(output: str) -> None:
     ],
 )
 def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.DataType) -> None:
+    """Each catalog scalar type maps to the matching Ibis type."""
     client._clients.sql.GetSqlCatalog.return_value.sql_catalog.CopyFrom(
         sql_pb2.SqlCatalog(tables=[sql_pb2.SqlCatalogTable(name="typed", columns=[column("value", scalar, True)])])
     )
@@ -398,6 +414,7 @@ def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.D
 
 
 def test_nested_catalog_types_round_trip() -> None:
+    """Nested array and map catalog types round-trip through query results."""
     string = sql_pb2.SqlCatalogDataType(scalar=sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR)
     links = sql_pb2.SqlCatalogDataType(
         array_element=sql_pb2.SqlCatalogDataType(map=sql_pb2.SqlCatalogMapType(key=string, value=string))
@@ -444,6 +461,7 @@ def test_nested_catalog_types_round_trip() -> None:
 def test_unsupported_catalog_type_only_blocks_its_table(
     client: NominalClient, data_type: sql_pb2.SqlCatalogDataType, message: str
 ) -> None:
+    """An unsupported catalog column type fails only its own table; other tables stay usable."""
     catalog = client._clients.sql.GetSqlCatalog.return_value.sql_catalog
     catalog.tables.add(
         name="points_struct", columns=[sql_pb2.SqlCatalogColumn(name="value", type="MAP", data_type=data_type)]
@@ -457,6 +475,7 @@ def test_unsupported_catalog_type_only_blocks_its_table(
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
 def test_points_struct_value_is_json_text(output: str) -> None:
+    """Dynamic MAP<ANY, ANY> values are returned as JSON text on every output path."""
     value = {"location": {"lat": 42.5}, "tags": ["flight", "test"], "count": 10, "valid": True}
     text = json.dumps(value)
     client = make_client(pa.table({"value": pa.array([text, None], type=pa.string())}))
