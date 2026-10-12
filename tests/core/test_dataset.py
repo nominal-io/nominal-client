@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from nominal import ts
-from nominal.core.dataset import Dataset, DatasetBounds, _DatasetWrapper
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
+from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -357,7 +358,7 @@ def test_add_journal_json_rejects_non_epoch_timestamps_before_uploading(
     upload.assert_not_called()
 
 
-class _StubWrapper(_DatasetWrapper):
+class _StubWrapper(_DatasetScopeIngestMixin):
     """The wrapper with scope resolution stubbed: what is under test is the delegation, not lookup."""
 
     def _lookup_dataset_scope(self, data_scope_name):
