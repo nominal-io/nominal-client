@@ -61,13 +61,15 @@ class FakeUploadService:
             raise ConnectionError(f"sign failed for {key}")
         return SimpleNamespace(url=f"https://s3.example/{key}/{part}", headers={})
 
-    def complete_multipart_upload(self, auth: str, key: str, upload_id: str, parts: Any) -> Any:
+    def complete_multipart_upload(
+        self, auth: str, key: str, upload_id: str, parts: Any, bucket: str | None = None
+    ) -> Any:
         self._record("complete")
         with self.lock:
             self.completed_etags[key] = {p.part_number: p.etag for p in parts}
         return SimpleNamespace(location=f"s3://bucket/{key}")
 
-    def abort_multipart_upload(self, auth: str, key: str, upload_id: str) -> None:
+    def abort_multipart_upload(self, auth: str, key: str, upload_id: str, bucket: str | None = None) -> None:
         self._record("abort")
         with self.lock:
             self.aborted.append(key)

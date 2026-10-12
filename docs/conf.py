@@ -58,6 +58,7 @@ core_topic_modules = {
     "channels-and-units": ("channel", "unit"),
     "streaming": ("_stream.write_stream", "log"),
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
+    "drives": ("fs.drive", "fs.file", "fs.enums", "fs.errors"),
     "events": ("event", "_event_types"),
     "automatic-validation": ("checklist", "_checklist_types", "data_review", "integration"),
     "workbooks": ("workbook", "workbook_template"),
