@@ -83,7 +83,7 @@ from nominal.core.containerized_extractor import (
     _get_containerized_extractor,
     _search_containerized_extractors,
 )
-from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
+from nominal.core.data_review import DataReview, DataReviewBuilder, _get_data_review, _iter_search_data_reviews
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
@@ -105,7 +105,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.run import Run, _create_run
+from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
@@ -747,9 +747,8 @@ class NominalClient:
             Reference to the created run object
 
         Raises:
-            ValueError: both `asset` and `assets` provided
-            ConjureHTTPError: error making request
-
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If the run service request fails.
         """
         if assets is None:
             assets = []
@@ -768,9 +767,14 @@ class NominalClient:
         )
 
     def get_run(self, rid: str) -> Run:
-        """Retrieve a run by its RID."""
-        response = self._clients.run.get_run(self._clients.auth_header, rid)
-        return Run._from_conjure(self._clients, response)
+        """Retrieve a run by its RID.
+
+        Raises:
+            NominalNotFoundError: If no run has that RID.
+            NominalError: If the retrieval request fails.
+        """
+        response = _get_run(self._clients.run, rid)
+        return Run._from_proto(self._clients, response)
 
     def _iter_search_runs(
         self,
@@ -798,8 +802,8 @@ class NominalClient:
             created_before=created_before,
             workspace_rid=workspace_rid,
         )
-        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
-            yield Run._from_conjure(self._clients, run)
+        for run in search_runs_paginated(self._clients.run, query, archive_status):
+            yield Run._from_proto(self._clients, run)
 
     def search_runs(
         self,
@@ -846,6 +850,10 @@ class NominalClient:
 
         Returns:
             All runs which match all of the provided conditions
+
+        Raises:
+            NominalConfigError: If the default workspace is requested but cannot be resolved.
+            NominalError: If a search request fails.
         """
         return list(
             self._iter_search_runs(
@@ -1424,8 +1432,13 @@ class NominalClient:
         return DataReviewBuilder([], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
-        response = self._clients.datareview.get(self._clients.auth_header, rid)
-        return DataReview._from_conjure(self._clients, response)
+        """Retrieve a data review by its RID.
+
+        Raises:
+            NominalNotFoundError: If no data review has that rid.
+            NominalError: If the retrieval request fails.
+        """
+        return DataReview._from_proto(self._clients, _get_data_review(self._clients, rid))
 
     def create_event(
         self,

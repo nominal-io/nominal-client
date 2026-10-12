@@ -26,6 +26,13 @@ implementations, callers, and existing helpers, not just the changed lines. Dist
 merged requirements from proposed policy and author preferences. A review-only request
 does not authorize edits or posting comments; follow the invoking workflow's execution rules.
 
+For public docstrings or documentation generation, follow the
+[documentation policy](../../conventions/documentation.md), including its linked site setup
+and renderer configuration even for SDK-only diffs. Preserve caveat placement and example
+content when simplifying generation; first consider supported authoring conventions before
+adding parsing or per-object plumbing. Do not turn a scoped review into a repository-wide
+markup migration.
+
 Identify the behavior and public contracts that must survive any restructuring, including
 identity, omission versus clearing, failure propagation, and completion semantics.
 

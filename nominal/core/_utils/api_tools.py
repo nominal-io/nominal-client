@@ -20,7 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
-from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
+from nominal_api import scout_compute_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
@@ -145,12 +145,8 @@ def normalize_links(links: Sequence[str | Link | LinkDict]) -> Iterable[tuple[st
                 yield link, None
 
 
-def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
-    return [scout_run_api.Link(url=url, title=title) for url, title in normalize_links(links)]
-
-
 def create_proto_links(links: Sequence[str | Link | LinkDict], link_type: Callable[..., T]) -> list[T]:
-    """The proto peer of `create_links`; `link_type` is the calling service's `Link` message.
+    """Convert links to `link_type`, the calling service's proto `Link` message.
 
     Each proto package declares its own `Link`, so the caller names the message to build.
     """
@@ -187,9 +183,3 @@ def build_compute_tag_filter(tags: Mapping[str, str] | None) -> scout_compute_ap
     if len(single_filters) == 1:
         return single_filters[0]
     return scout_compute_api.TagFilters(and_=single_filters)
-
-
-def filter_scopes(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Sequence[scout_asset_api.DataScope]:
-    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]

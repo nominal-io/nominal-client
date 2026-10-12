@@ -8,7 +8,6 @@ Build with an ``add_*`` method per file, then ``submit()``. Supported item kinds
 (csv/parquet), avro stream, mcap, journald json, dataflash, video, and containerized extractors.
 
 Point-cloud ingest is intentionally omitted: the v2 endpoint rejects it today.
-TODO(drake): add ``add_point_cloud`` once the backend accepts that item kind.
 """
 
 from __future__ import annotations
@@ -53,6 +52,8 @@ from nominal.ts import (
     _to_typed_timestamp_type,
     _validate_timestamp_pair,
 )
+
+# TODO(drake): add add_point_cloud once the backend accepts that item kind.
 
 logger = logging.getLogger(__name__)
 

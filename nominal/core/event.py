@@ -24,6 +24,7 @@ from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
+from nominal.protos.types import common_pb2
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -93,10 +94,12 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         Metadata is replaced rather than appended. To add to labels or properties, merge them before
         calling. E.g.:
 
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in event.labels:
-                new_labels.append(old_label)
-            event = event.update(labels=new_labels)
+        ```python
+        new_labels = ["new-label-a", "new-label-b"]
+        for old_label in event.labels:
+            new_labels.append(old_label)
+        event = event.update(labels=new_labels)
+        ```
 
         Args:
             name: New name for the event.
@@ -125,7 +128,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             else event_pb2.AssetRidSet(asset_rids=[rid_from_instance_or_string(asset) for asset in assets])
         )
         updated_timestamp = None if start is None else _SecondsNanos.from_flexible(start).to_proto()
-        updated_duration = None if duration is None else _to_proto_duration(duration)
+        updated_duration = None if duration is None else _to_proto_duration(duration, common_pb2.Duration)
         updated_type = None if type is None else type._to_proto()
 
         request = event_pb2.BatchUpdateEventRequest(
@@ -225,7 +228,7 @@ def _create_event(
         description=description,
         asset_rids=[rid_from_instance_or_string(asset) for asset in (assets or [])],
         timestamp=_SecondsNanos.from_flexible(start).to_proto(),
-        duration=_to_proto_duration(duration),
+        duration=_to_proto_duration(duration, common_pb2.Duration),
         properties=dict(properties or {}),
         labels=list(labels or []),
         type=type._to_proto(),

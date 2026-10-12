@@ -18,9 +18,11 @@ from nominal.experimental import as_user
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
@@ -273,6 +275,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         None,
     )
 
+    assert isinstance(clients.run, run_service_pb2_grpc.RunServiceStub)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
     assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
     assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
@@ -281,6 +284,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     )
     assert isinstance(clients.assets, asset_pb2_grpc.AssetServiceStub)
+    assert isinstance(clients.datareview, data_review_pb2_grpc.DataReviewServiceStub)
     assert isinstance(clients.event, event_pb2_grpc.EventServiceStub)
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)

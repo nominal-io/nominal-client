@@ -15,6 +15,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
+from nominal.protos.run.v1 import run_service_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ class Workbook(
         @property
         def notebook(self) -> scout.NotebookService: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
         def template(self) -> scout.TemplateService: ...
 
@@ -151,10 +152,12 @@ class Workbook(
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in workbook.labels:
-                    new_labels.append(old_label)
-                workbook = workbook.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in workbook.labels:
+                new_labels.append(old_label)
+            workbook = workbook.update(labels=new_labels)
+            ```
         """
         # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
         metadata = self._clients.notebook.update_metadata(

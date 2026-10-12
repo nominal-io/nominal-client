@@ -77,3 +77,5 @@ Keep the rule in its owning guide so local tools, human reviewers, and CI use th
 
 Instruction-loading references: [Codex](https://developers.openai.com/codex/guides/agents-md/)
 and [Claude Code](https://code.claude.com/docs/en/memory#share-one-file-with-other-coding-tools).
+
+Docs live in `docs/`: Markdown pages and an API reference generated from docstrings with Sphinx. `just build-docs` builds strictly (warnings fail, as in CI); `just serve-docs` previews page and docstring changes. Both need Python >=3.12. See the [docs conventions](https://github.com/nominal-io/nominal-client/blob/main/docs/AGENTS.md) for the layout and supported markup.

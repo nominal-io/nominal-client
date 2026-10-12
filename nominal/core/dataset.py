@@ -82,10 +82,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
 
-                new_labels = ["new-label-a", "new-label-b"]
-                for old_label in dataset.labels:
-                    new_labels.append(old_label)
-                dataset = dataset.update(labels=new_labels)
+            ```python
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in dataset.labels:
+                new_labels.append(old_label)
+            dataset = dataset.update(labels=new_labels)
+            ```
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
@@ -304,41 +306,43 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         The required schema is:
 
-            {
-                "type": "record",
-                "name": "AvroStream",
-                "namespace": "io.nominal.ingest",
-                "fields": [
-                    {
-                        "name": "channel",
-                        "type": "string",
-                        "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
-                    },
-                    {
-                        "name": "timestamps",
-                        "type": {"type": "array", "items": "long"},
-                        "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
-                    },
-                    {
-                        "name": "values",
-                        "type": {"type": "array", "items": [
-                            "double",
-                            "string",
-                            "long",
-                            {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
-                            {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
-                            {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
-                        ]},
-                        "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
-                    },
-                    {
-                        "name": "tags",
-                        "type": {"type": "map", "values": "string"},
-                        "default": {},
-                        "doc": "Key-value metadata tags",
-                    },
-                ],
-            }
+        ```python
+        {
+            "type": "record",
+            "name": "AvroStream",
+            "namespace": "io.nominal.ingest",
+            "fields": [
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                },
+                {
+                    "name": "timestamps",
+                    "type": {"type": "array", "items": "long"},
+                    "doc": "Array of numeric timestamps; see timestamp_type for how they are read",
+                },
+                {
+                    "name": "values",
+                    "type": {"type": "array", "items": [
+                        "double",
+                        "string",
+                        "long",
+                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                    ]},
+                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
+                },
+                {
+                    "name": "tags",
+                    "type": {"type": "map", "values": "string"},
+                    "default": {},
+                    "doc": "Key-value metadata tags",
+                },
+            ],
+        }
+        ```
 
         """
         avro_path = Path(path)
@@ -976,12 +980,12 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
                 **Note:** This is applied uniformly to all output files.
 
-                **Note:** Must be provided with a `timestamp_type` or a ValueError will be raised.
+                Must be provided with a `timestamp_type` or a ValueError will be raised.
             timestamp_type: the type of timestamp data in the extractor's output.
 
                 **Note:** This is applied uniformly to all output files.
 
-                **Note:** Must be provided with a `timestamp_column` or a ValueError will be raised.
+                Must be provided with a `timestamp_column` or a ValueError will be raised.
 
         Returns:
             An `IngestionJob` handle for the asynchronous containerized ingest.
@@ -1223,6 +1227,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             logs = parse_logs_from_file("logs.txt")
             dataset.write_logs(logs)
             ```
+
         """
         _write_logs(
             auth_header=self._clients.auth_header,
@@ -1270,6 +1275,8 @@ class _DatasetWrapper(abc.ABC):
 
         Raises:
             ValueError: If no dataset-backed scope exists with the given `data_scope_name`.
+            RuntimeError: If this is a run associated with multiple assets.
+            NominalError: If retrieving the resource's data scopes fails.
         """
         data_scope = self._lookup_dataset_scope(data_scope_name)
         if data_scope is None:
@@ -1679,78 +1686,6 @@ def _create_mcap_channels(
     elif exclude_topics is not None:
         channels = ingest_api.McapChannels(exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics])
     return channels
-
-
-def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
-    if prefix_tree_delimiter is None:
-        return None
-    else:
-        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-
-
-def _construct_new_ingest_options(
-    name: str,
-    timestamp_column: str,
-    timestamp_type: _AnyTimestampType,
-    file_type: FileType,
-    description: str | None,
-    labels: Sequence[str],
-    properties: NominalProperties,
-    prefix_tree_delimiter: str | None,
-    channel_prefix: str | None,
-    tag_columns: Mapping[str, str] | None,
-    s3_path: str,
-    workspace_rid: str | None,
-    tags: Mapping[str, str] | None,
-) -> ingest_api.IngestOptions:
-    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-    target = ingest_api.DatasetIngestTarget(
-        new=ingest_api.NewDatasetIngestDestination(
-            labels=list(labels),
-            properties=dict(properties),
-            channel_config=_build_channel_config(prefix_tree_delimiter),
-            dataset_description=description,
-            dataset_name=name,
-            workspace=workspace_rid,
-            marking_rids=[],
-        )
-    )
-    timestamp_metadata = ingest_api.TimestampMetadata(
-        series_name=timestamp_column,
-        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-    )
-    tag_columns = dict(tag_columns) if tag_columns else None
-
-    if file_type.is_parquet():
-        return ingest_api.IngestOptions(
-            parquet=ingest_api.ParquetOpts(
-                source=source,
-                target=target,
-                timestamp_metadata=timestamp_metadata,
-                channel_prefix=channel_prefix,
-                tag_columns=tag_columns,
-                is_archive=file_type.is_parquet_archive(),
-                additional_file_tags={**tags} if tags else None,
-                exclude_columns=[],
-                channel_name_overrides={},
-            )
-        )
-    else:
-        if not file_type.is_csv():
-            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
-
-        return ingest_api.IngestOptions(
-            csv=ingest_api.CsvOpts(
-                source=source,
-                target=target,
-                timestamp_metadata=timestamp_metadata,
-                channel_prefix=channel_prefix,
-                tag_columns=tag_columns,
-                additional_file_tags={**tags} if tags else None,
-                exclude_columns=[],
-                channel_name_overrides={},
-            )
-        )
 
 
 def _construct_existing_ingest_options(

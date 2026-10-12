@@ -1,1 +1,4 @@
---8<-- "CONTRIBUTING.md"
+# Contributing
+
+```{include} ../../CONTRIBUTING.md
+```

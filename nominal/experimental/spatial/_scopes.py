@@ -10,13 +10,12 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from nominal_api import scout_run_api
-
 from nominal.core import Asset, Run
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental.spatial._spatial import Spatial, _get_spatial
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.run.v1 import run_service_pb2
 
 
 def add_spatial_to_asset(asset: Asset, data_scope_name: str, spatial: Spatial | str) -> None:
@@ -87,12 +86,15 @@ def add_spatial_to_run(run: Run, ref_name: str, spatial: Spatial | str) -> None:
         ref_name: Name for the data source within the run.
         spatial: Spatial, or spatial rid, to add.
     """
-    request = scout_run_api.CreateRunDataSource(
-        data_source=scout_run_api.DataSource(spatial=rid_from_instance_or_string(spatial)),
+    request = run_service_pb2.CreateRunDataSource(
+        data_source=run_service_pb2.DataSource(spatial=rid_from_instance_or_string(spatial)),
         series_tags={},
         offset=None,
     )
-    run._clients.run.add_data_sources_to_run(run._clients.auth_header, {ref_name: request}, run.rid)
+    with translate_grpc_errors():
+        run._clients.run.AddDataSourcesToRun(
+            run_service_pb2.AddDataSourcesToRunRequest(run_rid=run.rid, data_sources={ref_name: request})
+        )
 
 
 def get_spatial_from_run(run: Run, ref_name: str) -> Spatial:
