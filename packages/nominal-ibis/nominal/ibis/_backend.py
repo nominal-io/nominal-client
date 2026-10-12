@@ -48,36 +48,34 @@ def _resolve_limit(limit: int | str | None) -> int | None:
 
 
 def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.DataType:
-    kind = data_type.WhichOneof("kind")
-    if kind == "scalar":
-        if data_type.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY:
+    match data_type.WhichOneof("kind"):
+        case "scalar":
+            if data_type.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY:
+                raise NominalSqlError(
+                    f"Catalog type ANY for {column} has no concrete Ibis type; "
+                    "use con.sql() with an explicitly typed projection"
+                )
+            dtype = _CATALOG_SCALAR_TYPES.get(data_type.scalar)
+            if dtype is not None:
+                return dtype
             raise NominalSqlError(
-                f"Catalog type ANY for {column} has no concrete Ibis type; "
+                f"Unsupported catalog scalar type {data_type.scalar} for {column}; "
                 "use con.sql() with an explicitly typed projection"
             )
-        dtype = _CATALOG_SCALAR_TYPES.get(data_type.scalar)
-        if dtype is not None:
-            return dtype
-        raise NominalSqlError(
-            f"Unsupported catalog scalar type {data_type.scalar} for {column}; "
-            "use con.sql() with an explicitly typed projection"
-        )
-    if kind == "array_element":
-        return dt.Array(value_type=_catalog_type(data_type.array_element, column))
-    if kind == "map":
-        if (
-            data_type.map.key.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
-            and data_type.map.value.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
-        ):
-            # Scout projects dynamic struct values as JSON text in Arrow.
-            return dt.string
-        return dt.Map(
-            key_type=_catalog_type(data_type.map.key, column),
-            value_type=_catalog_type(data_type.map.value, column),
-        )
-    raise NominalSqlError(
-        f"Missing or unsupported catalog data_type for {column}; the server must provide recursive column types"
-    )
+        case "array_element":
+            return dt.Array(value_type=_catalog_type(data_type.array_element, column))
+        case "map":
+            if (
+                data_type.map.key.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
+                and data_type.map.value.scalar == sql_pb2.SQL_CATALOG_SCALAR_TYPE_ANY
+            ):
+                return dt.string
+            return dt.Map(
+                key_type=_catalog_type(data_type.map.key, column),
+                value_type=_catalog_type(data_type.map.value, column),
+            )
+        case _:
+            raise NominalSqlError(f"Missing or unsupported catalog data_type for {column}.")
 
 
 class NominalDialect(Postgres):
