@@ -42,6 +42,7 @@ Experimental <reference/experimental/index>
 :caption: Guides
 :maxdepth: 1
 
+Nominal Drives <drives>
 Networking & TLS <networking-tls>
 ```
 
