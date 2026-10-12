@@ -17,6 +17,7 @@ from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
+from sqlglot.dialects.postgres import Postgres
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.client import NominalClient
@@ -79,8 +80,17 @@ def _catalog_type(data_type: sql_pb2.SqlCatalogDataType, column: str) -> dt.Data
     )
 
 
+class NominalDialect(Postgres):
+    """Postgres dialect with intervals written as INTERVAL '10' SECOND, which the API's parser requires."""
+
+    class Generator(Postgres.Generator):  # type: ignore[misc,valid-type]
+        SINGLE_STRING_INTERVAL = False
+
+
 class NominalCompiler(PostgresCompiler):
     """Postgres-flavored SQL adjusted for the Nominal SQL API's dialect."""
+
+    dialect = NominalDialect
 
     def to_sqlglot(
         self,
@@ -111,6 +121,13 @@ class NominalCompiler(PostgresCompiler):
 
     def visit_ArgMin(self, op: ops.ArgMin, *, arg: Any, key: Any, where: Any) -> Any:
         return self._anon_agg("min_by", arg, key, where=where)
+
+    def visit_TimestampBucket(self, op: ops.TimestampBucket, *, arg: Any, interval: Any, offset: Any) -> Any:
+        # The API has no MAKE_TIMESTAMP; use a timestamp literal for the epoch origin.
+        origin = self.cast(sge.convert("1970-01-01 00:00:00"), dt.timestamp)
+        if offset is not None:
+            origin += offset
+        return self.f.date_bin(interval, arg, origin)
 
     @staticmethod
     def _minimize_spec(op: ops.WindowFunction, spec: Any) -> Any:

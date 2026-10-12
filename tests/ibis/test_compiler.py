@@ -19,7 +19,7 @@ POINTS = ibis.table(
 
 def compile_sql(expr: ibis.Table) -> str:
     """Compile an expression with the Nominal compiler and render it as SQL."""
-    return Backend.compiler.to_sqlglot(expr).sql("postgres")
+    return Backend.compiler.to_sqlglot(expr).sql(Backend.compiler.dialect)
 
 
 def test_map_columns_project_uncast() -> None:
@@ -66,3 +66,15 @@ def test_regex_search_renders_as_posix_match_operator() -> None:
     sql = compile_sql(POINTS.filter(_.channel.re_search("BATTERY")).select("ts"))
     assert " ~ " in sql
     assert "REGEXP_LIKE" not in sql.upper()
+
+
+def test_timestamp_bucket_renders_date_bin_with_unit_interval() -> None:
+    sql = compile_sql(POINTS.group_by(t=_.ts.bucket(seconds=10)).agg(n=_.count()))
+    assert "DATE_BIN(INTERVAL '10' SECOND" in sql
+    assert "CAST('1970-01-01 00:00:00' AS TIMESTAMP)" in sql
+    assert "MAKE_TIMESTAMP" not in sql.upper()
+
+
+def test_interval_arithmetic_uses_unit_interval() -> None:
+    sql = compile_sql(POINTS.select(later=_.ts + ibis.interval(minutes=5)))
+    assert "INTERVAL '5' MINUTE" in sql
