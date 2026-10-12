@@ -29,7 +29,8 @@ Example:
 
 """
 
-from nominal.ibis._backend import Backend, NominalSqlError, connect
+from nominal.ibis._backend import Backend, connect
+from nominal.ibis.exceptions import NominalSqlError
 
 __all__ = [
     "Backend",

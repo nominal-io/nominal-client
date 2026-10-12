@@ -21,6 +21,7 @@ from sqlglot.dialects.postgres import Postgres
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.client import NominalClient
+from nominal.ibis.exceptions import NominalSqlError
 from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 
 __all__ = ["Backend", "NominalSqlError", "connect"]
@@ -33,10 +34,6 @@ _CATALOG_SCALAR_TYPES: dict[int, dt.DataType] = {
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_BOOLEAN: dt.Boolean(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR: dt.String(),
 }
-
-
-class NominalSqlError(com.IbisError):
-    """A catalog type or query result that cannot be represented by this backend."""
 
 
 def _resolve_limit(limit: int | str | None) -> int | None:
