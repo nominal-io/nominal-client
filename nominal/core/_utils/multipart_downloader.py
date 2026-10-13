@@ -10,10 +10,9 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Callable, Iterable, Mapping, Sequence, Type
+from typing import Callable, Iterable, Mapping, Self, Sequence, Type
 
 import requests
-from typing_extensions import Self
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
@@ -123,7 +122,8 @@ class MultipartFileDownloader:
 
         Args:
             max_workers: Maxmimum number of parallel threads to use.
-                NOTE: defaults to the number of CPU cores
+
+                **Note:** Defaults to the number of CPU cores.
             timeout: Maximum amount of time before considering a connection dead
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)

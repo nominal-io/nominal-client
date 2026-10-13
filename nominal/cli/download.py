@@ -9,7 +9,7 @@ import datetime
 import logging
 import pathlib
 import warnings
-from typing import Any, List, Mapping, Optional, Sequence
+from typing import Any, List, Optional, Sequence
 
 import click
 import pandas as pd
@@ -24,6 +24,8 @@ from rich.table import Column, Table
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
+from nominal.core._utils.api_types import NominalProperties
+from nominal.core.asset import _get_assets
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
@@ -35,7 +37,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------------
 
 
-def _render_properties(props: Optional[Mapping[str, str]]) -> str:
+def _render_properties(props: Optional[NominalProperties]) -> str:
     if not props:
         return "-"
     # show a compact key=value list
@@ -95,10 +97,8 @@ class DataDownloader(abc.ABC):
                 return None
 
         # Sort by last updated timestamps
-        raw_assets = self._client._clients.assets.get_assets(
-            self._client._clients.auth_header, [asset.rid for asset in assets]
-        )
-        sorted_assets = sorted(assets, key=lambda asset: pd.to_datetime(raw_assets[asset.rid].updated_at), reverse=True)
+        raw_assets = _get_assets(self._client._clients, [asset.rid for asset in assets])
+        sorted_assets = sorted(assets, key=lambda asset: raw_assets[asset.rid].updated_at.ToNanoseconds(), reverse=True)
         table = Table(
             Column("#", style=Style(color="white", bold=True), ratio=1, overflow="fold"),
             Column("Name", style=Style(color="white", bold=True), ratio=2, overflow="fold"),
@@ -296,7 +296,7 @@ class DataDownloader(abc.ABC):
         if event_duration.total_seconds() == 0:
             event_duration = self._ask_duration("Selected event has no duration! Enter duration")
 
-        start = datetime.datetime.fromtimestamp(event.start / 1e9, tz=datetime.timezone.utc)
+        start = datetime.datetime.fromtimestamp(event.start / 1e9, tz=datetime.UTC)
         return start, start + event_duration
 
     def _ask_event_by_rid(self) -> Event:
@@ -329,7 +329,7 @@ class DataDownloader(abc.ABC):
         run = self._ask_run_by_rid()
 
         start_ns = run.start
-        start_timestamp = datetime.datetime.fromtimestamp(start_ns / 1e9, tz=datetime.timezone.utc)
+        start_timestamp = datetime.datetime.fromtimestamp(start_ns / 1e9, tz=datetime.UTC)
 
         # If run has no end time, ask for a duration
         end_ns = run.end
@@ -339,7 +339,7 @@ class DataDownloader(abc.ABC):
                 "Run has no end! Provide end timestamp (UTC)", default=datetime.datetime.now().isoformat()
             )
         else:
-            end_timestamp = datetime.datetime.fromtimestamp(end_ns / 1e9, tz=datetime.timezone.utc)
+            end_timestamp = datetime.datetime.fromtimestamp(end_ns / 1e9, tz=datetime.UTC)
 
         return start_timestamp, end_timestamp
 
@@ -418,15 +418,11 @@ class DataDownloader(abc.ABC):
             return
 
         # get tags from dataset & asset combo
-        scope_tags = None
-        raw_asset = self._client._clients.assets.get_assets(self._client._clients.auth_header, [asset.rid])[asset.rid]
-        for raw_datascope in raw_asset.data_scopes:
-            if raw_datascope.data_scope_name == refname:
-                scope_tags = raw_datascope.series_tags
-                break
-        if scope_tags is None:
+        data_scope = asset._scopes().datasets.get(refname)
+        if data_scope is None:
             logger.error("Failed to retrieve datascope details for refname %s", refname)
             return
+        scope_tags = data_scope.series_tags
 
         # Select channels (exact-name matching with iterative queries) to download
         channels = self._select_channels(dataset)

@@ -28,10 +28,11 @@ def create_write_stream(
 ) -> Generator[WriteStreamV2, None, None]:
     """Writer for a streaming data source in Nominal.
 
-    Deprecated: use `StreamingConnection.get_write_stream`, whose default rust implementation is
-    faster and emits the same `__nominal.metric.*` request-latency channels with `track_metrics=True`.
-    `max_batch_size` becomes `batch_size`, `max_wait` carries over, and `write_thread_workers` is
-    closest to `num_workers`; `max_queue_size` and `serialize_process_workers` have no equivalent.
+    Deprecated: use `StreamingConnection.get_write_stream`, whose default Rust implementation
+    emits the same ``__nominal.metric.*`` request-latency channels and
+    ``enque_dict_*_staleness`` dictionary-enqueue channels with ``track_metrics=True``.
+    ``max_batch_size`` becomes ``batch_size``, ``max_wait`` carries over, and ``write_thread_workers`` is
+    closest to ``num_workers``; ``max_queue_size`` and ``serialize_process_workers`` have no equivalent.
 
     Utilizes multiple processes to serialize batches of protobufs, and a thread pool to write to Nominal.
 

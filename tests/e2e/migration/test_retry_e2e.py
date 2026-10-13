@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
 from uuid import uuid4
 
@@ -42,7 +42,7 @@ def test_unreachable_destination_is_retried_then_recorded_as_skip(
     # before the upload leg hits the unreachable destination.
     video = source_client.create_video(f"migration-e2e-retry-{uuid4().hex[:8]}")
     register_cleanup(video.archive)
-    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    start = datetime(2024, 1, 1, tzinfo=UTC)
     video.add_from_io(BytesIO(mp4_data), "retry-test.mp4", start=start).poll_until_ingestion_completed(
         interval=POLL_INTERVAL
     )

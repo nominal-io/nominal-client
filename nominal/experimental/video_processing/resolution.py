@@ -7,12 +7,12 @@ from typing import Literal, TypeAlias
 @dataclasses.dataclass(frozen=True)
 class VideoResolution:
     resolution_width: int | None = None
-    """Width of the video, in pixels. Auto-inferred if None based on aspect ratio.
+    """Maximum width of the video, in pixels. Unbounded if None.
     NOTE: MUST be divisible by 2.
     """
 
     resolution_height: int | None = None
-    """Height of the video, in pixels. Auto-inferred if None based on aspect ratio.
+    """Maximum height of the video, in pixels. Unbounded if None.
     NOTE: MUST be divisible by 2.
     """
 
@@ -36,24 +36,23 @@ class VideoResolution:
                 )
 
     def scale_factor(self) -> str:
-        """Output a video filter flag usable with Ffmpeg to rescale the resolution of a video."""
-        # If the user has not provided a width, auto-compute a width that keeps the existing
-        # aspect ratio while also ensuring that the width is divisible by 2 (required for h264)
-        width_str = "-2"
-        if self.resolution_width is not None:
-            if self.allow_upscaling:
-                width_str = str(self.resolution_width)
-            else:
-                width_str = f"'min({self.resolution_width}, iw)'"
+        """Output a video filter flag usable with Ffmpeg to rescale a video to fit within this resolution."""
+        # Scale both dimensions by the same factor so the video fits within the requested bounds without
+        # distortion. Width is measured in display pixels (iw*sar) so anamorphic sources keep their aspect ratio.
+        factor = "1"
+        if self.resolution_width is not None and self.resolution_height is not None:
+            factor = f"min({self.resolution_width}/(iw*sar),{self.resolution_height}/ih)"
+        elif self.resolution_width is not None:
+            factor = f"{self.resolution_width}/(iw*sar)"
+        elif self.resolution_height is not None:
+            factor = f"{self.resolution_height}/ih"
+        if not self.allow_upscaling:
+            factor = f"min({factor},1)"
 
-        # If the user has not provided a height, auto-compute a height that keeps the existing
-        # aspect ratio while also ensuring that the height is divisible by 2 (required for h264)
-        height_str = "-2"
-        if self.resolution_height is not None:
-            if self.allow_upscaling:
-                height_str = str(self.resolution_height)
-            else:
-                height_str = f"'min({self.resolution_height}, ih)'"
+        # Round down to even dimensions (required for h264), biased slightly to absorb float error, and
+        # clamped to at least 2px since ffmpeg treats 0 as "keep the source size"
+        width_str = f"'max(2,trunc(iw*sar*({factor})/2+0.01)*2)'"
+        height_str = f"'max(2,trunc(ih*({factor})/2+0.01)*2)'"
 
         # Set scale to desired resolution, and set the Sample Aspect Ratio (SAR) to be 1:1,
         # meaning that each pixel of the video presents as a square when viewing in a video player

@@ -7,15 +7,15 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence, overload
+from typing import Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
-from typing_extensions import Self
 
 from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
@@ -123,7 +123,7 @@ class _PointCloudTimeMetadata:
 
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC
-    properties: Mapping[str, str]
+    properties: NominalProperties
 
     @classmethod
     def from_extent(cls, time_range_us: tuple[int, int], origin: datetime | IntegralNanosecondsUTC) -> Self:
@@ -156,7 +156,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     name: str
     description: str | None
     labels: Sequence[str]
-    properties: Mapping[str, str]
+    properties: NominalProperties
     is_archived: bool
     dagger_uuid: str
     metadata: PointCloudMetadata
@@ -183,7 +183,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace spatial metadata in-place and return the updated spatial.
@@ -444,7 +444,7 @@ def create_point_cloud_spatial(
     metadata: PointCloudMetadata,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> Spatial:
     """Create an empty spatial, ready to have a point cloud added to it.
@@ -493,7 +493,7 @@ def _create_spatial_request(
     metadata: PointCloudMetadata,
     description: str | None,
     labels: Sequence[str],
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     markings: Sequence[Marking | str] | None,
 ) -> scout_spatial_api.Spatial:
     # The spatial names the model rather than referencing an existing one: the
@@ -519,3 +519,11 @@ def _create_spatial_request(
 
 def _get_spatial(clients: Spatial._Clients, rid: str) -> scout_spatial_api.Spatial:
     return clients.spatial.get(clients.auth_header, rid)
+
+
+def _get_spatials(clients: Spatial._Clients, rids: Sequence[str]) -> Sequence[scout_spatial_api.Spatial]:
+    """The spatials with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not rids:
+        return []
+    request = scout_spatial_api.GetSpatialsRequest(spatial_rids=list(rids))
+    return list(clients.spatial.batch_get(clients.auth_header, request).responses)

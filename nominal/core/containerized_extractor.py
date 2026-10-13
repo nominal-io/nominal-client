@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Protocol, Self, Sequence
 
 from nominal_api import upload_api
-from typing_extensions import Self
 
 from nominal import ts
 from nominal.core._utils.api_tools import (
@@ -23,6 +22,7 @@ from nominal.core._utils.api_tools import (
     property_update,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
@@ -30,6 +30,7 @@ from nominal.core.container_image import (
     REGISTERABLE_OUTPUT_FORMATS,
     ContainerImage,
     ContainerImageStatus,
+    ContainerResources,
     ExitCodeMapping,
     FileExtractionInput,
     FileExtractionParameter,
@@ -37,7 +38,7 @@ from nominal.core.container_image import (
     TimestampMetadata,
     _search_container_images,
 )
-from nominal.core.exceptions import NominalContainerImageError
+from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.ts import IntegralNanosecondsUTC
@@ -54,7 +55,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
     active_image: ContainerImage | None
     created_at: IntegralNanosecondsUTC
     labels: Sequence[str]
-    properties: Mapping[str, str]
+    properties: NominalProperties
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -80,7 +81,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         is_archived: bool | None = None,
         active_container_image: ContainerImage | str | None = None,
         labels: Iterable[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        properties: NominalProperties | None = None,
     ) -> Self:
         """Update the extractor in-place.
 
@@ -171,6 +172,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         output_format: FileOutputFormat = FileOutputFormat.PARQUET,
         parameters: Sequence[FileExtractionParameter] = (),
         exit_code_mappings: Sequence[ExitCodeMapping] = (),
+        resources: ContainerResources | None = None,
     ) -> ContainerImage:
         """Upload a `docker save` tarball and register it as a container image for this extractor.
 
@@ -202,6 +204,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             exit_code_mappings: Fallback canonical errors for failed container exit codes. A valid
                 structured error in `/dev/termination-log` takes precedence over these mappings.
                 Defaults to no mappings.
+            resources: Compute resource overrides for this image's extractor container. Fields left
+                as None use deployment-wide defaults. Defaults to no overrides.
 
         Returns:
             The newly registered image. Current backends push the image to the registry within this
@@ -213,6 +217,8 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             ValueError: If `output_format` is not currently ingestible via containerized extraction.
             NominalAlreadyExistsError: If an image with this tag is already registered for this
                 extractor.
+            NominalInvalidArgumentError: If a `resources` field is outside its documented bounds.
+                The server enforces these, so this surfaces only after the tarball is uploaded.
         """
         if output_format not in REGISTERABLE_OUTPUT_FORMATS:
             supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
@@ -221,26 +227,29 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
                 f"extraction ingest; an image registered with it could never ingest data successfully. "
                 f"Supported formats: {supported}."
             )
-        s3_path = upload_multipart_file(
-            self._clients.auth_header,
-            self._workspace_rid,
-            Path(tarball),
-            self._clients.upload,
-            header_provider=self._clients.header_provider,
-        )
+        if resources is None:
+            resources = ContainerResources()
         timestamp_metadata = TimestampMetadata(
             series_name=default_timestamp_column, timestamp_type=default_timestamp_type
         )
+        # Build the request before uploading so local conversion errors surface before a multi-GB upload.
         request = registry_pb2.CreateImageRequest(
             workspace_rid=self._workspace_rid,
             tag=tag,
-            object_path=s3_path,
             extractor_rid=self.rid,
             inputs=[i._to_proto() for i in inputs],
             parameters=[p._to_proto() for p in parameters],
             exit_code_mappings=[m._to_proto() for m in exit_code_mappings],
             file_output_format=output_format._to_proto(),
             default_timestamp_metadata=timestamp_metadata._to_proto(),
+            resources=resources._to_proto(),
+        )
+        request.object_path = upload_multipart_file(
+            self._clients.auth_header,
+            self._workspace_rid,
+            Path(tarball),
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
         with translate_grpc_errors():
             response = self._clients.registry.CreateImage(request)
@@ -294,7 +303,7 @@ def _create_containerized_extractor(
     *,
     description: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
 ) -> ContainerizedExtractor:
     request = containerized_extractor_pb2.CreateContainerizedExtractorRequest(
         workspace_rid=clients.resolve_default_workspace_rid(),
@@ -324,7 +333,7 @@ def _iter_search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     workspace_rid: str | None,
 ) -> Iterable[ContainerizedExtractor]:
     ws = clients.resolve_workspace(workspace_rid).rid
@@ -346,7 +355,7 @@ def _search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: Mapping[str, str] | None,
+    properties: NominalProperties | None,
     workspace_rid: str | None,
 ) -> Sequence[ContainerizedExtractor]:
     return list(

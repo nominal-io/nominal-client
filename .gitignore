@@ -70,8 +70,9 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
+# Docs builds: Sphinx output, and the MkDocs site that checkouts from before the Sphinx migration may still have
 docs/_build/
+docs/site/
 
 # PyBuilder
 .pybuilder/
@@ -139,8 +140,6 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-docs/site
 
 # mypy
 .mypy_cache/
@@ -191,6 +190,7 @@ uv.toml
 
 # Agent-neutral skills home (Codex, Cursor, etc. read here; .claude/skills symlinks into it).
 .agents/*
+!.agents/conventions/
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review

@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import sys
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.migration_runner import log_skipped_resources
 from nominal.experimental.migration.migration_state import MigrationState

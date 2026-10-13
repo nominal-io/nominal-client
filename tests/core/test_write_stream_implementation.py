@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -55,9 +56,7 @@ def without_nominal_streaming():
     import runs again and fails the way it would on such a machine.
     """
     with patch.dict(sys.modules):
-        for name in list(sys.modules):
-            if name.startswith("nominal.experimental.rust_streaming"):
-                del sys.modules[name]
+        sys.modules.pop("nominal.core._stream.rust_write_stream", None)
         sys.modules["nominal_streaming"] = None  # type: ignore[assignment]
         yield
 
@@ -69,7 +68,7 @@ def rust_write_stream_type() -> type:
     this whole file on the platforms whose fallback behavior it exists to pin down.
     """
     pytest.importorskip("nominal_streaming")
-    from nominal.experimental.rust_streaming import RustWriteStream
+    from nominal.core._stream.rust_write_stream import RustWriteStream
 
     return RustWriteStream
 
@@ -91,7 +90,7 @@ def test_falls_back_to_python_without_nominal_streaming(
 ):
     """Without nominal-streaming the default stream is the pure-python one, writing protobuf."""
     with mock_dataset.get_write_stream(batch_size=1) as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
@@ -99,14 +98,36 @@ def test_falls_back_to_python_without_nominal_streaming(
 
 def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
     """Explicitly asking for rust without nominal-streaming installed is an error, not a silent downgrade."""
-    with pytest.raises(ImportError, match="nominal-streaming is required"):
+    with pytest.raises(ImportError, match="implementation='rust' requires nominal-streaming") as exc_info:
         mock_dataset.get_write_stream(implementation="rust")
 
+    assert "pip install nominal-streaming" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
-def test_rust_only_argument_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
-    """A rust-only argument is never silently dropped by the fallback."""
-    with pytest.raises(ImportError, match="file_fallback"):
-        mock_dataset.get_write_stream(file_fallback="fallback.avro")
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"file_fallback": "fallback.avro"},
+        {"log_level": "info"},
+        {"num_workers": 2},
+        {"file_fallback": "fallback.avro", "log_level": "info", "num_workers": 2},
+    ],
+    ids=["file-fallback", "logging", "workers", "combined-options"],
+)
+def test_rust_only_arguments_raise_without_nominal_streaming(
+    mock_dataset: Dataset, without_nominal_streaming: None, arguments: dict[str, str | int]
+):
+    """Rust-only options explain why automatic selection cannot fall back without claiming an explicit selection."""
+    with pytest.raises(ImportError, match="requires the Rust streaming backend") as exc_info:
+        mock_dataset.get_write_stream(**arguments)
+
+    message = str(exc_info.value)
+    for argument in arguments:
+        assert argument in message
+    assert "implementation=" not in message
+    assert "pip install nominal-streaming" in message
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
 @pytest.mark.parametrize("implementation", ["json", "protobuf"])
@@ -118,7 +139,7 @@ def test_superseded_python_spellings_resolve_to_python(
         pytest.warns(UserWarning, match="use implementation='python'"),
         mock_dataset.get_write_stream(batch_size=1, implementation=implementation) as stream,  # type: ignore[call-overload]
     ):
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
@@ -140,14 +161,53 @@ def test_rust_stream_tracks_metrics_only_when_asked(mock_dataset: Dataset, kwarg
         assert stream._opts.track_metrics is expected  # type: ignore[attr-defined]
 
 
-def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset):
+@pytest.fixture
+def unimported_experimental_alias():
+    """Forget any earlier import of the deprecated alias, which only warns when it is first imported."""
+    with patch.dict(sys.modules):
+        sys.modules.pop("nominal.experimental.rust_streaming", None)
+        sys.modules.pop("nominal.experimental.rust_streaming.rust_write_stream", None)
+        yield
+
+
+def test_experimental_rust_streaming_import_is_a_deprecated_alias(unimported_experimental_alias: None):
+    """The old experimental import still yields the core class, warning once at the line that imports it."""
+    core_type = rust_write_stream_type()
+
+    with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
+        expected_lineno = inspect.currentframe().f_lineno + 1
+        from nominal.experimental.rust_streaming import RustWriteStream
+
+    assert RustWriteStream is core_type
+    assert [warning.filename for warning in record] == [__file__]
+    assert record[0].lineno == expected_lineno
+
+
+def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimported_experimental_alias: None):
+    """The old submodule import still yields the core class, with the same single warning at the caller."""
+    core_type = rust_write_stream_type()
+
+    with pytest.warns(UserWarning, match="rust_streaming is deprecated and will be removed") as record:
+        expected_lineno = inspect.currentframe().f_lineno + 1
+        from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+
+    assert RustWriteStream is core_type
+    assert [warning.filename for warning in record] == [__file__]
+    assert record[0].lineno == expected_lineno
+
+
+@pytest.mark.parametrize("argument", ["implementation", "data_format"])
+def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset, argument: str):
     """The superseded 'experimental' spelling yields a rust stream that keeps its runtime metrics."""
     with (
-        pytest.warns(UserWarning, match="use implementation='rust' with track_metrics=True"),
-        mock_dataset.get_write_stream(implementation="experimental") as stream,
+        pytest.warns(UserWarning) as record,
+        mock_dataset.get_write_stream(**{argument: "experimental"}) as stream,  # type: ignore[call-overload]
     ):
         assert isinstance(stream, rust_write_stream_type())
         assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
+
+    assert any("use implementation='rust' with track_metrics=True" in str(warning.message) for warning in record)
+    assert all(warning.filename == __file__ for warning in record)
 
 
 def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
@@ -199,7 +259,7 @@ def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
 def test_connection_writes_to_its_datasource_not_itself(mock_connection: StreamingConnection, mock_clients: MagicMock):
     """A streaming connection routes writes to its backing datasource rid, not its own rid."""
     with mock_connection.get_write_stream(batch_size=1, implementation="python") as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     kwargs = mock_clients.proto_write.write_nominal_batches.call_args.kwargs
     assert kwargs["data_source_rid"] == _DATASET_RID
@@ -210,14 +270,14 @@ def test_default_stream_accepts_enqueue_without_a_context_manager(mock_dataset: 
     """The default stream takes enqueues when closed explicitly, the lifecycle the docstring offers."""
     stream = mock_dataset.get_write_stream()
     try:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
     finally:
         stream.close()
 
 
 def test_default_stream_accepts_arrays_and_structs(mock_dataset: Dataset):
     """The default stream takes the array and struct enqueues WriteStreamBase declares."""
-    timestamp = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    timestamp = datetime(2025, 1, 1, tzinfo=UTC)
 
     with mock_dataset.get_write_stream() as stream:
         stream.enqueue_float_array("floats", timestamp, [1.0, 2.0])
@@ -231,4 +291,4 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
         with pytest.warns(UserWarning, match=r"flush\(\) does nothing"):
             stream.flush(wait=True)  # type: ignore[attr-defined]
 
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)

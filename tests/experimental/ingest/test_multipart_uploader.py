@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
     NominalRequestThrottledError,

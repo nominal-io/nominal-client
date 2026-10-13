@@ -4,15 +4,15 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Protocol, Tuple
+from typing import Protocol, Self, Tuple
 
 from nominal_api import scout_catalog, scout_video, scout_video_api
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._video_types import McapVideoDetails, TimestampOptions, _scale_parameter
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalIngestError,
     NominalIngestFailed,
@@ -90,7 +90,8 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
         Returns:
             Updated video file metadata.
 
-        NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
+        Note:
+            Only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
         """
         scale_parameter = _scale_parameter(
             ending_timestamp=ending_timestamp, true_frame_rate=true_frame_rate, scale_factor=scale_factor
@@ -130,7 +131,6 @@ class VideoFile(HasRid, RefreshableConjureMixin[scout_video_api.VideoFile]):
             timeout: Give up after this long and raise `NominalIngestTimeout`; None waits indefinitely.
 
         Raises:
-        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestTimeout: if the ingest did not finish within `timeout`
             NominalIngestError: if the ingest status is not known

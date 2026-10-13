@@ -4,10 +4,9 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import AbstractSet, Collection, Iterable, Protocol, Sequence
+from typing import AbstractSet, Collection, Iterable, Protocol, Self, Sequence
 
 from nominal_api import ingest_api
-from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
@@ -18,7 +17,7 @@ from nominal.core.dataset_file import (
     _poll_files_once,
     _sleep_until_next_poll,
 )
-from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout
+from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)

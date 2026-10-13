@@ -19,7 +19,7 @@ from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
-from nominal.core.exceptions import HeaderConflictError, NominalConfigError
+from nominal.exceptions import HeaderConflictError, NominalConfigError
 
 logger = logging.getLogger(__name__)
 

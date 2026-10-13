@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import overload
+from typing import Self, overload
 
 from nominal_api import scout_catalog, scout_video_api
-from typing_extensions import Self
 
 from nominal.core._video_types import _scale_parameter
 from nominal.core.dataset_file import DatasetFile
@@ -94,8 +93,10 @@ class VideoDatasetFile(DatasetFile):
             ValueError: no field was provided, or more than one of {ending_timestamp, true_frame_rate,
                 scale_factor} was provided.
 
-        NOTE: only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
-        NOTE: video channels do not carry per-file descriptions, so unlike the legacy
+        Note:
+            Only one of {ending_timestamp, true_frame_rate, scale_factor} may be present at one time.
+
+            video channels do not carry per-file descriptions, so unlike the legacy
             `VideoFile.update` there is no `description` parameter.
         """
         if all(value is None for value in (name, starting_timestamp, ending_timestamp, true_frame_rate, scale_factor)):

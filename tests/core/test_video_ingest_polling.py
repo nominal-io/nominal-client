@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core.exceptions import LegacyVideoDeprecationWarning, NominalIngestFailed, NominalIngestTimeout
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.exceptions import LegacyVideoDeprecationWarning, NominalIngestFailed, NominalIngestTimeout
 
 
 @pytest.fixture(autouse=True)

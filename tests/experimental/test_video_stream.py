@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core.exceptions import LegacyVideoDeprecationWarning
 from nominal.core.video import Video
+from nominal.exceptions import LegacyVideoDeprecationWarning
 
 # Requires the `video` extra to import the rust bindings, plus GStreamer at load time. exc_type covers
 # the CI case where the package is installed but its GStreamer libs are not (ImportError on import),

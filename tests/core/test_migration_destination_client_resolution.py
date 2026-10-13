@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock
 
-import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
+from nominal.core._scope_resolution import DataScopes
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -50,7 +45,7 @@ def _make_asset(rid: str) -> MagicMock:
     asset.labels = [rid]
     asset.list_runs.return_value = []
     asset.search_workbooks.return_value = []
-    asset._list_dataset_scopes.return_value = []
+    asset._scopes.return_value = DataScopes.from_data_scopes([])
     asset.list_datasets.return_value = []
     asset.list_videos.return_value = []
     asset.search_events.return_value = []

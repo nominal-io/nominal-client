@@ -7,11 +7,13 @@ import platform
 import sys
 from typing import (
     Any,
+    Callable,
     Generic,
     Iterable,
-    Literal,
     Mapping,
+    NotRequired,
     Protocol,
+    Self,
     Sequence,
     TypeAlias,
     TypedDict,
@@ -19,13 +21,11 @@ from typing import (
     runtime_checkable,
 )
 
-from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
-from typing_extensions import NotRequired, Self
+from nominal_api import scout_compute_api
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.types import types_pb2
-
-ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper |
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
 
 
-def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyUpdateWrapper | None:
+def property_update(properties: NominalProperties | None) -> types_pb2.PropertyUpdateWrapper | None:
     """Wrap properties for a proto update request: None omits the field, any mapping replaces it."""
     return None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
 
@@ -131,17 +131,24 @@ class LinkDict(TypedDict):
     title: NotRequired[str]
 
 
-def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
-    links_conjure = []
+def normalize_links(links: Sequence[str | Link | LinkDict]) -> Iterable[tuple[str, str | None]]:
     for link in links:
-        if isinstance(link, tuple):
-            url, title = link
-            links_conjure.append(scout_run_api.Link(url=url, title=title))
-        elif isinstance(link, dict):
-            links_conjure.append(scout_run_api.Link(url=link["url"], title=link.get("title")))
-        else:
-            links_conjure.append(scout_run_api.Link(url=link))
-    return links_conjure
+        match link:
+            case tuple():
+                url, title = link
+                yield url, title
+            case dict():
+                yield link["url"], link.get("title")
+            case _:
+                yield link, None
+
+
+def create_proto_links(links: Sequence[str | Link | LinkDict], link_type: Callable[..., T]) -> list[T]:
+    """Convert links to `link_type`, the calling service's proto `Link` message.
+
+    Each proto package declares its own `Link`, so the caller names the message to build.
+    """
+    return [link_type(url=url, title=title) for url, title in normalize_links(links)]
 
 
 def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_compute_api.StringConstant]:
@@ -174,15 +181,3 @@ def build_compute_tag_filter(tags: Mapping[str, str] | None) -> scout_compute_ap
     if len(single_filters) == 1:
         return single_filters[0]
     return scout_compute_api.TagFilters(and_=single_filters)
-
-
-def filter_scopes(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Sequence[scout_asset_api.DataScope]:
-    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
-
-
-def filter_scope_rids(scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in filter_scopes(scopes, scope_type)
-    }

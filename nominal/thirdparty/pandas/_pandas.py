@@ -11,6 +11,7 @@ from nominal_api.api import Timestamp
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -86,7 +87,7 @@ def upload_dataframe(
     *,
     wait_until_complete: bool = True,
     labels: Sequence[str] = (),
-    properties: Mapping[str, str] | None = None,
+    properties: NominalProperties | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
 ) -> Dataset:
@@ -149,11 +150,11 @@ def channel_to_series(
     Use `relative_to` and `relative_resolution` to return timestamps relative to the given epoch.
 
     Example:
-    -------
-    ```
-    s = channel_to_series(channel)
-    print(s.name, "mean:", s.mean())
-    ```
+        ```python
+        s = channel_to_series(channel)
+        print(s.name, "mean:", s.mean())
+        ```
+
 
     """
     start_time = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
@@ -227,17 +228,6 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
-def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
-    return {
-        "nanoseconds": "ns",
-        "microseconds": "us",
-        "milliseconds": "ms",
-        "seconds": "s",
-        "minutes": "m",
-        "hours": "h",
-    }[unit]
-
-
 _EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 
 
@@ -277,7 +267,6 @@ def datasource_to_dataframe(
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
     Args:
-    ----
         datasource: The datasource to download data from
         channel_exact_match: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
@@ -305,18 +294,17 @@ def datasource_to_dataframe(
         relative_resolution: If providing timestamps in relative time, the resolution to use
 
     Returns:
-    -------
         A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
             channels.
 
     Example:
-    -------
-    ```
-    rid = "..." # Taken from the UI or via the SDK
-    dataset = client.get_dataset(rid)
-    df = datasource_to_dataframe(dataset)
-    print(df.head())  # Show first few rows of data
-    ```
+        ```python
+        rid = "..." # Taken from the UI or via the SDK
+        dataset = client.get_dataset(rid)
+        df = datasource_to_dataframe(dataset)
+        print(df.head())  # Show first few rows of data
+        ```
+
 
     """
     start_time = ts._SecondsNanos.from_flexible(start).to_api() if start else ts._MIN_TIMESTAMP.to_api()

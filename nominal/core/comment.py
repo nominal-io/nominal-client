@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from typing_extensions import Self
+from typing import Self
 
 from nominal.protos.comments.v1 import comments_pb2
 from nominal.ts import IntegralNanosecondsUTC

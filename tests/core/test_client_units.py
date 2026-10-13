@@ -6,8 +6,8 @@ import grpc
 import pytest
 
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalPermissionDeniedError
 from nominal.core.unit import Unit, _available_units, _error_on_invalid_units
+from nominal.exceptions import NominalPermissionDeniedError
 from nominal.protos.units.v1 import units_pb2
 
 

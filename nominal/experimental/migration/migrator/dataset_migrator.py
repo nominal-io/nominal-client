@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from nominal.core import NominalClient
+from nominal.core._utils.api_types import NominalProperties
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class DatasetCopyOptions(ResourceCopyOptions):
     new_dataset_name: str | None = None
     new_dataset_description: str | None = None
-    new_dataset_properties: dict[str, Any] | None = None
+    new_dataset_properties: NominalProperties | None = None
     new_dataset_labels: Sequence[str] | None = None
     include_files: bool = False
     preserve_uuid: bool = False
@@ -137,7 +137,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         options: DatasetCopyOptions,
         dataset_name: str,
         dataset_description: str | None,
-        dataset_properties: Mapping[str, str] | dict[str, Any],
+        dataset_properties: NominalProperties,
         dataset_labels: Sequence[str],
     ) -> Dataset:
         if options.preserve_uuid:

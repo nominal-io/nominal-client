@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping, TypeVar
 
-from nominal.core.exceptions import ExtractorError
+from nominal.exceptions import ExtractorError
 
 # Mirrors the mount/env contract the Nominal ingest pipeline establishes for the customer
 # container.

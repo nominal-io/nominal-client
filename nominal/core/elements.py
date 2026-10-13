@@ -3,8 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-
-from typing_extensions import Self, assert_never
+from typing import Self, assert_never
 
 from nominal.protos.scout.elements.v1 import elements_pb2
 
@@ -15,7 +14,7 @@ class SymbolKind(Enum):
     ICON = "ICON"
     """A named icon, e.g. `castle`."""
     EMOJI = "EMOJI"
-    """An emoji name, e.g. `:castle:`."""
+    """An emoji name, e.g. ``:castle:``."""
     IMAGE = "IMAGE"
     """A URL pointing at an image."""
 
@@ -38,7 +37,7 @@ class Symbol:
 
     @classmethod
     def emoji(cls, name: str) -> Self:
-        """A symbol from an emoji name, e.g. `:castle:`."""
+        """A symbol from an emoji name, e.g. ``:castle:``."""
         return cls(SymbolKind.EMOJI, name)
 
     @classmethod

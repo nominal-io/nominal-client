@@ -9,7 +9,7 @@ from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType, SearchEventOriginTypes
 from nominal.core.client import NominalClient
 from nominal.core.event import Event, EventDisposition
-from nominal.core.exceptions import NominalNotFoundError
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.types import common_pb2
 from nominal.protos.types.time import time_pb2

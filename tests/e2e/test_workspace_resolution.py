@@ -4,7 +4,7 @@ import pytest
 
 from nominal.config import NominalConfig
 from nominal.core import NominalClient, WorkspaceSearchType
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 
 
 def _client_with_workspace_override(client: NominalClient, pytestconfig, *, workspace_rid: str | None) -> NominalClient:

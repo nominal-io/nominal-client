@@ -7,8 +7,8 @@ import pytest
 from google.protobuf import timestamp_pb2
 
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalNotFoundError
 from nominal.core.secret import Secret
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.secrets.v1 import secrets_pb2
 
 

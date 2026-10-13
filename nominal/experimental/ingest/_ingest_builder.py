@@ -8,7 +8,6 @@ Build with an ``add_*`` method per file, then ``submit()``. Supported item kinds
 (csv/parquet), avro stream, mcap, journald json, dataflash, video, and containerized extractors.
 
 Point-cloud ingest is intentionally omitted: the v2 endpoint rejects it today.
-TODO(drake): add ``add_point_cloud`` once the backend accepts that item kind.
 """
 
 from __future__ import annotations
@@ -21,18 +20,17 @@ from concurrent.futures import as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Mapping, Sequence, Union, overload
+from typing import Mapping, Self, Sequence, Union, overload
 
 from google.protobuf import timestamp_pb2
-from typing_extensions import Self
 
 from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalClient
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
+from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -53,6 +51,8 @@ from nominal.ts import (
     _to_typed_timestamp_type,
     _validate_timestamp_pair,
 )
+
+# TODO(drake): add add_point_cloud once the backend accepts that item kind.
 
 logger = logging.getLogger(__name__)
 

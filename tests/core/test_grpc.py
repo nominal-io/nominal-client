@@ -19,7 +19,7 @@ from nominal.core._utils.grpc_tools import (
     translate_grpc_errors,
 )
 from nominal.core._utils.networking import StaticHeaderProvider
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     HeaderConflictError,
     NominalAlreadyExistsError,
     NominalAuthenticationError,

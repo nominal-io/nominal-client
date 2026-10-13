@@ -12,8 +12,8 @@ from nominal_api import ingest_api, upload_api
 
 from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
-from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
+from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +307,8 @@ def upload_multipart_io(
 
     Returns: Path to the uploaded object in S3
 
-    Note: see put_multipart_upload for more details
+    Note:
+        see put_multipart_upload for more details
 
     """
     validate_upload_filename(name)
@@ -349,7 +350,8 @@ def upload_multipart_file(
 
     Returns: Path to the uploaded object in S3
 
-    Note: see put_multipart_upload for more details
+    Note:
+        see put_multipart_upload for more details
 
     """
     if file_type is None:

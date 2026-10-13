@@ -7,19 +7,10 @@ from typing import Iterable, Mapping, Sequence, TypeAlias
 from nominal_api import api, scout_compute_api
 
 from nominal.core import NominalClient
-from nominal.core.exceptions import NominalComputeError
+from nominal.exceptions import NominalComputeError
 from nominal.experimental.compute.dsl import exprs as _exprs
 from nominal.experimental.compute.dsl import params
 from nominal.ts import _SecondsNanos
-
-
-class ExceptionGroup(Exception):
-    def __init__(self, message: str, exceptions: Sequence[Exception]):
-        exc_str = "\n".join([str(ex) for ex in exceptions])
-        super().__init__(f"{message}:\n{exc_str}")
-
-        self.message = message
-        self.exceptions = exceptions
 
 
 @dataclass(frozen=True)
@@ -129,8 +120,11 @@ def compute_buckets(
         buckets: Number of buckets to return
 
     Returns:
-        Decimated data representing the provided numerical expression computed over the provided time range
-        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+        Decimated data representing the provided numerical expression computed over the provided time range.
+
+    Note:
+        It is not a safe guarantee that the number of buckets returned is the same as
+        the number requested.
 
     """
     # TODO: expose context parameterization
@@ -166,8 +160,11 @@ def compute_enum_buckets(
         buckets: Number of buckets to return
 
     Returns:
-        Decimated data representing the provided numerical expression computed over the provided time range
-        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+        Decimated data representing the provided numerical expression computed over the provided time range.
+
+    Note:
+        It is not a safe guarantee that the number of buckets returned is the same as
+        the number requested.
     """
     request = _create_compute_request_buckets(
         expr._to_conjure(), {}, _timestamp_to_conjure(start), _timestamp_to_conjure(end), buckets
@@ -213,9 +210,16 @@ def batch_compute_enum_buckets(
 
     Returns:
         A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
-        inner sequences correspond to the individual buckets for each input expression. The order of buckets returned
-        matches the order of expressions provided.
-        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+        inner sequences correspond to the individual buckets for each input expression. The order of buckets
+        returned matches the order of expressions provided.
+
+    Raises:
+        ExceptionGroup: One or more expressions failed to compute; each failure is a `RuntimeError` in
+            ``exceptions``.
+
+    Note:
+        It is not a safe guarantee that the number of buckets returned is the same as
+        the number requested.
     """
     # Create request
     api_start = _timestamp_to_conjure(start)
@@ -270,9 +274,16 @@ def batch_compute_buckets(
 
     Returns:
         A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
-        inner sequences correspond to the individual buckets for each input expression. The order of buckets returned
-        matches the order of expressions provided.
-        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+        inner sequences correspond to the individual buckets for each input expression. The order of buckets
+        returned matches the order of expressions provided.
+
+    Raises:
+        ExceptionGroup: One or more expressions failed to compute; each failure is a `RuntimeError` in
+            ``exceptions``.
+
+    Note:
+        It is not a safe guarantee that the number of buckets returned is the same as
+        the number requested.
     """
     # Create request
     api_start = _timestamp_to_conjure(start)

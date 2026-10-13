@@ -16,7 +16,7 @@ from nominal.core._utils.networking import (
     SslBypassRequestsAdapter,
     create_conjure_service_client,
 )
-from nominal.core.exceptions import HeaderConflictError
+from nominal.exceptions import HeaderConflictError
 
 
 @pytest.fixture

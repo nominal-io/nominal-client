@@ -5,16 +5,12 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import signal
-import sys
 import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources

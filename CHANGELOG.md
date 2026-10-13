@@ -1,5 +1,65 @@
 # Changelog
 
+## [1.176.0](https://github.com/nominal-io/nominal-client/compare/v1.175.0...v1.176.0) (2026-10-13)
+
+
+### Features
+
+* migrate attachment service to gRPC ([#1076](https://github.com/nominal-io/nominal-client/issues/1076)) ([777b439](https://github.com/nominal-io/nominal-client/commit/777b43947ef8edfb44c928f8c8d13e16dd00887b)), closes [#1046](https://github.com/nominal-io/nominal-client/issues/1046)
+* migrate AuthenticationServiceV2 calls to gRPC UserService ([#1077](https://github.com/nominal-io/nominal-client/issues/1077)) ([fb124f1](https://github.com/nominal-io/nominal-client/commit/fb124f1b5625275f1cb5d9a39f53e4219f3be676)), closes [#1047](https://github.com/nominal-io/nominal-client/issues/1047)
+* require python 3.11+, add python 3.15 support, and remove 3.10 workarounds ([#1090](https://github.com/nominal-io/nominal-client/issues/1090)) ([e9e94c5](https://github.com/nominal-io/nominal-client/commit/e9e94c54fad041d7e408709b047e9b33d228135d))
+
+
+### Bug Fixes
+
+* correct the default MIME type for unrecognized file extensions ([#1087](https://github.com/nominal-io/nominal-client/issues/1087)) ([7a070f8](https://github.com/nominal-io/nominal-client/commit/7a070f8ffe563e7977a3d431c289ac4e5d1f0cb6))
+
+
+### Documentation
+
+* codify Sphinx docstring authoring conventions ([#1079](https://github.com/nominal-io/nominal-client/issues/1079)) ([27e193e](https://github.com/nominal-io/nominal-client/commit/27e193e80cc265a47ea1e9f1320c95f2f3741a5a))
+* link the Nominal logo to the docs hub like instro ([#1085](https://github.com/nominal-io/nominal-client/issues/1085)) ([7bbcaff](https://github.com/nominal-io/nominal-client/commit/7bbcaff13e3bc4933a5fe9aee232e8637e98295e)), closes [#1082](https://github.com/nominal-io/nominal-client/issues/1082)
+
+## [1.175.0](https://github.com/nominal-io/nominal-client/compare/v1.174.0...v1.175.0) (2026-10-09)
+
+
+### Features
+
+* expose workbook labels and properties ([#1042](https://github.com/nominal-io/nominal-client/issues/1042)) ([5b7abbc](https://github.com/nominal-io/nominal-client/commit/5b7abbc5d589b244a06072d618e54607be41b04b))
+* migrate asset service to gRPC ([#915](https://github.com/nominal-io/nominal-client/issues/915)) ([195a6e9](https://github.com/nominal-io/nominal-client/commit/195a6e95de403b95e58bb5a0d6d1e1cf5579a56b))
+* migrate data review service to gRPC ([#916](https://github.com/nominal-io/nominal-client/issues/916)) ([7b07269](https://github.com/nominal-io/nominal-client/commit/7b072690ea82e552c30506686ee540b721cfd4db))
+* migrate RunService to gRPC ([#962](https://github.com/nominal-io/nominal-client/issues/962)) ([d652b17](https://github.com/nominal-io/nominal-client/commit/d652b172c885c0e4f5146e932cdb4ba2f143317c))
+* promote rust streaming from nominal.experimental into nominal.core ([#1072](https://github.com/nominal-io/nominal-client/issues/1072)) ([d92c200](https://github.com/nominal-io/nominal-client/commit/d92c200d582e9488234e8cdd415f119376712448))
+
+## [1.174.0](https://github.com/nominal-io/nominal-client/compare/v1.173.0...v1.174.0) (2026-10-08)
+
+
+### Features
+
+* change workbook clone defaults and add metadata overrides ([#1026](https://github.com/nominal-io/nominal-client/issues/1026)) ([2a11ac6](https://github.com/nominal-io/nominal-client/commit/2a11ac6ec0395c79e81c8903828c9c5f2ae3801c))
+* clone workbook templates and refresh returned metadata ([#1029](https://github.com/nominal-io/nominal-client/issues/1029)) ([17b7d6f](https://github.com/nominal-io/nominal-client/commit/17b7d6f18625a52147aad27eea71266e6b4eb692))
+
+
+### Bug Fixes
+
+* report workbook templates as standard workbooks ([#1019](https://github.com/nominal-io/nominal-client/issues/1019)) ([879647a](https://github.com/nominal-io/nominal-client/commit/879647ad3c8fa7229d11a0d4498b1d19fb73d813))
+
+## [1.173.0](https://github.com/nominal-io/nominal-client/compare/v1.172.1...v1.173.0) (2026-10-07)
+
+
+### Features
+
+* expose containerized extractor resource configuration ([#1006](https://github.com/nominal-io/nominal-client/issues/1006)) ([d011c85](https://github.com/nominal-io/nominal-client/commit/d011c8546db08580382eeb86facbc8dbf3de88ff))
+
+## [1.172.1](https://github.com/nominal-io/nominal-client/compare/v1.172.0...v1.172.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* preserve display aspect ratio and even dimensions in normalize_video ([a03ebe7](https://github.com/nominal-io/nominal-client/commit/a03ebe769979bdf30fb4ba5076aa18db2f05b571))
+* remove circular import with config/exceptions ([#1010](https://github.com/nominal-io/nominal-client/issues/1010)) ([665ccf6](https://github.com/nominal-io/nominal-client/commit/665ccf6c115b8528cb3b22f9c7c38d274b63278f))
+* scale correctly in normalize video ([#1009](https://github.com/nominal-io/nominal-client/issues/1009)) ([a03ebe7](https://github.com/nominal-io/nominal-client/commit/a03ebe769979bdf30fb4ba5076aa18db2f05b571))
+
 ## [1.172.0](https://github.com/nominal-io/nominal-client/compare/v1.171.0...v1.172.0) (2026-09-22)
 
 

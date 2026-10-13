@@ -1026,10 +1026,7 @@ def test_migrate_maps_checklist_assignee_without_impersonation(
 
     dest_review_rid = state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid)
     assert dest_review_rid is not None
-    dest_review = DataReview._from_conjure(
-        dest_client._clients,
-        dest_client._clients.datareview.get(dest_client._clients.auth_header, dest_review_rid),
-    )
+    dest_review = dest_client.get_data_review(dest_review_rid)
     register_cleanup(dest_review.archive)
 
 

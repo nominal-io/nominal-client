@@ -3,9 +3,7 @@ from __future__ import annotations
 import abc
 from datetime import datetime
 from types import TracebackType
-from typing import Any, Generic, Mapping, Sequence, Type, TypeVar
-
-from typing_extensions import Self
+from typing import Any, Generic, Mapping, Self, Sequence, Type, TypeVar
 
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -38,7 +36,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamp: Absolute timestamp of the data being uploaded.
             value: Value to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
 
     def enqueue_batch(
@@ -58,7 +57,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamps: Absolute timestamps of the data being uploaded.
             values: Values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         if len(timestamps) != len(values):
             raise ValueError(
@@ -84,7 +84,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamp: The shared timestamp to use for all items to enqueue.
             channel_values: A dictionary mapping channel names to their respective values.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value, tags)
@@ -104,7 +105,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamp: Absolute timestamp of the data being uploaded.
             value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
 
     @abc.abstractmethod
@@ -122,7 +124,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamp: Absolute timestamp of the data being uploaded.
             value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
 
     @abc.abstractmethod
@@ -140,7 +143,8 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             timestamp: Absolute timestamp of the data being uploaded.
             value: Dict to write to the specified channel. Must be JSON-serializable.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
 
     @abc.abstractmethod

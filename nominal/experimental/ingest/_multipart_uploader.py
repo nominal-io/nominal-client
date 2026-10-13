@@ -16,11 +16,10 @@ import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Iterable, Type
+from typing import TYPE_CHECKING, Callable, Iterable, Self, Type
 
 import requests
 from nominal_api import upload_api
-from typing_extensions import Self
 
 from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.multipart import (
@@ -33,12 +32,12 @@ from nominal.core._utils.multipart import (
     path_upload_name,
 )
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core.exceptions import (
+from nominal.core.filetype import FileType
+from nominal.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
     NominalRequestThrottledError,
 )
-from nominal.core.filetype import FileType
 from nominal.experimental.ingest._upload_pacing import (
     _ABORT_THROTTLE_DEADLINE_S,
     DEFAULT_MAX_BACKOFF_DURATION_S,

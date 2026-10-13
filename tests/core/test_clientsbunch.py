@@ -13,13 +13,18 @@ from nominal.core._clientsbunch import (
     api_base_url_to_app_base_url,
 )
 from nominal.core.client import NominalClient
-from nominal.core.exceptions import NominalConfigError
+from nominal.exceptions import NominalConfigError
 from nominal.experimental import as_user
+from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
@@ -272,6 +277,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         None,
     )
 
+    assert isinstance(clients.run, run_service_pb2_grpc.RunServiceStub)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
     assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
     assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
@@ -279,11 +285,15 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     )
+    assert isinstance(clients.assets, asset_pb2_grpc.AssetServiceStub)
+    assert isinstance(clients.attachment, attachments_pb2_grpc.AttachmentServiceStub)
+    assert isinstance(clients.datareview, data_review_pb2_grpc.DataReviewServiceStub)
     assert isinstance(clients.event, event_pb2_grpc.EventServiceStub)
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
     assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
     assert isinstance(clients.sql, sql_pb2_grpc.SqlServiceStub)
+    assert isinstance(clients.users, users_pb2_grpc.UserServiceStub)
     # Exactly one channel, built from the right transport params and shared by every gRPC stub.
     create_grpc_channel.assert_called_once()
     assert create_grpc_channel.call_args.kwargs["auth_header"] == "Bearer token"
@@ -313,9 +323,6 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
-        "ri.authn.dev.user.target"
-    )
-    assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
     # The impersonation header_provider must also reach the gRPC channel; the most

@@ -11,10 +11,10 @@ import requests
 
 from nominal.core._utils.filenames import sanitize_upload_filename
 from nominal.core._video_types import McapVideoDetails, TimestampOptions
-from nominal.core.exceptions import NominalIngestFailed, NominalIngestTimeout, NominalVideoFileMetadataError
 from nominal.core.filetype import FileTypes
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout, NominalVideoFileMetadataError
 from nominal.experimental.migration.utils.retry_utils import retry_transient
 
 logger = logging.getLogger(__name__)

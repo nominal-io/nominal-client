@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
 import requests
 import urllib3.exceptions
 
-from nominal.core.exceptions import (
+from nominal.exceptions import (
     NominalIngestError,
     NominalIngestFailed,
     NominalIngestTimeout,

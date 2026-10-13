@@ -8,7 +8,6 @@ from typing import Iterable, Literal, Mapping, NamedTuple, Protocol, Sequence, T
 
 from nominal_api import (
     api,
-    authentication_api,
     datasource_api,
     ingest_api,
     scout_catalog,
@@ -35,6 +34,7 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.marking import MarkableMixin
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
@@ -103,7 +103,7 @@ class DataSource(HasRid, MarkableMixin):
         @property
         def registry(self) -> registry_pb2_grpc.RegistryServiceStub: ...
         @property
-        def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
+        def users(self) -> users_pb2_grpc.UserServiceStub: ...
         @property
         def roles(self) -> roles_pb2_grpc.RoleServiceStub: ...
         @property
@@ -123,11 +123,9 @@ class DataSource(HasRid, MarkableMixin):
         """Look up the metadata for all matching channels associated with this datasource
 
         Args:
-        ----
             names: List of channel names to look up metadata for.
 
         Yields:
-        ------
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
@@ -218,37 +216,46 @@ class DataSource(HasRid, MarkableMixin):
         Data is written asynchronously.
 
         Args:
-        ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
-            implementation: Streaming implementation to use: 'rust' or 'python'. Defaults to 'rust',
-                falling back to 'python' when `nominal-streaming` is not installed.
-                NOTE: 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
-                      'python', 'python', and 'rust' respectively.
-                NOTE: 'experimental' is a deprecated spelling of 'rust' with `track_metrics=True`.
-            file_fallback: Filepath to write failed batches to during streaming
-                NOTE: expects a .avro filename
-                NOTE: only works with `implementation='rust'`
+            implementation: Streaming implementation to use: 'rust' or 'python'. When omitted, uses 'rust'
+                if `nominal-streaming` is available, otherwise 'python'. Automatic selection cannot fall back
+                to 'python' when ``file_fallback``, ``log_level``, or ``num_workers`` is supplied,
+                or when ``track_metrics=True``.
+
+                **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
+                'python', 'python', and 'rust' respectively.
+
+                **Note:** 'experimental' is a deprecated spelling of 'rust' with ``track_metrics=True``.
+            file_fallback: Filepath to write failed batches to during streaming.
+
+                **Note:** Expects a .avro filename.
+
+                **Note:** Supported only by the Rust backend.
             log_level: Log level to use in underlying rust streaming code.
-                NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `implementation='rust'`
+
+                **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+
+                **Note:** Supported only by the Rust backend.
             num_workers: Number of worker threads to use in underlying rust streaming code.
-                NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `implementation='rust'`
-            track_metrics: Also stream runtime metrics about the upload (request round-trip time, and
-                how stale each request's points are before and after it is sent) as
-                `__nominal.metric.*` channels on the same dataset.
-                NOTE: only works with `implementation='rust'`
+
+                **Note:** Use with care-- this may have large impacts on streaming performance.
+
+                **Note:** Supported only by the Rust backend.
+            track_metrics: Also stream request round-trip time and point staleness as
+                ``__nominal.metric.*`` channels on the same dataset. ``enqueue_from_dict`` also emits
+                ``enque_dict_start_staleness`` and ``enque_dict_end_staleness`` channels.
+                Disabled by default.
+
+                **Note:** Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
 
         Returns:
-        --------
             Write stream object configured to send data to nominal. This may be used as a context manager
             (so that resources are automatically released upon exiting the context), or if not used as a context
             manager, should be explicitly `close()`-ed once no longer needed.
 
         Raises:
-        ------
             ValueError: both `implementation` and `data_format` were given, or the implementation is unknown.
             ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
                 explicitly via `implementation` or implicitly by passing a rust-only argument.
@@ -324,15 +331,14 @@ class DataSource(HasRid, MarkableMixin):
         """Set units for channels based on a provided mapping of channel names to units.
 
         Args:
-        ----
             channels_to_units: A mapping of channel names to unit symbols.
-                NOTE: any existing units may be cleared from a channel by providing None as a symbol.
+
+                **Note:** Any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
             allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.
 
         Raises:
-        ------
             ValueError: Unsupported unit symbol provided
             NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
             conjure_python_client.ConjureHTTPError: Error completing requests.
@@ -656,15 +662,20 @@ def _get_write_stream(
     # apart from constructing the stream: a failed import means rust is unavailable on this machine,
     # while a failure building the stream is a real error that should surface.
     try:
-        from nominal.experimental.rust_streaming import RustWriteStream
+        from nominal.core._stream.rust_write_stream import RustWriteStream
     except ImportError as ex:
-        if requested == "rust":
-            raise
-
-        if used:
-            # Falling back would drop these. `file_fallback` in particular is a durability feature,
-            # and silently turning it into a no-op is worse than refusing.
-            raise ImportError(f"nominal-streaming is required to use get_write_stream with {', '.join(used)}") from ex
+        # Falling back would drop rust-only arguments. `file_fallback` in particular is a durability
+        # feature, and silently turning it into a no-op is worse than refusing.
+        if requested == "rust" or used:
+            reason = (
+                f"Using {', '.join(used)} requires the Rust streaming backend. nominal-streaming could not be imported."
+                if used
+                else "implementation='rust' requires nominal-streaming, which could not be imported."
+            )
+            raise ImportError(
+                f"{reason} It ships pre-compiled binaries for a subset of platforms and interpreters; "
+                "install it with: pip install nominal-streaming"
+            ) from ex
 
         logger.info(
             "nominal-streaming is unavailable, falling back to `implementation='python'` streaming. "

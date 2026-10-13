@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
+from nominal.core._scope_resolution import DataScopes
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.protos.asset.v2 import asset_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -223,17 +221,17 @@ class TestAssetMigratorDatasets:
         archived_ds.rid = "ri.catalog.cerulean-staging.dataset.00000002"
         archived_ds.is_archived = True
 
-        scope_active = MagicMock()
-        scope_active.data_scope_name = "scope-active"
-        scope_active.data_source.dataset = active_ds.rid
-        scope_active.series_tags = {}
-        scope_archived = MagicMock()
-        scope_archived.data_scope_name = "scope-archived"
-        scope_archived.data_source.dataset = archived_ds.rid
-        scope_archived.series_tags = {}
-
         source_asset = _make_source_asset()
-        source_asset._list_dataset_scopes.return_value = [scope_active, scope_archived]
+        source_asset._scopes.return_value = DataScopes.from_data_scopes(
+            [
+                asset_pb2.DataScope(
+                    data_scope_name="scope-active", data_source=asset_pb2.DataSource(dataset=active_ds.rid)
+                ),
+                asset_pb2.DataScope(
+                    data_scope_name="scope-archived", data_source=asset_pb2.DataSource(dataset=archived_ds.rid)
+                ),
+            ]
+        )
         source_asset.list_datasets.return_value = [("scope-active", active_ds), ("scope-archived", archived_ds)]
 
         dest_asset = _make_dest_asset()

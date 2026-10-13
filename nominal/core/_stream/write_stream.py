@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from types import TracebackType
-from typing import Any, Callable, Generic, Mapping, Sequence, Type, TypeAlias
-
-from typing_extensions import Self
+from typing import Any, Callable, Generic, Mapping, Self, Sequence, Type, TypeAlias
 
 from nominal.core._stream.write_stream_base import StreamType, WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -343,10 +341,10 @@ class WriteStream(WriteStreamBase[StreamType]):
         """Flush current batch of records to nominal in a background thread.
 
         Args:
-        ----
             wait: If true, wait for the batch to complete uploading before returning
             timeout: If wait is true, the time to wait for flush completion in seconds.
-                     NOTE: If none, waits indefinitely.
+
+                **Note:** If None, waits indefinitely.
 
         """
         future = self._flush()

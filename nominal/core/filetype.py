@@ -15,7 +15,7 @@ class FileType(NamedTuple):
     mimetype: str
 
     @classmethod
-    def from_path(cls, path: PathLike, default_mimetype: str = "application/octect-stream") -> FileType:
+    def from_path(cls, path: PathLike, default_mimetype: str = "application/octet-stream") -> FileType:
         path = Path(path)
 
         # Note: not using path.suffix because this fails for files with multiple suffixes,

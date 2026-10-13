@@ -26,7 +26,7 @@ leaves IN_PROGRESS.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -199,7 +199,7 @@ def test_ingest_into_archived_spatial_is_accepted(
 
 def test_spatial_as_run_data_scope(client: NominalClient, spatial: Spatial) -> None:
     """add_spatial / get_spatial / list_spatials round-trip on a Run."""
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     run = client.create_run(f"e2e-spatial-run-{uuid4().hex[:8]}", start=start, end=start + timedelta(hours=1))
     try:
         add_spatial_to_run(run, "cloud", spatial)
