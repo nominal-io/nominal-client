@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, cast
 
 from typing_extensions import deprecated
@@ -17,10 +16,12 @@ from nominal.core._utils.api_tools import (
     RefreshableGrpcMixin,
     create_proto_links,
     rid_from_instance_or_string,
+    typed_property_update,
 )
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.comment import Comment
@@ -128,7 +129,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             rid=self.rid,
             description=description,
             labels=None if labels is None else run_service_pb2.LabelSet(labels=labels),
-            properties=None if properties is None else run_service_pb2.PropertyMap(properties=properties),
+            typed_properties=typed_property_update(properties),
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_run_proto(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_run_proto(),
             title=name,
@@ -245,7 +246,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             start: Starting timestamp of the event
             duration: Duration of the event, or 0 for an event without duration.
             description: Optionally, a human readable description of the event to create
-            properties: Key-value pairs to use as properties on the created event
+            properties: String or numeric properties to set on the created event.
             labels: Sequence of labels to use on the created event.
 
         Returns:
@@ -290,7 +291,8 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             after: Filters to end times after this time, exclusive.
             before: Filters to start times before this time, exclusive.
             labels: A list of labels that must ALL be present on an event to be included.
-            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
             created_by_rid: Rid of the author that must be present on an event to be included.
             workbook_rid: Search for events on the given workbook.
             data_review_rid: Search for events from the given data review.
@@ -534,7 +536,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
         include_drafts: bool = False,
@@ -585,7 +587,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             rid=run.rid,
             name=run.title,
             description=run.description,
-            properties=MappingProxyType(dict(run.properties)),
+            properties=properties_from_proto(run.typed_properties),
             labels=tuple(run.labels),
             links=tuple(
                 (dict(url=link.url, title=link.title) if link.HasField("title") else dict(url=link.url))
@@ -626,7 +628,7 @@ def _create_run(
         description=description or "",
         labels=[] if labels is None else list(labels),
         links=[] if links is None else create_proto_links(links, run_service_pb2.Link),
-        properties={} if properties is None else dict(properties),
+        typed_properties=typed_properties_to_proto(properties),
         start_time=_SecondsNanos.from_flexible(start).to_run_proto(),
         title=name,
         end_time=None if end is None else _SecondsNanos.from_flexible(end).to_run_proto(),
