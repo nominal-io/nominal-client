@@ -85,13 +85,13 @@ knows where its data sits on the wall clock. Name the column holding per-point t
 read it:
 
 ```py
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from nominal.ts import Relative
 
 job = spatial.add_point_cloud_csv(
     "scan.csv",
     timestamp_column="t_s",
-    timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, 9, 30, tzinfo=timezone.utc)),
+    timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, 9, 30, tzinfo=UTC)),
 )
 ```
 

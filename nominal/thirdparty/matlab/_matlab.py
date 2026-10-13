@@ -135,8 +135,8 @@ def export_channels_to_matlab(
             client=client,
             output_path=pathlib.Path("out/my_export.mat"),
             channels=[channel_a, channel_b],
-            start_time=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
-            end_time=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
+            start_time=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2024, 2, 1, tzinfo=datetime.UTC),
         )
 
         # Export with fixed resolution (100ms) and relative timestamps in microseconds
@@ -146,7 +146,7 @@ def export_channels_to_matlab(
             channels=[channel_a, channel_b],
             resolution=100_000_000,
             export_timestamp_type=Relative(
-                "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+                "microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
             ),
         )
 
