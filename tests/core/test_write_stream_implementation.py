@@ -74,9 +74,10 @@ def rust_write_stream_type() -> type:
 
 
 def test_dataset_write_stream_defaults_to_rust(mock_dataset: Dataset):
-    """Omitting implementation streams over the rust backend when nominal-streaming is installed."""
+    """Default Rust streaming leaves runtime metrics disabled."""
     with mock_dataset.get_write_stream() as stream:
         assert isinstance(stream, rust_write_stream_type())
+        assert stream._opts.track_metrics is False  # type: ignore[attr-defined]
 
 
 def test_connection_write_stream_defaults_to_rust(mock_connection: StreamingConnection):
@@ -111,9 +112,10 @@ def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, w
         {"file_fallback": "fallback.avro"},
         {"log_level": "info"},
         {"num_workers": 2},
+        {"track_metrics": True},
         {"file_fallback": "fallback.avro", "log_level": "info", "num_workers": 2},
     ],
-    ids=["file-fallback", "logging", "workers", "combined-options"],
+    ids=["file-fallback", "logging", "workers", "metrics", "combined-options"],
 )
 def test_rust_only_arguments_raise_without_nominal_streaming(
     mock_dataset: Dataset, without_nominal_streaming: None, arguments: dict[str, str | int]
@@ -154,6 +156,12 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
+def test_rust_stream_tracks_metrics(mock_dataset: Dataset):
+    """Opting into runtime metrics configures the Rust stream."""
+    with mock_dataset.get_write_stream(implementation="rust", track_metrics=True) as stream:
+        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
+
+
 @pytest.fixture
 def unimported_experimental_alias():
     """Forget any earlier import of the deprecated alias, which only warns when it is first imported."""
@@ -189,14 +197,12 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
     assert record[0].lineno == expected_lineno
 
 
+@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
-    """'experimental' is not aliased away while it is the only implementation streaming metrics."""
+    """Experimental selection retains its Python metrics backend."""
     from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
-    with (
-        pytest.warns(UserWarning, match="does not carry streaming metrics yet"),
-        mock_dataset.get_write_stream(implementation="experimental") as stream,
-    ):
+    with mock_dataset.get_write_stream(implementation="experimental") as stream:
         assert isinstance(stream, WriteStreamV2)
 
 

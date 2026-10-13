@@ -165,6 +165,7 @@ class DataSource(HasRid, MarkableMixin):
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        track_metrics: bool = False,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
@@ -183,6 +184,7 @@ class DataSource(HasRid, MarkableMixin):
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        track_metrics: bool = False,
     ) -> DataStream: ...
     @overload
     def get_write_stream(
@@ -205,6 +207,7 @@ class DataSource(HasRid, MarkableMixin):
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        track_metrics: bool = False,
         *,
         data_format: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"] | None = None,
     ) -> DataStream:
@@ -217,13 +220,14 @@ class DataSource(HasRid, MarkableMixin):
             max_wait: How long a batch can exist before being flushed to Nominal.
             implementation: Streaming implementation to use: 'rust' or 'python'. When omitted, uses 'rust'
                 if `nominal-streaming` is available, otherwise 'python'. Automatic selection cannot fall back
-                to 'python' when `file_fallback`, `log_level`, or `num_workers` is supplied.
+                to 'python' when ``file_fallback``, ``log_level``, or ``num_workers`` is supplied,
+                or when ``track_metrics=True``.
 
                 **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
                 'python', 'python', and 'rust' respectively.
 
-                **Note:** 'experimental' is deprecated too. It is not an alias while it remains the
-                only implementation that streams runtime metrics.
+                **Note:** 'experimental' is deprecated and retains its Python metrics implementation.
+                Use ``implementation='rust'`` with ``track_metrics=True`` to migrate.
             file_fallback: Filepath to write failed batches to during streaming.
 
                 **Note:** Expects a .avro filename.
@@ -234,9 +238,20 @@ class DataSource(HasRid, MarkableMixin):
                 **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
 
                 **Note:** Supported only by the Rust backend.
-            num_workers: Number of worker threads to use in underlying rust streaming code.
+            num_workers: Number of Rust upload workers and runtime worker threads.
 
                 **Note:** Use with care-- this may have large impacts on streaming performance.
+
+                **Note:** Supported only by the Rust backend.
+            track_metrics: Emit request round-trip time and point staleness in seconds as
+                ``__nominal.metric.*`` channels on the same dataset. Staleness is the SDK machine's
+                wall-clock UTC time minus the point timestamp; future timestamps produce negative values.
+                Request metrics measure the oldest and newest points immediately before and after a
+                successful upload. ``enqueue_from_dict`` also emits ``enque_dict_start_staleness`` and
+                ``enque_dict_end_staleness``, measured at the start and end of the enqueue. Disabled by default.
+
+                **Note:** Request metrics are best-effort and travel with later data uploads. Pending request
+                metrics are not sent separately on close and may be dropped if their buffer fills.
 
                 **Note:** Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
@@ -259,6 +274,7 @@ class DataSource(HasRid, MarkableMixin):
             file_fallback=file_fallback,
             log_level=log_level,
             num_workers=num_workers,
+            track_metrics=track_metrics,
             write_rid=self._write_rid,
             clients=self._clients,
         )
@@ -534,21 +550,19 @@ def _construct_export_request(
 # the literals out so they render in the docs; the plumbing below uses this.
 _AnyImplementation: TypeAlias = Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"]
 
+
 # Superseded spellings. Each still works and each warns; the value is the guidance in the warning.
 _DEPRECATED_IMPLEMENTATIONS = {
     "json": "use implementation='python'",
     "protobuf": "use implementation='python'",
     "rust_experimental": "use implementation='rust'",
-    "experimental": "use implementation='rust', which does not carry streaming metrics yet",
+    "experimental": "use implementation='rust' with track_metrics=True to keep runtime metrics",
 }
 
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the
 # @warn_on_deprecated_argument wrapper -> the caller we want to blame.
 #
-# KEEP IN SYNC BY HAND. Anything that adds or removes a layer between this warning and the caller --
-# inlining a helper, stacking another decorator, a new wrapper -- makes it blame the wrong frame,
-# silently, with no test to catch it. Accepted because it is short-lived: it goes when these
-# deprecations do.
+# Update this when changing the call chain.
 _DEPRECATION_STACKLEVEL = 5
 
 
@@ -584,8 +598,6 @@ def _resolve_implementation(
         case "rust_experimental":
             return "rust"
         case "python" | "rust" | "experimental":
-            # 'experimental' is not aliased away while it is the only implementation that streams
-            # runtime metrics.
             return implementation
         case _:
             raise ValueError(
@@ -617,20 +629,27 @@ def _get_write_stream(
     file_fallback: PathLike | None,
     log_level: str | None,
     num_workers: int | None,
+    track_metrics: bool,
     write_rid: str,
     clients: DataSource._Clients,
 ) -> DataStream:
     requested = _resolve_implementation(implementation, data_format)
-    rust_only_arguments: Mapping[str, object] = {
-        "file_fallback": file_fallback,
-        "log_level": log_level,
-        "num_workers": num_workers,
-    }
+
+    used = [
+        key
+        for key, value in {
+            "file_fallback": file_fallback,
+            "log_level": log_level,
+            "num_workers": num_workers,
+        }.items()
+        if value is not None
+    ]
+    if track_metrics:
+        used.append("track_metrics")
 
     if requested is not None and requested != "rust":
-        for key, value in rust_only_arguments.items():
-            if value is not None:
-                logger.warning("Argument %s has no effect unless `implementation='rust'`", key)
+        for key in used:
+            logger.warning("Argument %s has no effect unless `implementation='rust'`", key)
 
     if requested == "python":
         return _python_write_stream(batch_size, max_wait, write_rid, clients)
@@ -660,7 +679,6 @@ def _get_write_stream(
     except ImportError as ex:
         # Falling back would drop rust-only arguments. `file_fallback` in particular is a durability
         # feature, and silently turning it into a no-op is worse than refusing.
-        used = sorted(key for key, value in rust_only_arguments.items() if value is not None)
         if requested == "rust" or used:
             reason = (
                 f"Using {', '.join(used)} requires the Rust streaming backend. nominal-streaming could not be imported."
@@ -686,4 +704,5 @@ def _get_write_stream(
         file_fallback=file_fallback,
         log_level=log_level,
         num_workers=num_workers,
+        track_metrics=track_metrics,
     )
