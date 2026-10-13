@@ -7,9 +7,9 @@ callers alongside this guide; examples do not require unrelated code to be norma
 
 Start with the caller's workflow and the generated response type. Find a neighboring
 wrapper using the same transport and lifecycle; copy its responsibilities, not its whole
-shape. [Attachment](../../nominal/core/attachment.py) is a small Conjure example and
-[Secret](../../nominal/core/secret.py) shows gRPC. A value object without identity or remote
-state does not need service clients or refresh machinery.
+shape. [Secret](../../nominal/core/secret.py) and [Attachment](../../nominal/core/attachment.py)
+are small gRPC examples. A value object without identity or remote state does not need
+service clients or refresh machinery.
 
 1. **Define the SDK shape.** Expose useful Python fields and operations, keeping generated
    models internal. Decide what the response actually tells us: absent metadata is not
