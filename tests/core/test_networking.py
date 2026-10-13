@@ -12,6 +12,7 @@ from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
 
 from nominal.core._utils.networking import (
+    SERVICE_SESSION_POOL_SIZE,
     HeaderProviderSession,
     SslBypassRequestsAdapter,
     create_conjure_service_client,
@@ -155,6 +156,14 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
     session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
     assert verify is None
     session.close()
+
+
+def test_service_session_pool_holds_concurrent_upload_connections(session: requests.Session) -> None:
+    """The shared service session keeps enough idle connections for several parallel multipart uploads."""
+    adapter = session.get_adapter("https://example.com/api")
+
+    assert adapter.poolmanager.connection_pool_kw["maxsize"] == SERVICE_SESSION_POOL_SIZE
+    assert SERVICE_SESSION_POOL_SIZE >= 4 * 8
 
 
 def test_header_provider_session_evaluates_headers_per_request() -> None:

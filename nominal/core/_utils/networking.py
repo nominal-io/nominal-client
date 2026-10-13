@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 ZSTD_COMPRESSION_LEVEL = 1
+SERVICE_SESSION_POOL_SIZE = 64
 
 _LOOPBACK_NETWORKS = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
 
@@ -294,7 +295,7 @@ def create_conjure_service_client(
     )
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, pool_maxsize=SERVICE_SESSION_POOL_SIZE)
     session = HeaderProviderSession(header_provider)
     # Replaces Requests' default headers; the adapter supplies Accept-Encoding.
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
