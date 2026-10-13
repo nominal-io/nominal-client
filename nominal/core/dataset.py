@@ -191,6 +191,27 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file
+
+        Returns:
+            Handle for the uploaded file and its ingestion status. The upload has completed,
+            but ingestion may still be in progress.
+
+        Note:
+            Wait for the file to finish ingesting before querying its data. Polling refreshes the
+            file, not this dataset; refresh the dataset separately before reading updated metadata
+            such as its bounds.
+
+        Example:
+            ```python
+            dataset_file = dataset.add_tabular_data(
+                "test.csv",
+                timestamp_column="timestamp",
+                timestamp_type="iso_8601",
+            )
+            dataset_file.poll_until_ingestion_completed()
+            dataset.refresh()
+            print(dataset.bounds)
+            ```
         """
         path = Path(path)
         file_type = FileType.from_tabular(path)
