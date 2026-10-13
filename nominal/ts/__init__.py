@@ -17,6 +17,10 @@ Wherever you can specify a timestamp format (typically the `timestamp_type` para
 valid formats:
 
 ```python
+from datetime import datetime
+
+from nominal import ts
+
 "iso_8601"
 "epoch_nanoseconds"
 "epoch_microseconds"
@@ -24,23 +28,23 @@ valid formats:
 "epoch_seconds"
 "epoch_minutes"
 "epoch_hours"
-nm.ts.Iso8601()
-nm.ts.Epoch("microseconds")
-nm.ts.Epoch("seconds")
-nm.ts.Epoch("hours")
-nm.ts.Relative("nanoseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Relative("milliseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Relative("seconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Relative("minutes", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
-nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
+ts.Iso8601()
+ts.Epoch("microseconds")
+ts.Epoch("seconds")
+ts.Epoch("hours")
+ts.Relative("nanoseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+ts.Relative("milliseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+ts.Relative("seconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+ts.Relative("minutes", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
+ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
+ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
 ```
 
-The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `nm.ts.Iso8601()` and
-`nm.ts.Epoch("{unit}")`.
+The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `ts.Iso8601()` and
+`ts.Epoch("{unit}")`.
 
 Relative and custom formats require additional parameters, so they can't be specified with a string.
-Relative timestamps require a start time that they are relative to, e.g. `nm.ts.Relative("{unit}", start=start_time)`.
+Relative timestamps require a start time that they are relative to, e.g. `ts.Relative("{unit}", start=start_time)`.
 Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see java
 `docs <https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns>`__.
 
@@ -49,8 +53,18 @@ Custom timestamp formats require a format string compatible with the `DateTimeFo
 Timestamp examples
 ------------------
 
-All of the examples use the same data (timestamp and value) expressed with different timestamp formats,
-and showcase how to upload them to Nominal.
+Each section represents the same measurements with a different timestamp format. Choose the format matching your
+data and save that section's CSV as ``temperature.csv``. The upload examples use an existing dataset:
+
+```python
+from datetime import datetime
+
+from nominal import ts
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+dataset = client.get_dataset("<DATASET_RID>")
+```
 
 ISO 8601
 ~~~~~~~~
@@ -71,8 +85,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type="iso_8601"  # or nm.ts.Iso8601()
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type="iso_8601"  # or ts.Iso8601()
 )
 ```
 
@@ -99,8 +115,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type="epoch_seconds"  # or nm.ts.Epoch("seconds")
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type="epoch_seconds"  # or ts.Epoch("seconds")
 )
 ```
 
@@ -120,8 +138,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type="epoch_nanoseconds"  # or nm.ts.Epoch("nanoseconds")
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type="epoch_nanoseconds"  # or ts.Epoch("nanoseconds")
 )
 ```
 
@@ -145,8 +165,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type=nm.ts.Relative(
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type=ts.Relative(
         "microseconds", start=datetime.fromisoformat("2024-09-30T16:37:36.891349+00:00")
     )
 )
@@ -177,8 +199,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type=nm.ts.Custom("EEE MMM dd HH:mm:ss.SSSSSS yyyy")
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type=ts.Custom("EEE MMM dd HH:mm:ss.SSSSSS yyyy")
 )
 ```
 
@@ -201,8 +225,10 @@ temperature,timestamp
 ```
 
 ```python
-nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
-    timestamp_type=nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
+dataset.add_tabular_data(
+    "temperature.csv",
+    timestamp_column="timestamp",
+    timestamp_type=ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
 )
 ```
 
