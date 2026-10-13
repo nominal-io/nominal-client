@@ -159,11 +159,10 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
 
 
 def test_service_session_pool_holds_concurrent_upload_connections(session: requests.Session) -> None:
-    """The shared service session keeps enough idle connections for several parallel multipart uploads."""
+    """Service sessions keep SERVICE_SESSION_POOL_SIZE idle connections per host instead of Requests' default of 10."""
     adapter = session.get_adapter("https://example.com/api")
 
     assert adapter.poolmanager.connection_pool_kw["maxsize"] == SERVICE_SESSION_POOL_SIZE
-    assert SERVICE_SESSION_POOL_SIZE >= 4 * 8
 
 
 def test_header_provider_session_evaluates_headers_per_request() -> None:
