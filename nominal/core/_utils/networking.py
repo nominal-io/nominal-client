@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 ZSTD_COMPRESSION_LEVEL = 1
-# Idle connections kept per host. Multipart uploads sign parts from DEFAULT_NUM_WORKERS 
+# Idle connections kept per host. Multipart uploads sign parts from DEFAULT_NUM_WORKERS
 # threads each on this session, and parallel uploads must not discard them.
 SERVICE_SESSION_POOL_SIZE = 64
 
