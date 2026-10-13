@@ -7,7 +7,8 @@ The main components of the SDK are:
 - The `nom` CLI for performing common operations from the terminal
 - Extensions for working with thirdparty components (`nominal.thirdparty.pandas`, etc.). Pandas and polars are included by default; TDMS is available with the `tdms` extra.
 
-Use the navigation bar above to see examples and reference documentation.
+Use the **Reference** section of the sidebar to look up SDK types, methods, and CLI commands.
+The **Guides** section covers networking and TLS configuration.
 
 If you are new to Nominal and the Python client, we recommend that you read our [Quickstart guide](https://docs.nominal.io/core/sdk/python-client/quickstart).
 
