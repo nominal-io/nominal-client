@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.176.0](https://github.com/nominal-io/nominal-client/compare/v1.175.0...v1.176.0) (2026-10-13)
+
+
+### Features
+
+* migrate attachment service to gRPC ([#1076](https://github.com/nominal-io/nominal-client/issues/1076)) ([777b439](https://github.com/nominal-io/nominal-client/commit/777b43947ef8edfb44c928f8c8d13e16dd00887b)), closes [#1046](https://github.com/nominal-io/nominal-client/issues/1046)
+* migrate AuthenticationServiceV2 calls to gRPC UserService ([#1077](https://github.com/nominal-io/nominal-client/issues/1077)) ([fb124f1](https://github.com/nominal-io/nominal-client/commit/fb124f1b5625275f1cb5d9a39f53e4219f3be676)), closes [#1047](https://github.com/nominal-io/nominal-client/issues/1047)
+* require python 3.11+, add python 3.15 support, and remove 3.10 workarounds ([#1090](https://github.com/nominal-io/nominal-client/issues/1090)) ([e9e94c5](https://github.com/nominal-io/nominal-client/commit/e9e94c54fad041d7e408709b047e9b33d228135d))
+
+
+### Bug Fixes
+
+* correct the default MIME type for unrecognized file extensions ([#1087](https://github.com/nominal-io/nominal-client/issues/1087)) ([7a070f8](https://github.com/nominal-io/nominal-client/commit/7a070f8ffe563e7977a3d431c289ac4e5d1f0cb6))
+
+
+### Documentation
+
+* codify Sphinx docstring authoring conventions ([#1079](https://github.com/nominal-io/nominal-client/issues/1079)) ([27e193e](https://github.com/nominal-io/nominal-client/commit/27e193e80cc265a47ea1e9f1320c95f2f3741a5a))
+* link the Nominal logo to the docs hub like instro ([#1085](https://github.com/nominal-io/nominal-client/issues/1085)) ([7bbcaff](https://github.com/nominal-io/nominal-client/commit/7bbcaff13e3bc4933a5fe9aee232e8637e98295e)), closes [#1082](https://github.com/nominal-io/nominal-client/issues/1082)
+
 ## [1.175.0](https://github.com/nominal-io/nominal-client/compare/v1.174.0...v1.175.0) (2026-10-09)
 
 
