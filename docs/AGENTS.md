@@ -7,7 +7,7 @@ Development navigation declared in `src/index.md`. Sphinx reads configuration fr
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000 and watches pages, docstrings and included files.
 - The `docs` dependency group requires Python >=3.12. uv selects a compatible interpreter
-  and may recreate an older project environment; the SDK still supports Python >=3.10.
+  and may recreate an older project environment; the SDK still supports Python >=3.11.
 - Autodoc imports the live-video bindings. Linux builds need the GStreamer runtime;
   the Ubuntu docs job installs `libgstreamer-plugins-bad1.0-0`.
 - Test docstring and signature rendering with

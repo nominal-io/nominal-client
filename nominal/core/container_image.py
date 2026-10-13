@@ -12,9 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
-from typing import Iterable, Protocol, Sequence
-
-from typing_extensions import Self, assert_never
+from typing import Iterable, Protocol, Self, Sequence, assert_never
 
 from nominal import ts
 from nominal.core._clientsbunch import HasScoutParams

@@ -20,10 +20,9 @@ from concurrent.futures import as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Mapping, Sequence, Union, overload
+from typing import Mapping, Self, Sequence, Union, overload
 
 from google.protobuf import timestamp_pb2
-from typing_extensions import Self
 
 from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalClient
 from nominal.core._types import PathLike

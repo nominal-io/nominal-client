@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -81,7 +81,7 @@ def test_invalid_catalog_identity(change):
         ({"envvar": "source"}, "environment"),
         ({"suffixes": []}, "suffix"),
         ({"suffixes": [".csv"]}, "suffix"),
-        ({"timestamp": ts.Relative("seconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc))}, "timestamp"),
+        ({"timestamp": ts.Relative("seconds", start=datetime(2026, 1, 1, tzinfo=UTC))}, "timestamp"),
         ({"timestamp": ts.Custom("yyyy-MM-dd")}, "timestamp"),
     ],
 )

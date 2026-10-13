@@ -4,10 +4,9 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
 from types import MappingProxyType
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Self, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
-from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties

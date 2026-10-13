@@ -4,10 +4,10 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
+from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from nominal_api import scout_spatial
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams

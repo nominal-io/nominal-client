@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -90,7 +90,7 @@ def test_falls_back_to_python_without_nominal_streaming(
 ):
     """Without nominal-streaming the default stream is the pure-python one, writing protobuf."""
     with mock_dataset.get_write_stream(batch_size=1) as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
@@ -139,7 +139,7 @@ def test_superseded_python_spellings_resolve_to_python(
         pytest.warns(UserWarning, match="use implementation='python'"),
         mock_dataset.get_write_stream(batch_size=1, implementation=implementation) as stream,  # type: ignore[call-overload]
     ):
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
@@ -235,7 +235,7 @@ def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
 def test_connection_writes_to_its_datasource_not_itself(mock_connection: StreamingConnection, mock_clients: MagicMock):
     """A streaming connection routes writes to its backing datasource rid, not its own rid."""
     with mock_connection.get_write_stream(batch_size=1, implementation="python") as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     kwargs = mock_clients.proto_write.write_nominal_batches.call_args.kwargs
     assert kwargs["data_source_rid"] == _DATASET_RID
@@ -246,14 +246,14 @@ def test_default_stream_accepts_enqueue_without_a_context_manager(mock_dataset: 
     """The default stream takes enqueues when closed explicitly, the lifecycle the docstring offers."""
     stream = mock_dataset.get_write_stream()
     try:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
     finally:
         stream.close()
 
 
 def test_default_stream_accepts_arrays_and_structs(mock_dataset: Dataset):
     """The default stream takes the array and struct enqueues WriteStreamBase declares."""
-    timestamp = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    timestamp = datetime(2025, 1, 1, tzinfo=UTC)
 
     with mock_dataset.get_write_stream() as stream:
         stream.enqueue_float_array("floats", timestamp, [1.0, 2.0])
@@ -267,4 +267,4 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
         with pytest.warns(UserWarning, match=r"flush\(\) does nothing"):
             stream.flush(wait=True)  # type: ignore[attr-defined]
 
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)

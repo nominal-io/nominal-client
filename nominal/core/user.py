@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from typing_extensions import Self
+from typing import Self
 
 from nominal.core._utils.api_tools import HasRid
 from nominal.protos.authentication.users.v1 import users_pb2

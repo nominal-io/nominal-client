@@ -1,22 +1,14 @@
-"""Tests for the Migrator base class copy_from logging behavior (MDEV-86).
-
-The migrator base module uses TypeVar(default=...) which requires Python 3.13+.
-These tests are skipped on older Python versions.
-"""
+"""Tests for the Migrator base class copy_from logging behavior (MDEV-86)."""
 
 from __future__ import annotations
 
 import concurrent.futures
 import logging
-import sys
 import threading
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions

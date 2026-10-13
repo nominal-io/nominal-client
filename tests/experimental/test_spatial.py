@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -215,7 +215,7 @@ def test_time_metadata_places_the_measured_extent_on_the_wall_clock() -> None:
     clock, which playhead progress is measured over. A workbook with only one of
     them has nothing to anchor to.
     """
-    start = datetime(2026, 3, 4, 9, 30, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 4, 9, 30, tzinfo=UTC)
     start_us = int(start.timestamp() * 1_000_000)
 
     metadata = _PointCloudTimeMetadata.from_extent((0, 45_000_000), start)
@@ -233,7 +233,7 @@ def test_time_metadata_shifts_both_bounds_by_a_nonzero_minimum() -> None:
     Anchoring the start at the origin while the end is offset stretches the window,
     and the playhead then maps onto the wrong part of the scan.
     """
-    start = datetime(2026, 3, 4, 9, 30, tzinfo=timezone.utc)
+    start = datetime(2026, 3, 4, 9, 30, tzinfo=UTC)
     origin_ns = int(start.timestamp()) * 1_000_000_000
 
     metadata = _PointCloudTimeMetadata.from_extent((9_000_000, 180_000_000), start)
@@ -288,7 +288,7 @@ def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
         spatial.add_point_cloud_csv(
             _csv(tmp_path, _TIMED_CSV),
             timestamp_column="t_s",
-            timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, tzinfo=timezone.utc)),
+            timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, tzinfo=UTC)),
         )
 
     properties = clients.spatial.update_metadata.call_args.args[1].properties
@@ -325,7 +325,7 @@ def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: 
     "kwargs",
     [
         {"timestamp_column": "t_s"},
-        {"timestamp_type": Relative("seconds", start=datetime(2026, 3, 4, tzinfo=timezone.utc))},
+        {"timestamp_type": Relative("seconds", start=datetime(2026, 3, 4, tzinfo=UTC))},
     ],
 )
 def test_ingest_rejects_half_of_the_time_pair(
@@ -381,7 +381,7 @@ def test_ingest_rejects_units_the_panel_cannot_read(
         spatial.add_point_cloud_csv(
             _csv(tmp_path, _TIMED_CSV),
             timestamp_column="t_s",
-            timestamp_type=Relative(unit, start=datetime(2026, 3, 4, tzinfo=timezone.utc)),  # type: ignore[arg-type]
+            timestamp_type=Relative(unit, start=datetime(2026, 3, 4, tzinfo=UTC)),  # type: ignore[arg-type]
         )
 
     clients.upload.initiate_multipart_upload.assert_not_called()

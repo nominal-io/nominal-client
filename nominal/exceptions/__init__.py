@@ -1,8 +1,5 @@
 from typing import Mapping
 
-# Remove this import once the minimum supported Python version is 3.11+.
-from exceptiongroup import ExceptionGroup
-
 
 class NominalError(Exception):
     """Base class for Nominal exceptions."""

@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Protocol, Self, Sequence
 
 from nominal_api import upload_api
-from typing_extensions import Self
 
 from nominal import ts
 from nominal.core._utils.api_tools import (

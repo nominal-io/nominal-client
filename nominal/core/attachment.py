@@ -4,10 +4,9 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Protocol, Sequence, cast
+from typing import BinaryIO, Iterable, Protocol, Self, Sequence, cast
 
 from nominal_api import attachments_api
-from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike

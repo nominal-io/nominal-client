@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import overload
+from typing import Self, overload
 
 from nominal_api import scout_catalog, scout_video_api
-from typing_extensions import Self
 
 from nominal.core._video_types import _scale_parameter
 from nominal.core.dataset_file import DatasetFile

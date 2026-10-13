@@ -3,10 +3,9 @@ import concurrent.futures
 import dataclasses
 import datetime
 import logging
-from typing import Iterator, Mapping, Sequence
+from typing import Iterator, Mapping, Self, Sequence
 
 from nominal_api import api, scout_compute_api, scout_dataexport_api
-from typing_extensions import Self
 
 import polars as pl
 from nominal._utils import LogTiming

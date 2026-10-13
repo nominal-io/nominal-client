@@ -4,10 +4,9 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
-from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string

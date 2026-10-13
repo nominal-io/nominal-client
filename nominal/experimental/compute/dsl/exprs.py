@@ -3,9 +3,9 @@ from __future__ import annotations
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Self
 
 from nominal_api import scout_compute_api
-from typing_extensions import Self
 
 from nominal.experimental.compute.dsl import params
 

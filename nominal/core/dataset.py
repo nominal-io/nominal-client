@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, TypeAlias, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video_api
-from typing_extensions import Self
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream

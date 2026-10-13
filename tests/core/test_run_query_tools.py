@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.protos.run.v1 import run_service_pb2
@@ -118,7 +118,7 @@ def test_create_search_runs_query_with_string_timestamps():
 
 def test_create_search_runs_query_with_nanosecond_timestamps():
     """Test query creation with nanosecond integer timestamps."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start_ns = _SecondsNanos.from_datetime(now).to_nanoseconds()
     end_ns = _SecondsNanos.from_datetime(now + timedelta(hours=1)).to_nanoseconds()
     created_after_ns = _SecondsNanos.from_datetime(now - timedelta(days=1)).to_nanoseconds()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -25,7 +25,6 @@ from nominal_api import (
     timeseries_metadata,
     upload_api,
 )
-from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors

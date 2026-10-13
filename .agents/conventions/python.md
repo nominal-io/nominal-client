@@ -8,12 +8,12 @@ request for reviewers to repeat formatter diagnostics or normalize untouched fil
 
 ## Compatibility and readable code
 
-- Read [pyproject.toml](../../pyproject.toml): the supported floor is Python 3.10,
+- Read [pyproject.toml](../../pyproject.toml): the supported floor is Python 3.11,
   Ruff uses 120 columns and Google docstrings, and mypy is strict. A successful run on
-  your newest local interpreter does not establish compatibility. Use existing
-  `typing_extensions` and `exceptiongroup` backports where needed; do not introduce
-  newer syntax or standard-library APIs without a compatible path. For example, the
-  local [batched helper](../../nominal/_utils/iterator_tools.py) supports the older floor.
+  your newest local interpreter does not establish compatibility. Use the existing
+  `typing_extensions` backport where needed; do not introduce newer syntax or
+  standard-library APIs without a compatible path. For example, the local
+  [batched helper](../../nominal/_utils/iterator_tools.py) supports the older floor.
 - Prefer descriptive names, explicit control flow, and small cohesive functions. A reader
   should be able to follow inputs, side effects, and results without tracing a framework.
   Name intermediate request/result values when nested construction hides those stages.

@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from types import TracebackType
-from typing import Any, Callable, Generic, Mapping, Sequence, Type, TypeAlias
-
-from typing_extensions import Self
+from typing import Any, Callable, Generic, Mapping, Self, Sequence, Type, TypeAlias
 
 from nominal.core._stream.write_stream_base import StreamType, WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos

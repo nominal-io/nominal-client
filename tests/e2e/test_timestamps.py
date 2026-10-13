@@ -22,7 +22,7 @@ Timestamp formats under test:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Callable
 
@@ -292,11 +292,9 @@ def test_custom_day_of_year(request, client: NominalClient, temperature_data: li
     # default_year=2024, default_day_of_year=1 → Jan 1 2024; time-of-day comes from the CSV
     first_ts, last_ts = temperature_data[0][1], temperature_data[-1][1]
     expected_start = datetime(
-        2024, 1, 1, first_ts.hour, first_ts.minute, first_ts.second, first_ts.microsecond, tzinfo=timezone.utc
+        2024, 1, 1, first_ts.hour, first_ts.minute, first_ts.second, first_ts.microsecond, tzinfo=UTC
     )
-    expected_end = datetime(
-        2024, 1, 1, last_ts.hour, last_ts.minute, last_ts.second, last_ts.microsecond, tzinfo=timezone.utc
-    )
+    expected_end = datetime(2024, 1, 1, last_ts.hour, last_ts.minute, last_ts.second, last_ts.microsecond, tzinfo=UTC)
     _upload_and_assert(
         client=client,
         name=name,
