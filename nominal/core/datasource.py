@@ -227,8 +227,7 @@ class DataSource(HasRid, MarkableMixin):
                 'python', 'python', and 'rust' respectively.
 
                 **Note:** 'experimental' is deprecated and retains its Python metrics implementation.
-                Use ``implementation='rust'`` with ``track_metrics=True`` to migrate; the replacement requires
-                ``nominal-streaming``.
+                Use ``implementation='rust'`` with ``track_metrics=True`` to migrate.
             file_fallback: Filepath to write failed batches to during streaming.
 
                 **Note:** Expects a .avro filename.
@@ -557,8 +556,7 @@ _DEPRECATED_IMPLEMENTATIONS = {
     "json": "use implementation='python'",
     "protobuf": "use implementation='python'",
     "rust_experimental": "use implementation='rust'",
-    "experimental": "use implementation='rust' with track_metrics=True to keep runtime metrics "
-    "(requires nominal-streaming)",
+    "experimental": "use implementation='rust' with track_metrics=True to keep runtime metrics",
 }
 
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the
