@@ -10,7 +10,6 @@ import pytest
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
-from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
@@ -75,9 +74,10 @@ def rust_write_stream_type() -> type:
 
 
 def test_dataset_write_stream_defaults_to_rust(mock_dataset: Dataset):
-    """Omitting implementation streams over the rust backend when nominal-streaming is installed."""
+    """Default Rust streaming leaves runtime metrics disabled."""
     with mock_dataset.get_write_stream() as stream:
         assert isinstance(stream, rust_write_stream_type())
+        assert stream._opts.track_metrics is False  # type: ignore[attr-defined]
 
 
 def test_connection_write_stream_defaults_to_rust(mock_connection: StreamingConnection):
@@ -112,9 +112,10 @@ def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, w
         {"file_fallback": "fallback.avro"},
         {"log_level": "info"},
         {"num_workers": 2},
+        {"track_metrics": True},
         {"file_fallback": "fallback.avro", "log_level": "info", "num_workers": 2},
     ],
-    ids=["file-fallback", "logging", "workers", "combined-options"],
+    ids=["file-fallback", "logging", "workers", "metrics", "combined-options"],
 )
 def test_rust_only_arguments_raise_without_nominal_streaming(
     mock_dataset: Dataset, without_nominal_streaming: None, arguments: dict[str, str | int]
@@ -155,11 +156,10 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         assert isinstance(stream, rust_write_stream_type())
 
 
-@pytest.mark.parametrize(("kwargs", "expected"), [({}, False), ({"track_metrics": True}, True)])
-def test_rust_stream_tracks_metrics_only_when_asked(mock_dataset: Dataset, kwargs: dict[str, bool], expected: bool):
-    """The rust stream emits runtime metrics when `track_metrics=True`, and not by default."""
-    with mock_dataset.get_write_stream(implementation="rust", **kwargs) as stream:
-        assert stream._opts.track_metrics is expected  # type: ignore[attr-defined]
+def test_rust_stream_tracks_metrics(mock_dataset: Dataset):
+    """Opting into runtime metrics configures the Rust stream."""
+    with mock_dataset.get_write_stream(implementation="rust", track_metrics=True) as stream:
+        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
 
 
 @pytest.fixture
@@ -198,37 +198,12 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
 
 
 @pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
-def test_experimental_preserves_python_metrics(mock_dataset: Dataset):
-    """Experimental selection keeps its Python backend and runtime metrics."""
+def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
+    """Experimental selection retains its Python metrics backend."""
+    from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+
     with mock_dataset.get_write_stream(implementation="experimental") as stream:
         assert isinstance(stream, WriteStreamV2)
-        assert stream._track_metrics is True
-
-
-@pytest.mark.parametrize("argument", ["implementation", "data_format"])
-@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
-@pytest.mark.filterwarnings("ignore:The `data_format` argument is deprecated:UserWarning")
-def test_experimental_works_without_nominal_streaming(
-    mock_dataset: Dataset, without_nominal_streaming: None, argument: str
-):
-    """Both experimental arguments retain Python metrics when Rust is unavailable."""
-    with mock_dataset.get_write_stream(**{argument: "experimental"}) as stream:  # type: ignore[call-overload]
-        assert isinstance(stream, WriteStreamV2)
-        assert stream._track_metrics is True
-
-
-def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
-    """Asking for metrics refuses the python fallback, which cannot carry them."""
-    with pytest.raises(ImportError, match="track_metrics"):
-        mock_dataset.get_write_stream(track_metrics=True)
-
-
-def test_track_metrics_on_python_warns_it_has_no_effect(mock_dataset: Dataset, caplog: pytest.LogCaptureFixture):
-    """A rust-only argument passed to the python stream is reported as having no effect."""
-    with mock_dataset.get_write_stream(implementation="python", track_metrics=True):  # type: ignore[call-overload]
-        pass
-
-    assert "Argument track_metrics has no effect" in caplog.text
 
 
 def test_data_format_still_selects_an_implementation(mock_dataset: Dataset):
@@ -259,7 +234,7 @@ def test_implementation_and_data_format_together_is_an_error(mock_dataset: Datas
 
 def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
     """An unrecognized implementation names the ones that are actually supported."""
-    with pytest.raises(ValueError, match=r"\{python, rust, experimental\}"):
+    with pytest.raises(ValueError, match="python, rust, experimental"):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
