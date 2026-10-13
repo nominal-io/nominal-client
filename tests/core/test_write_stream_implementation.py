@@ -10,6 +10,7 @@ import pytest
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
+from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
@@ -196,37 +197,32 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
     assert record[0].lineno == expected_lineno
 
 
+def test_experimental_preserves_python_metrics(mock_dataset: Dataset):
+    """Deprecated experimental selection keeps its Python backend and metrics while recommending Rust."""
+    with (
+        pytest.warns(UserWarning, match="use implementation='rust' with track_metrics=True") as record,
+        mock_dataset.get_write_stream(implementation="experimental") as stream,
+    ):
+        assert isinstance(stream, WriteStreamV2)
+        assert stream._track_metrics is True
+
+    assert all(warning.filename == __file__ for warning in record)
+
+
 @pytest.mark.parametrize("argument", ["implementation", "data_format"])
-def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset, argument: str):
-    """The superseded 'experimental' spelling yields a rust stream that keeps its runtime metrics."""
+def test_experimental_works_without_nominal_streaming(
+    mock_dataset: Dataset, without_nominal_streaming: None, argument: str
+):
+    """Both deprecated experimental arguments retain Python metrics when Rust is unavailable."""
     with (
         pytest.warns(UserWarning) as record,
         mock_dataset.get_write_stream(**{argument: "experimental"}) as stream,  # type: ignore[call-overload]
     ):
-        assert isinstance(stream, rust_write_stream_type())
-        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
+        assert isinstance(stream, WriteStreamV2)
+        assert stream._track_metrics is True
 
-    assert any(
-        "use implementation='rust' with track_metrics=True, which requires nominal-streaming" in str(warning.message)
-        for warning in record
-    )
+    assert any("use implementation='rust' with track_metrics=True" in str(warning.message) for warning in record)
     assert all(warning.filename == __file__ for warning in record)
-
-
-@pytest.mark.parametrize("argument", ["implementation", "data_format"])
-def test_experimental_raises_without_nominal_streaming(
-    mock_dataset: Dataset, without_nominal_streaming: None, argument: str
-):
-    """The experimental alias requires Rust and explains that requirement before refusing the fallback."""
-    with (
-        pytest.warns(UserWarning) as record,
-        pytest.raises(ImportError, match="track_metrics") as exc_info,
-    ):
-        mock_dataset.get_write_stream(**{argument: "experimental"})  # type: ignore[call-overload]
-
-    assert any("requires nominal-streaming" in str(warning.message) for warning in record)
-    assert all(warning.filename == __file__ for warning in record)
-    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
 def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
@@ -271,7 +267,7 @@ def test_implementation_and_data_format_together_is_an_error(mock_dataset: Datas
 
 def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
     """An unrecognized implementation names the ones that are actually supported."""
-    with pytest.raises(ValueError, match=r"\{python, rust\}"):
+    with pytest.raises(ValueError, match=r"\{python, rust, experimental\}"):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
