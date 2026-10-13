@@ -226,7 +226,10 @@ class DataSource(HasRid, MarkableMixin):
                 **Note:** 'json', 'protobuf', and 'rust_experimental' are deprecated spellings of
                 'python', 'python', and 'rust' respectively.
 
-                **Note:** 'experimental' is a deprecated spelling of 'rust' with ``track_metrics=True``.
+                **Note:** 'experimental' is a deprecated spelling of 'rust' with ``track_metrics=True``,
+                which requires ``nominal-streaming``. On unsupported platforms,
+                `nominal.experimental.stream_v2.create_write_stream` remains available for Python streaming
+                with metrics.
             file_fallback: Filepath to write failed batches to during streaming.
 
                 **Note:** Expects a .avro filename.
@@ -237,15 +240,20 @@ class DataSource(HasRid, MarkableMixin):
                 **Note:** Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
 
                 **Note:** Supported only by the Rust backend.
-            num_workers: Number of worker threads to use in underlying rust streaming code.
+            num_workers: Number of Rust upload workers and runtime worker threads.
 
                 **Note:** Use with care-- this may have large impacts on streaming performance.
 
                 **Note:** Supported only by the Rust backend.
-            track_metrics: Also stream request round-trip time and point staleness as
-                ``__nominal.metric.*`` channels on the same dataset. ``enqueue_from_dict`` also emits
-                ``enque_dict_start_staleness`` and ``enque_dict_end_staleness`` channels.
-                Disabled by default.
+            track_metrics: Emit request round-trip time and point staleness in seconds as
+                ``__nominal.metric.*`` channels on the same dataset. Staleness is the SDK machine's
+                wall-clock UTC time minus the point timestamp; future timestamps produce negative values.
+                Request metrics measure the oldest and newest points immediately before and after a
+                successful upload. ``enqueue_from_dict`` also emits ``enque_dict_start_staleness`` and
+                ``enque_dict_end_staleness``, measured at the start and end of the enqueue. Disabled by default.
+
+                **Note:** Request metrics are best-effort and travel with later data uploads. Pending request
+                metrics are not sent separately on close and may be dropped if their buffer fills.
 
                 **Note:** Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
@@ -569,10 +577,7 @@ _DEPRECATED_IMPLEMENTATIONS: Mapping[_AnyImplementation, _ResolvedImplementation
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the
 # @warn_on_deprecated_argument wrapper -> the caller we want to blame.
 #
-# KEEP IN SYNC BY HAND. Anything that adds or removes a layer between this warning and the caller --
-# inlining a helper, stacking another decorator, a new wrapper -- makes it blame the wrong frame,
-# silently, with no test to catch it. Accepted because it is short-lived: it goes when these
-# deprecations do.
+# Update this when changing the call chain; alias tests check warning attribution.
 _DEPRECATION_STACKLEVEL = 5
 
 
@@ -598,7 +603,7 @@ def _resolve_implementation(
     resolved = _DEPRECATED_IMPLEMENTATIONS[implementation]
     guidance = f"use implementation={resolved.implementation!r}"
     if resolved.track_metrics:
-        guidance += " with track_metrics=True"
+        guidance += " with track_metrics=True, which requires nominal-streaming"
 
     warnings.warn(
         f"implementation={implementation!r} is deprecated: {guidance}.",

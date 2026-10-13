@@ -206,8 +206,27 @@ def test_experimental_resolves_to_rust_with_metrics(mock_dataset: Dataset, argum
         assert isinstance(stream, rust_write_stream_type())
         assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
 
-    assert any("use implementation='rust' with track_metrics=True" in str(warning.message) for warning in record)
+    assert any(
+        "use implementation='rust' with track_metrics=True, which requires nominal-streaming" in str(warning.message)
+        for warning in record
+    )
     assert all(warning.filename == __file__ for warning in record)
+
+
+@pytest.mark.parametrize("argument", ["implementation", "data_format"])
+def test_experimental_raises_without_nominal_streaming(
+    mock_dataset: Dataset, without_nominal_streaming: None, argument: str
+):
+    """The experimental alias requires Rust and explains that requirement before refusing the fallback."""
+    with (
+        pytest.warns(UserWarning) as record,
+        pytest.raises(ImportError, match="track_metrics") as exc_info,
+    ):
+        mock_dataset.get_write_stream(**{argument: "experimental"})  # type: ignore[call-overload]
+
+    assert any("requires nominal-streaming" in str(warning.message) for warning in record)
+    assert all(warning.filename == __file__ for warning in record)
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
 def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):
