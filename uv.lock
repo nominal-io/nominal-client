@@ -637,8 +637,8 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1480.0" },
-    { name = "nominal-api-protos", specifier = "==0.1480.0" },
+    { name = "nominal-api", specifier = "==0.1483.0" },
+    { name = "nominal-api-protos", specifier = "==0.1483.0" },
     { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1315.0" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.10.1" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
@@ -683,19 +683,19 @@ docs = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1480.0"
+version = "0.1483.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/cb/d55011d336c540fd03c0323fab7655b7abf4d7a2bac230294550f08f5913/nominal_api-0.1480.0-py3-none-any.whl", hash = "sha256:998418da63502e52e5d945db05d35eb3a9425d0df81ae8d6b65a737bcdbbada9", size = 1061780, upload-time = "2026-10-09T22:54:55.395Z" },
+    { url = "https://files.pythonhosted.org/packages/26/c0/87ea36353cf9563f901d48d7921841fc2ae670c2a3a0f13a9fa4754f0518/nominal_api-0.1483.0-py3-none-any.whl", hash = "sha256:adf84175fbccaa91f95f61d9f920c255ef17015a203eb0a0ff17ac4bf500eec3", size = 1065576, upload-time = "2026-10-13T00:17:09.417Z" },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1480.0"
+version = "0.1483.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -703,7 +703,7 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/7f/3d0279e5ac52410a70bebedfca37a4fd22eb863477d242c417c396bbd5c9/nominal_api_protos-0.1480.0-py3-none-any.whl", hash = "sha256:d4aab97967b308a4d025be8001debdc0fcb571e80f6bca87a2d2a1f952ade554", size = 916393, upload-time = "2026-10-09T22:54:57.34Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/40/e5436046d06faa2af5aa54ade1b63a6f48c332ff7f385a38af1380900912/nominal_api_protos-0.1483.0-py3-none-any.whl", hash = "sha256:13e2c8a232fe8f6017f116e3fcbeeb60a998d7fde4b5ed8c36bdcfdfa7a47f92", size = 918386, upload-time = "2026-10-13T00:17:11.189Z" },
 ]
 
 [[package]]
