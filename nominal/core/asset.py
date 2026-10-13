@@ -13,14 +13,7 @@ from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._scope_resolution import (
-    DataScopes,
-    only_resolved,
-    resolve_connections,
-    resolve_dataset_scope,
-    resolve_datasets,
-    resolve_videos,
-)
+from nominal.core._scope_resolution import DataScopes, resolve_connections, resolve_datasets, resolve_videos
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -43,7 +36,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.exceptions import LegacyVideoDeprecationWarning, NominalNotFoundError
+from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNotFoundError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
@@ -99,7 +92,11 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         return DataScopes.from_data_scopes(self._get_latest_api().data_scopes)
 
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
-        return resolve_dataset_scope(self._clients, self._scopes(), data_scope_name, owner=f"asset {self.rid}")
+        named = self._scopes().named(data_scope_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(data_scope_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(f"No such data scope found with data_scope_name {data_scope_name}")
+        return dataset, named.datasets[data_scope_name].series_tags
 
     def update(
         self,
@@ -169,12 +166,12 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Raises:
             NominalNotFoundError: If no readable data scope has this name.
         """
-        return only_resolved(
-            _resolve_scopes(self._clients, self._scopes().named(data_scope_name)),
-            noun="data scope",
-            name=data_scope_name,
-            owner=f"asset {self.rid}",
-        )
+        scope = _resolve_scopes(self._clients, self._scopes().named(data_scope_name)).get(data_scope_name)
+        if scope is None:
+            raise NominalDataScopeNotFoundError(
+                f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}"
+            )
+        return scope
 
     def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
         """List scopes associated with this asset.
@@ -186,7 +183,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             Spatials are not included: they live in `nominal.experimental.spatial`, whose
             `list_spatials_in_asset` lists them.
         """
-        return _resolve_scopes(self._clients, self._scopes())
+        return tuple(_resolve_scopes(self._clients, self._scopes()).items())
 
     def remove_data_scopes(
         self,
@@ -379,9 +376,12 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """
         scopes = self._scopes()
         if data_scope_name in scopes.datasets:
-            found_ds, found_tags = resolve_dataset_scope(
-                self._clients, scopes, data_scope_name, owner=f"asset {self.rid}"
-            )
+            found_ds = resolve_datasets(self._clients, scopes.named(data_scope_name).datasets).get(data_scope_name)
+            if found_ds is None:
+                raise NominalDataScopeNotFoundError(
+                    f"No dataset with data scope name '{data_scope_name}' found for this asset"
+                )
+            found_tags = scopes.datasets[data_scope_name].series_tags
             # symmetric difference to find tags found in one but not the other
             mismatching_tags = found_tags.items() ^ (series_tags or {}).items()
             if mismatching_tags:
@@ -443,12 +443,12 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """
         scopes = self._scopes()
         if data_scope_name in scopes.videos:
-            return only_resolved(
-                resolve_videos(self._clients, scopes.named(data_scope_name).videos),
-                noun="video",
-                name=data_scope_name,
-                owner=f"asset {self.rid}",
-            )
+            video = resolve_videos(self._clients, scopes.named(data_scope_name).videos).get(data_scope_name)
+            if video is None:
+                raise NominalDataScopeNotFoundError(
+                    f"No video with data scope name '{data_scope_name}' found for this asset"
+                )
+            return video
         if data_scope_name in scopes:
             raise ValueError(
                 f"Cannot get_or_create_video '{data_scope_name}': a data scope of another type on asset "
@@ -557,7 +557,12 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Raises:
             NominalNotFoundError: If no readable dataset has this data scope name.
         """
-        dataset, _ = self._get_dataset_scope(data_scope_name)
+        named = self._scopes().named(data_scope_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(data_scope_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(
+                f"No dataset with data scope name '{data_scope_name}' found for this asset"
+            )
         return dataset
 
     def get_connection(self, data_scope_name: str) -> Connection:
@@ -572,12 +577,13 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Raises:
             NominalNotFoundError: If no readable connection has this data scope name.
         """
-        return only_resolved(
-            resolve_connections(self._clients, self._scopes().named(data_scope_name).connections),
-            noun="connection",
-            name=data_scope_name,
-            owner=f"asset {self.rid}",
-        )
+        named = self._scopes().named(data_scope_name)
+        connection = resolve_connections(self._clients, named.connections).get(data_scope_name)
+        if connection is None:
+            raise NominalDataScopeNotFoundError(
+                f"No connection with data scope name '{data_scope_name}' found for this asset"
+            )
+        return connection
 
     @deprecated(
         "Resolving a standalone `Video` data scope is deprecated in favor of video channels on a dataset. Use "
@@ -596,12 +602,13 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Raises:
             NominalNotFoundError: If no readable video has this data scope name.
         """
-        return only_resolved(
-            resolve_videos(self._clients, self._scopes().named(data_scope_name).videos),
-            noun="video",
-            name=data_scope_name,
-            owner=f"asset {self.rid}",
-        )
+        named = self._scopes().named(data_scope_name)
+        video = resolve_videos(self._clients, named.videos).get(data_scope_name)
+        if video is None:
+            raise NominalDataScopeNotFoundError(
+                f"No video with data scope name '{data_scope_name}' found for this asset"
+            )
+        return video
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
@@ -609,7 +616,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Returns:
             (data_scope_name, dataset) pairs. Data scopes whose dataset is missing or not readable are left out.
         """
-        return resolve_datasets(self._clients, self._scopes().datasets)
+        return list(resolve_datasets(self._clients, self._scopes().datasets).items())
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this asset.
@@ -617,7 +624,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Returns:
             (data_scope_name, connection) pairs. Data scopes whose connection is missing or not readable are left out.
         """
-        return resolve_connections(self._clients, self._scopes().connections)
+        return list(resolve_connections(self._clients, self._scopes().connections).items())
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this asset.
@@ -625,7 +632,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Returns:
             (data_scope_name, video) pairs. Data scopes whose video is missing or not readable are left out.
         """
-        return resolve_videos(self._clients, self._scopes().videos)
+        return list(resolve_videos(self._clients, self._scopes().videos).items())
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         asset = self._get_latest_api()
@@ -820,13 +827,13 @@ def _get_asset(clients: Asset._Clients, rid: str) -> asset_pb2.Asset:
     return assets[rid]
 
 
-def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> tuple[tuple[str, ScopeType], ...]:
-    """Resolve dataset, connection, and video scopes, with one request per type that has any."""
-    return (
-        *resolve_datasets(clients, scopes.datasets),
-        *resolve_connections(clients, scopes.connections),
-        *resolve_videos(clients, scopes.videos),
-    )
+def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> Mapping[str, ScopeType]:
+    """The readable datasets, connections, and videos behind these scopes, with one request per type that has any."""
+    return {
+        **resolve_datasets(clients, scopes.datasets),
+        **resolve_connections(clients, scopes.connections),
+        **resolve_videos(clients, scopes.videos),
+    }
 
 
 # Moving to bottom to deal with circular dependencies

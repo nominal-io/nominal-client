@@ -1,19 +1,19 @@
-"""Read the named data scopes of an asset or run, and resolve them to SDK resources.
+"""Internal model of the named data scopes on an asset or run, and their resolution to SDK resources.
 
-A scope resolves when its resource exists and the caller can read it; the backend does not distinguish the two.
-Listing leaves out scopes that do not resolve, and looking one up raises `NominalDataScopeNotFoundError`.
+Nothing here is public API: `Asset`, `Run`, and the SDK's own tooling read scopes through it, and each public
+method raises its own error when a scope does not resolve. A scope resolves when its resource exists and the
+caller can read it; the batch endpoints do not distinguish the two.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence, TypeVar
+from typing import Iterable, Mapping
 
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.video import Video, _get_videos
-from nominal.exceptions import NominalDataScopeNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.run.v1 import run_service_pb2
 
@@ -87,59 +87,30 @@ class DataScopes:
         )
 
 
-T = TypeVar("T")
+def resolve_datasets(clients: Dataset._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Dataset]:
+    """The readable datasets behind these scopes by scope name, fetched in one request."""
+    rids = [scope.rid for scope in scopes.values()]
+    by_rid = {dataset.rid: dataset for dataset in _get_datasets(clients.auth_header, clients.catalog, rids)}
+    return {
+        name: Dataset._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
+    }
 
 
-def only_resolved(resolved: Sequence[tuple[str, T]], *, noun: str, name: str, owner: str) -> T:
-    """The resource behind a single named scope.
-
-    Raises:
-        NominalDataScopeNotFoundError: If the scope did not resolve.
-    """
-    if not resolved:
-        raise NominalDataScopeNotFoundError(f"No {noun} named {name!r} found on {owner}")
-    return resolved[0][1]
-
-
-def resolve_dataset_scope(
-    clients: Dataset._Clients, scopes: DataScopes, name: str, *, owner: str
-) -> tuple[Dataset, Mapping[str, str]]:
-    """Resolve a named dataset scope to its Dataset and series tags.
-
-    Raises:
-        NominalNotFoundError: If no readable dataset has this scope name.
-    """
-    named = scopes.named(name).datasets
-    dataset = only_resolved(resolve_datasets(clients, named), noun="dataset", name=name, owner=owner)
-    return dataset, named[name].series_tags
-
-
-def resolve_datasets(clients: Dataset._Clients, scopes: Mapping[str, DataScopeRef]) -> Sequence[tuple[str, Dataset]]:
-    """Resolve dataset scopes in one request, leaving out any that do not resolve."""
-    datasets = _get_datasets(clients.auth_header, clients.catalog, [scope.rid for scope in scopes.values()])
-    by_rid = {dataset.rid: dataset for dataset in datasets}
-    return [
-        (name, Dataset._from_conjure(clients, by_rid[scope.rid]))
+def resolve_connections(clients: DataSource._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Connection]:
+    """The readable connections behind these scopes by scope name, fetched in one request."""
+    rids = [scope.rid for scope in scopes.values()]
+    by_rid = {connection.rid: connection for connection in _get_connections(clients, rids)}
+    return {
+        name: Connection._from_conjure(clients, by_rid[scope.rid])
         for name, scope in scopes.items()
         if scope.rid in by_rid
-    ]
+    }
 
 
-def resolve_connections(
-    clients: DataSource._Clients, scopes: Mapping[str, DataScopeRef]
-) -> Sequence[tuple[str, Connection]]:
-    """Resolve connection scopes in one request, leaving out any that do not resolve."""
-    by_rid = {connection.rid: connection for connection in _get_connections(clients, [s.rid for s in scopes.values()])}
-    return [
-        (name, Connection._from_conjure(clients, by_rid[scope.rid]))
-        for name, scope in scopes.items()
-        if scope.rid in by_rid
-    ]
-
-
-def resolve_videos(clients: Video._Clients, scopes: Mapping[str, DataScopeRef]) -> Sequence[tuple[str, Video]]:
-    """Resolve video scopes in one request, leaving out any that do not resolve."""
-    by_rid = {video.rid: video for video in _get_videos(clients, [scope.rid for scope in scopes.values()])}
-    return [
-        (name, Video._from_conjure(clients, by_rid[scope.rid])) for name, scope in scopes.items() if scope.rid in by_rid
-    ]
+def resolve_videos(clients: Video._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Video]:
+    """The readable videos behind these scopes by scope name, fetched in one request."""
+    rids = [scope.rid for scope in scopes.values()]
+    by_rid = {video.rid: video for video in _get_videos(clients, rids)}
+    return {
+        name: Video._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
+    }

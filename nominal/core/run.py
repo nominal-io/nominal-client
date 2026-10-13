@@ -10,14 +10,7 @@ from typing_extensions import Self, deprecated
 
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._scope_resolution import (
-    DataScopes,
-    only_resolved,
-    resolve_connections,
-    resolve_dataset_scope,
-    resolve_datasets,
-    resolve_videos,
-)
+from nominal.core._scope_resolution import DataScopes, resolve_connections, resolve_datasets, resolve_videos
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -38,7 +31,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.exceptions import LegacyVideoDeprecationWarning
+from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNotFoundError
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
@@ -178,12 +171,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         api_run = self._get_latest_api()
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
-        return resolve_dataset_scope(
-            self._clients,
-            DataScopes.from_data_scopes(api_run.asset_data_scopes),
-            data_scope_name,
-            owner=f"the asset of run {self.rid}",
-        )
+        named = DataScopes.from_data_scopes(api_run.asset_data_scopes).named(data_scope_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(data_scope_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(f"No such data scope found with data_scope_name {data_scope_name}")
+        return dataset, named.datasets[data_scope_name].series_tags
 
     def _scopes(self) -> DataScopes:
         """This run's own data sources by ref name, read from one fetch of the run."""
@@ -473,7 +465,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Returns:
             (ref_name, dataset) pairs. Refs whose dataset is missing or not readable are left out.
         """
-        return resolve_datasets(self._clients, self._scopes().datasets)
+        return list(resolve_datasets(self._clients, self._scopes().datasets).items())
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this run.
@@ -481,7 +473,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Returns:
             (ref_name, connection) pairs. Refs whose connection is missing or not readable are left out.
         """
-        return resolve_connections(self._clients, self._scopes().connections)
+        return list(resolve_connections(self._clients, self._scopes().connections).items())
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this run.
@@ -489,7 +481,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Returns:
             (ref_name, video) pairs. Refs whose video is missing or not readable are left out.
         """
-        return resolve_videos(self._clients, self._scopes().videos)
+        return list(resolve_videos(self._clients, self._scopes().videos).items())
 
     def get_dataset(self, ref_name: str) -> Dataset:
         """Get a dataset for this run by its ref name.
@@ -503,12 +495,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Raises:
             NominalNotFoundError: If no readable dataset has this ref name.
         """
-        return only_resolved(
-            resolve_datasets(self._clients, self._scopes().named(ref_name).datasets),
-            noun="dataset",
-            name=ref_name,
-            owner=f"run {self.rid}",
-        )
+        named = self._scopes().named(ref_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(ref_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(f"No dataset with ref name '{ref_name}' found for this run")
+        return dataset
 
     def get_connection(self, ref_name: str) -> Connection:
         """Get a connection for this run by its ref name.
@@ -522,12 +513,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Raises:
             NominalNotFoundError: If no readable connection has this ref name.
         """
-        return only_resolved(
-            resolve_connections(self._clients, self._scopes().named(ref_name).connections),
-            noun="connection",
-            name=ref_name,
-            owner=f"run {self.rid}",
-        )
+        named = self._scopes().named(ref_name)
+        connection = resolve_connections(self._clients, named.connections).get(ref_name)
+        if connection is None:
+            raise NominalDataScopeNotFoundError(f"No connection with ref name '{ref_name}' found for this run")
+        return connection
 
     @deprecated(
         "Resolving a standalone `Video` ref is deprecated in favor of video channels on a dataset. Use "
@@ -546,12 +536,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         Raises:
             NominalNotFoundError: If no readable video has this ref name.
         """
-        return only_resolved(
-            resolve_videos(self._clients, self._scopes().named(ref_name).videos),
-            noun="video",
-            name=ref_name,
-            owner=f"run {self.rid}",
-        )
+        named = self._scopes().named(ref_name)
+        video = resolve_videos(self._clients, named.videos).get(ref_name)
+        if video is None:
+            raise NominalDataScopeNotFoundError(f"No video with ref name '{ref_name}' found for this run")
+        return video
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()

@@ -91,20 +91,24 @@ def test_a_scope_that_does_not_resolve_is_left_out_of_lists_and_not_found_by_loo
     asset = _asset(clients, _scope("missing", **source))
 
     assert asset.list_data_scopes() == ()
-    with pytest.raises(NominalNotFoundError, match="No data scope named 'missing' found on asset asset") as raised:
+    with pytest.raises(NominalNotFoundError, match="No such data scope found on asset asset") as raised:
         asset.get_data_scope("missing")
     assert isinstance(raised.value, ValueError)
 
 
 def test_a_run_reads_its_own_refs_not_the_scopes_it_inherits(clients):
-    """Run resource lookup and inherited asset-scope ingest use separate namespaces."""
-    clients.catalog.get_enriched_datasets.return_value = [_dataset("direct")]
+    """A run's dataset methods see its own refs, not the asset scopes it inherits for scoped ingest."""
+    clients.catalog.get_enriched_datasets.side_effect = lambda auth, request: [
+        _dataset(rid) for rid in request.dataset_rids
+    ]
     run = _run(clients, direct={"dataset": "direct"})
     clients.run.GetRun.return_value.run.asset_data_scopes.append(
         run_service_pb2.DataScope(data_scope_name="inherited", data_source=run_service_pb2.DataSource(dataset="other"))
     )
 
     assert [(name, dataset.rid) for name, dataset in run.list_datasets()] == [("direct", "direct")]
+    with pytest.raises(NominalNotFoundError, match="No dataset with ref name 'inherited' found for this run"):
+        run.get_dataset("inherited")
 
 
 def test_a_spatial_scope_is_not_a_core_data_scope(clients):
@@ -112,5 +116,5 @@ def test_a_spatial_scope_is_not_a_core_data_scope(clients):
     asset = _asset(clients, _scope("spatial", spatial="spatial-rid"))
 
     assert asset.list_data_scopes() == ()
-    with pytest.raises(NominalNotFoundError, match="No data scope named 'spatial'"):
+    with pytest.raises(NominalNotFoundError, match="with data_scope_name spatial"):
         asset.get_data_scope("spatial")

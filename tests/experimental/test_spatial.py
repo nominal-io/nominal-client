@@ -413,14 +413,14 @@ def _run_with_spatials(clients: MagicMock, *rids: str) -> Run:
 
 
 @pytest.mark.parametrize(
-    ("make_parent", "list_spatials", "get_spatial_from", "owner"),
+    ("make_parent", "list_spatials", "get_spatial_from", "not_found"),
     [
-        (_asset_with_spatials, list_spatials_in_asset, get_spatial_from_asset, "asset asset"),
-        (_run_with_spatials, list_spatials_in_run, get_spatial_from_run, "run run"),
+        (_asset_with_spatials, list_spatials_in_asset, get_spatial_from_asset, "data scope name 'unreadable'"),
+        (_run_with_spatials, list_spatials_in_run, get_spatial_from_run, "ref name 'unreadable'"),
     ],
 )
 def test_spatial_scopes_resolve_in_one_request_and_leave_out_unreadable_spatials(
-    clients: MagicMock, make_parent, list_spatials, get_spatial_from, owner: str
+    clients: MagicMock, make_parent, list_spatials, get_spatial_from, not_found: str
 ) -> None:
     """Spatial scopes resolve in one batch request; an unreadable one is left out of lists and not found by lookup."""
     readable = _raw_spatial()
@@ -433,5 +433,5 @@ def test_spatial_scopes_resolve_in_one_request_and_leave_out_unreadable_spatials
     assert set(request.spatial_rids) == {"readable", "unreadable"}
     clients.spatial.get.assert_not_called()
 
-    with pytest.raises(NominalNotFoundError, match=f"No spatial named 'unreadable' found on {owner}"):
+    with pytest.raises(NominalNotFoundError, match=f"No spatial with {not_found} found"):
         get_spatial_from(parent, "unreadable")

@@ -11,8 +11,9 @@ from __future__ import annotations
 from typing import Mapping, Sequence
 
 from nominal.core import Asset, Run
-from nominal.core._scope_resolution import DataScopeRef, only_resolved
+from nominal.core._scope_resolution import DataScopeRef
 from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.exceptions import NominalDataScopeNotFoundError
 from nominal.experimental.spatial._spatial import Spatial, _get_spatials
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -46,12 +47,12 @@ def get_spatial_from_asset(asset: Asset, data_scope_name: str) -> Spatial:
     Raises:
         NominalNotFoundError: If no readable spatial has this data scope name.
     """
-    return only_resolved(
-        _resolve_spatials(asset._clients, asset._scopes().named(data_scope_name).spatials),
-        noun="spatial",
-        name=data_scope_name,
-        owner=f"asset {asset.rid}",
-    )
+    spatial = _resolve_spatials(asset._clients, asset._scopes().named(data_scope_name).spatials).get(data_scope_name)
+    if spatial is None:
+        raise NominalDataScopeNotFoundError(
+            f"No spatial with data scope name '{data_scope_name}' found for asset {asset.rid}"
+        )
+    return spatial
 
 
 def list_spatials_in_asset(asset: Asset) -> Sequence[tuple[str, Spatial]]:
@@ -63,7 +64,7 @@ def list_spatials_in_asset(asset: Asset) -> Sequence[tuple[str, Spatial]]:
     Returns:
         (data_scope_name, spatial) pairs. Data scopes whose spatial is missing or not readable are left out.
     """
-    return _resolve_spatials(asset._clients, asset._scopes().spatials)
+    return list(_resolve_spatials(asset._clients, asset._scopes().spatials).items())
 
 
 def add_spatial_to_run(run: Run, ref_name: str, spatial: Spatial | str) -> None:
@@ -90,12 +91,10 @@ def get_spatial_from_run(run: Run, ref_name: str) -> Spatial:
     Raises:
         NominalNotFoundError: If no readable spatial has this ref name.
     """
-    return only_resolved(
-        _resolve_spatials(run._clients, run._scopes().named(ref_name).spatials),
-        noun="spatial",
-        name=ref_name,
-        owner=f"run {run.rid}",
-    )
+    spatial = _resolve_spatials(run._clients, run._scopes().named(ref_name).spatials).get(ref_name)
+    if spatial is None:
+        raise NominalDataScopeNotFoundError(f"No spatial with ref name '{ref_name}' found for run {run.rid}")
+    return spatial
 
 
 def list_spatials_in_run(run: Run) -> Sequence[tuple[str, Spatial]]:
@@ -104,14 +103,13 @@ def list_spatials_in_run(run: Run) -> Sequence[tuple[str, Spatial]]:
     Returns:
         (ref_name, spatial) pairs. Refs whose spatial is missing or not readable are left out.
     """
-    return _resolve_spatials(run._clients, run._scopes().spatials)
+    return list(_resolve_spatials(run._clients, run._scopes().spatials).items())
 
 
-def _resolve_spatials(clients: Spatial._Clients, scopes: Mapping[str, DataScopeRef]) -> Sequence[tuple[str, Spatial]]:
-    """Resolve spatial scopes in one request, leaving out any that do not resolve."""
-    by_rid = {spatial.rid: spatial for spatial in _get_spatials(clients, [scope.rid for scope in scopes.values()])}
-    return [
-        (name, Spatial._from_conjure(clients, by_rid[scope.rid]))
-        for name, scope in scopes.items()
-        if scope.rid in by_rid
-    ]
+def _resolve_spatials(clients: Spatial._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Spatial]:
+    """The readable spatials behind these scopes by scope name, fetched in one request."""
+    rids = [scope.rid for scope in scopes.values()]
+    by_rid = {spatial.rid: spatial for spatial in _get_spatials(clients, rids)}
+    return {
+        name: Spatial._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
+    }

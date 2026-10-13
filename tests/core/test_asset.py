@@ -87,7 +87,7 @@ def test_get_or_create_dataset_refuses_a_taken_name_whose_dataset_is_unreadable(
     _stub_scopes(mock_clients, _dataset_scope({}))
     with (
         patch("nominal.core.asset._create_dataset") as mock_create,
-        pytest.raises(NominalNotFoundError, match=f"No dataset named '{SCOPE_NAME}' found on asset asset-rid-1"),
+        pytest.raises(NominalNotFoundError, match=f"No dataset with data scope name '{SCOPE_NAME}' found"),
     ):
         mock_asset.get_or_create_dataset(SCOPE_NAME)
     mock_create.assert_not_called()
