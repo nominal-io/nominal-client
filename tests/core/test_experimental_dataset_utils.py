@@ -9,6 +9,7 @@ from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.user import User
 from nominal.exceptions import NominalPermissionDeniedError
 from nominal.experimental.dataset_utils import get_dataset_owner, get_dataset_owner_rid
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
@@ -69,17 +70,15 @@ def test_get_dataset_owner_rid_raises_when_no_assignment_is_an_owner(mock_datase
 def test_get_dataset_owner_returns_the_user_for_the_resolved_owner(mock_dataset: Dataset) -> None:
     """get_dataset_owner resolves the owner RID and returns the user fetched for it."""
     _set_role_assignments(mock_dataset, [_role_assignment(roles_pb2.ROLE_OWNER, "ri.authn.user.owner")])
-    mock_dataset._clients.authentication.get_user.return_value = User(  # type: ignore[attr-defined]
-        rid="ri.authn.user.owner",
-        display_name="Owner User",
-        email="owner@nominal.io",
+    mock_dataset._clients.users.GetUser.return_value = users_pb2.GetUserResponse(  # type: ignore[attr-defined]
+        user=users_pb2.User(rid="ri.authn.user.owner", display_name="Owner User", email="owner@nominal.io")
     )
 
     owner = get_dataset_owner(mock_dataset)
 
-    assert owner.rid == "ri.authn.user.owner"
-    mock_dataset._clients.authentication.get_user.assert_called_once_with(  # type: ignore[attr-defined]
-        mock_dataset._clients.auth_header, "ri.authn.user.owner"
+    assert owner == User(rid="ri.authn.user.owner", display_name="Owner User", email="owner@nominal.io")
+    mock_dataset._clients.users.GetUser.assert_called_once_with(  # type: ignore[attr-defined]
+        users_pb2.GetUserRequest(user_rid="ri.authn.user.owner")
     )
 
 

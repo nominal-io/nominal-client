@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Self
 
 from nominal_api import datasource, scout_catalog
-from typing_extensions import Self
 
 from nominal.ts import (
     IntegralNanosecondsUTC,

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, Protocol, Sequence
-
-from typing_extensions import Self
+from typing import Iterable, Protocol, Self, Sequence
 
 from nominal.core import asset as core_asset
 from nominal.core._checklist_types import Priority

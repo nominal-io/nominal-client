@@ -16,11 +16,10 @@ import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Iterable, Type
+from typing import TYPE_CHECKING, Callable, Iterable, Self, Type
 
 import requests
 from nominal_api import upload_api
-from typing_extensions import Self
 
 from nominal.core._utils.filenames import validate_upload_filename
 from nominal.core._utils.multipart import (

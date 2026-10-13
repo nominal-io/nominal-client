@@ -6,7 +6,7 @@ import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Sequence, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, cast, overload
 
 from nominal_api import (
     api,
@@ -18,7 +18,6 @@ from nominal_api import (
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
 )
-from typing_extensions import Self, assert_never
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams

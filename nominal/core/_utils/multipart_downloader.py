@@ -10,10 +10,9 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Callable, Iterable, Mapping, Sequence, Type
+from typing import Callable, Iterable, Mapping, Self, Sequence, Type
 
 import requests
-from typing_extensions import Self
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session

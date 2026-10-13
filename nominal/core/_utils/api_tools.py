@@ -10,9 +10,10 @@ from typing import (
     Callable,
     Generic,
     Iterable,
-    Literal,
     Mapping,
+    NotRequired,
     Protocol,
+    Self,
     Sequence,
     TypeAlias,
     TypedDict,
@@ -21,13 +22,10 @@ from typing import (
 )
 
 from nominal_api import scout_compute_api
-from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.types import types_pb2
-
-ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
 
 logger = logging.getLogger(__name__)
 

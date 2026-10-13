@@ -3,13 +3,7 @@
 from __future__ import annotations
 
 import json
-import sys
 from unittest.mock import MagicMock, patch
-
-import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal_api import api as nominal_api
 

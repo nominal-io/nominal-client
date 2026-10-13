@@ -3,10 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Self
 
 from nominal_api import api, scout_compute_api, storage_writer_api
-from typing_extensions import Self
 
 from nominal._utils import batched
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos

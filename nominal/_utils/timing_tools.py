@@ -4,9 +4,7 @@ import contextlib
 import logging
 import time
 from types import TracebackType
-from typing import Type
-
-from typing_extensions import Self
+from typing import Self, Type
 
 logger = logging.getLogger(__name__)
 

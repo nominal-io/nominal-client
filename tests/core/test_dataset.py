@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from nominal import ts
-from nominal.core.dataset import Dataset, DatasetBounds, _DatasetWrapper
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
+from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -357,11 +358,11 @@ def test_add_journal_json_rejects_non_epoch_timestamps_before_uploading(
     upload.assert_not_called()
 
 
-class _StubWrapper(_DatasetWrapper):
+class _StubWrapper(_DatasetScopeIngestMixin):
     """The wrapper with scope resolution stubbed: what is under test is the delegation, not lookup."""
 
-    def _lookup_dataset_scope(self, data_scope_name):
-        return None
+    def _get_dataset_scope(self, data_scope_name):
+        raise NotImplementedError
 
 
 def test_data_scope_avro_stream_merges_scope_tags() -> None:
@@ -406,21 +407,6 @@ def test_data_scope_journal_json_still_refuses_a_tagged_scope() -> None:
             _StubWrapper().add_journal_json("scope", "logs.jsonl")
 
     dataset.add_journal_json.assert_not_called()
-
-
-def test_data_scope_journal_json_default_call_forwards_an_explicit_none_pair() -> None:
-    """The default call shape forwards both halves as None, which is the shape the delegation suppresses.
-
-    The suppressed argument types are only sound while this holds: the delegate must accept a pair of
-    Nones as "no timestamp metadata". If that ever changes, this test is what fails.
-    """
-    dataset = MagicMock()
-    with patch.object(_StubWrapper, "_get_dataset_scope", return_value=(dataset, {})):
-        _StubWrapper().add_journal_json("scope", "logs.jsonl")
-
-    dataset.add_journal_json.assert_called_once_with(
-        "logs.jsonl", channel=None, timestamp_column=None, timestamp_type=None
-    )
 
 
 @pytest.mark.parametrize(

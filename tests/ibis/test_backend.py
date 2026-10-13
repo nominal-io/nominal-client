@@ -9,6 +9,7 @@ import grpc
 import ibis
 import ibis.common.exceptions as com
 import ibis.expr.datatypes as dt
+import pandas as pd
 import pyarrow as pa
 import pytest
 from google.rpc import error_details_pb2, status_pb2
@@ -550,5 +551,7 @@ def test_points_struct_value_is_json_text(output: str) -> None:
         case "batches":
             with expr.to_pyarrow_batches() as reader:
                 values = reader.read_all()["value"].to_pylist()
-    assert values == [text, None]
+    assert len(values) == 2
+    assert values[0] == text
+    assert pd.isna(values[1])
     assert json.loads(values[0]) == value

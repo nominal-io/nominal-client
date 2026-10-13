@@ -4,10 +4,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Protocol, Tuple
+from typing import Protocol, Self, Tuple
 
 from nominal_api import scout_catalog, scout_video, scout_video_api
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin

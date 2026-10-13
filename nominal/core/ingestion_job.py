@@ -4,10 +4,9 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import AbstractSet, Collection, Iterable, Protocol, Sequence
+from typing import AbstractSet, Collection, Iterable, Protocol, Self, Sequence
 
 from nominal_api import ingest_api
-from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url

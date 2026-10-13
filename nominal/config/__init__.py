@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Self
 
 import yaml
-from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH
 from nominal.exceptions import NominalConfigError as NominalConfigError

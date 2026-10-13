@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Self
 
 import yaml
-from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal.exceptions import NominalConfigError
 

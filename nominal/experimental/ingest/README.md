@@ -26,7 +26,7 @@ no more scrolling the files page counting how many are done vs. ingesting vs. en
 ## How to Use It
 
 ```python
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from nominal.core import NominalClient
 from nominal.experimental.ingest import IngestBuilder
@@ -59,7 +59,7 @@ builder.add_ardupilot_dataflash("test.bin")
 builder.add_video(
     "cam_front.mp4",
     channel="camera.front",
-    start=datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc),
+    start=datetime(2026, 7, 26, 6, 0, tzinfo=UTC),
 )
 
 # run a containerized extractor over named inputs

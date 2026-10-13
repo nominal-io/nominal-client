@@ -8,7 +8,6 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, ov
 
 from nominal_api import (
     api,
-    authentication_api,
     datasource_api,
     ingest_api,
     scout_catalog,
@@ -35,6 +34,7 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.marking import MarkableMixin
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
@@ -103,7 +103,7 @@ class DataSource(HasRid, MarkableMixin):
         @property
         def registry(self) -> registry_pb2_grpc.RegistryServiceStub: ...
         @property
-        def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
+        def users(self) -> users_pb2_grpc.UserServiceStub: ...
         @property
         def roles(self) -> roles_pb2_grpc.RoleServiceStub: ...
         @property

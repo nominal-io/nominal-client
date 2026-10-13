@@ -7,15 +7,10 @@ task failures retry in place (copies resume from migration state), everything el
 
 from __future__ import annotations
 
-import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
 import urllib3.exceptions
 
 from nominal.experimental.migration.parallel_migration_executor import TASK_ATTEMPTS, MigrationTask, run_concurrent

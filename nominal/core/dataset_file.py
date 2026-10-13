@@ -7,11 +7,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Self, Sequence
 from urllib.parse import unquote, urlparse
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video
-from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams

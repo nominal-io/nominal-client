@@ -213,14 +213,13 @@ from __future__ import annotations
 import abc
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import Callable, Literal, Mapping, NamedTuple, TypeAlias, TypeVar, cast, get_args
+from typing import Callable, Literal, Mapping, NamedTuple, Self, TypeAlias, TypeVar, assert_never, cast, get_args
 
 import dateutil.parser
 from google.protobuf import timestamp_pb2
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
-from typing_extensions import Self, assert_never
 
 from nominal.protos.run.v1 import run_pb2
 from nominal.protos.types import common_pb2
@@ -678,14 +677,14 @@ class _SecondsNanos(NamedTuple):
         - https://github.com/palantir/conjure/pull/1643
         """
         # datetimes are only microsecond precise, so manually add in the nanos
-        dt_s = datetime.fromtimestamp(self.seconds, timezone.utc)
+        dt_s = datetime.fromtimestamp(self.seconds, UTC)
         return f"{dt_s.strftime('%Y-%m-%dT%H:%M:%S')}.{self.nanos:09d}Z"
 
     def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
 
     def to_datetime(self) -> datetime:
-        return datetime.fromtimestamp(self.seconds + self.nanos * 1e-9, timezone.utc)
+        return datetime.fromtimestamp(self.seconds + self.nanos * 1e-9, UTC)
 
     @classmethod
     def from_run_proto(cls, ts: run_pb2.UtcTimestamp) -> Self:
@@ -698,7 +697,7 @@ class _SecondsNanos(NamedTuple):
 
     @classmethod
     def from_datetime(cls, dt: datetime) -> Self:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
         seconds = int(dt.timestamp())
         nanos = dt.microsecond * 1000
         return cls(seconds, nanos)

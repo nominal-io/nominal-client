@@ -4,20 +4,21 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
+from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from nominal_api import scout_spatial
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._scope_resolution import DataScopes, resolve_connections, resolve_datasets, resolve_videos
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
     LinkDict,
     RefreshableGrpcMixin,
-    ScopeTypeSpecifier,
     create_proto_links,
     label_update,
     property_update,
@@ -28,14 +29,14 @@ from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection, _get_connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.attachment import Attachment, _get_accessible_attachments
+from nominal.core.connection import Connection
+from nominal.core.dataset import Dataset, _create_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.video import Video, _create_video, _get_video
+from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
-from nominal.exceptions import LegacyVideoDeprecationWarning, NominalNotFoundError
+from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNotFoundError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
+class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     rid: str
     name: str
     description: str | None
@@ -86,21 +87,16 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
 
-    def _list_dataset_scopes(self) -> Sequence[asset_pb2.DataScope]:
-        return _filter_proto_scopes(self._get_latest_api().data_scopes, "dataset")
+    def _scopes(self) -> DataScopes:
+        """This asset's data scopes, read from one fetch of the asset."""
+        return DataScopes.from_data_scopes(self._get_latest_api().data_scopes)
 
-    def _lookup_dataset_scope(self, data_scope_name: str) -> tuple[str, Mapping[str, str]] | None:
-        for scope in self._list_dataset_scopes():
-            if scope.data_scope_name == data_scope_name:
-                return scope.data_source.dataset, dict(scope.series_tags)
-        return None
-
-    def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
-        asset = self._get_latest_api()
-        return {
-            scope.data_scope_name: getattr(scope.data_source, scope_type)
-            for scope in _filter_proto_scopes(asset.data_scopes, scope_type)
-        }
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
+        named = self._scopes().named(data_scope_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(data_scope_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(f"No such data scope found with data_scope_name {data_scope_name}")
+        return dataset, named.datasets[data_scope_name].series_tags
 
     def update(
         self,
@@ -165,23 +161,29 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         return self
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
-        """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
-        for scope, data in self.list_data_scopes():
-            if scope == data_scope_name:
-                return data
+        """Retrieve the dataset, connection, or video behind a data scope name.
 
-        raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
+        Raises:
+            NominalNotFoundError: If no readable data scope has this name.
+        """
+        scope = _resolve_scopes(self._clients, self._scopes().named(data_scope_name)).get(data_scope_name)
+        if scope is None:
+            raise NominalDataScopeNotFoundError(
+                f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}"
+            )
+        return scope
 
     def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
         """List scopes associated with this asset.
 
         Returns:
-            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video.
+            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video. Data scopes
+            whose resource is missing or not readable are left out.
 
             Spatials are not included: they live in `nominal.experimental.spatial`, whose
             `list_spatials_in_asset` lists them.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
+        return tuple(_resolve_scopes(self._clients, self._scopes()).items())
 
     def remove_data_scopes(
         self,
@@ -257,18 +259,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Raises:
             NominalError: If adding the data scope fails.
         """
-        request = asset_pb2.AddDataScopesToAssetRequest(
-            asset_rid=self.rid,
-            data_scopes=[
-                asset_pb2.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=asset_pb2.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                    series_tags={**series_tags} if series_tags else {},
-                )
-            ],
+        self._add_data_scope(
+            data_scope_name, asset_pb2.DataSource(dataset=rid_from_instance_or_string(dataset)), series_tags
         )
-        with translate_grpc_errors():
-            self._clients.assets.AddDataScopesToAsset(request)
 
     @deprecated(
         "Attaching a standalone `Video` to an asset is deprecated in favor of video channels on a dataset. Attach the "
@@ -285,18 +278,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Raises:
             NominalError: If adding the data scope fails.
         """
-        request = asset_pb2.AddDataScopesToAssetRequest(
-            asset_rid=self.rid,
-            data_scopes=[
-                asset_pb2.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=asset_pb2.DataSource(video=rid_from_instance_or_string(video)),
-                    series_tags={},
-                )
-            ],
-        )
-        with translate_grpc_errors():
-            self._clients.assets.AddDataScopesToAsset(request)
+        self._add_data_scope(data_scope_name, asset_pb2.DataSource(video=rid_from_instance_or_string(video)))
 
     def add_connection(
         self,
@@ -319,12 +301,27 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         Raises:
             NominalError: If adding the data scope fails.
         """
+        self._add_data_scope(
+            data_scope_name, asset_pb2.DataSource(connection=rid_from_instance_or_string(connection)), series_tags
+        )
+
+    def _add_data_scope(
+        self,
+        data_scope_name: str,
+        data_source: asset_pb2.DataSource,
+        series_tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add one data scope to this asset.
+
+        Raises:
+            NominalError: If adding the data scope fails.
+        """
         request = asset_pb2.AddDataScopesToAssetRequest(
             asset_rid=self.rid,
             data_scopes=[
                 asset_pb2.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
-                    data_source=asset_pb2.DataSource(connection=rid_from_instance_or_string(connection)),
+                    data_source=data_source,
                     series_tags={**series_tags} if series_tags else {},
                 )
             ],
@@ -371,18 +368,20 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
 
         Returns:
             The retrieved or created dataset.
-        """
-        # Attempt to retrieve and validate any existing dataset scope
-        found_ds, found_tags = None, None
-        try:
-            logger.debug("Attempting to retrieve dataset scope named '%s'", data_scope_name)
-            found_ds, found_tags = self._get_dataset_scope(data_scope_name)
-        except ValueError:
-            pass
 
-        # If we found a dataset with the same datascope name, validate that the
-        # series tags match
-        if found_ds is not None and found_tags is not None:
+        Raises:
+            NominalNotFoundError: If a dataset data scope with this name exists but its dataset is not readable.
+            ValueError: If a dataset data scope with this name exists with different series tags, or a data scope
+                of another type has this name.
+        """
+        scopes = self._scopes()
+        if data_scope_name in scopes.datasets:
+            found_ds = resolve_datasets(self._clients, scopes.named(data_scope_name).datasets).get(data_scope_name)
+            if found_ds is None:
+                raise NominalDataScopeNotFoundError(
+                    f"No dataset with data scope name '{data_scope_name}' found for this asset"
+                )
+            found_tags = scopes.datasets[data_scope_name].series_tags
             # symmetric difference to find tags found in one but not the other
             mismatching_tags = found_tags.items() ^ (series_tags or {}).items()
             if mismatching_tags:
@@ -390,8 +389,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
                     f"Cannot get_or_create_dataset '{data_scope_name}' with tags {series_tags}: "
                     f"datascope already exists with {found_tags} (difference={mismatching_tags})"
                 )
-            else:
-                return found_ds
+            return found_ds
+        if data_scope_name in scopes:
+            raise ValueError(
+                f"Cannot get_or_create_dataset '{data_scope_name}': a data scope of another type on asset "
+                f"{self.rid} has that name"
+            )
 
         # No such dataset exists! Create dataset
         enriched_dataset = _create_dataset(
@@ -432,22 +435,38 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         labels: Sequence[str] = (),
         properties: NominalProperties | None = None,
     ) -> Video:
-        """Retrieve a video by data scope name, or create a new one if it does not exist."""
-        try:
-            return self.get_video(data_scope_name)
-        except ValueError:
-            response = _create_video(
-                self._clients.auth_header,
-                self._clients.video,
-                name or data_scope_name,
-                description=description,
-                properties=properties,
-                labels=labels,
-                workspace_rid=self._clients.resolve_default_workspace_rid(),
-            )
-            video = Video._from_conjure(self._clients, response)
-            self.add_video(data_scope_name, video)
+        """Retrieve a video by data scope name, or create a new one if it does not exist.
+
+        Raises:
+            NominalNotFoundError: If a video data scope with this name exists but its video is not readable.
+            ValueError: If a data scope of another type has this name.
+        """
+        scopes = self._scopes()
+        if data_scope_name in scopes.videos:
+            video = resolve_videos(self._clients, scopes.named(data_scope_name).videos).get(data_scope_name)
+            if video is None:
+                raise NominalDataScopeNotFoundError(
+                    f"No video with data scope name '{data_scope_name}' found for this asset"
+                )
             return video
+        if data_scope_name in scopes:
+            raise ValueError(
+                f"Cannot get_or_create_video '{data_scope_name}': a data scope of another type on asset "
+                f"{self.rid} has that name"
+            )
+
+        response = _create_video(
+            self._clients.auth_header,
+            self._clients.video,
+            name or data_scope_name,
+            description=description,
+            properties=properties,
+            labels=labels,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
+        )
+        video = Video._from_conjure(self._clients, response)
+        self.add_video(data_scope_name, video)
+        return video
 
     def create_event(
         self,
@@ -536,17 +555,15 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             Dataset associated with the data scope name.
 
         Raises:
-            ValueError: If no dataset data scope exists with the provided name.
+            NominalNotFoundError: If no readable dataset has this data scope name.
         """
-        dataset_rids_by_scope_name = self._scope_rids("dataset")
-        dataset_rid = dataset_rids_by_scope_name.get(data_scope_name)
-        if dataset_rid is None:
-            raise ValueError(f"No dataset with data scope name '{data_scope_name}' found for this asset")
-
-        return Dataset._from_conjure(
-            self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, dataset_rid),
-        )
+        named = self._scopes().named(data_scope_name)
+        dataset = resolve_datasets(self._clients, named.datasets).get(data_scope_name)
+        if dataset is None:
+            raise NominalDataScopeNotFoundError(
+                f"No dataset with data scope name '{data_scope_name}' found for this asset"
+            )
+        return dataset
 
     def get_connection(self, data_scope_name: str) -> Connection:
         """Retrieve a connection by data scope name.
@@ -558,14 +575,15 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             Connection associated with the data scope name.
 
         Raises:
-            ValueError: If no connection data scope exists with the provided name.
+            NominalNotFoundError: If no readable connection has this data scope name.
         """
-        connection_rids_by_scope_name = self._scope_rids("connection")
-        connection_rid = connection_rids_by_scope_name.get(data_scope_name)
-        if connection_rid is None:
-            raise ValueError(f"No connection with data scope name '{data_scope_name}' found for this asset")
-
-        return Connection._from_conjure(self._clients, _get_connection(self._clients, connection_rid))
+        named = self._scopes().named(data_scope_name)
+        connection = resolve_connections(self._clients, named.connections).get(data_scope_name)
+        if connection is None:
+            raise NominalDataScopeNotFoundError(
+                f"No connection with data scope name '{data_scope_name}' found for this asset"
+            )
+        return connection
 
     @deprecated(
         "Resolving a standalone `Video` data scope is deprecated in favor of video channels on a dataset. Use "
@@ -582,60 +600,50 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
             Video associated with the data scope name.
 
         Raises:
-            ValueError: If no video data scope exists with the provided name.
+            NominalNotFoundError: If no readable video has this data scope name.
         """
-        video_rids = self._scope_rids("video")
-        video_rid = video_rids.get(data_scope_name)
-        if video_rid is None:
-            raise ValueError(f"No video with data scope name '{data_scope_name}' found for this asset")
-
-        return Video._from_conjure(self._clients, _get_video(self._clients, video_rid))
+        named = self._scopes().named(data_scope_name)
+        video = resolve_videos(self._clients, named.videos).get(data_scope_name)
+        if video is None:
+            raise NominalDataScopeNotFoundError(
+                f"No video with data scope name '{data_scope_name}' found for this asset"
+            )
+        return video
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
-        Returns (data_scope_name, dataset) pairs for each dataset.
-        """
-        scope_rid = self._scope_rids(scope_type="dataset")
-        if not scope_rid:
-            return []
 
-        datasets_map = {
-            dataset.rid: dataset
-            for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
-        }
-        return [
-            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
-            for name, rid in scope_rid.items()
-            if rid in datasets_map
-        ]
+        Returns:
+            (data_scope_name, dataset) pairs. Data scopes whose dataset is missing or not readable are left out.
+        """
+        return list(resolve_datasets(self._clients, self._scopes().datasets).items())
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this asset.
-        Returns (data_scope_name, connection) pairs for each connection.
+
+        Returns:
+            (data_scope_name, connection) pairs. Data scopes whose connection is missing or not readable are left out.
         """
-        scope_rid = self._scope_rids(scope_type="connection")
-        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
-        return [
-            (scope, Connection._from_conjure(self._clients, connection))
-            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
-        ]
+        return list(resolve_connections(self._clients, self._scopes().connections).items())
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this asset.
-        Returns (data_scope_name, dataset) pairs for each video.
+
+        Returns:
+            (data_scope_name, video) pairs. Data scopes whose video is missing or not readable are left out.
         """
-        scope_rid = self._scope_rids(scope_type="video")
-        return [
-            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
-            for (scope, rid) in scope_rid.items()
-        ]
+        return list(resolve_videos(self._clients, self._scopes().videos).items())
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         asset = self._get_latest_api()
-        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, asset.attachments):
-            yield Attachment._from_conjure(self._clients, a)
+        for a in _get_accessible_attachments(self._clients, asset.attachments):
+            yield Attachment._from_proto(self._clients, a)
 
     def list_attachments(self) -> Sequence[Attachment]:
+        """List the attachments associated with this asset.
+
+        Attachments that the caller cannot access are left out.
+        """
         return list(self._iter_list_attachments())
 
     def list_runs(self) -> Sequence[Run]:
@@ -796,13 +804,6 @@ class Asset(_DatasetWrapper, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
         )
 
 
-def _filter_proto_scopes(
-    scopes: Iterable[asset_pb2.DataScope], scope_type: ScopeTypeSpecifier
-) -> Sequence[asset_pb2.DataScope]:
-    """The data scopes whose `data_source` is set to `scope_type`."""
-    return [scope for scope in scopes if scope.data_source.WhichOneof("data_source") == scope_type]
-
-
 def _get_assets(clients: Asset._Clients, rids: Sequence[str]) -> Mapping[str, asset_pb2.Asset]:
     """The assets with the given rids, keyed by rid. Rids that do not resolve are absent from the result.
 
@@ -828,6 +829,15 @@ def _get_asset(clients: Asset._Clients, rid: str) -> asset_pb2.Asset:
     if len(assets) > 1:
         raise ValueError(f"multiple assets found with RID {rid!r}: {assets!r}")
     return assets[rid]
+
+
+def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> Mapping[str, ScopeType]:
+    """The readable datasets, connections, and videos behind these scopes, with one request per type that has any."""
+    return {
+        **resolve_datasets(clients, scopes.datasets),
+        **resolve_connections(clients, scopes.connections),
+        **resolve_videos(clients, scopes.videos),
+    }
 
 
 # Moving to bottom to deal with circular dependencies

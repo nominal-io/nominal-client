@@ -3,12 +3,10 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
-    attachments_api,
-    authentication_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -26,7 +24,6 @@ from nominal_api import (
     timeseries_metadata,
     upload_api,
 )
-from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors
@@ -37,6 +34,8 @@ from nominal.core._utils.networking import (
 )
 from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -139,8 +138,6 @@ class ClientsBunch:
     )
 
     # Conjure services
-    attachment: attachments_api.AttachmentService
-    authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
@@ -164,6 +161,7 @@ class ClientsBunch:
 
     # GRPC services
     assets: asset_pb2_grpc.AssetServiceStub
+    attachment: attachments_pb2_grpc.AttachmentServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
@@ -177,6 +175,7 @@ class ClientsBunch:
     secrets: secrets_pb2_grpc.SecretServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
+    users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
 
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
@@ -307,8 +306,6 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
-            attachment=client_factory(attachments_api.AttachmentService),
-            authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
@@ -331,6 +328,7 @@ class ClientsBunch:
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
+            attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
@@ -344,6 +342,7 @@ class ClientsBunch:
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
+            users=grpc_factory(users_pb2_grpc.UserServiceStub),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
         )
 

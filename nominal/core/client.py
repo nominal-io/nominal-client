@@ -7,14 +7,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
-    attachments_api,
-    authentication_api,
     ingest_api,
     scout_catalog,
     scout_checks_api,
@@ -25,7 +23,7 @@ from nominal_api import (
     scout_workbookcommon_api,
     storage_datasource_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
@@ -68,7 +66,7 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.container_image import (
@@ -110,7 +108,7 @@ from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
-from nominal.core.video import Video, _create_video
+from nominal.core.video import Video, _create_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
@@ -122,6 +120,8 @@ from nominal.exceptions import (
     NominalNotFoundError,
 )
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.attachments.v2 import attachments_pb2
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -355,28 +355,36 @@ class NominalClient:
 
         Returns:
             Details on the requested user, or the current user if no user rid is provided.
+
+        Raises:
+            NominalError: If the user request fails, including when the user does not exist or is not a member or
+                guest of the caller's organization.
         """
-        if user_rid is None:
-            raw_user = self._clients.authentication.get_my_profile(self._clients.auth_header)
-        else:
-            raw_user = self._clients.authentication.get_user(self._clients.auth_header, user_rid)
+        with translate_grpc_errors():
+            if user_rid is None:
+                raw_user = self._clients.users.GetCurrentUser(users_pb2.GetCurrentUserRequest()).user
+            else:
+                raw_user = self._clients.users.GetUser(users_pb2.GetUserRequest(user_rid=user_rid)).user
 
-        return User._from_conjure(raw_user)
+        return User._from_proto(raw_user)
 
-    def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
-        for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
-            yield User._from_conjure(raw_user)
+    def _iter_search_users(self, query: users_pb2.SearchUsersQuery) -> Iterable[User]:
+        for raw_user in search_users_paginated(self._clients.users, query):
+            yield User._from_proto(raw_user)
 
     def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
         """Search for users meeting the specified filters.
         Filters are ANDed together, e.g., if exact_match and search_text are both provided, then both must match.
 
         Args:
-            exact_match: Searches for an exact substring across display name and email
+            exact_match: Searches for an exact (case-insensitive) substring of the user's email
             search_text: Searches for a (case-insensitive) substring across display name and email
 
         Returns:
             All users which match all of the provided conditions
+
+        Raises:
+            NominalError: If the user search request fails.
         """
         query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
@@ -964,8 +972,7 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     def _iter_get_videos(self, rids: Iterable[str]) -> Iterable[Video]:
-        request = scout_video_api.GetVideosRequest(video_rids=list(rids))
-        for response in self._clients.video.batch_get(self._clients.auth_header, request).responses:
+        for response in _get_videos(self._clients, list(rids)):
             yield Video._from_conjure(self._clients, response)
 
     @deprecated(
@@ -1097,6 +1104,9 @@ class NominalClient:
         """Upload an attachment.
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Raises:
+            NominalError: If creating the attachment from the uploaded file fails.
         """
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
@@ -1112,28 +1122,37 @@ class NominalClient:
             self._clients.upload,
             header_provider=self._clients.header_provider,
         )
-        request = attachments_api.CreateAttachmentRequest(
-            description=description or "",
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            s3_path=s3_path,
-            title=name,
-            workspace=workspace_rid,
+        request = attachments_pb2.CreateAttachmentRequest(
+            attachment=attachments_pb2.Attachment(
+                s3_path=s3_path,
+                title=name,
+                description=description or "",
+                properties=properties,
+                labels=labels,
+            ),
+            workspace_rid=workspace_rid,
         )
-        response = self._clients.attachment.create(self._clients.auth_header, request)
-        return Attachment._from_conjure(self._clients, response)
+        with translate_grpc_errors():
+            response = self._clients.attachment.CreateAttachment(request)
+        return Attachment._from_proto(self._clients, response.attachment)
 
     def get_attachment(self, rid: str) -> Attachment:
-        """Retrieve an attachment by its RID."""
-        response = self._clients.attachment.get(self._clients.auth_header, rid)
-        return Attachment._from_conjure(self._clients, response)
+        """Retrieve an attachment by its RID.
+
+        Raises:
+            NominalNotFoundError: If no attachment with that RID is accessible.
+            NominalError: If the retrieval request fails.
+        """
+        return Attachment._from_proto(self._clients, _get_attachment(self._clients, rid))
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
-        """Retrive attachments by their RIDs."""
-        return [
-            Attachment._from_conjure(self._clients, a)
-            for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
-        ]
+        """Retrieve attachments by their RIDs.
+
+        Raises:
+            NominalNotFoundError: If any RID does not resolve to an accessible attachment.
+            NominalError: If a retrieval request fails.
+        """
+        return [Attachment._from_proto(self._clients, a) for a in _get_attachments(self._clients, rids)]
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""

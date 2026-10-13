@@ -8,10 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Protocol, Sequence, overload
+from typing import BinaryIO, Protocol, Self, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
@@ -579,8 +579,12 @@ def _build_video_file_timestamp_manifest(
         raise NominalVideoTimestampModeError(_ONE_OF_THREE_MODES_ERROR)
 
 
-def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
-    return clients.video.get(clients.auth_header, video_rid)
+def _get_videos(clients: Video._Clients, video_rids: Sequence[str]) -> Sequence[scout_video_api.Video]:
+    """The videos with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not video_rids:
+        return []
+    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+    return list(clients.video.batch_get(clients.auth_header, request).responses)
 
 
 def _create_video(

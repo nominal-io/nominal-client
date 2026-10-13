@@ -10,9 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Any, Callable, Mapping, Protocol, Type
-
-from typing_extensions import Self
+from typing import Any, Callable, Mapping, Protocol, Self, Type
 
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
 from nominal.core._stream.batch_processor_proto import SerializedBatch

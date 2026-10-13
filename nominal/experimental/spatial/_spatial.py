@@ -7,10 +7,9 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence, overload
+from typing import Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
-from typing_extensions import Self
 
 from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
@@ -520,3 +519,11 @@ def _create_spatial_request(
 
 def _get_spatial(clients: Spatial._Clients, rid: str) -> scout_spatial_api.Spatial:
     return clients.spatial.get(clients.auth_header, rid)
+
+
+def _get_spatials(clients: Spatial._Clients, rids: Sequence[str]) -> Sequence[scout_spatial_api.Spatial]:
+    """The spatials with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not rids:
+        return []
+    request = scout_spatial_api.GetSpatialsRequest(spatial_rids=list(rids))
+    return list(clients.spatial.batch_get(clients.auth_header, request).responses)
