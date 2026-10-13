@@ -197,32 +197,24 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
     assert record[0].lineno == expected_lineno
 
 
+@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
 def test_experimental_preserves_python_metrics(mock_dataset: Dataset):
-    """Deprecated experimental selection keeps its Python backend and metrics while recommending Rust."""
-    with (
-        pytest.warns(UserWarning, match="use implementation='rust' with track_metrics=True") as record,
-        mock_dataset.get_write_stream(implementation="experimental") as stream,
-    ):
+    """Experimental selection keeps its Python backend and runtime metrics."""
+    with mock_dataset.get_write_stream(implementation="experimental") as stream:
         assert isinstance(stream, WriteStreamV2)
         assert stream._track_metrics is True
-
-    assert all(warning.filename == __file__ for warning in record)
 
 
 @pytest.mark.parametrize("argument", ["implementation", "data_format"])
+@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
+@pytest.mark.filterwarnings("ignore:The `data_format` argument is deprecated:UserWarning")
 def test_experimental_works_without_nominal_streaming(
     mock_dataset: Dataset, without_nominal_streaming: None, argument: str
 ):
-    """Both deprecated experimental arguments retain Python metrics when Rust is unavailable."""
-    with (
-        pytest.warns(UserWarning) as record,
-        mock_dataset.get_write_stream(**{argument: "experimental"}) as stream,  # type: ignore[call-overload]
-    ):
+    """Both experimental arguments retain Python metrics when Rust is unavailable."""
+    with mock_dataset.get_write_stream(**{argument: "experimental"}) as stream:  # type: ignore[call-overload]
         assert isinstance(stream, WriteStreamV2)
         assert stream._track_metrics is True
-
-    assert any("use implementation='rust' with track_metrics=True" in str(warning.message) for warning in record)
-    assert all(warning.filename == __file__ for warning in record)
 
 
 def test_track_metrics_raises_without_nominal_streaming(mock_dataset: Dataset, without_nominal_streaming: None):

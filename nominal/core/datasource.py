@@ -564,7 +564,7 @@ _DEPRECATED_IMPLEMENTATIONS = {
 # _resolve_implementation -> _get_write_stream -> get_write_stream -> the
 # @warn_on_deprecated_argument wrapper -> the caller we want to blame.
 #
-# Update this when changing the call chain; alias tests check warning attribution.
+# Update this when changing the call chain.
 _DEPRECATION_STACKLEVEL = 5
 
 
