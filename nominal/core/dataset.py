@@ -1262,8 +1262,10 @@ def _search_dataset_files(
 def _get_datasets(
     auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
 ) -> Iterable[scout_catalog.EnrichedDataset]:
-    request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
-    yield from client.get_enriched_datasets(auth_header, request)
+    """The datasets with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    rids = list(dataset_rids)
+    if rids:
+        yield from client.get_enriched_datasets(auth_header, scout_catalog.GetDatasetsRequest(dataset_rids=rids))
 
 
 def _get_dataset(

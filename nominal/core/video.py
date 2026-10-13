@@ -579,8 +579,12 @@ def _build_video_file_timestamp_manifest(
         raise NominalVideoTimestampModeError(_ONE_OF_THREE_MODES_ERROR)
 
 
-def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
-    return clients.video.get(clients.auth_header, video_rid)
+def _get_videos(clients: Video._Clients, video_rids: Sequence[str]) -> Sequence[scout_video_api.Video]:
+    """The videos with these RIDs, in one request. Missing or unreadable RIDs are left out."""
+    if not video_rids:
+        return []
+    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+    return list(clients.video.batch_get(clients.auth_header, request).responses)
 
 
 def _create_video(

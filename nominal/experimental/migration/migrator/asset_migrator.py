@@ -141,12 +141,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
         dataset_migrator = DatasetMigrator(self.ctx)
 
-        source_data_scopes = source_asset._list_dataset_scopes()
+        source_data_scopes = source_asset._scopes().datasets
         source_datasets = {ds.rid: ds for _, ds in source_asset.list_datasets()}
 
-        for source_data_scope in source_data_scopes:
-            source_data_scope_name = source_data_scope.data_scope_name
-            source_dataset_rid = source_data_scope.data_source.dataset
+        for source_data_scope_name, source_data_scope in source_data_scopes.items():
+            source_dataset_rid = source_data_scope.rid
             if source_dataset_rid not in source_datasets:
                 raise ValueError(
                     f"Data scope {source_data_scope_name} on asset {source_asset.rid} references dataset "
