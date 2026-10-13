@@ -181,8 +181,11 @@ ignore = [
 [tool.mypy]
 strict = true
 packages = ["nominal", "nominal.tdms", "nominal.ibis"]
-# Ibis leaves some functions unannotated.
-untyped_calls_exclude = ["ibis"]
+# These Ibis classes expose unannotated methods used by the backend.
+untyped_calls_exclude = [
+    "ibis.backends.sql.compilers.base.SQLGlotCompiler",
+    "ibis.formats.pandas.PandasData",
+]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
@@ -200,10 +203,13 @@ module = "nptdms"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["ibis", "ibis.*"]
+module = "ibis.*"
 # Ibis has inline annotations but doesn't ship a py.typed marker.
 follow_untyped_imports = true
-# Its public API also re-exports names through dynamically populated __all__ lists.
+
+[[tool.mypy.overrides]]
+module = "ibis.expr.types.*"
+# These expression types are exported through dynamically populated __all__ lists.
 implicit_reexport = true
 
 [[tool.mypy.overrides]]
