@@ -12,7 +12,9 @@ requires-python = ">=3.10,<4"
 dependencies = [
     "nominal>=1.168.0",
     "ibis-framework>=12,<13",
-    "pyarrow>=14",
+    "pyarrow>=14; python_version < '3.15'",
+    # PyArrow 26 is the first release with Python 3.15 wheels.
+    "pyarrow>=26; python_version >= '3.15'",
     # ibis.formats imports these at runtime but ibis only declares them in per-backend extras.
     "pyarrow-hotfix>=0.4",
     "packaging>=23.0",
