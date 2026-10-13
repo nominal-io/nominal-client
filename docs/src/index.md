@@ -169,15 +169,29 @@ examples/index
 
 ```{toctree}
 :hidden:
-:caption: Reference
+:caption: SDK
 :maxdepth: 2
 
-High-level SDK <reference/toplevel>
+Overview <reference/toplevel>
 Core SDK <reference/core>
 Timestamps <reference/ts>
 Exceptions <reference/exceptions>
 nom CLI <reference/nom-cli>
+```
+
+```{toctree}
+:hidden:
+:caption: Third-party
+:maxdepth: 2
+
 Integrations <reference/thirdparty/index>
+```
+
+```{toctree}
+:hidden:
+:caption: Experimental
+:maxdepth: 2
+
 Experimental <reference/experimental/index>
 ```
 

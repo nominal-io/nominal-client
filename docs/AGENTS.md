@@ -4,6 +4,10 @@ Markdown pages stay in `src/`, with guide, example, reference and project
 navigation declared in `src/index.md`. Sphinx reads configuration from
 `conf.py`; MyST parses Markdown, and `nominal-sphinx-theme` supplies the styling.
 
+Header tabs are Guides, Examples and SDK. The shared theme limits the sidebar to
+the active tab: `examples/` pages belong to Examples, `reference/` pages to SDK,
+and other pages to Guides. Keep each captioned root toctree within one section.
+
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000 and watches pages, examples, docstrings and included files.
   Both commands remove generated example pages and HTML before rebuilding.
