@@ -16,6 +16,7 @@ from nominal.core.client import NominalClient
 from nominal.exceptions import NominalConfigError
 from nominal.experimental import as_user
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -285,6 +286,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     )
     assert isinstance(clients.assets, asset_pb2_grpc.AssetServiceStub)
+    assert isinstance(clients.attachment, attachments_pb2_grpc.AttachmentServiceStub)
     assert isinstance(clients.datareview, data_review_pb2_grpc.DataReviewServiceStub)
     assert isinstance(clients.event, event_pb2_grpc.EventServiceStub)
     assert isinstance(clients.registry, registry_pb2_grpc.RegistryServiceStub)
@@ -321,9 +323,6 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
-        "ri.authn.dev.user.target"
-    )
-    assert impersonated._clients.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
     # The impersonation header_provider must also reach the gRPC channel; the most

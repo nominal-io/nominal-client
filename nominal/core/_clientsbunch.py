@@ -7,7 +7,6 @@ from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
-    attachments_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -35,6 +34,7 @@ from nominal.core._utils.networking import (
 )
 from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
@@ -138,7 +138,6 @@ class ClientsBunch:
     )
 
     # Conjure services
-    attachment: attachments_api.AttachmentService
     catalog: scout_catalog.CatalogService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
@@ -162,6 +161,7 @@ class ClientsBunch:
 
     # GRPC services
     assets: asset_pb2_grpc.AssetServiceStub
+    attachment: attachments_pb2_grpc.AttachmentServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
@@ -306,7 +306,6 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
-            attachment=client_factory(attachments_api.AttachmentService),
             catalog=client_factory(scout_catalog.CatalogService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
@@ -329,6 +328,7 @@ class ClientsBunch:
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
+            attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),

@@ -23,7 +23,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
-from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.comment import Comment
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
@@ -544,11 +544,14 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
-        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
-            yield Attachment._from_conjure(self._clients, a)
+        for a in _get_accessible_attachments(self._clients, run.attachments):
+            yield Attachment._from_proto(self._clients, a)
 
     def list_attachments(self) -> Sequence[Attachment]:
-        """List a sequence of Attachments associated with this Run."""
+        """List a sequence of Attachments associated with this Run.
+
+        Attachments that the caller cannot access are left out.
+        """
         return list(self._iter_list_attachments())
 
     def _iter_list_assets(self) -> Iterable["Asset"]:
