@@ -29,8 +29,13 @@ _PAGE = """<!doctype html>
 def _on_build_finished(app: Sphinx, exception: Exception | None) -> None:
     if exception or app.builder.format != "html":
         return
-    for old, new in app.config.redirects.items():
-        source = f"{old.strip('/')}/"
+    for key, new in app.config.redirects.items():
+        old = key.strip("/")
+        # a real page at the old path (dirhtml: "<old>/" is "<old>" or "<old>/index"); the file
+        # itself may exist from an earlier build into the same folder, so check the pages instead
+        if old in app.env.all_docs or f"{old}/index" in app.env.all_docs:
+            raise ValueError(f"redirects: {old!r} would overwrite a page of this site")
+        source = f"{old}/"
         if "://" in new:
             url = new
         else:
@@ -38,8 +43,6 @@ def _on_build_finished(app: Sphinx, exception: Exception | None) -> None:
                 raise ValueError(f"redirects: {old!r} points at {new!r}, which is not a page of this site")
             url = relative_uri(source, app.builder.get_target_uri(new))
         path = Path(app.outdir, source, "index.html")
-        if path.exists():
-            raise ValueError(f"redirects: {old!r} would overwrite a page of this site")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_PAGE.format(url=escape(url)), encoding="utf-8")
 
