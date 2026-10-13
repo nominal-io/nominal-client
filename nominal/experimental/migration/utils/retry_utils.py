@@ -18,9 +18,6 @@ import grpc
 import requests
 import urllib3.exceptions
 
-# Remove this import once the minimum supported Python version is 3.11+.
-from exceptiongroup import BaseExceptionGroup
-
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")

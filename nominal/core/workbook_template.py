@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Mapping, Protocol, Sequence, overload
+from typing import TYPE_CHECKING, Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import (
     scout,
@@ -11,7 +11,6 @@ from nominal_api import (
     scout_template_api,
     scout_workbookcommon_api,
 )
-from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string

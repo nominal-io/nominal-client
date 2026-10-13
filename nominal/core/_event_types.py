@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Iterable, NamedTuple
-
-from typing_extensions import assert_never
+from typing import Iterable, NamedTuple, assert_never
 
 from nominal.protos.event.v2 import event_pb2
 

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from nominal.core.channel import filter_channels_with_data
 
 # Common time bounds used across the test suite; concrete values don't matter, they just
 # need to be valid and shared so tests don't re-state them.
-START_TIME = datetime(2024, 1, 1, tzinfo=timezone.utc)
-END_TIME = datetime(2024, 12, 31, tzinfo=timezone.utc)
+START_TIME = datetime(2024, 1, 1, tzinfo=UTC)
+END_TIME = datetime(2024, 12, 31, tzinfo=UTC)
 
 
 def test_returns_channels_with_data(mock_clients, make_channel, make_series_count_response):

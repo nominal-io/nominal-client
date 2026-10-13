@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -24,7 +24,7 @@ from nominal_api import (
     scout_workbookcommon_api,
     storage_datasource_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch

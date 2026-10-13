@@ -13,15 +13,6 @@ from nominal.experimental.compute.dsl import params
 from nominal.ts import _SecondsNanos
 
 
-class ExceptionGroup(Exception):
-    def __init__(self, message: str, exceptions: Sequence[Exception]):
-        exc_str = "\n".join([str(ex) for ex in exceptions])
-        super().__init__(f"{message}:\n{exc_str}")
-
-        self.message = message
-        self.exceptions = exceptions
-
-
 @dataclass(frozen=True)
 class Bucket:
     """Time-bucketed data for a numeric series within Nominal"""
@@ -222,6 +213,10 @@ def batch_compute_enum_buckets(
         inner sequences correspond to the individual buckets for each input expression. The order of buckets
         returned matches the order of expressions provided.
 
+    Raises:
+        ExceptionGroup: One or more expressions failed to compute; each failure is a `RuntimeError` in
+            ``exceptions``.
+
     Note:
         It is not a safe guarantee that the number of buckets returned is the same as
         the number requested.
@@ -281,6 +276,10 @@ def batch_compute_buckets(
         A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
         inner sequences correspond to the individual buckets for each input expression. The order of buckets
         returned matches the order of expressions provided.
+
+    Raises:
+        ExceptionGroup: One or more expressions failed to compute; each failure is a `RuntimeError` in
+            ``exceptions``.
 
     Note:
         It is not a safe guarantee that the number of buckets returned is the same as

@@ -3,13 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from time import sleep
-from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Protocol, Self, Sequence
 
 from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
 )
-from typing_extensions import Self
 
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams

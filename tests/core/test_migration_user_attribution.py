@@ -8,13 +8,9 @@ rather than the checklist author's client.
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources

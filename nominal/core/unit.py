@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Mapping, Sequence, TypeAlias
+from typing import Mapping, Self, Sequence, TypeAlias
 
 from nominal_api import (
     api,
     timeseries_logicalseries_api,
 )
-from typing_extensions import Self
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.units.v1 import units_pb2, units_pb2_grpc

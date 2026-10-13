@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol, TypeVar
 
@@ -159,7 +159,7 @@ def test_manifest_mode_writes_manifest_from_outputs(
             "run.csv",
             {
                 "timestamp_column": "elapsed",
-                "timestamp_type": ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                "timestamp_type": ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=UTC)),
             },
             {
                 "timestampMetadata": {
@@ -535,7 +535,7 @@ def test_system_metadata_defaults_when_not_injected(
         pytest.param(
             {
                 "timestamp_column": "elapsed",
-                "timestamp_type": ts.Relative("hours", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                "timestamp_type": ts.Relative("hours", start=datetime(2026, 1, 1, tzinfo=UTC)),
             },
             "does not support time unit 'hours'",
             id="unit-outside-contract",
@@ -802,7 +802,7 @@ def test_manifest_video_from_start_carries_channel_and_starting_timestamp(
     output_dir: Path, run_extractor: RunExtractor
 ) -> None:
     """A start-anchored video becomes a videoOutputs entry with a noManifest timestamp strategy."""
-    start = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
 
     @manifest_extractor
     def emit(ctx: ManifestExtractorContext) -> None:
@@ -1182,7 +1182,7 @@ def test_rejected_declaration_does_not_count_as_declared(
             id="epoch",
         ),
         pytest.param(
-            ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+            ts.Relative("milliseconds", start=datetime(2026, 1, 1, tzinfo=UTC)),
             {
                 "seriesName": "timestamps",
                 "epochTimeUnit": "MILLISECONDS",

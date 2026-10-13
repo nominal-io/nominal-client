@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import enum
+from typing import assert_never
 
 from nominal_api import ingest_manifest
-from typing_extensions import assert_never
 
 from nominal import ts
 from nominal.exceptions import ExtractorError

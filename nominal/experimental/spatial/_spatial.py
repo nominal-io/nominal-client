@@ -7,10 +7,9 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence, overload
+from typing import Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
-from typing_extensions import Self
 
 from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams

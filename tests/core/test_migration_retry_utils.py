@@ -7,17 +7,12 @@ streaming transfers bypassing it entirely).
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 import requests
 import urllib3.exceptions
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
-import grpc
 from conjure_python_client import ConjureHTTPError
 
 from nominal.exceptions import (

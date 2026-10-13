@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, cast
 
 from nominal_api import scout_spatial
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType

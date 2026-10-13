@@ -3,9 +3,7 @@ from __future__ import annotations
 import abc
 from datetime import datetime
 from types import TracebackType
-from typing import Any, Generic, Mapping, Sequence, Type, TypeVar
-
-from typing_extensions import Self
+from typing import Any, Generic, Mapping, Self, Sequence, Type, TypeVar
 
 from nominal.ts import IntegralNanosecondsUTC
 

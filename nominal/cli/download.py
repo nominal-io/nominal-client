@@ -296,7 +296,7 @@ class DataDownloader(abc.ABC):
         if event_duration.total_seconds() == 0:
             event_duration = self._ask_duration("Selected event has no duration! Enter duration")
 
-        start = datetime.datetime.fromtimestamp(event.start / 1e9, tz=datetime.timezone.utc)
+        start = datetime.datetime.fromtimestamp(event.start / 1e9, tz=datetime.UTC)
         return start, start + event_duration
 
     def _ask_event_by_rid(self) -> Event:
@@ -329,7 +329,7 @@ class DataDownloader(abc.ABC):
         run = self._ask_run_by_rid()
 
         start_ns = run.start
-        start_timestamp = datetime.datetime.fromtimestamp(start_ns / 1e9, tz=datetime.timezone.utc)
+        start_timestamp = datetime.datetime.fromtimestamp(start_ns / 1e9, tz=datetime.UTC)
 
         # If run has no end time, ask for a duration
         end_ns = run.end
@@ -339,7 +339,7 @@ class DataDownloader(abc.ABC):
                 "Run has no end! Provide end timestamp (UTC)", default=datetime.datetime.now().isoformat()
             )
         else:
-            end_timestamp = datetime.datetime.fromtimestamp(end_ns / 1e9, tz=datetime.timezone.utc)
+            end_timestamp = datetime.datetime.fromtimestamp(end_ns / 1e9, tz=datetime.UTC)
 
         return start_timestamp, end_timestamp
 

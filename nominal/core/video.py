@@ -8,10 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Protocol, Sequence, overload
+from typing import BinaryIO, Protocol, Self, Sequence, overload
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
