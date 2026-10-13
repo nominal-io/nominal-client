@@ -3,10 +3,11 @@ from __future__ import annotations
 import contextlib
 import io
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any, Callable, cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from nominal_api import api, scout_catalog
 
 from nominal import ts
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
@@ -48,6 +49,26 @@ def mock_dataset(mock_clients):
     spy.return_value = ds
 
     return ds
+
+
+def test_update_sends_typed_properties_and_reads_them_back(
+    mock_dataset: Dataset,
+    mock_clients: MagicMock,
+    make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset],
+) -> None:
+    """Updates write the typed map, and an empty string and zero read back as a string and a float."""
+    wire = {"serial": api.TypedPropertyValue(string_value=""), "count": api.TypedPropertyValue(numeric_value=0.0)}
+    response = make_enriched_dataset(mock_dataset.rid)
+    response.typed_properties.update(wire)
+    mock_clients.catalog.update_dataset_metadata.return_value = response
+
+    mock_dataset.update(properties={"serial": "", "count": 0})
+
+    request = mock_clients.catalog.update_dataset_metadata.call_args.args[2]
+    assert request.typed_properties == wire
+    assert request.properties is None
+    assert mock_dataset.properties == {"serial": "", "count": 0.0}
+    assert isinstance(mock_dataset.properties["count"], float)
 
 
 def test_write_logs_more_than_batch(mock_dataset: Dataset):

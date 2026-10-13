@@ -15,7 +15,6 @@ from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
@@ -123,7 +122,7 @@ class _PointCloudTimeMetadata:
 
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC
-    properties: NominalProperties
+    properties: Mapping[str, str]
 
     @classmethod
     def from_extent(cls, time_range_us: tuple[int, int], origin: datetime | IntegralNanosecondsUTC) -> Self:
@@ -156,7 +155,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     name: str
     description: str | None
     labels: Sequence[str]
-    properties: NominalProperties
+    properties: Mapping[str, str]
     is_archived: bool
     dagger_uuid: str
     metadata: PointCloudMetadata
@@ -183,7 +182,7 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace spatial metadata in-place and return the updated spatial.
@@ -444,7 +443,7 @@ def create_point_cloud_spatial(
     metadata: PointCloudMetadata,
     description: str | None = None,
     labels: Sequence[str] = (),
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> Spatial:
     """Create an empty spatial, ready to have a point cloud added to it.
@@ -493,7 +492,7 @@ def _create_spatial_request(
     metadata: PointCloudMetadata,
     description: str | None,
     labels: Sequence[str],
-    properties: NominalProperties | None,
+    properties: Mapping[str, str] | None,
     markings: Sequence[Marking | str] | None,
 ) -> scout_spatial_api.Spatial:
     # The spatial names the model rather than referencing an existing one: the

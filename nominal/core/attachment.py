@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Protocol, Self, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Protocol, Self, Sequence, cast
 
 from google.protobuf import field_mask_pb2
 
@@ -12,7 +12,6 @@ from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.exceptions import NominalNotFoundError
@@ -30,7 +29,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -50,7 +49,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace attachment metadata.

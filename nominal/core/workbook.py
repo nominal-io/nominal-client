@@ -10,7 +10,6 @@ from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, sc
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
@@ -138,7 +137,7 @@ class Workbook(
         *,
         title: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         is_draft: bool | None = None,
     ) -> Self:
@@ -180,7 +179,7 @@ class Workbook(
         *,
         title_suffix: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         runs: Sequence[Run | str] | None = None,
         assets: None = None,
         is_draft: bool | None = False,
@@ -196,7 +195,7 @@ class Workbook(
         *,
         title_suffix: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         runs: None = None,
         assets: Sequence[Asset | str] | None = None,
         is_draft: bool | None = False,
@@ -211,7 +210,7 @@ class Workbook(
         *,
         title_suffix: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         runs: Sequence[Run | str] | None = None,
         assets: Sequence[Asset | str] | None = None,
         is_draft: bool | None = False,
@@ -351,7 +350,7 @@ class Workbook(
         title: str | None = None,
         description: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace_rid: str | None = None,
     ) -> WorkbookTemplate:
         """Create a workbook template from this workbook.
@@ -436,7 +435,7 @@ def _search_workbooks(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
     author_rid: str | None = None,
