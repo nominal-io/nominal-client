@@ -185,9 +185,10 @@ ignore = [
 [tool.mypy]
 strict = true
 packages = ["nominal", "nominal.tdms", "nominal.ibis"]
-# These Ibis classes expose unannotated methods used by the backend.
+# Ibis has untyped compiler and result conversion methods.
 untyped_calls_exclude = [
     "ibis.backends.sql.compilers.base.SQLGlotCompiler",
+    "ibis.backends.sql.compilers.postgres.PostgresCompiler.visit_NonNullLiteral",
     "ibis.formats.pandas.PandasData",
 ]
 

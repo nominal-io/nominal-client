@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import ibis
+import pandas as pd
+import pytest
 from ibis import _
 
 from nominal.ibis import Backend
 
 POINTS = ibis.table(
     {
-        "ts": "timestamp(9)",
+        "ts": "timestamp('UTC', 9)",
         "value": "float64",
         "channel": "!string",
         "dataset_rid": "!string",
@@ -85,3 +89,29 @@ def test_interval_arithmetic_uses_unit_interval() -> None:
     """Intervals compile to the INTERVAL 'n' UNIT form the API parses."""
     sql = compile_sql(POINTS.select(later=_.ts + ibis.interval(minutes=5)))
     assert "INTERVAL '5' MINUTE" in sql
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [
+        datetime(2026, 6, 18, 15, 0, 36, 600000),
+        datetime(2026, 6, 18, 11, 0, 36, 600000, tzinfo=timezone(timedelta(hours=-4))),
+        pd.Timestamp("2026-06-18 15:00:36.6", tz="UTC"),
+    ],
+)
+def test_timestamp_bounds_render_as_utc_literals(bound: datetime) -> None:
+    """Naive and zoned filter bounds compile to UTC timestamps without offsets."""
+    sql = compile_sql(POINTS.filter(_.ts > bound).select("ts"))
+    assert "'2026-06-18T15:00:36.600000'" in sql
+    assert "AS TIMESTAMP" in sql
+    assert "TIMESTAMPTZ" not in sql
+
+
+def test_zoned_timestamp_casts_render_as_timestamp() -> None:
+    """Timestamp casts use the SQL API's TIMESTAMP type, including typed nulls."""
+    sql = compile_sql(
+        POINTS.select(missing=ibis.null("timestamp('UTC', 9)"), parsed=_.channel.cast("timestamp('UTC')"))
+    )
+    assert "CAST(NULL AS TIMESTAMP(9))" in sql
+    assert "AS TIMESTAMP)" in sql
+    assert "TIMESTAMPTZ" not in sql

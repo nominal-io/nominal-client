@@ -480,7 +480,7 @@ def test_incompatible_result_type_raises(output: str) -> None:
         ("INTEGER", dt.int32),
         ("BIGINT", dt.int64),
         ("DOUBLE", dt.float64),
-        ("TIMESTAMP", dt.Timestamp(scale=9)),
+        ("TIMESTAMP", dt.Timestamp(timezone="UTC", scale=9)),
     ],
 )
 def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.DataType) -> None:
@@ -489,6 +489,28 @@ def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.D
         sql_pb2.SqlCatalog(tables=[sql_pb2.SqlCatalogTable(name="typed", columns=[column("value", scalar, True)])])
     )
     assert nibis.connect(client).table("typed").schema()["value"] == expected
+
+
+@pytest.mark.parametrize("output,unit", [("pandas", "ns"), ("arrow", "us"), ("batches", "ns")])
+def test_timestamp_columns_are_utc(output: str, unit: str) -> None:
+    """Timestamp results keep their UTC timezone and precision in each result format."""
+    instant = pd.Timestamp("2026-06-18 15:00:36.600000123", tz="UTC").floor(unit)
+    result = pa.table({"ts": pa.array([instant], type=pa.timestamp(unit, tz="UTC"))})
+    expr = nibis.connect(make_client(result)).table("points_double").select("ts")
+    match output:
+        case "pandas":
+            column = expr.to_pandas()["ts"]
+            assert column.dtype == pd.DatetimeTZDtype(unit="ns", tz="UTC")
+            assert column.tolist() == [instant]
+        case "arrow":
+            table = expr.to_pyarrow()
+            assert table.schema.field("ts").type == pa.timestamp("ns", tz="UTC")
+            assert table["ts"].to_pylist() == [instant]
+        case "batches":
+            with expr.to_pyarrow_batches() as reader:
+                table = reader.read_all()
+            assert table.schema.field("ts").type == pa.timestamp("ns", tz="UTC")
+            assert table["ts"].to_pylist() == [instant]
 
 
 def test_nested_catalog_types_round_trip() -> None:

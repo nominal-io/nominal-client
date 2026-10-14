@@ -3,11 +3,8 @@
 Compiles Ibis expressions to SQL in the Nominal SQL API's dialect and executes
 them through an authenticated NominalClient, streaming results back as Arrow.
 
-Requires a server that returns recursive catalog column types and applies the
-final SQL projection. MAP<ANY, ANY> columns, including points_struct.value,
-are returned as JSON strings; use json.loads() after fetching to access their
-contents. Concretely typed maps remain Ibis maps.
-Other unresolved ANY types require an explicitly typed projection via con.sql().
+Structured channel values, such as ``points_struct.value``, are returned as
+JSON strings. Use ``json.loads()`` to parse them.
 
 Example:
     ```python
@@ -22,7 +19,7 @@ Example:
         pts.filter(_.dataset_rid == "ri.catalog....", _.channel == "temperature")
         .group_by(minute=_.ts.truncate("m"))
         .agg(n=_.count(), avg=_.value.mean())
-        .to_pandas()
+        .to_polars()
     )
     print(per_minute.head())
     ```

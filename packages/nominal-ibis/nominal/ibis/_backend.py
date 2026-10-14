@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from contextlib import contextmanager
+from datetime import timezone
 from typing import Any, Callable, Iterator, Mapping, cast
 
 import ibis
@@ -15,6 +16,7 @@ import sqlglot.expressions as sqlglot_expressions
 from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
+from ibis.backends.sql.datatypes import PostgresType
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 from sqlglot.dialects.postgres import Postgres
@@ -26,7 +28,8 @@ from nominal.protos.sql.v1 import sql_pb2, sql_pb2_grpc
 __all__ = ["Backend", "NominalSqlError", "connect"]
 
 _CATALOG_SCALAR_TYPES: dict[int, ibis_datatypes.DataType] = {
-    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: ibis_datatypes.Timestamp(scale=9),
+    # Catalog timestamps have no timezone field; Nominal values are UTC.
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_TIMESTAMP: ibis_datatypes.Timestamp(timezone="UTC", scale=9),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_DOUBLE: ibis_datatypes.Float64(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_BIGINT: ibis_datatypes.Int64(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: ibis_datatypes.Int32(),
@@ -82,10 +85,18 @@ class NominalDialect(Postgres):
         SINGLE_STRING_INTERVAL = False
 
 
+class NominalType(PostgresType):
+    @classmethod
+    def _from_ibis_Timestamp(cls, dtype: ibis_datatypes.Timestamp) -> sqlglot_expressions.DataType:
+        # Use TIMESTAMP for SQL; keep timezone information in Ibis.
+        return super()._from_ibis_Timestamp(dtype.copy(timezone=None))
+
+
 class NominalCompiler(PostgresCompiler):
     """Postgres-flavored SQL adjusted for the Nominal SQL API's dialect."""
 
     dialect = NominalDialect
+    type_mapper = NominalType
 
     def to_sqlglot(
         self,
@@ -97,6 +108,14 @@ class NominalCompiler(PostgresCompiler):
         # Postgres casts map/JSON outputs to strings for its driver. Our Arrow
         # transport preserves these types, so bypass that preprocessing.
         return super(PostgresCompiler, self).to_sqlglot(expr, limit=_resolve_limit(limit), params=params)
+
+    def visit_NonNullLiteral(
+        self, op: ibis_operations.Literal[Any], *, value: Any, dtype: ibis_datatypes.DataType
+    ) -> Any:
+        if dtype.is_timestamp() and value.tzinfo is not None:
+            utc_value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            return self.cast(utc_value.isoformat(), dtype)
+        return PostgresCompiler.visit_NonNullLiteral(self, op, value=value, dtype=dtype)
 
     def visit_MapGet(self, op: ibis_operations.MapGet, *, arg: Any, key: Any, default: Any) -> Any:
         item = sqlglot_expressions.Bracket(this=arg, expressions=[key])
