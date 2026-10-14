@@ -8,4 +8,6 @@ video_file = dataset.add_video(
     start=datetime.strptime("2011-11-11 11:11:11", "%Y-%m-%d %H:%M:%S"),
 )
 
-print(f"Video file created: {video_file.id}")
+video_file.poll_until_ingestion_completed()
+
+print(f"Video file ingested: {video_file.id}")

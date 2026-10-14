@@ -1,5 +1,7 @@
 import cv2
 
+raw_video_path = "path/to/your/raw_video.mp4"
+
 # Load the video
 cap = cv2.VideoCapture(raw_video_path)
 
@@ -14,6 +16,7 @@ schema = {
 }
 
 df_video = pl.DataFrame(schema=schema)
+frame_number = 0
 
 while cap.isOpened():
     # Read the current frame
@@ -26,11 +29,10 @@ while cap.isOpened():
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
     pillow_image = Image.fromarray(frame_rgb)
 
-    current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-
-    frame_objects = get_objects_from_pil_image(pillow_image, current_frame)
+    frame_objects = get_objects_from_pil_image(pillow_image, frame_number)
 
     df_video = pl.concat([df_video, frame_objects])
+    frame_number += 1
 
 # Release the video capture object and close all windows
 cap.release()

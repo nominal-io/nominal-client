@@ -3,11 +3,12 @@ import torch
 from PIL import Image
 from transformers import RTDetrForObjectDetection, RTDetrImageProcessor
 
+image_processor = RTDetrImageProcessor.from_pretrained("PekingU/rtdetr_r50vd")
+model = RTDetrForObjectDetection.from_pretrained("PekingU/rtdetr_r50vd")
 
-def get_objects_from_pil_image(image, frame):
-    """
-    This function takes an image in PIL format and returns a Polars dataframe with all of the identified objects
-    """
+
+def get_objects_from_pil_image(image: Image.Image, frame: int) -> pl.DataFrame:
+    """Detect objects in one image and label each row with its zero-based frame index."""
     schema = {
         "frame": pl.Int64,  # Column 'frame' as integer
         "object": pl.Utf8,  # Column 'object' as string
@@ -18,9 +19,6 @@ def get_objects_from_pil_image(image, frame):
         "y_max": pl.Float64,  # Column 'y_max' as integer
     }
     df_video_frame = pl.DataFrame(schema=schema)
-
-    image_processor = RTDetrImageProcessor.from_pretrained("PekingU/rtdetr_r50vd")
-    model = RTDetrForObjectDetection.from_pretrained("PekingU/rtdetr_r50vd")
 
     inputs = image_processor(images=image, return_tensors="pt")
 

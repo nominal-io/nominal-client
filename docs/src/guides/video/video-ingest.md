@@ -63,12 +63,16 @@ deprecated in favor of video channels. Using them emits a `LegacyVideoDeprecatio
 the dataset that carries the video channel instead.
 :::
 
-Nominal requires a video start time for video file upload. If the absolute time that the video was
+This example supplies a video start time for upload. If the absolute time that the video was
 captured is not important, you can use an arbitrary datetime like `datetime.now()` or
 `2011-11-11 11:11:11`.
 
 ```{include} /guides/_snippets/video-start-times.md
 ```
+
+The code below converts the downloaded `.mov` to an `.mp4` with `normalize_video()` and then
+uploads that converted file. If you have absolute timestamps for every frame, pass
+`frame_timestamps=` instead of `start=` to `Dataset.add_video()`; provide exactly one of these.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_3.py
 :language: python
@@ -88,11 +92,14 @@ The below code will create an empty run container.
 Any type of data that Nominal supports (video channels, CSV files, database connections, etc)
 and has an overlapping time domain can be attached to this run container.
 
-First, use [OpenCV](https://pypi.org/project/opencv-python/) to get the video length in seconds.
-Nominal Runs expect both a start and end timestamp.
-The example above uses `2011-11-11 11:11:11` as an arbitrary start time.
-To get the run end time, add the video duration (in seconds) to this start time.
-If [OpenCV](https://pypi.org/project/opencv-python/) is not yet installed for Python, install it with `pip install opencv-python`.
+First, wait for the video file to finish ingestion with
+{py:obj}`DatasetFile.poll_until_ingestion_completed() <nominal.core.DatasetFile.poll_until_ingestion_completed>`.
+Polling refreshes the file and raises {py:class}`~nominal.exceptions.NominalIngestError` if ingestion fails.
+The file's `bounds` are optional, so check that they are present before using their start and end timestamps.
+
+This run covers the platform's ingested video timeline, which may differ from the container's media
+duration. Use the file's bounds directly as integer nanoseconds for the run's start and end.
+For an open-ended run, pass `end=None` to `client.create_run()`.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_4.py
 :language: python
@@ -153,6 +160,8 @@ To remove a single video file rather than the whole dataset, call `delete()` on 
 ```
 
 ### Inspect video metadata with OpenCV
+
+OpenCV is needed only for this optional inspection; uploading the video and creating its run do not require it.
 
 The free [OpenCV](https://pypi.org/project/opencv-python/) Python library is invaluable for video inspection
 and low-level video editing.

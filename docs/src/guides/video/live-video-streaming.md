@@ -98,13 +98,13 @@ Use `StreamOptions` to control encoding, resolution, framerate, and more:
 
 ```python
 from nominal.core import NominalClient
-from nominal.experimental.video import VideoStream, Src, StreamOptions, ReconnectOptions
+from nominal.experimental.video import Codec, ReconnectOptions, Src, StreamOptions, VideoStream
 
 client = NominalClient.from_profile("default")
 dataset = client.create_dataset("live stream test")
 
 opts = StreamOptions(
-    codec="H264",              # H264 (default) or H265
+    codec=Codec.H264,          # Codec.H264 (default) or Codec.H265
     bitrate=4000,             # encoding bitrate in kbps
     resolution="1280x720",    # e.g. "1280x720" — rescale before encoding
     overlay=False,            # draw a timestamp overlay on the video
@@ -134,6 +134,7 @@ Use `Src.app()` to push raw pixel frames directly from Python.
 This is useful when you already have frame data in memory. For example, from a custom capture pipeline or image processing code.
 
 ```python
+import time
 
 from nominal.core import NominalClient
 from nominal.experimental.video import VideoStream, Src

@@ -70,10 +70,10 @@ For convenience, the computer vision ("CV") features extracted from this video a
 was used to generate this data. If you're interested in how to extract computer vision data for
 your own video, please see the Appendix.
 
-Try an example to download and inspect this data. First, install [Polars](https://pola.rs/) and [PyArrow](https://arrow.apache.org/docs/python/) if not yet installed:
+Try an example to download and inspect this data. First, install [Polars](https://pola.rs/) and `huggingface_hub` if not yet installed:
 
 ```bash
-pip3 install polars pyarrow
+pip install polars huggingface_hub
 ```
 
 Next, run this code block to download and inspect the data:
@@ -107,8 +107,8 @@ Upload both the annotated video and extracted features dataset, then group them 
 
 ### Upload dataset
 
-Since the extracted features CSV is already in a [Polars](https://pola.rs/)
-dataframe, convert it with `.to_pandas()` and upload it to Nominal with the `upload_dataframe()` function from `nominal.thirdparty.pandas`.
+Upload the downloaded CSV directly with `Dataset.add_tabular_data()`, then wait for the returned
+file to finish ingestion. The Polars dataframe remains available for inspection and run bounds.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/video/object_identification_7.py
 :language: python
@@ -128,7 +128,9 @@ For this step, you will need `ffmpeg` installed (see [Correct video format](/gui
 :language: python
 ```
 
-Video upload requires a start time. If the start time of your video capture is not
+This example uploads video with a start time. Alternatively, `Dataset.add_video()` accepts
+absolute per-frame nanosecond timestamps through `frame_timestamps=` instead of `start=`.
+If the start time of your video capture is not
 important, you can choose an arbitrary time like `datetime.now()` or `2011-11-11 11:11:11`.
 Since Nominal uses timestamps to cross-correlate between datasets, make sure that
 whichever start time you choose makes sense for the other datasets in the run.
@@ -136,6 +138,9 @@ whichever start time you choose makes sense for the other datasets in the run.
 ```{literalinclude} /guides/_snippets/code/sdk/python/video/object_identification_9.py
 :language: python
 ```
+
+The video upload also waits for ingestion before creating the run. If either upload fails ingestion,
+polling raises an error and the workflow stops before run creation.
 
 ### Create an empty run
 
@@ -191,6 +196,13 @@ The function below takes a [PIL image](https://pillow.readthedocs.io/en/stable/r
 and returns a Polars dataframe with all of the objects in the image identified.
 
 Use this function to step through the video frame-by-frame and identify each object.
+The model and image processor are loaded once and reused for every frame.
+
+Install the appendix's dependencies before running it:
+
+```shell
+pip install transformers torch pillow opencv-python polars
+```
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/video/object_identification_12.py
 :language: python
@@ -200,6 +212,8 @@ Use this function to step through the video frame-by-frame and identify each obj
 
 The below script steps through each frame in the video and uses `get_objects_from_pil_image()` (see above)
 to identify each object. Each identified object is added as a row to the Polars dataframe `df_video`.
+Set `raw_video_path` to your own unannotated input video. The sample downloaded earlier already
+has bounding boxes; the appendix uses a separate input and writes a new annotated output.
 
 :::{warning}
 
@@ -218,7 +232,8 @@ In less than 5 minutes of video, the RT-DETR model identified almost 300k object
 
 ### Enrich metadata
 
-The scripts below add timestamp and object count columns to `df_video`.
+The scripts below add timestamp and object count columns to `df_video`. All three video passes
+use zero-based frame indices so each detection, timestamp, and annotation refers to the same frame.
 
 #### Timestamp column
 

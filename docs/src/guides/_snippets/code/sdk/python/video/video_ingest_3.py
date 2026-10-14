@@ -1,6 +1,13 @@
 from datetime import datetime
+from pathlib import Path
 
 from nominal.core import NominalClient
+from nominal.experimental.video_processing import normalize_video
+
+# Convert the downloaded .mov to a supported container and encoding.
+normalized_path = Path(video_path).with_suffix(".mp4")
+normalize_video(video_path, normalized_path)
+video_path = str(normalized_path)
 
 client = NominalClient.from_profile("default")
 

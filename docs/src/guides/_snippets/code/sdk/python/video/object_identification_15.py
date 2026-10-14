@@ -8,15 +8,11 @@ frame_timestamp_dict = dict(timestamps=[], frame=[])
 # Load the video
 cap = cv2.VideoCapture(raw_video_path)
 
-# Get the video's frames per second (fps) to calculate frame duration
-fps = cap.get(cv2.CAP_PROP_FPS)
-frame_duration = 1000 / fps  # Duration of each frame in milliseconds
-
 frame_number = 0
 date_string = "2011-11-11 11:11:11"
 start_timestamp = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
 
-# Read the video frame by frame and print the duration for each frame
+# Read each frame's media timestamp using the same zero-based indices as detection.
 while cap.isOpened():
     ret, frame = cap.read()
 
@@ -25,7 +21,7 @@ while cap.isOpened():
 
     # Get the timestamp for the current frame
     timestamp_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-    start_timestamp = timestamp + timedelta(milliseconds=timestamp_ms)
+    new_timestamp = start_timestamp + timedelta(milliseconds=timestamp_ms)
     frame_timestamp_dict["timestamps"].append(new_timestamp)
     frame_timestamp_dict["frame"].append(frame_number)
 
