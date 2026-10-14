@@ -16,7 +16,7 @@ from google.rpc import error_details_pb2, status_pb2
 
 import nominal.ibis as nibis
 from nominal.core.client import NominalClient
-from nominal.exceptions import NominalError, NominalInvalidArgumentError
+from nominal.exceptions import NominalInvalidArgumentError
 from nominal.protos.sql.v1 import sql_pb2
 
 WORKSPACE_RID = "ri.security.x.workspace.1"
@@ -266,7 +266,10 @@ def test_query_errors_preserve_diagnostics_and_cancel_rpc(
     call.__iter__.return_value = failing_query(sql_pb2.SqlServiceQueryRequest())
     client._clients.sql.Query.side_effect = None
     client._clients.sql.Query.return_value = call
-    error_type = pa.ArrowInvalid if output == "batches" else NominalInvalidArgumentError
+    if output == "batches":
+        error_type = pa.ArrowInvalid
+    else:
+        error_type = nibis.NominalSqlError if rich_details else NominalInvalidArgumentError
     with pytest.raises(error_type, match="unknown column") as exc_info:
         expr = backend.table("datasets").select("name")
         match output:
@@ -285,11 +288,14 @@ def test_query_errors_preserve_diagnostics_and_cancel_rpc(
 def test_query_submission_error_includes_sql_details(
     backend: nibis.Backend, client: NominalClient, fake_rpc_error: Callable[..., grpc.RpcError]
 ) -> None:
-    """SQL details and the original cause survive a failure before the response stream opens."""
+    """A query submission failure includes SQL details, even after a malformed entry."""
     status = status_pb2.Status(code=3, message="Invalid query")
+    status.details.add(type_url="type.googleapis.com/google.rpc.ErrorInfo", value=b"\xff")
     status.details.add().Pack(
         error_details_pb2.ErrorInfo(
-            domain="sql", reason="INVALID_QUERY", metadata={"detail": "unknown column", "sqlQueryId": "query-123"}
+            domain="nominal.sql.v1",
+            reason="SQL_ERROR_INVALID_QUERY",
+            metadata={"detail": "unknown column", "sqlQueryId": "query-123"},
         )
     )
     error = fake_rpc_error(
@@ -297,7 +303,7 @@ def test_query_submission_error_includes_sql_details(
     )
     client._clients.sql.Query.side_effect = error
 
-    with pytest.raises(NominalInvalidArgumentError, match="unknown column") as exc_info:
+    with pytest.raises(nibis.NominalSqlError, match="unknown column") as exc_info:
         backend.table("datasets").select("name").to_pyarrow()
     assert "query-123" in str(exc_info.value)
     assert exc_info.value.__cause__ is error
@@ -306,7 +312,7 @@ def test_query_submission_error_includes_sql_details(
 def test_catalog_error_includes_sql_details(
     client: NominalClient, fake_rpc_error: Callable[..., grpc.RpcError]
 ) -> None:
-    """Catalog failures include SQL service details while retaining the standard SDK exception type."""
+    """Catalog failures raise NominalSqlError with SQL service details and the original cause."""
     status = status_pb2.Status(code=13, message="Catalog request failed")
     status.details.add().Pack(
         error_details_pb2.ErrorInfo(domain="sql", reason="CATALOG_FAILURE", metadata={"detail": "catalog unavailable"})
@@ -316,9 +322,8 @@ def test_catalog_error_includes_sql_details(
     )
     client._clients.sql.GetSqlCatalog.side_effect = error
 
-    with pytest.raises(NominalError, match="catalog unavailable") as exc_info:
+    with pytest.raises(nibis.NominalSqlError, match="catalog unavailable") as exc_info:
         nibis.connect(client)
-    assert type(exc_info.value) is NominalError
     assert exc_info.value.__cause__ is error
 
 

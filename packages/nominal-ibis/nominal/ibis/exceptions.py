@@ -9,43 +9,56 @@ from google.rpc import error_details_pb2, status_pb2
 from ibis.common.exceptions import IbisError
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.exceptions import NominalError
 
 
 class NominalSqlError(IbisError):
-    """A catalog type or query result that cannot be represented by this backend."""
+    """A SQL service error, unsupported catalog type, or invalid query result.
+
+    Server errors include SQL details and keep the original gRPC error as their cause.
+    Errors without SQL details use the standard SDK exceptions, as do authentication and permission errors.
+    """
 
 
 @contextmanager
 def _translate_sql_errors() -> Iterator[None]:
-    """Add SQL response details to the SDK's standard gRPC exceptions.
-
-    The shared translator owns status-code mapping and chaining the original RPC error.
-    """
-    try:
-        with translate_grpc_errors():
+    """Raise NominalSqlError for SQL failures with details from the server."""
+    with translate_grpc_errors():
+        try:
             yield
-    except NominalError as error:
-        # The shared handler keeps the original gRPC error in __cause__.
-        # Read that error to access the server's extra SQL error details.
-        rpc_error = error.__cause__
-        if not isinstance(rpc_error, grpc.RpcError):
-            raise
-        lines = [str(error)]
-        metadata = rpc_error.trailing_metadata() or ()
-        # gRPC returns iterable key/value pairs, despite the non-iterable entries declared in its stubs.
-        for key, value in cast(Iterable[tuple[str, str | bytes]], metadata):
-            if key != "grpc-status-details-bin" or not isinstance(value, bytes):
-                continue
+        except grpc.RpcError as error:
+            message = _sql_error_message(error)
+            if message is None:
+                raise
+            raise NominalSqlError(message) from error
+
+
+def _sql_error_message(error: grpc.RpcError) -> str | None:
+    """Return a SQL error message, or None to use the standard SDK error."""
+    if error.code() in (grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED):
+        return None
+    lines: list[str] = []
+    metadata = error.trailing_metadata() or ()
+    # The gRPC stubs don't type these (key, value) pairs correctly.
+    for key, value in cast(Iterable[tuple[str, str | bytes]], metadata):
+        if key != "grpc-status-details-bin" or not isinstance(value, bytes):
+            continue
+        try:
+            status = status_pb2.Status.FromString(value)
+        except DecodeError:
+            # Keep the query error if its details can't be decoded.
+            continue
+        for detail in status.details:
+            info = error_details_pb2.ErrorInfo()
             try:
-                status = status_pb2.Status.FromString(value)
-                for detail in status.details:
-                    info = error_details_pb2.ErrorInfo()
-                    if detail.Unpack(info):
-                        lines.append(f"{info.domain}/{info.reason}")
-                        lines.extend(f"{name}: {text}" for name, text in sorted(info.metadata.items()))
+                if not detail.Unpack(info):
+                    continue
             except DecodeError:
-                # Malformed error details must not hide the original RPC failure.
                 continue
-        error.args = ("\n".join(lines),)
-        raise
+            # Older servers use the "sql" domain.
+            if info.domain not in ("sql", "nominal.sql.v1"):
+                continue
+            lines.append(f"{info.domain}/{info.reason}")
+            lines.extend(f"{name}: {text}" for name, text in sorted(info.metadata.items()))
+    if not lines:
+        return None
+    return "\n".join([f"{error.code()}: {error.details()}", *lines])
