@@ -345,31 +345,27 @@ def test_copy_attachments_skips_archived() -> None:
     ctx.destination_client.create_attachment_from_io.assert_called_once()
 
 
-@pytest.mark.parametrize("already_mapped", [False, True])
 @patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
-def test_migrate_by_rid_clears_previous_copy_failure(mock_attachment_cls: MagicMock, already_mapped: bool) -> None:
-    """Workbook-driven attachment recovery clears stale skips for new and already-mapped copies."""
+def test_workbook_copy_keeps_owner_skip_until_owner_copy_succeeds(mock_attachment_cls: MagicMock) -> None:
+    """A workbook's copy of a failed attachment leaves its skip; only the owner's own retry clears it."""
     ctx = _make_context()
     source = _make_source_attachment(1)
     migrator = AttachmentMigrator(ctx)
     ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
     migrator.copy_attachments([source], "run r")
-    assert len(ctx.migration_state.skipped_resources) == 1
 
     destination = MagicMock(rid=_rid(101))
     ctx.destination_client.create_attachment_from_io.reset_mock(side_effect=True)
     ctx.destination_client.create_attachment_from_io.return_value = destination
-    if already_mapped:
-        ctx.migration_state.record_mapping(ResourceType.ATTACHMENT, source.rid, destination.rid)
-        ctx.destination_client.get_attachment.return_value = destination
+    ctx.destination_client.get_attachment.return_value = destination
 
     mock_attachment_cls._from_proto.return_value = source
-    recovered = migrator.migrate_by_rid(source._clients, source.rid)
+    assert migrator.migrate_by_rid(source._clients, source.rid) is destination
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [source.rid]
 
-    assert recovered is destination
-    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, source.rid) == destination.rid
+    assert migrator.copy_attachments([source], "run r") == [destination]
     assert ctx.migration_state.skipped_resources == []
-    assert ctx.destination_client.create_attachment_from_io.call_count == (0 if already_mapped else 1)
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
 
 
 @pytest.mark.parametrize(
