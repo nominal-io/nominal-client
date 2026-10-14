@@ -3,17 +3,17 @@ from __future__ import annotations
 import itertools
 from typing import Sequence
 
-from nominal_api import storage_writer_api
-
 from nominal.core._stream.write_stream import LogItem
-from nominal.ts import _SecondsNanos
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.log import LogPoint
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2 as writer_pb
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 
 
 def process_log_batch(
     batch: Sequence[LogItem],
     nominal_data_source_rid: str,
-    auth_header: str,
-    storage_writer: storage_writer_api.NominalChannelWriterService,
+    storage_writer: nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub,
 ) -> None:
     def _get_channel_name(batch_item: LogItem) -> str:
         return batch_item.channel_name
@@ -22,15 +22,10 @@ def process_log_batch(
     # has its own set of args when streamed.
     batches_by_channel = itertools.groupby(sorted(batch, key=_get_channel_name), key=_get_channel_name)
     requests = [
-        storage_writer_api.WriteLogsRequest(
+        writer_pb.WriteLogsRequest(
+            data_source_rid=nominal_data_source_rid,
             logs=[
-                storage_writer_api.LogPoint(
-                    timestamp=_SecondsNanos.from_nanoseconds(batch_item.timestamp).to_api(),
-                    value=storage_writer_api.LogValue(
-                        message=batch_item.value,
-                        args={k: v for k, v in (batch_item.tags or {}).items()},
-                    ),
-                )
+                LogPoint(batch_item.timestamp, batch_item.value, batch_item.tags or {})._to_proto()
                 for batch_item in batch_by_channel
             ],
             channel=channel,
@@ -38,4 +33,5 @@ def process_log_batch(
         for channel, batch_by_channel in batches_by_channel
     ]
     for request in requests:
-        storage_writer.write_logs(auth_header, nominal_data_source_rid, request)
+        with translate_grpc_errors():
+            storage_writer.WriteLogs(request)

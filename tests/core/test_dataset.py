@@ -51,8 +51,9 @@ def mock_dataset(mock_clients):
 
 
 def test_write_logs_more_than_batch(mock_dataset: Dataset):
+    """Log generators split into bounded gRPC batches and keep their final partial batch."""
     endpoint = Mock()
-    cast(Any, mock_dataset._clients.storage_writer).write_logs = endpoint
+    cast(Any, mock_dataset._clients.storage_writer).WriteLogs = endpoint
 
     log_0 = LogPoint(0, "a", {})
     log_1 = LogPoint(1, "b", {})
@@ -67,16 +68,17 @@ def test_write_logs_more_than_batch(mock_dataset: Dataset):
 
     assert len(endpoint.call_args_list) == 2
 
-    _auth, _rid, first_req = endpoint.call_args_list[0][0]
+    (first_req,) = endpoint.call_args_list[0][0]
     assert len(first_req.logs) == 2
 
-    _auth, _rid, second_req = endpoint.call_args_list[1][0]
+    (second_req,) = endpoint.call_args_list[1][0]
     assert len(second_req.logs) == 1
 
 
 def test_write_logs_less_than_batch(mock_dataset: Dataset):
+    """A log generator shorter than the batch size is written in one gRPC request."""
     endpoint = Mock()
-    cast(Any, mock_dataset._clients.storage_writer).write_logs = endpoint
+    cast(Any, mock_dataset._clients.storage_writer).WriteLogs = endpoint
 
     log_0 = LogPoint(0, "a", {})
     log_1 = LogPoint(1, "b", {})
@@ -90,7 +92,7 @@ def test_write_logs_less_than_batch(mock_dataset: Dataset):
     mock_dataset.write_logs(log_generator(), batch_size=1000)
 
     assert len(endpoint.call_args_list) == 1
-    _auth, _rid, req = endpoint.call_args_list[0][0]
+    (req,) = endpoint.call_args_list[0][0]
     assert len(req.logs) == 3
 
 
