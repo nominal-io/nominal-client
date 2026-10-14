@@ -395,3 +395,20 @@ def test_copy_attachments_contains_upload_failure(error: Exception, monkeypatch:
     assert ctx.migration_state.skipped_resources == [
         SkippedResource(ResourceType.ATTACHMENT.value, failing.rid, f"copy failed: {error}")
     ]
+
+
+def test_copy_attachments_retries_transient_upload_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient upload failure is retried in place, so the attachment copies without a skip."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    ctx.destination_client.create_attachment_from_io.side_effect = [
+        urllib3.exceptions.ProtocolError("connection reset"),
+        MagicMock(rid=_rid(101)),
+    ]
+
+    copied = AttachmentMigrator(ctx).copy_attachments([source], "run r")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, source.rid) == _rid(101)
+    assert ctx.migration_state.skipped_resources == []
