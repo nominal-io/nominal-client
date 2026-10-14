@@ -26,6 +26,8 @@ def _translate_sql_errors() -> Iterator[None]:
         with translate_grpc_errors():
             yield
     except NominalError as error:
+        # The shared handler keeps the original gRPC error in __cause__.
+        # Read that error to access the server's extra SQL error details.
         rpc_error = error.__cause__
         if not isinstance(rpc_error, grpc.RpcError):
             raise
