@@ -60,6 +60,7 @@ print(f"Dataset properties: {dataset.properties}")
 The stream allows for streaming multiple channels, with different intervals simultaneously.
 ```python
 
+import random
 from datetime import datetime, timedelta
 from time import sleep
 

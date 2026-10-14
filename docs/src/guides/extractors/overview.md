@@ -67,13 +67,20 @@ explicit error rather than producing an ingest that silently drops output.
 
 :::{warning}
 
-`register_image()` defaults `output_format` to `PARQUET`, so a manifest extractor needs
-`output_format=FileOutputFormat.MANIFEST` passed explicitly. Forgetting it registers cleanly and
-fails at startup on the first ingest.
+`register_image()` defaults `output_format` to `PARQUET`. The declarations below supply
+`MANIFEST` through `extract.registration_kwargs()`. If you register manually, pass
+`output_format=FileOutputFormat.MANIFEST`; forgetting it registers cleanly and fails at startup on
+the first ingest.
 :::
 
 ### The manifest contract
 
+Declare files and settings with `@input` and `@parameter` beneath the outer `@manifest_extractor`.
+The runner resolves them before calling your function, which receives a `Path` and a string in
+this example. The prefix defaults to `telemetry/` when omitted. The outer decorator's timestamp
+settings supply image defaults for registration; each output can override them.
+
+Save this example as `extractor_manifest.py` alongside your `parse_bespoke_binary` implementation.
 Write your output files anywhere under `ctx.output_dir`, then declare each one with the method for
 its format. `manifest.json` is written for you when your function returns.
 
@@ -106,11 +113,15 @@ format the image was registered with.
 
 ### Reading inputs and parameters
 
-Both contexts expose the same accessors for what the ingest handed your container:
+Prefer `@input` and `@parameter` for the files and settings your callback needs. `envvar=` sets
+the environment variable used at runtime and registration, while `name=` supplies a display name.
+Parameter converters and defaults remain runtime settings; they are not stored on the image.
+
+Both contexts also expose accessors for existing extractors that read values directly:
 
 - **`ctx.input()`** returns the mounted path of the image's single declared input. When the image
   declares more than one, pass the input's environment variable name: `ctx.input("CAMERA_FILE")`.
-  `ctx.inputs` is the full mapping.
+  `ctx.inputs` is the list of mounted paths.
 - **`ctx.param(name)`** returns a declared parameter's value and raises if it is missing.
   **`ctx.get_param(name, default)`** returns `None` or your default instead. Parameter values are
   always strings, so convert them yourself.
@@ -128,11 +139,11 @@ Each input is a single file, so **register a `.zip` or `.tar` input to accept a 
 files or a directory layout**, and unpack it in the extractor. This is the approach for loggers that
 emit a session directory rather than one capture.
 
-`required=True` is enforced differently on each. A missing required input raises in
-`add_containerized()` before anything uploads. A missing required parameter is not checked
-client-side: the runtime warns at container start, then the run fails mid-job when `ctx.param()`
-reads it. For a parameter your code cannot run without, read it at the top of your function or give
-it a default with `ctx.get_param()`.
+A missing required input raises in `add_containerized()` before anything uploads. A missing
+required parameter is not checked client-side. Declared arguments are resolved before the callback
+runs, so a missing `@parameter` without a default fails before parsing starts. Existing extractors
+using `ctx.param()` fail when they read the missing value; read required values at the top of the
+callback or supply a default with `ctx.get_param()`.
 
 An input's `file_suffixes` also drive discovery, since
 `search_containerized_extractors(file_extension=...)` matches on them. They are descriptive rather
@@ -168,8 +179,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
-COPY extractor.py ./
-ENTRYPOINT ["/app/.venv/bin/python", "/app/extractor.py"]
+COPY extractor_manifest.py ./
+ENTRYPOINT ["/app/.venv/bin/python", "/app/extractor_manifest.py"]
 ```
 
 Three runtime facts constrain the image, and none of them depend on how you build it:
@@ -213,15 +224,16 @@ platform with, so do not assume it picks `amd64` out of a multi-platform archive
 
 ```python
 ctx = extract.run(
-    env={"OUTPUT_DIR": str(out_dir), "NOMINAL_EXTRACTOR_INPUT_DIR": str(in_dir)},
+    env={"OUTPUT_DIR": str(out_dir), "INPUT_FILE": str(in_dir / "data.bin")},
     exit=False,
 )
 print(ctx.build_manifest())
 ```
 
-`env` **replaces** the environment rather than merging into it, so it has to carry everything your
-code reads: `OUTPUT_DIR`, every input, every parameter. Nothing falls back to an ambient value, and
-omitting `OUTPUT_DIR` raises `ExtractorError`.
+`env` **replaces** the environment rather than merging into it, so supply `OUTPUT_DIR` and every
+required input and parameter. Declared optional parameters use their defaults. Nothing falls back
+to an ambient value, and omitting `OUTPUT_DIR` raises `ExtractorError`. The input file and output
+directory must already exist.
 
 ## Register and activate an image
 
@@ -234,9 +246,11 @@ is atomic.
 :language: python
 ```
 
-The `inputs` and `parameters` you declare here are exactly the names your code reads through
-`ctx.input()` and `ctx.param()`, so they have to match. Their environment variable names must also
-be distinct across both lists, and they are what callers pass as `sources` and `arguments`.
+Importing `extract` from `extractor_manifest.py` does not run extraction: the `__main__` guard
+keeps `extract.run()` at the container entrypoint. `extract.registration_kwargs()` derives the
+inputs, parameters, output format, and timestamp defaults from the decorators, so registration
+uses the same declarations as runtime binding. Environment variable names must be distinct across
+inputs and parameters; callers use them as the keys in `sources` and `arguments`.
 
 Registering attaches an image; it does not activate it. `set_active_image()` waits for the image to
 report `READY` first, and `poll_until_ready=False` raises instead of waiting. Future ingests use the

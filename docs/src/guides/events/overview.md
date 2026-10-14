@@ -23,7 +23,11 @@ You can create events manually during review or live monitoring. You can also cr
 ## Create an Event
 
 To create an Event, use {py:obj}`create_event() <nominal.core.NominalClient.create_event>`.
-Provide a name, type, start time, and duration, and at least one resource ID ("RID") for an associated asset. You can also add properties and labels:
+Provide a name, type, and start time. Duration defaults to zero for an instantaneous event;
+this example sets a ten-second duration and associates the event with an asset using its
+resource ID ("RID"). You can also supply Asset instances and add properties and labels:
+
+Replace `<ASSET_RID>` with the RID of an asset in your workspace.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/events/create_event.py
 :language: python
@@ -35,8 +39,6 @@ To retrieve an Asset's RID, visit its detail page and click on the clipboard ico
 
 ```{include} /guides/_snippets/what-is-a-rid.md
 ```
-
-If any of the required parameters are missing, such as the asset RID, the event will not be created.
 
 ## Search Events
 

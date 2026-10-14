@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 
 from nominal.core import EventType, NominalClient
 
-client = NominalClient.from_profile("demo")
-asset_rid = "ri.scout.cerulean-staging.asset.bce88be4-150a-4721-b69b-7247e1febce9"
+client = NominalClient.from_profile("default")
+asset_rid = "<ASSET_RID>"
 client.create_event(
     name="Event Name",
     type=EventType.INFO,

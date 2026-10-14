@@ -1212,6 +1212,8 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Example:
             ```python
+            from collections.abc import Iterable
+
             from nominal.core import LogPoint
 
             def parse_logs_from_file(file_path: str) -> Iterable[LogPoint]:
@@ -1219,7 +1221,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
                 with open(file_path, "r") as f:
                     for line in f:
                         timestamp, message = line.removesuffix("\n").split(maxsplit=1)
-                        yield LogPoint.create(timestamp, message)
+                        yield LogPoint.create(timestamp, message, None)
 
             dataset = client.get_dataset("dataset_rid")
             logs = parse_logs_from_file("logs.txt")

@@ -120,7 +120,8 @@ This is useful when you want to:
 - Run checklists in observation mode during early testing before configuring production notification channels.
 - Create events from streaming checklists for historical analysis without real-time notifications.
 
-To skip notifications, pass an empty list for `integration_rids` when calling `execute_streaming` (see the code example below).
+To skip notifications, pass an empty list for `integration_rids` when calling `execute_streaming`.
+Pass `auto_create_events=True` to also create events for check status changes; it defaults to `False`.
 
 If you want to receive alerts through Slack, Teams, PagerDuty, or other channels, find available integrations in the [Integrations Page](https://app.gov.nominal.io/settings/org/integrations), copy the RID, and paste it in the code below.
 
@@ -144,13 +145,14 @@ checklist.execute_streaming(
 )
 ```
 
-Without notifications (status tracking only):
+Without notifications, with events for status changes:
 ```python
 checklist = client.get_checklist(checklist_rid)
 
 checklist.execute_streaming(
     assets=[asset],
     integration_rids=[],
+    auto_create_events=True,
 )
 ```
 

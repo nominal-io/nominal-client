@@ -134,6 +134,7 @@ LIMIT 10
 Now stream more data points to this channel:
 ```python
 
+import random
 from time import sleep
 
 with connection.get_write_stream() as stream:
@@ -179,7 +180,7 @@ To write string data, you follow the same steps as for numeric data; the only di
 from time import sleep
 from datetime import datetime
 
-with connection.get_nominal_write_stream() as stream:
+with connection.get_write_stream() as stream:
     # Cycle through three mode states repeatedly
     for value in ["mode A", "mode B", "mode C"] * 10:
         now = datetime.now()

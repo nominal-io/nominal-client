@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "How to apply checklists to runs in Nominal using Python, as part of your"
+    description: "How to apply checklists to runs in Nominal using Python, as part of your data review process"
 ---
 
 # Initiate Data Review in Nominal with Python
 
 {.lead}
-How to apply checklists to runs in Nominal using Python, as part of your
+How to apply checklists to runs in Nominal using Python, as part of your data review process
 
 ```{include} /guides/_snippets/install-warning.md
 ```
@@ -41,7 +41,8 @@ integrations to send notifications if violations are found.
 2. Locate Checklist RIDs and Commits
 
    Find the checklist RID(s) in the [platform](https://app.gov.nominal.io/checklists).
-   You will also need the commit SHA for the version you want to apply (listed under "Latest version").
+   To apply a specific version, copy its commit SHA (listed under "Latest version").
+   Omit `commit` from `execute_checklist()` to use the latest version instead.
 
    ```{literalinclude} /guides/_snippets/code/sdk/python/checklists/data_review_2.py
    :language: python
@@ -57,8 +58,10 @@ integrations to send notifications if violations are found.
 
 4. Apply Checklists
 
-   Use the Nominal client to create a data review builder, add your integration (optional), and add each request (which associates a run with a checklist).
-   Then initiate the reviews.
+   Use the Nominal client to create a data review builder, add your integration (optional), and
+   call `execute_checklist()` for each run/checklist pair. For a run with multiple assets, also
+   supply `asset=` to select the asset to review. Then initiate the reviews; `initiate()` waits
+   for completion by default.
 
    ```{literalinclude} /guides/_snippets/code/sdk/python/checklists/data_review_4.py
    :language: python

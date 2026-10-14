@@ -8,7 +8,7 @@ dataset = client.get_dataset("<DATASET_RID>")
 job = dataset.add_containerized(
     extractor,
     sources={"INPUT_FILE": "path/to/data.bin"},
-    arguments={"MODE": "fast"},
+    arguments={"CHANNEL_PREFIX": "telemetry/"},
     tags={"vehicle_id": "sn-001"},
 )
 

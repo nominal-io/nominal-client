@@ -1,13 +1,23 @@
-from nominal.experimental.extractor import ManifestExtractorContext, manifest_extractor
+from pathlib import Path
+
+from nominal.experimental.extractor import (
+    ManifestExtractorContext,
+    input,
+    manifest_extractor,
+    parameter,
+)
 
 
-@manifest_extractor
-def extract(ctx: ManifestExtractorContext) -> None:
-    frames = parse_bespoke_binary(ctx.input())
-
-    # Parameters declared at registration arrive as strings. `param()` raises
-    # if it is missing; `get_param()` takes a default.
-    prefix = ctx.get_param("CHANNEL_PREFIX", "telemetry/")
+@manifest_extractor(
+    default_timestamp_column="timestamp",
+    default_timestamp_type="iso_8601",
+)
+@input("source", envvar="INPUT_FILE", name="Input file", file_suffixes=[".bin"])
+@parameter(
+    "prefix", envvar="CHANNEL_PREFIX", name="Channel prefix", default="telemetry/"
+)
+def extract(ctx: ManifestExtractorContext, *, source: Path, prefix: str) -> None:
+    frames = parse_bespoke_binary(source)
 
     telemetry = ctx.output_dir / "flight_data.parquet"
     frames.telemetry.to_parquet(telemetry, index=False)
