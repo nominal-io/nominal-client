@@ -5,14 +5,12 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name.
 client = NominalClient.from_profile("default")
 
-asset = client.create_asset(
-    # Human readable name for the asset
+asset = client.get_or_create_asset_by_properties(
+    # Human readable name used when creating the asset
     name="Shimmer SN-001",
     # Optional description, useful if you have notes about this glider.
     description="Our very first shimmer glider produced",
-    # Properties which can help us find this asset later.
-    # Nominal supports unique identification of any physical asset
-    # using some combination of these properties.
+    # Properties used to find this glider or create it if none matches.
     properties={
         "platform": "shimmer",
         "serial_num": "SN-001",

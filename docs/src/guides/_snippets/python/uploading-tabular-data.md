@@ -1,7 +1,7 @@
 When uploading tabular data, there are a few common formats Nominal supports, as well as some more specialized formats.
 These include (but are not limited to):
 
-* `.csv` files (and tarballs of CSV files `.csv.gz`)
+* `.csv` files (or gzip-compressed CSV files, `.csv.gz`)
 * `.parquet` files
 * `.bin` ardupilot dataflash files
 
@@ -9,8 +9,7 @@ These include (but are not limited to):
 :language: python
 ```
 
-Since `get_or_create_dataset` returns the existing dataset if one already exists with that data scope name, you can use the same code for subsequent flight test events.
-You can also retrieve the dataset directly by its data scope name:
+Use the same pattern for later flights or additional files. Each file can specify its own timestamp column and type:
 
 ```{literalinclude} /guides/_snippets/code/data_upload/uploading_tabular_data_2.py
 :language: python

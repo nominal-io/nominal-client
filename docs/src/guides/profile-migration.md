@@ -80,20 +80,20 @@ See also [Timestamp reference](/sdk/ts.md).
 If you want to upload *multiple* dataframes into a single dataset, do so as follows:
 
 ```python
+from nominal.thirdparty.pandas import upload_dataframe_to_dataset
 
 dataset = client.create_dataset(
     name='temperature',
-    description='Engine temperate measurements from multiple flights'
+    description='Engine temperature measurements from multiple flights'
 )
 
 for df in my_dataframes:
-    with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
-        df.to_parquet(f.name)
-        dataset.add_tabular_data(
-            f.name,
-            timestamp_column='source_time',
-            timestamp_type='iso_8601'
-        )
+    upload_dataframe_to_dataset(
+        dataset,
+        df,
+        timestamp_column='source_time',
+        timestamp_type='iso_8601',
+    )
 ```
 
 Note that, if your timestamp column is the index, but the index is
@@ -114,25 +114,31 @@ Typically, a run would therefore specify the start and end time of an
 experiment (a flight, e.g.), and will narrow all data to that those
 time bounds.
 
-However, if you want to replicate the ability to create a run from
-data, you can do so as follows:
+To create a run spanning the entire dataset, including all uploaded files,
+use the recipe below. For a single flight within a dataset that accumulates
+many flights, use the [integration tutorial](/guides/data-integration-tutorial.md),
+which retains upload handles and derives bounds from that flight's files.
 
 1. Upload data
 2. Get the data bounds
-3. Create a run that matches those bounds
+3. Create a run that matches those bounds and attach the dataset
 
 ```python
 # Wait until data is fully ingested, and time bounds have been computed
 for f in dataset.list_files(successful_only=False):
     f.poll_until_ingestion_completed()
 dataset.refresh()
+bounds = dataset.bounds
+if bounds is None:
+    raise ValueError("The dataset has no timestamp bounds")
 
 run = client.create_run(
     name='Experimental run',
     description='First experimental run of Q3',
-    start=dataset.bounds.start,
-    end=dataset.bounds.end
+    start=bounds.start,
+    end=bounds.end
 )
+run.add_dataset(ref_name="measurements", dataset=dataset)
 ```
 
 ### Uploading videos

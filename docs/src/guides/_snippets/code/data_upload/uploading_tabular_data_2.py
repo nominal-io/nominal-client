@@ -1,7 +1,7 @@
-# NOTE: refname needs to match the refname used to add the dataset to the asset
-dataset = asset.get_dataset("flight_data")
+# Reuse the same refname for the next file.
+dataset = asset.get_or_create_dataset("flight_data", name="Flight Data")
 
-dataset.add_tabular_data(
+tabular_file = dataset.add_tabular_data(
     "path/to/other/data.parquet",
     # column containing timestamp information for this data file.
     # NOTE: Need not be the same as other files in this dataset.
@@ -10,3 +10,4 @@ dataset.add_tabular_data(
     # NOTE: Need not be the same as other files in this dataset.
     timestamp_type="epoch_seconds",
 )
+uploaded_files.append(tabular_file)

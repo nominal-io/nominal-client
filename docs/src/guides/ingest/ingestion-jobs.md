@@ -146,7 +146,7 @@ Pass `timeout` to give up and raise `NominalIngestTimeout` instead of waiting in
 The value is a **snapshot** taken when the job was fetched, not live. Polling it in a loop without
 calling `job.refresh()` re-reads the same value forever.
 
-Per-file status is separate and more granular: `DatasetFile.ingest_status` is one of `QUEUED`,
+Per-file status is separate and more granular: `DatasetFile.ingest_status` is one of `QUEUED`, `IN_PROGRESS`,
 `PARSING`, `INGESTING`, `SUCCESS`, `FAILED`, `DELETION_IN_PROGRESS`, `DELETED`, or `UNKNOWN`. Use
 `get_ingest_error()` on a failed file for the reason.
 

@@ -3,18 +3,19 @@ import io
 import h5py
 import pandas as pd
 from nominal.core import NominalClient
-from nominal.thirdparty.pandas import upload_dataframe
 
 client = NominalClient.from_profile("default")
 
-
-dataset = None
 num_rows = 0
 with h5py.File(local_path, "r") as file:
     data = file["data"]["1"]["meshes"]["B"]
 
     batch_size = 5
     total_size = data["x"].shape[0]  # Assuming the same shape for 'x', 'y', and 'z'
+    if total_size == 0:
+        raise ValueError("No rows to upload")
+
+    dataset = client.create_dataset("h5_flattened")
 
     for start_idx in range(0, total_size, batch_size):
         end_idx = min(start_idx + batch_size, total_size)
@@ -29,22 +30,10 @@ with h5py.File(local_path, "r") as file:
 
         df = pd.DataFrame(batch)
         df["ts"] = list(range(num_rows, num_rows + len(df)))
-        if dataset is None:
-            # First batch, create the dataset from dataframe
-            dataset = upload_dataframe(
-                client,
-                df,
-                name="h5_flattened",
-                timestamp_column="ts",
-                timestamp_type="epoch_seconds",
-                wait_until_complete=True,
-            )
-        else:
-            # Subsequent batches; convert batch dataframe to buffer and append to dataset
-            buffer = io.BytesIO()
-            df.to_csv(buffer, index=False)
-            buffer.seek(0)
-            dataset.add_from_io(
-                dataset=buffer, timestamp_column="ts", timestamp_type="epoch_seconds"
-            )
+        buffer = io.BytesIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+        dataset.add_from_io(
+            dataset=buffer, timestamp_column="ts", timestamp_type="epoch_seconds"
+        ).poll_until_ingestion_completed()
         num_rows += len(df)

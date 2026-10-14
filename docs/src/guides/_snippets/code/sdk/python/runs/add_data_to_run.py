@@ -1,14 +1,18 @@
-import polars as pl
+from huggingface_hub import hf_hub_download
 
-df = pl.read_csv("hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv")
-df.write_csv("frosty_flight_1k_rows.csv")
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
 
 csv_dataset = client.create_dataset("Frosty Flight")
-csv_dataset.add_tabular_data(
-    "frosty_flight_1k_rows.csv",
+dataset_file = csv_dataset.add_tabular_data(
+    csv_path,
     timestamp_column="source_time",
     timestamp_type="iso_8601",
 )
+uploaded_files = [dataset_file]
 
 flight_simulator_run.add_dataset(
     dataset=csv_dataset, ref_name="high-precipitation-flight"

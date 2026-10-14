@@ -12,11 +12,12 @@ Overview and recipes for working with Nominal's Dataset primitive in
 ```{include} /guides/_snippets/install-warning.md
 ```
 
-Datasets are Nominal's primitive for ingesting and working with tabular data files.
-They must have at least one timestamp column.
+A Dataset is a persistent container of channels and their data. Uploads and streaming
+can append data to the same dataset, including numeric, text log, and video channels.
+Tabular upload files need a timestamp column; the dataset itself is not a file.
 
-Once uploaded to Nominal, Datasets can be organized into *Runs* with other 
-data sources - including video files, database connections, and log files.
+Attach datasets to assets to organize data by system, or to *Runs* to view data
+within a test's time bounds.
 
 ```{include} /guides/_snippets/what-is-a-dataset.md
 ```
@@ -41,21 +42,24 @@ from nominal.core import NominalClient
 client = NominalClient.from_profile("default")  # replace with your profile name
 
 dataset = client.create_dataset('Frosty Flight')
-dataset.add_tabular_data(
+dataset_file = dataset.add_tabular_data(
     'frosty_flight_1k_rows.csv',
     timestamp_column = 'source_time',
     timestamp_type = 'iso_8601',
 )
 
-print('Uploaded dataset:', dataset.rid)
+dataset_file.poll_until_ingestion_completed()
+print('Ingested dataset:', dataset.rid)
 ```
 
 Replace `frosty_flight_1k_rows.csv` with a path to a CSV file on your own computer.
 
 If you don't have a CSV file handy, you can download 'frosty_flight_1k_rows.csv' 
-by copy-pasting the below 4 lines into your Python terminal.
+by copying the following into your Python terminal.
 
 ```python
+
+import polars as pl
 
 sample_csv = 'hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv'
 df = pl.read_csv(sample_csv)
@@ -182,6 +186,8 @@ To upload a dataset clocked in relative time, set the `timestamp_type` parameter
 `start` time that time 0 corresponds to:
 
 ```python
+
+import nominal.ts as ts
 
 ts.Relative("seconds", start=0)  # time 0 is the Unix epoch
 ```
@@ -360,12 +366,11 @@ ds.update(labels = existing_labels + new_labels)
 You can append to an existing dataset with a CSV that has the same columns.
 
 For example, download 1000 rows of this [flight test data](https://huggingface.co/datasets/nominal-io/frosty-flight/blob/main/frosty_flight_1k_rows.csv).
-Split it into 2 dataframes that are 500 rows each and create a Nominal dataset with the first one:
+Split it into two CSV files of 500 rows each, then upload both to one dataset:
 
 ```python
 
 from nominal.core import NominalClient
-from nominal.thirdparty.pandas import upload_dataframe
 
 client = NominalClient.from_profile("default")  # replace with your profile name
 
@@ -373,24 +378,27 @@ df_1000_rows = pl.read_csv('hf://datasets/nominal-io/frosty-flight/frosty_flight
 
 df_first_chunk = df_1000_rows.slice(0, 500)  # First 500 rows
 df_second_chunk = df_1000_rows.slice(500, 1000)  # Next 500 rows
+df_first_chunk.write_csv('frosty_flight_1st_chunk.csv')
 df_second_chunk.write_csv('frosty_flight_2nd_chunk.csv')
-dataset = upload_dataframe(
-    client,
-    df_first_chunk.to_pandas(),
-    name = 'Frosty Flight: First 500 rows',
+
+dataset = client.create_dataset('Frosty Flight: First 500 rows')
+first_file = dataset.add_tabular_data(
+    'frosty_flight_1st_chunk.csv',
     timestamp_column = 'source_time',
     timestamp_type = 'iso_8601'
 )
+first_file.poll_until_ingestion_completed()
 ```
 
 Add the 2nd 500 rows with {py:obj}`Dataset.add_tabular_data() <nominal.core.Dataset.add_tabular_data>`.
 
 ```python
-dataset.add_tabular_data(
+second_file = dataset.add_tabular_data(
     path = 'frosty_flight_2nd_chunk.csv',
     timestamp_column='source_time',
     timestamp_type='iso_8601'
 )
+second_file.poll_until_ingestion_completed()
 ```
 
 Update the dataset name as well:

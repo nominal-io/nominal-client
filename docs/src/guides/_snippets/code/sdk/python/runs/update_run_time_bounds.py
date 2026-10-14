@@ -1,9 +1,13 @@
-for f in csv_dataset.list_files(successful_only=False):
-    f.poll_until_ingestion_completed()
+# Keep only the handles returned by uploads for this test, not every file on
+# the dataset, which may also contain earlier tests.
+file_bounds = []
+for dataset_file in uploaded_files:
+    dataset_file.poll_until_ingestion_completed()
+    if dataset_file.bounds is None:
+        raise ValueError(f"No time bounds available for {dataset_file.name!r}")
+    file_bounds.append(dataset_file.bounds)
 
-# After ingestion, we can query the data bound timestamps
-csv_dataset.refresh()
-bounds = csv_dataset.bounds
-
-# And update the run accordingly
-flight_simulator_run.update(start=bounds.start, end=bounds.end)
+flight_simulator_run.update(
+    start=min(bounds.start for bounds in file_bounds),
+    end=max(bounds.end for bounds in file_bounds),
+)

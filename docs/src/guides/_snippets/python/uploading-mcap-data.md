@@ -6,7 +6,7 @@ the same dataset, so telemetry and video share one time domain.
 :language: python
 ```
 
-For subsequent flight test events, skip creating the dataset in favor of searching for the dataset created earlier:
+For another file, use the same refname to retrieve or create the dataset:
 
 ```{literalinclude} /guides/_snippets/code/data_upload/uploading_mcap_data_2.py
 :language: python

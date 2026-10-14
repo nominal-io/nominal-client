@@ -1,21 +1,11 @@
 import datetime
 
-from nominal.core import NominalClient
-
-# Assumes authentication has already been performed
-# Replace "default" with your profile name
-client = NominalClient.from_profile("default")
-
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
-
-# Video is stored as a channel on a dataset. Create the dataset once per data
-# source; each camera becomes a channel on it.
+# Video is stored as a channel on a dataset. Get or create the dataset for
+# this camera, then add files to its video channel.
 # Make sure to run nominal.experimental.video_processing.normalize_video()
 # on your raw video files first!
-dataset = client.create_dataset(
+dataset = asset.get_or_create_dataset(
+    data_scope_name="front_center_camera",
     name="Front center camera video",
     # Optional description for the dataset, useful for storing notes and details
     # about the video (e.g., details about the camera)
@@ -30,12 +20,10 @@ dataset = client.create_dataset(
 )
 
 video_file = dataset.add_video(
-    path="path/to/video.mp4",
+    path=normalized_path,
     # Name of the video channel within the dataset that these frames belong to
     channel="front_center_camera",
     # Starting timestamp, in absolute time, for this particular video file
-    start=datetime.datetime(year=2025, month=2, day=7, hour=14, minute=38, second=19),
+    start=datetime.datetime(2024, 10, 9, 13, 3, 5, tzinfo=datetime.timezone.utc),
 )
-
-# Attach the dataset to the asset
-asset.add_dataset("front_center_camera", dataset)
+uploaded_files.append(video_file)

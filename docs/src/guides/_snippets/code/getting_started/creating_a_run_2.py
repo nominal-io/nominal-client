@@ -1,24 +1,19 @@
-import datetime
+# Use the handles collected in this flight's upload stage, across every modality.
+# The dataset's own bounds may also include earlier flights.
+if not uploaded_files:
+    raise ValueError("Upload at least one file before deriving run bounds")
 
-run = client.create_run(
-    ...,
-    # Initialize start time to now, as it will always be greater than data
-    # we are ingesting from a flight test that happened in the past
-    start=datetime.datetime.now(),
-)
+file_bounds = []
+for dataset_file in uploaded_files:
+    dataset_file.poll_until_ingestion_completed()
+    if dataset_file.bounds is None:
+        raise ValueError(f"No time bounds available for {dataset_file.name!r}")
+    file_bounds.append(dataset_file.bounds)
 
-# ... normalize data from flight test ...
-
-# derived directly from the data uploaded to nominal---
-# can look at the start and end of the provided timestamp_column
-data_start_time = datetime.datetime(...)
-data_end_time = datetime.datetime(...)
-
-# ... upload data to nominal ...
-
-# Update bounds of run based on the earlier / latest of the start and end
-# times respectively from the existing run, and
-run.update(
-    start=min(run.start, data_start_time),
-    end=data_end_time if run.end is None else max(run.end, data_end_time),
+# File bounds and run timestamps use epoch nanoseconds, so no datetime conversion
+# is needed.
+run = asset.create_run(
+    name="Test Flight #2 10/09/2024",
+    start=min(bounds.start for bounds in file_bounds),
+    end=max(bounds.end for bounds in file_bounds),
 )

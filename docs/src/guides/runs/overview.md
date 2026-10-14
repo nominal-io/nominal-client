@@ -22,7 +22,7 @@ This guide details common patterns for working with Runs in Python.
 
 ## Create a run
 
-It's possible to create an empty run without any data. Runs must have a start and end time expressed in absolute time.
+It's possible to create an empty run without any data. Runs need an absolute start time; pass an absolute end time or `end=None` for an open-ended run.
 All Datasets added to the run should overlap with this time domain.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/runs/create_run.py
@@ -39,7 +39,8 @@ It's also possible to create a run off of an existing asset:
 
 ## Add data to a run
 
-To add a Dataset to a run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`:
+To add a Dataset to a run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`.
+The sample download below uses `huggingface_hub`; install it with `pip install huggingface_hub`.
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/runs/add_data_to_run.py
 :language: python
@@ -48,7 +49,7 @@ To add a Dataset to a run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_
 ```{include} /guides/_snippets/what-is-a-dataset.md
 ```
 
-The example above sets the start and end times of the run manually. You can also set the run to span the Dataset:
+The example above sets the start and end times manually. To bound the run to this test's uploaded files, keep the handles returned by each upload and wait for them to finish ingesting. Use their extents rather than `Dataset.bounds`, which spans every test accumulated on that dataset:
 
 ```{literalinclude} /guides/_snippets/code/sdk/python/runs/update_run_time_bounds.py
 :language: python
@@ -58,15 +59,14 @@ The example above sets the start and end times of the run manually. You can also
 
 When a run spans several datasources that ingest at different rates (for example, multiple video streams and a telemetry channel from the same test event), lower-bitrate sources typically finish ingesting first. Selecting a run from the runs page before every attached datasource finishes ingesting can cause inconsistent behavior in the workbook UI: the `align-to-run` action can appear available and display the wrong video if the referenced video dataset hasn't finished ingesting.
 
-Poll every file for ingestion completion before creating the run:
+Poll every file for ingestion completion before creating the run. This example assumes dataset names are unique within the run; otherwise, choose distinct refnames for the mapping:
 
 ```python
 for f in files:
     f.poll_until_ingestion_completed()
 
 run = client.create_run(name="my_run", start=start, end=end)
-for dataset in datasets:
-    run.add_dataset(dataset=dataset, ref_name=dataset.name)
+run.add_datasets({dataset.name: dataset for dataset in datasets})
 ```
 
 Apply the same pattern before creating a workbook from a template: poll every attached file for ingestion completion, then create the workbook. This keeps runs and workbooks hidden from users until their data finishes ingesting.

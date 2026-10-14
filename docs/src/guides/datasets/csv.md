@@ -60,29 +60,14 @@ from nominal.core import NominalClient
 client = NominalClient.from_profile("default")  # replace with your profile name
 
 dataset = client.create_dataset('Frosty Flight')
-dataset.add_tabular_data(
+dataset_file = dataset.add_tabular_data(
     'frosty_flight_1k_rows.csv',
     timestamp_column = 'source_time',
     timestamp_type = 'iso_8601',
 )
 
-print('Uploaded dataset:', dataset.rid)
-```
-
-Equivalently, since your CSV is already loaded in the Polars dataframe `df`, you can upload it with the `upload_dataframe()` method. Install `pyarrow` with `pip install pyarrow` for the Polars-to-pandas conversion used below:
-
-```python
-from nominal.thirdparty.pandas import upload_dataframe
-
-dataset = upload_dataframe(
-    client,
-    df.to_pandas(),
-    "name",
-    timestamp_column='source_time',
-    timestamp_type='iso_8601'
-)
-
-print('Uploaded dataset:', dataset.rid)
+dataset_file.poll_until_ingestion_completed()
+print('Ingested dataset:', dataset.rid)
 ```
 
 After upload, navigate to Nominal's [Datasets](https://app.gov.nominal.io/data-sources?sidebar=allDatasets) page (login required). You'll see your CSV at the top!

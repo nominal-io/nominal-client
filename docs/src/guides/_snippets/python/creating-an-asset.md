@@ -1,6 +1,4 @@
-To start, create an `Asset` to upload data to, one per glider.
-With only a few assets, this could be done via the frontend.
-With thousands of gliders, automate the process using Python.
+To start, get or create an `Asset`, one per glider. The properties identify the glider on each upload; if no asset matches, the client creates it. If multiple assets match, it raises `ValueError`.
 
 ```{literalinclude} /guides/_snippets/code/getting_started/creating_an_asset_1.py
 :language: python
@@ -8,20 +6,9 @@ With thousands of gliders, automate the process using Python.
 
 :::{tip}
 
-This step happens once per asset.
-Future test events upload to the same asset created initially.
+Reuse the returned `asset` for this flight's uploads and run. The name and description are creation defaults; they do not update an existing asset.
+
+Use {py:obj}`NominalClient.search_assets <nominal.core.NominalClient.search_assets>` when your integration needs a custom lookup policy, such as requiring an asset to exist already.
 :::
 
-Once an asset exists, it is useful to write a function that can look up an asset for uploading data to later.
-Here is an example that uses the example's `platform` and `serial_num` properties:
-
-```{literalinclude} /guides/_snippets/code/getting_started/creating_an_asset_2.py
-:language: python
-```
-
-:::{tip}
-
-Later, once data from a test event is in hand, this helper function looks up the correct asset to append data to.
-:::
-
-See the {py:obj}`Asset function reference <nominal.core.Asset>` for more information on what you can do with a `nominal.Asset`.
+See the {py:obj}`Asset function reference <nominal.core.Asset>` for more information on working with assets.

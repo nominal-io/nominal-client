@@ -85,18 +85,23 @@ See below for how to set up processing for each data modality in the flight data
 
 Once your data has been transformed into a neutral / normalized format, uploading and ingesting the data into Nominal is straightforward.
 
-The first time data is uploaded to an asset, Nominal creates new datasets and video datasources for the asset.
-On subsequent uploads, Nominal appends new files directly to existing datasources (datasets, videos, and so on).
+Each data source uses `asset.get_or_create_dataset(...)` to retrieve its dataset by refname or create and attach it if absent. Upload files through that dataset, including video files, which become video channels. Reuse the same refname for later flights. Dataset names, descriptions, and properties are creation defaults; they do not update an existing dataset.
 
-See below for instructions on uploading data to an asset in each case:
+Start a fresh list for each flight and retain the file handles returned by its uploads. The run-creation step waits for these files and can derive the flight's bounds from them:
+
+```python
+uploaded_files = []
+```
+
+Each modality uses the same dataset lookup and upload pattern for every flight. The companion examples show how to add another file:
 
 :::{tip}
 
 The following examples associate datasources with an asset using a "refname".
 Refnames are a mechanism for performing two common tasks within Nominal:
 
-    * Looking up a datasource on an asset to later edit / append data to, and
-    * Comparing likewise datasources on different assets in multi-asset workflows.
+* Looking up a datasource on an asset to later edit / append data to, and
+* Comparing likewise datasources on different assets in multi-asset workflows.
 
 Use a descriptive but terse refname when associating a datasource with an asset.
 For example, if the gliders communicate data over mavlink, a common refname for data associated with that connection is `"mavlink_data"`.

@@ -87,7 +87,9 @@ The example below uploads the dataset in batches, flattening it into `x1, x2, x3
 1. Index the data into a reasonable size.
 2. Create the flattened structure.
 3. Create a pandas dataframe.
-4. Upload the batch with `nominal.thirdparty.pandas.upload_dataframe`.
+4. Write the batch as CSV to a binary buffer without the pandas index, append it with `Dataset.add_from_io()`, and wait for ingestion.
+
+Create one dataset after confirming the input is nonempty. Every batch uses the same upload path and generates consecutive `ts` values in epoch seconds. These timestamps illustrate the upload mechanics; use the recording's actual timestamps when available. Writing `index=False` avoids uploading pandas' row index as an extra channel.
 
 ```{literalinclude} /guides/_snippets/code/data_retrieval/hdf5_files.py
 :language: python

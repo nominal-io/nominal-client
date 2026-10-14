@@ -1,14 +1,3 @@
-from nominal.core import NominalClient
-
-# Assumes authentication has already been performed.
-# Replace "default" with your profile name.
-client = NominalClient.from_profile("default")
-
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
-
 # Get or create dataset linked to the asset.
 # If a dataset with this data scope name already exists on the asset, it is returned.
 # Otherwise, a new dataset is created and linked to the asset automatically.
@@ -27,7 +16,7 @@ dataset = asset.get_or_create_dataset(
     # Optional description for the dataset, useful for storing notes for future readers
     description="Flight data from onboard telemetry platform",
 )
-dataset.add_tabular_data(
+tabular_file = dataset.add_tabular_data(
     path="path/to/data.parquet",
     # Column within the parquet file containing absolute or relative timestamp information
     # for all other columns within the file
@@ -38,3 +27,4 @@ dataset.add_tabular_data(
     # string timestamps (e.g. ISO8601).
     timestamp_type="epoch_seconds",
 )
+uploaded_files.append(tabular_file)

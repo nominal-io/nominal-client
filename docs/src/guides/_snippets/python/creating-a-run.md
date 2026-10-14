@@ -4,9 +4,9 @@ For example, if every test event generates some CSV, Parquet, log, and video fil
 However, as useful as it is to see all of the data for an asset in a single place, frequently it is useful to investigate a single test event and all of the data associated with it.
 
 This is where Runs come in to play!
-A run is defined by a start and end time on an existing asset that is a view on all of the files and datasources attached to that asset.
+A run is a view on the files and datasources attached to an asset, with an absolute start time and an optional end time.
 When creating workbooks, running checklists, or doing other validation on your data, it is useful to be able to perform these tasks on a single flight test.
-Create these runs explicitly when uploading data to Nominal.
+Create these runs explicitly after the files for the test have finished ingesting. Choose one of the following recipes: known bounds, or bounds derived from the retained upload handles.
 
 ```{literalinclude} /guides/_snippets/code/getting_started/creating_a_run_1.py
 :language: python
@@ -14,16 +14,15 @@ Create these runs explicitly when uploading data to Nominal.
 
 :::{tip}
 
-Determining the correct start / end bounds for a `nominal.Run` can be challenging when you have a large number of data files being ingested.
-A good practice is to create the `nominal.Run` early on in the data ingestion script and to update the bounds as you go.
+If the test's bounds are not known in advance, retain the `DatasetFile` returned by every upload for that test and wait for ingestion before creating the run. Use those files' bounds; `Dataset.bounds` spans every flight accumulated on the dataset.
 
-An example of doing this would look like:
+This alternative uses `uploaded_files` collected in the upload stage, covering every data modality produced by the same test:
 
 ```{literalinclude} /guides/_snippets/code/getting_started/creating_a_run_2.py
 :language: python
 ```
 
-Whether you add run bounds ahead of time or as you go, it is
+Whether you use known bounds or derive them from uploaded files, it is
 important to set them correctly, since they influence data
 visualization on the website ( e.g. when viewing workbooks on
 runs).

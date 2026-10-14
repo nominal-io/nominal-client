@@ -1,3 +1,6 @@
-# NOTE: refname needs to match the refname used to add the dataset to the asset
-dataset = asset.get_dataset("flight_controller_logs")
-dataset.add_journal_json("path/to/other/log.jsonl")
+# Reuse the same refname for the next file.
+dataset = asset.get_or_create_dataset(
+    "flight_controller_logs", name="Flight Controller Logs"
+)
+log_file = dataset.add_journal_json("path/to/other/log.jsonl")
+uploaded_files.append(log_file)
