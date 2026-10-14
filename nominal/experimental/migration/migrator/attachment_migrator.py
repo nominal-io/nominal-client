@@ -56,7 +56,8 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                     owner,
                 )
                 continue
-            # Retrying a create the server committed but never confirmed strands an unlinked duplicate.
+            # Retry the whole copy: the source streams into the upload, so a dropped connection restarts it.
+            # A create can commit and still raise, leaving an unlinked duplicate; the API has no idempotency key.
             try:
                 copied.append(
                     retry_transient(
