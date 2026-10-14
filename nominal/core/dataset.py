@@ -1212,14 +1212,16 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         Example:
             ```python
+            from typing import Iterable
+
             from nominal.core import LogPoint
 
             def parse_logs_from_file(file_path: str) -> Iterable[LogPoint]:
                 # 2025-04-08T14:26:28.679052Z [INFO] Sent ACTUATE_MOTOR command
                 with open(file_path, "r") as f:
                     for line in f:
-                        timestamp, message = line.removesuffix("\n").split(maxsplit=1)
-                        yield LogPoint.create(timestamp, message)
+                        timestamp, level, message = line.removesuffix("\n").split(maxsplit=2)
+                        yield LogPoint.create(timestamp, message, {"level": level.removeprefix("[").removesuffix("]")})
 
             dataset = client.get_dataset("dataset_rid")
             logs = parse_logs_from_file("logs.txt")
