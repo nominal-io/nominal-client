@@ -9,6 +9,7 @@ from nominal_api import (
     scout_checks_api,
 )
 
+from nominal._utils.iterator_tools import batched
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
@@ -25,6 +26,8 @@ from nominal.core.streaming_checklist import (
 from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.ts import IntegralNanosecondsDuration, _to_api_duration
+
+_LIVE_STATUS_BATCH_SIZE = 10_000
 
 
 @dataclass(frozen=True)
@@ -157,24 +160,27 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         Returns:
             Status for each returned asset, including the executing commit when running.
             Use `validate_resolution` to investigate unresolved channels or unsupported streaming features.
+
+        Note:
+            Large reads use multiple requests and are not an atomic snapshot. If any request fails,
+            the method raises without returning partial results.
         """
-        if not assets:
-            return {}
-        response = self._clients.checklist_execution.checklist_live_status(
-            self._clients.auth_header,
-            scout_checklistexecution_api.BatchChecklistLiveStatusRequest(
+        statuses: dict[str, StreamingChecklistStatus] = {}
+        for asset_batch in batched(assets, _LIVE_STATUS_BATCH_SIZE):
+            request = scout_checklistexecution_api.BatchChecklistLiveStatusRequest(
                 requests=[
                     scout_checklistexecution_api.ChecklistLiveStatusRequest(
                         asset_rid=rid_from_instance_or_string(asset), checklist_rid=self.rid
                     )
-                    for asset in assets
+                    for asset in asset_batch
                 ]
-            ),
-        )
-        return {
-            result.asset_rid: StreamingChecklistStatus._from_conjure(result.status)
-            for result in response.checklist_live_status_responses
-        }
+            )
+            response = self._clients.checklist_execution.checklist_live_status(self._clients.auth_header, request)
+            statuses.update(
+                (result.asset_rid, StreamingChecklistStatus._from_conjure(result.status))
+                for result in response.checklist_live_status_responses
+            )
+        return statuses
 
     def validate_resolution(
         self, assets: Sequence[Asset | str], *, commit: str | None = None

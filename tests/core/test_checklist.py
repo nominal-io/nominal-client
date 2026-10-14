@@ -244,3 +244,34 @@ def test_default_notification_readback_and_asset_objects(checklist):
     assert request.notification_configurations[0].appended_workbook_rid is None
     assert request.notification_configurations[0].mute_until is None
     assert request.notification_configurations[0].notification_filters == []
+
+
+def test_status_reads_batch_at_the_service_limit(checklist):
+    """More than 10,000 assets are split into bounded requests without losing either response."""
+    checklist._clients.checklist_execution.checklist_live_status.side_effect = [
+        api.BatchChecklistLiveStatusResponse(
+            checklist_live_status_responses=[
+                api.ChecklistLiveStatusResponse(
+                    asset_rid="asset-0",
+                    checklist_rid="checklist",
+                    status=api.ChecklistLiveStatus(initializing=api.StreamingChecklistInitializing()),
+                ),
+            ]
+        ),
+        api.BatchChecklistLiveStatusResponse(
+            checklist_live_status_responses=[
+                api.ChecklistLiveStatusResponse(
+                    asset_rid="asset-10000",
+                    checklist_rid="checklist",
+                    status=api.ChecklistLiveStatus(failed=api.StreamingChecklistFailed()),
+                ),
+            ]
+        ),
+    ]
+    assets = [f"asset-{i}" for i in range(10_001)]
+    statuses = checklist.get_streaming_status(assets)
+    calls = checklist._clients.checklist_execution.checklist_live_status.call_args_list
+    assert [len(call.args[1].requests) for call in calls] == [10_000, 1]
+    assert [request.asset_rid for call in calls for request in call.args[1].requests] == assets
+    assert statuses["asset-0"].state is streaming.StreamingChecklistState.INITIALIZING
+    assert statuses["asset-10000"].state is streaming.StreamingChecklistState.FAILED

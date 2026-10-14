@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Iterable, Mapping, Protocol, Self, Sequence
@@ -47,6 +47,7 @@ class StreamingNotificationConfig:
     """
 
     integration: Integration | str
+    _: KW_ONLY
     tags: Sequence[str] = ()
     workbook: Workbook | str | None = None
     mute_execution_errors: bool = False
@@ -106,17 +107,29 @@ class StreamingChecklistState(str, Enum):
     """Lifecycle state of a checklist running against one asset."""
 
     RUNNING = "running"
+    """Evaluating checks; individual checks may still fail or be skipped."""
+
     INITIALIZING = "initializing"
+    """Preparing execution; check results are not yet available."""
+
     FAILED = "failed"
+    """Execution failed unexpectedly."""
 
 
 class StreamingCheckState(str, Enum):
     """Latest evaluation state of an individual check."""
 
     PASS = "pass"
+    """The check is passing."""
+
     FAIL = "fail"
+    """The check is failing."""
+
     INVALID = "invalid"
+    """Evaluation failed, for example because the computation was too expensive."""
+
     SKIPPED = "skipped"
+    """Not evaluated, for example because channels are unresolved or streaming features are unsupported."""
 
 
 @dataclass(frozen=True)
@@ -166,6 +179,7 @@ class ChannelResolutionState(str, Enum):
     RESOLVED = "RESOLVED"
     UNRESOLVED = "UNRESOLVED"
     UNKNOWN = "UNKNOWN"
+    """The channel resolution state is not recognized by this SDK."""
 
 
 @dataclass(frozen=True)
