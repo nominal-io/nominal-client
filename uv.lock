@@ -639,8 +639,8 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1483.0" },
-    { name = "nominal-api-protos", specifier = "==0.1483.0" },
+    { name = "nominal-api", specifier = "==0.1484.0" },
+    { name = "nominal-api-protos", specifier = "==0.1484.0" },
     { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1315.0" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.10.3" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
@@ -687,19 +687,19 @@ docs = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1483.0"
+version = "0.1484.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/c0/87ea36353cf9563f901d48d7921841fc2ae670c2a3a0f13a9fa4754f0518/nominal_api-0.1483.0-py3-none-any.whl", hash = "sha256:adf84175fbccaa91f95f61d9f920c255ef17015a203eb0a0ff17ac4bf500eec3", size = 1065576, upload-time = "2026-10-13T00:17:09.417Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/31/212d1bf093125afdc0e4350cf8c188cd421e765246ec063e71a9db6e949c/nominal_api-0.1484.0-py3-none-any.whl", hash = "sha256:98fb78a52cd12b7f3dbfc1aef084a89c6de3ef2d0410a549e2cdbf9b95fc6cb0", size = 1066145, upload-time = "2026-10-14T02:24:45.297Z" },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1483.0"
+version = "0.1484.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -707,7 +707,7 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/40/e5436046d06faa2af5aa54ade1b63a6f48c332ff7f385a38af1380900912/nominal_api_protos-0.1483.0-py3-none-any.whl", hash = "sha256:13e2c8a232fe8f6017f116e3fcbeeb60a998d7fde4b5ed8c36bdcfdfa7a47f92", size = 918386, upload-time = "2026-10-13T00:17:11.189Z" },
+    { url = "https://files.pythonhosted.org/packages/48/5d/0d2b722b7d98b74dda8cef4ad9ce01e7c8b0fbf2cd87660ba2c9cd25a36d/nominal_api_protos-0.1484.0-py3-none-any.whl", hash = "sha256:9cf8ce8de13d417907f3352b30045976ce18e29e8ded5440bbcc4845d7f23c24", size = 977718, upload-time = "2026-10-14T02:24:47.026Z" },
 ]
 
 [[package]]
@@ -1386,7 +1386,7 @@ name = "sphinx-design"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/13/7b/804f311da4663a4aecc6cf7abd83443f3d4ded970826d0c958edc77d4527/sphinx_design-0.7.0.tar.gz", hash = "sha256:d2a3f5b19c24b916adb52f97c5f00efab4009ca337812001109084a740ec9b7a", size = 2203582, upload-time = "2026-01-19T13:12:53.297Z" }
 wheels = [
@@ -1452,7 +1452,7 @@ name = "sphinxext-rediraffe"
 version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e3/a9/ab13d156049eea633f992424f3e92cb40e3f1b606bb6d01d40a27457d38a/sphinxext_rediraffe-0.3.0.tar.gz", hash = "sha256:f319b3ccb7c3c3b6f63ffa6fd3eeb171b6d272df55075a9e84364394f391f507", size = 22114, upload-time = "2025-09-28T15:31:53.641Z" }
 wheels = [
