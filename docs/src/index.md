@@ -197,6 +197,7 @@ sdk/thirdparty/tdms
 :maxdepth: 1
 
 sdk/experimental/compute
+sdk/experimental/compute-as-code
 sdk/experimental/derived_datasets
 sdk/experimental/extractors
 sdk/experimental/ingest
