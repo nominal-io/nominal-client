@@ -15,7 +15,7 @@ from nominal.core._utils.pagination_tools import (
 )
 from nominal.core.integration import Integration
 from nominal.core.workbook import Workbook
-from nominal.ts import IntegralNanosecondsDuration
+from nominal.ts import IntegralNanosecondsDuration, _from_api_duration
 
 
 class _Clients(HasScoutParams, Protocol):
@@ -97,8 +97,8 @@ class StreamingChecklistConfiguration:
             notifications=tuple(
                 StreamingNotificationConfig._from_conjure(n) for n in config.notification_configurations
             ),
-            evaluation_delay=config.evaluation_delay.seconds * 1_000_000_000 + config.evaluation_delay.nanos,
-            recovery_delay=config.recovery_delay.seconds * 1_000_000_000 + config.recovery_delay.nanos,
+            evaluation_delay=_from_api_duration(config.evaluation_delay),
+            recovery_delay=_from_api_duration(config.recovery_delay),
             auto_create_events=config.auto_create_events,
         )
 
