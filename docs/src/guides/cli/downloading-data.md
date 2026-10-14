@@ -16,8 +16,10 @@ The `nom download` command provides an interactive terminal interface for browsi
 To start the interactive download wizard:
 
 ```bash
-nom download
+nom download --profile default
 ```
+
+Replace `default` with the name of your saved connection profile.
 
 The wizard will guide you through:
 
@@ -30,11 +32,12 @@ The wizard will guide you through:
 ## Command Options
 
 ```bash
-nom download [OPTIONS]
+nom download --profile default [OPTIONS]
 ```
 
 **Options:**
 
+- `--profile TEXT` - Saved connection profile to use (required)
 - `--format [csv|parquet]` - Output file format (default: `parquet`)
   - `parquet` - Recommended for large datasets, better compression and faster read times
   - `csv` - More widely compatible, easier to inspect manually
@@ -233,7 +236,7 @@ Replace `.parquet` with `.csv` in the code snippets if you downloaded in CSV for
 **For many channels (100+):**
 
 ```bash
-nom download --channels-per-request 50 --format parquet
+nom download --profile default --channels-per-request 50 --format parquet
 ```
 
 - Higher `channels-per-request` reduces overhead
@@ -246,7 +249,7 @@ nom download --channels-per-request 50 --format parquet
 **For large datasets:**
 
 ```bash
-nom download --points-per-file 10000000 --format parquet
+nom download --profile default --points-per-file 10000000 --format parquet
 ```
 
 - Smaller file sizes if you're hitting memory limits
@@ -356,7 +359,7 @@ Downloaded data includes:
 Here's a complete example session:
 
 ```bash
-$ nom download --format parquet
+$ nom download --profile default --format parquet
 
 # Select asset #5 from the list
 Select an asset #: 5
