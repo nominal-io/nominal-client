@@ -1,8 +1,8 @@
 Set up your Python development environment:
 
-:::{dropdown} Verify Python version 3.10 to 3.14
+:::{dropdown} Verify Python version 3.11 or newer
 
-Verify your Python version number is between 3.10 to 3.14:
+The Nominal SDK requires Python 3.11 or newer:
 
   ```bash
   python --version
@@ -14,7 +14,7 @@ Verify your Python version number is between 3.10 to 3.14:
   python3 --version
   ```
 
-  If your version is outside this range, update Python to a supported version. If you get an error, you might not have Python. [Download and install Python](https://www.python.org/downloads/).
+  If your version is older, update Python to a supported version. If you get an error, you might not have Python. [Download and install Python](https://www.python.org/downloads/).
 :::
 
 :::::{dropdown} Set up a virtual environment
