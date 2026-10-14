@@ -49,6 +49,7 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CHANNEL_BATCH_SIZE = 500
+_MAX_CHANNEL_UPDATE_BATCH_SIZE = 10_000
 
 
 @dataclass(frozen=True)
@@ -330,7 +331,9 @@ class DataSource(HasRid, MarkableMixin):
     ) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
-        Updates are atomic and limited to 10,000 matching channels per call.
+        Updates are sent sequentially in batches of at most 10,000 matching channels.
+        Each batch is atomic. If a later batch fails, earlier batches remain applied and
+        subsequent batches are not sent.
 
         Args:
             channels_to_units: A mapping of channel names to unit symbols.
@@ -363,22 +366,23 @@ class DataSource(HasRid, MarkableMixin):
         if not allow_display_only_units:
             _error_on_invalid_units(channels_to_units, self._clients.units)
 
-        update_requests = [
-            channel_metadata_pb2.UpdateChannelMetadataRequest(
-                channel_metadata=channel_metadata_pb2.ChannelMetadata(
-                    channel_identifier=channel_metadata_pb2.ChannelIdentifier(
-                        channel_name=channel_name, data_source_rid=self.rid
+        for batch in batched(channels_to_units.items(), _MAX_CHANNEL_UPDATE_BATCH_SIZE):
+            update_requests = [
+                channel_metadata_pb2.UpdateChannelMetadataRequest(
+                    channel_metadata=channel_metadata_pb2.ChannelMetadata(
+                        channel_identifier=channel_metadata_pb2.ChannelIdentifier(
+                            channel_name=channel_name, data_source_rid=self.rid
+                        ),
+                        unit=_unit_symbol_from_unit_like(unit),
                     ),
-                    unit=_unit_symbol_from_unit_like(unit),
-                ),
-                update_mask=FieldMask(paths=["unit"]),
-            )
-            for channel_name, unit in channels_to_units.items()
-        ]
-        # Keep all updates in one transaction; the service enforces its batch limit.
-        request = channel_metadata_pb2.BatchUpdateChannelMetadataRequest(requests=update_requests)
-        with translate_grpc_errors():
-            self._clients.channel_metadata.BatchUpdateChannelMetadata(request)
+                    # A selected but unset unit clears it; an unselected field is unchanged.
+                    update_mask=FieldMask(paths=["unit"]),
+                )
+                for channel_name, unit in batch
+            ]
+            request = channel_metadata_pb2.BatchUpdateChannelMetadataRequest(requests=update_requests)
+            with translate_grpc_errors():
+                self._clients.channel_metadata.BatchUpdateChannelMetadata(request)
 
     def set_channel_prefix_tree(self, delimiter: str = ".") -> None:
         """Index channels hierarchically by a given delimiter.

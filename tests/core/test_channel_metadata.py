@@ -27,7 +27,9 @@ def test_update_unit_presence_and_identity(unit) -> None:
         channel_metadata=_metadata(description="after")
     )
     assert channel.update(unit=unit) is channel
-    request = clients.channel_metadata.UpdateChannelMetadata.call_args.args[0]
+    request = pb.UpdateChannelMetadataRequest.FromString(
+        clients.channel_metadata.UpdateChannelMetadata.call_args.args[0].SerializeToString()
+    )
     assert list(request.update_mask.paths) == ["unit"]
     assert request.channel_metadata.unit == (unit.symbol if isinstance(unit, Unit) else unit or "")
     assert request.channel_metadata.HasField("unit") == (unit is not None)
@@ -44,7 +46,9 @@ def test_description_empty_is_supplied_and_unit_omitted() -> None:
         channel_metadata=_metadata(unit="m")
     )
     channel.update(description="")
-    request = clients.channel_metadata.UpdateChannelMetadata.call_args.args[0]
+    request = pb.UpdateChannelMetadataRequest.FromString(
+        clients.channel_metadata.UpdateChannelMetadata.call_args.args[0].SerializeToString()
+    )
     assert list(request.update_mask.paths) == ["description"]
     assert request.channel_metadata.HasField("description")
     assert request.channel_metadata.description == ""
@@ -124,8 +128,8 @@ def test_grpc_errors_translate(operation, fake_rpc_error) -> None:
             list(DataSource(rid=channel.data_source, _clients=clients).get_channels(names=[channel.name]))
 
 
-def test_batch_unit_updates_preserve_clearing_and_atomic_request() -> None:
-    """All unit changes share one request, with None clearing only the selected unit."""
+def test_small_unit_update_preserves_clearing_in_one_batch() -> None:
+    """A small unit update stays in one atomic batch, with None clearing only the selected unit."""
     clients = MagicMock()
     clients.datasource.search_channels.return_value.results = []
     clients.datasource.search_channels.return_value.next_page_token = None
@@ -151,3 +155,67 @@ def test_batch_unit_updates_preserve_clearing_and_atomic_request() -> None:
     assert requests[0].channel_metadata.unit == "m/s"
     assert not requests[1].channel_metadata.HasField("unit")
     assert all(not request.channel_metadata.HasField("description") for request in requests)
+
+
+def _clients_with_channels(count: int) -> MagicMock:
+    clients = MagicMock()
+    clients.datasource.search_channels.return_value.results = [
+        datasource_api.ChannelMetadata(name=f"ch{i}", data_source="ri.datasource.test") for i in range(count)
+    ]
+    clients.datasource.search_channels.return_value.next_page_token = None
+    clients.channel_metadata.BatchGetChannelMetadata.side_effect = lambda request: pb.BatchGetChannelMetadataResponse(
+        channel_metadata=[
+            pb.ChannelMetadata(channel_identifier=identifier) for identifier in request.channel_identifiers
+        ]
+    )
+    return clients
+
+
+@pytest.mark.parametrize(
+    "count, batch_sizes", [(0, []), (10_000, [10_000]), (10_001, [10_000, 1]), (25_000, [10_000, 10_000, 5_000])]
+)
+def test_set_channel_units_batches_all_updates(count, batch_sizes) -> None:
+    """Every channel is updated once in bounded requests, preserving unit clearing across the wire."""
+    clients = _clients_with_channels(count)
+    units = {f"ch{i}": None if i % 2 else "m/s" for i in range(count)}
+    DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(units, allow_display_only_units=True)
+    requests = [
+        pb.BatchUpdateChannelMetadataRequest.FromString(call.args[0].SerializeToString())
+        for call in clients.channel_metadata.BatchUpdateChannelMetadata.call_args_list
+    ]
+    assert [len(request.requests) for request in requests] == batch_sizes
+    updates = [update for request in requests for update in request.requests]
+    assert [update.channel_metadata.channel_identifier.channel_name for update in updates] == list(units)
+    for update, unit in zip(updates, units.values(), strict=True):
+        assert list(update.update_mask.paths) == ["unit"]
+        assert update.channel_metadata.HasField("unit") == (unit is not None)
+        assert update.channel_metadata.unit == (unit or "")
+        assert not update.channel_metadata.HasField("description")
+
+
+def test_set_channel_units_stops_after_failed_batch(fake_rpc_error) -> None:
+    """A later RPC failure is translated and stops subsequent batches after earlier writes succeeded."""
+    clients = _clients_with_channels(25_000)
+    clients.channel_metadata.BatchUpdateChannelMetadata.side_effect = [
+        pb.BatchUpdateChannelMetadataResponse(),
+        fake_rpc_error(grpc.StatusCode.NOT_FOUND),
+    ]
+    with pytest.raises(NominalNotFoundError):
+        DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(
+            {f"ch{i}": "m/s" for i in range(25_000)}, allow_display_only_units=True
+        )
+    calls = clients.channel_metadata.BatchUpdateChannelMetadata.call_args_list
+    assert len(calls) == 2
+    assert [len(call.args[0].requests) for call in calls] == [10_000, 10_000]
+    assert calls[1].args[0].requests[0].channel_metadata.channel_identifier.channel_name == "ch10000"
+
+
+def test_set_channel_units_validates_all_symbols_before_first_write() -> None:
+    """An invalid unit in a later batch is rejected before any metadata is changed."""
+    clients = _clients_with_channels(10_001)
+    clients.units.GetBatchUnits.return_value.responses = {}
+    units: dict[str, str | None] = {f"ch{i}": None for i in range(10_001)}
+    units["ch10000"] = "invalid-unit"
+    with pytest.raises(ValueError, match="invalid-unit"):
+        DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(units)
+    clients.channel_metadata.BatchUpdateChannelMetadata.assert_not_called()
