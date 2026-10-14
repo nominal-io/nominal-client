@@ -16,7 +16,6 @@ from nominal_api import (
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
-    scout_spatial,
     scout_video,
     storage_datasource_api,
     storage_writer_api,
@@ -47,6 +46,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
@@ -151,7 +151,7 @@ class ClientsBunch:
     notebook: scout.NotebookService
     proto_write: ProtoWriteService
     series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
-    spatial: scout_spatial.SpatialService
+    spatial: spatial_pb2_grpc.SpatialServiceStub
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
@@ -325,7 +325,7 @@ class ClientsBunch:
             notebook=client_factory(scout.NotebookService),
             proto_write=client_factory(ProtoWriteService),
             series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
-            spatial=client_factory(scout_spatial.SpatialService),
+            spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),

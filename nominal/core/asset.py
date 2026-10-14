@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
-from nominal_api import scout_spatial
 from typing_extensions import deprecated
 
 from nominal.core import data_review, streaming_checklist
@@ -40,6 +39,7 @@ from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNo
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
+from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -77,7 +77,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         @property
         def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
-        def spatial(self) -> scout_spatial.SpatialService: ...
+        def spatial(self) -> spatial_pb2_grpc.SpatialServiceStub: ...
 
     @property
     def nominal_url(self) -> str:

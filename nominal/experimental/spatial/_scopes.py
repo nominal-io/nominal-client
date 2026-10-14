@@ -111,5 +111,5 @@ def _resolve_spatials(clients: Spatial._Clients, scopes: Mapping[str, DataScopeR
     rids = [scope.rid for scope in scopes.values()]
     by_rid = {spatial.rid: spatial for spatial in _get_spatials(clients, rids)}
     return {
-        name: Spatial._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
+        name: Spatial._from_proto(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
     }
