@@ -125,7 +125,7 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

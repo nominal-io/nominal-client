@@ -18,7 +18,7 @@ def test_empty_examples_index_has_no_broken_source_link(tmp_path):
     module.generate(SimpleNamespace(srcdir=source, confdir=source.parent))
     text = (source / "examples/index.md").read_text(encoding="utf-8")
     assert "No example scripts have been added yet." in text
-    assert "github.com/nominal-io/nominal-client/tree/main/examples" not in text
+    assert "github.com/nominal-io/nominal-client/tree/main/docs/examples" not in text
 
 
 @pytest.mark.parametrize("script", ["upload.py", "index.py", "nested/index.py"])
@@ -27,7 +27,7 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     docs = tmp_path / "docs"
     source = docs / "src"
     source.mkdir(parents=True, exist_ok=True)
-    scripts = tmp_path / "examples"
+    scripts = docs / "examples"
     scripts.mkdir()
     (scripts / script).parent.mkdir(parents=True, exist_ok=True)
     (scripts / script).write_text('"""Example: Upload a dataset."""\nprint("upload fixture")\n', encoding="utf-8")
@@ -50,8 +50,8 @@ def test_examples_build_with_separate_source_and_config_directories(tmp_path, sc
     assert page.is_file()
     assert not obsolete.exists()
     assert "# Examples" in (source / "examples/index.md").read_text(encoding="utf-8")
-    assert f"/blob/release/fixture/examples/{script}" in page.read_text(encoding="utf-8")
-    assert "/tree/release/fixture/examples" in (source / "examples/index.md").read_text(encoding="utf-8")
+    assert f"/blob/release/fixture/docs/examples/{script}" in page.read_text(encoding="utf-8")
+    assert "/tree/release/fixture/docs/examples" in (source / "examples/index.md").read_text(encoding="utf-8")
     html = (output / f"examples/{script}/index.html").read_text(encoding="utf-8")
     assert "Upload a dataset" in html
     assert "upload fixture" in html
@@ -84,11 +84,14 @@ def test_example_edit_links_are_independent_between_apps(tmp_path):
                 ),
             )
         )
-    scripts = tmp_path / "first/examples"
+    scripts = tmp_path / "first/docs/examples"
     scripts.mkdir()
     (scripts / "upload.py").write_text('"""Upload example."""\n', encoding="utf-8")
     for app in apps:
         module.generate(app)
     context = {}
     module._edit_link(apps[0], "examples/upload.py", "page.html", context, None)
-    assert context["edit_source_link"]("ignored") == "https://github.com/nominal-io/first/blob/main/examples/upload.py"
+    assert (
+        context["edit_source_link"]("ignored")
+        == "https://github.com/nominal-io/first/blob/main/docs/examples/upload.py"
+    )

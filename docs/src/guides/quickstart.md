@@ -83,7 +83,7 @@ Run the following script to create an {abbr}`asset (Representation of physical o
 
 1. Create a new file named `fsae_asset_upload.py` and copy the following code into it:
 
-    ```{literalinclude} /../../examples/fsae_asset_upload.py
+    ```{literalinclude} /../examples/fsae_asset_upload.py
     :language: python
     ```
 
