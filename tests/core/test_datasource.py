@@ -10,7 +10,7 @@ from nominal.core.datasource import CreateChannelRequest, DataSource
 from nominal.exceptions import NominalPermissionDeniedError
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as metadata_proto
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2 as proto
-from nominal.protos.types import series_pb2
+from nominal.protos.types.series import series_pb2
 
 
 @pytest.fixture
@@ -75,7 +75,9 @@ def test_batches_preserve_policy_order_and_missing(datasource, clients, method, 
         metadata_proto.BatchGetChannelMetadataResponse(
             channel_metadata=[
                 metadata_proto.ChannelMetadata(
-                    channel_identifier=metadata_proto.ChannelIdentifier(channel_name="ch0", data_source_rid=datasource.rid),
+                    channel_identifier=metadata_proto.ChannelIdentifier(
+                        channel_name="ch0", data_source_rid=datasource.rid
+                    ),
                     data_type=series_pb2.DOUBLE,
                     unit="m",
                     description="stored",
@@ -115,15 +117,13 @@ def test_empty_batch_has_no_io(datasource, clients, method):
 
 def test_add_channel_hydrates_existing_metadata(datasource, clients):
     """Single creates return existing channel metadata rather than the requested replacement values."""
-    clients.channel_metadata.BatchGetChannelMetadata.return_value = (
-        metadata_proto.BatchGetChannelMetadataResponse(
-            channel_metadata=[
-                metadata_proto.ChannelMetadata(
-                    channel_identifier=metadata_proto.ChannelIdentifier(channel_name="ch", data_source_rid=datasource.rid),
-                    description="existing",
-                )
-            ]
-        )
+    clients.channel_metadata.BatchGetChannelMetadata.return_value = metadata_proto.BatchGetChannelMetadataResponse(
+        channel_metadata=[
+            metadata_proto.ChannelMetadata(
+                channel_identifier=metadata_proto.ChannelIdentifier(channel_name="ch", data_source_rid=datasource.rid),
+                description="existing",
+            )
+        ]
     )
     channel = datasource.add_channel("ch", ChannelDataType.DOUBLE, description="new")
     request = clients.series_metadata.CreateSeriesMetadata.call_args.args[0]

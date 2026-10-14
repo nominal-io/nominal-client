@@ -6,7 +6,7 @@ import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, cast, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
 from nominal_api import (
@@ -15,7 +15,6 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
-    storage_series_api,
 )
 
 from nominal._utils.iterator_tools import batched
@@ -67,32 +66,6 @@ class ChannelDataType(enum.Enum):
             return cls(data_type.value)
         else:
             return cls("UNKNOWN")
-
-    def _to_conjure(self) -> storage_series_api.NominalDataType:
-        match self:
-            case ChannelDataType.DOUBLE:
-                data_type = storage_series_api.NominalDataType.DOUBLE
-            case ChannelDataType.STRING:
-                data_type = storage_series_api.NominalDataType.STRING
-            case ChannelDataType.LOG:
-                data_type = storage_series_api.NominalDataType.LOG
-            case ChannelDataType.INT:
-                data_type = storage_series_api.NominalDataType.INT64
-            case ChannelDataType.UINT:
-                data_type = storage_series_api.NominalDataType.UINT64
-            case ChannelDataType.DOUBLE_ARRAY:
-                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
-            case ChannelDataType.STRING_ARRAY:
-                data_type = storage_series_api.NominalDataType.STRING_ARRAY
-            case ChannelDataType.STRUCT:
-                data_type = storage_series_api.NominalDataType.STRUCT
-            case ChannelDataType.VIDEO:
-                data_type = storage_series_api.NominalDataType.VIDEO
-            case ChannelDataType.UNKNOWN:
-                data_type = storage_series_api.NominalDataType.UNKNOWN
-            case _:
-                assert_never(self)
-        return data_type
 
 
 @dataclass
