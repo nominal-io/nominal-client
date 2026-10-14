@@ -1,6 +1,6 @@
 """Generate the Examples section (``docs/src/examples/``, gitignored) from the example scripts.
 
-Each ``examples/**/*.py`` becomes a page showing the script, titled from the first
+Each ``docs/examples/**/*.py`` becomes a page showing the script, titled from the first
 line of its module docstring, and the index links them all. Nothing here is
 hand-maintained: add a script and it appears. Build recipes clean these pages
 before each build; live preview ignores generated files.
@@ -43,13 +43,14 @@ def _page(app: Sphinx, py: Path, repo: Path, title: str, summary: str) -> str:
 
 def generate(app: Sphinx) -> None:
     repo = Path(app.confdir).parent
+    scripts = Path(app.confdir) / "examples"
     out = Path(app.srcdir) / "examples"
 
     entries: list[tuple[str, str]] = []
-    for py in sorted((repo / "examples").rglob("*.py")):
+    for py in sorted(scripts.rglob("*.py")):
         # Preserve the .py suffix so index.py never overwrites the landing page
         # or collides with dirhtml's special handling of index documents.
-        name = py.relative_to(repo / "examples").as_posix()
+        name = py.relative_to(scripts).as_posix()
         title, summary = _script_docstring(py)
         page = out / f"{name}.md"
         page.parent.mkdir(parents=True, exist_ok=True)
@@ -60,9 +61,9 @@ def generate(app: Sphinx) -> None:
     toc = "".join(f"{name}\n" for _, name in entries)
     introduction = (
         "Full, runnable scripts using the Nominal Python SDK. The source is in "
-        f"[`examples/`]({_source_url(app, 'examples', 'tree')})."
+        f"[`docs/examples/`]({_source_url(app, 'docs/examples', 'tree')})."
         if entries
-        else "No example scripts have been added yet. Add a script under `examples/` to generate its page."
+        else "No example scripts have been added yet. Add a script under `docs/examples/` to generate its page."
     )
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.md").write_text(
@@ -78,7 +79,7 @@ def _edit_link(app: Sphinx, pagename: str, templatename: str, context: dict[str,
     if pagename == "examples/index":
         context["page_source_suffix"] = ""
         return
-    url = _source_url(app, pagename)
+    url = _source_url(app, f"docs/{pagename}")
     context["edit_source_link"] = lambda filename: url
 
 

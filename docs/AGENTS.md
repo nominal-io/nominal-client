@@ -51,7 +51,7 @@ as `` {py:class}`~nominal.core.Dataset` ``.
 MyST colon fences support nested admonitions and Sphinx Design tabs, dropdowns and
 cards. Outer directives need more colons than nested directives.
 
-Scripts under the repository's `examples/` get pages automatically from
+Scripts under `docs/examples/` get pages automatically from
 `_ext/examples.py`. The first line of the module docstring supplies the title;
 the remainder supplies the introduction. Generated `src/examples/` pages are
 ignored by Git and the preview watcher. Edit the script rather than its page.
