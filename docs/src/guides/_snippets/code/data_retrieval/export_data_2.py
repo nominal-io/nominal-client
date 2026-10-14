@@ -1,9 +1,12 @@
+from time import time_ns
+
 from nominal.core import NominalClient
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
 client = NominalClient.from_profile("default")
 
 run = client.get_run("<run rid>")
+end = run.end if run.end is not None else time_ns()
 
 tags = {"ingest_uuid": "your-ingest-uuid"}
 
@@ -16,7 +19,7 @@ exporter = PolarsExportHandler(client)
 for df in exporter.export(
     channels,
     start=run.start,
-    end=run.end,
+    end=end,
     tags=tags,
 ):
     print(df.head())
