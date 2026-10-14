@@ -184,6 +184,20 @@ def test_to_pyarrow_batches_reassembles_the_stream_across_payload_chunks(backend
     assert table.num_rows == 1
 
 
+def test_closing_batch_reader_cancels_query_immediately(client: NominalClient) -> None:
+    """Explicit close cancels the RPC while the batch reader remains referenced."""
+    call = query_call(arrow_ipc_bytes(QUERY_RESULT))
+    client._clients.sql.Query.side_effect = None
+    client._clients.sql.Query.return_value = call
+    reader = nibis.connect(client).table("datasets").to_pyarrow_batches()
+    reader.read_next_batch()
+    call.cancel.assert_not_called()
+
+    reader.close()
+
+    call.cancel.assert_called_once_with()
+
+
 @pytest.mark.parametrize(
     "operation", ["raw_sql", "batches", "schema_probe", "invalid_stream", "invalid_columns", "invalid_cast"]
 )
@@ -210,7 +224,7 @@ def test_query_rpc_is_cancelled_on_completion_or_error(client: NominalClient, op
         case "invalid_columns" | "invalid_cast":
             expr = con.table("points_double").select("value")
             reader = expr.to_pyarrow_batches()
-            with pytest.raises(nibis.NominalSqlError):
+            with pytest.raises(pa.ArrowInvalid):
                 reader.read_all()
     call.cancel.assert_called_once_with()
 
@@ -221,14 +235,16 @@ def test_write_operations_are_rejected(backend: nibis.Backend) -> None:
         backend.create_table("t", schema={"a": "int64"})
 
 
+@pytest.mark.parametrize("output", ["pandas", "batches"])
 @pytest.mark.parametrize("rich_details", [False, True])
-def test_grpc_errors_surface_as_nominal_errors(
+def test_query_errors_preserve_diagnostics_and_cancel_rpc(
     backend: nibis.Backend,
     client: NominalClient,
+    output: str,
     rich_details: bool,
     fake_rpc_error: Callable[..., grpc.RpcError],
 ) -> None:
-    """Query failures raise Nominal exceptions that include the server's error details and release the RPC."""
+    """Query failures retain SQL diagnostics and cancel the RPC across result formats."""
     status = status_pb2.Status(code=3, message="Invalid query")
     status.details.add().Pack(
         error_details_pb2.ErrorInfo(
@@ -250,11 +266,19 @@ def test_grpc_errors_surface_as_nominal_errors(
     call.__iter__.return_value = failing_query(sql_pb2.SqlServiceQueryRequest())
     client._clients.sql.Query.side_effect = None
     client._clients.sql.Query.return_value = call
-    with pytest.raises(NominalInvalidArgumentError, match="unknown column") as exc_info:
-        backend.table("datasets").select("name").to_pandas()
+    error_type = pa.ArrowInvalid if output == "batches" else NominalInvalidArgumentError
+    with pytest.raises(error_type, match="unknown column") as exc_info:
+        expr = backend.table("datasets").select("name")
+        match output:
+            case "pandas":
+                expr.to_pandas()
+            case "batches":
+                with expr.to_pyarrow_batches() as reader:
+                    reader.read_all()
     if rich_details:
         assert "query-123" in str(exc_info.value)
-    assert exc_info.value.__cause__ is error
+    if output == "pandas":
+        assert exc_info.value.__cause__ is error
     call.cancel.assert_called_once_with()
 
 
@@ -414,7 +438,8 @@ def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: lis
         make_client(pa.table({name: pa.array([] if empty else ["value"], type=pa.string()) for name in names}))
     )
     expr = con.table("datasets")
-    with pytest.raises(nibis.NominalSqlError, match="Server returned columns"):
+    error_type = pa.ArrowInvalid if output == "batches" else nibis.NominalSqlError
+    with pytest.raises(error_type, match="Server returned columns"):
         match output:
             case "pandas":
                 expr.to_pandas()
@@ -427,10 +452,11 @@ def test_unexpected_columns_are_not_reordered_or_renamed(output: str, names: lis
 
 @pytest.mark.parametrize("output", ["pandas", "arrow", "batches"])
 def test_incompatible_result_type_raises(output: str) -> None:
-    """Failed conversions report the same error for materialized and streamed results."""
+    """Failed conversions retain their diagnostic in the result format's exception type."""
     con = nibis.connect(make_client(pa.table({"value": ["not a number"]})))
     expr = con.table("points_double").select("value")
-    with pytest.raises(nibis.NominalSqlError, match="not castable"):
+    error_type = pa.ArrowInvalid if output == "batches" else nibis.NominalSqlError
+    with pytest.raises(error_type, match="not castable"):
         match output:
             case "pandas":
                 expr.to_pandas()

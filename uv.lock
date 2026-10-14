@@ -780,7 +780,7 @@ requires-dist = [
     { name = "ibis-framework", specifier = ">=12,<13" },
     { name = "nominal", editable = "." },
     { name = "packaging", specifier = ">=23.0" },
-    { name = "pyarrow", marker = "python_full_version < '3.15'", specifier = ">=14" },
+    { name = "pyarrow", marker = "python_full_version < '3.15'", specifier = ">=15" },
     { name = "pyarrow", marker = "python_full_version >= '3.15'", specifier = ">=26" },
     { name = "pyarrow-hotfix", specifier = ">=0.4" },
 ]

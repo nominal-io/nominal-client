@@ -296,7 +296,11 @@ class Backend(SQLBackend, NoUrl):
         chunk_size: int = 1_000_000,
         **kwargs: Any,
     ) -> pa.RecordBatchReader:
-        """Execute the expression, streaming record batches without materializing the result."""
+        """Execute the expression, streaming record batches without materializing the result.
+
+        Closing the reader releases the active query stream.
+        Errors encountered while reading batches are reported as PyArrow exceptions.
+        """
         self._run_pre_execute_hooks(expr)
         table_expr = expr.as_table()
         sql = self._compile_table(table_expr, params=params, limit=limit)
@@ -309,7 +313,8 @@ class Backend(SQLBackend, NoUrl):
                     table = self._cast_result(pa.Table.from_batches([batch]), target)
                     yield from table.to_batches(max_chunksize=chunk_size)
 
-        return pa.RecordBatchReader.from_batches(target, converted_batches())
+        # Closing the imported C stream releases the generator that owns the RPC.
+        return pa.RecordBatchReader.from_stream(pa.RecordBatchReader.from_batches(target, converted_batches()))
 
     def execute(
         self,
