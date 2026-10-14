@@ -45,7 +45,7 @@ The platform imposes a few additional requirements:
     | --- | --- | --- | --- | --- | --- | --- |
     | 12345 | 12.1 | 12.3 | 10000 | 1.23 | -0.2 | 0.0 |
 
-    When creating the dataset using the Python client, you must specify a `prefix_delimiter` of `"."` for the columns to be interpreted hierarchically.
+    When creating the dataset using the Python client, you must specify a `prefix_tree_delimiter` of `"."` for the columns to be interpreted hierarchically.
 
     ::::{tip}
 
