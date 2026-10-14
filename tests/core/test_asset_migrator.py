@@ -223,8 +223,8 @@ class TestAssetMigratorAttachmentFailure:
         assert mock_wm_cls.return_value.copy_from.call_args.args[0] is workbook
         dest_asset.add_attachments.assert_not_called()
         assert [(s.resource_type, s.source_rid) for s in ctx.migration_state.skipped_resources] == [
-            (ResourceType.ATTACHMENT.value, run_attachment.rid),
-            (ResourceType.ATTACHMENT.value, asset_attachment.rid),
+            (ResourceType.ATTACHMENT.value, f"{run_attachment.rid} on run {source_run.rid}"),
+            (ResourceType.ATTACHMENT.value, f"{asset_attachment.rid} on asset {source_asset.rid}"),
         ]
 
 

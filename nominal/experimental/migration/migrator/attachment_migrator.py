@@ -44,7 +44,8 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         One bad attachment must not abort the owner's migration and every sibling resource
         behind it. Transient failures are retried in place; an attachment that still fails is
         left unmapped and recorded as a skip for the end-of-run summary, so a rerun re-attempts it.
-        ``owner`` names the owning resource in log messages, such as ``"asset <rid>"``.
+        ``owner`` names the owning resource, such as ``"asset <rid>"``, in log messages and in the
+        skip entry, so an attachment shared by several owners is tracked for each one.
         """
         copied: list[Attachment] = []
         for source_attachment in source_attachments:
@@ -56,6 +57,7 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                     owner,
                 )
                 continue
+            skip_key = f"{source_attachment.rid} on {owner}"
             # Retry the whole copy: the source streams into the upload, so a dropped connection restarts it.
             # A create can commit and still raise, leaving an unlinked duplicate; the API has no idempotency key.
             try:
@@ -67,12 +69,10 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                 )
             except Exception as error:
                 logger.exception("Failed to copy attachment (rid: %s) on %s", source_attachment.rid, owner)
-                self.ctx.migration_state.set_skip(
-                    ResourceType.ATTACHMENT, source_attachment.rid, f"copy failed: {error}"
-                )
+                self.ctx.migration_state.set_skip(ResourceType.ATTACHMENT, skip_key, f"copy failed: {error}")
             else:
-                # Cleared only here: a workbook's copy of this attachment does not link it to its owner.
-                self.ctx.migration_state.set_skip(ResourceType.ATTACHMENT, source_attachment.rid, None)
+                # Cleared only here: no other copy of this attachment links it to this owner.
+                self.ctx.migration_state.set_skip(ResourceType.ATTACHMENT, skip_key, None)
         return copied
 
     def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Attachment:

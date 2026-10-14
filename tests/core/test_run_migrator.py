@@ -297,7 +297,9 @@ class TestRunMigratorAttachments:
         migrator.copy_from(source_run, RunCopyOptions())
 
         assert [a.rid for a in ctx.destination_client.create_run.call_args.kwargs["attachments"]] == [_att_rid(102)]
-        assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [failing.rid]
+        assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [
+            f"{failing.rid} on run {source_run.rid}"
+        ]
 
         ctx.destination_client.create_attachment_from_io.reset_mock(side_effect=True)
         ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_att_rid(101))

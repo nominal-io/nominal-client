@@ -148,9 +148,9 @@ Attachment copies retry transient failures the same way. An attachment that stil
 is recorded in the summary, and its run or asset is migrated without it. A rerun re-attempts the
 attachment and adds it to the already-migrated run or asset.
 
-Video files and attachments appear in the summary at most once, with their latest outcome: a rerun
-that succeeds clears the stale skip entry from the earlier attempt. Checklist skips are still
-appended per attempt.
+Video files appear in the summary at most once, and attachments at most once for each run or asset
+they belong to, with their latest outcome: a rerun that succeeds clears the stale skip entry from the
+earlier attempt. Checklist skips are still appended per attempt.
 
 Example — run with an explicit state path:
 

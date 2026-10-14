@@ -345,6 +345,21 @@ def test_copy_attachments_skips_archived() -> None:
     ctx.destination_client.create_attachment_from_io.assert_called_once()
 
 
+def test_another_owners_copy_keeps_the_failed_owners_skip() -> None:
+    """An attachment shared by a run and an asset stays skipped for the run whose copy failed."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+    ctx.destination_client.create_attachment_from_io.side_effect = None
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    migrator.copy_attachments([source], "asset a")
+
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
+
+
 @patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
 def test_workbook_copy_keeps_owner_skip_until_owner_copy_succeeds(mock_attachment_cls: MagicMock) -> None:
     """A workbook's copy of a failed attachment leaves its skip; only the owner's own retry clears it."""
@@ -361,7 +376,7 @@ def test_workbook_copy_keeps_owner_skip_until_owner_copy_succeeds(mock_attachmen
 
     mock_attachment_cls._from_proto.return_value = source
     assert migrator.migrate_by_rid(source._clients, source.rid) is destination
-    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [source.rid]
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
 
     assert migrator.copy_attachments([source], "run r") == [destination]
     assert ctx.migration_state.skipped_resources == []
@@ -393,7 +408,7 @@ def test_copy_attachments_contains_upload_failure(error: Exception, monkeypatch:
     assert [a.rid for a in copied] == [f"dest-{healthy.name}"]
     assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, failing.rid) is None
     assert ctx.migration_state.skipped_resources == [
-        SkippedResource(ResourceType.ATTACHMENT.value, failing.rid, f"copy failed: {error}")
+        SkippedResource(ResourceType.ATTACHMENT.value, f"{failing.rid} on run r", f"copy failed: {error}")
     ]
 
 
