@@ -39,9 +39,10 @@ Install [pyulog](https://github.com/PX4/pyulog): `pip install pyulog`.
 It provides `ulog2csv`, which converts the PX4 ULog file to a folder of CSV logs:
 
 ```python
+import subprocess
 
 ulog_path = dataset_path
-subprocess.run(["ulog2csv", ulog_path], capture_output=True, text=True)
+subprocess.run(["ulog2csv", ulog_path], capture_output=True, text=True, check=True)
 ```
 
 ### List all CSV flight logs
@@ -51,10 +52,10 @@ Depending on the flight, the ULog-to-CSV converter outputs ~50 CSV flight logs. 
 ```python
 from pathlib import Path
 folder_path = Path(ulog_path).parent
-files = [file for file in folder_path.iterdir() if file.is_file()]
+files = sorted(folder_path.glob("PX4-quadrotor-example-log_*.csv"))
 
 for file in files:
-    print(file.name.strip('PX4-quadrotor-example-log'))
+    print(file.name.removeprefix('PX4-quadrotor-example-log'))
 ```
 
 ~50 CSV flight log names are printed.
@@ -69,11 +70,11 @@ _vehicle_attitude_setpoint_0.csv
 
 ## Inspect PX4 GPS log
 
-Inspect a single log file (`..log_vehicle_gps_position_0.csv`). Note that the `timestamp` column is common across log files and always in relative microseconds, meaning microseconds from the start of the flight or whenever the sensor began recording.
+Inspect a single log file (`..log_vehicle_gps_position_0.csv`). The `timestamp` column uses microseconds since system start. This example assumes the selected logs share that boot-relative clock; it is not time since each sensor began recording.
 
 ```python
 
-from pathlib import Path
+import polars as pl
 
 full_path = folder_path / 'PX4-quadrotor-example-log_vehicle_gps_position_0.csv'
 
@@ -92,9 +93,11 @@ df_gps.head().select(df_gps.columns[:6])
 
 <table border="1" class="dataframe"><thead><tr><th>timestamp</th><th>time_utc_usec</th><th>lat</th><th>lon</th><th>alt</th><th>alt_ellipsoid</th></tr><tr><td>i64</td><td>i64</td><td>i64</td><td>i64</td><td>i64</td><td>i64</td></tr></thead><tbody><tr><td>96689774</td><td>1581933170999989</td><td>473566110</td><td>85190396</td><td>423805</td><td>471145</td></tr><tr><td>96890716</td><td>1581933171199988</td><td>473566109</td><td>85190398</td><td>423779</td><td>471119</td></tr><tr><td>97089357</td><td>1581933171399988</td><td>473566107</td><td>85190398</td><td>423756</td><td>471096</td></tr><tr><td>97289265</td><td>1581933171599988</td><td>473566105</td><td>85190398</td><td>423687</td><td>471028</td></tr><tr><td>97490058</td><td>1581933171799988</td><td>473566103</td><td>85190400</td><td>423665</td><td>471005</td></tr></tbody></table>
 
-Plot the recorded latitude vs longitude from the GPS sensor:
+Plot the recorded latitude vs longitude from the GPS sensor. Install the plotting packages with `pip install plotly kaleido`; exporting images also requires Chrome to be available to Kaleido.
 
 ```python
+import plotly.express as px
+import plotly.io as pio
 
 pio.templates.default = 'plotly_dark'
 
@@ -152,11 +155,11 @@ for file in files:
         df_csv = pl.read_csv(full_path)
         if 'timestamp' in df_csv.columns:
             log_path.append(full_path)
-            log_names.append(file.name.strip('PX4-quadrotor-example-log'))
+            log_names.append(file.name.removeprefix('PX4-quadrotor-example-log'))
             time_range_mins.append(df_csv['timestamp'].min())
             time_range_maxs.append(df_csv['timestamp'].max())
-    except:
-        pass
+    except pl.exceptions.PolarsError as exc:
+        print(f"Skipping unreadable CSV {file.name}: {exc}")
 
 df_log_time_ranges = pl.DataFrame({
     "log_files": log_names,
@@ -195,30 +198,28 @@ Each log's start and end times vary slightly but are generally uniform. No senso
 
 ### Extract absolute flight time
 
-To get an absolute flight start time, use the `time_utc_usec` column from the GPS sensor log file.
+The GPS log pairs `time_utc_usec` with a boot-relative measurement time from the same row. When `timestamp_time_relative` is present, that measurement time is `timestamp + timestamp_time_relative`; see the [PX4 GPS message definition](https://raw.githubusercontent.com/PX4/PX4-Autopilot/v1.10.0/msg/vehicle_gps_position.msg). Use one row with a valid UTC value to find the absolute origin of the boot clock; taking independent minima could pair different measurements. For logs without the offset field, this example assumes `timestamp` directly corresponds to `time_utc_usec`. It also assumes one boot session and one shared clock across the logs.
+
+Keep the arithmetic in integer microseconds. The run uses the earliest and latest relative timestamps across the selected logs:
 
 ```python
-from datetime import datetime, UTC
+from datetime import UTC, datetime, timedelta
 
-def convert_micro_s_to_hours_minutes_seconds(micro_s):
-    total_seconds = micro_s // 1000 // 1000
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    return hours, minutes, seconds
+valid_gps = df_gps.filter(pl.col("time_utc_usec") > 0)
+if valid_gps.is_empty():
+    raise ValueError("The GPS log has no valid UTC timestamp to anchor the boot clock")
+gps_clock = valid_gps.row(0, named=True)
+gps_boot_micro_s = int(gps_clock["timestamp"]) + int(gps_clock.get("timestamp_time_relative", 0))
+boot_origin_micro_s = int(gps_clock["time_utc_usec"]) - gps_boot_micro_s
+flight_start_micro_s = boot_origin_micro_s + int(df_filtered_logs["min_micro_s"].min())
+flight_end_micro_s = boot_origin_micro_s + int(df_filtered_logs["max_micro_s"].max())
 
-timestamp_seconds = df_gps['time_utc_usec'].min() / 1_000_000
-dt_flight_start = datetime.fromtimestamp(timestamp_seconds, UTC)
-dt_flight_duration_micro_s = df_filtered_logs['max_micro_s'].max() - df_filtered_logs['min_micro_s'].min()
-hours, minutes, seconds = convert_micro_s_to_hours_minutes_seconds(dt_flight_duration_micro_s)
-
+dt_flight_start = datetime.fromtimestamp(flight_start_micro_s // 1_000_000, UTC) + timedelta(
+    microseconds=flight_start_micro_s % 1_000_000
+)
+flight_duration = timedelta(microseconds=flight_end_micro_s - flight_start_micro_s)
 print(f"Flight start time in UTC: {dt_flight_start}")
-print(f"Flight duration: {hours}h {minutes}m {seconds}s")
-```
-
-```yaml
-Flight start time in UTC: 2020-02-17 09:52:50.999989+00:00
-Flight duration: 0h 2m 0s
+print(f"Flight duration: {flight_duration}")
 ```
 
 ## Create PX4 log run
@@ -230,14 +231,13 @@ Use the {py:obj}`create_run() <nominal.core.NominalClient.create_run>` routine t
 
 ```python
 from nominal.core import NominalClient
-from datetime import timedelta
 
 client = NominalClient.from_profile("default")
 
 quadrotor_run = client.create_run(
     name = 'PX4 single quadrotor flight',
-    start = dt_flight_start,
-    end = dt_flight_start + timedelta(microseconds=dt_flight_duration_ms),
+    start = flight_start_micro_s * 1_000,
+    end = flight_end_micro_s * 1_000,
     description = 'https://logs.px4.io/plot_app?log=89b87d6f-d286-4703-b36b-573191a907f1',
 )
 ```
@@ -250,49 +250,40 @@ If you head over to the [Runs page](https://app.gov.nominal.io/runs) on Nominal 
 
 To upload all ~50 PX4 log files to the quadrotor run, iterate through the lookup table created and validated above.
 
-There may be multiple CSV files associated with each log category, for example `_battery_status_0.csv` and `_battery_status_1.csv`. Combine these into a single `battery_status.csv` file.
+There may be multiple CSV files associated with each log category, for example `_battery_status_0.csv` and `_battery_status_1.csv`. Append these to one dataset for that category; no intermediate combined CSV is needed.
 
 For each category, create a dataset using {py:obj}`client.create_dataset <nominal.core.NominalClient.create_dataset>`, and then use
-{py:obj}`Dataset.add_tabular_data() <nominal.core.Dataset.add_tabular_data>` to upload related CSV files. Then use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>` to associate the dataset with the run.
+{py:obj}`Dataset.add_tabular_data() <nominal.core.Dataset.add_tabular_data>` to upload related CSV files. After every file finishes ingesting, use
+{py:obj}`Run.add_datasets() <nominal.core.Run.add_datasets>` to associate the datasets with the run in one call.
 
 ```python
+import nominal.ts as ts
 
-log_files = {}
+log_datasets = {}
+uploaded_files = []
+for row in df_filtered_logs.iter_rows(named=True):
+    file_name = row["log_files"]
+    ref_name = '-'.join(file_name.split('_')[1:-1])
+    csv_name = f'{ref_name}.csv'
+    if ref_name not in log_datasets:
+        print('Creating dataset:', csv_name)
+        log_datasets[ref_name] = client.create_dataset(name=csv_name)
+    dataset = log_datasets[ref_name]
 
-# Add logs to the dataset
-for row in df_filtered_logs.iter_rows():
-    file_name = row[0]
-    full_path = row[3]
-    df_csv = pl.read_csv(full_path)
-    if 'timestamp' in df_csv.columns:
-        try:
-            ref_name = '-'.join(file_name.split('_')[1:-1])
-            csv_name = f'{ref_name}.csv'
-
-            if ref_name in log_files:{
-                dataset = log_files[ref_name]
-            else:
-                print('\nCreating dataset:', csv_name)
-                dataset = client.create_dataset(name=csv_name)
-                log_files[ref_name] = dataset
-
-            print(f'Adding `{file_name}` to dataset `{csv_name}`')
-            dataset.add_tabular_data(
-                path=full_path,
-                timestamp_column = 'timestamp',
-                timestamp_type = 'epoch_microseconds'
-            )
-        except:
-            print('Error uploading: ', file_name)
-            print(traceback.format_exc())
-
-print()
-for ref_name, dataset in log_files.items():
-    print(f'Adding dataset `{dataset.name}` to run with ref_name `{ref_name}`')
-    quadrotor_run.add_dataset(
-        ref_name=ref_name,
-        dataset=dataset
+    print(f'Adding `{file_name}` to dataset `{csv_name}`')
+    dataset_file = dataset.add_tabular_data(
+        path=row["log_path"],
+        timestamp_column="timestamp",
+        timestamp_type=ts.Relative("microseconds", start=boot_origin_micro_s * 1_000),
     )
+    uploaded_files.append(dataset_file)
+
+# Wait for every uploaded file before using the run in a workbook.
+for dataset_file in uploaded_files:
+    dataset_file.poll_until_ingestion_completed()
+
+quadrotor_run.add_datasets(log_datasets)
+print("Added log datasets to run")
 ```
 
 ```
@@ -306,8 +297,7 @@ Adding `_battery_status_1.csv` to dataset `battery-status.csv`
 
 ...
 
-Adding dataset `actuator-outputs.csv` to run with ref_name `actuator-outputs`
-Adding dataset `battery-status.csv` to run with ref_name `battery-status`
+Added log datasets to run
 ```
 
 On Nominal, navigate from the [Runs page](https://app.gov.nominal.io/runs) to "PX4 single quadrotor flight".
