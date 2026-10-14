@@ -29,7 +29,7 @@ For convenience and educational purposes, Nominal hosts test sample data on the 
 
 Download a 3D hdf5 (h5) file containing x, y, and z coordinates from the hub.
 
-Install the Nominal `hdf5` extra: `pip install 'nominal[hdf5]'`
+Install the packages used in this example: `pip install nominal h5py huggingface_hub`.
 
 ```python
 from huggingface_hub import hf_hub_download
@@ -48,6 +48,8 @@ local_path = hf_hub_download(
 
 To inspect the file's layout and find where the data is and its schema, use the `local_path` from the download command above:
 ```python
+
+import h5py
 
 def print_structure(name, obj):
     if isinstance(obj, h5py.Group):

@@ -2,16 +2,16 @@ The Nominal Client authenticates two ways: with a profile stored on disk, or wit
 
 ::::{dropdown} Storing credentials to disk
 
-Run the following in a terminal and follow on-screen prompts to set up a connection profile:
+Run the following in a terminal, replacing `<API_TOKEN>` with your API key:
 
 ```shell
-nom config profile add default -t <api-token>
+nom config profile add default -t "<API_TOKEN>"
 ```
 
 Alternatively, if `nom` is missing from the path:
 
 ```shell
-python -m nominal.cli config profile add default
+python -m nominal.cli config profile add default -t "<API_TOKEN>"
 ```
 
 Here, "default" can be any name chosen to represent this profile (reminder: a profile represents a base URL, API key, and workspace).
@@ -19,7 +19,7 @@ Here, "default" can be any name chosen to represent this profile (reminder: a pr
 If you have more than one workspace, you must specify the workspace rid as follows:
 
 ```shell
-nom config profile add default -t <api-token> -w <workspace-rid>
+nom config profile add default -t "<API_TOKEN>" -w "<WORKSPACE_RID>"
 ```
 
 You can get the workspace rid by selecting the home button, and clicking on workspace settings. From there, you can hover over the workspace you wish to use and click on the three dots icon, after which you can copy the workspace rid to your clipboard.
@@ -27,7 +27,7 @@ You can get the workspace rid by selecting the home button, and clicking on work
 If you are connecting to a self-hosted Nominal stack, you must also specify the API URL with `-u`:
 
 ```shell
-nom config profile add default -t <api-token> -u <https://api.nominal.companyname.com/api>
+nom config profile add default -t "<API_TOKEN>" -u "https://api.nominal.companyname.com/api"
 ```
 
 The profile will be stored in `~/.config/nominal/config.yml`, and can then be used to create a client:

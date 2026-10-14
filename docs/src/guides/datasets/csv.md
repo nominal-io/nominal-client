@@ -42,6 +42,8 @@ Use the popular [Polars](https://pola.rs/) library to download and inspect the d
 
 ```python
 
+import polars as pl
+
 df = pl.read_csv('hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv')
 df.write_csv('frosty_flight_1k_rows.csv')
 
@@ -67,7 +69,7 @@ dataset.add_tabular_data(
 print('Uploaded dataset:', dataset.rid)
 ```
 
-Equivalently, since your CSV is already loaded in the Polars dataframe `df`, you can upload it with the `upload_dataframe()` method:
+Equivalently, since your CSV is already loaded in the Polars dataframe `df`, you can upload it with the `upload_dataframe()` method. Install `pyarrow` with `pip install pyarrow` for the Polars-to-pandas conversion used below:
 
 ```python
 from nominal.thirdparty.pandas import upload_dataframe

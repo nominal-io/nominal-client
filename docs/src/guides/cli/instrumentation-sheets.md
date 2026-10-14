@@ -32,7 +32,23 @@ Depending on your organization, this document may also be called:
 
 ## File Format Requirements
 
-Your instrumentation sheet must be in CSV or Excel format (`.csv`, `.xlsx`, `.xls`) with exactly three columns:
+Your instrumentation sheet must be in CSV or Excel format (`.csv`, `.xlsx`, `.xls`). `Channel` is required; `Description` and `UCUM Unit` are optional. Extra columns are ignored.
+
+For `.xlsx` files, install the Excel support extra:
+
+```bash
+pip install "nominal[mis]"
+```
+
+For legacy `.xls` files, also install `xlrd`:
+
+```bash
+pip install xlrd
+```
+
+The examples below use a saved profile named `default`. Replace it with your profile name.
+
+Recognized columns:
 
 | Column Name | Description | Example |
 |------------|-------------|---------|
@@ -65,7 +81,7 @@ Many organizations already have instrumentation sheets, but they may not be in t
 First, export the list of units that Nominal supports:
 
 ```bash
-nom mis list-units --output nominal_units.csv --format csv
+nom mis list-units --profile default --output nominal_units.csv --format csv
 ```
 
 This creates a CSV file with two columns:
@@ -117,7 +133,7 @@ Note: The `2` in VLOOKUP returns the second column (UCUM Unit).
 Some units may not have UCUM equivalents. Nominal will still display these units, but they won't work with the Unit Conversion transform. To identify these units before uploading:
 
 ```bash
-nom mis validate path/to/your/mis.csv
+nom mis validate --profile default path/to/your/mis.csv
 ```
 
 This command will report any units that are not recognized:
@@ -140,19 +156,19 @@ You can then decide whether to correct these units or accept them as display-onl
 Apply channel descriptions and units from your instrumentation sheet to a dataset:
 
 ```bash
-nom mis process path/to/your/mis.csv --dataset-rid ri.nominal.dataset.abc123
+nom mis process --profile default path/to/your/mis.csv --dataset-rid ri.nominal.dataset.abc123
 ```
 
 **For Excel files with a single sheet:**
 ```bash
-nom mis process path/to/your/mis.xlsx --dataset-rid ri.nominal.dataset.abc123
+nom mis process --profile default path/to/your/mis.xlsx --dataset-rid ri.nominal.dataset.abc123
 ```
 
-The CLI will automatically use the only sheet in the file.
+The CLI will automatically use the only sheet in the file. Existing channel metadata is retained when it conflicts with the sheet; pass `--override-channel-info` to replace it.
 
 **For Excel files with multiple sheets:**
 ```bash
-nom mis process path/to/your/mis.xlsx --dataset-rid ri.nominal.dataset.abc123 --sheet "Instrumentation"
+nom mis process --profile default path/to/your/mis.xlsx --dataset-rid ri.nominal.dataset.abc123 --sheet "Instrumentation"
 ```
 
 You must specify which sheet contains your MIS data using the `--sheet` option.
@@ -162,12 +178,12 @@ You must specify which sheet contains your MIS data using the `--sheet` option.
 Check if all units in your MIS file are supported by Nominal before processing:
 
 ```bash
-nom mis validate path/to/your/mis.csv
+nom mis validate --profile default path/to/your/mis.csv
 ```
 
 For Excel files:
 ```bash
-nom mis validate path/to/your/mis.xlsx --sheet "Instrumentation"
+nom mis validate --profile default path/to/your/mis.xlsx --sheet "Instrumentation"
 ```
 
 This will report:
@@ -180,17 +196,17 @@ Export all units supported by Nominal:
 
 **As a table (default):**
 ```bash
-nom mis list-units
+nom mis list-units --profile default
 ```
 
 **As a CSV file:**
 ```bash
-nom mis list-units --output units.csv --format csv
+nom mis list-units --profile default --output units.csv --format csv
 ```
 
 **As a table file:**
 ```bash
-nom mis list-units --output units.txt --format table
+nom mis list-units --profile default --output units.txt --format table
 ```
 
 ## Complete Workflow Example
@@ -199,7 +215,7 @@ Here's a complete workflow for applying instrumentation data to a dataset:
 
 ### 1. Export Nominal's unit list
 ```bash
-nom mis list-units --output nominal_units.csv --format csv
+nom mis list-units --profile default --output nominal_units.csv --format csv
 ```
 
 ### 2. Prepare your MIS file
@@ -210,14 +226,14 @@ nom mis list-units --output nominal_units.csv --format csv
 
 ### 3. Validate your units
 ```bash
-nom mis validate ~/instrumentation/flight_test_mis.csv
+nom mis validate --profile default ~/instrumentation/flight_test_mis.csv
 ```
 
 Review any warnings about display-only units and correct if needed.
 
 ### 4. Process the MIS file
 ```bash
-nom mis process ~/instrumentation/flight_test_mis.csv --dataset-rid ri.nominal.dataset.abc123
+nom mis process --profile default ~/instrumentation/flight_test_mis.csv --dataset-rid ri.nominal.dataset.abc123
 ```
 
 The CLI will:
@@ -240,11 +256,11 @@ This warning means a channel in your MIS file doesn't exist in your dataset. Com
 ### "Excel file has multiple sheets"
 If you see this error, you need to specify which sheet contains your MIS data:
 ```bash
-nom mis process file.xlsx --dataset-rid ri.nominal.dataset.abc123 --sheet "Sheet1"
+nom mis process --profile default file.xlsx --dataset-rid ri.nominal.dataset.abc123 --sheet "Sheet1"
 ```
 
-### "MIS file must have columns: channel, description, ucum unit"
-Your file is missing one or more required columns. Ensure your file has exactly these three columns (case-insensitive).
+### Missing `Channel` column
+Ensure your file has a `Channel` column (case-insensitive). Descriptions and units are optional.
 
 ### "Error parsing MIS file"
 The file format is not recognized. Ensure your file is:
@@ -282,7 +298,7 @@ Here are some commonly used UCUM units in aerospace testing:
 
 :::{tip}
 
-Use `nom mis list-units` to see the complete list of available units with their exact UCUM symbols.
+Use `nom mis list-units --profile default` to see the complete list of available units with their exact UCUM symbols.
 :::
 
 ## Best Practices
