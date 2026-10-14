@@ -345,6 +345,33 @@ def test_copy_attachments_skips_archived() -> None:
     ctx.destination_client.create_attachment_from_io.assert_called_once()
 
 
+@pytest.mark.parametrize("already_mapped", [False, True])
+@patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
+def test_migrate_by_rid_clears_previous_copy_failure(mock_attachment_cls: MagicMock, already_mapped: bool) -> None:
+    """Workbook-driven attachment recovery clears stale skips for new and already-mapped copies."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+    assert len(ctx.migration_state.skipped_resources) == 1
+
+    destination = MagicMock(rid=_rid(101))
+    ctx.destination_client.create_attachment_from_io.reset_mock(side_effect=True)
+    ctx.destination_client.create_attachment_from_io.return_value = destination
+    if already_mapped:
+        ctx.migration_state.record_mapping(ResourceType.ATTACHMENT, source.rid, destination.rid)
+        ctx.destination_client.get_attachment.return_value = destination
+
+    mock_attachment_cls._from_proto.return_value = source
+    recovered = migrator.migrate_by_rid(source._clients, source.rid)
+
+    assert recovered is destination
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, source.rid) == destination.rid
+    assert ctx.migration_state.skipped_resources == []
+    assert ctx.destination_client.create_attachment_from_io.call_count == (0 if already_mapped else 1)
+
+
 @pytest.mark.parametrize(
     "error",
     [

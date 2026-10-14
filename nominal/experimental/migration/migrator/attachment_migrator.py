@@ -33,9 +33,6 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         destination routing stays consistent for already-mapped attachments.
         """
         source_attachment = Attachment._from_proto(source_clients, _get_attachment(source_clients, attachment_rid))
-        existing_attachment = self.get_existing_destination_resource(source_attachment)
-        if existing_attachment is not None:
-            return existing_attachment
         return self.copy_from(source_attachment)
 
     def copy_attachments(self, source_attachments: Iterable[Attachment], owner: str) -> list[Attachment]:
@@ -69,9 +66,6 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                 self.ctx.migration_state.set_skip(
                     ResourceType.ATTACHMENT, source_attachment.rid, f"copy failed: {error}"
                 )
-            else:
-                # This attempt's outcome supersedes any copy-failure skip from an earlier run.
-                self.ctx.migration_state.set_skip(ResourceType.ATTACHMENT, source_attachment.rid, None)
         return copied
 
     def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Attachment:
@@ -80,11 +74,13 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
     def _copy_from_impl(self, source: Attachment, options: ResourceCopyOptions) -> Attachment:
         existing_attachment = self.get_existing_destination_resource(source)
         if existing_attachment is not None:
+            self.ctx.migration_state.set_skip(self.resource_type, source.rid, None)
             return existing_attachment
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
+            self.ctx.migration_state.set_skip(self.resource_type, source.rid, None)
             return source
 
         destination_client = self.destination_client_for(source)
@@ -100,6 +96,7 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                 labels=raw.labels,
             )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_attachment.rid)
+        self.ctx.migration_state.set_skip(self.resource_type, source.rid, None)
         return new_attachment
 
     def _get_resource_name(self, resource: Attachment) -> str:
