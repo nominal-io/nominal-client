@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import grpc
 import pytest
 
 from nominal.core.channel import ChannelDataType
-from nominal.core.datasource import BatchAddChannelsResult, CreateChannelRequest, DataSource
-
-
-def _make_channels(n: int) -> list[CreateChannelRequest]:
-    return [CreateChannelRequest(name=f"ch{i}", data_type=ChannelDataType.DOUBLE) for i in range(n)]
+from nominal.core.datasource import CreateChannelRequest, DataSource
+from nominal.exceptions import NominalPermissionDeniedError
+from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as metadata_proto
+from nominal.protos.seriesmetadata.v1 import series_metadata_pb2 as proto
+from nominal.protos.types import series_pb2
 
 
 @pytest.fixture
-def mock_clients():
+def clients():
     clients = MagicMock()
     clients.series_metadata = MagicMock()
     # Default metadata reads to an empty result.
@@ -22,174 +23,153 @@ def mock_clients():
 
 
 @pytest.fixture
-def mock_datasource(mock_clients):
-    return DataSource(rid="test-datasource-rid", _clients=mock_clients)
+def datasource(clients):
+    return DataSource(rid="ri.datasource.test", _clients=clients)
 
 
-def test_batch_add_channels_single_batch(mock_datasource: DataSource, mock_clients: MagicMock):
-    """All channels fit in one batch, so batch_create is called exactly once."""
-    channels = [
-        CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE),
-        CreateChannelRequest(name="ch2", data_type=ChannelDataType.STRING, description="a string"),
-        CreateChannelRequest(name="ch3", data_type=ChannelDataType.INT, unit="m/s"),
+@pytest.mark.parametrize(
+    "data_type,expected",
+    [
+        (ChannelDataType.DOUBLE, proto.NOMINAL_DATA_TYPE_DOUBLE),
+        (ChannelDataType.STRING, proto.NOMINAL_DATA_TYPE_STRING),
+        (ChannelDataType.LOG, proto.NOMINAL_DATA_TYPE_LOG),
+        (ChannelDataType.INT, proto.NOMINAL_DATA_TYPE_INT64),
+        (ChannelDataType.UINT, proto.NOMINAL_DATA_TYPE_UINT64),
+        (ChannelDataType.DOUBLE_ARRAY, proto.NOMINAL_DATA_TYPE_DOUBLE_ARRAY),
+        (ChannelDataType.STRING_ARRAY, proto.NOMINAL_DATA_TYPE_STRING_ARRAY),
+        (ChannelDataType.STRUCT, proto.NOMINAL_DATA_TYPE_STRUCT),
+        (ChannelDataType.VIDEO, proto.NOMINAL_DATA_TYPE_VIDEO),
+        (ChannelDataType.UNKNOWN, proto.NOMINAL_DATA_TYPE_UNSPECIFIED),
+    ],
+)
+def test_nominal_locator_conversion(datasource, clients, data_type, expected):
+    """Channel types retain their storage type and locator channel through protobuf conversion."""
+    datasource.batch_add_channels([CreateChannelRequest("velocity", data_type, "speed", "m/s")])
+    request = clients.series_metadata.BatchCreateSeriesMetadata.call_args.args[0].requests[0]
+    assert request == proto.CreateSeriesMetadataRequest(
+        channel="velocity",
+        data_source_rid=datasource.rid,
+        locator_template=proto.LocatorTemplate(
+            nominal=proto.NominalLocatorTemplate(
+                channel="velocity",
+                data_type=expected,
+            )
+        ),
+        description="speed",
+        unit="m/s",
+        if_exists=proto.RETURN_EXISTING,
+    )
+
+
+@pytest.mark.parametrize(
+    "method,policy",
+    [
+        ("batch_add_channels", proto.RETURN_EXISTING),
+        ("batch_update_or_create_channels", proto.UPDATE_EXISTING),
+    ],
+)
+def test_batches_preserve_policy_order_and_missing(datasource, clients, method, policy):
+    """Writes keep 500-item batches and report requests absent from channel metadata hydration."""
+    channels = [CreateChannelRequest(f"ch{i}", ChannelDataType.DOUBLE) for i in range(501)]
+    clients.channel_metadata.BatchGetChannelMetadata.side_effect = [
+        metadata_proto.BatchGetChannelMetadataResponse(
+            channel_metadata=[
+                metadata_proto.ChannelMetadata(
+                    channel_identifier=metadata_proto.ChannelIdentifier(channel_name="ch0", data_source_rid=datasource.rid),
+                    data_type=series_pb2.DOUBLE,
+                    unit="m",
+                    description="stored",
+                )
+            ]
+        ),
+        metadata_proto.BatchGetChannelMetadataResponse(channel_metadata=[]),
     ]
-    mock_datasource.batch_add_channels(channels)
-
-    assert mock_clients.series_metadata.batch_create.call_count == 1
-    _, batch_req = mock_clients.series_metadata.batch_create.call_args[0]
-    assert [r.channel for r in batch_req.requests] == ["ch1", "ch2", "ch3"]
-
-
-def test_batch_add_channels_empty(mock_datasource: DataSource, mock_clients: MagicMock):
-    """An empty channel list results in no API calls."""
-    mock_datasource.batch_add_channels([])
-    mock_clients.series_metadata.batch_create.assert_not_called()
-
-
-def test_batch_add_channels_request_fields(mock_datasource: DataSource, mock_clients: MagicMock):
-    """Channel name, datasource RID, description, and unit are correctly propagated to the API request."""
-    channels = [
-        CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, description="speed", unit="m/s"),
+    result = getattr(datasource, method)(channels)
+    batches = [call.args[0] for call in clients.series_metadata.BatchCreateSeriesMetadata.call_args_list]
+    assert [len(batch.requests) for batch in batches] == [500, 1]
+    assert [request.channel for batch in batches for request in batch.requests] == [c.name for c in channels]
+    assert all(request.if_exists == policy for batch in batches for request in batch.requests)
+    assert [(c.name, c.data_type, c.unit, c.description) for c in result.channels] == [
+        ("ch0", ChannelDataType.DOUBLE, "m", "stored")
     ]
-    mock_datasource.batch_add_channels(channels)
-
-    _, batch_req = mock_clients.series_metadata.batch_create.call_args[0]
-    req = batch_req.requests[0]
-    assert req.channel == "velocity"
-    assert req.data_source_rid == "test-datasource-rid"
-    assert req.description == "speed"
-    assert req.unit == "m/s"
+    assert result.missing == channels[1:]
 
 
-def test_batch_add_channels_api_failure_propagates(mock_datasource: DataSource, mock_clients: MagicMock):
-    """An exception raised by the API propagates to the caller unchanged."""
-    mock_clients.series_metadata.batch_create.side_effect = RuntimeError("API error")
-    with pytest.raises(RuntimeError, match="API error"):
-        mock_datasource.batch_add_channels(_make_channels(1))
+@pytest.mark.parametrize("value", [None, ""])
+def test_upsert_optional_presence(datasource, clients, value):
+    """Omitted metadata stays absent while explicit empty strings remain present."""
+    datasource.batch_update_or_create_channels([CreateChannelRequest("ch", ChannelDataType.DOUBLE, value, value)])
+    request = clients.series_metadata.BatchCreateSeriesMetadata.call_args.args[0].requests[0]
+    assert request.HasField("description") is (value is not None)
+    assert request.HasField("unit") is (value is not None)
+    assert not request.HasField("channel_kind")
 
 
-def test_batch_add_channels_returns_channels_and_no_missing(mock_datasource: DataSource):
-    """When all requested channels are created, result.channels is populated and result.missing is empty."""
-    req1 = CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE)
-    req2 = CreateChannelRequest(name="ch2", data_type=ChannelDataType.STRING)
-    mock_ch1, mock_ch2 = MagicMock(), MagicMock()
-    mock_ch1.name = "ch1"
-    mock_ch2.name = "ch2"
-
-    with patch.object(DataSource, "get_channels", return_value=[mock_ch1, mock_ch2]):
-        result = mock_datasource.batch_add_channels([req1, req2])
-
-    assert isinstance(result, BatchAddChannelsResult)
-    assert result.channels == [mock_ch1, mock_ch2]
-    assert result.missing == []
+@pytest.mark.parametrize("method", ["batch_add_channels", "batch_update_or_create_channels"])
+def test_empty_batch_has_no_io(datasource, clients, method):
+    """Empty input returns empty results without writes or hydration."""
+    result = getattr(datasource, method)([])
+    assert result.channels == result.missing == []
+    assert clients.mock_calls == []
 
 
-def test_batch_add_channels_returns_missing_when_server_drops_channel(mock_datasource: DataSource):
-    """Channels not returned by get_channels after creation appear in result.missing."""
-    req1 = CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE)
-    req2 = CreateChannelRequest(name="ch2", data_type=ChannelDataType.DOUBLE)
-    mock_ch1 = MagicMock()
-    mock_ch1.name = "ch1"
+def test_add_channel_hydrates_existing_metadata(datasource, clients):
+    """Single creates return existing channel metadata rather than the requested replacement values."""
+    clients.channel_metadata.BatchGetChannelMetadata.return_value = (
+        metadata_proto.BatchGetChannelMetadataResponse(
+            channel_metadata=[
+                metadata_proto.ChannelMetadata(
+                    channel_identifier=metadata_proto.ChannelIdentifier(channel_name="ch", data_source_rid=datasource.rid),
+                    description="existing",
+                )
+            ]
+        )
+    )
+    channel = datasource.add_channel("ch", ChannelDataType.DOUBLE, description="new")
+    request = clients.series_metadata.CreateSeriesMetadata.call_args.args[0]
+    assert request.if_exists == proto.RETURN_EXISTING
+    assert channel.description == "existing"
+    assert channel.name == "ch"
 
-    with patch.object(DataSource, "get_channels", return_value=[mock_ch1]):  # ch2 not returned
-        result = mock_datasource.batch_add_channels([req1, req2])
 
-    assert result.channels == [mock_ch1]
-    assert result.missing == [req2]
+@pytest.mark.parametrize(
+    "method,rpc",
+    [
+        ("add_channel", "CreateSeriesMetadata"),
+        ("batch_add_channels", "BatchCreateSeriesMetadata"),
+        ("batch_update_or_create_channels", "BatchCreateSeriesMetadata"),
+    ],
+)
+def test_write_errors_are_translated_before_hydration(datasource, clients, fake_rpc_error, method, rpc):
+    """Write failures become Nominal errors without attempting the follow-up metadata lookup."""
+    getattr(clients.series_metadata, rpc).side_effect = fake_rpc_error(grpc.StatusCode.PERMISSION_DENIED)
+    args = (
+        ("ch", ChannelDataType.DOUBLE)
+        if method == "add_channel"
+        else ([CreateChannelRequest("ch", ChannelDataType.DOUBLE)],)
+    )
+    with pytest.raises(NominalPermissionDeniedError):
+        getattr(datasource, method)(*args)
+    clients.channel_metadata.BatchGetChannelMetadata.assert_not_called()
 
 
-def test_batch_update_or_create_channels_single_batch(mock_datasource: DataSource, mock_clients: MagicMock):
-    """All channels fit in one batch, so batch_create_or_update is called exactly once."""
-    channels = [
-        CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE),
-        CreateChannelRequest(name="ch2", data_type=ChannelDataType.STRING, description="a string"),
-        CreateChannelRequest(name="ch3", data_type=ChannelDataType.INT, unit="m/s"),
+def test_repeated_create_names_reach_service(datasource, clients):
+    """Repeated create names retain RETURN_EXISTING so the backend can accept the batch."""
+    channels = [CreateChannelRequest("ch", ChannelDataType.DOUBLE)] * 2
+    datasource.batch_add_channels(channels)
+    requests = clients.series_metadata.BatchCreateSeriesMetadata.call_args.args[0].requests
+    assert [request.channel for request in requests] == ["ch", "ch"]
+    assert all(request.if_exists == proto.RETURN_EXISTING for request in requests)
+
+
+def test_later_batch_failure_stops_writes_and_hydration(datasource, clients, fake_rpc_error):
+    """A failure after a successful batch stops later writes and does not report partial hydrated results."""
+    clients.series_metadata.BatchCreateSeriesMetadata.side_effect = [
+        proto.BatchCreateSeriesMetadataResponse(),
+        fake_rpc_error(grpc.StatusCode.PERMISSION_DENIED),
     ]
-    mock_datasource.batch_update_or_create_channels(channels)
-
-    assert mock_clients.series_metadata.batch_create_or_update.call_count == 1
-    _, batch_req = mock_clients.series_metadata.batch_create_or_update.call_args[0]
-    assert [r.channel for r in batch_req.requests] == ["ch1", "ch2", "ch3"]
-
-
-def test_batch_update_or_create_channels_does_not_use_create_endpoint(
-    mock_datasource: DataSource, mock_clients: MagicMock
-):
-    """Upserts go through the create-or-update endpoint, so pre-existing channels are not an error."""
-    mock_datasource.batch_update_or_create_channels(_make_channels(1))
-    mock_clients.series_metadata.batch_create.assert_not_called()
-
-
-def test_batch_update_or_create_channels_empty(mock_datasource: DataSource, mock_clients: MagicMock):
-    """An empty channel list results in no API calls."""
-    mock_datasource.batch_update_or_create_channels([])
-    mock_clients.series_metadata.batch_create_or_update.assert_not_called()
-
-
-def test_batch_update_or_create_channels_request_fields(mock_datasource: DataSource, mock_clients: MagicMock):
-    """Channel name, datasource RID, description, and unit are correctly propagated to the API request."""
-    channels = [
-        CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, description="speed", unit="m/s"),
-    ]
-    mock_datasource.batch_update_or_create_channels(channels)
-
-    _, batch_req = mock_clients.series_metadata.batch_create_or_update.call_args[0]
-    req = batch_req.requests[0]
-    assert req.channel == "velocity"
-    assert req.data_source_rid == "test-datasource-rid"
-    assert req.description == "speed"
-    assert req.unit == "m/s"
-
-
-def test_batch_update_or_create_channels_sends_none_for_unset_fields(
-    mock_datasource: DataSource, mock_clients: MagicMock
-):
-    """Unset description and unit are sent as None so the server preserves the existing values."""
-    channels = [CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE)]
-    mock_datasource.batch_update_or_create_channels(channels)
-
-    _, batch_req = mock_clients.series_metadata.batch_create_or_update.call_args[0]
-    req = batch_req.requests[0]
-    assert req.description is None
-    assert req.unit is None
-
-
-def test_batch_update_or_create_channels_api_failure_propagates(mock_datasource: DataSource, mock_clients: MagicMock):
-    """An exception raised by the API propagates to the caller unchanged."""
-    mock_clients.series_metadata.batch_create_or_update.side_effect = RuntimeError("API error")
-    with pytest.raises(RuntimeError, match="API error"):
-        mock_datasource.batch_update_or_create_channels(_make_channels(1))
-
-
-def test_batch_update_or_create_channels_returns_channels_and_no_missing(mock_datasource: DataSource):
-    """When all requested channels are upserted, result.channels is populated and result.missing is empty."""
-    req1 = CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE)
-    req2 = CreateChannelRequest(name="ch2", data_type=ChannelDataType.STRING)
-    mock_ch1, mock_ch2 = MagicMock(), MagicMock()
-    mock_ch1.name = "ch1"
-    mock_ch2.name = "ch2"
-
-    with patch.object(DataSource, "get_channels", return_value=[mock_ch1, mock_ch2]):
-        result = mock_datasource.batch_update_or_create_channels([req1, req2])
-
-    assert isinstance(result, BatchAddChannelsResult)
-    assert len(result.channels) == 2
-    assert result.channels[0] == mock_ch1
-    assert result.channels[1] == mock_ch2
-    assert len(result.missing) == 0
-
-
-def test_batch_update_or_create_channels_returns_missing_when_server_drops_channel(mock_datasource: DataSource):
-    """Channels not returned by get_channels after the upsert appear in result.missing."""
-    req1 = CreateChannelRequest(name="ch1", data_type=ChannelDataType.DOUBLE)
-    req2 = CreateChannelRequest(name="ch2", data_type=ChannelDataType.DOUBLE)
-    mock_ch1 = MagicMock()
-    mock_ch1.name = "ch1"
-
-    with patch.object(DataSource, "get_channels", return_value=[mock_ch1]):  # ch2 not returned
-        result = mock_datasource.batch_update_or_create_channels([req1, req2])
-
-    assert len(result.channels) == 1
-    assert result.channels[0] == mock_ch1
-    assert len(result.missing) == 1
-    assert result.missing[0] == req2
+    channels = [CreateChannelRequest(f"ch{i}", ChannelDataType.DOUBLE) for i in range(1001)]
+    with pytest.raises(NominalPermissionDeniedError):
+        datasource.batch_add_channels(channels)
+    assert clients.series_metadata.BatchCreateSeriesMetadata.call_count == 2
+    clients.channel_metadata.BatchGetChannelMetadata.assert_not_called()
