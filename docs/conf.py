@@ -18,10 +18,20 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_click",
     "sphinx_copybutton",
+    "sphinx_design",
+    "sphinxext.rediraffe",
+    "examples",
+    "video",
     "docstring_fences",
     "reference_presentation",
     "nominal_sphinx_theme",
 ]
+
+# Partials are included by guide pages rather than built as standalone pages.
+exclude_patterns = ["guides/_snippets"]
+
+# Keep published links working when reference pages move.
+rediraffe_redirects = "redirects.txt"
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
 # resolves and render as code otherwise.
@@ -29,6 +39,7 @@ default_role = "py:obj"
 
 # -- MyST ---------------------------------------------------------------------
 myst_heading_anchors = 6
+myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
@@ -58,9 +69,11 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
 html_title = "Nominal Python SDK"
-html_static_path = []
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_copy_source = False
 
+nominal_hub_url = "https://dev.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
 
 html_context = {
@@ -74,13 +87,12 @@ html_context = {
 # Right sidebar: on-page contents and edit link, no GitHub repo-stats box.
 html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"]}
 
-nominal_section_sidebar = False
-
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
     nav_socials=["github"],
     nav_links=[
-        {"title": "Documentation", "url": "https://docs.nominal.io/core/sdk/python-client/quickstart"},
-        {"title": "Nominal", "url": "https://nominal.io"},
+        {"title": "Guides", "url": "index"},
+        {"title": "Examples", "url": "examples/index"},
+        {"title": "SDK", "url": "sdk/index"},
     ],
 )

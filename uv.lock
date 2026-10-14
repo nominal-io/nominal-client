@@ -399,7 +399,7 @@ name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markupsafe", marker = "python_full_version >= '3.12'" },
+    { name = "markupsafe" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
@@ -416,7 +416,7 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "mdurl", marker = "python_full_version < '3.12'" },
+    { name = "mdurl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5b/f5/4ec618ed16cc4f8fb3b701563655a69816155e79e24a17b651541804721d/markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3", size = 73070, upload-time = "2025-08-11T12:57:52.854Z" }
 wheels = [
@@ -439,7 +439,7 @@ resolution-markers = [
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "mdurl", marker = "python_full_version >= '3.12'" },
+    { name = "mdurl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz", hash = "sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49", size = 82454, upload-time = "2026-05-07T12:08:28.36Z" }
 wheels = [
@@ -525,7 +525,7 @@ name = "mdit-py-plugins"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/59/fc/f8d0863f8862f25602c0404d75568e89fb6b4109804645e5cdfb1be5cf56/mdit_py_plugins-0.6.1.tar.gz", hash = "sha256:a2bca0f039f39dbd35fb74ae1b5f998608c437463371f0ff7f49a19a17a114d0", size = 56114, upload-time = "2026-05-13T09:03:38.91Z" }
 wheels = [
@@ -593,12 +593,12 @@ name = "myst-parser"
 version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "docutils", marker = "python_full_version >= '3.12'" },
-    { name = "jinja2", marker = "python_full_version >= '3.12'" },
-    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "mdit-py-plugins", marker = "python_full_version >= '3.12'" },
-    { name = "pyyaml", marker = "python_full_version >= '3.12'" },
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "docutils" },
+    { name = "jinja2" },
+    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" } },
+    { name = "mdit-py-plugins" },
+    { name = "pyyaml" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/21/dc/603751677fff302f34396e206b610f556a59d7fe58b9a2145f54e96b48e8/myst_parser-5.1.0.tar.gz", hash = "sha256:ab69322dc6719dcc7f296479dbb70181b66df6ed315064f92dbc85c0e1bf2f02", size = 101182, upload-time = "2026-05-13T09:38:19.361Z" }
 wheels = [
@@ -668,6 +668,8 @@ docs = [
     { name = "sphinx", marker = "python_full_version >= '3.12'" },
     { name = "sphinx-click", marker = "python_full_version >= '3.12'" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx-design", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxext-rediraffe", marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
@@ -679,7 +681,7 @@ requires-dist = [
     { name = "nominal-api-protos", specifier = "==0.1483.0" },
     { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1315.0" },
     { name = "nominal-ibis", marker = "extra == 'ibis'", editable = "packages/nominal-ibis" },
-    { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.10.1" },
+    { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.10.3" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
     { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
     { name = "openpyxl", marker = "extra == 'mis'", specifier = ">=3.1.0" },
@@ -715,10 +717,12 @@ dev = [
 ]
 docs = [
     { name = "myst-parser", marker = "python_full_version >= '3.12'", specifier = ">=5.1.0" },
-    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff" },
+    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=95a37f535ce2e6d93f064a31fca8b7d3223ac63c" },
     { name = "sphinx", marker = "python_full_version >= '3.12'", specifier = ">=9.1.0" },
     { name = "sphinx-click", marker = "python_full_version >= '3.12'", specifier = ">=6.0.0" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'", specifier = ">=0.5.2" },
+    { name = "sphinx-design", marker = "python_full_version >= '3.12'", specifier = ">=0.7.0" },
+    { name = "sphinxext-rediraffe", marker = "python_full_version >= '3.12'", specifier = ">=0.3.0" },
 ]
 
 [[package]]
@@ -784,37 +788,28 @@ requires-dist = [
 [[package]]
 name = "nominal-sphinx-theme"
 version = "0.1.0"
-source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff#ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
+source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=95a37f535ce2e6d93f064a31fca8b7d3223ac63c#95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
 dependencies = [
-    { name = "shibuya", marker = "python_full_version >= '3.12'" },
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "shibuya" },
+    { name = "sphinx" },
 ]
 
 [[package]]
 name = "nominal-streaming"
-version = "0.10.1"
+version = "0.10.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil", marker = "sys_platform != 'emscripten'" },
-    { name = "typing-extensions", marker = "sys_platform != 'emscripten'" },
+    { name = "python-dateutil" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/d9/205c309598cb9e444bf8585deb1e9b81d660dfc5a9de8f76dd8aadaa4d57/nominal_streaming-0.10.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:fd081dd4c338911f3a8d9d74d7228778baf552b35cd5ad75538e768af43b7131", size = 3683440, upload-time = "2026-09-22T16:24:37.848Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/78/de27b05c338626d1d54e7de5f9f5cd16c5f3eace356219b6b4c31a9eafa5/nominal_streaming-0.10.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b6aadab1129ad9d8f907fbeb0de5b28bbd30a170e536968409fef5a334ac41cb", size = 3695383, upload-time = "2026-09-22T16:20:25.685Z" },
-    { url = "https://files.pythonhosted.org/packages/53/c7/9388db2c3bac078fefc360e6ade4fc4cffce0a37c102b91f7ec5bd2313a8/nominal_streaming-0.10.1-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:a782a12783055af3c2efdff617a9fe0ff2f7553df113797dbb0123fd6a2924d1", size = 3450831, upload-time = "2026-09-22T16:22:32.709Z" },
-    { url = "https://files.pythonhosted.org/packages/c8/0b/2043f858db36e24b19849f14b187308f9ab5729ab6021c364eb0ded5d0b4/nominal_streaming-0.10.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:718a762ea019214d17be3afcf05fd247d84cf264717a2254c311f75e780d649b", size = 3983157, upload-time = "2026-09-22T16:22:34.895Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/ac/a501f57feb85fd0398024a187a1b27c24ae54fe1a264b38307e21cb6d959/nominal_streaming-0.10.1-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:056161520a7d36039f794f56ca0f29602b9166161234aa9ba354efa3ff7f30fd", size = 3853711, upload-time = "2026-09-22T16:22:16.147Z" },
-    { url = "https://files.pythonhosted.org/packages/51/c7/9b05be96961401e2785898da6253baed82a3ac1dc87b92415b60519470fe/nominal_streaming-0.10.1-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:a4b67242fd02683be1e08cba1d56bf7cc9d95f408697deac50f31625373a4732", size = 3645975, upload-time = "2026-09-22T16:23:10.984Z" },
-    { url = "https://files.pythonhosted.org/packages/95/fa/9d17c1e4d8e3f9c83edc82439363e596c692eb5d3171ce6408e391b82712/nominal_streaming-0.10.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:313037a85876116ad17ab019db477623b6ae0a7495c60800eb2d230dbc00abe2", size = 4106104, upload-time = "2026-09-22T16:21:33.723Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/92/709bd0947460541af5d980f147ac6393cc1b37630b1ac43507e09592419a/nominal_streaming-0.10.1-cp310-abi3-win_amd64.whl", hash = "sha256:55da26aa9b053e125b02b548b3493b6886bb2f76a912f2bc9f8c5c82d9918e77", size = 4173133, upload-time = "2026-09-22T16:30:59.302Z" },
-    { url = "https://files.pythonhosted.org/packages/6d/92/cb2d73d789b2ed25c2e32cb761f6d3d5a28bb380116bcec140db167f13c6/nominal_streaming-0.10.1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:06423e22bca23b6d7c80bb17b6943e1543feb5c7c781ea197cc3d0330d8fe144", size = 3690757, upload-time = "2026-09-22T16:25:53.232Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/57/0deabdd0657176df5b2f3c670ede5562a2532c45a97bc9d4cdd9c794bea2/nominal_streaming-0.10.1-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8238dc98a47c3afee1e3d6b3b9c5d841e371f8dae49b53ae72d9bd13bb780e56", size = 3699664, upload-time = "2026-09-22T16:20:42.465Z" },
-    { url = "https://files.pythonhosted.org/packages/e3/b9/c61beb2b2f31cbcd6015958198988e2f94ab245dd51db73d343a53dfa560/nominal_streaming-0.10.1-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:c2dcacab492082b16c717c2140d313dba5f747093d3a90f07c7ace8154d2cf25", size = 3453828, upload-time = "2026-09-22T16:20:02.121Z" },
-    { url = "https://files.pythonhosted.org/packages/56/30/dbed10001ed18017042276e5463cdec616f1c5559b843cd2bcec79ddfb85/nominal_streaming-0.10.1-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f8b3fa984e9791df3918fad9f040791ce6e6d21fb4d6ccb288bd9bd14a2d1c31", size = 3988450, upload-time = "2026-09-22T16:22:30.702Z" },
-    { url = "https://files.pythonhosted.org/packages/5e/68/f888bf2c6a3323d3cf9b63cfce9aa65080217ed4f24cc36f5bb95e1a5338/nominal_streaming-0.10.1-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:053318b6339e03b6a4ed1cc2a4ba60c88c82ae25480e05b8c275f70ca6464928", size = 3860198, upload-time = "2026-09-22T16:23:35.049Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/e1/1e268b24cd16628ebac9da72ecd7ffc68aacab5135dafba9662058215200/nominal_streaming-0.10.1-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:b7d07831341a2b7054e66c1918d402ae2801a5abf0d7ffcd68c485a396f00057", size = 3649166, upload-time = "2026-09-22T16:23:17.007Z" },
-    { url = "https://files.pythonhosted.org/packages/9a/20/2c2e18fb3e74c1194003f5782fe0ef15e518b623e6ef8fa579f7b78031df/nominal_streaming-0.10.1-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:19912f09c2fa2c375dc90a250ffb797829da3e929d46cb13b847c8dcf00abd8b", size = 4113131, upload-time = "2026-09-22T16:23:06.066Z" },
-    { url = "https://files.pythonhosted.org/packages/77/4a/9925a980d9b4ea4b4a2ee21d5c4aea805c9b6c151166fcafb3d1b0fa1357/nominal_streaming-0.10.1-cp311-abi3-win_amd64.whl", hash = "sha256:d51520f9b5884fd3a9e674d4409f06a1d8982b3ca4c1c4e8837456937548e150", size = 4177495, upload-time = "2026-09-22T16:30:24.775Z" },
+    { url = "https://files.pythonhosted.org/packages/28/a7/0a0db75e605b40a4c5edf3b5a0abdba8d6cc15943dad6f932d0ceb552888/nominal_streaming-0.10.3-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:ce357d55d0d07b8c26d65fd1c8da0cd0af481359f0f38d31c485a0f666719b9f", size = 3708572, upload-time = "2026-10-13T18:28:43.723Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/5d/4fdf0cf2540e68391ea406de2e29e367cd506f2269428a327092fa9b5f26/nominal_streaming-0.10.3-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:db987099a107f5fc012dd973aa09769cda8ab3c07a671897d416dc745b267a08", size = 3694424, upload-time = "2026-10-13T18:30:28.123Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/77/732bf62a4744210727605cac54b4fa775a420d4da92ae5af4658de1d8979/nominal_streaming-0.10.3-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:f20e02b480cd8c4867ef917a09ab6e1d44c34443214aa7445cf027f15023bb4a", size = 3466643, upload-time = "2026-10-13T18:28:27.714Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/9f/4efb93c864d5a03e21ae832fe34de2f021683d13576aa1888cd40562feb1/nominal_streaming-0.10.3-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5701a84828db8d35893de44ac7a83208a4faaae8dd37c969932d181a9190c3b7", size = 4007627, upload-time = "2026-10-13T18:30:11.32Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/1a/6c2012b1c1485fbeb31ac194b2fa79fef49321fd3c0c3704a3b50ea2bb08/nominal_streaming-0.10.3-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:7173d0673b1b22bd55e5c1701a26a3717c540584b4b7abe7d347da2444f552fb", size = 3879261, upload-time = "2026-10-13T18:29:15.644Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/8d/e020873dfd62f1c9fa55518c7a6e44bfd767b75ed4371711465936477ae4/nominal_streaming-0.10.3-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:4f469fb1e3676e6bd3d5ce1ebe2f926725da110f38972c7d6f368547e33339fc", size = 3657982, upload-time = "2026-10-13T18:29:32.765Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/4e/4d06becf1f5abacfb07c3792d6c1ef46a0d35ba5b62b12b4cffe6b2ca822/nominal_streaming-0.10.3-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:5578ac054bcf44ce3b2e6582fc482ebd80c2e590bfdf8db080726d30ba3aff23", size = 4117431, upload-time = "2026-10-13T18:28:34.981Z" },
+    { url = "https://files.pythonhosted.org/packages/65/a9/258504b836ce8068c61ac344bcafb85edac279b5279eb4d65ccacfd11b0d/nominal_streaming-0.10.3-cp311-abi3-win_amd64.whl", hash = "sha256:d0054b191e23614d434ddd23486227f0fba9ebc94525b241e765a7bd8b960809", size = 4182529, upload-time = "2026-10-13T18:31:17.605Z" },
 ]
 
 [[package]]
@@ -1287,7 +1282,7 @@ name = "pygments-styles"
 version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
+    { name = "pygments" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/2c/3886ed4783dd78bb62ccab7d43380f526a7e2ff0db8c77d9c87559b2f5de/pygments_styles-0.3.0.tar.gz", hash = "sha256:67746b8fc6ff72c1179ca4d9a8bc89c7f54c196c2ff9d087f07392cd6fde3ecf", size = 15258, upload-time = "2025-11-04T13:15:23.512Z" }
 wheels = [
@@ -1458,8 +1453,8 @@ name = "shibuya"
 version = "2026.7.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pygments-styles", marker = "python_full_version >= '3.12'" },
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "pygments-styles" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ba/d2/8017988e02791162b286576116fedd200ed33e8d8af3579ab3587df3d3d0/shibuya-2026.7.12.tar.gz", hash = "sha256:9496606f5b95595511ad86b773d74b4b8d694a4dcc2f848e6ec34e2ad71d9060", size = 86545, upload-time = "2026-07-11T15:41:16.342Z" }
 wheels = [
@@ -1489,23 +1484,23 @@ name = "sphinx"
 version = "9.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "alabaster", marker = "python_full_version >= '3.12'" },
-    { name = "babel", marker = "python_full_version >= '3.12'" },
-    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "docutils", marker = "python_full_version >= '3.12'" },
-    { name = "imagesize", marker = "python_full_version >= '3.12'" },
-    { name = "jinja2", marker = "python_full_version >= '3.12'" },
-    { name = "packaging", marker = "python_full_version >= '3.12'" },
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
-    { name = "requests", marker = "python_full_version >= '3.12'" },
-    { name = "roman-numerals", marker = "python_full_version >= '3.12'" },
-    { name = "snowballstemmer", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version >= '3.12'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils" },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "roman-numerals" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a/sphinx-9.1.0.tar.gz", hash = "sha256:7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb", size = 8718324, upload-time = "2025-12-31T15:09:27.646Z" }
 wheels = [
@@ -1517,9 +1512,9 @@ name = "sphinx-click"
 version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "python_full_version >= '3.12'" },
-    { name = "docutils", marker = "python_full_version >= '3.12'" },
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "click" },
+    { name = "docutils" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9a/ed/a9767cd1b8b7fbdf260a89d5c8c86e20e3536b9878579e5ab7965a291e55/sphinx_click-6.2.0.tar.gz", hash = "sha256:fc78b4154a4e5159462e36de55b8643747da6cda86b3b52a8bb62289e603776c", size = 27035, upload-time = "2025-12-04T19:33:05.437Z" }
 wheels = [
@@ -1531,11 +1526,23 @@ name = "sphinx-copybutton"
 version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fc/2b/a964715e7f5295f77509e59309959f4125122d648f86b4fe7d70ca1d882c/sphinx-copybutton-0.5.2.tar.gz", hash = "sha256:4cf17c82fb9646d1bc9ca92ac280813a3b605d8c421225fd9913154103ee1fbd", size = 23039, upload-time = "2023-04-14T08:10:22.998Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/48/1ea60e74949eecb12cdd6ac43987f9fd331156388dcc2319b45e2ebb81bf/sphinx_copybutton-0.5.2-py3-none-any.whl", hash = "sha256:fb543fd386d917746c9a2c50360c7905b605726b9355cd26e9974857afeae06e", size = 13343, upload-time = "2023-04-14T08:10:20.844Z" },
+]
+
+[[package]]
+name = "sphinx-design"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/13/7b/804f311da4663a4aecc6cf7abd83443f3d4ded970826d0c958edc77d4527/sphinx_design-0.7.0.tar.gz", hash = "sha256:d2a3f5b19c24b916adb52f97c5f00efab4009ca337812001109084a740ec9b7a", size = 2203582, upload-time = "2026-01-19T13:12:53.297Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/cf/45dd359f6ca0c3762ce0490f681da242f0530c49c81050c035c016bfdd3a/sphinx_design-0.7.0-py3-none-any.whl", hash = "sha256:f82bf179951d58f55dca78ab3706aeafa496b741a91b1911d371441127d64282", size = 2220350, upload-time = "2026-01-19T13:12:51.077Z" },
 ]
 
 [[package]]
@@ -1599,6 +1606,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e4/73/5b5ce3e23b3ded3ea1986c2c2991217460d5fd5161b3e00a8425f5dcb8a3/sqlglot-30.18.0.tar.gz", hash = "sha256:e57e1b205e341979d1df5b1212c1435c598a0437e4619e3f428b15d5bc3a5cc6", size = 6018496, upload-time = "2026-09-03T13:12:58.206Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/9f/3dd2ec8dd84a33e0092f1c815267bc055073f9e833b93e389c59c10f62cc/sqlglot-30.18.0-py3-none-any.whl", hash = "sha256:ee0f9a9f3e2193e763c326e52dfb377b96fdb4292f6305c3ff2d9a220e71c601", size = 748788, upload-time = "2026-09-03T13:12:56.467Z" },
+]
+
+[[package]]
+name = "sphinxext-rediraffe"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/a9/ab13d156049eea633f992424f3e92cb40e3f1b606bb6d01d40a27457d38a/sphinxext_rediraffe-0.3.0.tar.gz", hash = "sha256:f319b3ccb7c3c3b6f63ffa6fd3eeb171b6d272df55075a9e84364394f391f507", size = 22114, upload-time = "2025-09-28T15:31:53.641Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/55/ab40a0d1378ee5c859590a633052cf1d0a1f8435af87558a9f7cd576601a/sphinxext_rediraffe-0.3.0-py3-none-any.whl", hash = "sha256:f4220beafa99c99177488276b8e4fcf61fbeeec4253c1e4aae841a18c475330c", size = 7194, upload-time = "2025-09-28T15:31:52.388Z" },
 ]
 
 [[package]]
