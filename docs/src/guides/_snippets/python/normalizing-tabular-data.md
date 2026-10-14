@@ -5,19 +5,14 @@ Parquet is generally preferred, since it produces smaller files that can be inge
 
 The platform imposes a few additional requirements:
 
-* Only floating point and string columns are supported.
-    :::{note}
-
-    Nominal is considering including other data types, such as vectors, uint64, and others.
-    Please contact your Nominal representative if this is of interest.
-    :::
+* Choose a representation that preserves each channel's meaning. For example, store numeric-looking identifiers as strings to preserve leading zeros. See [Channels and data types](/guides/datasets/channels.md) for the current channel types and how to pre-register them.
 
 * Each file of data *must* have one known column with timestamps.
     Nominal supports a wide array of timestamp types, with some of the most popular including:
     * Absolute floating point \{hours, minutes, seconds, milliseconds, microseconds, nanoseconds\} since unix epoch
     * Relative floating point \{hours, minutes, seconds, milliseconds, microseconds, nanoseconds\} since a provided absolute timestamp
     * [ISO8601 Timestamps](https://en.wikipedia.org/wiki/ISO_8601)
-    * Custom string-based timestamp formats with a provided [jodatime format string](https://www.joda.org/joda-time/apidocs/org/joda/time/format/DateTimeFormat.html)
+    * Custom string-based timestamp formats with a provided [Java DateTimeFormatter pattern](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns)
 * The platform supports *viewing* channels in a hierarchical manner.
     However, data must be flattened during ingest.
 
@@ -41,11 +36,11 @@ The platform imposes a few additional requirements:
 
     You can preserve the hierarchical structure of this data by naming columns appropriately:
 
-    | timestamp | gps.lat | gps.lon | gps.height | imu.roll | imu.pitch | imu.roll |
+    | timestamp | gps.lat | gps.lon | gps.height | imu.roll | imu.pitch | imu.yaw |
     | --- | --- | --- | --- | --- | --- | --- |
     | 12345 | 12.1 | 12.3 | 10000 | 1.23 | -0.2 | 0.0 |
 
-    When creating the dataset using the Python client, you must specify a `prefix_delimiter` of `"."` for the columns to be interpreted hierarchically.
+    When creating the dataset using the Python client, you must specify a `prefix_tree_delimiter` of `"."` for the columns to be interpreted hierarchically.
 
     ::::{tip}
 

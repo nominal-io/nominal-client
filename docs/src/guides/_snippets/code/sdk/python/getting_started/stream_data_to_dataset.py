@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 
 import click
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import Asset, NominalClient
+from nominal.core import Asset, ChannelDataType, NominalClient
+from nominal.core.datasource import CreateChannelRequest
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,19 @@ def main(client: NominalClient) -> None:
     )
     print(f"Dataset: {dataset.name}, RID: {dataset.rid}")
 
+    channels = dataset.batch_update_or_create_channels(
+        [
+            CreateChannelRequest("sine_wave", ChannelDataType.DOUBLE, unit="V"),
+            CreateChannelRequest("temperature", ChannelDataType.DOUBLE, unit="Cel"),
+            CreateChannelRequest("cpu_utilization", ChannelDataType.DOUBLE, unit="%"),
+        ]
+    )
+    if channels.missing:
+        raise click.ClickException(
+            "Could not register streaming channels: "
+            + ", ".join(request.name for request in channels.missing)
+        )
+
     # Streams through Rust when nominal-streaming is installed (it is by default on
     # supported platforms), and falls back to pure Python otherwise.
     with dataset.get_write_stream() as stream:
@@ -129,18 +143,6 @@ def main(client: NominalClient) -> None:
                         "mode": modes[iteration % 3],
                     },
                     tags=tags,
-                )
-
-            # Nominal creates channels lazily on first write, so wait ~10s for
-            # the server's channel index to catch up before setting units.
-            # Values are UCUM symbols.
-            if iteration == 100:
-                dataset.set_channel_units(
-                    {
-                        "sine_wave": "V",
-                        "temperature": "Cel",
-                        "cpu_utilization": "%",
-                    }
                 )
 
             if iteration % 5 == 0:

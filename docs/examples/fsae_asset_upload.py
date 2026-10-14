@@ -110,8 +110,9 @@ def main(filepath: str, client: NominalClient) -> None:
     dataset_file.poll_until_ingestion_completed()
     print("Added CSV data to dataset! All Systems Nominal")
 
-    # Tag every CSV channel that carries a unit in its column name using
-    # strict UCUM symbols so Nominal can do unit conversions. UCUM quirks:
+    # Use UCUM notation for channels whose column names contain units. This
+    # example also allows display-only symbols that the unit catalog does not
+    # recognize; those labels cannot be used for unit conversion. UCUM quirks:
     # - psi      -> [psi]       (bracketed special unit)
     # - mph      -> [mi_i]/h    (international mile per hour)
     # - g-force  -> [g]         (standard gravity; bare "g" is UCUM for grams)

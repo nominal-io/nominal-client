@@ -98,8 +98,8 @@ batch is lost.
 
 ### Writing the schema by hand
 
-Only needed outside Python, or with a tool that wants the schema declared. Records must match this
-exactly, and **the order of the arms in the `values` union is part of what the backend validates**:
+Only needed outside Python, or with a tool that wants the schema declared. Use the canonical schema
+emitted by `nominal-streaming` and documented by {py:meth}`~nominal.core.Dataset.add_avro_stream`:
 
 ```json
 {
@@ -111,8 +111,8 @@ exactly, and **the order of the arms in the `values` union is part of what the b
     {"name": "timestamps", "type": {"type": "array", "items": "long"}},
     {"name": "values", "type": {"type": "array", "items": [
       "double",
-      "long",
       "string",
+      "long",
       {"type": "record", "name": "DoubleArray",
        "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
       {"type": "record", "name": "StringArray",
@@ -125,11 +125,8 @@ exactly, and **the order of the arms in the `values` union is part of what the b
 }
 ```
 
-`timestamps` and `values` are parallel arrays, and `tags` is optional per record. A file whose
-schema does not match fails ingestion with an invalid-schema error rather than ingesting partially.
-
-The earlier version of this schema, whose `values` union held only `double` and `string`, is still
-accepted.
+`timestamps` and `values` are parallel arrays, and `tags` defaults to an empty map per record.
+Use this schema for compatibility; acceptance of other schemas depends on the deployed ingest path.
 
 ## What the format can and cannot represent
 
@@ -150,7 +147,8 @@ precision loss.
 fractional form, and a value beyond the 64-bit range fails ingestion with a
 timestamps-out-of-range error.
 
-**Arrays are always float arrays.** There is no integer-array arm, so integer arrays are upcast.
+**Numeric arrays use doubles; string arrays are also supported.** There is no integer-array arm,
+so convert integer elements to floats when writing numeric arrays.
 
 ### NaN and infinity
 
@@ -181,8 +179,12 @@ Tags passed here fill in keys a record does not already set; tags in the records
 Note the asymmetry with tabular ingest, which takes `tag_columns` to map a tag onto a column.
 Avro records carry their tags directly, so there is nothing to map.
 
-Avro streams are available wherever other formats are: `Asset.add_avro_stream()` and
-`Run.add_avro_stream()` write to a data scope or ref name,
-[`IngestBuilder.add_avro_stream()`](/guides/ingest/ingestion-jobs.md) includes one in a
-batch, and a [file extractor](/guides/extractors/overview.md) can emit one with
-`ctx.add_avro_stream()`.
+For asset-owned data, retrieve or create the dataset by refname with
+{py:meth}`~nominal.core.Asset.get_or_create_dataset`, then upload through
+{py:meth}`~nominal.core.Dataset.add_avro_stream`. To include that data in a run,
+create the run through {py:meth}`~nominal.core.Asset.create_run` or attach the dataset
+with {py:meth}`~nominal.core.Run.add_dataset`.
+
+[`IngestBuilder.add_avro_stream()`](/guides/ingest/ingestion-jobs.md) includes an Avro
+file in a batch, and a [file extractor](/guides/extractors/overview.md) can emit one
+with `ctx.add_avro_stream()`.
