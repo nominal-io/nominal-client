@@ -13,5 +13,7 @@ tocdepth: 2
 
 .. autodata:: nominal.core.NominalProperties
 
+.. autodata:: nominal.core.PropertyValue
+
 .. autodata:: nominal.core.UnitLike
 ```
