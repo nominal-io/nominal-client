@@ -84,13 +84,14 @@ docs = [
     "sphinx-design>=0.7.0",
     "sphinx-copybutton>=0.5.2",
     "sphinx-click>=6.0.0",
+    "sphinxext-rediraffe>=0.3.0",
 ]
 
 [tool.uv.dependency-groups]
 docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 

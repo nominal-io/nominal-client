@@ -49,7 +49,7 @@ Full, runnable scripts.
 :::
 
 :::{grid-item-card} {octicon}`book` SDK reference
-:link: reference/toplevel
+:link: sdk/index
 :link-type: doc
 
 Every class, function and `nom` command.
@@ -172,11 +172,11 @@ examples/index
 :caption: SDK
 :maxdepth: 2
 
-Overview <reference/toplevel>
-Core SDK <reference/core>
-Timestamps <reference/ts>
-Exceptions <reference/exceptions>
-nom CLI <reference/nom-cli>
+Overview <sdk/index>
+Core SDK <sdk/core>
+Timestamps <sdk/ts>
+Exceptions <sdk/exceptions>
+nom CLI <sdk/cli>
 ```
 
 ```{toctree}
@@ -184,7 +184,7 @@ nom CLI <reference/nom-cli>
 :caption: Third-party
 :maxdepth: 2
 
-Integrations <reference/thirdparty/index>
+Integrations <sdk/thirdparty/index>
 ```
 
 ```{toctree}
@@ -192,14 +192,20 @@ Integrations <reference/thirdparty/index>
 :caption: Experimental
 :maxdepth: 2
 
-Experimental <reference/experimental/index>
+Experimental <sdk/experimental/index>
+```
+
+```{toctree}
+:hidden:
+:caption: Changelog
+
+sdk/changelog
 ```
 
 ```{toctree}
 :hidden:
 :caption: Project
 
-changelog
 contributing
 license
 ```

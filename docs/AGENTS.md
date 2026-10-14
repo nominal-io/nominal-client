@@ -5,7 +5,7 @@ navigation declared in `src/index.md`. Sphinx reads configuration from
 `conf.py`; MyST parses Markdown, and `nominal-sphinx-theme` supplies the styling.
 
 Header tabs are Guides, Examples and SDK. The shared theme limits the sidebar to
-the active tab: `examples/` pages belong to Examples, `reference/` pages to SDK,
+the active tab: `examples/` pages belong to Examples, `sdk/` pages to SDK,
 and other pages to Guides. Keep each captioned root toctree within one section.
 
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
@@ -60,3 +60,7 @@ Use `{video}` to embed local recordings or remote URLs. Local recordings use
 Sphinx's download collector for copying and missing-file warnings; `:loop:`
 plays muted like a GIF, otherwise the player shows controls. `_static/custom.css`
 keeps recordings within the content column; the shared theme owns site styling.
+
+API reference pages live under `src/sdk/`. Keep retired public URLs in
+`src/redirects.txt`; `sphinxext.rediraffe` builds redirects and preserves query
+strings and section anchors. These entries record moved URLs, not an API inventory.

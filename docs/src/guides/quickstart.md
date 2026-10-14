@@ -214,7 +214,7 @@ my_asset.archive()
 * [Create a workbook to visualize this data in Nominal](https://docs.nominal.io/core/documentation/platform/workbooks/overview#creating-a-workbook).
 * [Query this data with SQL](https://docs.nominal.io/developers/sql/overview) to pull it into a notebook or your own tooling.
 * [Explore additional streaming patterns with the Nominal SDK](/guides/streaming/overview.md).
-* [Start building with the Nominal SDK reference](/reference/toplevel.md).
+* [Start building with the Nominal SDK reference](/sdk/index.md).
 * [Securely store your API key by creating a profile stored on disk](/guides/authentication.md#using-the-api-key).
 
 :::{dropdown} New to Python? IDE recommendations

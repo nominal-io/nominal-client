@@ -1,0 +1,21 @@
+# Published URLs retained after moving the API reference under sdk/.
+reference/core.md sdk/core.md
+reference/exceptions.md sdk/exceptions.md
+reference/experimental/compute.md sdk/experimental/compute.md
+reference/experimental/derived_datasets.md sdk/experimental/derived_datasets.md
+reference/experimental/extractors.md sdk/experimental/extractors.md
+reference/experimental/index.md sdk/experimental/index.md
+reference/experimental/ingest.md sdk/experimental/ingest.md
+reference/experimental/migration.md sdk/experimental/migration.md
+reference/experimental/spatial.md sdk/experimental/spatial.md
+reference/experimental/video.md sdk/experimental/video.md
+reference/experimental/video_processing.md sdk/experimental/video_processing.md
+reference/nom-cli.md sdk/cli.md
+reference/thirdparty/index.md sdk/thirdparty/index.md
+reference/thirdparty/matlab.md sdk/thirdparty/matlab.md
+reference/thirdparty/pandas.md sdk/thirdparty/pandas.md
+reference/thirdparty/polars.md sdk/thirdparty/polars.md
+reference/thirdparty/tdms.md sdk/thirdparty/tdms.md
+reference/toplevel.md sdk/index.md
+reference/ts.md sdk/ts.md
+changelog.md sdk/changelog.md

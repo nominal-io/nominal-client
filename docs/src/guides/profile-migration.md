@@ -73,7 +73,7 @@ dataset.add_tabular_data(
 )
 ```
 
-See also [Timestamp reference](/reference/ts.md).
+See also [Timestamp reference](/sdk/ts.md).
 
 ### Uploading Pandas dataframes
 

@@ -19,6 +19,7 @@ extensions = [
     "sphinx_click",
     "sphinx_copybutton",
     "sphinx_design",
+    "sphinxext.rediraffe",
     "examples",
     "video",
     "docstring_fences",
@@ -28,6 +29,9 @@ extensions = [
 
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets"]
+
+# Keep published links working when reference pages move.
+rediraffe_redirects = "redirects.txt"
 
 # Single backticks in docstrings (`Dataset`) link to the named object when it
 # resolves and render as code otherwise.
@@ -88,6 +92,6 @@ html_theme_options = theme_options(
     nav_links=[
         {"title": "Guides", "url": "index"},
         {"title": "Examples", "url": "examples/index"},
-        {"title": "SDK", "url": "reference/toplevel"},
+        {"title": "SDK", "url": "sdk/index"},
     ],
 )

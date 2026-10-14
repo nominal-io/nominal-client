@@ -1,7 +1,7 @@
 :::{note}
 
 `timestamp_type` accepts either a string, for absolute timestamps, or a type from
-[`nominal.ts`](/reference/ts.md).
+[`nominal.ts`](/sdk/ts.md).
 
 Acceptable string values are:
 
@@ -35,5 +35,5 @@ Valid units are `picoseconds`, `nanoseconds`, `microseconds`, `milliseconds`,
 `seconds`, `minutes`, `hours`, and `days`.
 
 For more information about Nominal timestamps in Python, see the
-[`nominal.ts`](/reference/ts.md) docs page.
+[`nominal.ts`](/sdk/ts.md) docs page.
 :::

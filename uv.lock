@@ -631,6 +631,7 @@ docs = [
     { name = "sphinx-click", marker = "python_full_version >= '3.12'" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'" },
     { name = "sphinx-design", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxext-rediraffe", marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
@@ -676,11 +677,12 @@ dev = [
 ]
 docs = [
     { name = "myst-parser", marker = "python_full_version >= '3.12'", specifier = ">=5.1.0" },
-    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff" },
+    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=95a37f535ce2e6d93f064a31fca8b7d3223ac63c" },
     { name = "sphinx", marker = "python_full_version >= '3.12'", specifier = ">=9.1.0" },
     { name = "sphinx-click", marker = "python_full_version >= '3.12'", specifier = ">=6.0.0" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'", specifier = ">=0.5.2" },
     { name = "sphinx-design", marker = "python_full_version >= '3.12'", specifier = ">=0.7.0" },
+    { name = "sphinxext-rediraffe", marker = "python_full_version >= '3.12'", specifier = ">=0.3.0" },
 ]
 
 [[package]]
@@ -726,7 +728,7 @@ wheels = [
 [[package]]
 name = "nominal-sphinx-theme"
 version = "0.1.0"
-source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=ee9ba93a4e73d52c8e775aa647405ff337aa6dff#ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
+source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=95a37f535ce2e6d93f064a31fca8b7d3223ac63c#95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
 dependencies = [
     { name = "shibuya", marker = "python_full_version >= '3.12'" },
     { name = "sphinx", marker = "python_full_version >= '3.12'" },
@@ -1395,7 +1397,7 @@ name = "sphinx-design"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/13/7b/804f311da4663a4aecc6cf7abd83443f3d4ded970826d0c958edc77d4527/sphinx_design-0.7.0.tar.gz", hash = "sha256:d2a3f5b19c24b916adb52f97c5f00efab4009ca337812001109084a740ec9b7a", size = 2203582, upload-time = "2026-01-19T13:12:53.297Z" }
 wheels = [
@@ -1454,6 +1456,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3b/44/6716b257b0aa6bfd51a1b31665d1c205fb12cb5ad56de752dfa15657de2f/sphinxcontrib_serializinghtml-2.0.0.tar.gz", hash = "sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d", size = 16080, upload-time = "2024-07-29T01:10:09.332Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/a7/d2782e4e3f77c8450f727ba74a8f12756d5ba823d81b941f1b04da9d033a/sphinxcontrib_serializinghtml-2.0.0-py3-none-any.whl", hash = "sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331", size = 92072, upload-time = "2024-07-29T01:10:08.203Z" },
+]
+
+[[package]]
+name = "sphinxext-rediraffe"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/a9/ab13d156049eea633f992424f3e92cb40e3f1b606bb6d01d40a27457d38a/sphinxext_rediraffe-0.3.0.tar.gz", hash = "sha256:f319b3ccb7c3c3b6f63ffa6fd3eeb171b6d272df55075a9e84364394f391f507", size = 22114, upload-time = "2025-09-28T15:31:53.641Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/55/ab40a0d1378ee5c859590a633052cf1d0a1f8435af87558a9f7cd576601a/sphinxext_rediraffe-0.3.0-py3-none-any.whl", hash = "sha256:f4220beafa99c99177488276b8e4fcf61fbeeec4253c1e4aae841a18c475330c", size = 7194, upload-time = "2025-09-28T15:31:52.388Z" },
 ]
 
 [[package]]
