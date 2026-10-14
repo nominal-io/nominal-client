@@ -51,13 +51,13 @@ def _make_run(rid: str, name: str = "Run", asset_rids: list[str] | None = None) 
     return run
 
 
-def _make_context() -> MigrationContext:
+def _make_context(dry_run: bool = False) -> MigrationContext:
     mock_client = MagicMock()
     mock_client._clients.workspace_rid = "ws-rid"
     mock_workspace = MagicMock()
     mock_workspace.rid = "ws-rid"
     mock_client.get_workspace.return_value = mock_workspace
-    return MigrationContext(destination_client=mock_client, migration_state=MigrationState())
+    return MigrationContext(destination_client=mock_client, migration_state=MigrationState(), dry_run=dry_run)
 
 
 # ---------------------------------------------------------------------------
@@ -310,3 +310,14 @@ class TestRunMigratorAttachments:
         dest_run.add_attachments.assert_called_once()
         assert [a.rid for a in dest_run.add_attachments.call_args.args[0]] == [_att_rid(101)]
         assert ctx.migration_state.skipped_resources == []
+
+    def test_dry_run_does_not_add_attachments_to_the_source_run(self) -> None:
+        """In a dry run, the source run stands in for an already-migrated run, so no attachments are added to it."""
+        ctx = _make_context(dry_run=True)
+        source_run = _make_run(_run_rid(1))
+        source_run.list_attachments.return_value = [_make_source_attachment(1)]
+        ctx.migration_state.record_mapping(ResourceType.RUN, source_run.rid, _run_rid(100))
+
+        RunMigrator(ctx).copy_from(source_run, RunCopyOptions())
+
+        source_run.add_attachments.assert_not_called()

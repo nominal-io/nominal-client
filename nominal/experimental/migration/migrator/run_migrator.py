@@ -47,7 +47,8 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
         existing_run = self.get_existing_destination_resource(source)
         if existing_run is not None:
-            # In a dry run, existing_run is a stand-in for a destination run that is never read.
+            # In a dry run, existing_run is the source run itself, so adding attachments to it
+            # would write to the source.
             if options.new_attachments is None and not self.ctx.dry_run:
                 self._add_missing_attachments(source, existing_run)
             if options.new_assets is not None:
