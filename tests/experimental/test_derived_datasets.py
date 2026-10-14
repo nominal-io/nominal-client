@@ -29,19 +29,19 @@ def _conjure_saved(rid: str) -> scout_compute_api.Dataset:
     )
 
 
-# --- bridge: nominal_compute -> scout_compute_api ---
+# --- bridge: nominal.compute -> scout_compute_api ---
 
 
 def test_bridge_decodes_saved_dataset() -> None:
     """A saved dataset bridges to the conjure saved-dataset type."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     bridged = _to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc"))
     assert bridged == _conjure_saved("ri.catalog.ws.dataset.abc")
 
 
 def test_bridge_decodes_dataset_transform() -> None:
     """A dataset transform (time_shift) bridges to the matching conjure type."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     bridged = _to_conjure_dataset(nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5)))
     assert isinstance(bridged, scout_compute_api.Dataset)
     assert bridged.type == "timeShift"
@@ -54,7 +54,7 @@ def test_create_derived_dataset_sets_derived_definition(
     client: MagicMock, make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset]
 ) -> None:
     """create_derived_dataset bridges the spec and sets it as the create request's derived definition."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc")
     client._clients.resolve_default_workspace_rid.return_value = "ri.workspace.w"
     client._clients.catalog.create_dataset = Mock(return_value=make_enriched_dataset("ri.catalog.ws.dataset.new"))
@@ -65,7 +65,7 @@ def test_create_derived_dataset_sets_derived_definition(
     assert result.rid == "ri.catalog.ws.dataset.new"
     auth, details = client._clients.catalog.create_dataset.call_args[0]
     assert auth == "Bearer test-token"
-    # The nominal_compute spec is bridged to the conjure wire type.
+    # The nominal.compute spec is bridged to the conjure wire type.
     assert details.derived_definition.spec == _conjure_saved("ri.catalog.ws.dataset.abc")
     assert details.derived_definition.message == "init"
     assert details.is_v2_dataset is True
@@ -95,7 +95,7 @@ def test_get_derived_definition_accepts_dataset_and_commit(client: MagicMock) ->
 
 def test_commit_derived_definition_builds_request(client: MagicMock) -> None:
     """commit_derived_definition builds the request with the bridged spec, message, and latest commit."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     spec = nc.Dataset.Saved("ri.catalog.ws.dataset.abc").time_shift(nc.Duration.Seconds(5))
     result = commit_derived_definition(
         client, "ri.catalog.ws.dataset.abc", spec, message="update", latest_commit="ri.commit.1"

@@ -1,6 +1,6 @@
-"""Apply a locally-authored ``nominal_compute`` expression to a run/dataset's channels and return the result.
+"""Apply a locally-authored ``nominal.compute`` expression to a run/dataset's channels and return the result.
 
-The expression's references (``nominal_compute.NumericSeries.Reference("a")``) are bound to concrete channels at
+The expression's references (``nominal.compute.NumericSeries.Reference("a")``) are bound to concrete channels at
 execution time via the compute ``Context``.
 """
 
@@ -10,11 +10,11 @@ import json
 from datetime import datetime
 from typing import Any, BinaryIO, Mapping, cast
 
-import nominal_compute
 import pandas as pd
 from conjure_python_client import ConjureDecoder
 from nominal_api import scout_compute_api, scout_dataexport_api
 
+import nominal.compute
 from nominal import ts
 from nominal.core import NominalClient
 from nominal.core.channel import Channel
@@ -23,11 +23,11 @@ _FlexibleTimestamp = str | datetime | ts.IntegralNanosecondsUTC
 
 
 def _to_conjure_series(
-    series: nominal_compute.NumericSeries | nominal_compute.CategoricalSeries,
+    series: nominal.compute.NumericSeries | nominal.compute.CategoricalSeries,
 ) -> scout_compute_api.Series:
-    """Convert a ``nominal_compute`` series expression into the ``scout_compute_api.Series`` the compute API expects."""
+    """Convert a ``nominal.compute`` series expression into the ``scout_compute_api.Series`` the compute API expects."""
     wire_json = series.to_json()  # type: ignore[union-attr]
-    if isinstance(series, nominal_compute.NumericSeries):
+    if isinstance(series, nominal.compute.NumericSeries):
         numeric: scout_compute_api.NumericSeries = ConjureDecoder.do_decode(
             json.loads(wire_json), scout_compute_api.NumericSeries
         )
@@ -38,7 +38,7 @@ def _to_conjure_series(
 
 def compute_series(
     client: NominalClient,
-    expr: nominal_compute.NumericSeries | nominal_compute.CategoricalSeries,
+    expr: nominal.compute.NumericSeries | nominal.compute.CategoricalSeries,
     inputs: Mapping[str, Channel],
     start: _FlexibleTimestamp | None = None,
     end: _FlexibleTimestamp | None = None,
@@ -47,12 +47,12 @@ def compute_series(
     name: str = "value",
     enable_gzip: bool = True,
 ) -> pd.Series[Any]:
-    """Compute a derived series by applying a ``nominal_compute`` expression to a set of channels.
+    """Compute a derived series by applying a ``nominal.compute`` expression to a set of channels.
 
     Args:
         client: The NominalClient to compute with.
         expr: The compute-as-code expression to evaluate (numeric or categorical), typically authored in
-            ``nominal_compute`` and imported from your own repository.
+            ``nominal.compute`` and imported from your own repository.
         inputs: Maps each reference name used in ``expr`` to the :class:`~nominal.core.channel.Channel` it should
             resolve to. Look these up from the run/dataset the caller wants to compute against.
         start: Start of the time range to compute over. Defaults to the earliest supported timestamp.

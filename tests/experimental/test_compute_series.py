@@ -34,12 +34,12 @@ def _csv_response(text: str) -> io.BytesIO:
     return io.BytesIO(text.encode())
 
 
-# --- bridge: nominal_compute series -> scout_compute_api.Series ---
+# --- bridge: nominal.compute series -> scout_compute_api.Series ---
 
 
 def test_bridge_numeric_series() -> None:
-    """A nominal_compute NumericSeries bridges into the numeric arm of the Series union."""
-    nc = pytest.importorskip("nominal_compute")
+    """A nominal.compute NumericSeries bridges into the numeric arm of the Series union."""
+    nc = pytest.importorskip("nominal.compute")
     series = _to_conjure_series(nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m"))
     assert isinstance(series, scout_compute_api.Series)
     assert series.numeric is not None
@@ -48,8 +48,8 @@ def test_bridge_numeric_series() -> None:
 
 
 def test_bridge_categorical_series() -> None:
-    """A nominal_compute CategoricalSeries bridges into the enum arm of the Series union."""
-    nc = pytest.importorskip("nominal_compute")
+    """A nominal.compute CategoricalSeries bridges into the enum arm of the Series union."""
+    nc = pytest.importorskip("nominal.compute")
     series = _to_conjure_series(nc.CategoricalSeries.Reference("c"))
     assert isinstance(series, scout_compute_api.Series)
     assert series.enum is not None
@@ -61,7 +61,7 @@ def test_bridge_categorical_series() -> None:
 
 def test_compute_series_builds_request_and_parses(client: MagicMock, mock_clients: MagicMock) -> None:
     """compute_series binds references to channels, sends the bridged node, and parses the CSV into a Series."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     expr = nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m")
     inputs = {"a": _channel(mock_clients, "chan_a"), "m": _channel(mock_clients, "chan_m", data_source="ds-2")}
     mock_clients.dataexport.export_channel_data.return_value = _csv_response(
@@ -95,7 +95,7 @@ def test_compute_series_builds_request_and_parses(client: MagicMock, mock_client
 
 def test_compute_series_binds_tags(client: MagicMock, mock_clients: MagicMock) -> None:
     """Tags narrow a reference to a tagged series; references omitted from tags bind with no tag filter."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     expr = nc.NumericSeries.Reference("a") - nc.NumericSeries.Reference("m")
     inputs = {"a": _channel(mock_clients, "chan_a"), "m": _channel(mock_clients, "chan_m")}
     mock_clients.dataexport.export_channel_data.return_value = _csv_response(
@@ -112,7 +112,7 @@ def test_compute_series_binds_tags(client: MagicMock, mock_clients: MagicMock) -
 
 def test_compute_series_defaults_full_range(client: MagicMock, mock_clients: MagicMock) -> None:
     """With no start/end, compute_series requests the full supported time range."""
-    nc = pytest.importorskip("nominal_compute")
+    nc = pytest.importorskip("nominal.compute")
     mock_clients.dataexport.export_channel_data.return_value = _csv_response(
         "timestamp,value\n2026-01-01T00:00:00Z,1.0\n"
     )
