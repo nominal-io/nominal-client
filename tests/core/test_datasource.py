@@ -16,8 +16,8 @@ def _make_channels(n: int) -> list[CreateChannelRequest]:
 def mock_clients():
     clients = MagicMock()
     clients.series_metadata = MagicMock()
-    # get_channels iterates over response.responses — default to empty so existing tests don't crash
-    clients.channel_metadata.batch_get_channel_metadata.return_value.responses = []
+    # Default metadata reads to an empty result.
+    clients.channel_metadata.BatchGetChannelMetadata.return_value.channel_metadata = []
     return clients
 
 

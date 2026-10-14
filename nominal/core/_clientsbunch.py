@@ -20,7 +20,6 @@ from nominal_api import (
     scout_video,
     storage_datasource_api,
     storage_writer_api,
-    timeseries_channelmetadata,
     timeseries_metadata,
     upload_api,
 )
@@ -38,6 +37,7 @@ from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
@@ -140,7 +140,6 @@ class ClientsBunch:
 
     # Conjure services
     catalog: scout_catalog.CatalogService
-    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
@@ -163,6 +162,7 @@ class ClientsBunch:
     # GRPC services
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
+    channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
@@ -309,7 +309,6 @@ class ClientsBunch:
             _service_config=cfg,
             # Conjure Service Stubs
             catalog=client_factory(scout_catalog.CatalogService),
-            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),
@@ -331,6 +330,7 @@ class ClientsBunch:
             # GRPC Service Stubs
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
+            channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),

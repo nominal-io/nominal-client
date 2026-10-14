@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, cast, overload
 
+from google.protobuf.field_mask_pb2 import FieldMask
 from nominal_api import (
     api,
     datasource_api,
@@ -15,16 +16,17 @@ from nominal_api import (
     scout_dataexport_api,
     scout_datasource,
     storage_series_api,
-    timeseries_channelmetadata,
-    timeseries_channelmetadata_api,
 )
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import RefreshableConjureMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
-from nominal.core.unit import UnitLike, _build_unit_update
+from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
+from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
+from nominal.protos.types.series import series_pb2
 from nominal.ts import (
     _MAX_TIMESTAMP,
     _MIN_TIMESTAMP,
@@ -86,7 +88,7 @@ class ChannelDataType(enum.Enum):
 
 
 @dataclass
-class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMetadata]):
+class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
     """Metadata for working with channels."""
 
     name: str
@@ -104,22 +106,21 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
         @property
         def compute(self) -> scout_compute_api.ComputeService: ...
         @property
-        def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+        def channel_metadata(self) -> channel_metadata_pb2_grpc.ChannelMetadataServiceStub: ...
 
     class _NotProvided:
         """Sentinel class for detecting when a user has or has not provided a value during updates"""
 
-    def _channel_identifier(self) -> timeseries_channelmetadata_api.ChannelIdentifier:
-        return timeseries_channelmetadata_api.ChannelIdentifier(
+    def _channel_identifier(self) -> channel_metadata_pb2.ChannelIdentifier:
+        return channel_metadata_pb2.ChannelIdentifier(
             channel_name=self.name,
             data_source_rid=self.data_source,
         )
 
-    def _get_latest_api(self) -> timeseries_channelmetadata_api.ChannelMetadata:
-        return self._clients.channel_metadata.get_channel_metadata(
-            self._clients.auth_header,
-            timeseries_channelmetadata_api.GetChannelMetadataRequest(channel_identifier=self._channel_identifier()),
-        )
+    def _get_latest_api(self) -> channel_metadata_pb2.ChannelMetadata:
+        request = channel_metadata_pb2.GetChannelMetadataRequest(channel_identifier=self._channel_identifier())
+        with translate_grpc_errors():
+            return self._clients.channel_metadata.GetChannelMetadata(request).channel_metadata
 
     def update(
         self,
@@ -140,13 +141,24 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
                 **Note:** This is in contrast to other fields in other `update()` calls where `None` is treated as a
                 "no-op".
         """
-        request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
-            channel_identifier=self._channel_identifier(),
-            description=description,
-            unit_update=_build_unit_update(unit) if not isinstance(unit, self._NotProvided) else None,
+        metadata = channel_metadata_pb2.ChannelMetadata(channel_identifier=self._channel_identifier())
+        paths = []
+        if description is not None:
+            metadata.description = description
+            paths.append("description")
+        if not isinstance(unit, self._NotProvided):
+            symbol = _unit_symbol_from_unit_like(unit)
+            if symbol is not None:
+                metadata.unit = symbol
+            paths.append("unit")
+        if not paths:
+            return self.refresh()
+        request = channel_metadata_pb2.UpdateChannelMetadataRequest(
+            channel_metadata=metadata, update_mask=FieldMask(paths=paths)
         )
-        updated_channel = self._clients.channel_metadata.update_channel_metadata(self._clients.auth_header, request)
-        return self._refresh_from_api(updated_channel)
+        with translate_grpc_errors():
+            response = self._clients.channel_metadata.UpdateChannelMetadata(request)
+        return self._refresh_from_api(response.channel_metadata)
 
     @overload
     def search_logs(
@@ -330,23 +342,24 @@ class Channel(RefreshableConjureMixin[timeseries_channelmetadata_api.ChannelMeta
         )
 
     @classmethod
-    def _from_channel_metadata_api(
-        cls, clients: _Clients, channel: timeseries_channelmetadata_api.ChannelMetadata
-    ) -> Self:
-        channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
+    def _from_proto(cls, clients: _Clients, channel: channel_metadata_pb2.ChannelMetadata) -> Self:
+        data_type = None
+        if channel.HasField("data_type"):
+            # Preserve the query type used by compute, rather than the underlying storage type.
+            try:
+                type_name = series_pb2.SeriesDataType.Name(channel.data_type)
+            except ValueError:
+                data_type = ChannelDataType.UNKNOWN
+            else:
+                data_type = ChannelDataType.__members__.get(type_name, ChannelDataType.UNKNOWN)
         return cls(
             name=channel.channel_identifier.channel_name,
             data_source=channel.channel_identifier.data_source_rid,
-            unit=channel.unit,
-            description=channel.description,
-            data_type=channel_data_type,
+            unit=channel.unit if channel.HasField("unit") else None,
+            description=channel.description if channel.HasField("description") else None,
+            data_type=data_type,
             _clients=clients,
         )
-
-    # TODO(drake): remove others once endpoints support returning a `timeseries_channelmetadata_api.ChannelMetadata`
-    @classmethod
-    def _from_conjure(cls, clients: _Clients, channel: timeseries_channelmetadata_api.ChannelMetadata) -> Self:
-        return cls._from_channel_metadata_api(clients, channel)
 
     def _to_channel_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.ChannelSeries:
         return scout_compute_api.ChannelSeries(
