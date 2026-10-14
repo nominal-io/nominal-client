@@ -24,6 +24,7 @@ from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.file_store.v1 import drives_pb2, drives_pb2_grpc, file_store_pb2, files_pb2, files_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
+from nominal.protos.integrations.v1 import integrations_pb2, integrations_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
@@ -160,6 +161,21 @@ def search_data_reviews_paginated(
 
     for response in paginate_grpc(datareview.FindDataReviews, request_factory=factory):
         yield from response.data_reviews
+
+
+def list_integrations_paginated(
+    client: integrations_pb2_grpc.IntegrationsServiceStub,
+    workspace_rid: str | None,
+) -> Iterable[integrations_pb2.Integration]:
+    def factory(page_token: str | None) -> integrations_pb2.ListIntegrationsRequest:
+        return integrations_pb2.ListIntegrationsRequest(
+            workspaces=[] if workspace_rid is None else [workspace_rid],
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+        )
+
+    for response in paginate_grpc(client.ListIntegrations, request_factory=factory):
+        yield from response.integrations
 
 
 def list_streaming_checklists_paginated(

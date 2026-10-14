@@ -43,6 +43,7 @@ from nominal.core._utils.multipart import (
 )
 from nominal.core._utils.networking import HeaderProvider, normalize_header_provider
 from nominal.core._utils.pagination_tools import (
+    list_integrations_paginated,
     search_assets_paginated,
     search_checklists_paginated,
     search_datasets_paginated,
@@ -96,6 +97,15 @@ from nominal.core.event import Event, _create_event, _get_event, _get_events, _s
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.fs.drive import Drive, _create_drive, _get_drive, _get_drive_by_id, _list_drives
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.core.integration import (
+    Integration,
+    OpsgenieRegion,
+    _create_opsgenie_integration,
+    _create_pagerduty_integration,
+    _create_teams_integration,
+    _create_webhook_integration,
+    _get_integration,
+)
 from nominal.core.marking import (
     Marking,
     _create_marking,
@@ -1503,6 +1513,100 @@ class NominalClient:
 
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], [], _clients=self._clients)
+
+    def get_integration(self, rid: str) -> Integration:
+        """Retrieve a notification integration by RID.
+
+        Raises:
+            NominalNotFoundError: If the integration does not exist or is not accessible.
+        """
+        return Integration._from_proto(self._clients, _get_integration(self._clients, rid))
+
+    def list_integrations(self, *, workspace: WorkspaceSearchT | None = None) -> Sequence[Integration]:
+        """List available notification integrations across all result pages.
+
+        Args:
+            workspace: Workspace to search. None uses the client's default; `WorkspaceSearchType.ALL`
+                searches all accessible workspaces.
+
+        Returns:
+            Integrations visible in the selected workspace scope.
+        """
+        workspace_rid = self._workspace_rid_for_search(workspace)
+
+        return [
+            Integration._from_proto(self._clients, integration)
+            for integration in list_integrations_paginated(self._clients.integrations, workspace_rid)
+        ]
+
+    def create_webhook_integration(self, name: str, webhook_url: str, *, description: str | None = None) -> Integration:
+        """Create a generic webhook notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            webhook_url: Destination URL for notifications.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_webhook_integration(self._clients, name, webhook_url, description)
+
+    def create_opsgenie_integration(
+        self, name: str, api_key: str, region: OpsgenieRegion, *, description: str | None = None
+    ) -> Integration:
+        """Create an Opsgenie notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            api_key: Opsgenie API key.
+            region: Region hosting the Opsgenie integration.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_opsgenie_integration(self._clients, name, api_key, region, description)
+
+    def create_teams_integration(self, name: str, webhook_url: str, *, description: str | None = None) -> Integration:
+        """Create a Microsoft Teams notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            webhook_url: Teams webhook URL for notifications.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_teams_integration(self._clients, name, webhook_url, description)
+
+    def create_pagerduty_integration(
+        self, name: str, routing_key: str, *, description: str | None = None
+    ) -> Integration:
+        """Create a PagerDuty notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            routing_key: PagerDuty routing key.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_pagerduty_integration(self._clients, name, routing_key, description)
 
     def get_data_review(self, rid: str) -> DataReview:
         """Retrieve a data review by its RID.

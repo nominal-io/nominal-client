@@ -81,15 +81,17 @@ docs = [
     "sphinx>=9.1.0",
     "nominal-sphinx-theme",
     "myst-parser>=5.1.0",
+    "sphinx-design>=0.7.0",
     "sphinx-copybutton>=0.5.2",
     "sphinx-click>=6.0.0",
+    "sphinxext-rediraffe>=0.3.0",
 ]
 
 [tool.uv.dependency-groups]
 docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "ee9ba93a4e73d52c8e775aa647405ff337aa6dff" }
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
 nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 
@@ -123,7 +125,7 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -166,6 +168,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Guide fragments share imports and names across steps.
+"docs/src/guides/_snippets/code/**" = ["D", "E501", "E731", "F401", "F821", "NPY002", "PLW2901"]
 "nominal/core/dataset.py" = [
     "E501", # allow long lines for avro schema in docstring
 ]
