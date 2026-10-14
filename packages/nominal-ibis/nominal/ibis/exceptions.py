@@ -54,7 +54,7 @@ def _sql_error_message(error: grpc.RpcError) -> str | None:
                     continue
             except DecodeError:
                 continue
-            # Older servers use the "sql" domain.
+            # Some SQL errors still use the "sql" domain.
             if info.domain not in ("sql", "nominal.sql.v1"):
                 continue
             lines.append(f"{info.domain}/{info.reason}")
