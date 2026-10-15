@@ -1,4 +1,4 @@
-# Video Processing
+# Video processing
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.video_processing

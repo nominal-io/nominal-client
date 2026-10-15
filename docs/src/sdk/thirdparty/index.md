@@ -2,10 +2,11 @@
 orphan: true
 ---
 
-# Integrations
+# Third-Party Integrations
 
-Use these integrations to work with MATLAB, pandas, Polars, and TDMS data.
+Use these integrations to query Nominal with Ibis and work with MATLAB, pandas, Polars, and TDMS data.
 
+- {doc}`../ibis`
 - {doc}`matlab`
 - {doc}`pandas`
 - {doc}`polars`

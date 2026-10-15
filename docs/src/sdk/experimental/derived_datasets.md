@@ -1,7 +1,10 @@
 # Derived datasets
 
-Combine input datasets with tag filters, labels, and time shifts.
-See the [package walkthrough](https://github.com/nominal-io/nominal-client/blob/main/nominal/experimental/derived_datasets/README.md).
+```{include} ../../../../nominal/experimental/derived_datasets/README.md
+:start-line: 1
+```
+
+## API reference
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.derived_datasets

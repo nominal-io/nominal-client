@@ -1,7 +1,10 @@
 # Spatial data
 
-Create and manage spatial data sources such as point clouds.
-See the [package walkthrough](https://github.com/nominal-io/nominal-client/blob/main/nominal/experimental/spatial/README.md).
+```{include} ../../../../nominal/experimental/spatial/README.md
+:start-line: 1
+```
+
+## API reference
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.spatial

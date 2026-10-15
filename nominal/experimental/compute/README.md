@@ -6,10 +6,12 @@ This library hosts an experimental Python-internal DSL for expressing Nominal co
 
 The DSL is primarily backed by a method-chaining API which allows for clear composition and good language support inside your IDE.
 
-The entrypoint into expression operations is to select a channel using the `.channel()` class methods.
+Start an expression by selecting a channel with `asset_channel`, `run_channel`, or `datasource_channel`.
 
 ```py
-chan = NumericExpr.channel(asset_rid, data_scope_name, channel_name)
+from nominal.experimental.compute.dsl.exprs import NumericExpr
+
+chan = NumericExpr.asset_channel(asset_rid, data_scope_name, channel_name)
 ```
 
 From there, you can rely on IDE hints to compose operations:
@@ -73,7 +75,7 @@ run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name)
 
 # Reference a channel present in a dataset
 dataset_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
-datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_name, channel_name)
+datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, channel_name)
 ```
 
 When retrieving channels on an asset or a run, the default tag filters for a given data scope are applied to underlying expressions.
@@ -82,5 +84,5 @@ However, it may still be useful to further filter data on tags that aren't speci
 ```python
 channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name, additional_tags={"color": "green"})
 run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name, additional_tags={"color": "green"})
-datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_name, channel_name, tags={"platform": "electric-glider-mk1"})
+datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, channel_name, tags={"platform": "electric-glider-mk1"})
 ```

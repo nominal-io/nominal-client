@@ -9,7 +9,7 @@ All of the typical client methods work this way today (with one notable exceptio
 
 ```python
 dataset = client.get_dataset(...)
-dataset_file1 = dataset.add_tabular(...)
+dataset_file1 = dataset.add_tabular_data(...)
 dataset_file2 = dataset.add_mcap(...)
 ```
 
@@ -118,7 +118,7 @@ reality that tag is per-*ingest-job*, not per-file, so all files in one job shar
 If the previous behavior with per-file UUIDs was useful to you, opt in explicitly by passing your
 own per-file tag on each `add_*` call, e.g. `tags={"FILE_UUID": str(uuid.uuid4())}`.
 
-## Channel units and CSV units rows
+## Channel units and CSV rows
 
 `add_csv`, `add_parquet`, `add_tabular_data`, and `add_avro_stream` accept `units={"pressure": "Pa"}`.
 Units are passed to ingestion; values are not converted by the client.
