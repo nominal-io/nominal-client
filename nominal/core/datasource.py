@@ -441,8 +441,13 @@ class DataSource(HasRid, MarkableMixin):
             not found after creation (i.e. silently dropped by the server).
 
         Note:
-            This operation is idempotent with respect to channels that already exist — they are
-            returned unchanged. Repeated channel names are allowed.
+            Existing channels are returned unchanged. If a name appears more than once and the
+            channel does not already exist, the first request creates it; later requests with that
+            name do not change its type, unit, or description, even across batch boundaries.
+            The result's ``channels`` contains at most one Channel per distinct name, rather than
+            one per request. If the metadata lookup omits a name, every request with that name
+            is included in ``missing``.
+
             Batches are written sequentially; earlier batches remain applied if a later batch fails.
         """
         return self._batch_write_channels(channels, if_exists=series_metadata_pb2.RETURN_EXISTING)
