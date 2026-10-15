@@ -23,8 +23,22 @@ This guide shows how to programmatically export data from Nominal using the Pyth
 
 If your dataset contains uploaded files (CSV, Parquet, HDF5, etc.), you can download those files directly using `dataset.list_files()` and `file.download()`. The following example collects all datasets attached to a run and downloads their files within the run's time bounds:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/export_data_download.py
-:language: python
+```python
+from pathlib import Path
+
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+run = client.get_run("<run rid>")
+
+output_dir = Path("downloaded_files")
+output_dir.mkdir(exist_ok=True)
+
+for _, dataset in run.list_datasets():
+    for file in dataset.list_files(start=run.start, end=run.end):
+        path = file.download(output_dir)
+        print(f"Downloaded {file.name} to {path}")
 ```
 
 Each `DatasetFile` is downloaded in its ingested format to the specified directory.
@@ -39,8 +53,39 @@ pip install polars
 
 The following example searches for runs by label, collects channels across all datasets on each run using `run.list_datasets()`, and exports each run's data to CSV files:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/export_data_1.py
-:language: python
+```python
+import re
+from datetime import timedelta
+
+import polars as pl
+from nominal.core import NominalClient
+from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
+
+client = NominalClient.from_profile("default")
+
+runs = client.search_runs(labels=["Failure"])
+
+for run in runs:
+    channels = []
+    for _, dataset in run.list_datasets():
+        channels.extend(list(dataset.search_channels(exact_match=["temperature"])))
+        channels.extend(list(dataset.search_channels(exact_match=["speed"])))
+
+    exporter = PolarsExportHandler(client)
+
+    for idx, df in enumerate(
+        exporter.export(
+            channels,
+            start=run.start,
+            end=run.end,
+            batch_duration=timedelta(seconds=600),
+        )
+    ):
+        if isinstance(df, pl.Series):
+            df = df.to_frame()
+
+        safe_name = re.sub(r"[^\w\-_.]", "_", run.name)
+        df.write_csv(f"{safe_name}_{run.run_number}_{idx}.csv")
 ```
 
 :::{note}
@@ -92,8 +137,29 @@ CSV output may include quotes around column names and string (enum) values. Ensu
 
 If your dataset was ingested using data scopes with tags (e.g. `ingest_uuid`), pass the same tags when exporting to select the correct data:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/export_data_2.py
-:language: python
+```python
+from nominal.core import NominalClient
+from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
+
+client = NominalClient.from_profile("default")
+
+run = client.get_run("<run rid>")
+
+tags = {"ingest_uuid": "your-ingest-uuid"}
+
+channels = []
+for _, dataset in run.list_datasets():
+    channels.extend(list(dataset.search_channels(exact_match=["temperature"])))
+
+exporter = PolarsExportHandler(client)
+
+for df in exporter.export(
+    channels,
+    start=run.start,
+    end=run.end,
+    tags=tags,
+):
+    print(df.head())
 ```
 
 You can find the tags for a dataset's data scope on the asset detail page in the Nominal UI, or by inspecting the data source programmatically.

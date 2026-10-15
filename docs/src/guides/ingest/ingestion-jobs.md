@@ -55,8 +55,33 @@ mid-batch pauses the upload rather than killing it. Permanent failures surface i
 
 Add files with the `add_*` method for each format, then call `submit()`:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/ingest/ingest_builder.py
-:language: python
+```python
+from nominal.core import NominalClient
+from nominal.experimental.ingest import IngestBuilder
+
+client = NominalClient.from_profile("default")
+
+dataset = client.get_dataset("<DATASET_RID>")
+
+builder = (
+    IngestBuilder(client, dataset)
+    .add_tabular_data(
+        "flight_data.csv",
+        timestamp_column="source_time",
+        timestamp_type="iso_8601",
+        units={"altitude": "m", "airspeed": "m/s"},
+        tag_columns={"vehicle_id": "veh_id"},
+    )
+    .add_mcap("recording.mcap", exclude_topics=["/diagnostics"])
+    .add_journal_json("system.jsonl")
+    .add_video("nose_camera.mp4", "nose_camera", start="2026-09-10T14:38:19Z")
+    .add_tags({"test_event": "ft-114"})
+)
+
+# Uploads every file in parallel, then triggers one ingest job
+job = builder.submit()
+
+print(f"submitted {job.rid} ({job.ingest_type})")
 ```
 
 The builder targets an existing dataset and cannot create one, so create or look up the dataset
@@ -115,8 +140,9 @@ builder.add_tabular_data(path, timestamp_column="t", timestamp_type="iso_8601",
 An ingest finishes in two stages: the job produces its files, then those files ingest.
 `as_files_ingested()` covers both.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/ingest/ingestion_job_wait.py
-:language: python
+```python
+for dataset_file in job.as_files_ingested():
+    print(f"{dataset_file.name}: {dataset_file.ingest_status}")
 ```
 
 For extractors, the file list is re-read on every poll, so files that did not exist when you called
@@ -170,8 +196,28 @@ job-level failure, because it does not know about the job.
 `search_ingestion_jobs()` filters across the workspace by dataset, creator, status, free text, and
 start-time window, which is the practical way to answer "what failed overnight":
 
-```{literalinclude} /guides/_snippets/code/sdk/python/ingest/ingestion_job_search.py
-:language: python
+```python
+from datetime import datetime, timedelta, timezone
+
+from nominal.core import NominalClient
+from nominal.core.ingestion_job import IngestionJobStatus
+
+client = NominalClient.from_profile("default")
+
+# Find what failed in the last day, across every dataset in the workspace
+failures = client.search_ingestion_jobs(
+    statuses=[IngestionJobStatus.FAILED],
+    start_time_after=datetime.now(timezone.utc) - timedelta(days=1),
+)
+
+for job in failures:
+    print(f"{job.rid}  {job.ingest_type}  {job.origin_files}")
+    print(f"  {job.nominal_url}")
+
+# `status` is a snapshot taken when the job was fetched. Call refresh() to
+# advance it rather than re-reading the same value in a loop.
+job = client.get_ingestion_job("<JOB_RID>")
+print(job.refresh().status)
 ```
 
 `IngestionJob.ingest_type` tells you what produced it: `TABULAR`, `MCAP`, `DATAFLASH`,
