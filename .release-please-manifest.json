@@ -1,5 +1,5 @@
 {
-  ".": "1.176.0",
+  ".": "1.177.0",
   "packages/nominal-tdms": "1.144.0",
-  "packages/nominal-ibis": "0.0.0"
+  "packages/nominal-ibis": "0.1.0"
 }
