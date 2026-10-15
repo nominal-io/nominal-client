@@ -30,20 +30,44 @@ inspection, root-cause analysis, and automated alerting.
 
 Consider the following dataset:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/read_csv_data.py
-:language: python
+```python
+import polars as pl
+from huggingface_hub import hf_hub_download
+
+# Download the file using huggingface_hub, then read with Polars
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
+df = pl.read_csv(csv_path)
+print(df.head())
 ```
 
 Next, upload that data to Nominal:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/create_dataset_for_run.py
-:language: python
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+dataset = client.create_dataset(
+    name="Frosty Flight measurements",
+)
+dataset.add_tabular_data(
+    csv_path,
+    timestamp_column="source_time",
+    timestamp_type="iso_8601",
+)
 ```
 
 This dataset is part of an experimental run. Create the run, and attach the dataset:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/create_run_and_add_dataset.py
-:language: python
+```python
+flight_simulator_run = client.create_run(
+    name="Frosty Flight", start=df["source_time"].min(), end=df["source_time"].max()
+)
+flight_simulator_run.add_dataset("measurements", dataset)
 ```
 
 If you navigate to your organization's [Runs page](https://app.gov.nominal.io/runs),
@@ -75,8 +99,8 @@ Nominal log entries are defined in Python as a list of {py:obj}`LogPoint <nomina
 
 Finally, write the logs to the existing dataset using {py:obj}`dataset.write_logs() <nominal.core.Dataset.write_logs>`:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/write_logs_to_dataset.py
-:language: python
+```python
+dataset.write_logs(logs)
 ```
 
 If you visit the Datasets tab of the "Frosty Flight" Run page, you'll see a logs {abbr}`channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` in the "Data scopes" tab.
