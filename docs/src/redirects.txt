@@ -19,3 +19,18 @@ reference/thirdparty/tdms.md sdk/thirdparty/tdms.md
 reference/toplevel.md sdk/index.md
 reference/ts.md sdk/ts.md
 changelog.md sdk/changelog.md
+
+# Reference pages consolidated into SDK topics.
+sdk/core/comment.md sdk/core/run.md
+sdk/core/connection.md sdk/core/streaming.md
+sdk/core/container_image.md sdk/core/containerized_extractor.md
+sdk/core/dataset_file.md sdk/core/dataset.md
+sdk/core/datasource.md sdk/core/dataset.md
+sdk/core/filetype.md sdk/core/dataset.md
+sdk/core/log.md sdk/core/streaming.md
+sdk/core/unit.md sdk/core/channel.md
+sdk/core/video.md sdk/core/legacy_videos.md
+sdk/core/video_dataset_file.md sdk/core/dataset.md
+sdk/core/video_file.md sdk/core/legacy_videos.md
+sdk/core/workbook_template.md sdk/core/workbook.md
+sdk/core/write_stream.md sdk/core/streaming.md

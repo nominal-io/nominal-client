@@ -23,10 +23,13 @@ Members come from Python exports and render inline; do not maintain member lists
 generated source pages. Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with
-properties after the fields. Core's landing page groups module references with
-native toctrees. Keep its `tocdepth: 3` so group headings do not prune module pages
-from the title-only sidebar. Module pages keep classes, related types, and public helpers together;
-methods render inline, and supporting shared types live on the utilities page.
+properties after the fields. Core groups related modules on topic pages, with
+methods inline and supporting types beside the APIs that use them. The landing
+page's native toctree orders both its links and the sidebar: Client first, then
+alphabetically by page title. Legacy Videos keeps the deprecated standalone video
+APIs available separately from current dataset video APIs. DataSource's shared
+interface lives in a dropdown on Datasets and files; its inherited methods also
+render on Dataset and Connection. Supporting shared types live on the utilities page.
 `_ext/core_reference.py` filters module members through `nominal.core.__all__`,
 checks that every export has a reference target, and aliases public import names to
 those targets. Keep source-module `automodule` directives rather than per-symbol
