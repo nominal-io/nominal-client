@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, overload
 
+from google.protobuf.field_mask_pb2 import FieldMask
 from nominal_api import (
     api,
     datasource_api,
@@ -17,8 +18,6 @@ from nominal_api import (
     scout_datasource_connection,
     scout_video,
     storage_writer_api,
-    timeseries_channelmetadata,
-    timeseries_channelmetadata_api,
     timeseries_metadata,
     timeseries_metadata_api,
     upload_api,
@@ -31,12 +30,14 @@ from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.marking import MarkableMixin
-from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol_from_unit_like
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
@@ -48,6 +49,7 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CHANNEL_BATCH_SIZE = 500
+_MAX_CHANNEL_UPDATE_BATCH_SIZE = 10_000
 
 
 @dataclass(frozen=True)
@@ -93,8 +95,6 @@ class DataSource(HasRid, MarkableMixin):
         @property
         def proto_write(self) -> ProtoWriteService: ...
         @property
-        def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
-        @property
         def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
         def containerized_extractor(
@@ -133,20 +133,15 @@ class DataSource(HasRid, MarkableMixin):
             names = [channel.name for channel in self.search_channels()]
 
         for batch_channel_names in batched(names, _DEFAULT_CHANNEL_BATCH_SIZE):
-            requests = [
-                timeseries_channelmetadata_api.GetChannelMetadataRequest(
-                    channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
-                        channel_name=channel_name, data_source_rid=self.rid
-                    )
-                )
-                for channel_name in batch_channel_names
-            ]
-
-            batch_request = timeseries_channelmetadata_api.BatchGetChannelMetadataRequest(requests=requests)
-            response = self._clients.channel_metadata.batch_get_channel_metadata(
-                self._clients.auth_header, batch_request
+            request = channel_metadata_pb2.BatchGetChannelMetadataRequest(
+                channel_identifiers=[
+                    channel_metadata_pb2.ChannelIdentifier(channel_name=name, data_source_rid=self.rid)
+                    for name in batch_channel_names
+                ]
             )
-            yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
+            with translate_grpc_errors():
+                response = self._clients.channel_metadata.BatchGetChannelMetadata(request)
+            yield from (Channel._from_proto(self._clients, channel) for channel in response.channel_metadata)
 
     @property
     def _write_rid(self) -> str:
@@ -336,6 +331,10 @@ class DataSource(HasRid, MarkableMixin):
     ) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
+        Updates are sent sequentially in batches of at most 10,000 matching channels.
+        Each batch is atomic. If a later batch fails, earlier batches remain applied and
+        subsequent batches are not sent.
+
         Args:
             channels_to_units: A mapping of channel names to unit symbols.
 
@@ -346,7 +345,7 @@ class DataSource(HasRid, MarkableMixin):
 
         Raises:
             ValueError: Unsupported unit symbol provided
-            NominalError: Error validating units via gRPC (e.g. NominalNotFoundError, NominalPermissionDeniedError).
+            NominalError: Error validating or updating units via gRPC (e.g. NominalNotFoundError).
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
         channel_names = set(channel.name for channel in self.get_channels())
@@ -367,20 +366,23 @@ class DataSource(HasRid, MarkableMixin):
         if not allow_display_only_units:
             _error_on_invalid_units(channels_to_units, self._clients.units)
 
-        # For each channel / unit combination, create an update request
-        update_requests = [
-            timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
-                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
-                    channel_name=channel_name, data_source_rid=self.rid
-                ),
-                unit_update=_build_unit_update(unit),
-            )
-            for channel_name, unit in channels_to_units.items()
-        ]
-
-        # Set units in database using batch update
-        batch_request = timeseries_channelmetadata_api.BatchUpdateChannelMetadataRequest(requests=update_requests)
-        self._clients.channel_metadata.batch_update_channel_metadata(self._clients.auth_header, batch_request)
+        for batch in batched(channels_to_units.items(), _MAX_CHANNEL_UPDATE_BATCH_SIZE):
+            update_requests = [
+                channel_metadata_pb2.UpdateChannelMetadataRequest(
+                    channel_metadata=channel_metadata_pb2.ChannelMetadata(
+                        channel_identifier=channel_metadata_pb2.ChannelIdentifier(
+                            channel_name=channel_name, data_source_rid=self.rid
+                        ),
+                        unit=_unit_symbol_from_unit_like(unit),
+                    ),
+                    # A selected but unset unit clears it; an unselected field is unchanged.
+                    update_mask=FieldMask(paths=["unit"]),
+                )
+                for channel_name, unit in batch
+            ]
+            request = channel_metadata_pb2.BatchUpdateChannelMetadataRequest(requests=update_requests)
+            with translate_grpc_errors():
+                self._clients.channel_metadata.BatchUpdateChannelMetadata(request)
 
     def set_channel_prefix_tree(self, delimiter: str = ".") -> None:
         """Index channels hierarchically by a given delimiter.
