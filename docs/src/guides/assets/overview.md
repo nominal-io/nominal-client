@@ -76,9 +76,13 @@ reuses the dataset; running the upload again still adds another file.
 
 To attach an existing dataset instead of creating one through the asset, set the `data_scope_name` parameter in {py:obj}`Asset.add_dataset() <nominal.core.Asset.add_dataset>`.
 
+Replace `<DATASET_RID>` with an existing dataset RID and choose a scope name not already
+used by this asset:
+
 ```python
+existing_dataset = client.get_dataset("<DATASET_RID>")
 uav_drone_asset.add_dataset(
-    dataset=csv_dataset, data_scope_name="high-precipitation-flight"
+    dataset=existing_dataset, data_scope_name="ground-station-telemetry"
 )
 ```
 
@@ -108,6 +112,8 @@ if len(found_assets) == 0:
 
 `search_text` is a fuzzy search, so inspect the returned matches before treating one as
 a specific asset. This search-and-create example does not guarantee uniqueness.
+It illustrates searching for a separate asset; the update, attachment, and archive
+examples below continue to operate on `uav_drone_asset` created at the start of this guide.
 
 ## Update an asset
 
