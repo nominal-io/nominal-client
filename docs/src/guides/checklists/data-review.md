@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "How to apply checklists to runs in Nominal using Python, as part of your"
+    description: "How to apply checklists to runs in Nominal using Python, as part of your data review process"
 ---
 
 # Initiate Data Review in Nominal with Python
 
 {.lead}
-How to apply checklists to runs in Nominal using Python, as part of your
+How to apply checklists to runs in Nominal using Python, as part of your data review process
 
 ```{include} /guides/_snippets/install-warning.md
 ```
@@ -42,7 +42,8 @@ integrations to send notifications if violations are found.
 2. Locate Checklist RIDs and Commits
 
    Find the checklist RID(s) in the [platform](https://app.gov.nominal.io/checklists).
-   You will also need the commit SHA for the version you want to apply (listed under "Latest version").
+   To apply a specific version, copy its commit SHA (listed under "Latest version").
+   Omit `commit` from `execute_checklist()` to use the latest version instead.
 
    ```python
    checklist1_rid = "paste_rid_here"
@@ -62,19 +63,22 @@ integrations to send notifications if violations are found.
 
 4. Apply Checklists
 
-   Use the Nominal client to create a data review builder, add your integration (optional), and add each request (which associates a run with a checklist).
-   Then initiate the reviews.
+   Create a data review builder and call `execute_checklist()` for each run/checklist pair.
+   For a run with multiple assets, also supply `asset=` to select the asset to review.
+   Add an integration if notifications are needed, then initiate the reviews.
+   `initiate()` waits for review completion by default; it does not confirm notification delivery.
 
    ```python
    review_builder = client.data_review_builder()
-   review_builder.add_integration(integration_rid)  # Optional
+   # Optional: uncomment after setting integration_rid above.
+   # review_builder.add_integration(integration_rid)
 
    # Add requests for run1
-   review_builder.add_request(run1_rid, checklist1_rid, checklist1_commit)
-   review_builder.add_request(run1_rid, checklist2_rid, checklist2_commit)  # Optional
+   review_builder.execute_checklist(run1_rid, checklist1_rid, commit=checklist1_commit)
+   review_builder.execute_checklist(run1_rid, checklist2_rid, commit=checklist2_commit)  # Optional
 
    # Add requests for run2
-   review_builder.add_request(run2_rid, checklist1_rid, checklist1_commit)  # Optional
+   review_builder.execute_checklist(run2_rid, checklist1_rid, commit=checklist1_commit)  # Optional
 
    # Initiate reviews
    reviews = review_builder.initiate()
@@ -82,15 +86,16 @@ integrations to send notifications if violations are found.
    # Print out results
    for review in reviews:
        print(f"review: {review.rid}, URL: {review.nominal_url}")
-       print(f"  nr. of violations: {len(review.get_violations())}")
+       print(f"  nr. of generated events: {len(review.get_events())}")
    ```
 
-You have now applied one or more checklists to your runs, and you'll be able to see any violations that arose.
+Each returned review has completed. Use `get_events()` to retrieve its generated events.
 
 ## Retrieving Data Review Results Later
 
-You can retrieve the results of a data review at any time using the `client.get_data_review()` function.
+Retrieve a review with `client.get_data_review()`. Replace `<DATA_REVIEW_RID>` with
+one of the review RIDs printed above.
 
 ```python
-review = client.get_data_review(review_rid)
+review = client.get_data_review("<DATA_REVIEW_RID>")
 ```
