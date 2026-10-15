@@ -37,8 +37,17 @@ directly on the Nominal platform or programmatically using the Nominal Python SD
    - On the right side of the screen, locate the RID under "Metadata".
 3. Create the Workbook Using the SDK:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/workbooks/create_workbook_from_template.py
-:language: python
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+template = client.get_workbook_template("your_template_rid")
+template.create_workbook(
+    run="your_run_rid",
+    title="My new workbook",
+    description="This is a new workbook created from a template",
+)
 ```
 
 ### Accessing Your New workbook
