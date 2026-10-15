@@ -1,168 +1,202 @@
 ---
 myst:
   html_meta:
-    description: "Export time-series data from Nominal to Polars DataFrames and Parquet files using the Python SDK"
+    description: "Download stored dataset files or export selected channel data to Polars DataFrames, CSV, and Parquet"
 ---
 
 # Export data
 
 {.lead}
-Export time-series data from Nominal to Polars DataFrames and Parquet files using the Python SDK
+Download stored dataset files or export selected channel data to Polars DataFrames, CSV, and Parquet
 
 ```{include} /guides/_snippets/install-warning.md
 ```
 
-:::{warning}
+Choose the output you need:
 
-The `PolarsExportHandler` is experimental. If you encounter bugs or unexpected behavior, report them to the Nominal team.
-:::
+- **Stored files:** download whole dataset files in their ingested format. A time filter selects
+  overlapping files; it does not trim their contents.
+- **Channel samples:** select channels and a time range, then export DataFrames to CSV or Parquet
+  with `PolarsExportHandler`.
 
-This guide shows how to programmatically export data from Nominal using the Python SDK. If you prefer an interactive CLI-based workflow, see [Download data](/guides/cli/downloading-data.md).
+For an interactive CLI workflow, see [Download data](/guides/cli/downloading-data.md).
 
 ## Download dataset files
 
-If your dataset contains uploaded files (CSV, Parquet, HDF5, etc.), you can download those files directly using `dataset.list_files()` and `file.download()`. The following example collects all datasets attached to a run and downloads their files within the run's time bounds:
+This example downloads files from datasets **directly attached to a run**. `run.list_datasets()`
+does not include datasets owned by the run's assets. For asset-owned data, resolve the dataset
+from the asset as shown [below](#export-asset-owned-data).
 
 ```python
 from pathlib import Path
+from time import time_ns
 
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
-
-run = client.get_run("<run rid>")
-
-output_dir = Path("downloaded_files")
-output_dir.mkdir(exist_ok=True)
+run = client.get_run("<RUN_RID>")
+end = run.end if run.end is not None else time_ns()
 
 for _, dataset in run.list_datasets():
-    for file in dataset.list_files(start=run.start, end=run.end):
-        path = file.download(output_dir)
-        print(f"Downloaded {file.name} to {path}")
+    for dataset_file in dataset.search_files(start=run.start, end=end):
+        output_dir = Path("downloaded_files") / dataset.rid / dataset_file.id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = dataset_file.download(output_dir)
+        print(f"Downloaded {dataset_file.name} to {path}")
 ```
 
-Each `DatasetFile` is downloaded in its ingested format to the specified directory.
+`search_files()` selects files whose time ranges overlap the requested interval, with search
+bounds truncated to whole seconds. `download()` retrieves each **whole file**, including any
+samples outside the run. Use channel export below when you need samples limited to a time range.
 
-## Export data from runs
+Separate directories prevent collisions between different files with the same name. Downloading
+again to an existing destination file raises `FileExistsError`. For extractor inputs rather than
+ingested output files, use `DatasetFile.download_original_files()`.
 
-Use `PolarsExportHandler` to export {abbr}`channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` data from runs as [Polars](https://pola.rs/) DataFrames. Install the additional dependency first:
+## Export channel samples
+
+Install Polars first:
 
 ```bash
 pip install polars
 ```
 
-The following example searches for runs by label, collects channels across all datasets on each run using `run.list_datasets()`, and exports each run's data to CSV files:
+:::{warning}
+`PolarsExportHandler` is experimental. It supports `DOUBLE`, `INT`, and `STRING` channels;
+unsupported channel types are skipped with a warning. Failed batch downloads can be logged and
+skipped, so exhausting the iterator does not prove that every requested sample was exported.
+Inspect export logs and validate the resulting coverage before relying on a complete export.
+:::
+
+### Export a dataset attached directly to a run
+
+This example resolves one dataset by its run reference name, selects two channels by their full
+names, and writes ten-minute batches to Parquet. Replace `"telemetry"`, `"temperature"`, and
+`"speed"` with your reference and channel names.
+
+The examples assume no data-scope time offset or tag filter. Resolving a dataset returns the
+underlying dataset; it does not apply the run or asset scope's filters or offsets. See
+[Filter by tags](#filter-by-tags) for scoped data selection. For an offset scope, translate the
+run bounds into the dataset's time coordinates before exporting.
 
 ```python
-import re
 from datetime import timedelta
+from pathlib import Path
+from time import time_ns
 
-import polars as pl
 from nominal.core import NominalClient
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
 client = NominalClient.from_profile("default")
+run = client.get_run("<RUN_RID>")
+dataset = run.get_dataset("telemetry")
+channels = [dataset.get_channel("temperature"), dataset.get_channel("speed")]
 
-runs = client.search_runs(labels=["Failure"])
-
-for run in runs:
-    channels = []
-    for _, dataset in run.list_datasets():
-        channels.extend(list(dataset.search_channels(exact_match=["temperature"])))
-        channels.extend(list(dataset.search_channels(exact_match=["speed"])))
-
-    exporter = PolarsExportHandler(client)
-
-    for idx, df in enumerate(
-        exporter.export(
-            channels,
-            start=run.start,
-            end=run.end,
-            batch_duration=timedelta(seconds=600),
-        )
-    ):
-        if isinstance(df, pl.Series):
-            df = df.to_frame()
-
-        safe_name = re.sub(r"[^\w\-_.]", "_", run.name)
-        df.write_csv(f"{safe_name}_{run.run_number}_{idx}.csv")
-```
-
-:::{note}
-
-The `start` and `end` parameters accept `run.start` and `run.end` directly, but if you specify your own time range, you must provide the time as epoch nanoseconds in integer form. You can convert a `datetime` to epoch nanoseconds using `int(dt.timestamp() * 1e9)`:
-
-```python
-from datetime import datetime, timedelta, timezone
-
-start = datetime(2026, 3, 23, 23, 50, 27, tzinfo=timezone.utc)
-end   = datetime(2026, 3, 23, 23, 58, 31, tzinfo=timezone.utc)
+# Capture one end bound for an ongoing run.
+end = run.end if run.end is not None else time_ns()
+output_dir = Path("exports") / run.rid / dataset.rid
+output_dir.mkdir(parents=True, exist_ok=True)
+exporter = PolarsExportHandler(client)
 
 for idx, df in enumerate(
     exporter.export(
         channels,
-        start=int(start.timestamp() * 1e9),
-        end=int(end.timestamp() * 1e9),
-        batch_duration=timedelta(seconds=600),
+        start=run.start,
+        end=end,
+        batch_duration=timedelta(minutes=10),
+        timestamp_type="epoch_nanoseconds",
     )
 ):
-    ...
+    df.write_parquet(output_dir / f"batch_{idx:04d}.parquet")
 ```
-:::
 
-Use `batch_duration` to control how much data each batch covers. The exporter may yield `pl.Series` in some cases, so the snippet converts them to DataFrames before writing.
+Use `df.write_csv(output_dir / f"batch_{idx:04d}.csv")` for CSV instead. Polars quotes column names
+and string values when needed; read the result with a CSV parser that supports quoted fields.
+Use a new output directory for each export to avoid overwriting previous batches or leaving
+stale batches from a longer earlier export.
 
-:::{tip}
+To repeat this workflow for labeled runs, iterate over `client.search_runs(labels=["Failure"])`
+and resolve each run's dataset and bounds inside the loop. `run.list_datasets()` supplies
+`(reference_name, dataset)` pairs when you want to process all directly attached datasets;
+exporting each separately keeps identically named channels in different datasets distinct.
 
-Use `dataset.search_channels(exact_match=["keyword"])` to find channels by name. To combine results from multiple keyword searches, call `search_channels` multiple times and concatenate the results.
-:::
+### Export asset-owned data
 
-The `export()` method yields DataFrames in batches. With `join_batches=True`, each yielded DataFrame contains all requested channels joined on a shared timestamp column.
+A run can instead select a time interval on an asset's data. Resolve the dataset from the asset's
+data scope, and use the run only for the export bounds. You do not need to attach another copy of
+the dataset directly to the run.
 
-Timestamps where a channel has no data are filled with `NaN`.
+In the preceding example, replace the dataset lookup with:
 
-With `join_batches=False`, each yielded DataFrame contains a subset of channels for that batch of time. This can be faster for large channel counts.
+```python
+asset = client.get_asset("<ASSET_RID>")
+dataset = asset.get_dataset("telemetry")
+```
 
-:::{note}
+Use the asset associated with the run and its data scope name. Then select channels from this
+dataset and export with the same `start` and `end`. `run.get_dataset()` and `run.list_datasets()`
+resolve direct run references; they do not search the associated assets.
 
-You can also write to binary Parquet with `df.write_parquet(path)` for better compression and faster read times on large datasets.
-:::
+### Choose time bounds and batch output
 
-:::{note}
+`start` and `end` must be integer epoch **nanoseconds**. `run.start` already uses this unit;
+`run.end` can be `None` for an ongoing run, which is why the example captures `time_ns()`.
+These input units are independent of `timestamp_type`, which controls output timestamps and
+otherwise defaults to `"epoch_seconds"`.
 
-CSV output may include quotes around column names and string (enum) values. Ensure your CSV parser is configured to handle quoted fields.
-:::
+For a custom interval, convert timezone-aware datetimes without floating-point arithmetic:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+start_time = datetime(2026, 3, 23, 23, 50, 27, tzinfo=timezone.utc)
+end_time = datetime(2026, 3, 23, 23, 58, 31, tzinfo=timezone.utc)
+epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+start_ns = ((start_time - epoch) // timedelta(microseconds=1)) * 1_000
+end_ns = ((end_time - epoch) // timedelta(microseconds=1)) * 1_000
+
+for df in exporter.export(channels, start=start_ns, end=end_ns):
+    print(df.head())
+```
+
+This preserves Python `datetime`'s microsecond precision. Pass integer nanoseconds directly if
+your source has finer precision.
+
+`export()` always yields Polars DataFrames. `batch_duration` controls the time window per batch;
+if omitted, the exporter chooses a duration from estimated channel rates. It does not guarantee
+a fixed row count or file size.
+
+With `join_batches=True` (the default), channel groups for each time slice are outer-joined on
+the timestamp column. Missing channel values are Polars **nulls**, not automatically `NaN`.
+With `join_batches=False`, each yielded frame contains one channel group for that time slice;
+multiple frames can cover the same interval.
 
 ## Filter by tags
 
-If your dataset was ingested using data scopes with tags (e.g. `ingest_uuid`), pass the same tags when exporting to select the correct data:
+If the run reference or asset data scope selects a subset of the dataset with tags, pass those
+same tags to `export()`. A resolved dataset and its channels do not carry that scope selection
+into the export request.
+
+Using the dataset, channels, run, and captured `end` from the earlier example:
 
 ```python
-from nominal.core import NominalClient
-from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
-
-client = NominalClient.from_profile("default")
-
-run = client.get_run("<run rid>")
-
-tags = {"ingest_uuid": "your-ingest-uuid"}
-
-channels = []
-for _, dataset in run.list_datasets():
-    channels.extend(list(dataset.search_channels(exact_match=["temperature"])))
-
-exporter = PolarsExportHandler(client)
+tags = {"ingest_uuid": "<INGEST_UUID>"}
 
 for df in exporter.export(
     channels,
     start=run.start,
-    end=run.end,
+    end=end,
     tags=tags,
+    timestamp_type="epoch_nanoseconds",
 ):
     print(df.head())
 ```
 
-You can find the tags for a dataset's data scope on the asset detail page in the Nominal UI, or by inspecting the data source programmatically.
+Use the tags configured on your run reference or asset data scope, such as those shown on the
+asset detail page in Nominal. One `tags` mapping applies to all channels in that export call;
+export scopes with different tag selections separately. These are channel-data filters.
+For whole-file downloads, `dataset.search_files(file_tags=...)` filters file metadata and still
+downloads the entire matching files.
 
 ## See also
 
