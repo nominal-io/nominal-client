@@ -35,8 +35,24 @@ Neither format inspects your intent.
 
 `add_channel()` creates the channel's metadata without uploading any data:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/datasets/channel_pre_register.py
-:language: python
+```python
+from nominal.core import ChannelDataType, NominalClient
+
+client = NominalClient.from_profile("default")
+dataset = client.create_dataset("Frosty Flight")
+
+# Pin the type before any data arrives. A channel whose first values happen to
+# be whole numbers would otherwise be inferred as INT, and later fractional
+# values would not fit it.
+dataset.add_channel(
+    "altitude",
+    ChannelDataType.DOUBLE,
+    unit="m",
+    description="Barometric altitude above mean sea level",
+)
+
+# A numeric-looking status code that must stay categorical
+dataset.add_channel("fault_code", ChannelDataType.STRING)
 ```
 
 The data types are `DOUBLE`, `INT`, `UINT`, `STRING`, `LOG`, `DOUBLE_ARRAY`, `STRING_ARRAY`,
@@ -53,8 +69,22 @@ requested type, unit, or description differs.
 For a known instrumentation list, `batch_update_or_create_channels()` upserts in bulk. Channels that
 already exist are updated rather than duplicated, so this is safe to re-run from a setup script:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/datasets/channel_pre_register_batch.py
-:language: python
+```python
+from nominal.core import ChannelDataType
+from nominal.core.datasource import CreateChannelRequest
+
+# One request per channel. Existing channels are updated rather than
+# duplicated, so this is safe to re-run as part of a setup script.
+dataset.batch_update_or_create_channels(
+    [
+        CreateChannelRequest("altitude", ChannelDataType.DOUBLE, unit="m"),
+        CreateChannelRequest("airspeed", ChannelDataType.DOUBLE, unit="m/s"),
+        CreateChannelRequest("motor_rpm", ChannelDataType.INT, unit="1/min"),
+        CreateChannelRequest("fault_code", ChannelDataType.STRING),
+    ]
+)
+
+# A repeated channel name fails the whole batch, so deduplicate first.
 ```
 
 One caveat: a channel name repeated within a single batch fails the whole batch. Deduplicate before

@@ -41,8 +41,40 @@ pip3 install nominal jupyterlab pandas plotly ipywidgets
 
 Generate a sample dataset with 720,000 rows of random data:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/retrieve_decimated_1.py
-:language: python
+```python
+import datetime
+
+import numpy as np
+import pandas as pd
+from dateutil import parser
+
+dataset_name = "1h_5ms"
+start = parser.isoparse("2024-10-22T00:00:00Z")
+end = parser.isoparse("2024-10-22T01:00:00Z")
+resolution = datetime.timedelta(milliseconds=5)
+
+dt = end - start
+n = int((dt.total_seconds() * 1e6 + dt.microseconds) / resolution.microseconds)
+
+np.random.seed(2)
+cols = ["value"]
+
+# Generate a fake signal
+signal = np.random.normal(0, 0.3, size=n).cumsum() + 50
+
+# Generate many noisy samples from the signal
+noise = lambda var, bias, n: np.random.normal(bias, var, n)
+
+data = {c: signal + noise(1, 10 * (np.random.random() - 0.5), n) for c in cols}
+
+# Pick a few samples from the first line and really blow them out
+locs = np.random.choice(n, 10)
+data["value"][locs] *= 2
+
+data["Time"] = [(start + resolution * i).isoformat() for i in range(n)]
+
+df_gen = pd.DataFrame(data)
+df_gen
 ```
 
 This should display a Pandas DataFrame with a `Time` column and a `value` column with 720,000 rows.
@@ -56,8 +88,16 @@ Before uploading the data, ensure you're connected to Nominal.
 
 Upload the dataset to Nominal using the `upload_dataframe()` method:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/retrieve_decimated_2.py
-:language: python
+```python
+from nominal.core import NominalClient
+from nominal.thirdparty.pandas import upload_dataframe
+
+client = NominalClient.from_profile("default")
+
+dataset = upload_dataframe(
+    client, df_gen, dataset_name, "Time", timestamp_type="iso_8601"
+)
+dataset
 ```
 
 This should display the dataset metadata.
@@ -72,8 +112,12 @@ up on the Nominal platform in the "Datasources" section and enter it in the `cli
 
 With the dataset uploaded, retrieve decimated data points for a {abbr}`Channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` using `channel_to_dataframe_decimated()` from `nominal.thirdparty.pandas`.
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/retrieve_decimated_3.py
-:language: python
+```python
+from nominal.thirdparty.pandas import channel_to_dataframe_decimated
+
+channel = dataset.get_channel("value")
+df_decimated = channel_to_dataframe_decimated(channel, start, end, buckets=2000)
+df_decimated
 ```
 
 This should display a Pandas DataFrame with the 2000 decimated data points.
@@ -82,8 +126,50 @@ This should display a Pandas DataFrame with the 2000 decimated data points.
 
 Display the data in a time series chart using Plotly:
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/retrieve_decimated_4.py
-:language: python
+```python
+import plotly.graph_objects as go
+
+if "value" in df_decimated.columns:
+    # range had less than 1000 points
+    fig = go.Figure(
+        [
+            go.Scatter(
+                x=df_decimated.index,
+                y=df_decimated["value"],
+                mode="lines",
+                # line=dict(width=0),
+                showlegend=False,
+                # line_shape="vh"
+            ),
+        ]
+    )
+else:
+    fig = go.Figure(
+        [
+            go.Scatter(
+                x=df_decimated.index,
+                y=df_decimated["max"],
+                mode="lines",
+                line=dict(width=0),
+                showlegend=False,
+                line_shape="vh",
+            ),
+            go.Scatter(
+                x=df_decimated.index,
+                y=df_decimated["min"],
+                mode="lines",
+                fill="tonexty",
+                fillcolor="blue",
+                line=dict(width=0),
+                showlegend=False,
+                line_shape="vh",
+            ),
+        ]
+    )
+
+fig.update_layout(xaxis_title="Time", yaxis_title="Value")
+
+fig.show()
 ```
 
 This will display a time series chart with the decimated data points. Note the outliers in the signal that are preserved.
@@ -98,8 +184,74 @@ When you zoom in on the chart, the resolution of the data points will not increa
 
 This section adds an event handler and requests higher resolution data points when zooming in.
 
-```{literalinclude} /guides/_snippets/code/data_retrieval/retrieve_decimated_5.py
-:language: python
+```python
+def on_range_change(layout, range_x):
+    start = parser.isoparse(range_x[0] + "Z")
+    end = parser.isoparse(range_x[1] + "Z")
+
+    df = channel_to_dataframe_decimated(channel, start, end, buckets=2000)
+
+    # Create a new figure with the new data
+    fig = make_fig(df)
+    fig.update_layout(xaxis={"range": range_x})
+
+    # Update the existing figure widget with the new figure
+    fig_widget.layout = fig.layout
+    fig_widget.layout.on_change(on_range_change, "xaxis.range")
+    fig_widget.data = []
+    fig_widget.add_traces(fig.data)
+
+
+def make_fig(df):
+    if "value" in df.columns:
+        # range had less than 1000 points
+        fig = go.Figure(
+            [
+                go.Scatter(
+                    x=df.index,
+                    y=df["value"],
+                    mode="lines",
+                    showlegend=False,
+                ),
+            ]
+        )
+    else:
+        fig = go.Figure(
+            [
+                go.Scatter(
+                    x=df.index,
+                    y=df["max"],
+                    mode="lines",
+                    line=dict(width=0),
+                    showlegend=False,
+                    line_shape="vh",
+                ),
+                go.Scatter(
+                    x=df.index,
+                    y=df["min"],
+                    mode="lines",
+                    fill="tonexty",
+                    fillcolor="blue",
+                    line=dict(width=0),
+                    showlegend=False,
+                    line_shape="vh",
+                ),
+            ]
+        )
+
+    fig.update_layout(
+        xaxis_title="Time",
+        yaxis_title="Value",
+    )
+    return fig
+
+
+fig_range = make_fig(channel_to_dataframe_decimated(channel, start, end, buckets=2000))
+fig_widget = go.FigureWidget(fig_range)
+
+fig_widget.layout.on_change(on_range_change, "xaxis.range")
+
+fig_widget
 ```
 
 This will display a time series chart with the decimated data points. When you zoom in, the resolution of the data
