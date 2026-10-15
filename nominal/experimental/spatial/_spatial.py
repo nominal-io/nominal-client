@@ -173,6 +173,9 @@ class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
 
         Fields set to ``None`` are left untouched; empty labels or properties clear them.
         With no fields supplied, refresh the local snapshot without changing metadata.
+
+        Raises:
+            NominalError: Error updating or refreshing spatial metadata via gRPC.
         """
         paths = [
             path
@@ -400,12 +403,20 @@ class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
         self._refresh_from_api(updated)
 
     def archive(self) -> None:
-        """Archive this spatial, hiding it from search (reversible)."""
+        """Archive this spatial, hiding it from search (reversible).
+
+        Raises:
+            NominalError: Error archiving the spatial via gRPC.
+        """
         with translate_grpc_errors():
             self._clients.spatial.ArchiveSpatial(spatial_pb2.ArchiveSpatialRequest(spatial_rid=self.rid))
 
     def unarchive(self) -> None:
-        """Unarchive a previously archived spatial."""
+        """Unarchive a previously archived spatial.
+
+        Raises:
+            NominalError: Error unarchiving the spatial via gRPC.
+        """
         with translate_grpc_errors():
             self._clients.spatial.UnarchiveSpatial(spatial_pb2.UnarchiveSpatialRequest(spatial_rid=self.rid))
 
@@ -461,6 +472,9 @@ def create_point_cloud_spatial(
 
     Returns:
         The created spatial.
+
+    Raises:
+        NominalError: Error resolving the workspace or creating the spatial via gRPC.
     """
     return Spatial._from_proto(
         client._clients,
@@ -477,7 +491,11 @@ def create_point_cloud_spatial(
 
 
 def get_spatial(client: NominalClient, rid: str) -> Spatial:
-    """Retrieve a spatial by its RID."""
+    """Retrieve a spatial by its RID.
+
+    Raises:
+        NominalError: Error fetching spatial metadata via gRPC.
+    """
     return Spatial._from_proto(client._clients, _get_spatial(client._clients, rid))
 
 

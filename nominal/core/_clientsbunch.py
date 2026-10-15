@@ -151,7 +151,6 @@ class ClientsBunch:
     notebook: scout.NotebookService
     proto_write: ProtoWriteService
     series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
-    spatial: spatial_pb2_grpc.SpatialServiceStub
     storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
@@ -175,6 +174,7 @@ class ClientsBunch:
     run: run_service_pb2_grpc.RunServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
+    spatial: spatial_pb2_grpc.SpatialServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
     users: users_pb2_grpc.UserServiceStub
@@ -325,7 +325,6 @@ class ClientsBunch:
             notebook=client_factory(scout.NotebookService),
             proto_write=client_factory(ProtoWriteService),
             series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
-            spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
@@ -348,6 +347,7 @@ class ClientsBunch:
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
             users=grpc_factory(users_pb2_grpc.UserServiceStub),
