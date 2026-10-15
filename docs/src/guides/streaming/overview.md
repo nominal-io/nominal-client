@@ -120,8 +120,21 @@ Tags help you filter time series data when multiple sources write to the same da
 - Test or simulation IDs (`sim_id`, `test_run_id`)
 - Environment or configuration (`environment: sim`, `position: left`)
 
-```{include} /guides/_snippets/tag-anti-patterns-warning.md
-```
+:::{admonition} Avoid highly specific tags to maintain speed
+:class: warning
+
+Tags should have a few unique options compared to the total number of records; for example, only tens to hundreds of unique tag combinations to group data. Do not use tags for:
+- **Continuous numeric values** like latitude, longitude, or measurements
+- **Timestamps** or time-based identifiers
+- **Unique IDs** like UUIDs or sequence numbers that change every record
+
+Highly specific tags degrade query performance. If your data changes every point, it belongs in a **channel**, not a tag.
+
+**Good tag examples:**
+* `asset_id` or `motor_id`
+*  `environment` (example: test, production, sim, or real)
+* `test_stand_location_id`
+:::
 
 For more guidance on organizing your data model, see [Organizing your test data](https://docs.nominal.io/core/documentation/guides/organizing-test-data).
 
