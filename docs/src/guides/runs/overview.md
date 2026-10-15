@@ -22,18 +22,21 @@ This guide details common patterns for working with Runs in Python.
 
 ## Create a run
 
-It's possible to create an empty run without any data. Runs must have a start and end time expressed in absolute time.
+It's possible to create an empty run without any data. Supply an absolute start time and either an absolute end time or `end=None` for an ongoing run.
+Use timezone-aware datetimes or integer epoch nanoseconds.
 All Datasets added to the run should overlap with this time domain.
 
 ```python
+from datetime import datetime, timezone
+
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 
 flight_simulator_run = client.create_run(
     name="High precipitation flight",
-    start="2024-06-08T05:58:42Z",
-    end="2024-06-08T06:00:06Z",
+    start=datetime(2024, 6, 8, 5, 58, 42, tzinfo=timezone.utc),
+    end=datetime(2024, 6, 8, 6, 0, 6, tzinfo=timezone.utc),
 )
 
 print("Created run:", flight_simulator_run.rid)
@@ -41,20 +44,22 @@ print("Created run:", flight_simulator_run.rid)
 
 ## Create a run off of an asset
 
-It's also possible to create a run off of an existing asset:
+Use {py:meth}`~nominal.core.Asset.create_run` to associate a run with an asset.
+The run can use the asset's data scopes without attaching each dataset directly:
 
 ```python
+from datetime import datetime, timezone
+
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 
 asset = client.create_asset("Aircraft", "My flight simulator aircraft")
 
-flight_simulator_run = client.create_run(
+flight_simulator_run = asset.create_run(
     name="High precipitation flight",
-    start="2024-09-09T12:35:00Z",
-    end="2024-09-09T13:18:00Z",
-    assets=[asset.rid],
+    start=datetime(2024, 9, 9, 12, 35, tzinfo=timezone.utc),
+    end=datetime(2024, 9, 9, 13, 18, tzinfo=timezone.utc),
 )
 
 print("Created run:", flight_simulator_run.rid)
@@ -62,20 +67,25 @@ print("Created run:", flight_simulator_run.rid)
 
 ## Add data to a run
 
-To add a Dataset to a run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`:
+To attach a dataset directly to the run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`.
+Install `huggingface_hub` to download the sample CSV. Wait for ingestion before attaching it:
 
 ```python
-import polars as pl
+from huggingface_hub import hf_hub_download
 
-df = pl.read_csv("hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv")
-df.write_csv("frosty_flight_1k_rows.csv")
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
 
 csv_dataset = client.create_dataset("Frosty Flight")
-csv_dataset.add_tabular_data(
-    "frosty_flight_1k_rows.csv",
+dataset_file = csv_dataset.add_tabular_data(
+    csv_path,
     timestamp_column="source_time",
     timestamp_type="iso_8601",
 )
+dataset_file.poll_until_ingestion_completed()
 
 flight_simulator_run.add_dataset(
     dataset=csv_dataset, ref_name="high-precipitation-flight"
@@ -85,17 +95,15 @@ flight_simulator_run.add_dataset(
 ```{include} /guides/_snippets/what-is-a-dataset.md
 ```
 
-The example above sets the start and end times of the run manually. You can also set the run to span the Dataset:
+The earlier examples set the run's times manually. To make it span this uploaded file,
+use the file's bounds after polling. These are integer epoch nanoseconds; dataset-wide
+bounds may also include other uploads.
 
 ```python
-for f in csv_dataset.list_files(successful_only=False):
-    f.poll_until_ingestion_completed()
+bounds = dataset_file.bounds
+if bounds is None:
+    raise ValueError("Ingested file has no timestamp bounds")
 
-# After ingestion, we can query the data bound timestamps
-csv_dataset.refresh()
-bounds = csv_dataset.bounds
-
-# And update the run accordingly
 flight_simulator_run.update(start=bounds.start, end=bounds.end)
 ```
 
@@ -103,7 +111,9 @@ flight_simulator_run.update(start=bounds.start, end=bounds.end)
 
 When a run spans several datasources that ingest at different rates (for example, multiple video streams and a telemetry channel from the same test event), lower-bitrate sources typically finish ingesting first. Selecting a run from the runs page before every attached datasource finishes ingesting can cause inconsistent behavior in the workbook UI: the `align-to-run` action can appear available and display the wrong video if the referenced video dataset hasn't finished ingesting.
 
-Poll every file for ingestion completion before creating the run:
+Retain the file handles returned by your uploads in `files`, and their datasets in
+`datasets`. Supply `start` and `end` in the timestamp types described above. Poll every
+file for ingestion completion before creating the run; a failed ingest stops this sequence:
 
 ```python
 for f in files:
@@ -134,6 +144,8 @@ flight_simulator_run.add_dataset(
 You can check for a run's existence with {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>`.
 
 ```python
+from datetime import datetime, timezone
+
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
@@ -143,8 +155,8 @@ found_runs = client.search_runs(name_substring="High precipitation flight")
 if len(found_runs) == 0:
     flight_simulator_run = client.create_run(
         name="High precipitation flight",
-        start="2024-09-09T12:35:00Z",
-        end="2024-09-09T13:18:00Z",
+        start=datetime(2024, 9, 9, 12, 35, tzinfo=timezone.utc),
+        end=datetime(2024, 9, 9, 13, 18, tzinfo=timezone.utc),
     )
 ```
 
@@ -155,9 +167,7 @@ Run metadata can be updated with {py:obj}`Run.update() <nominal.core.Run.update>
 For example, to set a run's end time to the present moment:
 
 ```python
-import datetime
-
-flight_simulator_run.update(end=datetime.datetime.now())
+flight_simulator_run.update(end=datetime.now(timezone.utc))
 ```
 
 To update a run's title:
@@ -182,17 +192,14 @@ File attachments such as PDF reports or PowerPoints can be added to Runs:
 
 ```python
 filepath = "/path/to/my_report.pdf"
-with open(filepath, "rb") as f:
-    attachment = client.create_attachment_from_io(
-        f,
-        name="KittyHawk.pdf",
-    )
-my_run.add_attachments(attachments=[attachment])
+attachment = client.create_attachment(filepath)
+flight_simulator_run.add_attachments(attachments=[attachment])
 ```
 
 ## Retrieve a run
 
-Like Datasets, Runs can be retrieved by their resource ID ("RID"):
+Like Datasets, Runs can be retrieved by their resource ID ("RID"). Replace
+`<RUN_RID>` with a run RID from your workspace:
 
 ```python
 from nominal.core import NominalClient
@@ -200,7 +207,7 @@ from nominal.core import NominalClient
 client = NominalClient.from_profile("default")
 
 run = client.get_run(
-    "ri.scout.cerulean-staging.run.22697726-5454-4fad-a3ea-fe45e9fa9f09"
+    "<RUN_RID>"
 )
 run.update(labels=["X-PLANE"])
 ```
@@ -230,7 +237,9 @@ See {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>` for 
 
 ## Remove Run Data Sources
 
-The list `data_sources` can contain Connection, Dataset, Video instances, or rids as string.
+The list `data_sources` can contain Connection, Dataset, or Video instances, or their RIDs.
+Replace the placeholders below with resources from your workspace. This removes direct
+references from the run; it does not delete the source or remove an asset-owned data scope.
 
 ```python
 from nominal.core import NominalClient
@@ -238,12 +247,12 @@ from nominal.core import NominalClient
 client = NominalClient.from_profile("default")
 
 run = client.get_run(
-    "ri.scout.cerulean-staging.run.6c41d7fd-a48f-4d60-baa7-f34492264156"
+    "<RUN_RID>"
 )
 
 run.remove_data_sources(
     data_sources=[
-        "ri.catalog.cerulean-staging.dataset.d4f413c4-4787-4259-a142-1286587b50af"
+        "<DATASET_RID>"
     ]
 )
 ```
