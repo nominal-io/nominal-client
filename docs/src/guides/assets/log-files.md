@@ -18,8 +18,12 @@ equipment, and practically any present-day machine with an on-board computer.
 Nominal makes it simple to upload log files to a Nominal *Asset* for collaborative 
 inspection, root-cause analysis, and automated alerting.
 
-```{include} /guides/_snippets/what-is-an-asset.md
-```
+:::{note}
+
+In Nominal, *Assets* are containers of multimodal test data - including *Datasets*, *Videos*, *Logs*, and database connections.
+
+To see your organization's latest Assets, head over to the [Assets page](https://app.gov.nominal.io/assets)
+:::
 
 ## Connect to Nominal
 
@@ -30,8 +34,35 @@ inspection, root-cause analysis, and automated alerting.
 
 First, create an empty asset to upload the log file to:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/assets/create_asset_with_dataset.py
-:language: python
+```python
+import polars as pl
+from huggingface_hub import hf_hub_download
+from nominal.core import NominalClient
+
+# Download the file using huggingface_hub, then read with Polars
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
+df = pl.read_csv(csv_path)
+df.write_csv("frosty_flight_1k_rows.csv")
+
+client = NominalClient.from_profile("default")  # replace with your profile name
+
+dataset = client.create_dataset(
+    name="Frosty Flight measurements",
+)
+dataset.add_tabular_data(
+    "frosty_flight_1k_rows.csv",
+    timestamp_column="source_time",
+    timestamp_type="iso_8601",
+)
+
+uav_drone_asset = client.create_asset(name="Frosty Flight")
+uav_drone_asset.add_dataset(dataset=dataset, data_scope_name="dataset")
+
+print(uav_drone_asset.rid)
 ```
 
 If you navigate to your organization's [Assets page](https://app.gov.nominal.io/assets),
@@ -63,8 +94,8 @@ Nominal log entries are defined in Python as a list of {py:obj}`LogPoint <nomina
 
 Finally, write the logs to the existing dataset using {py:obj}`dataset.write_logs() <nominal.core.Dataset.write_logs>`:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/logs/write_logs_to_dataset.py
-:language: python
+```python
+dataset.write_logs(logs)
 ```
 
 If you visit the Datasets tab of the "Frosty Flight" Asset page, you'll see a logs {abbr}`channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` in the datasets table.
