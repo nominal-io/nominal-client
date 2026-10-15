@@ -79,7 +79,9 @@ print(f"submitted {job.rid} ({job.ingest_type})")
 The builder targets an existing dataset and cannot create one, so create or look up the dataset
 first. A builder is single-use: after a submission attempt, create a new builder for another
 batch. A failed request to trigger ingestion may already have reached the server; check for an
-existing job before retrying the batch, or you may ingest it twice.
+existing job before retrying the batch, or you may ingest it twice. See
+[Finding jobs after the fact](#finding-jobs-after-the-fact): filter by dataset and a recent
+`start_time_after` to look for a submission whose response was lost.
 
 Returning from `submit()` means the job was submitted, not that its files finished ingesting.
 Use [Waiting for a job](#waiting-for-a-job) below to track completion.
@@ -142,6 +144,8 @@ builder.add_tabular_data(
     "flight_data.csv",
     timestamp_column="source_time",
     timestamp_type="iso_8601",
+    units={"altitude": "m", "airspeed": "m/s"},
+    tag_columns={"vehicle_id": "veh_id"},
     tags={"file_uuid": str(uuid4())},
 )
 ```
@@ -157,16 +161,19 @@ from datetime import timedelta
 from nominal.core.dataset_file import IngestStatus
 from nominal.exceptions import NominalError
 
-finished_files = []
+observed_files = []
 try:
     for dataset_file in job.as_files_ingested(timeout=timedelta(minutes=30)):
-        finished_files.append(dataset_file)
-        if dataset_file.ingest_status is IngestStatus.FAILED:
+        observed_files.append(dataset_file)
+        status = dataset_file.ingest_status
+        if status is IngestStatus.SUCCESS:
+            print(f"{dataset_file.name}: SUCCESS")
+        elif status is IngestStatus.FAILED:
             print(f"{dataset_file.name} failed: {dataset_file.get_ingest_error()}")
         else:
-            print(f"{dataset_file.name}: {dataset_file.ingest_status.name}")
+            print(f"{dataset_file.name}: success not confirmed (last status {status.name})")
 except NominalError:
-    print(f"Stopped waiting after observing {len(finished_files)} finished files")
+    print(f"Stopped waiting after observing {len(observed_files)} files")
     raise
 ```
 
@@ -175,7 +182,11 @@ you started waiting are still picked up. A containerized extractor registers its
 exits, so `job.dataset_files()` is empty until then. It returns what exists at the moment you call
 it, not what the job will eventually produce.
 
-Each of the three ways an ingest can end changes how you write the calling code:
+A yielded file is not necessarily a successful ingest. A file missing from a polling response
+can be yielded with its last known status, and deleted or unrecognized states can also be
+yielded. The example reports success only for `SUCCESS`.
+
+Job and file outcomes need separate handling:
 
 - **A job can complete with individual files failed.** Check `ingest_status` on each yielded file if
   you need to establish success; the example above reports failed files without hiding them.
