@@ -276,13 +276,12 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
         stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
 
-def test_rust_stream_uses_configured_http_endpoint(mock_dataset, mock_clients):
+def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_clients):
     """Rust streaming uses client configuration without inspecting a service transport."""
-    pytest.importorskip("nominal_streaming")
-    from nominal.core._stream.rust_write_stream import RustWriteStream
+    rust_write_stream = rust_write_stream_type()
 
     mock_clients.api_base_url = "https://api.example.com/api"
-    with patch.object(RustWriteStream, "create") as create:
+    with patch.object(rust_write_stream, "create") as create:
         mock_dataset.get_write_stream(implementation="rust")
     assert create.call_args.args == ("test-token", "https://api.example.com/api")
     create.return_value.with_core_consumer.assert_called_once_with(mock_dataset.rid)
