@@ -48,6 +48,8 @@ Use {py:meth}`~nominal.core.Asset.create_run` to associate a run with an asset.
 The run can use the asset's data scopes without attaching each dataset directly:
 
 ```python
+from datetime import datetime, timezone
+
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
@@ -142,6 +144,8 @@ flight_simulator_run.add_dataset(
 You can check for a run's existence with {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>`.
 
 ```python
+from datetime import datetime, timezone
+
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
