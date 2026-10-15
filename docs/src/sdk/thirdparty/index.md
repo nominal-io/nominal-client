@@ -6,9 +6,7 @@ orphan: true
 
 Use these integrations to work with MATLAB, pandas, Polars, and TDMS data.
 
-```{toctree}
-:glob:
-:maxdepth: 1
-
-*
-```
+- {doc}`matlab`
+- {doc}`pandas`
+- {doc}`polars`
+- {doc}`tdms`

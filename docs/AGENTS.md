@@ -28,9 +28,10 @@ methods and attributes render inline. The reference presentation extension uses 
 Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
 and link targets. Integrations and Experimental pages are listed directly under
 captioned root toctrees. Their folder indexes remain standalone overview pages for
-existing links, with native glob toctrees and `orphan` metadata. New reference pages
-need an entry in the root `index.md` toctree. Explicit `autodata` directives cover
-imported type aliases and constants that native `automodule` omits.
+existing links, with ordinary `{doc}` links and `orphan` metadata. Leave toctrees
+out of those overviews so missing sidebar entries fail the strict build. New
+reference pages need an entry in the root `index.md` toctree. Explicit `autodata`
+directives cover imported type aliases and constants that native `automodule` omits.
 
 Author SDK docstrings using the shared [documentation policy](../.agents/conventions/documentation.md#docstring-markup),
 including when changing SDK files outside `docs/`. `_ext/docstring_fences.py` converts
