@@ -156,7 +156,7 @@ run = client.get_run("<RUN_RID>")
 print(run.name, run.nominal_url)
 ```
 
-To discover runs instead, search by name or labels:
+To discover runs instead, search across metadata or filter by labels:
 
 ```python
 matching_runs = client.search_runs(name_substring="Flight")
@@ -166,8 +166,9 @@ for match in review_runs:
     print(match.name, match.rid)
 ```
 
-A name search can match several runs; it is not a unique lookup or a guarantee that creating
-another run is safe. Use a known RID when you need a particular run. See
+`name_substring` matches a case-insensitive substring across names, descriptions, labels, and
+properties, despite its name. A result need not contain `"Flight"` in its name. Search is not a
+unique lookup or a guarantee that creating another run is safe. Use a known RID when you need a particular run. See
 {py:meth}`~nominal.core.NominalClient.search_runs` for the available filters.
 
 ## Update a run
