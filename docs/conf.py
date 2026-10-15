@@ -24,6 +24,7 @@ extensions = [
     "video",
     "docstring_fences",
     "reference_presentation",
+    "core_reference",
     "nominal_sphinx_theme",
 ]
 
