@@ -180,6 +180,11 @@ class ClientsBunch:
     users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
 
+    @property
+    def api_base_url(self) -> str:
+        """Configured API endpoint for clients that manage their own transport."""
+        return self._api_base_url
+
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
         """Fetch a single workspace by its RID via the gRPC workspace service.
 
@@ -351,6 +356,8 @@ class ClientsBunch:
 
 
 class HasScoutParams(Protocol):
+    @property
+    def api_base_url(self) -> str: ...
     @property
     def auth_header(self) -> str: ...
     @property

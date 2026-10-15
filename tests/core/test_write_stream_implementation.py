@@ -19,7 +19,7 @@ _DATASET_RID = "ri.catalog.ws.dataset.abc"
 def mock_clients():
     clients = MagicMock()
     clients.auth_header = "Bearer test-token"
-    clients.storage_writer._uri = "https://api.example.com"
+    clients.api_base_url = "https://api.example.com"
     return clients
 
 
@@ -274,3 +274,15 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
             stream.flush(wait=True)  # type: ignore[attr-defined]
 
         stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+
+
+def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_clients):
+    """Rust streaming uses client configuration without inspecting a service transport."""
+    rust_write_stream = rust_write_stream_type()
+
+    mock_clients.api_base_url = "https://api.example.com/api"
+    with patch.object(rust_write_stream, "create") as create:
+        mock_dataset.get_write_stream(implementation="rust")
+    assert create.call_args.args == ("test-token", "https://api.example.com/api")
+    create.return_value.with_core_consumer.assert_called_once_with(mock_dataset.rid)
+    create.return_value.with_core_consumer.return_value.open.assert_called_once()
