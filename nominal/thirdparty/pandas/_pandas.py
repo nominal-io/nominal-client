@@ -103,7 +103,7 @@ def upload_dataframe(
         channel_name_delimiter: Delimiter to use for folding channel view to a tree view.
         wait_until_complete: If true, wait until all data has been ingested successfully before returning
         labels: String labels to apply to the created dataset
-        properties: String key-value pairs to apply to the created dataset
+        properties: Key-value properties to apply to the created dataset. Values may be str or float.
         tag_columns: Mapping of column name => tag key to apply to the respective rows of data
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
 

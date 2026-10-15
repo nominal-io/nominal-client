@@ -13,12 +13,13 @@ from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,
     label_update,
-    property_update,
     rid_from_instance_or_string,
+    typed_property_update,
 )
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
+from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch, create_search_events_query
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
@@ -105,7 +106,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             assets: Assets or asset rids the event applies to. An empty sequence clears them.
             start: New starting timestamp for the event.
             duration: New duration for the event.
-            properties: Key-value properties replacing the existing ones. An empty mapping clears them.
+            properties: String or numeric properties replacing the existing ones. An empty mapping clears them.
             labels: Labels replacing the existing ones. An empty sequence clears them.
             type: New verbosity level for the event.
 
@@ -138,7 +139,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
                     labels=label_update(labels),
                     name=name,
                     description=description,
-                    properties=property_update(properties),
+                    typed_properties=typed_property_update(properties),
                     timestamp=updated_timestamp,
                     type=updated_type,
                 )
@@ -181,7 +182,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             type=EventType._from_proto(event.type),
             is_archived=event.is_archived,
             disposition=EventDisposition._from_proto(event.disposition) if event.HasField("disposition") else None,
-            properties=dict(event.properties),
+            properties=properties_from_proto(event.typed_properties),
             labels=list(event.labels),
             created_by_rid=event.created_by or None,
             _uuid=event.uuid,
@@ -227,7 +228,7 @@ def _create_event(
         asset_rids=[rid_from_instance_or_string(asset) for asset in (assets or [])],
         timestamp=_SecondsNanos.from_flexible(start).to_proto(),
         duration=_to_proto_duration(duration, common_pb2.Duration),
-        properties=dict(properties or {}),
+        typed_properties=typed_properties_to_proto(properties),
         labels=list(labels or []),
         type=type._to_proto(),
     )

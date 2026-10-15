@@ -99,7 +99,7 @@ def test_update_run(client: NominalClient, archive: ArchiveFn):
 
     new_name = title + "-updated"
     new_desc = desc + "-updated"
-    new_props = {"key": "value"}
+    new_props = {"key": "value", "mass_kg": 12.5}
     new_labels = ["label"]
     # Shrink the time window by 1 second on each side to confirm timestamps are updated
     new_start = start + timedelta(seconds=1)
