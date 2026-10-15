@@ -41,36 +41,40 @@ print("Created asset:", uav_drone_asset.rid)
 
 ## Add data to an asset
 
-To add a Dataset to an asset, use {py:obj}`Asset.add_dataset() <nominal.core.Asset.add_dataset>`:
+Use {py:meth}`~nominal.core.Asset.get_or_create_dataset` to retrieve or create a dataset
+under a data scope name, then upload through the dataset. This uses `uav_drone_asset`
+from the previous example. Install `huggingface_hub` to download the sample CSV.
 
 ```python
-import polars as pl
-from nominal.core import NominalClient
+from huggingface_hub import hf_hub_download
 
-client = NominalClient.from_profile("default")  # replace with your profile name
-
-df = pl.read_csv("hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv")
-df.write_csv("frosty_flight_1k_rows.csv")
-
-csv_dataset = client.create_dataset("Frosty Flight")
-
-csv_dataset.add_tabular_data(
-    "frosty_flight_1k_rows.csv",
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
+csv_dataset = uav_drone_asset.get_or_create_dataset(
+    data_scope_name="high-precipitation-flight",
+    name="Frosty Flight",
+)
+dataset_file = csv_dataset.add_tabular_data(
+    csv_path,
     timestamp_column="source_time",
     timestamp_type="iso_8601",
 )
-
-uav_drone_asset.add_dataset(
-    dataset=csv_dataset, data_scope_name="high-precipitation-flight"
-)
+dataset_file.poll_until_ingestion_completed()
 ```
+
+The dataset is attached to the asset by `get_or_create_dataset()`. Polling waits for
+this file to finish ingestion and raises if ingestion fails. Reusing the data scope
+reuses the dataset; running the upload again still adds another file.
 
 ```{include} /guides/_snippets/what-is-a-dataset.md
 ```
 
 ## Asset data with data scope names
 
-To add a Dataset with a data scope name to an asset, set the `data_scope_name` parameter in {py:obj}`Asset.add_dataset() <nominal.core.Asset.add_dataset>`.
+To attach an existing dataset instead of creating one through the asset, set the `data_scope_name` parameter in {py:obj}`Asset.add_dataset() <nominal.core.Asset.add_dataset>`.
 
 ```python
 uav_drone_asset.add_dataset(
@@ -87,7 +91,7 @@ name can share workbook templates and Checklists.
 
 ## Check if an asset exists
 
-You can check for a asset's existence with {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>`.
+You can search for an asset with {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>`.
 
 ```python
 from nominal.core import NominalClient
@@ -97,10 +101,13 @@ client = NominalClient.from_profile("default")  # replace with your profile name
 found_assets = client.search_assets(search_text="000-123")
 
 if len(found_assets) == 0:
-    uav_drone_asset = client.create_asset(
+    matching_asset = client.create_asset(
         name="Quadcopter-000-123",
     )
 ```
+
+`search_text` is a fuzzy search, so inspect the returned matches before treating one as
+a specific asset. This search-and-create example does not guarantee uniqueness.
 
 ## Update an asset
 
@@ -120,18 +127,18 @@ File attachments such as PDF reports or PowerPoints can be added to Assets:
 
 ```python
 filepath = "/path/to/my_report.pdf"
-with open(filepath, "rb") as f:
-    attachment = client.create_attachment_from_io(f, "KittyHawk.pdf")
+attachment = client.create_attachment(filepath)
 uav_drone_asset.add_attachments(attachments=[attachment])
 ```
 
 ## Retrieve an asset
 
-Like Datasets, Assets can be retrieved by their resource ID ("RID"):
+Like Datasets, Assets can be retrieved by their resource ID ("RID"). Replace
+`<ASSET_RID>` with an asset RID from your workspace:
 
 ```python
 asset = client.get_asset(
-    "ri.scout.cerulean-staging.asset.22697726-5454-4fad-a3ea-fe45e9fa9f09"
+    "<ASSET_RID>"
 )
 asset.update(labels=["NEW-MOTOR-VENDOR"])
 ```
@@ -157,7 +164,10 @@ See {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>` for all
 
 ## Remove Asset Data Sources
 
-The list `data_sources` can contain Connection, Dataset, Video instances, or rids as string.
+Pass Connection, Dataset, or Video instances or their RIDs in `scopes`. You can also
+remove scopes by their names with `names=["high-precipitation-flight"]`. Replace the
+RID placeholders below with resources from your workspace. Removing a scope detaches
+the source from the asset; it does not delete the source.
 
 ```python
 from nominal.core import NominalClient
@@ -165,11 +175,11 @@ from nominal.core import NominalClient
 client = NominalClient.from_profile("default")  # replace with your profile name
 
 asset = client.get_asset(
-    "ri.scout.cerulean-staging.asset.6c41d7fd-a48f-4d60-baa7-f34492264156"
+    "<ASSET_RID>"
 )
 
 asset.remove_data_scopes(
-    scopes=["ri.catalog.cerulean-staging.dataset.d4f413c4-4787-4259-a142-1286587b50af"]
+    scopes=["<DATASET_RID>"]
 )
 ```
 
