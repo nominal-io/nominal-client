@@ -77,8 +77,42 @@ fails at startup on the first ingest.
 Write your output files anywhere under `ctx.output_dir`, then declare each one with the method for
 its format. `manifest.json` is written for you when your function returns.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/extractors/extractor_manifest.py
-:language: python
+```python
+from nominal.experimental.extractor import ManifestExtractorContext, manifest_extractor
+
+
+@manifest_extractor
+def extract(ctx: ManifestExtractorContext) -> None:
+    frames = parse_bespoke_binary(ctx.input())
+
+    # Parameters declared at registration arrive as strings. `param()` raises
+    # if it is missing; `get_param()` takes a default.
+    prefix = ctx.get_param("CHANNEL_PREFIX", "telemetry/")
+
+    telemetry = ctx.output_dir / "flight_data.parquet"
+    frames.telemetry.to_parquet(telemetry, index=False)
+    ctx.add_tabular(
+        telemetry,
+        timestamp_column="timestamp",
+        timestamp_type="epoch_microseconds",
+        tag_columns={"vehicle_id": "veh_id"},
+        channel_prefix=prefix,
+    )
+
+    logs = ctx.output_dir / "system_logs.jsonl"
+    frames.logs.to_json(logs, orient="records", lines=True)
+    ctx.add_journal_json(logs)
+
+    # Video from the same run lands on a channel of the same dataset
+    footage = ctx.output_dir / "nose_camera.mp4"
+    frames.write_video(footage)
+    ctx.add_video(footage, channel="nose_camera", start=frames.started_at)
+
+    # manifest.json is written for you when this function returns
+
+
+if __name__ == "__main__":
+    extract.run()
 ```
 
 The declaration methods each take only the options their format uses:
@@ -100,8 +134,31 @@ your code needs to branch on it.
 Write one file and declare it with `set_output()`. The pipeline parses it according to the output
 format the image was registered with.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/extractors/extractor_single_file.py
-:language: python
+```python
+import pandas as pd
+from nominal.experimental.extractor import (
+    SingleFileExtractorContext,
+    single_file_extractor,
+)
+
+
+@single_file_extractor
+def extract(ctx: SingleFileExtractorContext) -> None:
+    # The mounted path for the image's declared input. With more than one
+    # input, pass the environment variable name: ctx.input("INPUT_FILE").
+    df = pd.read_csv(ctx.input())
+    cleaned = df.dropna().reset_index(drop=True)
+
+    output = ctx.output_dir / "processed_data.parquet"
+    cleaned.to_parquet(output, index=False)
+
+    # Declare the one file the pipeline should ingest. It is parsed according
+    # to the output format the image was registered with.
+    ctx.set_output(output)
+
+
+if __name__ == "__main__":
+    extract.run()
 ```
 
 ### Reading inputs and parameters
@@ -230,8 +287,50 @@ Create the extractor once, then give it images over time. `register_image()` upl
 activating. Shipping a new version means registering a new image and activating it, and the switch
 is atomic.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/extractors/register_image.py
-:language: python
+```python
+from nominal.core import NominalClient
+from nominal.core.container_image import FileExtractionInput, FileExtractionParameter
+
+client = NominalClient.from_profile("default")
+
+# An extractor carries only identity. How it runs lives on its images.
+extractor = client.create_containerized_extractor(
+    name="bespoke-file-parser",
+    description="Parses bespoke binary logs into parquet",
+)
+
+# Uploads the `docker save` tarball and registers it as an image in one call.
+# Build for linux/amd64: registration does not check the architecture, so an
+# arm64 tarball registers and activates, then fails at ingest.
+image = extractor.register_image(
+    "bespoke-file-parser.tar",
+    tag="v1",
+    inputs=[
+        FileExtractionInput(
+            name="Input file",
+            # Your container reads the file path from this environment variable
+            environment_variable="INPUT_FILE",
+            file_suffixes=[".bin"],
+            required=True,
+        ),
+    ],
+    parameters=[
+        FileExtractionParameter(
+            name="Parsing mode",
+            environment_variable="MODE",
+            required=False,
+        ),
+    ],
+    # How rows in the output are indexed in time. Ingests can override this.
+    default_timestamp_column="timestamp",
+    default_timestamp_type="iso_8601",
+)
+
+# Waits for the image to finish pushing (PENDING -> READY), then activates it.
+# Activation is atomic, so this is also how you ship a new version.
+extractor.set_active_image(image)
+
+print(f"Extractor {extractor.rid} now runs image {image.rid}")
 ```
 
 The `inputs` and `parameters` you declare here are exactly the names your code reads through
@@ -271,8 +370,23 @@ checked-in config in CI.
 
 `Dataset.add_containerized()` runs the extractor's active image against a dataset:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/extractors/run_ingest.py
-:language: python
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+extractor = client.get_containerized_extractor("<EXTRACTOR_RID>")
+dataset = client.get_dataset("<DATASET_RID>")
+
+job = dataset.add_containerized(
+    extractor,
+    sources={"INPUT_FILE": "path/to/data.bin"},
+    arguments={"MODE": "fast"},
+    tags={"vehicle_id": "sn-001"},
+)
+
+for dataset_file in job.as_files_ingested():
+    print(f"ingested {dataset_file.name}")
 ```
 
 The `sources` keys must match the environment variables of the active image's registered inputs
