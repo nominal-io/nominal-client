@@ -17,45 +17,6 @@
 ### Bug Fixes
 
 * require urllib3 2.8.0 for CVE-2026-97689 ([#1114](https://github.com/nominal-io/nominal-client/issues/1114)) ([2a09c3a](https://github.com/nominal-io/nominal-client/commit/2a09c3abf26b826fac7f7b291e9b31558c129b15))
-* require urllib3 with patched chunked streaming ([2a09c3a](https://github.com/nominal-io/nominal-client/commit/2a09c3abf26b826fac7f7b291e9b31558c129b15))
-
-
-### Documentation
-
-* align the Extractors guide lifecycle ([#1155](https://github.com/nominal-io/nominal-client/issues/1155)) ([4568518](https://github.com/nominal-io/nominal-client/commit/456851865004e3229447f309ba08a5f5efa97ea6))
-* clarify dataset export scope and output ([#1157](https://github.com/nominal-io/nominal-client/issues/1157)) ([f7675e4](https://github.com/nominal-io/nominal-client/commit/f7675e4132a3c9462342218cdc0adc943fe69316))
-* clarify ingestion job submission and completion ([#1156](https://github.com/nominal-io/nominal-client/issues/1156)) ([88a2752](https://github.com/nominal-io/nominal-client/commit/88a27521cb61e6a38a325200bf263cbf7b3053f7))
-* consolidate asset and run log guides ([#1147](https://github.com/nominal-io/nominal-client/issues/1147)) ([84f94a1](https://github.com/nominal-io/nominal-client/commit/84f94a18dbd9bd87380ae5c153b8270130cb2801))
-* correct installation, authentication, and CLI setup ([#1104](https://github.com/nominal-io/nominal-client/issues/1104)) ([572723d](https://github.com/nominal-io/nominal-client/commit/572723dea1ef846719d2de24d4616d124a66d3a4))
-* correct the channel hierarchy delimiter parameter ([#1121](https://github.com/nominal-io/nominal-client/issues/1121)) ([36d8920](https://github.com/nominal-io/nominal-client/commit/36d89203e02bc823ca6e0f46f1b4d28e8c55d5c5))
-* correct the Data Review guide workflow ([#1152](https://github.com/nominal-io/nominal-client/issues/1152)) ([2b3f76a](https://github.com/nominal-io/nominal-client/commit/2b3f76a588c2f5085fc713eff35b885641e0b23b))
-* correct the Events guide workflow ([#1153](https://github.com/nominal-io/nominal-client/issues/1153)) ([38d5a3f](https://github.com/nominal-io/nominal-client/commit/38d5a3fc5973a1307dcae638b6146e1c68dfb58d))
-* correct the Runs guide workflow ([#1151](https://github.com/nominal-io/nominal-client/issues/1151)) ([7b8fd63](https://github.com/nominal-io/nominal-client/commit/7b8fd63fe0fccc09aa8419cbfc9e0658fa425bce))
-* distinguish gzip-compressed files from tarballs ([#1126](https://github.com/nominal-io/nominal-client/issues/1126)) ([6e2747d](https://github.com/nominal-io/nominal-client/commit/6e2747dbe6d688db874efc86c93ba256b720895b))
-* fix the connection string-streaming method name ([#1124](https://github.com/nominal-io/nominal-client/issues/1124)) ([e6e3f10](https://github.com/nominal-io/nominal-client/commit/e6e3f10dc6e502f1b65cbe8ea6e93c92ad1413ea))
-* fix the documentation hub header link ([#1132](https://github.com/nominal-io/nominal-client/issues/1132)) ([46da076](https://github.com/nominal-io/nominal-client/commit/46da0762d7a29e8b1219207fa0533ef237477ad4))
-* fix the write_logs parser example ([#1120](https://github.com/nominal-io/nominal-client/issues/1120)) ([1917561](https://github.com/nominal-io/nominal-client/commit/1917561045ad7032bb84374b87af011fecb32065))
-* flatten integration and experimental navigation ([#1146](https://github.com/nominal-io/nominal-client/issues/1146)) ([bde8ec5](https://github.com/nominal-io/nominal-client/commit/bde8ec58e5249cec6c0ef69ef7c3c51c94a67d9b))
-* import random in the multi-channel streaming example ([#1130](https://github.com/nominal-io/nominal-client/issues/1130)) ([5a47727](https://github.com/nominal-io/nominal-client/commit/5a47727780e11bccb07fa849727432b939b2dcf4))
-* include the required profile in download commands ([#1122](https://github.com/nominal-io/nominal-client/issues/1122)) ([7d65fbb](https://github.com/nominal-io/nominal-client/commit/7d65fbbe42768e0cbee9f5d16ab3bcd630f66d29))
-* inline dataset ingestion and download recipes ([#1143](https://github.com/nominal-io/nominal-client/issues/1143)) ([928b409](https://github.com/nominal-io/nominal-client/commit/928b409ba8149fada91946b4222ab49b0d6f0ce7))
-* inline private setup and guidance prose ([#1148](https://github.com/nominal-io/nominal-client/issues/1148)) ([dd601bd](https://github.com/nominal-io/nominal-client/commit/dd601bd1c21a0be0c1483ed0e3ead08d68d5e280))
-* inline the assets guide snippets ([#1136](https://github.com/nominal-io/nominal-client/issues/1136)) ([6bbaa1b](https://github.com/nominal-io/nominal-client/commit/6bbaa1be742b8152501ebb644a9fe09bc2aa5876))
-* inline the data integration tutorial snippets ([#1145](https://github.com/nominal-io/nominal-client/issues/1145)) ([68a542a](https://github.com/nominal-io/nominal-client/commit/68a542af307ba1c53726b1b32c26337bb71ed38d))
-* inline the data review guide examples ([#1134](https://github.com/nominal-io/nominal-client/issues/1134)) ([a87ba4d](https://github.com/nominal-io/nominal-client/commit/a87ba4dbfc45c32794e446009a0135bb1a430a04))
-* inline the events guide examples ([#1135](https://github.com/nominal-io/nominal-client/issues/1135)) ([5bdd82d](https://github.com/nominal-io/nominal-client/commit/5bdd82d99a0584b1b438cfd31b26854f5dc31ecb))
-* inline the extractor guide examples ([#1149](https://github.com/nominal-io/nominal-client/issues/1149)) ([429a0d3](https://github.com/nominal-io/nominal-client/commit/429a0d3472889b45cfe02675a76278bf03762e24))
-* inline the runs guide examples ([#1139](https://github.com/nominal-io/nominal-client/issues/1139)) ([30d4ab0](https://github.com/nominal-io/nominal-client/commit/30d4ab08973fe0972cc748266125df995555f216))
-* inline the video ingestion guide examples ([#1140](https://github.com/nominal-io/nominal-client/issues/1140)) ([4cd0a1b](https://github.com/nominal-io/nominal-client/commit/4cd0a1ba74780e61ae9375d0a69d17971b883b18))
-* inline the workbook guide example ([#1133](https://github.com/nominal-io/nominal-client/issues/1133)) ([668c22e](https://github.com/nominal-io/nominal-client/commit/668c22e3ebfe2c330988784e4d83cf3aed312668))
-* inline video processing guide examples ([#1144](https://github.com/nominal-io/nominal-client/issues/1144)) ([cc463c3](https://github.com/nominal-io/nominal-client/commit/cc463c3116303b48f61acb432cc85092ca99c81b))
-* move runnable examples under docs ([#1103](https://github.com/nominal-io/nominal-client/issues/1103)) ([a6a43d3](https://github.com/nominal-io/nominal-client/commit/a6a43d3d3120ced6a2dacf492e936ac98a3f9d19))
-* port SDK guides, examples, and navigation ([#1018](https://github.com/nominal-io/nominal-client/issues/1018)) ([92f9911](https://github.com/nominal-io/nominal-client/commit/92f9911f04f7c8e8ac9b626f1faff3d7085f0e6d))
-* refresh the Assets guide workflow ([#1150](https://github.com/nominal-io/nominal-client/issues/1150)) ([d6675a6](https://github.com/nominal-io/nominal-client/commit/d6675a6b1fb26399540d4f794c701f186aa252ec))
-* simplify the CSV guide ingestion workflow ([#1154](https://github.com/nominal-io/nominal-client/issues/1154)) ([692caea](https://github.com/nominal-io/nominal-client/commit/692caea6f5bb9882bab2a6d6cbdd9a53cdbacb85))
-* upload the original CSV in the logs tutorial ([#1128](https://github.com/nominal-io/nominal-client/issues/1128)) ([6f87cf8](https://github.com/nominal-io/nominal-client/commit/6f87cf8f754d5cb9911c05be1d2f20e2837eeacc))
-* use the codec enum in live video stream options ([#1125](https://github.com/nominal-io/nominal-client/issues/1125)) ([5ee6e79](https://github.com/nominal-io/nominal-client/commit/5ee6e7984f0bf40e434ac69893a64d125011daeb))
-* use the defined asset in the attachment example ([#1129](https://github.com/nominal-io/nominal-client/issues/1129)) ([d880b58](https://github.com/nominal-io/nominal-client/commit/d880b5821a5397350515b0f080fd18a4f1a5c5ac))
 
 ## [1.176.0](https://github.com/nominal-io/nominal-client/compare/v1.175.0...v1.176.0) (2026-10-13)
 
