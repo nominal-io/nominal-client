@@ -26,11 +26,12 @@ fields follow declaration order (including inherited fields), with
 properties after the fields. Core keeps class/function-level local contents (`tocdepth: 2`);
 methods and attributes render inline. The reference presentation extension uses native
 Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
-and link targets. Integrations and Experimental have folder indexes with native glob
-toctrees: adding a Markdown reference page to either folder automatically adds it to
-the group. Explicit `autodata` directives cover imported type aliases and constants
-that native `automodule` omits.
-Reference pages outside those groups need an entry in the root `index.md` toctree.
+and link targets. Integrations and Experimental pages are listed directly under
+captioned root toctrees. Their folder indexes remain standalone overview pages for
+existing links, with ordinary `{doc}` links and `orphan` metadata. Leave toctrees
+out of those overviews so missing sidebar entries fail the strict build. New
+reference pages need an entry in the root `index.md` toctree. Explicit `autodata`
+directives cover imported type aliases and constants that native `automodule` omits.
 
 Author SDK docstrings using the shared [documentation policy](../.agents/conventions/documentation.md#docstring-markup),
 including when changing SDK files outside `docs/`. `_ext/docstring_fences.py` converts

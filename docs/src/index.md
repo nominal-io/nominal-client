@@ -183,17 +183,27 @@ nom CLI <sdk/cli>
 ```{toctree}
 :hidden:
 :caption: Third-party
-:maxdepth: 2
+:maxdepth: 1
 
-Integrations <sdk/thirdparty/index>
+sdk/thirdparty/matlab
+sdk/thirdparty/pandas
+sdk/thirdparty/polars
+sdk/thirdparty/tdms
 ```
 
 ```{toctree}
 :hidden:
 :caption: Experimental
-:maxdepth: 2
+:maxdepth: 1
 
-Experimental <sdk/experimental/index>
+sdk/experimental/compute
+sdk/experimental/derived_datasets
+sdk/experimental/extractors
+sdk/experimental/ingest
+sdk/experimental/migration
+sdk/experimental/spatial
+sdk/experimental/video
+sdk/experimental/video_processing
 ```
 
 ```{toctree}
