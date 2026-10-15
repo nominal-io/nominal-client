@@ -45,7 +45,8 @@ The data types are `DOUBLE`, `INT`, `UINT`, `STRING`, `LOG`, `DOUBLE_ARRAY`, `ST
 Pick `DOUBLE` for anything that could ever be fractional, even if today's values are whole. Pick
 `STRING` for identifiers and codes you will filter and group by rather than do arithmetic on.
 
-`add_channel()` raises if the channel already exists.
+`add_channel()` returns the existing channel unchanged if its name already exists, even if the
+requested type, unit, or description differs.
 
 ## Registering many channels at once
 

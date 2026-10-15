@@ -15,7 +15,6 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
-    storage_series_api,
 )
 
 from nominal._utils.iterator_tools import batched
@@ -26,6 +25,7 @@ from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
+from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
 from nominal.ts import (
     _MAX_TIMESTAMP,
@@ -53,6 +53,32 @@ class ChannelDataType(enum.Enum):
     VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
 
+    def _to_proto(self) -> series_metadata_pb2.NominalDataType.ValueType:
+        match self:
+            case ChannelDataType.DOUBLE:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE
+            case ChannelDataType.STRING:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRING
+            case ChannelDataType.LOG:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_LOG
+            case ChannelDataType.INT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_INT64
+            case ChannelDataType.UINT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_UINT64
+            case ChannelDataType.DOUBLE_ARRAY:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE_ARRAY
+            case ChannelDataType.STRING_ARRAY:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRING_ARRAY
+            case ChannelDataType.STRUCT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRUCT
+            case ChannelDataType.VIDEO:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_VIDEO
+            case ChannelDataType.UNKNOWN:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_UNSPECIFIED
+            case _:
+                assert_never(self)
+        return data_type
+
     @classmethod
     def _from_proto(cls, data_type: series_pb2.SeriesDataType.ValueType) -> ChannelDataType:
         try:
@@ -67,32 +93,6 @@ class ChannelDataType(enum.Enum):
             return cls(data_type.value)
         else:
             return cls("UNKNOWN")
-
-    def _to_conjure(self) -> storage_series_api.NominalDataType:
-        match self:
-            case ChannelDataType.DOUBLE:
-                data_type = storage_series_api.NominalDataType.DOUBLE
-            case ChannelDataType.STRING:
-                data_type = storage_series_api.NominalDataType.STRING
-            case ChannelDataType.LOG:
-                data_type = storage_series_api.NominalDataType.LOG
-            case ChannelDataType.INT:
-                data_type = storage_series_api.NominalDataType.INT64
-            case ChannelDataType.UINT:
-                data_type = storage_series_api.NominalDataType.UINT64
-            case ChannelDataType.DOUBLE_ARRAY:
-                data_type = storage_series_api.NominalDataType.DOUBLE_ARRAY
-            case ChannelDataType.STRING_ARRAY:
-                data_type = storage_series_api.NominalDataType.STRING_ARRAY
-            case ChannelDataType.STRUCT:
-                data_type = storage_series_api.NominalDataType.STRUCT
-            case ChannelDataType.VIDEO:
-                data_type = storage_series_api.NominalDataType.VIDEO
-            case ChannelDataType.UNKNOWN:
-                data_type = storage_series_api.NominalDataType.UNKNOWN
-            case _:
-                assert_never(self)
-        return data_type
 
 
 @dataclass

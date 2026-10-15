@@ -18,8 +18,6 @@ from nominal_api import (
     scout_datasource_connection,
     scout_video,
     storage_writer_api,
-    timeseries_metadata,
-    timeseries_metadata_api,
     upload_api,
 )
 
@@ -40,6 +38,7 @@ from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
+from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     _AnyExportableTimestampType,
@@ -95,7 +94,7 @@ class DataSource(HasRid, MarkableMixin):
         @property
         def proto_write(self) -> ProtoWriteService: ...
         @property
-        def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
+        def series_metadata(self) -> series_metadata_pb2_grpc.SeriesMetadataServiceStub: ...
         @property
         def containerized_extractor(
             self,
@@ -413,16 +412,19 @@ class DataSource(HasRid, MarkableMixin):
             unit: Optional unit symbol to associate with the channel.
 
         Returns:
-            The created Channel object.
+            The created or existing Channel object. Existing channels are returned unchanged.
 
         Raises:
-            conjure_python_client.ConjureHTTPError: If a channel with this name already exists
-                or if there's an error creating the channel.
+            NominalError: Error creating the channel or fetching its metadata via gRPC.
+            ValueError: Channel metadata was not found after creation.
         """
         request = _build_series_metadata_request(
-            self.rid, CreateChannelRequest(name=name, data_type=data_type, description=description, unit=unit)
+            self.rid,
+            CreateChannelRequest(name=name, data_type=data_type, description=description, unit=unit),
+            if_exists=series_metadata_pb2.RETURN_EXISTING,
         )
-        self._clients.series_metadata.create(self._clients.auth_header, request)
+        with translate_grpc_errors():
+            self._clients.series_metadata.CreateSeriesMetadata(request)
         return self.get_channel(name)
 
     def batch_add_channels(
@@ -438,13 +440,22 @@ class DataSource(HasRid, MarkableMixin):
             A BatchAddChannelsResult with the created channels and any requests that were
             not found after creation (i.e. silently dropped by the server).
 
+        Raises:
+            ValueError: A channel name appears more than once in ``channels``.
+            NominalError: Error creating channels or fetching their metadata via gRPC.
+
         Note:
-            This operation is idempotent with respect to channels that already exist — they are
-            silently skipped. However, if the same channel name appears more than once within a
-            single batch, the entire batch will fail. Callers are responsible for deduplicating
-            channel names before passing them to this method.
+            Existing channels are returned unchanged. Repeated names anywhere in ``channels``
+            raise ValueError before any requests are sent, even if their metadata matches.
+
+            Batches are written sequentially; earlier batches remain applied if a later batch fails.
         """
-        return self._batch_write_channels(channels, update_existing=False)
+        seen: set[str] = set()
+        for request in channels:
+            if request.name in seen:
+                raise ValueError(f"Repeated channel name {request.name!r} in channels")
+            seen.add(request.name)
+        return self._batch_write_channels(channels, if_exists=series_metadata_pb2.RETURN_EXISTING)
 
     def batch_update_or_create_channels(
         self,
@@ -466,25 +477,23 @@ class DataSource(HasRid, MarkableMixin):
         Note:
             If the same channel name appears more than once within a single batch, the entire
             batch will fail. Callers are responsible for deduplicating channel names before
-            passing them to this method.
+            passing them to this method. Earlier batches remain applied if a later batch fails.
         """
-        return self._batch_write_channels(channels, update_existing=True)
+        return self._batch_write_channels(channels, if_exists=series_metadata_pb2.UPDATE_EXISTING)
 
     def _batch_write_channels(
         self,
         channels: Sequence[CreateChannelRequest],
         *,
-        update_existing: bool,
+        if_exists: series_metadata_pb2.IfSeriesMetadataExists.ValueType,
     ) -> BatchAddChannelsResult:
         if not channels:
             return BatchAddChannelsResult(channels=[], missing=[])
         for batch in batched(channels, _DEFAULT_CHANNEL_BATCH_SIZE):
-            requests = [_build_series_metadata_request(self.rid, req) for req in batch]
-            batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
-            if update_existing:
-                self._clients.series_metadata.batch_create_or_update(self._clients.auth_header, batch_request)
-            else:
-                self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
+            requests = [_build_series_metadata_request(self.rid, req, if_exists=if_exists) for req in batch]
+            batch_request = series_metadata_pb2.BatchCreateSeriesMetadataRequest(requests=requests)
+            with translate_grpc_errors():
+                self._clients.series_metadata.BatchCreateSeriesMetadata(batch_request)
         created = {ch.name: ch for ch in self.get_channels(names=[req.name for req in channels])}
         return BatchAddChannelsResult(
             channels=list(created.values()),
@@ -493,22 +502,22 @@ class DataSource(HasRid, MarkableMixin):
 
 
 def _build_series_metadata_request(
-    data_source_rid: str, req: CreateChannelRequest
-) -> timeseries_metadata_api.CreateSeriesMetadataRequest:
-    nominal_data_type = req.data_type._to_conjure()
-    locator = timeseries_metadata_api.LocatorTemplate(
-        nominal=timeseries_metadata_api.NominalLocatorTemplate(
-            channel=req.name,
-            type=nominal_data_type,
-        )
+    data_source_rid: str,
+    req: CreateChannelRequest,
+    *,
+    if_exists: series_metadata_pb2.IfSeriesMetadataExists.ValueType,
+) -> series_metadata_pb2.CreateSeriesMetadataRequest:
+    nominal_data_type = req.data_type._to_proto()
+    locator = series_metadata_pb2.LocatorTemplate(
+        nominal=series_metadata_pb2.NominalLocatorTemplate(channel=req.name, data_type=nominal_data_type)
     )
-    return timeseries_metadata_api.CreateSeriesMetadataRequest(
+    return series_metadata_pb2.CreateSeriesMetadataRequest(
         channel=req.name,
         data_source_rid=data_source_rid,
-        locator=locator,
-        tags={},
+        locator_template=locator,
         description=req.description,
         unit=req.unit,
+        if_exists=if_exists,
     )
 
 
