@@ -1,7 +1,7 @@
 When uploading tabular data, there are a few common formats Nominal supports, as well as some more specialized formats.
 These include (but are not limited to):
 
-* `.csv` files (and tarballs of CSV files `.csv.gz`)
+* `.csv` files (or gzip-compressed CSV files, `.csv.gz`)
 * `.parquet` files
 * `.bin` ardupilot dataflash files
 
