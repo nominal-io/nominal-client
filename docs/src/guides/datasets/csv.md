@@ -78,10 +78,9 @@ dataset_file.poll_until_ingestion_completed()
 print("Ingested dataset:", dataset.rid)
 ```
 
-Uploading returns a file handle before ingestion necessarily finishes. Polling waits
-for ingestion and raises if it fails, so the success message is printed only after
-that wait. The Polars dataframe is for inspection; uploading the original CSV does
-not require conversion to pandas or installation of PyArrow.
+`add_tabular_data()` does not wait for ingestion to finish. Polling waits for this
+file to finish ingestion and raises if ingestion fails, so the message prints only
+after polling completes.
 
 After ingestion, navigate to Nominal's [Datasets](https://app.gov.nominal.io/data-sources?sidebar=allDatasets) page (login required). Open the dataset to inspect its channels and uploaded file.
 
