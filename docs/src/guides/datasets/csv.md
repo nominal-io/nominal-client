@@ -38,54 +38,52 @@ For convenience and educational purposes, Nominal hosts test sample data on the 
 
 Download 1000 rows of data generated in the [X-Plane](https://www.x-plane.com/) flight simulator.
 
-Use the popular [Polars](https://pola.rs/) library to download and inspect the data. Polars is installed automatically as part of the `nominal` Python library.
+Install `huggingface_hub` with `pip install huggingface_hub` to download the original CSV.
+Use [Polars](https://pola.rs/), included with `nominal`, to inspect it without rewriting the file.
 
 ```python
-
 import polars as pl
+from huggingface_hub import hf_hub_download
 
-df = pl.read_csv('hf://datasets/nominal-io/frosty-flight/frosty_flight_1k_rows.csv')
-df.write_csv('frosty_flight_1k_rows.csv')
-
-df.head().select(df.columns[:6])
+csv_path = hf_hub_download(
+    repo_id="nominal-io/frosty-flight",
+    filename="frosty_flight_1k_rows.csv",
+    repo_type="dataset",
+)
+df = pl.read_csv(csv_path)
+print(df.head().select(df.columns[:6]))
 ```
 
 <table border="1" class="dataframe"><thead><tr><th>source_time</th><th>f_act_sec</th><th>f_sim_sec</th><th>frame_time</th><th>cpu_time</th><th>gpu_time</th></tr><tr><td>str</td><td>f64</td><td>f64</td><td>f64</td><td>f64</td><td>f64</td></tr></thead><tbody><tr><td>&quot;2024-06-08T05:58:42.000Z&quot;</td><td>0.27645</td><td>19.9</td><td>3.61728</td><td>0.0022</td><td>0.00078</td></tr><tr><td>&quot;2024-06-08T05:58:51.000Z&quot;</td><td>0.23154</td><td>19.9</td><td>4.31888</td><td>1.63362</td><td>0.13793</td></tr><tr><td>&quot;2024-06-08T05:58:52.000Z&quot;</td><td>0.26435</td><td>32.30079</td><td>3.78289</td><td>3.77245</td><td>0.00089</td></tr><tr><td>&quot;2024-06-08T05:58:52.000Z&quot;</td><td>0.29929</td><td>19.9</td><td>3.34123</td><td>3.77245</td><td>0.00089</td></tr><tr><td>&quot;2024-06-08T05:58:52.000Z&quot;</td><td>0.34157</td><td>30.36099</td><td>2.9277</td><td>3.77245</td><td>0.00089</td></tr></tbody></table>
 
 ## Upload your data to Nominal
 
+Upload the downloaded file using `csv_path`. For your own data, set `csv_path` to
+your local CSV path instead. `source_time` contains ISO 8601 timestamps in this sample;
+choose the timestamp column and type that match your file.
+
 ```python
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")  # replace with your profile name
 
-dataset = client.create_dataset('Frosty Flight')
-dataset.add_tabular_data(
-    'frosty_flight_1k_rows.csv',
-    timestamp_column = 'source_time',
-    timestamp_type = 'iso_8601',
+dataset = client.create_dataset("Frosty Flight")
+dataset_file = dataset.add_tabular_data(
+    csv_path,
+    timestamp_column="source_time",
+    timestamp_type="iso_8601",
 )
 
-print('Uploaded dataset:', dataset.rid)
+dataset_file.poll_until_ingestion_completed()
+print("Ingested dataset:", dataset.rid)
 ```
 
-Equivalently, since your CSV is already loaded in the Polars dataframe `df`, you can upload it with the `upload_dataframe()` method. Install `pyarrow` with `pip install pyarrow` for the Polars-to-pandas conversion used below:
+Uploading returns a file handle before ingestion necessarily finishes. Polling waits
+for ingestion and raises if it fails, so the success message is printed only after
+that wait. The Polars dataframe is for inspection; uploading the original CSV does
+not require conversion to pandas or installation of PyArrow.
 
-```python
-from nominal.thirdparty.pandas import upload_dataframe
-
-dataset = upload_dataframe(
-    client,
-    df.to_pandas(),
-    "name",
-    timestamp_column='source_time',
-    timestamp_type='iso_8601'
-)
-
-print('Uploaded dataset:', dataset.rid)
-```
-
-After upload, navigate to Nominal's [Datasets](https://app.gov.nominal.io/data-sources?sidebar=allDatasets) page (login required). You'll see your CSV at the top!
+After ingestion, navigate to Nominal's [Datasets](https://app.gov.nominal.io/data-sources?sidebar=allDatasets) page (login required). Open the dataset to inspect its channels and uploaded file.
 
 ```{include} /guides/_snippets/timestamp-types.md
 ```
