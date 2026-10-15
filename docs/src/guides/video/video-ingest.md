@@ -26,8 +26,9 @@ and computer vision for video pre-processing prior to Nominal upload.
 
 ## Download sample video
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_1.py
-:language: python
+```python
+dataset_repo_id = "nominal-io/raptor-engine-fire"
+dataset_filename = "raptor_fire_first_5_seconds.mov"
 ```
 
 ```{include} /guides/_snippets/sample-data.md
@@ -35,8 +36,8 @@ and computer vision for video pre-processing prior to Nominal upload.
 
 Since the dataset is a video file, rename `dataset_path`:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_2.py
-:language: python
+```python
+video_path = dataset_path
 ```
 
 ```{video} https://res.cloudinary.com/didkpxvqu/video/upload/v1727576460/raptor_fire_first_5_seconds_wixsgu.mov
@@ -70,8 +71,21 @@ captured is not important, you can use an arbitrary datetime like `datetime.now(
 ```{include} /guides/_snippets/video-start-times.md
 ```
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_3.py
-:language: python
+```python
+from datetime import datetime
+
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+# Video is stored as a channel on a dataset, alongside your other test data
+dataset = client.create_dataset(name="Engine Fire Tests")
+
+video_file = dataset.add_video(
+    path=video_path,
+    channel="engine_cam",
+    start=datetime.strptime("2011-11-11 11:11:11", "%Y-%m-%d %H:%M:%S"),
+)
 ```
 
 ## Add the video to a run
@@ -94,14 +108,42 @@ The example above uses `2011-11-11 11:11:11` as an arbitrary start time.
 To get the run end time, add the video duration (in seconds) to this start time.
 If [OpenCV](https://pypi.org/project/opencv-python/) is not yet installed for Python, install it with `pip install opencv-python`.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_4.py
-:language: python
+```python
+from datetime import datetime, timedelta
+
+import cv2
+
+video = cv2.VideoCapture(video_path)
+
+# Get the frames per second and total frame count
+fps = video.get(cv2.CAP_PROP_FPS)
+frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+
+# Calculate the duration
+duration_seconds = frame_count / fps
+print(f"Duration: {duration_seconds} seconds")
+
+video.release()
+
+start_time = datetime.strptime("2011-11-11 11:11:11", "%Y-%m-%d %H:%M:%S")
+end_time = start_time + timedelta(seconds=duration_seconds)
 ```
 
 With the run start and end times as variables, create the empty run container:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_5.py
-:language: python
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+engine_fire_run = client.create_run(
+    name="Engine Fire Run",
+    start=start_time,
+    end=end_time,
+    description="Run for Raptor engine fire.",
+)
+
+engine_fire_run
 ```
 
 ### Attach the dataset to a run
@@ -109,8 +151,11 @@ With the run start and end times as variables, create the empty run container:
 Use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`
 to add the dataset carrying the video channel to the run:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_6.py
-:language: python
+```python
+engine_fire_run.add_dataset(
+    ref_name="engine fire video",
+    dataset=dataset,
+)
 ```
 
 ```{include} /guides/_snippets/what-is-a-ref-name.md
@@ -121,8 +166,13 @@ to add the dataset carrying the video channel to the run:
 Retrieve the dataset with its RID (resource ID), which can be copy pasted for any dataset on the
 [Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets), then list its video files:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_7.py
-:language: python
+```python
+dataset = client.get_dataset(
+    "ri.catalog.cerulean-staging.dataset.d6c6e12c-05b3-4bb0-9f45-97609b7c9da2"
+)
+
+for video_file in dataset.list_video_files():
+    print(video_file.name, video_file.media_duration_seconds, "seconds")
 ```
 
 ## Archive a video
@@ -130,14 +180,14 @@ Retrieve the dataset with its RID (resource ID), which can be copy pasted for an
 Archiving the dataset prevents it from displaying on the
 [Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets).
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_8.py
-:language: python
+```python
+dataset.archive()
 ```
 
 To unarchive it:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_9.py
-:language: python
+```python
+dataset.unarchive()
 ```
 
 Now the dataset will display again on the [Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets).
@@ -162,8 +212,31 @@ video duration, frames per second, frame size, and total frame count.
 
 You can install OpenCV for Python with `pip install opencv-python`.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/video/video_ingest_10.py
-:language: python
+```python
+import cv2
+
+# Load the video
+# video_path = 'raptor_fire_first_5_seconds.mp4'
+# ☝️ Replace with your video_path or use the example video_path from above
+cap = cv2.VideoCapture(video_path)
+
+# Get video properties
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  # Width of the video frames
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # Height of the video frames
+fps = cap.get(cv2.CAP_PROP_FPS)  # Frames per second (fps)
+frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
+
+# Calculate the duration of the video in seconds
+duration = frame_count / fps
+
+# Print video properties
+print(f"Video Size: {frame_width}x{frame_height} (width x height)")
+print(f"FPS: {fps}")
+print(f"Total Frames: {frame_count}")
+print(f"Duration: {duration:.2f} seconds")
+
+# Release the video capture object
+cap.release()
 ```
 
 ```
