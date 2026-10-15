@@ -17,7 +17,6 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
-    storage_writer_api,
     upload_api,
 )
 
@@ -35,6 +34,7 @@ from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -90,7 +90,7 @@ class DataSource(HasRid, MarkableMixin):
         @property
         def connection(self) -> scout_datasource_connection.ConnectionService: ...
         @property
-        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
+        def storage_writer(self) -> nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub: ...
         @property
         def proto_write(self) -> ProtoWriteService: ...
         @property

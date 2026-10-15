@@ -1194,9 +1194,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         return WriteStream.create(
             batch_size=batch_size,
             max_wait=max_wait,
-            process_batch=lambda batch: process_log_batch(
-                batch, self.rid, auth_header=self._clients.auth_header, storage_writer=self._clients.storage_writer
-            ),
+            process_batch=lambda batch: process_log_batch(batch, self.rid, storage_writer=self._clients.storage_writer),
         )
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
@@ -1209,6 +1207,9 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
             logs: LogPoints to stream to Nominal.
             channel_name: Name of the channel to stream logs to.
             batch_size: Number of logs to send to the API at a time.
+
+        Raises:
+            NominalError: If a log batch cannot be written. Earlier batches may already have been written.
 
         Example:
             ```python
@@ -1230,7 +1231,6 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
         """
         _write_logs(
-            auth_header=self._clients.auth_header,
             client=self._clients.storage_writer,
             data_source_rid=self.rid,
             logs=logs,

@@ -19,7 +19,6 @@ from nominal_api import (
     scout_spatial,
     scout_video,
     storage_datasource_api,
-    storage_writer_api,
     upload_api,
 )
 
@@ -36,6 +35,7 @@ from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
@@ -152,7 +152,6 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
     spatial: scout_spatial.SpatialService
-    storage_writer: storage_writer_api.NominalChannelWriterService
     storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
     upload: upload_api.UploadService
@@ -176,6 +175,7 @@ class ClientsBunch:
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
+    storage_writer: nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub
     units: units_pb2_grpc.UnitsServiceStub
     users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
@@ -326,7 +326,6 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
             spatial=client_factory(scout_spatial.SpatialService),
-            storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
             upload=client_factory(upload_api.UploadService),
@@ -349,6 +348,7 @@ class ClientsBunch:
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
+            storage_writer=grpc_factory(nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
             users=grpc_factory(users_pb2_grpc.UserServiceStub),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),

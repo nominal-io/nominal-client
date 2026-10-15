@@ -5,9 +5,14 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping, Self
 
-from nominal_api import api, scout_compute_api, storage_writer_api
+from google.protobuf import timestamp_pb2
+from nominal_api import api, scout_compute_api
 
 from nominal._utils import batched
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2 as writer_pb
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
+from nominal.protos.direct_channel_writer_common.v2 import direct_channel_writer_common_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 _EMPTY_MAP: Mapping[str, str] = MappingProxyType({})
@@ -36,14 +41,6 @@ class LogPoint:
         )
 
     @classmethod
-    def _from_conjure(cls, point: storage_writer_api.LogPoint) -> Self:
-        return cls(
-            timestamp=_SecondsNanos.from_api(point.timestamp).to_nanoseconds(),
-            message=point.value.message,
-            args=MappingProxyType(point.value.args),
-        )
-
-    @classmethod
     def _from_compute_api(cls, point: scout_compute_api.LogValue, timestamp: api.Timestamp) -> Self:
         return cls(
             timestamp=_SecondsNanos.from_api(timestamp).to_nanoseconds(),
@@ -51,10 +48,12 @@ class LogPoint:
             args=point.args,
         )
 
-    def _to_conjure(self) -> storage_writer_api.LogPoint:
-        return storage_writer_api.LogPoint(
-            timestamp=_SecondsNanos.from_nanoseconds(self.timestamp).to_api(),
-            value=storage_writer_api.LogValue(
+    def _to_proto(self) -> writer_pb.LogPoint:
+        timestamp = timestamp_pb2.Timestamp()
+        timestamp.FromNanoseconds(self.timestamp)
+        return writer_pb.LogPoint(
+            timestamp=timestamp,
+            value=direct_channel_writer_common_pb2.LogValue(
                 message=self.message,
                 args=dict(self.args),
             ),
@@ -79,16 +78,17 @@ def _log_filter_operator(
 
 
 def _write_logs(
-    auth_header: str,
-    client: storage_writer_api.NominalChannelWriterService,
+    client: nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub,
     data_source_rid: str,
     logs: Iterable[LogPoint],
     channel_name: str,
     batch_size: int,
 ) -> None:
     for batch in batched(logs, batch_size):
-        request = storage_writer_api.WriteLogsRequest(
-            logs=[log._to_conjure() for log in batch],
+        request = writer_pb.WriteLogsRequest(
+            data_source_rid=data_source_rid,
+            logs=[log._to_proto() for log in batch],
             channel=channel_name,
         )
-        client.write_logs(auth_header, data_source_rid, request)
+        with translate_grpc_errors():
+            client.WriteLogs(request)

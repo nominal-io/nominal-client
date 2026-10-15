@@ -19,6 +19,7 @@ from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
@@ -279,6 +280,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
         None,
     )
 
+    assert isinstance(clients.storage_writer, nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub)
     assert isinstance(clients.channel_metadata, channel_metadata_pb2_grpc.ChannelMetadataServiceStub)
     assert isinstance(clients.run, run_service_pb2_grpc.RunServiceStub)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
