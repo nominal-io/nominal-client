@@ -34,3 +34,6 @@ sdk/core/video_dataset_file.md sdk/core/dataset.md
 sdk/core/video_file.md sdk/core/legacy_videos.md
 sdk/core/workbook_template.md sdk/core/workbook.md
 sdk/core/write_stream.md sdk/core/streaming.md
+sdk/core/checklist.md sdk/core/automatic_validation.md
+sdk/core/data_review.md sdk/core/automatic_validation.md
+sdk/core/integration.md sdk/core/automatic_validation.md

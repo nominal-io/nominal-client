@@ -26,7 +26,8 @@ fields follow declaration order (including inherited fields), with
 properties after the fields. Core groups related modules on topic pages, with
 methods inline and supporting types beside the APIs that use them. The landing
 page's native toctree orders both its links and the sidebar: Client first, then
-alphabetically by page title. Legacy Videos keeps the deprecated standalone video
+alphabetically by page title. Automatic validation groups checklists, data reviews,
+and notification integrations. Legacy Videos keeps the deprecated standalone video
 APIs available separately from current dataset video APIs. DataSource's shared
 interface lives in a dropdown on Datasets and files; its inherited methods also
 render on Dataset and Connection. Supporting shared types live on the utilities page.
@@ -37,7 +38,7 @@ member lists. Explicit `autodata` directives handle the aliases autodoc omits.
 The same extension forwards old Core-page object bookmarks to their new destinations.
 The reference presentation extension uses native Sphinx contents flags to omit
 attributes and aliases from navigation, preserving their body and link targets.
-Integrations and Experimental pages are listed directly under
+Third-Party Integrations and Experiments pages are listed directly under
 captioned root toctrees. Their folder indexes remain standalone overview pages for
 existing links, with ordinary `{doc}` links and `orphan` metadata. Leave toctrees
 out of those overviews so missing sidebar entries fail the strict build. New

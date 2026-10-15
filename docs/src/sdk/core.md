@@ -9,14 +9,12 @@ Each topic brings related classes, types, and public helpers together, with meth
 core/client
 core/asset
 core/attachment
+core/automatic_validation
 core/channel
-core/checklist
 core/containerized_extractor
-core/data_review
 core/dataset
 core/event
 core/ingestion_job
-core/integration
 core/legacy_videos
 core/marking
 core/run
