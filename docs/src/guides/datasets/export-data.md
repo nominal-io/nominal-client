@@ -29,16 +29,14 @@ from the asset as shown [below](#export-asset-owned-data).
 
 ```python
 from pathlib import Path
-from time import time_ns
 
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 run = client.get_run("<RUN_RID>")
-end = run.end if run.end is not None else time_ns()
 
 for _, dataset in run.list_datasets():
-    for dataset_file in dataset.search_files(start=run.start, end=end):
+    for dataset_file in dataset.search_files(start=run.start, end=run.end):
         output_dir = Path("downloaded_files") / dataset.rid / dataset_file.id
         output_dir.mkdir(parents=True, exist_ok=True)
         path = dataset_file.download(output_dir)
@@ -46,7 +44,8 @@ for _, dataset in run.list_datasets():
 ```
 
 `search_files()` selects files whose time ranges overlap the requested interval, with search
-bounds truncated to whole seconds. `download()` retrieves each **whole file**, including any
+bounds truncated to whole seconds. For an ongoing run, `end=None` leaves the search open-ended;
+this lists current matches, not future uploads. `download()` retrieves each **whole file**, including any
 samples outside the run. Use channel export below when you need samples limited to a time range.
 
 Separate directories prevent collisions between different files with the same name. Downloading
@@ -104,7 +103,7 @@ for idx, df in enumerate(
         start=run.start,
         end=end,
         batch_duration=timedelta(minutes=10),
-        timestamp_type="epoch_nanoseconds",
+        timestamp_type="epoch_seconds",
     )
 ):
     df.write_parquet(output_dir / f"batch_{idx:04d}.parquet")
@@ -126,14 +125,15 @@ A run can instead select a time interval on an asset's data. Resolve the dataset
 data scope, and use the run only for the export bounds. You do not need to attach another copy of
 the dataset directly to the run.
 
-In the preceding example, replace the dataset lookup with:
+For a run associated with exactly one asset, replace the preceding dataset lookup with:
 
 ```python
-asset = client.get_asset("<ASSET_RID>")
+(asset,) = run.list_assets()
 dataset = asset.get_dataset("telemetry")
 ```
 
-Use the asset associated with the run and its data scope name. Then select channels from this
+If the run has several assets, select the intended one from `run.list_assets()` instead of
+unpacking a single result. Use its data scope name in `get_dataset()`. Then select channels from this
 dataset and export with the same `start` and `end`. `run.get_dataset()` and `run.list_datasets()`
 resolve direct run references; they do not search the associated assets.
 
@@ -142,7 +142,12 @@ resolve direct run references; they do not search the associated assets.
 `start` and `end` must be integer epoch **nanoseconds**. `run.start` already uses this unit;
 `run.end` can be `None` for an ongoing run, which is why the example captures `time_ns()`.
 These input units are independent of `timestamp_type`, which controls output timestamps and
-otherwise defaults to `"epoch_seconds"`.
+defaults to `"epoch_seconds"` (also explicit in the examples).
+
+Numeric output timestamps are currently stored as `Float64`, including when requesting
+`"epoch_nanoseconds"`. At modern epoch values, this cannot distinguish every nanosecond;
+nearby timestamps can round to the same value. Choosing nanosecond units or writing Parquet
+does not restore that precision. These examples do not provide a lossless nanosecond export.
 
 For a custom interval, convert timezone-aware datetimes without floating-point arithmetic:
 
@@ -159,8 +164,9 @@ for df in exporter.export(channels, start=start_ns, end=end_ns):
     print(df.head())
 ```
 
-This preserves Python `datetime`'s microsecond precision. Pass integer nanoseconds directly if
-your source has finer precision.
+This preserves Python `datetime`'s microsecond precision in the **request bounds**. Pass integer
+nanoseconds directly if your source has finer precision; this does not change the output
+precision limit described above.
 
 `export()` always yields Polars DataFrames. `batch_duration` controls the time window per batch;
 if omitted, the exporter chooses a duration from estimated channel rates. It does not guarantee
@@ -187,7 +193,7 @@ for df in exporter.export(
     start=run.start,
     end=end,
     tags=tags,
-    timestamp_type="epoch_nanoseconds",
+    timestamp_type="epoch_seconds",
 ):
     print(df.head())
 ```
