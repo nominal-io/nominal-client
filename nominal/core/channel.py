@@ -54,6 +54,14 @@ class ChannelDataType(enum.Enum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
+    def _from_proto(cls, data_type: series_pb2.SeriesDataType.ValueType) -> ChannelDataType:
+        try:
+            type_name = series_pb2.SeriesDataType.Name(data_type)
+        except ValueError:
+            return cls.UNKNOWN
+        return cls.__members__.get(type_name, cls.UNKNOWN)
+
+    @classmethod
     def _from_conjure(cls, data_type: api.SeriesDataType) -> Self:
         if data_type.value in cls.__members__:
             return cls(data_type.value)
@@ -343,21 +351,13 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
 
     @classmethod
     def _from_proto(cls, clients: _Clients, channel: channel_metadata_pb2.ChannelMetadata) -> Self:
-        data_type = None
-        if channel.HasField("data_type"):
-            # Preserve the query type used by compute, rather than the underlying storage type.
-            try:
-                type_name = series_pb2.SeriesDataType.Name(channel.data_type)
-            except ValueError:
-                data_type = ChannelDataType.UNKNOWN
-            else:
-                data_type = ChannelDataType.__members__.get(type_name, ChannelDataType.UNKNOWN)
         return cls(
             name=channel.channel_identifier.channel_name,
             data_source=channel.channel_identifier.data_source_rid,
             unit=channel.unit if channel.HasField("unit") else None,
             description=channel.description if channel.HasField("description") else None,
-            data_type=data_type,
+            # Preserve the query type used by compute, rather than the underlying storage type.
+            data_type=ChannelDataType._from_proto(channel.data_type) if channel.HasField("data_type") else None,
             _clients=clients,
         )
 
