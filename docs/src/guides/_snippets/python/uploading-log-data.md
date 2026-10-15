@@ -1,4 +1,4 @@
-`.jsonl` log files (or `.jsonl.gz` tarballs of several log files) from `journalctl` can be uploaded to Nominal analagously to tabular data files.
+`.jsonl` log files (or gzip-compressed JSON Lines files, `.jsonl.gz`) from `journalctl` can be uploaded to Nominal analagously to tabular data files.
 
 ```{literalinclude} /guides/_snippets/code/data_upload/uploading_log_data_1.py
 :language: python
