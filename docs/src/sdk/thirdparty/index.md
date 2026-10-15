@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Integrations
 
 Use these integrations to work with MATLAB, pandas, Polars, and TDMS data.
