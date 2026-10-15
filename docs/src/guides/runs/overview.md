@@ -1,30 +1,36 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal's Run primitive in Python"
+    description: "Create standalone runs or select time windows on asset data, then manage run metadata and analysis"
 ---
 
-# Runs in Nominal with Python
+# Runs in Python
 
 {.lead}
-Overview and recipes for working with Nominal's Run primitive in Python
+Create standalone runs or select time windows on asset data, then manage run metadata and analysis
 
-```{include} /guides/_snippets/install-warning.md
-```
+A **run** identifies a time interval for a test or analysis. It selects data to view together;
+it does not store a separate copy of that data.
 
-A Run is Nominal's primitive for test data that shares a common time domain.
-This guide details common patterns for working with Runs in Python.
+There are two common ways to organize a run:
+
+| Workflow | Where the data is referenced | Use it when |
+| --- | --- | --- |
+| Standalone run | Datasets are attached directly to the run under reference names. | You have recordings for a particular test and want to assemble them into one run. |
+| Run on an asset | The run is associated with an asset and uses the asset's data scopes. | Data already belongs to a vehicle, test stand, or other system, and this run selects a test interval. |
+
+These are two workflows using the same `Run` object, not different run types. A run can combine
+asset data with directly attached datasets. In either case, the run can have its own name,
+properties, labels, attachments, and workbooks. Assets can also have their own metadata,
+attachments, and workbooks; choose the resource that the information describes.
+
+The following sections demonstrate the workflows separately. Choose one, then use the shared
+operations later in the page.
 
 ## Connect to Nominal
 
-```{include} /guides/_snippets/python/auth.md
-```
-
-## Create a run
-
-It's possible to create an empty run without any data. Supply an absolute start time and either an absolute end time or `end=None` for an ongoing run.
-Use timezone-aware datetimes or integer epoch nanoseconds.
-All Datasets added to the run should overlap with this time domain.
+Install the SDK and [save an authentication profile](/guides/authentication.md), then create a
+client. Both workflows below use these imports and this client:
 
 ```python
 from datetime import datetime, timezone
@@ -32,43 +38,15 @@ from datetime import datetime, timezone
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
-
-flight_simulator_run = client.create_run(
-    name="High precipitation flight",
-    start=datetime(2024, 6, 8, 5, 58, 42, tzinfo=timezone.utc),
-    end=datetime(2024, 6, 8, 6, 0, 6, tzinfo=timezone.utc),
-)
-
-print("Created run:", flight_simulator_run.rid)
 ```
 
-## Create a run off of an asset
+## Standalone run: attach the test's datasets
 
-Use {py:meth}`~nominal.core.Asset.create_run` to associate a run with an asset.
-The run can use the asset's data scopes without attaching each dataset directly:
+A standalone run has no associated asset. Upload the test recording to a dataset, wait for
+its ingestion, then create the run and attach the dataset directly.
 
-```python
-from datetime import datetime, timezone
-
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-asset = client.create_asset("Aircraft", "My flight simulator aircraft")
-
-flight_simulator_run = asset.create_run(
-    name="High precipitation flight",
-    start=datetime(2024, 9, 9, 12, 35, tzinfo=timezone.utc),
-    end=datetime(2024, 9, 9, 13, 18, tzinfo=timezone.utc),
-)
-
-print("Created run:", flight_simulator_run.rid)
-```
-
-## Add data to a run
-
-To attach a dataset directly to the run, use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`.
-Install `huggingface_hub` to download the sample CSV. Wait for ingestion before attaching it:
+This example uses the sample CSV from the [CSV guide](/guides/datasets/csv.md).
+Install `huggingface_hub` with `pip install huggingface_hub` to download it:
 
 ```python
 from huggingface_hub import hf_hub_download
@@ -78,181 +56,186 @@ csv_path = hf_hub_download(
     filename="frosty_flight_1k_rows.csv",
     repo_type="dataset",
 )
-
-csv_dataset = client.create_dataset("Frosty Flight")
-dataset_file = csv_dataset.add_tabular_data(
+dataset = client.create_dataset("Frosty Flight")
+dataset_file = dataset.add_tabular_data(
     csv_path,
     timestamp_column="source_time",
     timestamp_type="iso_8601",
 )
 dataset_file.poll_until_ingestion_completed()
 
-flight_simulator_run.add_dataset(
-    dataset=csv_dataset, ref_name="high-precipitation-flight"
-)
-```
-
-```{include} /guides/_snippets/what-is-a-dataset.md
-```
-
-The earlier examples set the run's times manually. To make it span this uploaded file,
-use the file's bounds after polling. These are integer epoch nanoseconds; dataset-wide
-bounds may also include other uploads.
-
-```python
 bounds = dataset_file.bounds
 if bounds is None:
-    raise ValueError("Ingested file has no timestamp bounds")
+    raise ValueError("The uploaded recording has no time bounds")
 
-flight_simulator_run.update(start=bounds.start, end=bounds.end)
-```
-
-## Wait for ingestion before creating a run
-
-When a run spans several datasources that ingest at different rates (for example, multiple video streams and a telemetry channel from the same test event), lower-bitrate sources typically finish ingesting first. Selecting a run from the runs page before every attached datasource finishes ingesting can cause inconsistent behavior in the workbook UI: the `align-to-run` action can appear available and display the wrong video if the referenced video dataset hasn't finished ingesting.
-
-Retain the file handles returned by your uploads in `files`, and their datasets in
-`datasets`. Supply `start` and `end` in the timestamp types described above. Poll every
-file for ingestion completion before creating the run; a failed ingest stops this sequence:
-
-```python
-for f in files:
-    f.poll_until_ingestion_completed()
-
-run = client.create_run(name="my_run", start=start, end=end)
-for dataset in datasets:
-    run.add_dataset(dataset=dataset, ref_name=dataset.name)
-```
-
-Apply the same pattern before creating a workbook from a template: poll every attached file for ingestion completion, then create the workbook. This keeps runs and workbooks hidden from users until their data finishes ingesting.
-
-## Run data with ref names
-
-To add a Dataset to a run along with a reference name, set the `ref_name` parameter in {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`.
-
-```python
-flight_simulator_run.add_dataset(
-    dataset=csv_dataset, ref_name="high-precipitation-flight"
+run = client.create_run(
+    name="High precipitation flight",
+    start=bounds.start,
+    end=bounds.end,
 )
+run.add_dataset(dataset=dataset, ref_name="telemetry")
+print("Created run:", run.nominal_url)
 ```
 
-```{include} /guides/_snippets/what-is-a-ref-name.md
-```
+The run spans this file's bounds, expressed as integer epoch nanoseconds. Dataset-wide bounds
+may include other recordings, so they need not describe this particular test.
+`run.add_dataset()` references the dataset; it does not copy or re-upload its data.
 
-## Check if a run exists
+For additional test datasets, call `run.add_dataset()` with a distinct reference name for each.
+Choose run bounds covering the intended test interval across those recordings. When a dataset
+contains multiple recordings in that interval, use `series_tags` to select the relevant tagged
+data; a reference can also specify a time `offset`. See
+[Filtering data with tags](/guides/streaming/overview.md#add-tags-to-filter-data-in-a-run-or-asset).
 
-You can check for a run's existence with {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>`.
+### Reference names
+
+`"telemetry"` is the dataset's name **within the run**, not its display name or RID. Use consistent
+reference names across similar runs so workbook templates and checklists can resolve the same
+logical inputs. For example, `"telemetry"` and `"ground_station"` distinguish two datasets that
+both contain a channel named `temperature`.
+
+## Run on an asset: select a test interval
+
+Use this workflow when the recordings or live data already belong to an asset. Creating the run
+associates it with that asset; you do not need to attach each of its datasets to the run again.
+
+Replace `<ASSET_RID>` with an existing asset that has data during your chosen interval. For setup,
+see [Add data to an asset](/guides/assets/overview.md#add-data-to-an-asset).
+This is an alternative to the standalone example:
 
 ```python
-from datetime import datetime, timezone
-
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-found_runs = client.search_runs(name_substring="High precipitation flight")
-
-if len(found_runs) == 0:
-    flight_simulator_run = client.create_run(
-        name="High precipitation flight",
-        start=datetime(2024, 9, 9, 12, 35, tzinfo=timezone.utc),
-        end=datetime(2024, 9, 9, 13, 18, tzinfo=timezone.utc),
-    )
+asset = client.get_asset("<ASSET_RID>")
+run = asset.create_run(
+    name="Flight acceptance test",
+    start=datetime(2026, 9, 10, 14, 38, 19, tzinfo=timezone.utc),
+    end=datetime(2026, 9, 10, 14, 48, 19, tzinfo=timezone.utc),
+)
+print("Created run:", run.nominal_url)
 ```
+
+Choose the time window for this test, even when the asset's datasets contain many tests or a
+continuous stream. The asset's data scopes determine the data available through the association.
+For a run involving several assets, use `client.create_run(..., assets=[asset_a, asset_b])` with
+the assets you have retrieved.
+
+A run created this way can still attach a test-specific dataset directly with
+`run.add_dataset()`. For example, an asset may provide continuous telemetry while a directly
+attached dataset provides measurements from temporary test equipment.
+
+### Resolve data from its owner
+
+`run.get_dataset("telemetry")` and `run.list_datasets()` resolve **direct run references**. They
+do not search the associated assets. For asset data, use `asset.get_dataset("telemetry")` with
+the asset's data scope name. `run.list_assets()` retrieves the run's associated assets.
+
+Resolving a dataset returns the underlying dataset, not a time-clipped copy. When exporting,
+apply the run's bounds and any scope filters or offsets explicitly; see
+[Export data](/guides/datasets/export-data.md).
+
+## Choose bounds and wait for data
+
+Both creation methods accept timezone-aware datetimes or integer epoch nanoseconds. Use
+`end=None` for an ongoing run whose end is not yet known. Creating a run does not start or stop
+recording; it only defines the analysis interval and associations.
+
+For a completed test, wait for all required uploads before creating the run or its workbook.
+Keep the `DatasetFile` handles returned by the uploads and call
+`poll_until_ingestion_completed()` on each, as in the standalone example. For extractor or batch
+jobs, follow [Ingest jobs](/guides/ingest/ingestion-jobs.md).
+
+This avoids presenting an analysis before its required data has ingested. It is a workflow
+choice, not a requirement to create a run: an ongoing run can exist while data is still arriving.
+
+## Retrieve and find runs
+
+The remaining operations work with either workflow. In a later session, retrieve the run by the
+RID shown on its page in Nominal:
+
+```python
+run = client.get_run("<RUN_RID>")
+print(run.name, run.nominal_url)
+```
+
+To discover runs instead, search by name or labels:
+
+```python
+matching_runs = client.search_runs(name_substring="Flight")
+review_runs = client.search_runs(labels=["Needs review"])
+
+for match in review_runs:
+    print(match.name, match.rid)
+```
+
+A name search can match several runs; it is not a unique lookup or a guarantee that creating
+another run is safe. Use a known RID when you need a particular run. See
+{py:meth}`~nominal.core.NominalClient.search_runs` for the available filters.
 
 ## Update a run
 
-Run metadata can be updated with {py:obj}`Run.update() <nominal.core.Run.update>`:
-
-For example, to set a run's end time to the present moment:
+Use `update()` for the run's own metadata, regardless of where its data is referenced:
 
 ```python
-flight_simulator_run.update(end=datetime.now(timezone.utc))
-```
-
-To update a run's title:
-
-```python
-flight_simulator_run.update(name="Low precipitation flight")
-```
-
-To add labels to a run:
-
-```python
-new_labels = ("high altitude", "simulated")
-old_labels = flight_simulator_run.labels
-flight_simulator_run.update(labels=old_labels + new_labels)
-```
-
-Please see {py:obj}`Run.update() <nominal.core.Run.update>` for all updatable metadata.
-
-## Run attachments
-
-File attachments such as PDF reports or PowerPoints can be added to Runs:
-
-```python
-filepath = "/path/to/my_report.pdf"
-attachment = client.create_attachment(filepath)
-flight_simulator_run.add_attachments(attachments=[attachment])
-```
-
-## Retrieve a run
-
-Like Datasets, Runs can be retrieved by their resource ID ("RID"). Replace
-`<RUN_RID>` with a run RID from your workspace:
-
-```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-run = client.get_run(
-    "<RUN_RID>"
-)
-run.update(labels=["X-PLANE"])
-```
-
-To retrieve a Run's RID, visit its detail page and click on the clipboard icon next to "ID" in the right-hand drawer:
-
-![run-metadata](/guides/images/b4/run_metadata_drawer_jq7iww.png)
-
-```{include} /guides/_snippets/what-is-a-rid.md
-```
-
-## Query Runs
-
-Runs can be queried with {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>`.
-
-For example, to retrieve all runs with the label "X-PLANE":
-
-```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-x_plane_runs = client.search_runs(labels=["X-PLANE"])
-```
-
-See {py:obj}`client.search_runs() <nominal.core.NominalClient.search_runs>` for all run search parameters.
-
-## Remove Run Data Sources
-
-The list `data_sources` can contain Connection, Dataset, or Video instances, or their RIDs.
-Replace the placeholders below with resources from your workspace. This removes direct
-references from the run; it does not delete the source or remove an asset-owned data scope.
-
-```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-run = client.get_run(
-    "<RUN_RID>"
-)
-
-run.remove_data_sources(
-    data_sources=[
-        "<DATASET_RID>"
-    ]
+run.update(
+    name="Flight acceptance test — reviewed",
+    description="Post-flight review of the acceptance test",
+    labels=["Reviewed"],
+    properties={"review_status": "complete"},
 )
 ```
+
+Supplied labels and properties replace those fields; omitted fields remain unchanged. To add
+metadata while preserving existing values, refresh and merge them first:
+
+```python
+run.refresh()
+run.update(properties={**run.properties, "reviewer": "flight-test-team"})
+```
+
+This is a read-modify-write operation, not an atomic merge with other writers.
+Updating run metadata does not update the associated asset's metadata.
+
+To close an ongoing run, set its end time:
+
+```python
+run.update(end=datetime.now(timezone.utc))
+```
+
+Changing time bounds changes the interval selected for analysis, not the stored data or any
+active ingestion process. See {py:meth}`~nominal.core.Run.update` for other updatable fields.
+
+## Add attachments and workbooks
+
+Attach reports to the run when they describe this test. Use the asset's attachments for material
+about the system across tests, such as a hardware specification.
+
+```python
+attachment = client.create_attachment("/path/to/flight_report.pdf")
+run.add_attachments(attachments=[attachment])
+```
+
+Both standalone and asset-associated runs can be used to create workbooks from templates.
+Choose a template whose input names match the run references or asset data scopes:
+
+```python
+template = client.get_workbook_template("<TEMPLATE_RID>")
+template.create_workbook(
+    run=run.rid,
+    title="Flight review",
+    description="Review of this test interval",
+)
+```
+
+See [Workbooks](/guides/workbooks/overview.md) for finding template RIDs and opening the result.
+
+## Remove directly attached data
+
+To remove a direct reference from the selected run:
+
+```python
+run.remove_data_sources(ref_names=["telemetry"])
+```
+
+This does not delete the dataset or remove an asset's data scope. It applies to the standalone
+example's `"telemetry"` reference, or any direct reference you added to an asset-associated run.
+You can also pass resource objects or RIDs through `data_sources=`. See
+{py:meth}`~nominal.core.Run.remove_data_sources` for details.
