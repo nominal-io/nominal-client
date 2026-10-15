@@ -224,7 +224,9 @@ Each input is a single file, so **register a `.zip` or `.tar` input to accept a 
 files or a directory layout**, and unpack it in the extractor. This is the approach for loggers that
 emit a session directory rather than one capture.
 
-`required=True` is enforced differently on each. A missing required input raises in
+Omitting `default=` on `@input` or `@parameter` registers the argument as required
+(`"required": true` in the CLI config). Use `default=None` for an optional input or
+a default value for an optional parameter. A missing required input raises in
 `add_containerized()` before anything uploads. A missing required parameter is not checked
 client-side. With `@parameter`, a missing value without a default fails during binding,
 before the parser callback runs. Legacy `ctx.param()` lookups fail when the value is read.
@@ -412,7 +414,9 @@ registration above, save this matching contract as `extractor-config.json`:
 
 Keep this config aligned with the Python declarations if you use the CLI path.
 `create` prints the extractor object; copy its RID into `EXTRACTOR_RID`. If you already
-created the extractor through Python, reuse its RID and skip `create`.
+created the extractor through Python, reuse its RID and skip `create`. If you also
+registered version `0.3.0` through Python, do not register the same tag again; these
+are alternative registration paths.
 `register-image` prints only the new image RID to stdout, so that output can be captured:
 
 ```bash
@@ -420,7 +424,7 @@ nom container extractor create --profile default -n bespoke-file-parser -d "Pars
 EXTRACTOR_RID="<EXTRACTOR_RID>"
 
 IMAGE_RID=$(nom container extractor register-image --profile default -r "$EXTRACTOR_RID" \
-  -f bespoke-file-parser-0.3.0.tar -t "$(git rev-parse --short HEAD)" -c extractor-config.json)
+  -f bespoke-file-parser-0.3.0.tar -t "0.3.0" -c extractor-config.json)
 
 nom container extractor set-active-image --profile default -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
 ```
