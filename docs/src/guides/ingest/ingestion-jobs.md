@@ -155,7 +155,7 @@ An ingest finishes in two stages: the job produces its files, then those files i
 from datetime import timedelta
 
 from nominal.core.dataset_file import IngestStatus
-from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
+from nominal.exceptions import NominalError
 
 finished_files = []
 try:
@@ -165,7 +165,7 @@ try:
             print(f"{dataset_file.name} failed: {dataset_file.get_ingest_error()}")
         else:
             print(f"{dataset_file.name}: {dataset_file.ingest_status.name}")
-except (NominalIngestFailed, NominalIngestTimeout):
+except NominalError:
     print(f"Stopped waiting after observing {len(finished_files)} finished files")
     raise
 ```
