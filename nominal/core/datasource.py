@@ -50,19 +50,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CHANNEL_BATCH_SIZE = 500
 _MAX_CHANNEL_UPDATE_BATCH_SIZE = 10_000
 
-_NOMINAL_DATA_TYPES = {
-    ChannelDataType.DOUBLE: series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE,
-    ChannelDataType.STRING: series_metadata_pb2.NOMINAL_DATA_TYPE_STRING,
-    ChannelDataType.LOG: series_metadata_pb2.NOMINAL_DATA_TYPE_LOG,
-    ChannelDataType.INT: series_metadata_pb2.NOMINAL_DATA_TYPE_INT64,
-    ChannelDataType.UINT: series_metadata_pb2.NOMINAL_DATA_TYPE_UINT64,
-    ChannelDataType.DOUBLE_ARRAY: series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE_ARRAY,
-    ChannelDataType.STRING_ARRAY: series_metadata_pb2.NOMINAL_DATA_TYPE_STRING_ARRAY,
-    ChannelDataType.STRUCT: series_metadata_pb2.NOMINAL_DATA_TYPE_STRUCT,
-    ChannelDataType.VIDEO: series_metadata_pb2.NOMINAL_DATA_TYPE_VIDEO,
-    ChannelDataType.UNKNOWN: series_metadata_pb2.NOMINAL_DATA_TYPE_UNSPECIFIED,
-}
-
 
 @dataclass(frozen=True)
 class CreateChannelRequest:
@@ -428,8 +415,7 @@ class DataSource(HasRid, MarkableMixin):
             The created or existing Channel object. Existing channels are returned unchanged.
 
         Raises:
-            NominalError: Error creating the channel via gRPC.
-            conjure_python_client.ConjureHTTPError: Error fetching channel metadata after creation.
+            NominalError: Error creating the channel or fetching its metadata via gRPC.
             ValueError: Channel metadata was not found after creation.
         """
         request = _build_series_metadata_request(
@@ -511,7 +497,7 @@ def _build_series_metadata_request(
     *,
     if_exists: series_metadata_pb2.IfSeriesMetadataExists.ValueType,
 ) -> series_metadata_pb2.CreateSeriesMetadataRequest:
-    nominal_data_type = _NOMINAL_DATA_TYPES[req.data_type]
+    nominal_data_type = req.data_type._to_proto()
     locator = series_metadata_pb2.LocatorTemplate(
         nominal=series_metadata_pb2.NominalLocatorTemplate(channel=req.name, data_type=nominal_data_type)
     )

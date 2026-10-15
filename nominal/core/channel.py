@@ -6,7 +6,7 @@ import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, cast, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
 from nominal_api import (
@@ -25,6 +25,7 @@ from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
+from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
 from nominal.ts import (
     _MAX_TIMESTAMP,
@@ -51,6 +52,32 @@ class ChannelDataType(enum.Enum):
     STRUCT = "STRUCT"
     VIDEO = "VIDEO"
     UNKNOWN = "UNKNOWN"
+
+    def _to_proto(self) -> series_metadata_pb2.NominalDataType.ValueType:
+        match self:
+            case ChannelDataType.DOUBLE:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE
+            case ChannelDataType.STRING:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRING
+            case ChannelDataType.LOG:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_LOG
+            case ChannelDataType.INT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_INT64
+            case ChannelDataType.UINT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_UINT64
+            case ChannelDataType.DOUBLE_ARRAY:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_DOUBLE_ARRAY
+            case ChannelDataType.STRING_ARRAY:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRING_ARRAY
+            case ChannelDataType.STRUCT:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_STRUCT
+            case ChannelDataType.VIDEO:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_VIDEO
+            case ChannelDataType.UNKNOWN:
+                data_type = series_metadata_pb2.NOMINAL_DATA_TYPE_UNSPECIFIED
+            case _:
+                assert_never(self)
+        return data_type
 
     @classmethod
     def _from_proto(cls, data_type: series_pb2.SeriesDataType.ValueType) -> ChannelDataType:
