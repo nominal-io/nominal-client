@@ -73,7 +73,7 @@ html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_copy_source = False
 
-nominal_hub_url = "https://dev.nominal.io/"
+nominal_hub_url = "https://docs.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
 
 html_context = {
