@@ -25,8 +25,22 @@ You can create events manually during review or live monitoring. You can also cr
 To create an Event, use {py:obj}`create_event() <nominal.core.NominalClient.create_event>`.
 Provide a name, type, start time, and duration, and at least one resource ID ("RID") for an associated asset. You can also add properties and labels:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/events/create_event.py
-:language: python
+```python
+from datetime import datetime, timedelta
+
+from nominal.core import EventType, NominalClient
+
+client = NominalClient.from_profile("demo")
+asset_rid = "ri.scout.cerulean-staging.asset.bce88be4-150a-4721-b69b-7247e1febce9"
+client.create_event(
+    name="Event Name",
+    type=EventType.INFO,
+    start=datetime.now(),
+    duration=timedelta(seconds=10),
+    assets=[asset_rid],
+    properties={"key": "value"},
+    labels=["label1", "label2"],
+)
 ```
 
 To retrieve an Asset's RID, visit its detail page and click on the clipboard icon next to "ID" in the right-hand drawer:
@@ -49,8 +63,22 @@ Common use cases include querying for:
 - Events tied to one or more assets
 - Events created by a specific user
 
-```{literalinclude} /guides/_snippets/code/sdk/python/events/search_events.py
-:language: python
+```python
+from datetime import datetime, timedelta
+
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+
+results = client.search_events(
+    search_text="engine start",
+    after=datetime.now() - timedelta(days=1),
+    before=datetime.now(),
+    assets=[asset_rid],
+    labels=["reviewed", "critical"],
+    properties={"test_phase": "burn"},
+    created_by="user:abc123",
+)
 ```
 ### Parameters
 - `search_text` (optional): Substring to match against event metadata.
@@ -77,8 +105,8 @@ The `search_events()` method returns a list of `Event` objects. Each `Event` obj
 
 To retrieve an Event, use {py:obj}`get_event() <nominal.core.NominalClient.get_event>`.
 
-```{literalinclude} /guides/_snippets/code/sdk/python/events/get_event.py
-:language: python
+```python
+event = client.get_event(event_rid)
 ```
 
 To retrive an Event's RID, click on the event where it's visible on a workbook, and select "Copy RID" from the dropdown menu:
@@ -87,6 +115,6 @@ To retrive an Event's RID, click on the event where it's visible on a workbook, 
 
 You can also retrieve multiple events at once by passing a list of RIDs to `get_events()`:
 
-```{literalinclude} /guides/_snippets/code/sdk/python/events/get_events.py
-:language: python
+```python
+events = client.get_events([event_rid1, event_rid2])
 ```
