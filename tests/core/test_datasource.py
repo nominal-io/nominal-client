@@ -153,13 +153,30 @@ def test_write_errors_are_translated_before_hydration(datasource, clients, fake_
     clients.channel_metadata.BatchGetChannelMetadata.assert_not_called()
 
 
-def test_repeated_create_names_reach_service(datasource, clients):
-    """Repeated create names retain RETURN_EXISTING so the backend can accept the batch."""
-    channels = [CreateChannelRequest("ch", ChannelDataType.DOUBLE)] * 2
-    datasource.batch_add_channels(channels)
-    requests = clients.series_metadata.BatchCreateSeriesMetadata.call_args.args[0].requests
-    assert [request.channel for request in requests] == ["ch", "ch"]
-    assert all(request.if_exists == proto.RETURN_EXISTING for request in requests)
+@pytest.mark.parametrize("preceding_count", [0, 500])
+@pytest.mark.parametrize("duplicate_type", [ChannelDataType.DOUBLE, ChannelDataType.STRING])
+def test_repeated_create_names_reject_input_before_write(datasource, clients, preceding_count, duplicate_type):
+    """Duplicate names anywhere in the input reject all writes, even after a full internal batch."""
+    channels = [CreateChannelRequest(f"ch{i}", ChannelDataType.DOUBLE) for i in range(preceding_count)]
+    channels += [
+        CreateChannelRequest("duplicate", ChannelDataType.DOUBLE),
+        CreateChannelRequest("duplicate", duplicate_type),
+    ]
+    channels += [CreateChannelRequest(f"later{i}", ChannelDataType.DOUBLE) for i in range(500)]
+    with pytest.raises(ValueError, match="duplicate"):
+        datasource.batch_add_channels(channels)
+    clients.series_metadata.BatchCreateSeriesMetadata.assert_not_called()
+    clients.channel_metadata.BatchGetChannelMetadata.assert_not_called()
+
+
+def test_repeated_create_names_across_batches_reject_input(datasource, clients):
+    """Duplicate names split across internal batches are rejected before any writes."""
+    channels = [CreateChannelRequest(f"ch{i}", ChannelDataType.DOUBLE) for i in range(500)]
+    channels.append(CreateChannelRequest("ch0", ChannelDataType.STRING))
+    with pytest.raises(ValueError, match="ch0"):
+        datasource.batch_add_channels(channels)
+    clients.series_metadata.BatchCreateSeriesMetadata.assert_not_called()
+    clients.channel_metadata.BatchGetChannelMetadata.assert_not_called()
 
 
 def test_later_batch_failure_stops_writes_and_hydration(datasource, clients, fake_rpc_error):

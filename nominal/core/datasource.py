@@ -440,16 +440,21 @@ class DataSource(HasRid, MarkableMixin):
             A BatchAddChannelsResult with the created channels and any requests that were
             not found after creation (i.e. silently dropped by the server).
 
+        Raises:
+            ValueError: A channel name appears more than once in ``channels``.
+            NominalError: Error creating channels or fetching their metadata via gRPC.
+
         Note:
-            Existing channels are returned unchanged. If a name appears more than once and the
-            channel does not already exist, the first request creates it; later requests with that
-            name do not change its type, unit, or description, even across batch boundaries.
-            The result's ``channels`` contains at most one Channel per distinct name, rather than
-            one per request. If the metadata lookup omits a name, every request with that name
-            is included in ``missing``.
+            Existing channels are returned unchanged. Repeated names anywhere in ``channels``
+            raise ValueError before any requests are sent, even if their metadata matches.
 
             Batches are written sequentially; earlier batches remain applied if a later batch fails.
         """
+        seen: set[str] = set()
+        for request in channels:
+            if request.name in seen:
+                raise ValueError(f"Repeated channel name {request.name!r} in channels")
+            seen.add(request.name)
         return self._batch_write_channels(channels, if_exists=series_metadata_pb2.RETURN_EXISTING)
 
     def batch_update_or_create_channels(
