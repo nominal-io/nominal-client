@@ -69,7 +69,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         api_key = datasource_clients.auth_header.removeprefix("Bearer ")
         stream = cls.create(
             api_key,
-            datasource_clients.storage_writer._uri,
+            datasource_clients.api_base_url,
             max_points_per_batch=batch_size,
             max_request_delay_secs=max_wait.total_seconds(),
             track_metrics=track_metrics,
