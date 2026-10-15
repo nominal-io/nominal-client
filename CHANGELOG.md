@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.177.0](https://github.com/nominal-io/nominal-client/compare/v1.176.0...v1.177.0) (2026-10-15)
+
+
+### Features
+
+* add nominal-ibis ([#948](https://github.com/nominal-io/nominal-client/issues/948)) ([c8cce39](https://github.com/nominal-io/nominal-client/commit/c8cce393f3e3ce891e49723b80769af526249758))
+* add notification integration resources and data review support ([#564](https://github.com/nominal-io/nominal-client/issues/564)) ([8b37084](https://github.com/nominal-io/nominal-client/commit/8b37084c7a047a8909e7e423f13c51165791cf11))
+* expose track_metrics on Rust streaming ([#1002](https://github.com/nominal-io/nominal-client/issues/1002)) ([24f8c0c](https://github.com/nominal-io/nominal-client/commit/24f8c0c76e97bd32fdff56aa2282b5c267a71b27))
+* increase default conjure session pool size ([#1102](https://github.com/nominal-io/nominal-client/issues/1102)) ([f5b2bb1](https://github.com/nominal-io/nominal-client/commit/f5b2bb126b77355c14771604f66a8dc155f6f52b))
+* migrate channel metadata service to gRPC ([#1116](https://github.com/nominal-io/nominal-client/issues/1116)) ([167cfd5](https://github.com/nominal-io/nominal-client/commit/167cfd5c69e046a9cc0b8fd4a7387a4a746c3c76))
+* migrate experimental spatial service to gRPC ([#1119](https://github.com/nominal-io/nominal-client/issues/1119)) ([fdb12b4](https://github.com/nominal-io/nominal-client/commit/fdb12b4800fda8cd7fe78679a2f0e448e9e5f829))
+* migrate series metadata service to gRPC ([#1118](https://github.com/nominal-io/nominal-client/issues/1118)) ([981fb38](https://github.com/nominal-io/nominal-client/commit/981fb38c3226426c41ceae254a6e9b981ddec258))
+
+
+### Bug Fixes
+
+* require urllib3 2.8.0 for CVE-2026-97689 ([#1114](https://github.com/nominal-io/nominal-client/issues/1114)) ([2a09c3a](https://github.com/nominal-io/nominal-client/commit/2a09c3abf26b826fac7f7b291e9b31558c129b15))
+
 ## [1.176.0](https://github.com/nominal-io/nominal-client/compare/v1.175.0...v1.176.0) (2026-10-13)
 
 

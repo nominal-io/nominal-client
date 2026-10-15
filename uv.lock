@@ -399,7 +399,7 @@ name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markupsafe" },
+    { name = "markupsafe", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
@@ -416,7 +416,7 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "mdurl" },
+    { name = "mdurl", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5b/f5/4ec618ed16cc4f8fb3b701563655a69816155e79e24a17b651541804721d/markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3", size = 73070, upload-time = "2025-08-11T12:57:52.854Z" }
 wheels = [
@@ -439,7 +439,7 @@ resolution-markers = [
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "mdurl" },
+    { name = "mdurl", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz", hash = "sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49", size = 82454, upload-time = "2026-05-07T12:08:28.36Z" }
 wheels = [
@@ -525,7 +525,7 @@ name = "mdit-py-plugins"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" } },
+    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/59/fc/f8d0863f8862f25602c0404d75568e89fb6b4109804645e5cdfb1be5cf56/mdit_py_plugins-0.6.1.tar.gz", hash = "sha256:a2bca0f039f39dbd35fb74ae1b5f998608c437463371f0ff7f49a19a17a114d0", size = 56114, upload-time = "2026-05-13T09:03:38.91Z" }
 wheels = [
@@ -593,12 +593,12 @@ name = "myst-parser"
 version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "docutils" },
-    { name = "jinja2" },
-    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "mdit-py-plugins" },
-    { name = "pyyaml" },
-    { name = "sphinx" },
+    { name = "docutils", marker = "python_full_version >= '3.12'" },
+    { name = "jinja2", marker = "python_full_version >= '3.12'" },
+    { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "mdit-py-plugins", marker = "python_full_version >= '3.12'" },
+    { name = "pyyaml", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/21/dc/603751677fff302f34396e206b610f556a59d7fe58b9a2145f54e96b48e8/myst_parser-5.1.0.tar.gz", hash = "sha256:ab69322dc6719dcc7f296479dbb70181b66df6ed315064f92dbc85c0e1bf2f02", size = 101182, upload-time = "2026-05-13T09:38:19.361Z" }
 wheels = [
@@ -607,7 +607,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.176.0"
+version = "1.177.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -757,8 +757,10 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/71/4e/80716e47a9dfc173d43cc77af8ae380c9f254010faebb8c3aceec258a858/nominal_compute-0.1480.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:fd0817d3499bb6923bbb8beb8e97d4eda76bda80eee43ba176d870987709cf1f", size = 1140876, upload-time = "2026-10-09T23:01:39.627Z" },
     { url = "https://files.pythonhosted.org/packages/85/84/f3afed3a2788dae78629ac1d6e67436f139462dce23715d80541129e59b7/nominal_compute-0.1480.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:eea01390fab64b79a5a5084f53e19381c3fb839518ef1266f965f6e661eaba27", size = 1247747, upload-time = "2026-10-09T23:01:41.271Z" },
+    { url = "https://files.pythonhosted.org/packages/53/af/48b3929608f4311bf4374cc6df9b0f3605ba536bc10c0943bc8e5c10fd32/nominal_compute-0.1480.0-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:b37650f89378b79fe17e5fc4b9301532df0272226770c08057d24cc9720a7962", size = 1212837, upload-time = "2026-10-09T23:01:42.886Z" },
     { url = "https://files.pythonhosted.org/packages/af/75/cadc451a426899717f545bcce10d017e645c28aba1c358fe48a30615becc/nominal_compute-0.1480.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bf6c37834c50baa7804e3c685722614f5dc031e2a4d8e226ca6311821ffa1c56", size = 1278462, upload-time = "2026-10-09T23:01:43.937Z" },
     { url = "https://files.pythonhosted.org/packages/0f/6e/ce1cf4d90819bb893565f87c95467c1cb25f42c93e8747a23ac18bde063a/nominal_compute-0.1480.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:6375a5268c6744fa808e2a221e965853613b84f3a58ed8599e6d1f646cdea4c8", size = 1422553, upload-time = "2026-10-09T23:01:45.161Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/d9/befc0ced90449253fa092fcd789ff48550bc217f5f56d69976fd5f947494/nominal_compute-0.1480.0-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:fde86753ddde3849ddfc44eeb2aa0937196af46373629deed3d394a1f2b256b7", size = 1480274, upload-time = "2026-10-09T23:01:46.555Z" },
     { url = "https://files.pythonhosted.org/packages/96/1d/6f1b0bcfd1de900b19432d959f24c93713d6d3dc0bb0a5a1610718efbde4/nominal_compute-0.1480.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:be9ef641d1301f5993dd25082b7920acc83210ceaf019deadd7a681f105afc57", size = 1481619, upload-time = "2026-10-09T23:01:47.86Z" },
     { url = "https://files.pythonhosted.org/packages/e8/70/1eb6688e610547d14ad66e319cef2d0e8511a92012ead5dab79655966584/nominal_compute-0.1480.0-cp310-abi3-win_amd64.whl", hash = "sha256:8d3b89e1b48946d021089df80a2a279c2113d4b6225f169a434576eda52739fe", size = 1046123, upload-time = "2026-10-09T23:01:49.08Z" },
 ]
@@ -790,8 +792,8 @@ name = "nominal-sphinx-theme"
 version = "0.1.0"
 source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=95a37f535ce2e6d93f064a31fca8b7d3223ac63c#95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
 dependencies = [
-    { name = "shibuya" },
-    { name = "sphinx" },
+    { name = "shibuya", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 
 [[package]]
@@ -799,7 +801,7 @@ name = "nominal-streaming"
 version = "0.10.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil" },
+    { name = "python-dateutil", marker = "sys_platform != 'emscripten'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/28/a7/0a0db75e605b40a4c5edf3b5a0abdba8d6cc15943dad6f932d0ceb552888/nominal_streaming-0.10.3-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:ce357d55d0d07b8c26d65fd1c8da0cd0af481359f0f38d31c485a0f666719b9f", size = 3708572, upload-time = "2026-10-13T18:28:43.723Z" },
@@ -1282,7 +1284,7 @@ name = "pygments-styles"
 version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pygments" },
+    { name = "pygments", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/2c/3886ed4783dd78bb62ccab7d43380f526a7e2ff0db8c77d9c87559b2f5de/pygments_styles-0.3.0.tar.gz", hash = "sha256:67746b8fc6ff72c1179ca4d9a8bc89c7f54c196c2ff9d087f07392cd6fde3ecf", size = 15258, upload-time = "2025-11-04T13:15:23.512Z" }
 wheels = [
@@ -1453,8 +1455,8 @@ name = "shibuya"
 version = "2026.7.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pygments-styles" },
-    { name = "sphinx" },
+    { name = "pygments-styles", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ba/d2/8017988e02791162b286576116fedd200ed33e8d8af3579ab3587df3d3d0/shibuya-2026.7.12.tar.gz", hash = "sha256:9496606f5b95595511ad86b773d74b4b8d694a4dcc2f848e6ec34e2ad71d9060", size = 86545, upload-time = "2026-07-11T15:41:16.342Z" }
 wheels = [
@@ -1484,23 +1486,23 @@ name = "sphinx"
 version = "9.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "alabaster" },
-    { name = "babel" },
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "docutils" },
-    { name = "imagesize" },
-    { name = "jinja2" },
-    { name = "packaging" },
-    { name = "pygments" },
-    { name = "requests" },
-    { name = "roman-numerals" },
-    { name = "snowballstemmer" },
-    { name = "sphinxcontrib-applehelp" },
-    { name = "sphinxcontrib-devhelp" },
-    { name = "sphinxcontrib-htmlhelp" },
-    { name = "sphinxcontrib-jsmath" },
-    { name = "sphinxcontrib-qthelp" },
-    { name = "sphinxcontrib-serializinghtml" },
+    { name = "alabaster", marker = "python_full_version >= '3.12'" },
+    { name = "babel", marker = "python_full_version >= '3.12'" },
+    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
+    { name = "docutils", marker = "python_full_version >= '3.12'" },
+    { name = "imagesize", marker = "python_full_version >= '3.12'" },
+    { name = "jinja2", marker = "python_full_version >= '3.12'" },
+    { name = "packaging", marker = "python_full_version >= '3.12'" },
+    { name = "pygments", marker = "python_full_version >= '3.12'" },
+    { name = "requests", marker = "python_full_version >= '3.12'" },
+    { name = "roman-numerals", marker = "python_full_version >= '3.12'" },
+    { name = "snowballstemmer", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-applehelp", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-devhelp", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-jsmath", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-qthelp", marker = "python_full_version >= '3.12'" },
+    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a/sphinx-9.1.0.tar.gz", hash = "sha256:7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb", size = 8718324, upload-time = "2025-12-31T15:09:27.646Z" }
 wheels = [
@@ -1512,9 +1514,9 @@ name = "sphinx-click"
 version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "docutils" },
-    { name = "sphinx" },
+    { name = "click", marker = "python_full_version >= '3.12'" },
+    { name = "docutils", marker = "python_full_version >= '3.12'" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9a/ed/a9767cd1b8b7fbdf260a89d5c8c86e20e3536b9878579e5ab7965a291e55/sphinx_click-6.2.0.tar.gz", hash = "sha256:fc78b4154a4e5159462e36de55b8643747da6cda86b3b52a8bb62289e603776c", size = 27035, upload-time = "2025-12-04T19:33:05.437Z" }
 wheels = [
@@ -1526,7 +1528,7 @@ name = "sphinx-copybutton"
 version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fc/2b/a964715e7f5295f77509e59309959f4125122d648f86b4fe7d70ca1d882c/sphinx-copybutton-0.5.2.tar.gz", hash = "sha256:4cf17c82fb9646d1bc9ca92ac280813a3b605d8c421225fd9913154103ee1fbd", size = 23039, upload-time = "2023-04-14T08:10:22.998Z" }
 wheels = [
@@ -1538,7 +1540,7 @@ name = "sphinx-design"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sphinx" },
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/13/7b/804f311da4663a4aecc6cf7abd83443f3d4ded970826d0c958edc77d4527/sphinx_design-0.7.0.tar.gz", hash = "sha256:d2a3f5b19c24b916adb52f97c5f00efab4009ca337812001109084a740ec9b7a", size = 2203582, upload-time = "2026-01-19T13:12:53.297Z" }
 wheels = [
@@ -1600,24 +1602,24 @@ wheels = [
 ]
 
 [[package]]
+name = "sphinxext-rediraffe"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx", marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/a9/ab13d156049eea633f992424f3e92cb40e3f1b606bb6d01d40a27457d38a/sphinxext_rediraffe-0.3.0.tar.gz", hash = "sha256:f319b3ccb7c3c3b6f63ffa6fd3eeb171b6d272df55075a9e84364394f391f507", size = 22114, upload-time = "2025-09-28T15:31:53.641Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/55/ab40a0d1378ee5c859590a633052cf1d0a1f8435af87558a9f7cd576601a/sphinxext_rediraffe-0.3.0-py3-none-any.whl", hash = "sha256:f4220beafa99c99177488276b8e4fcf61fbeeec4253c1e4aae841a18c475330c", size = 7194, upload-time = "2025-09-28T15:31:52.388Z" },
+]
+
+[[package]]
 name = "sqlglot"
 version = "30.18.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e4/73/5b5ce3e23b3ded3ea1986c2c2991217460d5fd5161b3e00a8425f5dcb8a3/sqlglot-30.18.0.tar.gz", hash = "sha256:e57e1b205e341979d1df5b1212c1435c598a0437e4619e3f428b15d5bc3a5cc6", size = 6018496, upload-time = "2026-09-03T13:12:58.206Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/9f/3dd2ec8dd84a33e0092f1c815267bc055073f9e833b93e389c59c10f62cc/sqlglot-30.18.0-py3-none-any.whl", hash = "sha256:ee0f9a9f3e2193e763c326e52dfb377b96fdb4292f6305c3ff2d9a220e71c601", size = 748788, upload-time = "2026-09-03T13:12:56.467Z" },
-]
-
-[[package]]
-name = "sphinxext-rediraffe"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "sphinx" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/a9/ab13d156049eea633f992424f3e92cb40e3f1b606bb6d01d40a27457d38a/sphinxext_rediraffe-0.3.0.tar.gz", hash = "sha256:f319b3ccb7c3c3b6f63ffa6fd3eeb171b6d272df55075a9e84364394f391f507", size = 22114, upload-time = "2025-09-28T15:31:53.641Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/55/ab40a0d1378ee5c859590a633052cf1d0a1f8435af87558a9f7cd576601a/sphinxext_rediraffe-0.3.0-py3-none-any.whl", hash = "sha256:f4220beafa99c99177488276b8e4fcf61fbeeec4253c1e4aae841a18c475330c", size = 7194, upload-time = "2025-09-28T15:31:52.388Z" },
 ]
 
 [[package]]
