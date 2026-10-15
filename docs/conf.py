@@ -45,10 +45,11 @@ myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block
 autodoc_default_options = {
     "members": True,
     "undoc-members": True,  # show_if_no_docstring
-    # stop at these bases so enum/exception/builtin internals stay out
+    # stop at these bases so enum/exception/builtin/Ibis backend internals stay out
     "inherited-members": (
         "object,BaseException,BaseExceptionGroup,ExceptionGroup,Enum,str,int,float,dict,tuple,"
-        "Handler,StreamHandler,Filterer"
+        "Handler,StreamHandler,Filterer,"
+        "SQLBackend,BaseBackend,_FileIOHandler,CacheHandler,NoUrl"
     ),
     "show-inheritance": True,
 }

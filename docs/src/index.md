@@ -175,6 +175,7 @@ examples/index
 Overview <sdk/index>
 Core SDK <sdk/core>
 Timestamps <sdk/ts>
+Ibis <sdk/ibis>
 Exceptions <sdk/exceptions>
 nom CLI <sdk/cli>
 ```
