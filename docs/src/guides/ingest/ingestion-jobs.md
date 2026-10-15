@@ -33,17 +33,9 @@ otherwise a hundred loose files that happen to share a dataset. As a job they ar
 counts, rather than a files page you scroll to count how many are done, ingesting, or still
 enqueued.
 
-**It uploads much faster.** `submit()` runs every file concurrently: small files take a one-request
-route, large files fan multipart parts out across direct-to-storage streams, and every API request
-passes through an admission lane with retry and backoff tuned to the backend's throttling. On a
-strong network that is roughly 400-500 Mbps for large files, and around 15 Mbps for many tiny ones
-where the limit is per-file request rate rather than bandwidth. The alternatives it replaces are
-uploading sequentially, which parallelises poorly, and throwing a thread pool at `Dataset.add_*`,
-which thrashes and slows down.
-
-The uploader also rides out network weather on its own. Transient failures such as dropped
-connections, timeouts and throttling retry per file on a backoff for up to an hour, so a wifi blip
-mid-batch pauses the upload rather than killing it. Permanent failures surface immediately.
+**It uploads files concurrently.** `submit()` uploads the registered files before triggering
+one ingest job. The uploader retries transient failures such as network interruptions and
+throttling. Throughput depends on file sizes, network capacity, and service limits.
 
 :::{warning}
 
@@ -78,15 +70,19 @@ builder = (
     .add_tags({"test_event": "ft-114"})
 )
 
-# Uploads every file in parallel, then triggers one ingest job
+# Uploads the files, then submits one asynchronous ingest job
 job = builder.submit()
 
 print(f"submitted {job.rid} ({job.ingest_type})")
 ```
 
 The builder targets an existing dataset and cannot create one, so create or look up the dataset
-first. A builder is also single-use: calling `submit()` a second time raises rather than
-re-uploading and re-ingesting everything it holds.
+first. A builder is single-use: after a submission attempt, create a new builder for another
+batch. A failed request to trigger ingestion may already have reached the server; check for an
+existing job before retrying the batch, or you may ingest it twice.
+
+Returning from `submit()` means the job was submitted, not that its files finished ingesting.
+Use [Waiting for a job](#waiting-for-a-job) below to track completion.
 
 The formats mirror the `Dataset` methods: `add_tabular_data`, `add_mcap`, `add_journal_json`,
 `add_video`, `add_avro_stream`, `add_ardupilot_dataflash`, and `add_containerized` to run a file
@@ -99,28 +95,36 @@ channel names to unit symbols at ingest rather than in a later pass, `channel_pr
 every channel from that file, and `channel_name_overrides` renames columns on the way in, which is
 how you reconcile a vendor's column names with the channel names the rest of your fleet uses.
 
-### What is atomic, and what is not
+### Upload failures and partial batches
 
-The two stages behave differently, which is worth being precise about.
+By default, an upload failure stops submission, raises `NominalIngestUploadFailed`, and triggers
+no ingest job. Files already uploaded are not evidence that ingestion started.
 
-**Uploading is atomic by default.** `submit()` is fail-fast: the first file that fails permanently
-cancels the batch, raises an exception group naming each failed file, and triggers no ingest at all.
-Pass `allow_partial=True` to let every file run to settlement instead, logging and pruning the ones
-that failed and triggering one job for whatever uploaded cleanly:
+To submit the items that uploaded successfully, replace the original `submit()` call with:
 
 ```python
 job = builder.submit(allow_partial=True)
 ```
 
-**Ingestion is per file.** Once the job is triggered, each file ingests independently, so the job
-can complete with some of its files failed.
+This waits for all uploads to settle and logs the failures. An item is dropped if **any** of its
+files failed to upload, even if its other files uploaded successfully. If no items remain,
+submission raises `NominalIngestUploadFailed`. The returned job covers only the retained items;
+inspect the upload logs to see what was omitted.
 
-`runs_to_expand` widens the given runs' time bounds to cover the new data, which matters when the
-run was created before the upload and would otherwise not show it:
+Once submitted, each output file ingests independently. A job can reach `COMPLETED` even when
+some of its files failed; job status alone does not establish that all data is available.
+
+### Expand a run's bounds
+
+To widen existing runs' time bounds upon successful ingest, replace the original submission with:
 
 ```python
-job = builder.submit(runs_to_expand=[flight_run])
+job = builder.submit(runs_to_expand=["<RUN_RID>"])
 ```
+
+This only expands bounds; it never contracts them. You can combine this option with
+`allow_partial=True`. Choose the options before submitting: these are alternative submissions,
+not additional calls on the already-consumed builder.
 
 ### One ingest tag for the batch
 
@@ -128,11 +132,18 @@ Every ingested file normally carries its own `nominal_ingest` tag, which is what
 deletes and group-bys over individual files work. For files uploaded through a job that tag is
 per-**job** rather than per-file, so every file in the batch shares one value.
 
-If you rely on per-file values, pass your own tag on each `add_*` call:
+If you rely on per-file values, supply your own tag while building the batch, **before** calling
+`submit()`. For example, replace the earlier tabular `add_*` call with:
 
 ```python
-builder.add_tabular_data(path, timestamp_column="t", timestamp_type="iso_8601",
-                         tags={"file_uuid": str(uuid.uuid4())})
+from uuid import uuid4
+
+builder.add_tabular_data(
+    "flight_data.csv",
+    timestamp_column="source_time",
+    timestamp_type="iso_8601",
+    tags={"file_uuid": str(uuid4())},
+)
 ```
 
 ## Waiting for a job
@@ -141,19 +152,33 @@ An ingest finishes in two stages: the job produces its files, then those files i
 `as_files_ingested()` covers both.
 
 ```python
-for dataset_file in job.as_files_ingested():
-    print(f"{dataset_file.name}: {dataset_file.ingest_status}")
+from datetime import timedelta
+
+from nominal.core.dataset_file import IngestStatus
+from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
+
+finished_files = []
+try:
+    for dataset_file in job.as_files_ingested(timeout=timedelta(minutes=30)):
+        finished_files.append(dataset_file)
+        if dataset_file.ingest_status is IngestStatus.FAILED:
+            print(f"{dataset_file.name} failed: {dataset_file.get_ingest_error()}")
+        else:
+            print(f"{dataset_file.name}: {dataset_file.ingest_status.name}")
+except (NominalIngestFailed, NominalIngestTimeout):
+    print(f"Stopped waiting after observing {len(finished_files)} finished files")
+    raise
 ```
 
-For extractors, the file list is re-read on every poll, so files that did not exist when you called
-it are still picked up. A containerized extractor registers its outputs only after its container
+The iterator discovers newly produced files while the job runs, so files that did not exist when
+you started waiting are still picked up. A containerized extractor registers its outputs only after its container
 exits, so `job.dataset_files()` is empty until then. It returns what exists at the moment you call
 it, not what the job will eventually produce.
 
 Each of the three ways an ingest can end changes how you write the calling code:
 
 - **A job can complete with individual files failed.** Check `ingest_status` on each yielded file if
-  that matters to you, which is why the example above prints it.
+  you need to establish success; the example above reports failed files without hiding them.
 - **A failed *job* raises `NominalIngestFailed`.** Iterating rather than wrapping the call in
   `list()` keeps the files that were yielded before the failure.
 - **A cancelled job yields whatever did ingest** and logs a warning, on the reasoning that a
@@ -162,7 +187,9 @@ Each of the three ways an ingest can end changes how you write the calling code:
 Pass `timeout` to give up and raise `NominalIngestTimeout` instead of waiting indefinitely, and
 `poll_interval` to change how often it checks.
 
-`job.cancel()` stops a running job.
+A timeout stops waiting; it does not cancel ingestion. Call `job.cancel()` to request cancellation
+of a pending or running job. Cancelling a job that is already terminal raises a conflict error;
+cancellation does not roll back data already ingested.
 
 ## Status
 
@@ -173,7 +200,7 @@ The value is a **snapshot** taken when the job was fetched, not live. Polling it
 calling `job.refresh()` re-reads the same value forever.
 
 Per-file status is separate and more granular: `DatasetFile.ingest_status` is one of `QUEUED`,
-`PARSING`, `INGESTING`, `SUCCESS`, `FAILED`, `DELETION_IN_PROGRESS`, `DELETED`, or `UNKNOWN`. Use
+`IN_PROGRESS`, `PARSING`, `INGESTING`, `SUCCESS`, `FAILED`, `DELETION_IN_PROGRESS`, `DELETED`, or `UNKNOWN`. Use
 `get_ingest_error()` on a failed file for the reason.
 
 ## Waiting on a fixed set of files
@@ -183,13 +210,23 @@ When you already hold the files and want `concurrent.futures.wait` semantics, us
 `ALL_COMPLETED` (the default), `FIRST_COMPLETED`, or `FIRST_EXCEPTION`:
 
 ```python
+from datetime import timedelta
+
 from nominal.core import wait_for_files_to_ingest
 
-done, not_done = wait_for_files_to_ingest(job.dataset_files(), timeout=timedelta(minutes=5))
+# Deliberately wait only for the files currently visible, not the entire job.
+files = job.dataset_files()
+done, not_done = wait_for_files_to_ingest(files, timeout=timedelta(minutes=5))
+print(f"{len(done)} finished; {len(not_done)} still pending")
 ```
 
 Unlike `job.as_files_ingested()`, this only ever reports per-file status. It never raises for a
-job-level failure, because it does not know about the job.
+job-level failure, because it does not know about the job. `done` includes failed files; inspect
+their status. When the timeout expires, pending files are returned in `not_done` instead of
+raising `NominalIngestTimeout`.
+
+A running job may produce more files after this snapshot, including when `files` is empty.
+Use `job.as_files_ingested()` when you need to wait for the job and its future outputs.
 
 ## Finding jobs after the fact
 
