@@ -1,11 +1,8 @@
-# Containerized extractors
+# Extractor authoring
 
-Declare files and settings with decorators, receive them as callback arguments, and use the
-context to declare outputs. The same declarations describe the image for registration.
-
-The [package walkthrough](https://github.com/nominal-io/nominal-client/blob/main/nominal/experimental/extractor/README.md)
-covers authoring, local execution, outputs, and publishing. The modules below provide the API
-reference. Their public objects are also available directly from `nominal.experimental.extractor`.
+```{include} ../../../../nominal/experimental/extractor/README.md
+:start-line: 1
+```
 
 ## Decorators
 

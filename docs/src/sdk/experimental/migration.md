@@ -1,8 +1,10 @@
-# Resource migration
+# Cross-tenant migration
 
-Copy resources between tenants with [`nom migrate`](../cli.md).
-See the [migration walkthrough](https://github.com/nominal-io/nominal-client/blob/main/nominal/experimental/migration/README.md)
-for configuration, supported resources, and resumable runs.
+```{include} ../../../../nominal/experimental/migration/README.md
+:start-line: 1
+```
+
+## API reference
 
 ```{eval-rst}
 .. automodule:: nominal.experimental.migration

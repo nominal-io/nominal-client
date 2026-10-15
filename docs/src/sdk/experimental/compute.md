@@ -1,7 +1,8 @@
-# Compute
+# Compute expressions and results
 
-Retrieve bucketed compute results and build expressions with the Python compute DSL.
-See the [package walkthrough](https://github.com/nominal-io/nominal-client/blob/main/nominal/experimental/compute/README.md).
+```{include} ../../../../nominal/experimental/compute/README.md
+:start-line: 1
+```
 
 ## Bucketed results
 

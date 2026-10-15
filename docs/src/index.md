@@ -175,16 +175,23 @@ examples/index
 Overview <sdk/index>
 Core SDK <sdk/core>
 Timestamps <sdk/ts>
-Ibis <sdk/ibis>
 Exceptions <sdk/exceptions>
+```
+
+```{toctree}
+:hidden:
+:caption: Command Line
+:maxdepth: 1
+
 nom CLI <sdk/cli>
 ```
 
 ```{toctree}
 :hidden:
-:caption: Third-party
+:caption: Third-Party Integrations
 :maxdepth: 1
 
+sdk/ibis
 sdk/thirdparty/matlab
 sdk/thirdparty/pandas
 sdk/thirdparty/polars
@@ -193,7 +200,7 @@ sdk/thirdparty/tdms
 
 ```{toctree}
 :hidden:
-:caption: Experimental
+:caption: Experiments
 :maxdepth: 1
 
 sdk/experimental/compute
@@ -208,7 +215,7 @@ sdk/experimental/video_processing
 
 ```{toctree}
 :hidden:
-:caption: Changelog
+:caption: Releases
 
 sdk/changelog
 ```
