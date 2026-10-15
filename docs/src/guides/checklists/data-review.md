@@ -42,8 +42,10 @@ integrations to send notifications if violations are found.
 2. Locate Checklist RIDs and Commits
 
    Find the checklist RID(s) in the [platform](https://app.gov.nominal.io/checklists).
-   To apply a specific version, copy its commit SHA (listed under "Latest version").
-   Omit `commit` from `execute_checklist()` to use the latest version instead.
+   To pin a version, copy the commit SHA of the version you want to apply.
+   To apply the latest version, omit `commit=` from the `execute_checklist()` call;
+   no commit variable is needed for that call. The examples below pin the reviews
+   for `run1_rid` and use the latest version for `run2_rid`.
 
    ```python
    checklist1_rid = "paste_rid_here"
@@ -73,12 +75,12 @@ integrations to send notifications if violations are found.
    # Optional: uncomment after setting integration_rid above.
    # review_builder.add_integration(integration_rid)
 
-   # Add requests for run1
+   # Pin checklist versions for run1
    review_builder.execute_checklist(run1_rid, checklist1_rid, commit=checklist1_commit)
    review_builder.execute_checklist(run1_rid, checklist2_rid, commit=checklist2_commit)  # Optional
 
-   # Add requests for run2
-   review_builder.execute_checklist(run2_rid, checklist1_rid, commit=checklist1_commit)  # Optional
+   # Use the latest version of checklist1 for run2
+   review_builder.execute_checklist(run2_rid, checklist1_rid)  # Optional
 
    # Initiate reviews
    reviews = review_builder.initiate()
