@@ -28,7 +28,8 @@ container contract, the output formats, and the Web UI and REST paths, see
 
 An extractor carries only identity, a name and description. Everything about *how* it executes,
 including its inputs, parameters, output format, and default timestamp metadata, lives on its
-registered images. Exactly one image is active at a time, and that is the image ingest runs.
+registered images. A new extractor has no active image; activate one before ingesting.
+Subsequent ingests use that active image.
 
 :::{warning}
 
@@ -67,27 +68,47 @@ explicit error rather than producing an ingest that silently drops output.
 
 :::{warning}
 
-`register_image()` defaults `output_format` to `PARQUET`, so a manifest extractor needs
-`output_format=FileOutputFormat.MANIFEST` passed explicitly. Forgetting it registers cleanly and
-fails at startup on the first ingest.
+`register_image()` defaults `output_format` to `PARQUET`. The declarations below supply
+`MANIFEST` through `extract.registration_kwargs()`. For manual registration, pass
+`output_format=FileOutputFormat.MANIFEST` explicitly so registration matches the decorator.
 :::
 
 ### The manifest contract
+
+Save this template as `extractor_manifest.py`. Supply your format-specific parser as
+`parse_bespoke_binary` in `bespoke_parser.py`; it is not part of the SDK. In this example,
+it returns pandas dataframes `telemetry` (with epoch-microsecond `timestamp` and `veh_id`
+columns) and `logs` (with `MESSAGE` and epoch-microsecond `__REALTIME_TIMESTAMP` columns),
+plus `write_video(path)` and an absolute `started_at` timestamp for the video.
+
+Declare files and settings with `@input` and `@parameter` beneath the outer
+`@manifest_extractor`. The runner resolves them before calling your function. The
+prefix defaults to `telemetry/` when omitted. The same declarations supply registration
+metadata later in this guide.
 
 Write your output files anywhere under `ctx.output_dir`, then declare each one with the method for
 its format. `manifest.json` is written for you when your function returns.
 
 ```python
-from nominal.experimental.extractor import ManifestExtractorContext, manifest_extractor
+from pathlib import Path
+
+from bespoke_parser import parse_bespoke_binary
+from nominal.experimental.extractor import (
+    ManifestExtractorContext,
+    input,
+    manifest_extractor,
+    parameter,
+)
 
 
-@manifest_extractor
-def extract(ctx: ManifestExtractorContext) -> None:
-    frames = parse_bespoke_binary(ctx.input())
-
-    # Parameters declared at registration arrive as strings. `param()` raises
-    # if it is missing; `get_param()` takes a default.
-    prefix = ctx.get_param("CHANNEL_PREFIX", "telemetry/")
+@manifest_extractor(
+    default_timestamp_column="timestamp",
+    default_timestamp_type="epoch_microseconds",
+)
+@input("source", envvar="INPUT_FILE", name="Input file", file_suffixes=["bin"])
+@parameter("prefix", envvar="CHANNEL_PREFIX", name="Channel prefix", default="telemetry/")
+def extract(ctx: ManifestExtractorContext, *, source: Path, prefix: str) -> None:
+    frames = parse_bespoke_binary(source)
 
     telemetry = ctx.output_dir / "flight_data.parquet"
     frames.telemetry.to_parquet(telemetry, index=False)
@@ -101,7 +122,11 @@ def extract(ctx: ManifestExtractorContext) -> None:
 
     logs = ctx.output_dir / "system_logs.jsonl"
     frames.logs.to_json(logs, orient="records", lines=True)
-    ctx.add_journal_json(logs)
+    ctx.add_journal_json(
+        logs,
+        timestamp_column="__REALTIME_TIMESTAMP",
+        timestamp_type="epoch_microseconds",
+    )
 
     # Video from the same run lands on a channel of the same dataset
     footage = ctx.output_dir / "nose_camera.mp4"
@@ -132,21 +157,30 @@ your code needs to branch on it.
 ### The single-file contract
 
 Write one file and declare it with `set_output()`. The pipeline parses it according to the output
-format the image was registered with.
+format the image was registered with. This alternative assumes a CSV with an
+epoch-microsecond `timestamp` column. Save it separately as `extractor_single_file.py`;
+the build and registration examples below continue to use the manifest template.
 
 ```python
+from pathlib import Path
+
 import pandas as pd
+from nominal.core.container_image import FileOutputFormat
 from nominal.experimental.extractor import (
     SingleFileExtractorContext,
+    input,
     single_file_extractor,
 )
 
 
-@single_file_extractor
-def extract(ctx: SingleFileExtractorContext) -> None:
-    # The mounted path for the image's declared input. With more than one
-    # input, pass the environment variable name: ctx.input("INPUT_FILE").
-    df = pd.read_csv(ctx.input())
+@single_file_extractor(
+    output_format=FileOutputFormat.PARQUET,
+    default_timestamp_column="timestamp",
+    default_timestamp_type="epoch_microseconds",
+)
+@input("source", envvar="INPUT_FILE", name="Input file", file_suffixes=["csv"])
+def extract(ctx: SingleFileExtractorContext, *, source: Path) -> None:
+    df = pd.read_csv(source)
     cleaned = df.dropna().reset_index(drop=True)
 
     output = ctx.output_dir / "processed_data.parquet"
@@ -163,11 +197,16 @@ if __name__ == "__main__":
 
 ### Reading inputs and parameters
 
-Both contexts expose the same accessors for what the ingest handed your container:
+Use `@input` and `@parameter` for new extractors. `envvar=` names the runtime and
+registration variable; `name=` is a display name. Converters and default values stay
+in the Python runtime, while registration records names and requiredness.
+
+Both contexts also retain legacy accessors; using them logs a migration warning and
+does not contribute metadata to `registration_kwargs()`:
 
 - **`ctx.input()`** returns the mounted path of the image's single declared input. When the image
   declares more than one, pass the input's environment variable name: `ctx.input("CAMERA_FILE")`.
-  `ctx.inputs` is the full mapping.
+  `ctx.inputs` is a list of mounted paths.
 - **`ctx.param(name)`** returns a declared parameter's value and raises if it is missing.
   **`ctx.get_param(name, default)`** returns `None` or your default instead. Parameter values are
   always strings, so convert them yourself.
@@ -185,11 +224,12 @@ Each input is a single file, so **register a `.zip` or `.tar` input to accept a 
 files or a directory layout**, and unpack it in the extractor. This is the approach for loggers that
 emit a session directory rather than one capture.
 
-`required=True` is enforced differently on each. A missing required input raises in
+Omitting `default=` on `@input` or `@parameter` registers the argument as required
+(`"required": true` in the CLI config). Use `default=None` for an optional input or
+a default value for an optional parameter. A missing required input raises in
 `add_containerized()` before anything uploads. A missing required parameter is not checked
-client-side: the runtime warns at container start, then the run fails mid-job when `ctx.param()`
-reads it. For a parameter your code cannot run without, read it at the top of your function or give
-it a default with `ctx.get_param()`.
+client-side. With `@parameter`, a missing value without a default fails during binding,
+before the parser callback runs. Legacy `ctx.param()` lookups fail when the value is read.
 
 An input's `file_suffixes` also drive discovery, since
 `search_containerized_extractors(file_extension=...)` matches on them. They are descriptive rather
@@ -217,16 +257,18 @@ land there alongside the runtime's.
 
 Your image needs the `nominal` package, whatever reads your format, and an entrypoint that calls
 `run()`. Install from the project's own dependency manifest rather than hand-listing packages in the
-Dockerfile, so the image gets the versions the parser was tested against:
+Dockerfile, so the image gets the versions the parser was tested against. For the
+manifest template, include `nominal`, `pandas`, `pyarrow`, and your parser's dependencies
+in `pyproject.toml` and generate its `uv.lock` before building:
 
 ```dockerfile
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-COPY extractor.py ./
-ENTRYPOINT ["/app/.venv/bin/python", "/app/extractor.py"]
+RUN uv sync --frozen --no-dev --no-install-project
+COPY extractor_manifest.py bespoke_parser.py ./
+ENTRYPOINT ["/app/.venv/bin/python", "/app/extractor_manifest.py"]
 ```
 
 Three runtime facts constrain the image, and none of them depend on how you build it:
@@ -246,12 +288,12 @@ the built image's architecture rather than trusting the flag: an earlier native 
 the tag, and a Dockerfile pinning `FROM --platform=...` overrides the command line.
 
 ```bash
-docker build --platform linux/amd64 -t my-extractor:0.3.0 .
+docker build --platform linux/amd64 -t bespoke-file-parser:0.3.0 .
 
-docker image inspect my-extractor:0.3.0 --format 'os={{.Os}} arch={{.Architecture}}'
+docker image inspect bespoke-file-parser:0.3.0 --format 'os={{.Os}} arch={{.Architecture}}'
 # want: os=linux arch=amd64
 
-docker save my-extractor:0.3.0 -o my-extractor-0.3.0.tar
+docker save bespoke-file-parser:0.3.0 -o bespoke-file-parser-0.3.0.tar
 ```
 
 :::{warning}
@@ -269,16 +311,26 @@ platform with, so do not assume it picks `amd64` out of a multi-platform archive
 `run()` takes an environment, so you can exercise the extractor as a normal function:
 
 ```python
+from pathlib import Path
+
+from extractor_manifest import extract
+
+source = Path("path/to/data.bin").resolve()  # An existing file your parser accepts.
+out_dir = Path("local-output").resolve()
+out_dir.mkdir(exist_ok=True)
 ctx = extract.run(
-    env={"OUTPUT_DIR": str(out_dir), "NOMINAL_EXTRACTOR_INPUT_DIR": str(in_dir)},
+    env={"OUTPUT_DIR": str(out_dir), "INPUT_FILE": str(source)},
     exit=False,
 )
 print(ctx.build_manifest())
 ```
 
 `env` **replaces** the environment rather than merging into it, so it has to carry everything your
-code reads: `OUTPUT_DIR`, every input, every parameter. Nothing falls back to an ambient value, and
-omitting `OUTPUT_DIR` raises `ExtractorError`.
+code requires: `OUTPUT_DIR`, every required input and parameter. Optional parameters use
+their declared defaults. Nothing falls back to an ambient value, and omitting `OUTPUT_DIR`
+raises `ExtractorError`. The input file and output directory must exist. Decorator timestamp
+defaults describe image registration; they do not populate local job metadata. This template
+declares timestamps on each output, so the local run does not need job-level metadata.
 
 ## Register and activate an image
 
@@ -288,42 +340,24 @@ activating. Shipping a new version means registering a new image and activating 
 is atomic.
 
 ```python
+from extractor_manifest import extract
 from nominal.core import NominalClient
-from nominal.core.container_image import FileExtractionInput, FileExtractionParameter
 
 client = NominalClient.from_profile("default")
 
 # An extractor carries only identity. How it runs lives on its images.
 extractor = client.create_containerized_extractor(
     name="bespoke-file-parser",
-    description="Parses bespoke binary logs into parquet",
+    description="Parses bespoke binary logs into telemetry, logs, and video",
 )
 
 # Uploads the `docker save` tarball and registers it as an image in one call.
 # Build for linux/amd64: registration does not check the architecture, so an
 # arm64 tarball registers and activates, then fails at ingest.
 image = extractor.register_image(
-    "bespoke-file-parser.tar",
-    tag="v1",
-    inputs=[
-        FileExtractionInput(
-            name="Input file",
-            # Your container reads the file path from this environment variable
-            environment_variable="INPUT_FILE",
-            file_suffixes=[".bin"],
-            required=True,
-        ),
-    ],
-    parameters=[
-        FileExtractionParameter(
-            name="Parsing mode",
-            environment_variable="MODE",
-            required=False,
-        ),
-    ],
-    # How rows in the output are indexed in time. Ingests can override this.
-    default_timestamp_column="timestamp",
-    default_timestamp_type="iso_8601",
+    "bespoke-file-parser-0.3.0.tar",
+    tag="0.3.0",
+    **extract.registration_kwargs(),
 )
 
 # Waits for the image to finish pushing (PENDING -> READY), then activates it.
@@ -333,9 +367,11 @@ extractor.set_active_image(image)
 print(f"Extractor {extractor.rid} now runs image {image.rid}")
 ```
 
-The `inputs` and `parameters` you declare here are exactly the names your code reads through
-`ctx.input()` and `ctx.param()`, so they have to match. Their environment variable names must also
-be distinct across both lists, and they are what callers pass as `sources` and `arguments`.
+Importing `extract` does not run extraction because of the `__main__` guard. Run this
+registration script in an environment containing the extractor module, parser, and their
+dependencies. `registration_kwargs()` derives the inputs, parameters, output format, and
+timestamp defaults from the decorators. Environment variable names must be distinct
+across inputs and parameters; callers use them as `sources` and `arguments` keys.
 
 Registering attaches an image; it does not activate it. `set_active_image()` waits for the image to
 report `READY` first, and `poll_until_ready=False` raises instead of waiting. Future ingests use the
@@ -350,16 +386,47 @@ CI release identifier over a movable alias like `latest`. Re-registering an exis
 ### From the CLI
 
 The same flow is available from the command line, which is usually what you want in CI. The image's
-execution contract lives in a checked-in JSON config, and `register-image` prints the new image RID
-on stdout so it can be captured:
+execution contract lives in a checked-in JSON config. As an alternative to the Python
+registration above, save this matching contract as `extractor-config.json`:
+
+```json
+{
+  "inputs": [
+    {
+      "name": "Input file",
+      "environment_variable": "INPUT_FILE",
+      "file_suffixes": ["bin"],
+      "required": true
+    }
+  ],
+  "parameters": [
+    {
+      "name": "Channel prefix",
+      "environment_variable": "CHANNEL_PREFIX",
+      "required": false
+    }
+  ],
+  "output_format": "manifest",
+  "default_timestamp_column": "timestamp",
+  "default_timestamp_type": "epoch_microseconds"
+}
+```
+
+Keep this config aligned with the Python declarations if you use the CLI path.
+`create` prints the extractor object; copy its RID into `EXTRACTOR_RID`. If you already
+created the extractor through Python, reuse its RID and skip `create`. If you also
+registered version `0.3.0` through Python, do not register the same tag again; these
+are alternative registration paths.
+`register-image` prints only the new image RID to stdout, so that output can be captured:
 
 ```bash
-EXTRACTOR_RID=$(nom container extractor create -n bespoke-file-parser -d "Parses bespoke binary logs")
+nom container extractor create --profile default -n bespoke-file-parser -d "Parses bespoke binary logs"
+EXTRACTOR_RID="<EXTRACTOR_RID>"
 
-IMAGE_RID=$(nom container extractor register-image -r "$EXTRACTOR_RID" \
-  -f bespoke-file-parser.tar -t "$(git rev-parse --short HEAD)" -c extractor-config.json)
+IMAGE_RID=$(nom container extractor register-image --profile default -r "$EXTRACTOR_RID" \
+  -f bespoke-file-parser-0.3.0.tar -t "0.3.0" -c extractor-config.json)
 
-nom container extractor set-active-image -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
+nom container extractor set-active-image --profile default -r "$EXTRACTOR_RID" -i "$IMAGE_RID"
 ```
 
 `nom container extractor validate-config extractor-config.json` runs the same validation that
@@ -381,7 +448,7 @@ dataset = client.get_dataset("<DATASET_RID>")
 job = dataset.add_containerized(
     extractor,
     sources={"INPUT_FILE": "path/to/data.bin"},
-    arguments={"MODE": "fast"},
+    arguments={"CHANNEL_PREFIX": "telemetry/"},
     tags={"vehicle_id": "sn-001"},
 )
 
@@ -390,15 +457,16 @@ for dataset_file in job.as_files_ingested():
 ```
 
 The `sources` keys must match the environment variables of the active image's registered inputs
-exactly. `arguments` supplies the image's declared parameters, and `tags` applies to every channel
-the extractor emits.
+exactly. `arguments` supplies the image's declared parameters. `tags` supplies additional ingest
+tags for outputs that support them; journal log outputs do not carry tags.
 
 Extraction is asynchronous and can emit several files, so this returns an
 [ingestion job](/guides/ingest/ingestion-jobs.md) rather than a single file. That page
 covers waiting for it, checking per-file status, and cancelling.
 
 Passing `timestamp_column` and `timestamp_type` overrides the image's registered default for this
-ingest, applied uniformly to every output file. Both must be given together.
+ingest. Outputs without explicit timestamp metadata inherit that value; per-output
+metadata takes precedence. Both override arguments must be given together.
 
 ## Timestamps
 
