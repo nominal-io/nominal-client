@@ -52,8 +52,77 @@ Download the `racecar_dataset.csv.gz` sample data file; its full path is `<DATAS
 
 Set up a Python virtual environment so the SDK has an isolated place to live:
 
-```{include} /guides/_snippets/python/setup.md
-```
+Set up your Python development environment:
+
+:::{dropdown} Verify Python version 3.11 or newer
+
+The Nominal SDK requires Python 3.11 or newer:
+
+  ```bash
+  python --version
+  ```
+
+  or
+
+  ```bash
+  python3 --version
+  ```
+
+  If your version is older, update Python to a supported version. If you get an error, you might not have Python. [Download and install Python](https://www.python.org/downloads/).
+:::
+
+:::::{dropdown} Set up a virtual environment
+
+Keep the Nominal SDK and its dependencies separate from other Python projects using a virtual environment:
+1. Set up a virtual environment:
+
+    ::::{tab-set}
+
+    :::{tab-item} macOS/Linux
+
+    ```bash
+    python3 -m venv nominal-env
+    ```
+    :::
+
+    :::{tab-item} Windows
+
+    ```bash
+    python -m venv nominal-env
+    ```
+    :::
+    ::::
+
+    This creates a new folder called `nominal-env` containing an isolated Python installation.
+
+1. Activate your virtual environment:
+
+    ::::{tab-set}
+
+    :::{tab-item} macOS/Linux
+
+    ```bash
+    source nominal-env/bin/activate
+    ```
+    :::
+
+    :::{tab-item} Windows (Command Prompt)
+
+    ```bash
+    nominal-env\Scripts\activate.bat
+    ```
+    :::
+
+    :::{tab-item} Windows (PowerShell)
+
+    ```bash
+    nominal-env\Scripts\Activate.ps1
+    ```
+    :::
+    ::::
+
+    When activated, you should see `(nominal-env)` at the beginning of your command prompt.
+:::::
 
 ## Install the Nominal SDK for Core in Python
 
@@ -76,8 +145,8 @@ nominal config profile list
 
 ## Build an asset with data in Nominal
 
-```{include} /guides/_snippets/assets-intro.md
-```
+Nominal uses assets to organize, process, and analyze time-synchronized data.
+Assets represent physical systems you’re testing such as vehicles, components, or testbeds.
 
 Run the following script to create an {abbr}`asset (Representation of physical or simulated devices or systems that you're testing (example: vehicles, components, or testbeds).)` and upload the CSV you downloaded earlier:
 
@@ -199,8 +268,11 @@ Congrats! You have successfully created an asset, uploaded a CSV dataset, and st
 
 ## Clean up
 
-```{include} /guides/_snippets/quickstart-cleanup.md
-```
+This quickstart creates a test asset and dataset in your workspace. To avoid cluttering your workspace with sample data, clean up after completing the guide:
+
+1. **Archive the test asset**: Navigate to the **Assets** tab, find the test asset you created, open its options menu, and select **Archive**.
+    Archiving hides the asset from active views but does not delete the underlying data. To fully remove the data, coordinate with your data admin.
+1. **Delete the dataset**: Datasets can only be deleted by an admin user. Contact your workspace's data admin to delete the dataset created during this quickstart.
 
 You can also archive the asset using the Python SDK:
 
