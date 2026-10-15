@@ -29,6 +29,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
@@ -296,6 +297,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(clients.sandbox_workspace, sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub)
     assert isinstance(clients.secrets, secrets_pb2_grpc.SecretServiceStub)
     assert isinstance(clients.series_metadata, series_metadata_pb2_grpc.SeriesMetadataServiceStub)
+    assert isinstance(clients.spatial, spatial_pb2_grpc.SpatialServiceStub)
     assert isinstance(clients.sql, sql_pb2_grpc.SqlServiceStub)
     assert isinstance(clients.users, users_pb2_grpc.UserServiceStub)
     # Exactly one channel, built from the right transport params and shared by every gRPC stub.

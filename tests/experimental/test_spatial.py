@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api import api, ingest_api, scout_spatial_api
+from google.protobuf.timestamp_pb2 import Timestamp
+from nominal_api import ingest_api
 
 from nominal.core import Asset, Run
 from nominal.exceptions import NominalNotFoundError
@@ -24,6 +25,7 @@ from nominal.experimental.spatial import (
 from nominal.experimental.spatial._spatial import _PointCloudTimeMetadata
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.run.v1 import run_service_pb2
+from nominal.protos.spatial.v2 import spatial_pb2
 from nominal.ts import Epoch, Relative
 
 _SPATIAL_RID = "ri.scout.x.spatial.abc"
@@ -42,7 +44,8 @@ def clients() -> MagicMock:
     clients.ingest.ingest.return_value.ingest_job_rid = _JOB_RID
     clients.ingest_jobs.get_ingest_job.return_value = _raw_ingest_job()
     # The time-range write reads properties back before replacing the map.
-    clients.spatial.get.return_value.properties = {}
+    clients.spatial.GetSpatial.return_value = spatial_pb2.GetSpatialResponse(spatial=_raw_spatial())
+    clients.spatial.UpdateSpatial.return_value = spatial_pb2.UpdateSpatialResponse(spatial=_raw_spatial())
     return clients
 
 
@@ -73,26 +76,18 @@ def spatial(clients: MagicMock) -> Spatial:
 
 
 def _raw_spatial(
-    type_metadata: scout_spatial_api.SpatialTypeMetadata | None = None,
-    start_timestamp: api.Timestamp | None = None,
-) -> MagicMock:
-    """A conjure Spatial bean as the service would return it."""
-    raw = MagicMock()
-    raw.rid = _SPATIAL_RID
-    raw.title = "scan"
-    raw.description = None
-    raw.labels = []
-    raw.properties = {}
-    raw.is_archived = False
-    raw.dagger_uuid = "dagger-uuid"
-    raw.created_at = 1_700_000_000_000_000_000
-    raw.created_by = None
-    raw.type_metadata = type_metadata or scout_spatial_api.SpatialTypeMetadata(
-        point_cloud=scout_spatial_api.PointCloudMetadata()
+    type_metadata: spatial_pb2.SpatialTypeMetadata | None = None,
+    start_timestamp: Timestamp | None = None,
+) -> spatial_pb2.Spatial:
+    """A real spatial protobuf returned by the service."""
+    return spatial_pb2.Spatial(
+        rid=_SPATIAL_RID,
+        title="scan",
+        dagger_model_uuid="dagger-uuid",
+        created_at=Timestamp(seconds=1_700_000_000),
+        type_metadata=type_metadata or spatial_pb2.SpatialTypeMetadata(point_cloud=spatial_pb2.PointCloudMetadata()),
+        start_timestamp=start_timestamp,
     )
-    raw.start_timestamp = start_timestamp
-    raw.end_timestamp = None
-    return raw
 
 
 def _raw_ingest_job() -> MagicMock:
@@ -135,13 +130,13 @@ def _csv(tmp_path: Path, text: str = _STATIC_CSV) -> Path:
 
 def test_get_spatial_returns_typed_metadata_and_nanosecond_bounds(clients: MagicMock, client: MagicMock) -> None:
     """A fetched spatial exposes a typed metadata object and integral-nanosecond bounds, not raw beans."""
-    clients.spatial.get.return_value = _raw_spatial(
-        type_metadata=scout_spatial_api.SpatialTypeMetadata(
-            point_cloud=scout_spatial_api.PointCloudMetadata(
-                sensor_model="OS1-128", scan_pattern=scout_spatial_api.ScanPattern.ROTATING
-            )
-        ),
-        start_timestamp=api.Timestamp(seconds=1_700_000_000, nanos=0),
+    clients.spatial.GetSpatial.return_value.spatial.CopyFrom(
+        _raw_spatial(
+            type_metadata=spatial_pb2.SpatialTypeMetadata(
+                point_cloud=spatial_pb2.PointCloudMetadata(sensor_model="OS1-128", scan_pattern="ROTATING")
+            ),
+            start_timestamp=Timestamp(seconds=1_700_000_000, nanos=0),
+        )
     )
 
     result = get_spatial(client, _SPATIAL_RID)
@@ -156,40 +151,40 @@ def test_get_spatial_returns_typed_metadata_and_nanosecond_bounds(clients: Magic
 
 def test_create_spatial_reserves_a_model_in_the_default_workspace(clients: MagicMock, client: MagicMock) -> None:
     """Creation names the model that will hold the data and lands in the client's default workspace."""
-    clients.spatial.create.return_value = _raw_spatial()
+    clients.spatial.CreateSpatial.return_value = spatial_pb2.CreateSpatialResponse(spatial=_raw_spatial())
 
     create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(sensor_model="OS1-128", scan_pattern=ScanPattern.ROTATING)
     )
 
-    req = clients.spatial.create.call_args.args[1]
-    assert uuid.UUID(req.dagger_uuid)
-    assert req.workspace == _WORKSPACE_RID
-    assert req.type_metadata.point_cloud.sensor_model == "OS1-128"
-    assert req.type_metadata.point_cloud.scan_pattern == scout_spatial_api.ScanPattern.ROTATING
+    req = clients.spatial.CreateSpatial.call_args.args[0]
+    assert uuid.UUID(req.spatial.dagger_model_uuid)
+    assert req.workspace_rid == _WORKSPACE_RID
+    assert req.spatial.type_metadata.point_cloud.sensor_model == "OS1-128"
+    assert req.spatial.type_metadata.point_cloud.scan_pattern == "ROTATING"
 
 
 def test_each_spatial_reserves_its_own_model(clients: MagicMock, client: MagicMock) -> None:
     """Two spatials sharing a model uuid would index their imports on top of each other."""
-    clients.spatial.create.return_value = _raw_spatial()
+    clients.spatial.CreateSpatial.return_value = spatial_pb2.CreateSpatialResponse(spatial=_raw_spatial())
 
     uuids = set()
     for _ in range(3):
         create_point_cloud_spatial(client, "scan", metadata=PointCloudMetadata())
-        uuids.add(clients.spatial.create.call_args.args[1].dagger_uuid)
+        uuids.add(clients.spatial.CreateSpatial.call_args.args[0].spatial.dagger_model_uuid)
 
     assert len(uuids) == 3
 
 
 def test_create_spatial_applies_markings(clients: MagicMock, client: MagicMock) -> None:
     """Markings ride along in the create request, so a restricted spatial is never briefly visible."""
-    clients.spatial.create.return_value = _raw_spatial()
+    clients.spatial.CreateSpatial.return_value = spatial_pb2.CreateSpatialResponse(spatial=_raw_spatial())
 
     create_point_cloud_spatial(
         client, "scan", metadata=PointCloudMetadata(), markings=["ri.scout.x.marking.m1", "ri.scout.x.marking.m2"]
     )
 
-    req = clients.spatial.create.call_args.args[1]
+    req = clients.spatial.CreateSpatial.call_args.args[0]
     assert req.marking_rids == ["ri.scout.x.marking.m1", "ri.scout.x.marking.m2"]
 
 
@@ -197,11 +192,10 @@ def test_update_replaces_only_the_fields_passed(clients: MagicMock, spatial: Spa
     """Everything not named is left untouched rather than cleared, which is how the service reads it."""
     spatial.update(name="renamed")
 
-    request = clients.spatial.update_metadata.call_args.args[1]
-    assert request.title == "renamed"
-    assert request.description is None
-    assert request.labels is None
-    assert request.properties is None
+    request = clients.spatial.UpdateSpatial.call_args.args[0]
+    assert request.spatial.title == "renamed"
+    assert list(request.update_mask.paths) == ["title"]
+    assert not request.spatial.HasField("description")
 
 
 # --- the measured time range --------------------------------------------------
@@ -267,11 +261,11 @@ def test_ingest_targets_this_spatial_and_records_the_uploaded_object(
     # source_uri is the backend's to fill in from the presigned URL.
     assert "source_uri" not in opts.dagger_import_config
 
-    request = clients.spatial.update_metadata.call_args.args[1]
-    assert request.source_handle.s3 == "s3://bucket/scan.csv"
+    request = clients.spatial.UpdateSpatial.call_args.args[0]
+    assert request.spatial.source_handle.s3 == "s3://bucket/scan.csv"
     # A cloud with no time column gets no invented range.
-    assert request.start_timestamp is None
-    assert request.properties is None
+    assert not request.spatial.HasField("start_timestamp")
+    assert list(request.update_mask.paths) == ["source_handle"]
 
 
 def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
@@ -282,7 +276,7 @@ def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
     A large upload can leave the in-memory snapshot minutes old, and anything added
     to the spatial meanwhile would be erased.
     """
-    clients.spatial.get.return_value.properties = {"added": "while uploading"}
+    clients.spatial.GetSpatial.return_value.spatial.properties["added"] = "while uploading"
 
     with _stubbed_upload():
         spatial.add_point_cloud_csv(
@@ -291,7 +285,7 @@ def test_ingest_merges_onto_server_properties_not_a_stale_snapshot(
             timestamp_type=Relative("seconds", start=datetime(2026, 3, 4, tzinfo=UTC)),
         )
 
-    properties = clients.spatial.update_metadata.call_args.args[1].properties
+    properties = clients.spatial.UpdateSpatial.call_args.args[0].spatial.properties
     assert properties["added"] == "while uploading"
     assert properties["relative_end_us"] == "45000000"
 
@@ -304,7 +298,7 @@ def test_ingest_returns_the_job_even_if_recording_metadata_fails(
     A retry would resubmit and duplicate every point, which is not recoverable,
     whereas the metadata can simply be written again.
     """
-    clients.spatial.update_metadata.side_effect = ConnectionError("boom")
+    clients.spatial.UpdateSpatial.side_effect = ConnectionError("boom")
 
     with _stubbed_upload():
         job = spatial.add_point_cloud_csv(_csv(tmp_path))
@@ -425,13 +419,114 @@ def test_spatial_scopes_resolve_in_one_request_and_leave_out_unreadable_spatials
     """Spatial scopes resolve in one batch request; an unreadable one is left out of lists and not found by lookup."""
     readable = _raw_spatial()
     readable.rid = "readable"
-    clients.spatial.batch_get.return_value.responses = [readable]
+    clients.spatial.BatchGetSpatials.return_value = spatial_pb2.BatchGetSpatialsResponse(spatials=[readable])
     parent = make_parent(clients, "readable", "unreadable")
 
     assert [(name, spatial.rid) for name, spatial in list_spatials(parent)] == [("readable", "readable")]
-    (_, request), _ = clients.spatial.batch_get.call_args
+    (request,), _ = clients.spatial.BatchGetSpatials.call_args
     assert set(request.spatial_rids) == {"readable", "unreadable"}
-    clients.spatial.get.assert_not_called()
+    clients.spatial.GetSpatial.assert_not_called()
 
     with pytest.raises(NominalNotFoundError, match=f"No spatial with {not_found} found"):
         get_spatial_from(parent, "unreadable")
+
+
+def test_update_empty_values_refreshes_same_instance(clients: MagicMock, spatial: Spatial) -> None:
+    """Empty values replace metadata and the authoritative response refreshes the existing object."""
+    response = _raw_spatial()
+    response.title = "server title"
+    response.description = ""
+    clients.spatial.UpdateSpatial.return_value = spatial_pb2.UpdateSpatialResponse(spatial=response)
+    assert spatial.update(description="", labels=[], properties={}) is spatial
+    request = clients.spatial.UpdateSpatial.call_args.args[0]
+    assert set(request.update_mask.paths) == {"description", "labels", "properties"}
+    assert request.spatial.HasField("description")
+    assert request.spatial.description == ""
+    assert dict(request.spatial.properties) == {}
+    assert list(request.spatial.labels) == []
+    assert spatial.name == "server title"
+    assert spatial.description == ""
+    assert spatial.labels == ()
+    assert spatial.properties == {}
+    clients.spatial.GetSpatial.assert_not_called()
+
+
+def test_update_without_fields_refreshes_without_empty_mask(clients: MagicMock, spatial: Spatial) -> None:
+    """A no-op update reloads the snapshot because the service rejects an empty update mask."""
+    clients.spatial.GetSpatial.return_value.spatial.title = "new snapshot"
+    assert spatial.update() is spatial
+    assert spatial.name == "new snapshot"
+    clients.spatial.UpdateSpatial.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("scan_pattern", "expected_pattern"),
+    [(None, None), ("", ScanPattern.UNKNOWN), ("FUTURE_PATTERN", ScanPattern.UNKNOWN), ("FLASH", ScanPattern.FLASH)],
+)
+def test_proto_conversion_preserves_optional_metadata_and_exact_times(
+    clients: MagicMock, scan_pattern: str | None, expected_pattern: ScanPattern | None
+) -> None:
+    """Presence differs from zero or empty, unknown patterns remain readable, and timestamps retain nanoseconds."""
+    raw = _raw_spatial(
+        type_metadata=spatial_pb2.SpatialTypeMetadata(
+            point_cloud=spatial_pb2.PointCloudMetadata(sensor_model="", resolution_mm=0, scan_pattern=scan_pattern)
+        ),
+        start_timestamp=Timestamp(seconds=-1, nanos=999_999_999),
+    )
+    raw.created_at.CopyFrom(Timestamp(seconds=-1, nanos=1))
+    raw.end_timestamp.CopyFrom(Timestamp(seconds=0, nanos=1))
+    raw.created_by = "creator"
+    spatial = Spatial._from_proto(clients, raw)
+    assert spatial.metadata == PointCloudMetadata(sensor_model="", resolution_mm=0, scan_pattern=expected_pattern)
+    assert spatial.created_at == -999_999_999
+    assert spatial.start_timestamp == -1
+    assert spatial.end_timestamp == 1
+    assert spatial.created_by_rid == "creator"
+
+
+def test_unknown_spatial_type_metadata_remains_readable(clients: MagicMock) -> None:
+    """An unknown oneof arm yields empty metadata rather than preventing hydration."""
+    raw = _raw_spatial()
+    raw.type_metadata.ClearField("point_cloud")
+    assert Spatial._from_proto(clients, raw).metadata == PointCloudMetadata()
+
+
+def test_ingest_time_metadata_preserves_nanoseconds_and_order(
+    clients: MagicMock, spatial: Spatial, tmp_path: Path
+) -> None:
+    """Metadata follows accepted ingest and preserves a negative submicrosecond origin exactly."""
+    with _stubbed_upload():
+        spatial.add_point_cloud_csv(
+            _csv(tmp_path, _TIMED_CSV), timestamp_column="t_s", timestamp_type=Relative("seconds", start=-1)
+        )
+    request = clients.spatial.UpdateSpatial.call_args.args[0]
+    assert request.spatial.start_timestamp.ToNanoseconds() == -1
+    assert request.spatial.end_timestamp.ToNanoseconds() == 44_999_999_999
+    assert set(request.update_mask.paths) == {"source_handle", "properties", "start_timestamp", "end_timestamp"}
+    calls = [entry[0] for entry in clients.mock_calls]
+    assert calls.index("ingest.ingest") < calls.index("ingest_jobs.get_ingest_job") < calls.index("spatial.GetSpatial")
+    assert calls.index("spatial.GetSpatial") < calls.index("spatial.UpdateSpatial")
+
+
+def test_scope_batch_hydration_chunks_service_limit(clients: MagicMock) -> None:
+    """Large scope lists stay readable when spatial batch requests are limited to 1000 RIDs."""
+    rids = [str(index) for index in range(1001)]
+    first = _raw_spatial()
+    first.rid = rids[0]
+    last = _raw_spatial()
+    last.rid = rids[-1]
+    clients.spatial.BatchGetSpatials.side_effect = [
+        spatial_pb2.BatchGetSpatialsResponse(spatials=[first]),
+        spatial_pb2.BatchGetSpatialsResponse(spatials=[last]),
+    ]
+    result = list_spatials_in_asset(_asset_with_spatials(clients, *rids))
+    assert [(name, spatial.rid) for name, spatial in result] == [(rids[0], rids[0]), (rids[-1], rids[-1])]
+    requests = [entry.args[0] for entry in clients.spatial.BatchGetSpatials.call_args_list]
+    assert [len(request.spatial_rids) for request in requests] == [1000, 1]
+    assert [rid for request in requests for rid in request.spatial_rids] == rids
+
+
+def test_empty_scope_list_does_not_fetch_spatials(clients: MagicMock) -> None:
+    """An empty spatial collection requires no batch request."""
+    assert list_spatials_in_asset(_asset_with_spatials(clients)) == []
+    clients.spatial.BatchGetSpatials.assert_not_called()

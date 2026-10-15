@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, cast
 
-from nominal_api import scout_spatial
 from typing_extensions import deprecated
 
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
@@ -35,6 +34,7 @@ from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNo
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
+from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_proto_duration
 
 if TYPE_CHECKING:
@@ -74,7 +74,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         @property
         def run(self) -> run_service_pb2_grpc.RunServiceStub: ...
         @property
-        def spatial(self) -> scout_spatial.SpatialService: ...
+        def spatial(self) -> spatial_pb2_grpc.SpatialServiceStub: ...
 
     @property
     def nominal_url(self) -> str:

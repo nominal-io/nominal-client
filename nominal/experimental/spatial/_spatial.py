@@ -9,18 +9,23 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol, Self, Sequence, overload
 
-from nominal_api import api, ingest_api, scout_spatial, scout_spatial_api, upload_api
+from google.protobuf.field_mask_pb2 import FieldMask
+from nominal_api import ingest_api, upload_api
 
+from nominal._utils.iterator_tools import batched
 from nominal.core import Marking, NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.marking import _marking_rids
 from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
+from nominal.protos.spatial.v2 import spatial_pb2, spatial_pb2_grpc
+from nominal.protos.types import types_pb2
 from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
 
 logger = logging.getLogger(__name__)
@@ -30,7 +35,7 @@ _POINT_CLOUD_CHANNEL = "point_cloud"
 
 
 class ScanPattern(Enum):
-    """Point-cloud scan pattern, wrapping `nominal_api.scout_spatial_api.ScanPattern`."""
+    """Point-cloud scan pattern."""
 
     FLASH = "FLASH"
     MECHANICAL = "MECHANICAL"
@@ -38,34 +43,12 @@ class ScanPattern(Enum):
     SOLID_STATE = "SOLID_STATE"
     UNKNOWN = "UNKNOWN"
 
-    def _to_conjure(self) -> scout_spatial_api.ScanPattern:
-        match self:
-            case ScanPattern.FLASH:
-                return scout_spatial_api.ScanPattern.FLASH
-            case ScanPattern.MECHANICAL:
-                return scout_spatial_api.ScanPattern.MECHANICAL
-            case ScanPattern.ROTATING:
-                return scout_spatial_api.ScanPattern.ROTATING
-            case ScanPattern.SOLID_STATE:
-                return scout_spatial_api.ScanPattern.SOLID_STATE
-            case _:
-                return scout_spatial_api.ScanPattern.UNKNOWN
-
     @classmethod
-    def _from_conjure(cls, value: scout_spatial_api.ScanPattern) -> ScanPattern:
-        match value.name:
-            case "FLASH":
-                return cls.FLASH
-            case "MECHANICAL":
-                return cls.MECHANICAL
-            case "ROTATING":
-                return cls.ROTATING
-            case "SOLID_STATE":
-                return cls.SOLID_STATE
-            case _:
-                # A pattern this client predates maps to UNKNOWN rather than raising:
-                # reading a spatial must not fail because the platform learned a new one.
-                return cls.UNKNOWN
+    def _from_proto(cls, value: str) -> ScanPattern:
+        try:
+            return cls(value)
+        except ValueError:
+            return cls.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -77,16 +60,16 @@ class PointCloudMetadata:
     resolution_mm: float | None = None
     scan_pattern: ScanPattern | None = None
 
-    def _to_conjure(self) -> scout_spatial_api.PointCloudMetadata:
-        return scout_spatial_api.PointCloudMetadata(
+    def _to_proto(self) -> spatial_pb2.PointCloudMetadata:
+        return spatial_pb2.PointCloudMetadata(
             sensor_model=self.sensor_model,
             coordinate_system=self.coordinate_system,
             resolution_mm=self.resolution_mm,
-            scan_pattern=None if self.scan_pattern is None else self.scan_pattern._to_conjure(),
+            scan_pattern=None if self.scan_pattern is None else self.scan_pattern.value,
         )
 
     @classmethod
-    def _from_conjure(cls, type_metadata: scout_spatial_api.SpatialTypeMetadata) -> Self:
+    def _from_proto(cls, type_metadata: spatial_pb2.SpatialTypeMetadata) -> Self:
         """Read the point-cloud arm of a spatial's type metadata.
 
         `SpatialTypeMetadata` is a union with one arm today, so an unset arm means
@@ -94,14 +77,14 @@ class PointCloudMetadata:
         there than a crash on a field that simply is not there yet.
         """
         point_cloud = type_metadata.point_cloud
-        if point_cloud is None:
+        if not type_metadata.HasField("point_cloud"):
             return cls()
         return cls(
-            sensor_model=point_cloud.sensor_model,
-            coordinate_system=point_cloud.coordinate_system,
-            resolution_mm=point_cloud.resolution_mm,
+            sensor_model=point_cloud.sensor_model if point_cloud.HasField("sensor_model") else None,
+            coordinate_system=point_cloud.coordinate_system if point_cloud.HasField("coordinate_system") else None,
+            resolution_mm=point_cloud.resolution_mm if point_cloud.HasField("resolution_mm") else None,
             scan_pattern=(
-                None if point_cloud.scan_pattern is None else ScanPattern._from_conjure(point_cloud.scan_pattern)
+                ScanPattern._from_proto(point_cloud.scan_pattern) if point_cloud.HasField("scan_pattern") else None
             ),
         )
 
@@ -149,7 +132,7 @@ class _PointCloudTimeMetadata:
 
 
 @dataclass(frozen=True)
-class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
+class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
     """A spatial data source (e.g. a point cloud) tracked by Nominal."""
 
     rid: str
@@ -169,14 +152,14 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
 
     class _Clients(IngestionJob._Clients, HasScoutParams, Protocol):
         @property
-        def spatial(self) -> scout_spatial.SpatialService: ...
+        def spatial(self) -> spatial_pb2_grpc.SpatialServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
 
-    def _get_latest_api(self) -> scout_spatial_api.Spatial:
-        return self._clients.spatial.get(self._clients.auth_header, self.rid)
+    def _get_latest_api(self) -> spatial_pb2.Spatial:
+        return _get_spatial(self._clients, self.rid)
 
     def update(
         self,
@@ -188,15 +171,36 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
     ) -> Self:
         """Replace spatial metadata in-place and return the updated spatial.
 
-        Only the fields passed in are replaced; the rest are left untouched.
+        Fields set to ``None`` are left untouched; empty labels or properties clear them.
+        With no fields supplied, refresh the local snapshot without changing metadata.
+
+        Raises:
+            NominalError: Error updating or refreshing spatial metadata via gRPC.
         """
-        request = scout_spatial_api.UpdateSpatialMetadataRequest(
-            title=name,
-            description=description,
-            labels=None if labels is None else list(labels),
-            properties=None if properties is None else dict(properties),
+        paths = [
+            path
+            for path, value in (
+                ("title", name),
+                ("description", description),
+                ("properties", properties),
+                ("labels", labels),
+            )
+            if value is not None
+        ]
+        if not paths:
+            return self.refresh()
+        request = spatial_pb2.UpdateSpatialRequest(
+            spatial=spatial_pb2.Spatial(
+                rid=self.rid,
+                title="" if name is None else name,
+                description=description,
+                properties=properties,
+                labels=labels,
+            ),
+            update_mask=FieldMask(paths=paths),
         )
-        updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
+        with translate_grpc_errors():
+            updated = self._clients.spatial.UpdateSpatial(request).spatial
         return self._refresh_from_api(updated)
 
     @overload
@@ -384,56 +388,58 @@ class Spatial(HasRid, RefreshableConjureMixin[scout_spatial_api.Spatial]):
         here rather than at create time. The time metadata rides along in the
         same call.
         """
-        handle = api.Handle(s3=source_handle)
-        if time_metadata is None:
-            request = scout_spatial_api.UpdateSpatialMetadataRequest(source_handle=handle)
-        else:
-            # `properties` replaces the whole map rather than merging, so read the
-            # current values back before overwriting it. `self.properties` is a
-            # snapshot from whenever this object was last refreshed, and a large
-            # upload can leave that minutes stale.
-            latest = self._clients.spatial.get(self._clients.auth_header, self.rid)
-            request = scout_spatial_api.UpdateSpatialMetadataRequest(
-                source_handle=handle,
-                properties={**dict(latest.properties), **time_metadata.properties},
-                start_timestamp=_SecondsNanos.from_nanoseconds(time_metadata.start).to_api(),
-                end_timestamp=_SecondsNanos.from_nanoseconds(time_metadata.end).to_api(),
-            )
-        updated = self._clients.spatial.update_metadata(self._clients.auth_header, request, self.rid)
+        spatial = spatial_pb2.Spatial(rid=self.rid, source_handle=types_pb2.Handle(s3=source_handle))
+        paths = ["source_handle"]
+        if time_metadata is not None:
+            # Properties replace the map, so preserve changes made during the upload.
+            latest = self._get_latest_api()
+            spatial.properties.update({**latest.properties, **time_metadata.properties})
+            spatial.start_timestamp.FromNanoseconds(time_metadata.start)
+            spatial.end_timestamp.FromNanoseconds(time_metadata.end)
+            paths.extend(("properties", "start_timestamp", "end_timestamp"))
+        request = spatial_pb2.UpdateSpatialRequest(spatial=spatial, update_mask=FieldMask(paths=paths))
+        with translate_grpc_errors():
+            updated = self._clients.spatial.UpdateSpatial(request).spatial
         self._refresh_from_api(updated)
 
     def archive(self) -> None:
-        """Archive this spatial, hiding it from search (reversible)."""
-        self._clients.spatial.archive(self._clients.auth_header, self.rid)
+        """Archive this spatial, hiding it from search (reversible).
+
+        Raises:
+            NominalError: Error archiving the spatial via gRPC.
+        """
+        with translate_grpc_errors():
+            self._clients.spatial.ArchiveSpatial(spatial_pb2.ArchiveSpatialRequest(spatial_rid=self.rid))
 
     def unarchive(self) -> None:
-        """Unarchive a previously archived spatial."""
-        self._clients.spatial.unarchive(self._clients.auth_header, self.rid)
+        """Unarchive a previously archived spatial.
+
+        Raises:
+            NominalError: Error unarchiving the spatial via gRPC.
+        """
+        with translate_grpc_errors():
+            self._clients.spatial.UnarchiveSpatial(spatial_pb2.UnarchiveSpatialRequest(spatial_rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, raw_spatial: scout_spatial_api.Spatial) -> Self:
+    def _from_proto(cls, clients: _Clients, raw_spatial: spatial_pb2.Spatial) -> Self:
         return cls(
             rid=raw_spatial.rid,
             name=raw_spatial.title,
-            description=raw_spatial.description,
+            description=raw_spatial.description if raw_spatial.HasField("description") else None,
             labels=tuple(raw_spatial.labels),
-            properties=MappingProxyType(raw_spatial.properties),
+            properties=MappingProxyType(dict(raw_spatial.properties)),
             is_archived=raw_spatial.is_archived,
-            dagger_uuid=raw_spatial.dagger_uuid,
-            metadata=PointCloudMetadata._from_conjure(raw_spatial.type_metadata),
-            created_at=_SecondsNanos.from_flexible(raw_spatial.created_at).to_nanoseconds(),
+            dagger_uuid=raw_spatial.dagger_model_uuid,
+            metadata=PointCloudMetadata._from_proto(raw_spatial.type_metadata),
+            created_at=raw_spatial.created_at.ToNanoseconds(),
             start_timestamp=(
-                None
-                if raw_spatial.start_timestamp is None
-                else _SecondsNanos.from_api(raw_spatial.start_timestamp).to_nanoseconds()
+                None if not raw_spatial.HasField("start_timestamp") else raw_spatial.start_timestamp.ToNanoseconds()
             ),
             end_timestamp=(
-                None
-                if raw_spatial.end_timestamp is None
-                else _SecondsNanos.from_api(raw_spatial.end_timestamp).to_nanoseconds()
+                None if not raw_spatial.HasField("end_timestamp") else raw_spatial.end_timestamp.ToNanoseconds()
             ),
             _clients=clients,
-            created_by_rid=raw_spatial.created_by,
+            created_by_rid=raw_spatial.created_by or None,
         )
 
 
@@ -466,8 +472,11 @@ def create_point_cloud_spatial(
 
     Returns:
         The created spatial.
+
+    Raises:
+        NominalError: Error resolving the workspace or creating the spatial via gRPC.
     """
-    return Spatial._from_conjure(
+    return Spatial._from_proto(
         client._clients,
         _create_spatial_request(
             client,
@@ -482,8 +491,12 @@ def create_point_cloud_spatial(
 
 
 def get_spatial(client: NominalClient, rid: str) -> Spatial:
-    """Retrieve a spatial by its RID."""
-    return Spatial._from_conjure(client._clients, _get_spatial(client._clients, rid))
+    """Retrieve a spatial by its RID.
+
+    Raises:
+        NominalError: Error fetching spatial metadata via gRPC.
+    """
+    return Spatial._from_proto(client._clients, _get_spatial(client._clients, rid))
 
 
 def _create_spatial_request(
@@ -495,35 +508,40 @@ def _create_spatial_request(
     labels: Sequence[str],
     properties: NominalProperties | None,
     markings: Sequence[Marking | str] | None,
-) -> scout_spatial_api.Spatial:
+) -> spatial_pb2.Spatial:
     # The spatial names the model rather than referencing an existing one: the
     # platform indexes the import under this uuid when the point cloud is
     # ingested, and rejects an ingest that tries to create its own target.
     #
     # `source_handle` and the time range are left at their defaults: the object
     # location is not known until the CSV is uploaded, and the range is measured
-    # from the point cloud's time column during ingest or set later with
-    # `Spatial.update`.
-    request = scout_spatial_api.CreateSpatialRequest(
-        title=name,
-        dagger_uuid=str(uuid.uuid4()),
-        type_metadata=scout_spatial_api.SpatialTypeMetadata(point_cloud=metadata._to_conjure()),
-        labels=list(labels),
-        properties=dict(properties) if properties else {},
+    # from the point cloud's time column during ingest.
+    request = spatial_pb2.CreateSpatialRequest(
+        spatial=spatial_pb2.Spatial(
+            title=name,
+            dagger_model_uuid=str(uuid.uuid4()),
+            type_metadata=spatial_pb2.SpatialTypeMetadata(point_cloud=metadata._to_proto()),
+            labels=labels,
+            properties=properties,
+            description=description,
+        ),
         marking_rids=_marking_rids(markings),
-        description=description,
-        workspace=client._clients.resolve_default_workspace_rid(),
+        workspace_rid=client._clients.resolve_default_workspace_rid(),
     )
-    return client._clients.spatial.create(client._clients.auth_header, request)
+    with translate_grpc_errors():
+        return client._clients.spatial.CreateSpatial(request).spatial
 
 
-def _get_spatial(clients: Spatial._Clients, rid: str) -> scout_spatial_api.Spatial:
-    return clients.spatial.get(clients.auth_header, rid)
+def _get_spatial(clients: Spatial._Clients, rid: str) -> spatial_pb2.Spatial:
+    with translate_grpc_errors():
+        return clients.spatial.GetSpatial(spatial_pb2.GetSpatialRequest(spatial_rid=rid)).spatial
 
 
-def _get_spatials(clients: Spatial._Clients, rids: Sequence[str]) -> Sequence[scout_spatial_api.Spatial]:
-    """The spatials with these RIDs, in one request. Missing or unreadable RIDs are left out."""
-    if not rids:
-        return []
-    request = scout_spatial_api.GetSpatialsRequest(spatial_rids=list(rids))
-    return list(clients.spatial.batch_get(clients.auth_header, request).responses)
+def _get_spatials(clients: Spatial._Clients, rids: Sequence[str]) -> Sequence[spatial_pb2.Spatial]:
+    """Fetch readable spatials in batches within the service's 1000-RID limit."""
+    spatials: list[spatial_pb2.Spatial] = []
+    for batch in batched(rids, 1000):
+        request = spatial_pb2.BatchGetSpatialsRequest(spatial_rids=batch)
+        with translate_grpc_errors():
+            spatials.extend(clients.spatial.BatchGetSpatials(request).spatials)
+    return spatials
