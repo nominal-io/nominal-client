@@ -117,7 +117,7 @@ source_time,altitude,temperature
 2026-09-10T14:38:23Z,105.5,20.7
 ```
 
-Upload it to the same dataset. No DataFrame conversion or second dataset is needed:
+Upload it to the same dataset:
 
 ```python
 next_file = dataset.add_tabular_data(
@@ -228,7 +228,8 @@ dataset.update(properties={**dataset.properties, "review_status": "pending"})
 
 This is a read-modify-write operation, not an atomic merge with other writers. Pass `labels=[]`
 or `properties={}` to clear those fields. Dataset metadata does not filter individual samples;
-use data tags when you need to select a subset of the data.
+use [data tags](/guides/streaming/overview.md#add-tags-to-filter-data-in-a-run-or-asset)
+when you need to select a subset of the data.
 
 ## Choose an ingestion workflow
 
