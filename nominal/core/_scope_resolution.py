@@ -10,9 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
-from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.datasource import DataSource
 from nominal.core.video import Video, _get_videos
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -30,11 +28,11 @@ class DataScopeRef:
 class DataScopes:
     """An asset's or run's named data scopes by resource type, read from one payload.
 
-    Names are unique within an asset or run. Log-set sources have no SDK resource and are left out.
+    Names are unique within an asset or run. Unsupported source types reserve their names but have no SDK resource.
     """
 
     datasets: Mapping[str, DataScopeRef]
-    connections: Mapping[str, DataScopeRef]
+    names: frozenset[str]
     videos: Mapping[str, DataScopeRef]
     spatials: Mapping[str, DataScopeRef]
 
@@ -54,24 +52,23 @@ class DataScopes:
         sources: Iterable[tuple[str, asset_pb2.DataSource | run_service_pb2.DataSource, Mapping[str, str]]],
     ) -> DataScopes:
         datasets: dict[str, DataScopeRef] = {}
-        connections: dict[str, DataScopeRef] = {}
+        names: set[str] = set()
         videos: dict[str, DataScopeRef] = {}
         spatials: dict[str, DataScopeRef] = {}
         for name, source, tags in sources:
+            names.add(name)
             match source.WhichOneof("data_source"):
                 case "dataset":
                     datasets[name] = DataScopeRef(source.dataset, dict(tags))
-                case "connection":
-                    connections[name] = DataScopeRef(source.connection, dict(tags))
                 case "video":
                     videos[name] = DataScopeRef(source.video, dict(tags))
                 case "spatial":
                     spatials[name] = DataScopeRef(source.spatial, dict(tags))
-        return cls(datasets=datasets, connections=connections, videos=videos, spatials=spatials)
+        return cls(datasets=datasets, names=frozenset(names), videos=videos, spatials=spatials)
 
     def __contains__(self, name: object) -> bool:
-        """Whether a dataset, connection, video, or spatial scope has this name."""
-        return any(name in scopes for scopes in (self.datasets, self.connections, self.videos, self.spatials))
+        """Whether any source occupies this name, including unsupported source types."""
+        return name in self.names
 
     def named(self, name: str) -> DataScopes:
         """Only the scope with this name, if there is one."""
@@ -81,7 +78,7 @@ class DataScopes:
 
         return DataScopes(
             datasets=only(self.datasets),
-            connections=only(self.connections),
+            names=frozenset({name}) if name in self.names else frozenset(),
             videos=only(self.videos),
             spatials=only(self.spatials),
         )
@@ -93,17 +90,6 @@ def resolve_datasets(clients: Dataset._Clients, scopes: Mapping[str, DataScopeRe
     by_rid = {dataset.rid: dataset for dataset in _get_datasets(clients.auth_header, clients.catalog, rids)}
     return {
         name: Dataset._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
-    }
-
-
-def resolve_connections(clients: DataSource._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Connection]:
-    """The readable connections behind these scopes by scope name, fetched in one request."""
-    rids = [scope.rid for scope in scopes.values()]
-    by_rid = {connection.rid: connection for connection in _get_connections(clients, rids)}
-    return {
-        name: Connection._from_conjure(clients, by_rid[scope.rid])
-        for name, scope in scopes.items()
-        if scope.rid in by_rid
     }
 
 

@@ -170,7 +170,7 @@ See {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>` for all
 
 ## Remove Asset Data Sources
 
-Pass Connection, Dataset, or Video instances or their RIDs in `scopes`. You can also
+Pass Dataset or Video instances or their RIDs in `scopes`. You can also
 remove scopes by their names with `names=["high-precipitation-flight"]`. Replace the
 RID placeholders below with resources from your workspace. Removing a scope detaches
 the source from the asset; it does not delete the source.

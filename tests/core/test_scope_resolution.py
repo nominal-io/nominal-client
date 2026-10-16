@@ -48,13 +48,12 @@ def _dataset(rid):
 @pytest.mark.parametrize(
     ("resolve", "requests"),
     [
-        pytest.param(lambda asset: asset.list_data_scopes(), (1, 1, 1), id="list"),
-        pytest.param(lambda asset: asset.get_data_scope("conn-b"), (0, 1, 0), id="get"),
+        pytest.param(lambda asset: asset.list_data_scopes(), (1, 1), id="list"),
+        pytest.param(lambda asset: asset.get_data_scope("vid-b"), (0, 1), id="get"),
     ],
 )
 def test_scope_resolution_makes_one_request_per_needed_type(clients, resolve, requests):
     """The asset is read once, and each needed type is fetched in one batch rather than once per scope."""
-    clients.connection.get_connections.side_effect = lambda auth, rids: [MagicMock(rid=rid) for rid in rids]
     clients.video.batch_get.side_effect = lambda auth, request: MagicMock(
         responses=[MagicMock(rid=rid) for rid in request.video_rids]
     )
@@ -73,10 +72,8 @@ def test_scope_resolution_makes_one_request_per_needed_type(clients, resolve, re
     assert clients.assets.GetAssets.call_count == 1
     assert (
         clients.catalog.get_enriched_datasets.call_count,
-        clients.connection.get_connections.call_count,
         clients.video.batch_get.call_count,
     ) == requests
-    clients.connection.get_connection.assert_not_called()
     clients.video.get.assert_not_called()
 
 
@@ -86,7 +83,6 @@ def test_a_scope_that_does_not_resolve_is_left_out_of_lists_and_not_found_by_loo
 
     The NotFound is still a ValueError, which these lookups raised before, so existing handlers keep working.
     """
-    clients.connection.get_connections.return_value = []
     clients.video.batch_get.return_value.responses = []
     asset = _asset(clients, _scope("missing", **source))
 

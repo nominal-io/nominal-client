@@ -37,7 +37,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: Value to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *must* include all `required_tags` configured for the dataset.
         """
 
     def enqueue_batch(
@@ -58,7 +58,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             values: Values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *must* include all `required_tags` configured for the dataset.
         """
         if len(timestamps) != len(values):
             raise ValueError(
@@ -85,7 +85,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             channel_values: A dictionary mapping channel names to their respective values.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *should* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *should* include all `required_tags` configured for the dataset.
         """
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value, tags)
@@ -106,7 +106,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *must* include all `required_tags` configured for the dataset.
         """
 
     @abc.abstractmethod
@@ -125,7 +125,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *must* include all `required_tags` configured for the dataset.
         """
 
     @abc.abstractmethod
@@ -144,7 +144,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: Dict to write to the specified channel. Must be JSON-serializable.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *must* include all `required_tags` configured for the dataset.
         """
 
     @abc.abstractmethod

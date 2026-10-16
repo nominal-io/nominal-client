@@ -12,16 +12,13 @@ from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
-    api,
     ingest_api,
     scout_catalog,
     scout_checks_api,
-    scout_datasource_connection_api,
     scout_layout_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
-    storage_datasource_api,
 )
 from typing_extensions import deprecated
 
@@ -69,7 +66,6 @@ from nominal.core._utils.query_tools import (
 from nominal.core.asset import Asset, _get_asset
 from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
-from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
@@ -125,7 +121,6 @@ from nominal.core.workspace import Workspace
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalConfigError,
-    NominalError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
 )
@@ -995,18 +990,10 @@ class NominalClient:
         return list(self._iter_get_videos(rids))
 
     def get_datasource(self, rid: str) -> DataSource:
-        """Retrieve a datasource (connection or dataset) by its RID.
-
-        Note:
-            If specific methods / properties of a dataset / connection are desired,
-            it is preferable to use `get_dataset` or `get_connection`.
-        """
+        """Retrieve a dataset by its RID. Prefer `get_dataset` for dataset operations."""
         if ".dataset." in rid:
             return self.get_dataset(rid)
-        elif ".connection." in rid:
-            return self.get_connection(rid)
-        else:
-            raise ValueError(f"Could not determine datasource type from RID: {rid}")
+        raise ValueError(f"Could not determine datasource type from RID: {rid}")
 
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
@@ -1207,63 +1194,6 @@ class NominalClient:
                 units_pb2.GetCommensurableUnitsRequest(unit=unit_symbol)
             )
         return [Unit._from_proto(unit) for unit in response.units]
-
-    def get_connection(self, rid: str) -> Connection:
-        """Retrieve a connection by its RID."""
-        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
-        return Connection._from_conjure(self._clients, response)
-
-    @deprecated(
-        "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
-        "Use `NominalClient.create_dataset` instead."
-    )
-    def create_streaming_connection(
-        self,
-        datasource_id: str,
-        connection_name: str,
-        datasource_description: str | None = None,
-        *,
-        required_tag_names: list[str] | None = None,
-        markings: Sequence[Marking | str] | None = None,
-    ) -> StreamingConnection:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-        datasource_response = self._clients.storage.create(
-            self._clients.auth_header,
-            storage_datasource_api.CreateNominalDataSourceRequest(
-                id=datasource_id,
-                description=datasource_description,
-                workspace=workspace_rid,
-            ),
-        )
-        connection_response = self._clients.connection.create_connection(
-            self._clients.auth_header,
-            scout_datasource_connection_api.CreateConnection(
-                name=connection_name,
-                connection_details=scout_datasource_connection_api.ConnectionDetails(
-                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid,
-                    ),
-                ),
-                metadata={},
-                scraping=scout_datasource_connection_api.ScrapingConfig(
-                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
-                        channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
-                        ],
-                        separator=".",
-                    )
-                ),
-                required_tag_names=required_tag_names or [],
-                available_tag_values={},
-                should_scrape=True,
-                workspace=workspace_rid,
-                marking_rids=_marking_rids(markings),
-            ),
-        )
-        conn = Connection._from_conjure(self._clients, connection_response)
-        if isinstance(conn, StreamingConnection):
-            return conn
-        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_asset(
         self,

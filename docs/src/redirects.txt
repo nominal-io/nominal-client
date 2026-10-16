@@ -24,3 +24,4 @@ changelog.md sdk/changelog.md
 guides/runs/log-files.md guides/streaming/logs.md
 guides/assets/log-files.md guides/streaming/logs.md
 guides/datasets/logs.md guides/datasets/journal-json.md
+guides/streaming/using-connections.md guides/streaming/overview.md

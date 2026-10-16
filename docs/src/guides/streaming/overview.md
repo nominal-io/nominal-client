@@ -180,5 +180,32 @@ every expected sample did. For retrieving samples for further checks, see
 
 For a longer walkthrough with continuously generated data and live workbook viewing,
 continue to the [Python quickstart](/guides/quickstart.md#stream-data-to-nominal).
-The [connection workflow](/guides/streaming/using-connections.md) is deprecated;
-use datasets for new streaming integrations.
+
+## Migrate legacy connections
+
+The SDK no longer exposes `Connection`, `StreamingConnection`, or their client, asset,
+and run methods. Use `client.get_dataset()` and `dataset.get_write_stream()` for existing
+data, and `client.create_dataset()` for new streaming datasets. Attach datasets with
+`asset.add_dataset()` or `run.add_dataset()`.
+
+For a migrated external connection, the dataset RID uses the same UUID as the old
+connection RID. For a native streaming connection, the dataset RID uses the UUID of
+its **backing data source**, not the connection UUID. Obtain the migrated dataset RID
+from Nominal before updating your code; passing a connection RID to `get_dataset()`
+does not resolve or translate it.
+
+For a migrated **native streaming dataset**, continue writing with its dataset RID:
+
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
+dataset = client.get_dataset("<migrated-native-dataset-rid>")
+with dataset.get_write_stream() as stream:
+    stream.enqueue("temperature", timestamp="2026-01-01T00:00:00Z", value=42.0)
+```
+
+External datasets query their external providers rather than accepting streamed writes.
+
+The experimental `nominal.experimental.stream_v2.create_write_stream()` factory now
+accepts a `Dataset` as its first argument (`dataset=` for keyword calls).
