@@ -93,12 +93,13 @@ entries into `LogPoint` objects using the [streaming logs guide](/guides/streami
 
 ## View and organize the logs
 
-Open the dataset in Nominal and use a workbook's **Logs** panel to inspect the
-`engine_logs` channel alongside telemetry covering the same times.
+To view the logs in a workbook, attach the dataset to an
+[asset](/guides/assets/overview.md) or use a [run](/guides/runs/overview.md) with a direct
+dataset attachment or an associated asset. Open that asset or run in a workbook,
+add a **Logs** panel, and select the dataset's `engine_logs` channel. You can inspect
+it alongside telemetry covering the same times.
 
-Logs belong to the dataset. To organize them around a system, attach the dataset to
-an [asset](/guides/assets/overview.md). To analyze a test interval, use a
-[run](/guides/runs/overview.md) with either a direct dataset attachment or an associated
-asset. These relationships reference the existing data rather than copying the logs.
+Logs still belong to the dataset; these relationships reference the existing data
+rather than copying it. Writing logs does not require an asset or run.
 
 For querying outside the app, see the [SQL interface](https://docs.nominal.io/developers/sql/overview).
