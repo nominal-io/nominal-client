@@ -36,16 +36,13 @@ def dataset_with_units(client: NominalClient, archive, tmp_path: Path) -> Datase
     return dataset
 
 
-def test_csv_unit_map_overrides_units_row(dataset_with_units: Dataset) -> None:
-    """Explicit units override matching CSV row units while other columns retain their row units."""
-    assert dataset_with_units.get_channel("pressure").unit == "kPa"
-    assert dataset_with_units.get_channel("speed").unit == "m/s"
-
-
 def test_ingestion_updates_only_supplied_channel_units(
     client: NominalClient, dataset_with_units: Dataset, tmp_path: Path
 ) -> None:
-    """Later ingestion updates supplied channel units while preserving units for omitted channels."""
+    """Explicit units override row units, then later ingestion updates only supplied channel units."""
+    assert dataset_with_units.get_channel("pressure").unit == "kPa"
+    assert dataset_with_units.get_channel("speed").unit == "m/s"
+
     path = tmp_path / "updated.csv"
     path.write_text("time,pressure,speed\n1700000001,102,5\n")
     job = (

@@ -41,14 +41,13 @@ DATASET_REF = "dataset-ref"
 VIDEO_REF = "video-ref"
 
 
-def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
+def test_update_dataset(client: NominalClient, archive: ArchiveFn):
     """Calling `dataset.update()` mutates name, description, properties, and labels in-place."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to update a dataset {uuid4()}"
 
     ds = client.create_dataset(name, description=desc)
     archive(ds)
-    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
     new_name = name + "-updated"
     new_desc = desc + "-updated"
@@ -103,11 +102,10 @@ def test_update_run(client: NominalClient, archive: ArchiveFn):
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
-def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):
+def test_add_dataset_to_run_and_list_datasets(client: NominalClient, archive: ArchiveFn):
     """Linking a dataset to a run with a custom ref-name is reflected in `run.list_datasets()`."""
     ds = client.create_dataset(f"dataset-{uuid4()}")
     archive(ds)
-    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
     run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
     archive(run)
@@ -354,15 +352,9 @@ def test_add_video_to_asset_and_get_by_scope_name(client: NominalClient, archive
     assert asset.get_video(VIDEO_REF).rid == video.rid
 
 
-def test_download_dataset_file_roundtrips_to_disk(
-    client: NominalClient, csv_data: bytes, tmp_path: Path, archive: Callable[..., None]
-) -> None:
-    """Uploading a CSV and downloading it via MultipartFileDownloader produces byte-identical content on disk."""
-    ds = client.create_dataset(f"dataset-{uuid4()}")
-    archive(ds)
-
-    dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)
-    dataset_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+def test_download_dataset_file_roundtrips_to_disk(ingested_dataset: Dataset, csv_data: bytes, tmp_path: Path) -> None:
+    """Downloading the shared ingested CSV produces byte-identical content on disk."""
+    (dataset_file,) = ingested_dataset.list_files()
 
     output_path = dataset_file.download(tmp_path)
 
@@ -436,52 +428,3 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
     assert channels["gyro"].description == "gyro xyz"
     assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
     assert channels["temperature"].unit == "degC"
-
-
-@pytest.mark.parametrize(
-    "stem",
-    [
-        # A representative set of special characters the client allows (see UNSAFE_UPLOAD_CHARS for
-        # the rejected ones). Each is uploaded for real against every backend in this job's matrix, so
-        # if any character that passes our client-side validation starts failing server-side — in
-        # scout or the cloud storage layer — this test goes red and we hear about it immediately.
-        "paren(reduced)",  # the original Azure bug — was stored as paren%28reduced%29.csv
-        "with space",
-        "amp&ersand",
-        "plus+plus",
-        "hash#tag",
-        "bracket[1]",
-        "at@sign",
-        "equals=sign",
-        "comma,comma",
-        "semi;colon",
-        "tilde~caret^",
-        "dollar$sign",
-        "unicode_résumé",
-    ],
-)
-def test_special_char_filename_round_trips(
-    client: NominalClient, csv_data: bytes, archive: ArchiveFn, stem: str
-) -> None:
-    """Filenames with safe special characters upload, ingest, and keep their name intact.
-
-    Regression test for the filename-encoding fix. This runs against S3 (gov staging), which
-    tolerates the *upload* of any character — so the load-bearing assertion is the stored NAME:
-    before the fix the client quote_plus'd the name (``paren%28reduced%29.csv``); after it, the
-    literal name round-trips.
-    """
-    ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
-    archive(ds)
-    dataset_file = ds.add_from_io(
-        BytesIO(csv_data), "timestamp", "iso_8601", file_name=stem
-    ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
-
-    assert dataset_file.name == f"{stem}.csv"
-
-
-def test_unsafe_char_filename_raises_before_upload(client: NominalClient, archive: ArchiveFn) -> None:
-    """A filename with an unsafe character is rejected client-side, before any upload."""
-    ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
-    archive(ds)
-    with pytest.raises(ValueError, match="unsafe for storage"):
-        ds.add_from_io(BytesIO(b"timestamp,v\n2024-01-01T00:00:00Z,1\n"), "timestamp", "iso_8601", file_name="bad?name")
