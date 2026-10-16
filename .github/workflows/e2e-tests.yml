@@ -39,7 +39,7 @@ jobs:
               --ignore=tests/e2e/test_derived_dataset.py
               --ignore=tests/e2e/test_spatial.py
           - name: ingestion
-            args: tests/e2e/test_timestamps.py tests/e2e/test_ingest_units.py
+            args: tests/e2e/test_timestamps.py tests/e2e/test_ingest_units.py -n 2
           - name: derived
             args: tests/e2e/test_derived_dataset.py
           - name: spatial
@@ -262,6 +262,7 @@ jobs:
       - name: Run file upload e2e tests
         run: |
           uv run pytest tests/e2e/test_file_upload.py \
+            -n 2 \
             --profile file-upload-e2e \
             --no-cov \
             --durations=0 --durations-min=0 \
