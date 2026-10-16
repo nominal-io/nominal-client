@@ -10,3 +10,4 @@
 
    nominal.experimental.compute
    nominal.experimental.compute.dsl.exprs
+   nominal.experimental.video_processing

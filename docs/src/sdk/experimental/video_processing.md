@@ -1,7 +1,11 @@
 # Video processing
 
+Inspect video files and normalize their encoding and resolution before uploading them.
+
+## API reference
+
 ```{eval-rst}
-.. automodule:: nominal.experimental.video_processing
+.. include:: ../_summaries/nominal.experimental.video_processing.rst
 
 .. autodata:: nominal.experimental.video_processing.STANDARD_DEFINITION
 
