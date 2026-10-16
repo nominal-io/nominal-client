@@ -403,12 +403,12 @@ class TestClose:
         session.put_release.clear()
         futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
-        session.put_release.set()
+        # Keep the driver occupied until close has cancelled every queued file.
+        futures[-1].add_done_callback(lambda _: session.put_release.set())
         up.close(cancel_pending=True)
         assert all(f.done() for f in futures)
-        cancelled = [f for f in futures if f.cancelled()]
-        assert len(cancelled) >= 1  # queued drivers dropped
-        assert service.calls.count("initiate") < 6  # ...and never initiated
+        assert all(f.cancelled() for f in futures[1:])
+        assert service.calls.count("initiate") == 1
 
     def test_exit_on_exception_takes_cancel_path(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """Leaving the context on an exception drops pending files instead of finishing the batch."""
@@ -419,9 +419,10 @@ class TestClose:
             with up:
                 futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
                 assert session.put_started.wait(timeout=10)
-                session.put_release.set()
+                # __exit__ must cancel the queue before the running upload can finish.
+                futures[-1].add_done_callback(lambda _: session.put_release.set())
                 raise KeyboardInterrupt
-        assert any(f.cancelled() for f in futures)
+        assert all(f.cancelled() for f in futures[1:])
 
     def test_cancel_pending_with_queued_sibling_parts_still_returns(
         self, make_uploader: MakeUploader, write_file: WriteFile
@@ -468,12 +469,13 @@ class TestClose:
         session.put_release.clear()
         futures = [up.enqueue_file(write_file(f"f{i}.csv", 100)) for i in range(6)]
         assert session.put_started.wait(timeout=10)
-        session.put_release.set()
+        # Ensure the wait below observes futures actually cancelled by close.
+        futures[-1].add_done_callback(lambda _: session.put_release.set())
         up.close(cancel_pending=True)
 
         done, not_done = wait(futures, timeout=5)
         assert not_done == set(), "close returned with futures still invisible to wait()"
-        assert any(f.cancelled() for f in futures)  # the drop actually happened
+        assert all(f.cancelled() for f in futures[1:])
 
 
 class TestNoDeadlock:
