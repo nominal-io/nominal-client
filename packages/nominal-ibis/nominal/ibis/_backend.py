@@ -124,6 +124,10 @@ class NominalCompiler(PostgresCompiler):
             return item
         return self.f.coalesce(item, default)
 
+    def visit_Round(self, op: ibis_operations.Round, *, arg: Any, digits: Any) -> Any:
+        # The API rounds doubles directly; Postgres's bare DECIMAL cast loses fractional digits.
+        return self.cast(self.f.round(arg, digits), op.dtype)
+
     def _anon_agg(self, name: str, *args: Any, where: Any = None) -> Any:
         func = self.f.anon[name](*args)
         if where is not None:
