@@ -4,31 +4,35 @@
 :start-line: 1
 ```
 
-## Decorators
-
-```{eval-rst}
-.. automodule:: nominal.experimental.extractor.decorators
-```
-
-## Output contexts
+## Per-output units
 
 `ManifestExtractorContext.add_tabular` and `add_avro_stream` accept `units=` maps from channel
 names to unit symbols. Each declaration copies its map into that output's manifest entry;
 units are output metadata, not image-registration settings. For direct file uploads, use
 the [ingestion builder](ingest.md#channel-units-and-csv-rows).
 
+## API reference
+
+### Decorators
+
 ```{eval-rst}
-.. automodule:: nominal.experimental.extractor.context
+.. include:: ../_summaries/nominal.experimental.extractor.decorators.rst
 ```
 
-## Parameter types
+### Output contexts
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.extractor.types
+.. include:: ../_summaries/nominal.experimental.extractor.context.rst
 ```
 
-## Execution and registration
+### Parameter types
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.extractor.runner
+.. include:: ../_summaries/nominal.experimental.extractor.types.rst
+```
+
+### Execution and registration
+
+```{eval-rst}
+.. include:: ../_summaries/nominal.experimental.extractor.runner.rst
 ```

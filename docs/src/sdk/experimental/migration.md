@@ -7,6 +7,5 @@
 ## API reference
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.migration
-   :imported-members:
+.. include:: ../_summaries/nominal.experimental.migration.rst
 ```

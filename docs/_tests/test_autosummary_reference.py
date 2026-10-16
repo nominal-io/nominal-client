@@ -55,6 +55,10 @@ MAX_BATCH = 10
         "__all__ = ['Resource', 'Mode', 'create', 'MAX_BATCH', 'Label', 'ResourceOrLabel', 'RESOURCE_TYPE', 'T']\n",
         encoding="utf-8",
     )
+    (tmp_path / "sample_local.py").write_text(
+        'from _sample_impl import MAX_BATCH\n\nMAX_RETRIES = 3\n"""Maximum retry attempts."""\n',
+        encoding="utf-8",
+    )
     (docs / "conf.py").write_text(
         f"import sys\nsys.path.insert(0, {str(tmp_path)!r})\n"
         "extensions = ['myst_parser', 'sphinx.ext.autosummary']\n"
@@ -62,17 +66,19 @@ MAX_BATCH = 10
         f"templates_path = [{str(templates)!r}]\n"
         f"autosummary_generate = [{str(docs / 'autosummary.rst')!r}]\n"
         "autosummary_ignore_module_all = False\n"
-        "autosummary_context = {'module_data': {'sample_api': {'enums': ['Mode'], "
+        "autosummary_context = {'module_data': {'sample_api': {'enums': ['Mode'], 'exports': sample_api.__all__, "
         "'constants': {'MAX_BATCH': '``10``'}, 'type_aliases': {\n"
         "name: restify(getattr(sample_api, name), mode='smart').replace(\"'\", \"\\\\'\")\n"
-        "for name in ['Label', 'ResourceOrLabel', 'RESOURCE_TYPE']}}}}\n"
+        "for name in ['Label', 'ResourceOrLabel', 'RESOURCE_TYPE']}},\n"
+        "'sample_local': {'enums': [], 'exports': [], 'type_aliases': {},\n"
+        "'constants': {'MAX_BATCH': '``10``', 'MAX_RETRIES': '``3``'}}}}\n"
         "autodoc_default_options = {'members': True}\n"
         "exclude_patterns = ['sdk/_summaries']\n",
         encoding="utf-8",
     )
     (docs / "autosummary.rst").write_text(
         ".. autosummary::\n   :toctree: src/sdk/_summaries\n"
-        "   :template: autosummary/module-summary.rst\n\n   sample_api\n",
+        "   :template: autosummary/module-summary.rst\n\n   sample_api\n   sample_local\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text("SDK\n===\n\n.. toctree::\n\n   sdk/experimental/sample\n", encoding="utf-8")
@@ -80,7 +86,8 @@ MAX_BATCH = 10
     page.parent.mkdir(parents=True)
     page.write_text(
         "# Sample API\n\nAn authored walkthrough.\n\n## API reference\n\n"
-        "```{eval-rst}\n.. include:: ../_summaries/sample_api.rst\n```\n",
+        "```{eval-rst}\n.. include:: ../_summaries/sample_api.rst\n\n"
+        ".. include:: ../_summaries/sample_local.rst\n```\n",
         encoding="utf-8",
     )
 
@@ -95,6 +102,7 @@ MAX_BATCH = 10
         {"create"},
         {"MAX_BATCH"},
         {"Label", "ResourceOrLabel", "RESOURCE_TYPE"},
+        {"MAX_RETRIES"},
     ]
     assert [rubric.astext() for rubric in tree.findall(nodes.rubric)] == [
         "Classes",
@@ -102,9 +110,10 @@ MAX_BATCH = 10
         "Functions",
         "Constants",
         "Type aliases",
+        "Constants",
     ]
-    assert list(tables[-2].findall(nodes.row))[0][1].astext() == "10"
-    aliases = {row[0].astext().strip(): row[1] for row in tables[-1].findall(nodes.row)}
+    assert list(tables[3].findall(nodes.row))[0][1].astext() == "10"
+    aliases = {row[0].astext().strip(): row[1] for row in tables[4].findall(nodes.row)}
     assert aliases["Label"].astext() == "Literal['fast', 'safe']"
     assert aliases["ResourceOrLabel"].astext() == "Resource | Literal['fast', 'safe']"
     assert aliases["RESOURCE_TYPE"].astext() == "Resource | None"
@@ -128,6 +137,8 @@ MAX_BATCH = 10
         assert not (output / f"sdk/generated/sample_api.{name}/index.html").exists()
     assert inventory["py:method"]["sample_api.Resource.read"].uri.startswith("sdk/generated/sample_api.Resource/")
     assert not (output / "sdk/_summaries/sample_api/index.html").exists()
+    assert "sample_local.MAX_BATCH" not in inventory.get("py:data", {})
+    assert "sample_local.MAX_RETRIES" in inventory["py:data"]
     assert "sample_api.T" not in inventory.get("py:data", {})
     assert "sample_api._Internal" not in inventory["py:class"]
     assert "sample_api.Path" not in inventory["py:class"]

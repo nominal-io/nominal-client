@@ -24,8 +24,11 @@ Module: ``{{ fullname }}``.
 
 {% endfor %}
 
-{% for heading, entries in [('Constants', data.constants), ('Type aliases', data.type_aliases)] %}
-{% for name in members | sort if name in entries and name not in classes + functions + exceptions %}
+{% for heading, entries, names in [
+    ('Constants', data.constants, attributes + data.exports),
+    ('Type aliases', data.type_aliases, members)
+] %}
+{% for name in names | unique | sort if name in entries and name not in classes + functions + exceptions %}
 {% if loop.first %}
 .. rubric:: {{ heading }}
 
