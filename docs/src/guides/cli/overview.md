@@ -19,7 +19,7 @@ nom --version
 
 Before using the CLI, save a connection profile following the [Authentication guide](/guides/authentication.md). Commands that access Nominal require `--profile default` (replace `default` with your profile name).
 
-Currently, the CLI has commands for manipulating attachments, datasets, runs, containerized extractors, instrumentation sheets, and cross-tenant migrations:
+The CLI provides commands for managing connection profiles and containerized extractors, downloading data, processing instrumentation sheets, and migrating resources between tenants:
 
 ```sh
 nom --help
@@ -29,17 +29,11 @@ See the [generated CLI reference](/sdk/cli.md) for current command options and d
 
 ## Available Commands
 
-### `attachment`
-Upload, download, and retrieve attachments by RID. Useful for managing documentation, images, and other files associated with your test data.
-
 ### `config`
 Manage authentication profiles for connecting to Nominal. Add, remove, list, and migrate profiles that store your API tokens and workspace settings.
 
 ### `container`
 Work with containerized extractors and the container images they run. An extractor carries identity; its execution contract (inputs, parameters, output format, timestamp defaults) lives on the container images registered against it, exactly one of which is active.
-
-### `dataset`
-Upload CSV files to create new datasets, retrieve dataset information by RID, and summarize dataset schemas including {abbr}`channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` names, units, and metadata.
 
 ### `download`
 Interactive data browsing and download wizard. Select an asset and dataset through an interactive terminal UI, choose channels and time bounds, and export data to CSV or Parquet. See the [Downloading Data](/guides/cli/downloading-data.md) guide for a detailed walkthrough.
@@ -50,19 +44,16 @@ Copy resources between Nominal tenants. Use `prep` to count in-scope resources a
 ### `mis`
 Process Master Instrumentation Sheets (MIS) to bulk-update channel descriptions and units. Validate units against Nominal's UCUM catalog and list available units. See the [Instrumentation Sheet Handling](/guides/cli/instrumentation-sheets.md) guide for detailed documentation.
 
-### `run`
-Create and retrieve runs. Define time-bounded segments of test data with properties and labels for organizing your test campaigns.
-
 ## Using Commands
 
 To find out more about each command, run it with `--help`:
 
 ```sh
-nom attachment --help
+nom config --help
 ```
 
 ```sh
-nom attachment download --help
+nom config profile add --help
 ```
 
 ## Next Steps
