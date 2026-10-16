@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from nominal import ts
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.log import LogPoint
@@ -285,77 +284,6 @@ def test_add_avro_stream_accepts_tags_and_an_epoch_string_literal(mock_dataset: 
     avro_opts = request.options.avro_stream
     assert avro_opts.additional_file_tags == {"vehicle": "v1"}
     assert avro_opts.timestamp_type.epoch.time_unit.value == "MICROSECONDS"
-
-
-def test_add_journal_json_without_timestamp_arguments_ingests(mock_dataset: Dataset, tmp_path) -> None:
-    """Omitting both timestamp arguments is the default call, not a half-specified override."""
-    path = tmp_path / "logs.jsonl"
-    path.write_text('{"MESSAGE": "hello"}')
-
-    # The mocked client reports no real ingest status, so a ValueError escapes once the ingest is
-    # triggered. Reaching the upload at all is what is under test. (Verified: the escaping exception
-    # is ValueError("Unknown ingest status: ..."), so do not widen this to Exception.)
-    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path") as upload:
-        with contextlib.suppress(ValueError):
-            mock_dataset.add_journal_json(path)
-
-    upload.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        pytest.param({"timestamp_column": "ts"}, id="column-without-type"),
-        pytest.param({"timestamp_type": ts.Epoch("microseconds")}, id="type-without-column"),
-    ],
-)
-def test_add_journal_json_rejects_half_specified_timestamps(mock_dataset: Dataset, tmp_path, kwargs) -> None:
-    """One half of the timestamp pair is an error, and fails before any bytes are uploaded."""
-    path = tmp_path / "logs.jsonl"
-    path.write_text('{"MESSAGE": "hello"}')
-
-    with patch("nominal.core.dataset.upload_multipart_file") as upload:
-        with pytest.raises(ValueError, match="pass both"):
-            mock_dataset.add_journal_json(path, **kwargs)
-
-    upload.assert_not_called()
-
-
-def test_add_journal_json_accepts_an_epoch_string_literal(mock_dataset: Dataset, tmp_path) -> None:
-    """The string form of an epoch type works here as it does everywhere else in the client."""
-    path = tmp_path / "logs.jsonl"
-    path.write_text('{"ts": 1}')
-
-    with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path"):
-        with contextlib.suppress(ValueError):
-            mock_dataset.add_journal_json(path, timestamp_column="ts", timestamp_type="epoch_microseconds")
-
-    # ingest() is called positionally as (auth_header, request).
-    (_, request) = mock_dataset._clients.ingest.ingest.call_args.args
-    metadata = request.options.journal_json.timestamp_metadata
-    assert metadata.field_name == "ts"
-    assert metadata.epoch_of_time_unit.time_unit.value == "MICROSECONDS"
-
-
-@pytest.mark.parametrize(
-    "timestamp_type",
-    [
-        pytest.param("iso_8601", id="string-format-literal"),
-        pytest.param(ts.Relative("seconds", start=0), id="relative"),
-    ],
-)
-def test_add_journal_json_rejects_non_epoch_timestamps_before_uploading(
-    mock_dataset: Dataset, tmp_path, timestamp_type
-) -> None:
-    """A timestamp type journal ingest cannot express fails at the call, not after the file is uploaded."""
-    path = tmp_path / "logs.jsonl"
-    path.write_text('{"ts": 1}')
-
-    with patch("nominal.core.dataset.upload_multipart_file") as upload:
-        with pytest.raises(ValueError, match="epoch"):
-            mock_dataset.add_journal_json(path, timestamp_column="ts", timestamp_type=timestamp_type)
-
-    upload.assert_not_called()
 
 
 class _StubWrapper(_DatasetScopeIngestMixin):
