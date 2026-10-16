@@ -6,9 +6,12 @@ myst:
 
 # Video ingest in Python
 
+{.lead}
 Upload a video as a named channel on a dataset, then use its ingested timestamps to
-create a run. Video channels share the dataset's time domain with telemetry, so a
-correct capture time lets you review them together.
+create a run.
+
+Video channels share the dataset's time domain with telemetry, so a correct capture
+time lets you review them together.
 
 The examples below form one workflow. They use a short sample clip and an illustrative
 UTC start time; replace both with your own recording and capture time for real test data.
@@ -16,8 +19,7 @@ UTC start time; replace both with your own recording and capture time for real t
 ## Connect to Nominal
 
 Install `nominal` and `huggingface-hub` in your Python environment. The latter is only
-needed to download the sample. Normalizing the clip also requires an `ffmpeg`
-installation with H.264 support, including the `ffprobe` executable.
+needed to download the sample.
 
 Configure a profile using the [authentication guide](/guides/authentication.md), then create a client:
 
@@ -47,6 +49,10 @@ For your own recording, set `source_path = Path("path/to/recording.mov")` instea
 ```
 
 ## Correct video format
+
+To normalize video, install FFmpeg with H.264 support, including the `ffprobe`
+executable, from [FFmpeg's downloads](https://www.ffmpeg.org/download.html) or your
+OS package manager.
 
 {py:meth}`~nominal.core.Dataset.add_video` accepts H.264 or H.265 video.
 For playback, use YUV420p pixel format and regularly spaced keyframes.
