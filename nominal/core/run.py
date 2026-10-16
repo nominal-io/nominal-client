@@ -25,7 +25,6 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.comment import Comment
 from nominal.core.dataset import Dataset
-from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -60,7 +59,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
 
     class _Clients(
         Attachment._Clients,
-        DataSource._Clients,
+        Dataset._Clients,
         Event._Clients,
         Video._Clients,
         Workbook._Clients,

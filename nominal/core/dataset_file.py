@@ -62,8 +62,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
-        # Used by the VideoDatasetFile subtype for video-channel timing updates (see
-        # DataSource._Clients for the same one-protocol-per-hierarchy convention).
+        # Used by the VideoDatasetFile subtype for video-channel timing updates.
         @property
         def video(self) -> scout_video.VideoService: ...
 

@@ -293,7 +293,7 @@ def test_markings_may_be_given_as_instances_or_rids(
 def test_every_data_source_type_exposes_its_markings(
     mock_clients: MagicMock, build_resource: Callable[[MagicMock, str], MarkableMixin]
 ) -> None:
-    """Pins the mixin onto the real classes: `Video` and `DataSource` each carry it independently."""
+    """Pins the mixin onto the real classes: `Video` and `Dataset` each carry it independently."""
     _apply_to(mock_clients, "ri.resource.a", "ri.marking.a")
 
     resource = build_resource(mock_clients, "ri.resource.a")

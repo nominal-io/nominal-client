@@ -10,7 +10,7 @@ myst:
 Stream timestamped telemetry to a dataset and view it in a run.
 
 A dataset receives points through named channels. Use
-{py:meth}`~nominal.core.DataSource.get_write_stream` to buffer those points and send
+{py:meth}`~nominal.core.Dataset.get_write_stream` to buffer those points and send
 batches in the background. This guide creates a dataset, registers numeric and string
 channels, sends a short synthetic recording, and attaches it to a run for inspection.
 The Python blocks continue the same workflow.
@@ -129,7 +129,7 @@ ignoring the option.
 
 Rust also supports `num_workers` for upload concurrency and `track_metrics=True` for
 request timing and point-staleness metrics. These are optional tuning tools; consult
-{py:meth}`~nominal.core.DataSource.get_write_stream` for their behavior before changing them.
+{py:meth}`~nominal.core.Dataset.get_write_stream` for their behavior before changing them.
 
 ## Add tags to filter data in a run or asset
 

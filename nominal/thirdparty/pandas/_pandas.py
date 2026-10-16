@@ -6,6 +6,7 @@ from datetime import datetime
 from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence, cast
 
+from nominal_api import api, scout_compute_api, scout_dataexport_api
 from nominal_api.api import Timestamp
 
 import pandas as pd
@@ -16,8 +17,8 @@ from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
-from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
 
 
 def datasource_to_dataframe(
-    datasource: DataSource,
+    datasource: Dataset,
     channel_exact_match: Sequence[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -399,3 +400,39 @@ def datasource_to_dataframe(
         result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
+
+
+def _construct_export_request(
+    channels: Sequence[Channel],
+    start: api.Timestamp,
+    end: api.Timestamp,
+    tags: Mapping[str, str] | None,
+    enable_gzip: bool,
+    timestamp_type: _AnyExportableTimestampType = "iso_8601",
+) -> scout_dataexport_api.ExportDataRequest:
+    export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
+    request = scout_dataexport_api.ExportDataRequest(
+        channels=scout_dataexport_api.ExportChannels(
+            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                channels=export_channels,
+                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                    # only one series will be returned, so no need to merge
+                    none=scout_dataexport_api.NoneStrategy(),
+                ),
+                output_timestamp_format=_to_export_timestamp_format(timestamp_type),
+            )
+        ),
+        start_time=start,
+        end_time=end,
+        context=scout_compute_api.Context(
+            dataset_references={},
+            variables={},
+            function_variables={},
+        ),
+        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+        resolution=scout_dataexport_api.ResolutionOption(
+            undecimated=scout_dataexport_api.UndecimatedResolution(),
+        ),
+        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
+    )
+    return request

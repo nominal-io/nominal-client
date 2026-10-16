@@ -453,7 +453,7 @@ def test_export_excludes_unsupported_channel_types(
         results=[make_compute_result(success=make_numeric_response([50, 100]))]
     )
     mock_client._clients.dataexport.export_channel_data.return_value = MagicMock()
-    mock_client.get_datasource.return_value = MagicMock()
+    mock_client.get_dataset.return_value = MagicMock()
 
     handler = PolarsExportHandler(client=mock_client)
     # The export() pipeline may error downstream on MagicMock CSV responses; we only need the

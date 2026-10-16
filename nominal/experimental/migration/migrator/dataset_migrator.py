@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core.channel import CreateChannelRequest
 from nominal.core.dataset import Dataset
-from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.dry_run import would_create_message

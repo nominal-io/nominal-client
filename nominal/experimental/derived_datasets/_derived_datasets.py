@@ -12,7 +12,6 @@ from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
-from nominal.core.datasource import DataSource
 from nominal.core.marking import Marking, _marking_rids
 from nominal.ts import IntegralNanosecondsDuration, _to_seconds_nanos_duration
 
@@ -101,7 +100,7 @@ class DerivedDatasetInput:
 
 
 def _edit_inputs(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     dataset_rid: str,
     edit: Callable[[Sequence[DerivedDatasetInput]], Sequence[DerivedDatasetInput]],
     message: str,
@@ -114,13 +113,13 @@ def _edit_inputs(
 
 
 def _get_definition(
-    clients: DataSource._Clients, dataset_rid: str, commit: str | None = None
+    clients: Dataset._Clients, dataset_rid: str, commit: str | None = None
 ) -> scout_catalog.DerivedDefinition:
     return clients.catalog.get_dataset_derived_definition(clients.auth_header, dataset_rid, commit)
 
 
 def _commit_definition(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     dataset_rid: str,
     spec: scout_compute_api.Dataset,
     message: str,
@@ -320,10 +319,10 @@ class DerivedDataset:
     properties: NominalProperties
     labels: Sequence[str]
     is_archived: bool
-    _clients: DataSource._Clients = field(repr=False)
+    _clients: Dataset._Clients = field(repr=False)
 
     @classmethod
-    def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
+    def _from_conjure(cls, clients: Dataset._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
             rid=dataset.rid,
             name=dataset.name,
@@ -476,7 +475,7 @@ class DerivedDataset:
 
 
 def _create_derived_dataset(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     name: str,
     spec: scout_compute_api.Dataset,
     *,
