@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import contextlib
 from datetime import timedelta
-from typing import TYPE_CHECKING, Generator
+from typing import Generator
 
+from nominal.core.dataset import Dataset
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._write_stream import WriteStreamV2
-
-if TYPE_CHECKING:
-    from nominal.core.dataset import Dataset
 
 
 @contextlib.contextmanager

@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import sys
 from datetime import UTC, datetime, timedelta
+from typing import get_type_hints
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,11 @@ from nominal.experimental.stream_v2 import create_write_stream
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
+
+
+def test_experimental_stream_annotations_resolve_at_runtime():
+    """Runtime introspection resolves the experimental writer's Dataset parameter."""
+    assert get_type_hints(create_write_stream)["dataset"] is Dataset
 
 
 @pytest.fixture
