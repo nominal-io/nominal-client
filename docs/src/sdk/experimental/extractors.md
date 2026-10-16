@@ -11,7 +11,7 @@ names to unit symbols. Each declaration copies its map into that output's manife
 units are output metadata, not image-registration settings. For direct file uploads, use
 the [ingestion builder](ingest.md#channel-units-and-csv-rows).
 
-## API reference
+## API Reference
 
 ### Decorators
 
