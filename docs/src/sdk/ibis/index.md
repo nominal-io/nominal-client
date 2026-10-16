@@ -1,10 +1,14 @@
 # Ibis
 
+Query the Nominal SQL API with Ibis expressions.
+
 Install the Ibis backend with the `ibis` extra:
 
 ```sh
 pip install "nominal[ibis]"
 ```
+
+## Query data
 
 Use an existing Nominal profile, or create one with
 `nom config profile add`.
@@ -32,8 +36,15 @@ df = query.to_polars()
 print(df)
 ```
 
-Structured channel values, such as `points_struct.value`, are returned as JSON
-strings. Use `json.loads()` to parse them.
+## Aggregate data
+
+```{eval-rst}
+.. automodule:: nominal.ibis
+   :no-members:
+   :no-inherited-members:
+   :no-undoc-members:
+   :no-index:
+```
 
 Timestamp columns include their UTC timezone. Naive filter datetimes are
 treated as UTC; timezone-aware ones are converted to UTC.
@@ -44,6 +55,8 @@ Ibis returns `truncate()` and `bucket()` results without a timezone. Add
 For large results, use `query.to_pyarrow_batches()` to process rows in batches
 without loading the entire result into memory.
 
+## API Reference
+
 ```{eval-rst}
-.. automodule:: nominal.ibis
+.. include:: ../_summaries/nominal.ibis.rst
 ```

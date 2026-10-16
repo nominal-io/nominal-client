@@ -20,3 +20,13 @@
    nominal.experimental.extractor.types
    nominal.experimental.extractor.runner
    nominal.experimental.migration
+   nominal.thirdparty.matlab
+   nominal.thirdparty.pandas
+   nominal.thirdparty.polars.polars_export_handler
+   nominal.tdms
+
+.. autosummary::
+   :toctree: src/sdk/_summaries
+   :template: autosummary/module-summary-no-prose.rst
+
+   nominal.ibis

@@ -205,7 +205,7 @@ sdk/experimental/video_processing
 :caption: Third-Party Integrations
 :maxdepth: 1
 
-sdk/ibis
+sdk/ibis/index
 sdk/thirdparty/matlab
 sdk/thirdparty/pandas
 sdk/thirdparty/polars
