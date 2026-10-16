@@ -206,6 +206,8 @@ with dataset.get_write_stream() as stream:
 ```
 
 External datasets query their external providers rather than accepting streamed writes.
+See [external dataset configuration](../datasets/external-connections.md) to configure
+provider access and channel discovery.
 
 The experimental `nominal.experimental.stream_v2.create_write_stream()` factory now
 accepts a `Dataset` as its first argument (`dataset=` for keyword calls).
