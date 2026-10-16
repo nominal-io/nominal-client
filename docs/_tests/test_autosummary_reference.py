@@ -36,6 +36,7 @@ MAX_BATCH = 10
         encoding="utf-8",
     )
     (tmp_path / "sample_api.py").write_text(
+        '"""Public resource module."""\n'
         "from pathlib import Path\n"
         "from _sample_impl import Resource, create, MAX_BATCH, _Internal\n"
         "__all__ = ['Resource', 'create', 'MAX_BATCH']\n",
@@ -75,6 +76,7 @@ MAX_BATCH = 10
         {"create"},
     ]
     assert "An authored walkthrough." in tree.astext()
+    assert "Public resource module." in tree.astext()
     inventory = InventoryFile.loads((output / "objects.inv").read_bytes(), uri="").data
     for kind, name in [("class", "Resource"), ("function", "create")]:
         entry = inventory[f"py:{kind}"][f"sample_api.{name}"]

@@ -1,11 +1,10 @@
 Module: ``{{ fullname }}``.
 
-.. module:: {{ fullname }}
+.. automodule:: {{ fullname }}
+   :no-members:
+   :no-inherited-members:
+   :no-undoc-members:
 
-{% set data = namespace(names=[]) %}
-{% for name in members | sort if not name.startswith('_') and name not in classes + functions + exceptions %}
-{% set data.names = data.names + [name] %}
-{% endfor %}
 {% for heading, names in [('Classes', classes), ('Functions', functions), ('Exceptions', exceptions)] if names %}
 .. rubric:: {{ heading }}
 
@@ -19,10 +18,11 @@ Module: ``{{ fullname }}``.
 
 {% endfor %}
 
-{% if data.names %}
+{% for name in members | sort if not name.startswith('_') and name not in classes + functions + exceptions %}
+{% if loop.first %}
 .. rubric:: Types and constants
-{% for name in data.names %}
+
+{% endif %}
 .. autodata:: {{ name }}
 
 {% endfor %}
-{% endif %}
