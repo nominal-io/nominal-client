@@ -2,4 +2,4 @@
 
 .. currentmodule:: {{ module }}
 
-.. autoexception:: {{ objname }}
+.. auto{{ objtype }}:: {{ objname }}

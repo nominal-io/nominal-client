@@ -8,6 +8,7 @@ Errors raised by the client, from ``{{ fullname }}``. All errors derive from
 
 .. autosummary::
    :toctree: generated
+   :template: autosummary/object.rst
    :nosignatures:
 {% for name in exceptions if name not in warning_names %}
    ~{{ fullname }}.{{ name }}
@@ -20,6 +21,7 @@ Warnings emitted by the client, from ``{{ fullname }}``.
 
 .. autosummary::
    :toctree: generated
+   :template: autosummary/object.rst
    :nosignatures:
 {% for name in exceptions if name in warning_names %}
    ~{{ fullname }}.{{ name }}

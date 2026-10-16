@@ -2,8 +2,13 @@
 
 import sys
 from pathlib import Path
+from pkgutil import resolve_name
+from typing import TypeVar, get_origin
 
 from nominal_sphinx_theme import theme_options
+from sphinx.ext.autosummary.generate import find_autosummary_in_files
+from sphinx.util.inspect import isenumclass, object_description
+from sphinx.util.typing import restify
 
 import nominal.exceptions
 
@@ -32,15 +37,39 @@ extensions = [
 
 templates_path = [str(HERE / "_templates")]
 autosummary_generate = [str(HERE / "autosummary.rst")]
+autosummary_ignore_module_all = False
 autosummary_filename_map = {"nominal.exceptions": "exceptions"}
 autosummary_context = {
+    "module_data": {},
     "warning_names": [
         name for name, obj in vars(nominal.exceptions).items() if isinstance(obj, type) and issubclass(obj, Warning)
     ],
 }
 
+# Read the same module seed as autosummary; template context must contain plain data.
+for _entry in find_autosummary_in_files(autosummary_generate):
+    _module = resolve_name(_entry.name)
+    # Preserve code quotes when Sphinx applies typography to inline type expressions.
+    _type_aliases = {
+        _name: restify(_value, mode="smart").replace("'", r"\'").replace('"', r"\"")
+        for _name, _value in vars(_module).items()
+        if get_origin(_value) is not None
+    }
+    autosummary_context["module_data"][_entry.name] = {
+        "enums": [_name for _name, _value in vars(_module).items() if isenumclass(_value)],
+        "type_aliases": _type_aliases,
+        "constants": {
+            _name: f"``{object_description(_value)}``"
+            for _name, _value in vars(_module).items()
+            if _name.isupper()
+            and not _name.startswith("_")
+            and _name not in _type_aliases
+            and not isinstance(_value, TypeVar)
+        },
+    }
+
 # Partials are included by guide pages rather than built as standalone pages.
-exclude_patterns = ["guides/_snippets"]
+exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
@@ -83,6 +112,7 @@ html_theme = "shibuya"
 html_title = "Nominal Python SDK"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["reference-links.js"]
 html_copy_source = False
 
 nominal_hub_url = "https://docs.nominal.io/"

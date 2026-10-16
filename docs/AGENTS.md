@@ -20,11 +20,26 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions reference. Native `autosummary` reads
-its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
+generated source pages, except for the exceptions reference and converted experiment
+references. Native `autosummary` reads its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
 under `_templates/autosummary/` to separate errors and warnings without a member list.
 The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
 by Git and the preview watcher. The left sidebar shows only the overview.
+Converted experiment pages keep prose in Markdown and include native module summaries
+from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
+members from `__all__` when present, otherwise from public local definitions. The module
+summary and object templates generate tables and detail pages without member lists.
+Classes, enums, and functions get detail pages. Constants and type aliases use separate
+compact tables with values and linked type definitions. `conf.py` reads the same native
+module seed to supply enum names, constant values, and type aliases as plain template data;
+Sphinx formats type definitions with `restify`. Native `py:data` targets preserve their
+links without typesetting a second definition block.
+Do not dump implementation type variables into the reference.
+Summary fragments are excluded from page discovery and ignored by Git and the watcher;
+only the Markdown landing page belongs in the sidebar.
+`_static/reference-links.js` forwards missing class/member fragments using the native
+summary links, preserving query strings and leaving existing on-page targets alone.
+Test this behavior with `node --test docs/_tests/reference-links.test.mjs` (Node 22; no npm dependencies).
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with

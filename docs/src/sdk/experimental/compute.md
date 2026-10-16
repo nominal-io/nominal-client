@@ -7,11 +7,11 @@
 ## Bucketed results
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.compute
+.. include:: ../_summaries/nominal.experimental.compute.rst
 ```
 
 ## Expressions
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.compute.dsl.exprs
+.. include:: ../_summaries/nominal.experimental.compute.dsl.exprs.rst
 ```
