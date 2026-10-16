@@ -1,199 +1,184 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal datasets and streaming"
+    description: "Stream numeric and string channels to a dataset, manage buffering, and view tagged data in a run."
 ---
 
 # Stream data
 
 {.lead}
-Overview and recipes for working with Nominal datasets and streaming
+Stream timestamped telemetry to a dataset and view it in a run.
 
-```{include} /guides/_snippets/install-warning.md
-```
+A dataset receives points through named channels. Use
+{py:meth}`~nominal.core.DataSource.get_write_stream` to buffer those points and send
+batches in the background. This guide creates a dataset, registers numeric and string
+channels, sends a short synthetic recording, and attaches it to a run for inspection.
+The Python blocks continue the same workflow.
 
-This guide covers additional patterns for streaming channel data to Nominal. For an end-to-end walkthrough, see the [Python Quickstart](/guides/quickstart.md#stream-data-to-nominal).
+For structured log messages and arguments, use [Stream logs](/guides/streaming/logs.md).
+For uploading a saved streaming recording, see [Avro stream files](/guides/datasets/avro-streams.md).
 
-:::{tip}
+## Create a dataset and register channels
 
-Streaming is the likeliest place for a channel to be assigned the wrong data type.
-[Pre-register the channel](/guides/datasets/channels.md) to pin it first.
-
-If the link drops mid-test, [Avro stream files](/guides/datasets/avro-streams.md) carry
-the same record shape as this API, so a local backup uploads afterwards without reshaping.
-:::
-
-```{video} /guides/images/b5/stream-gif.mp4
-:loop:
-:alt: Streaming data to Nominal from a Python client
-```
-
-## Create a dataset with additional metadata
+Install `nominal` and [configure an authentication profile](/guides/authentication.md).
+Then create the dataset that will receive the points:
 
 ```python
-from nominal.core import NominalClient
+from nominal.core import ChannelDataType, NominalClient
 
 client = NominalClient.from_profile("default")
-
-# Create a dataset with labels, properties, and prefix tree delimiter
 dataset = client.create_dataset(
-    name="Sensor Data Collection",
-    description="Real-time sensor data from multiple devices",
-    labels=["sensors", "real-time", "production"],
-    properties={
-        "environment": "production",
-        "data_type": "telemetry",
-        "owner": "engineering-team"
-    },
-    prefix_tree_delimiter="."  # For hierarchical channel organization
+    name="Motor test telemetry",
+    description="Synthetic temperature and operating-mode samples",
+    labels=["example"],
+    properties={"environment": "simulation"},
+    prefix_tree_delimiter=".",
 )
 
-dataset_rid = dataset.rid
-print(f"Dataset RID: {dataset_rid}")
-print(f"Dataset name: {dataset.name}")
-print(f"Dataset labels: {dataset.labels}")
-print(f"Dataset properties: {dataset.properties}")
+dataset.add_channel("motor.temperature", ChannelDataType.DOUBLE, unit="K")
+dataset.add_channel("motor.mode", ChannelDataType.STRING)
+print("Dataset:", dataset.nominal_url)
 ```
 
-## Stream multi-channel data to the dataset
+Register channels before sending data so their types reflect your intent. A numeric
+measurement that can be fractional should use `DOUBLE`; an operating mode should use
+`STRING`. The delimiter organizes dotted channel names into a hierarchy.
+See [Channels and data types](/guides/datasets/channels.md) for registration details.
 
-The stream allows for streaming multiple channels, with different intervals simultaneously.
+To continue an existing recording, retrieve its dataset with
+`client.get_dataset("<DATASET_RID>")` instead of creating one. Registration with
+`add_channel` leaves an existing channel unchanged; it does not repair a mismatched type.
+
+## Send numeric and string samples
+
+This example runs for roughly ten seconds. It samples temperature every iteration
+and operating mode every fifth iteration, for two simulated motors. Both channels
+use the same timestamp when sampled together.
+
 ```python
-
-import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from time import sleep
 
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-dataset = client.get_dataset("<DATASET_RID>")
-
-with dataset.get_write_stream(max_wait=timedelta(seconds=2)) as stream:
-    for i in range(1000):
-        now = datetime.now()
-        value1 = random.random()
-        msg = f"Sending data at {now}: channel1={value1}"
-
-        stream.enqueue(channel_name="my_channel_name", timestamp=now, value=value1)
-        if int(now.timestamp()) % 2 == 0:
-            value2 = random.random()
-            msg += f", channel2={value2}"
-            stream.enqueue(channel_name="my_channel_name_2", timestamp=now, value=value2)
-        print(msg)
-        sleep(0.1)
+start_time = datetime.now(timezone.utc)
+with dataset.get_write_stream(max_wait=timedelta(seconds=1)) as stream:
+    for sample_index in range(50):
+        timestamp = datetime.now(timezone.utc)
+        for motor_id, baseline in (("left", 295.0), ("right", 297.0)):
+            tags = {"motor_id": motor_id}
+            stream.enqueue(
+                channel_name="motor.temperature",
+                timestamp=timestamp,
+                value=baseline + 0.1 * sample_index,
+                tags=tags,
+            )
+            if sample_index % 5 == 0:
+                stream.enqueue(
+                    channel_name="motor.mode",
+                    timestamp=timestamp,
+                    value="idle" if sample_index < 10 else "running",
+                    tags=tags,
+                )
+        sleep(0.2)
+end_time = datetime.now(timezone.utc)
 ```
 
-After executing the code above, refresh your workbook in the browser. In the "Channel Search" section, you should now see "my_channel_name_2". Drag and drop it into the "Time Series Chart" and click the play button at the top middle of the page to view the data.
+This sends 100 temperature points and 20 mode points. `sleep` paces the demonstration;
+it is not a precision sampling clock. For real measurements, use their capture timestamps
+rather than the time you happen to enqueue them. Timestamps can be timezone-aware
+datetimes, ISO 8601 strings with an offset, or integer nanoseconds since the Unix epoch.
 
-## Write string data
+A string channel represents a value such as `"running"` at a time. Use a
+[log stream](/guides/streaming/logs.md) when you need messages with structured arguments
+such as severity, filename, or subsystem.
 
-In addition to numeric time series, Nominal supports storing string values in channels. This feature can be especially useful for logging discrete states, operational modes, or textual annotations that accompany numeric telemetry.
+## Buffering, shutdown, and delivery
 
-To write string data, you follow the same steps as for numeric data; the only difference is that the value you enqueue is a string. For example, you might log a series of system "modes" or "states" over time:
-```python
-from datetime import datetime
-from time import sleep
+`enqueue` adds a point to the stream; it is not an acknowledgement that the point is
+available to query. Batches are sent based on their size and buffering time:
 
-from nominal.core import NominalClient
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `batch_size` | 250,000 points | Limits the number of points grouped into a batch. Larger batches can reduce request overhead. |
+| `max_wait` | 0.25 seconds | Controls how long a batch buffers before being flushed. The example uses one second. |
 
-client = NominalClient.from_profile("default")
-dataset = client.get_dataset("<DATASET_RID>")
+Buffering time is not an end-to-end delivery deadline. Network conditions and upload
+work also affect when data becomes available. Tune batching against your desired
+latency and throughput rather than increasing batch size automatically.
 
-with dataset.get_write_stream() as stream:
-    # We'll cycle through three mode states repeatedly
-    for value in ["mode A", "mode B", "mode C"] * 10:
-        now = datetime.now()
-        print(f"Sending data point at {now}: {value}")
-        stream.enqueue(channel_name="my_string_channel_name", timestamp=now, value=value)
-        sleep(3)
-```
+Use the `with` block to close the stream and drain pending work when the producer
+finishes. If you manage the stream manually, call `close()` when done. There is no
+`DatasetFile` to poll for streamed points. Inspect upload errors and verify the expected
+channels and time range in Nominal before treating a recording as complete.
 
-![Write string to stream](/guides/images/b4/write_stream_string_lfoixj.png)
+### Streaming implementations and recovery
+
+By default, the SDK uses the Rust backend from `nominal-streaming` when it is available,
+and otherwise uses the Python backend. You can select one explicitly with
+`implementation="rust"` or `implementation="python"`.
+
+Failure reporting depends on the backend. In particular, the Python backend logs
+background upload failures rather than raising them when the context closes; a normal
+exit alone does not establish successful delivery of every point.
+
+The Rust backend supports `file_fallback="failed-batches.avro"` to save failed batches
+locally. This is a recovery option, not a backup of every point. Use a writable `.avro`
+path and retain any fallback file for later upload using the
+[Avro stream guide](/guides/datasets/avro-streams.md). Supplying `file_fallback` requires
+the Rust backend; the SDK raises if that backend is unavailable instead of silently
+ignoring the option.
+
+Rust also supports `num_workers` for upload concurrency and `track_metrics=True` for
+request timing and point-staleness metrics. These are optional tuning tools; consult
+{py:meth}`~nominal.core.DataSource.get_write_stream` for their behavior before changing them.
 
 ## Add tags to filter data in a run or asset
 
-### When to use tags
-
-Tags help you filter time series data when multiple sources write to the same dataset. Use tags for **low-cardinality identifiers** like:
-- Asset or component IDs (`satellite_id`, `motor_id`)
-- Test or simulation IDs (`sim_id`, `test_run_id`)
-- Environment or configuration (`environment: sim`, `position: left`)
-
-:::{admonition} Avoid highly specific tags to maintain speed
-:class: warning
-
-Tags should have a few unique options compared to the total number of records; for example, only tens to hundreds of unique tag combinations to group data. Do not use tags for:
-- **Continuous numeric values** like latitude, longitude, or measurements
-- **Timestamps** or time-based identifiers
-- **Unique IDs** like UUIDs or sequence numbers that change every record
-
-Highly specific tags degrade query performance. If your data changes every point, it belongs in a **channel**, not a tag.
-
-**Good tag examples:**
-* `asset_id` or `motor_id`
-*  `environment` (example: test, production, sim, or real)
-* `test_stand_location_id`
-:::
-
-For more guidance on organizing your data model, see [Organizing your test data](https://docs.nominal.io/core/documentation/guides/organizing-test-data).
-
-When multiple assets write data to the same dataset, you can use tags to filter data within runs or assets. Tags are specified when adding the dataset to a run or asset.
-
-### Filter data with tags in a run
-
-When creating a run, specify the tags to filter the data on:
+The sample wrote both motors into the same channels, distinguished by `motor_id`.
+Create a run covering the recording and attach only the left motor's series:
 
 ```python
-from datetime import datetime
-
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-dataset = client.get_dataset("<DATASET_RID>")
-now = datetime.now()
-
-run = client.create_run(name="my_run_name", start=now, end=None)
-run.add_dataset(
-    "satellite",
-    dataset,
-    series_tags={"satellite_id": "xc01"}
+run = client.create_run(
+    name="Left motor temperature test",
+    start=start_time,
+    end=end_time,
 )
+run.add_dataset(
+    ref_name="motor",
+    dataset=dataset,
+    series_tags={"motor_id": "left"},
+)
+print("Run:", run.nominal_url)
 ```
 
-### Log data with tags
+The filter selects existing tagged series; it does not alter or delete the right
+motor's data. An asset can similarly attach the dataset with `series_tags`; see the
+[Assets overview](/guides/assets/overview.md). For asset-associated runs, see the
+[Runs overview](/guides/runs/overview.md).
 
-Log data to the dataset using the specified tags:
+Keep tag combinations limited and meaningful: component, vehicle, environment, or test
+configuration are useful examples. Avoid values that change every point, such as a
+sequence number, timestamp, random UUID, or continuously changing measurement. Store
+measurements in channels. Large numbers of distinct tag combinations increase query
+work; consider how many combinations your identifiers will produce over time.
 
-```python
-from datetime import datetime, timedelta
+## View and verify the recording
 
-from nominal.core import NominalClient
+Open the run in Nominal and create a workbook. Add `motor.temperature` to a time-series
+chart and inspect `motor.mode` in a value grid over the run's interval. This example
+has finished streaming, so select its recorded time range rather than looking only at
+live data. The run's `motor` data scope should show the left motor's series.
 
-client = NominalClient.from_profile("default")
-dataset = client.get_dataset("<DATASET_RID>")
+Check that both channels contain data over the expected interval and that the mode
+changes from `idle` to `running`. A visible point confirms some data arrived, not that
+every expected sample did. For retrieving samples for further checks, see
+[Export data](/guides/datasets/export-data.md).
 
-with dataset.get_write_stream(max_wait=timedelta(seconds=2)) as stream:
-    stream.enqueue(
-        channel_name="temperature",
-        timestamp=datetime.now(),
-        value=0.1,
-        tags={"satellite_id": "xc01"}
-    )
-    stream.enqueue(
-        channel_name="temperature",
-        timestamp=datetime.now(),
-        value=0.2,
-        tags={"satellite_id": "xc02"}
-    )
+```{video} /guides/images/b5/stream-gif.mp4
+:loop:
+:alt: Example of streaming data displayed in a Nominal workbook
 ```
 
-When viewing the data in a workbook for the run, you will see that the temperature channel only has the value 0.1. The value 0.2 will be in a run that has `series_tags={"satellite_id": "xc02"}`.
-
----
-
-## Stream data using deprecated connections
-
-The connection workflow is deprecated. Nominal recommends using datasets for new implementations.
-
-To learn more how to stream data using connections, see the [Using connections](/guides/streaming/using-connections.md) guide.
+For a longer walkthrough with continuously generated data and live workbook viewing,
+continue to the [Python quickstart](/guides/quickstart.md#stream-data-to-nominal).
+The [connection workflow](/guides/streaming/using-connections.md) is deprecated;
+use datasets for new streaming integrations.
