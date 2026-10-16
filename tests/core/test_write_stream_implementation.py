@@ -95,6 +95,28 @@ def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, w
     assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
+@pytest.mark.parametrize("implementation", [None, "rust"])
+def test_rust_construction_error_does_not_trigger_fallback(mock_dataset: Dataset, implementation):
+    """Only an unavailable Rust import permits fallback; errors constructing its stream propagate."""
+    rust_stream = rust_write_stream_type()
+    error = ImportError("construction failed")
+    with (
+        patch.object(rust_stream, "_from_dataset", side_effect=error),
+        pytest.raises(ImportError) as raised,
+    ):
+        mock_dataset.get_write_stream(implementation=implementation)
+    assert raised.value is error
+
+
+def test_explicit_python_ignores_rust_options_without_importing_rust(
+    mock_dataset: Dataset, without_nominal_streaming: None, caplog: pytest.LogCaptureFixture
+):
+    """Explicit Python selection retains option warnings without requiring the Rust backend."""
+    with mock_dataset.get_write_stream(implementation="python", file_fallback="fallback.avro") as stream:  # type: ignore[call-overload]
+        assert isinstance(stream, WriteStream)
+    assert "Argument file_fallback has no effect unless `implementation='rust'`" in caplog.text
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -127,13 +149,14 @@ def test_superseded_python_spellings_resolve_to_python(
 ):
     """'json' and 'protobuf' both now mean 'python', which writes protobuf on the wire."""
     with (
-        pytest.warns(UserWarning, match="use implementation='python'"),
+        pytest.warns(UserWarning, match="use implementation='python'") as recorded,
         mock_dataset.get_write_stream(batch_size=1, implementation=implementation) as stream,  # type: ignore[call-overload]
     ):
         stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
+    assert recorded[0].filename == __file__
 
 
 def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):

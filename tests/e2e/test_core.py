@@ -27,10 +27,9 @@ import pandas as pd
 import pytest
 
 from nominal.core import NominalClient
-from nominal.core.channel import ChannelDataType
+from nominal.core.channel import ChannelDataType, CreateChannelRequest
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
-from nominal.core.datasource import CreateChannelRequest
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end

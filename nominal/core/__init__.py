@@ -8,7 +8,13 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
-from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
+from nominal.core.channel import (
+    BatchAddChannelsResult,
+    Channel,
+    ChannelDataType,
+    CreateChannelRequest,
+    filter_channels_with_data,
+)
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.comment import Comment
@@ -26,7 +32,6 @@ from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
-from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event, EventDisposition
 from nominal.core.filetype import FileType, FileTypes
@@ -65,8 +70,10 @@ __all__ = [
     "Asset",
     "Attachment",
     "Bounds",
+    "BatchAddChannelsResult",
     "Channel",
     "ChannelDataType",
+    "CreateChannelRequest",
     "filter_channels_with_data",
     "Checklist",
     "CheckViolation",
@@ -78,7 +85,6 @@ __all__ = [
     "DataReviewBuilder",
     "Dataset",
     "DatasetFile",
-    "DataSource",
     "DataStream",
     "Event",
     "EventDisposition",

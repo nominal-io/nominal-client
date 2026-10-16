@@ -7,9 +7,9 @@ from typing import Any
 
 from nominal_streaming import NominalDatasetStream
 
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._stream.write_stream import DataStream
 from nominal.core._types import PathLike
-from nominal.core.datasource import DataSource
 
 
 class RustWriteStream(NominalDatasetStream, DataStream):
@@ -21,7 +21,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
     def __enter__(self) -> RustWriteStream:
         """Enter the stream, opening it only if it is not open already.
 
-        `_from_datasource` opens the stream so that it accepts enqueues without a `with` block, the
+        `_from_dataset` opens the stream so that it accepts enqueues without a `with` block, the
         way `WriteStream` does. The underlying `open()` refuses to run twice, so entering an
         already-open stream has to be a no-op rather than a second open.
         """
@@ -50,10 +50,10 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         )
 
     @classmethod
-    def _from_datasource(
+    def _from_dataset(
         cls,
-        datasource_rid: str,
-        datasource_clients: DataSource._Clients,
+        dataset_rid: str,
+        clients: HasScoutParams,
         batch_size: int,
         max_wait: datetime.timedelta,
         file_fallback: PathLike | None = None,
@@ -66,15 +66,15 @@ class RustWriteStream(NominalDatasetStream, DataStream):
             kwargs["num_upload_workers"] = num_workers
             kwargs["num_runtime_workers"] = num_workers
 
-        api_key = datasource_clients.auth_header.removeprefix("Bearer ")
+        api_key = clients.auth_header.removeprefix("Bearer ")
         stream = cls.create(
             api_key,
-            datasource_clients.api_base_url,
+            clients.api_base_url,
             max_points_per_batch=batch_size,
             max_request_delay_secs=max_wait.total_seconds(),
             track_metrics=track_metrics,
             **kwargs,
-        ).with_core_consumer(datasource_rid)
+        ).with_core_consumer(dataset_rid)
 
         if file_fallback is not None:
             stream = stream.with_file_fallback(pathlib.Path(file_fallback))
