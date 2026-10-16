@@ -11,7 +11,7 @@ in the output manifest, rather than the image's registration contract.
 ## Reference
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.ingest
+.. include:: ../_summaries/nominal.experimental.ingest.rst
 
 .. autodata:: nominal.experimental.ingest.DEFAULT_FILE_RETRY_TIMEOUT_S
 
