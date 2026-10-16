@@ -7,7 +7,6 @@
 ## API reference
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.spatial
+.. include:: ../_summaries/nominal.experimental.spatial.rst
 
-.. autodata:: nominal.experimental.spatial.ColumnDataType
 ```
