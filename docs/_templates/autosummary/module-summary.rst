@@ -5,7 +5,13 @@ Module: ``{{ fullname }}``.
    :no-inherited-members:
    :no-undoc-members:
 
-{% for heading, names in [('Classes', classes), ('Functions', functions), ('Exceptions', exceptions)] if names %}
+{% set data = module_data[fullname] %}
+{% for heading, names in [
+    ('Classes', classes | reject('in', data.enums) | list),
+    ('Enumerations', classes | select('in', data.enums) | list),
+    ('Functions', functions),
+    ('Exceptions', exceptions)
+] if names %}
 .. rubric:: {{ heading }}
 
 .. autosummary::
@@ -16,4 +22,20 @@ Module: ``{{ fullname }}``.
    ~{{ name }}
 {%- endfor %}
 
+{% endfor %}
+
+{% for name in members | sort if name in data.constants and name not in classes + functions + exceptions %}
+{% if loop.first %}
+.. rubric:: Constants
+
+.. list-table::
+   :class: autosummary
+   :widths: 35 65
+
+{% endif %}
+   * - .. py:data:: {{ name }}
+          :no-typesetting:
+
+       :py:data:`~{{ fullname }}.{{ name }}`
+     - ``{{ data.constants[name] }}``
 {% endfor %}

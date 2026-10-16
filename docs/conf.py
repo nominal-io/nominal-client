@@ -2,8 +2,12 @@
 
 import sys
 from pathlib import Path
+from pkgutil import resolve_name
+from typing import TypeVar
 
 from nominal_sphinx_theme import theme_options
+from sphinx.ext.autosummary.generate import find_autosummary_in_files
+from sphinx.util.inspect import isenumclass, object_description
 
 import nominal.exceptions
 
@@ -35,10 +39,23 @@ autosummary_generate = [str(HERE / "autosummary.rst")]
 autosummary_ignore_module_all = False
 autosummary_filename_map = {"nominal.exceptions": "exceptions"}
 autosummary_context = {
+    "module_data": {},
     "warning_names": [
         name for name, obj in vars(nominal.exceptions).items() if isinstance(obj, type) and issubclass(obj, Warning)
     ],
 }
+
+# Read the same module seed as autosummary; template context must contain plain data.
+for _entry in find_autosummary_in_files(autosummary_generate):
+    _module = resolve_name(_entry.name)
+    autosummary_context["module_data"][_entry.name] = {
+        "enums": [_name for _name, _value in vars(_module).items() if isenumclass(_value)],
+        "constants": {
+            _name: object_description(_value)
+            for _name, _value in vars(_module).items()
+            if _name.isupper() and not _name.startswith("_") and not isinstance(_value, TypeVar)
+        },
+    }
 
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
@@ -84,6 +101,7 @@ html_theme = "shibuya"
 html_title = "Nominal Python SDK"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+html_js_files = ["reference-links.js"]
 html_copy_source = False
 
 nominal_hub_url = "https://docs.nominal.io/"

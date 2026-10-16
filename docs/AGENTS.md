@@ -29,10 +29,16 @@ Converted experiment pages keep prose in Markdown and include native module summ
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
-Classes and functions get detail pages. Keep existing explicit `autodata` directives for
-aliases and constants inline; do not dump every data member or implementation type variable.
+Classes, enums, and functions get detail pages. Constants use a compact name/value table;
+existing `autodata` directives keep type aliases inline. `conf.py` reads the same native
+module seed to supply enum names and constant values as plain template data. Native
+`py:data` targets preserve constant links without typesetting a second definition block.
+Do not dump implementation type variables into the reference.
 Summary fragments are excluded from page discovery and ignored by Git and the watcher;
 only the Markdown landing page belongs in the sidebar.
+`_static/reference-links.js` forwards missing class/member fragments using the native
+summary links, preserving query strings and leaving existing on-page targets alone.
+Test this behavior with `node --test docs/_tests/reference-links.test.mjs` (Node 22; no npm dependencies).
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with

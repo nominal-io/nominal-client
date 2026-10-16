@@ -46,6 +46,12 @@ jobs:
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - name: Test docstring rendering
         run: uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov
+      - name: Install Node for navigation tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Test reference bookmarks
+        run: node --test docs/_tests/reference-links.test.mjs
       - name: Build docs (warnings fail the build)
         run: |
           just build-docs
