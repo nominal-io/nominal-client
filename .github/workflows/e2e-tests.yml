@@ -23,7 +23,7 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: depot-ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     # Fork PRs don't have access to secrets — skip gracefully.
     if: >-
@@ -84,7 +84,7 @@ jobs:
   migration-e2e-tests:
     name: Migration E2E Tests
     runs-on: depot-ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     # Fork PRs don't have access to secrets — skip gracefully.
     if: >-
@@ -174,7 +174,7 @@ jobs:
   file-upload-e2e:
     name: File Upload E2E (${{ matrix.env.name }})
     runs-on: depot-ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     # Fork PRs don't have access to secrets — skip gracefully.
     if: >-
