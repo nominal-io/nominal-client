@@ -15,9 +15,7 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
-    scout_datasource_connection,
     scout_video,
-    storage_datasource_api,
     storage_writer_api,
     upload_api,
 )
@@ -143,7 +141,6 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
-    connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
@@ -152,7 +149,6 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
     storage_writer: storage_writer_api.NominalChannelWriterService
-    storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
     upload: upload_api.UploadService
     video_file: scout_video.VideoFileService
@@ -317,7 +313,6 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),
-            connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
@@ -326,7 +321,6 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
-            storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),

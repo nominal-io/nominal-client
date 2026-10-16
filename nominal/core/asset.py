@@ -12,7 +12,7 @@ from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._scope_resolution import DataScopes, resolve_connections, resolve_datasets, resolve_videos
+from nominal.core._scope_resolution import DataScopes, resolve_datasets, resolve_videos
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -29,7 +29,6 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _get_accessible_attachments
-from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _create_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
@@ -42,7 +41,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
 
-ScopeType: TypeAlias = Connection | Dataset | Video
+ScopeType: TypeAlias = Dataset | Video
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +160,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         return self
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
-        """Retrieve the dataset, connection, or video behind a data scope name.
+        """Retrieve the dataset or video behind a data scope name.
 
         Raises:
             NominalNotFoundError: If no readable data scope has this name.
@@ -177,7 +176,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """List scopes associated with this asset.
 
         Returns:
-            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video. Data scopes
+            (data_scope_name, scope) pairs, where scope can be a dataset or video. Data scopes
             whose resource is missing or not readable are left out.
 
             Spatials are not included: they live in `nominal.experimental.spatial`, whose
@@ -195,7 +194,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
         Args:
             names: Names of datascopes to remove
-            scopes: Rids or instances of scope types (dataset, video, connection) to remove.
+            scopes: Rids or instances of scope types (dataset, video) to remove.
                 A spatial can be removed by passing its rid.
 
         Raises:
@@ -279,31 +278,6 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             NominalError: If adding the data scope fails.
         """
         self._add_data_scope(data_scope_name, asset_pb2.DataSource(video=rid_from_instance_or_string(video)))
-
-    def add_connection(
-        self,
-        data_scope_name: str,
-        connection: Connection | str,
-        *,
-        series_tags: Mapping[str, str] | None = None,
-    ) -> None:
-        """Add a connection to this asset.
-
-        Data_scope_name maps "data scope name" (the name within the asset) to a Connection (or connection rid). The same
-        type of connection should use the same data scope name across assets, since checklists and templates use data
-        scope names to reference connections.
-
-        Args:
-            data_scope_name: logical name for the data scope within the asset
-            connection: connection to add to the asset
-            series_tags: Key-value tags to pre-filter the connection with before adding to the asset.
-
-        Raises:
-            NominalError: If adding the data scope fails.
-        """
-        self._add_data_scope(
-            data_scope_name, asset_pb2.DataSource(connection=rid_from_instance_or_string(connection)), series_tags
-        )
 
     def _add_data_scope(
         self,
@@ -565,26 +539,6 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             )
         return dataset
 
-    def get_connection(self, data_scope_name: str) -> Connection:
-        """Retrieve a connection by data scope name.
-
-        Args:
-            data_scope_name: Name of the asset data scope to resolve.
-
-        Returns:
-            Connection associated with the data scope name.
-
-        Raises:
-            NominalNotFoundError: If no readable connection has this data scope name.
-        """
-        named = self._scopes().named(data_scope_name)
-        connection = resolve_connections(self._clients, named.connections).get(data_scope_name)
-        if connection is None:
-            raise NominalDataScopeNotFoundError(
-                f"No connection with data scope name '{data_scope_name}' found for this asset"
-            )
-        return connection
-
     @deprecated(
         "Resolving a standalone `Video` data scope is deprecated in favor of video channels on a dataset. Use "
         "`Asset.get_dataset` with the data scope name, then `Dataset.list_video_files` to reach the video files.",
@@ -617,14 +571,6 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             (data_scope_name, dataset) pairs. Data scopes whose dataset is missing or not readable are left out.
         """
         return list(resolve_datasets(self._clients, self._scopes().datasets).items())
-
-    def list_connections(self) -> Sequence[tuple[str, Connection]]:
-        """List the connections associated with this asset.
-
-        Returns:
-            (data_scope_name, connection) pairs. Data scopes whose connection is missing or not readable are left out.
-        """
-        return list(resolve_connections(self._clients, self._scopes().connections).items())
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this asset.
@@ -832,10 +778,9 @@ def _get_asset(clients: Asset._Clients, rid: str) -> asset_pb2.Asset:
 
 
 def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> Mapping[str, ScopeType]:
-    """The readable datasets, connections, and videos behind these scopes, with one request per type that has any."""
+    """The readable datasets and videos behind these scopes, with one request per type that has any."""
     return {
         **resolve_datasets(clients, scopes.datasets),
-        **resolve_connections(clients, scopes.connections),
         **resolve_videos(clients, scopes.videos),
     }
 

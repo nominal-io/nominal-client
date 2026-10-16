@@ -100,7 +100,6 @@ Avro streams <guides/datasets/avro-streams>
 Overview <guides/streaming/overview>
 Logs <guides/streaming/logs>
 Trigger alerts <guides/streaming/streaming-checklists>
-Use connections (deprecated) <guides/streaming/using-connections>
 ```
 
 ```{toctree}

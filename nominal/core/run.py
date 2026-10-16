@@ -9,7 +9,7 @@ from typing_extensions import deprecated
 
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._scope_resolution import DataScopes, resolve_connections, resolve_datasets, resolve_videos
+from nominal.core._scope_resolution import DataScopes, resolve_datasets, resolve_videos
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -24,7 +24,6 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
@@ -185,11 +184,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         self,
         *,
         ref_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+        data_sources: Sequence[Dataset | Video | str] | None = None,
     ) -> None:
         """Remove data sources from this run.
 
-        The list data_sources can contain Connection, Dataset, or Video instances, or rids as string.
+        The list data_sources can contain Dataset or Video instances, or rids as string.
         A spatial can be removed by passing its rid.
 
         Raises:
@@ -376,35 +375,6 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             offset=offset,
         )
 
-    def add_connection(
-        self,
-        ref_name: str,
-        connection: Connection | str,
-        *,
-        series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | IntegralNanosecondsDuration | None = None,
-    ) -> None:
-        """Add a connection to this run.
-
-        Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
-        connection should use the same ref name across runs, since checklists and templates use ref names to reference
-        connections.
-
-        Args:
-            ref_name: Logical name for the connection to add to the run
-            connection: Connection to add to the run
-            series_tags: Key-value tags to pre-filter the connection with before adding to the run.
-            offset: Add the connection to the run with a pre-baked offset
-
-        Raises:
-            NominalError: If adding the data source fails.
-        """
-        self._add_data_sources(
-            {ref_name: run_service_pb2.DataSource(connection=rid_from_instance_or_string(connection))},
-            series_tags=series_tags,
-            offset=offset,
-        )
-
     @deprecated(
         "Attaching a standalone `Video` to a run is deprecated in favor of video channels on a dataset. Attach the "
         "dataset that carries the video channels with `Run.add_dataset` instead.",
@@ -467,14 +437,6 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         """
         return list(resolve_datasets(self._clients, self._scopes().datasets).items())
 
-    def list_connections(self) -> Sequence[tuple[str, Connection]]:
-        """List the connections associated with this run.
-
-        Returns:
-            (ref_name, connection) pairs. Refs whose connection is missing or not readable are left out.
-        """
-        return list(resolve_connections(self._clients, self._scopes().connections).items())
-
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this run.
 
@@ -500,24 +462,6 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         if dataset is None:
             raise NominalDataScopeNotFoundError(f"No dataset with ref name '{ref_name}' found for this run")
         return dataset
-
-    def get_connection(self, ref_name: str) -> Connection:
-        """Get a connection for this run by its ref name.
-
-        Args:
-            ref_name: Name of the run datasource reference to resolve.
-
-        Returns:
-            Connection associated with the ref name.
-
-        Raises:
-            NominalNotFoundError: If no readable connection has this ref name.
-        """
-        named = self._scopes().named(ref_name)
-        connection = resolve_connections(self._clients, named.connections).get(ref_name)
-        if connection is None:
-            raise NominalDataScopeNotFoundError(f"No connection with ref name '{ref_name}' found for this run")
-        return connection
 
     @deprecated(
         "Resolving a standalone `Video` ref is deprecated in favor of video channels on a dataset. Use "

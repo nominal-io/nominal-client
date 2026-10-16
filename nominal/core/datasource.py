@@ -15,7 +15,6 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
-    scout_datasource_connection,
     scout_video,
     storage_writer_api,
     upload_api,
@@ -87,8 +86,6 @@ class DataSource(HasRid, MarkableMixin):
         def ingest_jobs(self) -> ingest_api.IngestJobService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
-        @property
-        def connection(self) -> scout_datasource_connection.ConnectionService: ...
         @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
         @property
@@ -666,8 +663,6 @@ def _get_write_stream(
         return _python_write_stream(batch_size, max_wait, write_rid, clients)
 
     if requested == "experimental":
-        # Delayed import: `nominal.experimental.stream_v2` imports `nominal.core.connection`, which
-        # imports this module. Not optional -- purely to break the cycle.
         from nominal.experimental.stream_v2._serializer import BatchSerializer
         from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 

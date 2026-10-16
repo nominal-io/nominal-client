@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.core._stream.write_stream import WriteStream
-from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
+from nominal.experimental.stream_v2 import create_write_stream
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
@@ -34,17 +34,6 @@ def mock_dataset(mock_clients):
         labels=[],
         bounds=None,
         is_archived=False,
-    )
-
-
-@pytest.fixture
-def mock_connection(mock_clients):
-    return StreamingConnection(
-        rid="test-connection-rid",
-        name="Test Connection",
-        description="A connection for testing",
-        _clients=mock_clients,
-        nominal_data_source_rid=_DATASET_RID,
     )
 
 
@@ -78,12 +67,6 @@ def test_dataset_write_stream_defaults_to_rust(mock_dataset: Dataset):
     with mock_dataset.get_write_stream() as stream:
         assert isinstance(stream, rust_write_stream_type())
         assert stream._opts.track_metrics is False  # type: ignore[attr-defined]
-
-
-def test_connection_write_stream_defaults_to_rust(mock_connection: StreamingConnection):
-    """Connections pick the same rust default as datasets when implementation is omitted."""
-    with mock_connection.get_write_stream() as stream:
-        assert isinstance(stream, rust_write_stream_type())
 
 
 def test_falls_back_to_python_without_nominal_streaming(
@@ -238,16 +221,6 @@ def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
-def test_connection_writes_to_its_datasource_not_itself(mock_connection: StreamingConnection, mock_clients: MagicMock):
-    """A streaming connection routes writes to its backing datasource rid, not its own rid."""
-    with mock_connection.get_write_stream(batch_size=1, implementation="python") as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
-
-    kwargs = mock_clients.proto_write.write_nominal_batches.call_args.kwargs
-    assert kwargs["data_source_rid"] == _DATASET_RID
-    assert kwargs["data_source_rid"] != mock_connection.rid
-
-
 def test_default_stream_accepts_enqueue_without_a_context_manager(mock_dataset: Dataset):
     """The default stream takes enqueues when closed explicitly, the lifecycle the docstring offers."""
     stream = mock_dataset.get_write_stream()
@@ -286,3 +259,11 @@ def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_c
     assert create.call_args.args == ("test-token", "https://api.example.com/api")
     create.return_value.with_core_consumer.assert_called_once_with(mock_dataset.rid)
     create.return_value.with_core_consumer.return_value.open.assert_called_once()
+
+
+def test_experimental_factory_writes_to_dataset(mock_dataset: Dataset, mock_clients: MagicMock):
+    """The experimental context manager sends batches to the supplied dataset RID."""
+    with create_write_stream(mock_dataset, max_batch_size=1, serialize_process_workers=1) as stream:
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+
+    assert mock_clients.proto_write.write_nominal_batches_with_metrics.call_args.args[1] == mock_dataset.rid

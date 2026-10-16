@@ -28,7 +28,6 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
-from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
 from nominal.core.datasource import CreateChannelRequest
@@ -39,25 +38,7 @@ from tests.e2e import POLL_INTERVAL, _create_random_start_end
 ArchiveFn = Callable[[object], None]
 
 DATASET_REF = "dataset-ref"
-CONNECTION_REF = "connection-ref"
 VIDEO_REF = "video-ref"
-
-
-def _create_test_connection(client: NominalClient, tag: str) -> Connection:
-    """Create a streaming connection for datasource getter e2e tests.
-
-    Args:
-        client: Authenticated Nominal client used to create the connection.
-        tag: Unique suffix used to keep e2e resource names isolated.
-
-    Returns:
-        The newly created streaming connection.
-    """
-    with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
-        return client.create_streaming_connection(
-            f"datasource-{tag}",
-            f"connection-{tag}",
-        )
 
 
 def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
@@ -161,28 +142,6 @@ def test_add_dataset_to_run_and_get_by_ref_name(client: NominalClient, archive: 
     run.add_dataset(DATASET_REF, dataset)
 
     assert run.get_dataset(DATASET_REF).rid == dataset.rid
-
-
-def test_add_connection_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
-    """Link a streaming connection to a run and retrieve it by ref name.
-
-    Args:
-        client: Authenticated Nominal client used to create e2e resources.
-        archive: Cleanup helper that archives created resources after the test.
-
-    Returns:
-        None.
-    """
-    tag = uuid4().hex
-    connection = _create_test_connection(client, tag)
-    archive(connection)
-
-    run = client.create_run(f"run-{tag}", *_create_random_start_end())
-    archive(run)
-
-    run.add_connection(CONNECTION_REF, connection)
-
-    assert run.get_connection(CONNECTION_REF).rid == connection.rid
 
 
 def test_add_video_to_run_and_get_by_ref_name(client: NominalClient, archive: ArchiveFn) -> None:
@@ -372,27 +331,6 @@ def test_add_dataset_to_asset_and_get_by_scope_name(client: NominalClient, archi
     asset.add_dataset(DATASET_REF, dataset)
 
     assert asset.get_dataset(DATASET_REF).rid == dataset.rid
-
-
-def test_add_connection_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:
-    """Link a streaming connection to an asset and retrieve it by data-scope name.
-
-    Args:
-        client: Authenticated Nominal client used to create e2e resources.
-        archive: Cleanup helper that archives created resources after the test.
-
-    Returns:
-        None.
-    """
-    tag = uuid4().hex
-    asset = client.create_asset(f"asset-{tag}")
-    archive(asset)
-    connection = _create_test_connection(client, tag)
-    archive(connection)
-
-    asset.add_connection(CONNECTION_REF, connection)
-
-    assert asset.get_connection(CONNECTION_REF).rid == connection.rid
 
 
 def test_add_video_to_asset_and_get_by_scope_name(client: NominalClient, archive: ArchiveFn) -> None:

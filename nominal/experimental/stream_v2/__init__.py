@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import contextlib
 from datetime import timedelta
-from typing import Generator
+from typing import TYPE_CHECKING, Generator
 
-from nominal.core.connection import StreamingConnection
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+
+if TYPE_CHECKING:
+    from nominal.core.dataset import Dataset
 
 
 @contextlib.contextmanager
 def create_write_stream(
-    streaming_connection: StreamingConnection,
+    dataset: Dataset,
     max_batch_size: int = 10000,
     max_wait: timedelta = timedelta(seconds=1),
     max_queue_size: int = 0,
@@ -26,26 +28,26 @@ def create_write_stream(
     Use as a context manager to ensure resources are cleaned up.
 
     Args:
-        streaming_connection: The nominal streaming connection to write to.
+        dataset: The dataset to write to.
         max_batch_size: How big the batch can get before writing to Nominal.
         max_wait: How long a batch can exist before being flushed to Nominal.
         max_queue_size: Maximum number of items that can be queued (0 for unlimited).
         write_thread_workers: Number of threads to use for writing to Nominal.
         serialize_process_workers: Number of processes to use for serializing batches of protobufs.
-        track_metrics: Whether to publish metrics on latency to nominal channels on the connection
+        track_metrics: Whether to publish metrics on latency to nominal channels on the dataset
     Example:
         ```python
-        connection = client.get_connection(connection_rid)
-        with nominal.experimental.stream_v2.create_write_stream(connection) as stream:
-            stream.enqueue("temperature", 42.0, timestamp="2021-01-01T00:00:00Z", tags={"thermocouple": "A"})
-            stream.enqueue("temperature", 43.0, timestamp="2021-01-01T00:00:00Z", tags={"thermocouple": "B"})
+        dataset = client.get_dataset(dataset_rid)
+        with nominal.experimental.stream_v2.create_write_stream(dataset) as stream:
+            stream.enqueue("temperature", value=42.0, timestamp="2021-01-01T00:00:00Z", tags={"thermocouple": "A"})
+            stream.enqueue("temperature", value=43.0, timestamp="2021-01-01T00:00:00Z", tags={"thermocouple": "B"})
         ```
     """
     serializer = BatchSerializer.create(max_workers=serialize_process_workers)
     with WriteStreamV2.create(
-        streaming_connection._clients,
+        dataset._clients,
         serializer,
-        streaming_connection.nominal_data_source_rid,
+        dataset.rid,
         max_batch_size,
         max_wait,
         max_queue_size,
