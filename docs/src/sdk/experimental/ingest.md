@@ -12,14 +12,4 @@ in the output manifest, rather than the image's registration contract.
 
 ```{eval-rst}
 .. include:: ../_summaries/nominal.experimental.ingest.rst
-
-.. autodata:: nominal.experimental.ingest.DEFAULT_FILE_RETRY_TIMEOUT_S
-
-.. autodata:: nominal.experimental.ingest.DEFAULT_MAX_STORAGE_WORKERS
-
-.. autodata:: nominal.experimental.ingest.DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES
-
-.. autodata:: nominal.experimental.ingest.MAX_SMALL_FILE_ROUTE_BYTES
-
-.. autodata:: nominal.experimental.ingest.NOMINAL_MAX_CONCURRENCY
 ```
