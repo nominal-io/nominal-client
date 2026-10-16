@@ -1,3 +1,4 @@
+from nominal.experimental.compute_as_code._checklists import ChannelBinding, ChecklistBuilder
 from nominal.experimental.compute_as_code._derived_datasets import (
     commit_derived_definition,
     create_derived_dataset,
@@ -6,6 +7,8 @@ from nominal.experimental.compute_as_code._derived_datasets import (
 from nominal.experimental.compute_as_code._series import compute_series
 
 __all__ = [
+    "ChannelBinding",
+    "ChecklistBuilder",
     "commit_derived_definition",
     "compute_series",
     "create_derived_dataset",

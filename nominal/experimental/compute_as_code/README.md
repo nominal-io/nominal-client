@@ -11,6 +11,40 @@ The compute extra now uses `nominal-compute` 0.1480.0. Update older scripts from
 accept expressions from the installed version; expression objects from the older
 package are not interchangeable with the new types.
 
+## Authoring checklists
+
+Use `ChecklistBuilder` to collect failure-range expressions and create a published checklist:
+
+```py
+import nominal.compute as nc
+
+from nominal.core import NominalClient, Priority
+from nominal.experimental.compute_as_code import ChannelBinding, ChecklistBuilder
+
+client = NominalClient.from_profile("...")
+temperature = nc.NumericSeries.Reference("temperature")
+checklist = (
+    ChecklistBuilder()
+    .add_check(
+        "Sustained overheating",
+        (temperature > 100).ranges(min_duration=nc.Duration.Seconds(2)),
+        inputs={"temperature": ChannelBinding("telemetry", "engine.temperature")},
+        priority=Priority.P1,
+    )
+    .create(client, "Engine acceptance")
+)
+```
+
+Bindings resolve against the run or asset where the checklist executes. Adding checks is local;
+`create` creates and publishes a new checklist on every call without executing it. Use
+`checklist.execute(run).poll_for_completion()` to execute and wait for evaluation.
+
+`add_parameterized_check` accepts an iterable of binding maps to evaluate the same expression
+independently for multiple channels or tag selections. This API stores expression graphs,
+not Python source, and does not edit existing checklists or create drafts. See the
+[checklist authoring guide](../../../docs/src/sdk/experimental/compute-as-code.md)
+for binding, execution, and evaluation semantics.
+
 ## Derived datasets
 
 A derived dataset is a regular dataset whose contents are computed from a `nominal.compute` graph instead of
