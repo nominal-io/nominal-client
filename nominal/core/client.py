@@ -91,6 +91,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.fs.drive import Drive, _create_drive, _get_drive, _get_drive_by_id, _list_drives
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.core.integration import (
     Integration,
@@ -351,6 +352,59 @@ class NominalClient:
         with translate_grpc_errors():
             response = self._clients.workspace.GetWorkspaces(workspaces_pb2.GetWorkspacesRequest())
         return [Workspace._from_proto(workspace) for workspace in response.workspaces]
+
+    def create_drive(self, id: str, *, description: str | None = None, workspace_rid: str | None = None) -> Drive:
+        """Create a managed drive.
+
+        Args:
+            id: Identifier for the drive, unique within the workspace. Up to 100 letters,
+                digits, ``.``, ``-``, and ``_``, starting with a letter or digit; ids starting
+                with ``nominal.`` in any casing are reserved.
+            description: Free-text description of the drive.
+            workspace_rid: Workspace to create the drive in. Defaults to the client's workspace.
+
+        Returns:
+            The created drive.
+
+        Raises:
+            NominalAlreadyExistsError: A drive with this id already exists in the workspace.
+        """
+        return _create_drive(self._clients, id, description=description, workspace_rid=workspace_rid)
+
+    def get_drive(self, rid: str) -> Drive:
+        """Retrieve a drive by RID.
+
+        Args:
+            rid: RID of the drive to retrieve.
+
+        Returns:
+            The drive. This is a `VirtualDrive` when the drive mirrors an external provider.
+        """
+        return _get_drive(self._clients, rid)
+
+    def get_drive_by_id(self, id: str, *, workspace_rid: str | None = None) -> Drive:
+        """Retrieve a drive by its workspace-unique id.
+
+        Args:
+            id: Identifier of the drive to retrieve.
+            workspace_rid: Workspace to look in. Defaults to the client's workspace.
+
+        Returns:
+            The drive. This is a `VirtualDrive` when the drive mirrors an external provider.
+        """
+        return _get_drive_by_id(self._clients, id, workspace_rid=workspace_rid)
+
+    def list_drives(self, *, include_archived: bool = False, workspace_rid: str | None = None) -> Sequence[Drive]:
+        """List the drives in a workspace.
+
+        Args:
+            include_archived: Include archived drives in the results.
+            workspace_rid: Workspace to list. Defaults to the client's workspace.
+
+        Returns:
+            All drives in the workspace, with every page collected.
+        """
+        return _list_drives(self._clients, include_archived=include_archived, workspace_rid=workspace_rid)
 
     def get_user(self, user_rid: str | None = None) -> User:
         """Retrieve the specified user.
