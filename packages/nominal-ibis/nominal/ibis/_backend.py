@@ -17,6 +17,7 @@ from ibis.backends import NoUrl
 from ibis.backends.sql import SQLBackend
 from ibis.backends.sql.compilers.postgres import PostgresCompiler
 from ibis.backends.sql.datatypes import PostgresType
+from ibis.backends.sql.rewrites import FirstValue, LastValue
 from ibis.formats.pandas import PandasData
 from ibis.formats.pyarrow import PyArrowSchema
 from sqlglot.dialects.postgres import Postgres
@@ -149,7 +150,7 @@ class NominalCompiler(PostgresCompiler):
     def _minimize_spec(op: ibis_operations.WindowFunction, spec: Any) -> Any:
         # The API rejects ROW/RANGE frames on RANK/ROW_NUMBER/LAG/LEAD.
         if isinstance(op.func, ibis_operations.Analytic) and not isinstance(
-            op.func, (ibis_operations.First, ibis_operations.Last, ibis_operations.NthValue)
+            op.func, (FirstValue, LastValue, ibis_operations.NthValue)
         ):
             return None
         return spec
