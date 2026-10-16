@@ -1,427 +1,257 @@
 ---
 myst:
   html_meta:
-    description: "Interactive CLI for browsing and downloading time series data from Nominal"
+    description: "Select an asset's dataset and export channel samples to CSV or Parquet with the Nominal CLI"
 ---
 
-# Downloading Data
+# Download data with the CLI
 
 {.lead}
-Interactive CLI for browsing and downloading time series data from Nominal
+Select an asset's dataset and export channel samples to CSV or Parquet
 
-The `nom download` command provides an interactive terminal interface for browsing your Nominal data and downloading it to disk. This is particularly useful for exporting data to use in MATLAB, Python notebooks, or other analysis tools.
+`nom download` is an interactive wizard for exporting channel samples over a time interval.
+It starts from an **asset**, lets you choose one of its datasets, and writes the selected data
+as local CSV or Parquet parts. It does not download the original uploaded files.
 
-## Quick Start
+For a dataset that is only attached directly to a run, or for whole-file downloads, use the
+[Python export guide](/guides/datasets/export-data.md).
 
-To start the interactive download wizard:
+## Start the wizard
+
+Install the SDK with `pip install nominal` and
+[save a connection profile](/guides/authentication.md), then run:
 
 ```bash
 nom download --profile default
 ```
 
-Replace `default` with the name of your saved connection profile.
-
-The wizard will guide you through:
-
-1. **Selecting an asset** from your workspace
-2. **Choosing a dataset** within that asset
-3. **Filtering {abbr}`channels (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)`** to download
-4. **Specifying time bounds** for the data
-5. **Downloading** the data to disk in your preferred format
-
-## Command Options
+Replace `default` with your profile name. Parquet is the default output format; to write CSV:
 
 ```bash
-nom download --profile default [OPTIONS]
+nom download --profile default --format csv
 ```
 
-**Options:**
+The wizard asks for an asset, a dataset, channels, an output directory, and time bounds, then
+asks you to confirm the export. Use `nom download --help` for the installed version's options.
 
-- `--profile TEXT` - Saved connection profile to use (required)
-- `--format [csv|parquet]` - Output file format (default: `parquet`)
-  - `parquet` - Recommended for large datasets, better compression and faster read times
-  - `csv` - More widely compatible, easier to inspect manually
-- `--channels-per-request INTEGER` - Number of channels to request in parallel (default: `10`)
-  - Lower values: Better parallelization for small channel counts
-  - Higher values: More efficient for many channels
-  - Nominal recommends `--channels-per-request` be approximately the number of channels / number of cores (rounded up) for best performance
-- `--points-per-file INTEGER` - Maximum points per output file (default: `25,000,000`)
-  - Data is split into multiple files if it exceeds this limit
-  - Prevents memory issues with large downloads
+## Select the data
 
-## Interactive Workflow
+### Asset and dataset
 
-### Step 1: Select an asset
+Choose an asset by its displayed index. Assets are sorted by their last update time, newest
+first. The next selection lists datasets attached to that asset with their data scope names
+(shown as **Refname**). If there is only one dataset, the wizard selects it automatically.
 
-The wizard displays a table of available assets in your workspace:
+The export applies the selected asset data scope's **series tags**. It does not apply that scope's
+time offset. If your scope uses an offset, supply bounds in the dataset's time coordinates;
+returned timestamps remain in the dataset's time coordinates.
 
-```
-Available Assets (15)
-# | Name              | Description                    | Labels        | Properties
---|-------------------|--------------------------------|---------------|------------------
-0 | Flight Test #42   | Hover stability test           | 'test'        | 'vehicle'='X1'
-1 | Engine Bench Test | Static thrust characterization | 'bench-test'  | 'engine'='v2.1'
-...
+### Channels
+
+At the channel prompt, enter comma-separated substrings or `*` for all channels:
+
+```text
+Enter exact channel substrings, separated by a comma [* for all]: RPM, TEMP
 ```
 
-Enter the number of the asset you want to work with.
+Each substring is searched separately, so `RPM, TEMP` selects matches from either search.
+These are case-insensitive substring matches, not regular expressions or full-name equality.
+A prefix such as `VEHICLE.ENGINE_1` also matches names containing that text elsewhere.
 
-:::{tip}
+You can view the selected names, descriptions, types, and units before proceeding. The text
+editor can **remove names from the current selection**; adding a name that was not selected
+does not add its channel. To broaden the selection, decline the final channel confirmation and
+search again. Overlapping searches can include the same channel more than once, so prefer
+non-overlapping terms or select `*` and remove unwanted names.
 
-Assets are sorted by last updated timestamp, so recent tests appear at the top.
-:::
+The CLI warns above 500 selected channels, but this is not a hard limit. Select only what you
+need, especially for long intervals or high-rate data.
 
-### Step 2: Choose a Dataset
+### Output directory
 
-If the asset contains multiple datasets, you'll select which one to download from:
+Enter a directory, for example `./flight_data`. The wizard creates it if needed.
+Use a fresh directory for each export: filenames are based on the dataset RID and part number,
+so exporting the same dataset into the same directory can overwrite parts and leave stale files
+from an earlier, longer export.
 
+### Time bounds
+
+Choose one of three sources for the time interval:
+
+| Choice | What it supplies |
+| --- | --- |
+| `event` | The event's start and duration. If the duration is zero, the wizard asks you to enter one, such as `5m`. |
+| `run` | The run's start and end. For an ongoing run, the wizard asks for an explicit end timestamp. |
+| `custom` | Start and end timestamps you enter directly. |
+
+**Selecting a run or event changes only the time bounds.** It does not change the selected asset,
+dataset, channels, or tag filters. Check that the interval belongs to the data you intend to export.
+
+For custom bounds, enter UTC timestamps with an explicit `Z`, for example:
+
+```text
+Enter start timestamp (UTC), e.g. 2025-09-03T10:15:00Z: 2026-09-10T14:00:00Z
+Enter end timestamp (UTC): 2026-09-10T15:00:00Z
 ```
-Available Datasets (2)
-# | Name          | Refname  | Description             | Labels  | Properties
---|---------------|----------|-------------------------|---------|------------
-0 | Telemetry     | main     | Primary flight data     | -       | -
-1 | Ground System | ground   | Support equipment data  | -       | -
+
+Review the UTC bounds shown by the wizard and edit them if needed. For an ongoing run, check the
+suggested end time before accepting it. Finally, confirm the duration and selected channel count
+to begin downloading.
+
+## Understand the output
+
+The CLI writes files named after the final component of the dataset RID:
+
+```text
+flight_data/
+  abc123-part_0.parquet
+  abc123-part_1.parquet
+  abc123-part_2.parquet
 ```
 
-:::{note}
+`abc123` is illustrative; use the actual prefix from your output. CSV exports use the same pattern
+with `.csv`. Each part covers a time slice, with channel groups joined on their sample timestamps.
 
-If an asset only has one dataset, it will be selected automatically.
-:::
+| Output | Meaning |
+| --- | --- |
+| Time column | Normally `timestamp`: floating-point epoch **seconds** in UTC, not integer nanoseconds. If a channel already uses this name, the exporter chooses another time-column name. |
+| Channel columns | Exported numeric or string values. The current exporter supports `DOUBLE`, `INT`, and `STRING` channels. |
+| Missing samples | Nulls from joining channels with different sample times. CSV readers may infer their own missing-value representation. |
 
-### Step 3: Filter Channels
-
-Instead of downloading all channels, you can filter by exact substring matches:
-
-```
-There are 1,243 total channels in dataset Flight Test Telemetry.
-Enter exact channel substrings, separated by a comma [* for all]:
-```
-
-**Examples:**
-
-- `*` - Download all channels (use with caution!)
-- `RPM, TEMP, PRESS` - Download all channels containing "RPM", "TEMP", or "PRESS"
-- `ENGINE_1` - Download all channels containing "ENGINE\_1"
-
-The wizard will show you how many channels matched your query and offer options to:
-
-- **View the channel list** - See names, descriptions, data types, and units
-- **Edit the list** - Opens your default text editor to manually add/remove channels
-- **Refine your search** - Try different substring patterns
+Numeric timestamps use `Float64`, so the output is not a lossless nanosecond representation.
+CSV also relies on the reading application's type inference; inspect types before analysis.
 
 :::{warning}
-
-Downloading more than 500 channels may result in slow export times. Consider filtering to only the channels you need.
+The CLI uses the experimental Polars exporter. Unsupported channel types are skipped with a
+warning, and failed batch downloads can be logged and skipped. Channels without data in the
+selected interval may be absent. Inspect logs and check expected channels and time coverage;
+reaching the final loading instructions alone does not establish that the export is complete.
 :::
 
-### Step 4: Specify Time Bounds
+## Read the downloaded parts
 
-Choose how to define the time range for your download:
+Inspect the time-column name and the columns in your files first. The examples below assume the
+time column is `timestamp` and use the illustrative prefix `abc123`.
 
-**Option 1: Event**
+### Python with Polars
 
-```
-Enter event rid (copy + paste from nominal): ri.nominal.event.abc123
-```
-
-- Downloads data for the duration of the event
-- If the event has no duration, you'll be prompted to specify one
-
-**Option 2: Run**
-
-```
-Enter run rid (copy + paste from nominal): ri.nominal.run.def456
-```
-
-- Downloads data for the entire run timespan
-- If the run has no end time, you'll be prompted for one
-
-**Option 3: Custom**
-
-```
-Enter start timestamp (UTC), e.g. 2025-09-03T10:15:00Z: 2025-10-10T14:30:00Z
-Enter end timestamp (UTC): 2025-10-10T15:45:00Z
-```
-
-- Manually specify start and end timestamps in ISO 8601 format
-
-After selecting bounds, you can review and edit them:
-
-```
-Bounds preview (4500 seconds):
-Start (UTC): 2025-10-10T14:30:00+00:00
-End   (UTC): 2025-10-10T15:45:00+00:00
-
-Edit timestamps? (y/N):
-```
-
-### Step 5: Download Data
-
-After confirming your selections, the wizard downloads the data:
-
-```bash
-Enter download directory: [./out]: /Users/yourname/flight_data
-About to download 4500 seconds of data from 45 channels. Are you sure? (y/N): y
-```
-
-The data is saved to disk in multiple files if needed:
-
-```
-/Users/yourname/flight_data/
-  ├── abc123-part_0.parquet
-  ├── abc123-part_1.parquet
-  └── abc123-part_2.parquet
-```
-
-## Working with Downloaded Data
-
-### MATLAB
-
-After the download completes, the wizard displays code snippets for loading the data in MATLAB.
-
-**MATLAB 2023b or newer:**
-
-```matlab
-data_dir = fullfile( ...
-    "/Users/yourname/flight_data", ...
-    "abc123-part_*.parquet" ...
-);
-nominal_data = sortrows(readall(parquetDatastore(data_dir)), "timestamp");
-```
-
-**MATLAB 2019b to 2023a:**
-
-```matlab
-files=dir(fullfile( ...
-    "/Users/yourname/flight_data", ...
-    "abc123-part_*.parquet" ...
-));
-nominal_data = sortrows( ...
-    feval( ...
-        @(c) vertcat (c{:}), ...
-        cellfun( ...
-            @parquetread, ...
-            fullfile({files.folder}, {files.name}), ...
-            "uni", ...
-            0 ...
-        ) ...
-    ), ...
-    "timestamp" ...
-);
-```
-
-:::{tip}
-
-Replace `.parquet` with `.csv` in the code snippets if you downloaded in CSV format.
-:::
-
-### Python
-
-**Reading Parquet files:**
+For Parquet:
 
 ```python
 from pathlib import Path
 
 import polars as pl
 
-# Read all parquet files
-data_files = Path("/Users/yourname/flight_data").glob("abc123-part_*.parquet")
-dfs = [pl.read_parquet(f) for f in sorted(data_files)]
-
-# Combine and sort by timestamp
-nominal_data = pl.concat(dfs).sort("timestamp")
+files = sorted(Path("flight_data").glob("abc123-part_*.parquet"))
+frames = [pl.read_parquet(path) for path in files]
+nominal_data = pl.concat(frames, how="diagonal_relaxed").sort("timestamp")
+print(nominal_data.head())
 ```
 
-**Using Pandas:**
+For CSV, replace the file-selection and reading lines with:
+
+```python
+files = sorted(Path("flight_data").glob("abc123-part_*.csv"))
+frames = [pl.read_csv(path) for path in files]
+nominal_data = pl.concat(frames, how="diagonal_relaxed").sort("timestamp")
+```
+
+`diagonal_relaxed` aligns columns by name and fills absent columns with nulls, accommodating parts
+with different channel columns. It can also coerce differing types to a common type, so inspect
+`nominal_data.schema`. These examples load all parts into memory; process individual files if the
+full export is too large. If no files match, check the directory, prefix, and export logs before
+concatenating.
+
+### Python with pandas
+
+Install `pandas` and a Parquet engine such as `pyarrow` if your environment does not already have
+them. For Parquet:
 
 ```python
 from pathlib import Path
 
 import pandas as pd
 
-# Read all parquet files
-data_files = Path("/Users/yourname/flight_data").glob("abc123-part_*.parquet")
-dfs = [pd.read_parquet(f) for f in sorted(data_files)]
-
-# Combine and sort by timestamp
-nominal_data = pd.concat(dfs).sort_values("timestamp")
+files = sorted(Path("flight_data").glob("abc123-part_*.parquet"))
+nominal_data = pd.concat(
+    [pd.read_parquet(path) for path in files], ignore_index=True
+).sort_values("timestamp")
 ```
 
-## Advanced Usage
+For CSV, use the `.csv` pattern and `pd.read_csv(path)` instead of `pd.read_parquet(path)`.
+pandas aligns columns by name and fills missing values. Check the inferred dtypes, particularly
+for CSV identifiers that look numeric or contain leading zeros.
 
-### Optimizing Download Performance
+### MATLAB
 
-**For many channels (100+):**
+The wizard prints MATLAB loading instructions for the chosen format. Use a **Parquet reader for
+Parquet** and a **text-table reader for CSV**; changing only the filename extension is not enough.
+
+For example, read Parquet parts into a cell array of tables:
+
+```matlab
+files = dir(fullfile("flight_data", "abc123-part_*.parquet"));
+parts = cell(numel(files), 1);
+for k = 1:numel(files)
+    parts{k} = parquetread(fullfile(files(k).folder, files(k).name));
+end
+```
+
+For CSV:
+
+```matlab
+files = dir(fullfile("flight_data", "abc123-part_*.csv"));
+parts = cell(numel(files), 1);
+for k = 1:numel(files)
+    parts{k} = readtable(fullfile(files(k).folder, files(k).name));
+end
+```
+
+Inspect the tables' variable names and types before combining them. When all parts have matching
+columns and compatible types, concatenate and sort:
+
+```matlab
+nominal_data = sortrows(vertcat(parts{:}), "timestamp");
+```
+
+If parts have different channel columns, align their schemas first or analyze them individually.
+Convert epoch seconds to datetimes with `datetime(..., "ConvertFrom", "posixtime", "TimeZone", "UTC")`
+when needed; do not interpret the timestamp values as nanoseconds.
+
+## Adjust download size
+
+| Option | Default | What it controls |
+| --- | --- | --- |
+| `--format` | `parquet` | Output format: `parquet` or `csv`. |
+| `--channels-per-request` | `10` | Channel grouping within export requests; this is not the number of worker threads. |
+| `--points-per-file` | `25000000` | Target point budget used with estimated channel rates to choose time slices. It is not a strict row-count, byte-size, or memory limit. |
+
+Both numeric options must be at least 1. To request smaller batches:
 
 ```bash
-nom download --profile default --channels-per-request 50 --format parquet
+nom download --profile default --points-per-file 1000000 --format parquet
 ```
 
-- Higher `channels-per-request` reduces overhead
-- Parquet format is faster and more compact
+For slow or memory-intensive exports, start by selecting fewer channels or a shorter interval.
+A lower point target can reduce batch size, but it does not guarantee a memory ceiling. There is
+no universal channels-per-request setting based on CPU count; compare timings on a representative
+selection if you need to tune it.
 
-**For few than ten channels with long time ranges:**
+## Troubleshoot a selection
 
-- Downloads complete faster by requesting fewer channels at once
+- **No assets available:** check the profile's workspace and your access to assets. `nom config profile list`
+  shows saved profiles; it does not verify server access.
+- **No datasets for this asset:** choose an asset with an attached dataset. For a dataset outside
+  an asset, use [Python export](/guides/datasets/export-data.md).
+- **No channels found:** broaden the substring query or use `*`, then remove unwanted names.
+- **Failed to get an event or run:** copy its RID from Nominal and check that your profile can
+  access it. The wizard allows another attempt.
+- **Missing output data:** review exporter warnings and errors, channel types, the selected time
+  interval, and the asset scope's tags. Do not assume the requested channel count equals the
+  number of exported columns.
 
-**For large datasets:**
+## See also
 
-```bash
-nom download --profile default --points-per-file 10000000 --format parquet
-```
-
-- Smaller file sizes if you're hitting memory limits
-- Makes it easier to process data incrementally
-
-### Channel Selection Tips
-
-**Hierarchical channel names:**
-If your channels use a delimiter-based hierarchy (e.g., `VEHICLE.ENGINE_1.RPM`):
-
-```
-Enter exact channel substrings: VEHICLE.ENGINE_1
-```
-
-This selects all channels under the `ENGINE_1` subsystem.
-
-**Multiple subsystems:**
-
-```
-Enter exact channel substrings: ENGINE_1, ENGINE_2, FUEL_SYSTEM
-```
-
-Downloads all channels from multiple subsystems.
-
-**Using the text editor:**
-After getting initial results, choose "Edit the list of channels" to:
-
-- Remove unwanted channels
-- Add specific channel names you know exist
-- Copy channel lists from documentation
-
-## Data Format
-
-Downloaded data includes:
-
-| Column           | Type   | Description                        |
-| ---------------- | ------ | ---------------------------------- |
-| `timestamp`      | int64  | Nanoseconds since Unix epoch (UTC) |
-| `<channel_name>` | varies | One column per selected channel    |
-
-**Notes:**
-
-- All timestamps are in nanoseconds (1e-9 seconds) since 1970-01-01 00:00:00 UTC
-- Channel data types match their original types (float64, int64, string, bool)
-- Missing data is represented as null/NaN
-- Files are sorted by timestamp within each part file
-
-## Troubleshooting
-
-### "No assets available!"
-
-**Cause:** You don't have access to any assets in the current workspace.
-
-**Solution:** 
-
-- Verify you're authenticated: `nom config profile list`
-- Check you're using the correct workspace
-- Contact your workspace administrator for access
-
-### "No channels found matching query..."
-
-**Cause:** Your substring filter didn't match any channel names.
-
-**Solution:**
-
-- Try broader search terms
-- Use `*` to see all available channels
-- Check the dataset page in Nominal to see exact channel names
-
-### Download is slow
-
-**Possible causes:**
-
-- Too many channels selected (>500)
-- Long time range with high sample rates
-- Network connectivity issues
-
-**Solutions:**
-
-- Reduce the number of channels
-- Download shorter time windows
-- Increase `--channels-per-request` for better batching
-- Use `--format parquet` for faster writes
-
-### Out of memory errors
-
-**Cause:** Trying to download too much data at once.
-
-**Solution:**
-
-- Reduce `--points-per-file` to create smaller output files
-- Download smaller time windows
-- Reduce the number of channels
-
-### "Failed to get event/run... try again!"
-
-**Cause:** The RID you entered is invalid or you don't have access.
-
-**Solution:**
-
-- Copy the RID directly from the Nominal UI
-- Ensure you have permission to access the event/run
-- Check for typos in the RID
-
-## Example Session
-
-Here's a complete example session:
-
-```bash
-$ nom download --profile default --format parquet
-
-# Select asset #5 from the list
-Select an asset #: 5
-Selected asset: Flight Test #42 (ri.nominal.asset.xyz)
-
-# Select dataset #0
-Select a dataset #: 0
-Selected dataset: 'Telemetry' (ri.nominal.dataset.abc123)
-
-# Filter for engine and fuel channels
-There are 1,243 total channels in dataset Telemetry.
-Enter exact channel substrings, separated by a comma [* for all]: ENGINE, FUEL
-
-45 channel(s) selected! View channels? (y/N): y
-
-# Review channels, confirm selection
-Are you sure you want to proceed with 45 channel(s)? (y/N): y
-
-# Choose time bounds from a run
-Choose an option for providing time bounds for download:
-  - event
-  - run
-  - custom
-> run
-
-Enter run rid: ri.nominal.run.def456
-
-Bounds preview (3600 seconds):
-Start (UTC): 2025-10-10T14:00:00+00:00
-End   (UTC): 2025-10-10T15:00:00+00:00
-
-Edit timestamps? (y/N): n
-
-# Confirm and download
-Enter download directory [./out]: ~/flight_data
-About to download 3600 seconds of data from 45 channels. Are you sure? (y/N): y
-
-# Data is downloaded and saved
-✓ Download complete!
-
-# MATLAB code snippets are displayed for loading the data
-```
-
-## See Also
-
-- [Dataset CLI](/guides/datasets/overview.md) - Working with datasets in Python
-- [Data integration tutorial](/guides/data-integration-tutorial.md) - Data integration tutorial for Python
+- [Export data with Python](/guides/datasets/export-data.md): bounded channel exports and whole-file downloads.
+- [Datasets overview](/guides/datasets/overview.md): dataset ownership, ingestion, and metadata.
+- [CLI overview](/guides/cli/overview.md): other available commands.
