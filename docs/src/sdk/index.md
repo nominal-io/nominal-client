@@ -11,6 +11,6 @@ The main components of the SDK are:
 - **[`nominal.ts`](ts.md)**: how timestamps in your data are encoded across the SDK.
 - **[`nominal.exceptions`](exceptions.md)**: errors raised by the client.
 - **[`nominal.experimental`](experimental/index.md)**: cutting-edge experiments. These APIs may change without notice.
-- **[Third Party Integrations](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
+- **[Third-Party Integrations](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
 
 For command-line operations, see the [`nom` CLI reference](cli.md).
