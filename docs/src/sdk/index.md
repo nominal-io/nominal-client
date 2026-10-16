@@ -10,7 +10,7 @@ The main components of the SDK are:
   Start from {py:class}`~nominal.core.NominalClient`.
 - **[`nominal.ts`](ts.md)**: how timestamps in your data are encoded across the SDK.
 - **[`nominal.exceptions`](exceptions.md)**: errors raised by the client.
-- **[`nominal.thirdparty`](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
 - **[`nominal.experimental`](experimental/index.md)**: cutting-edge experiments. These APIs may change without notice.
+- **[Third-Party Integrations](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
 
 For command-line operations, see the [`nom` CLI reference](cli.md).

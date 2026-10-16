@@ -188,18 +188,6 @@ nom CLI <sdk/cli>
 
 ```{toctree}
 :hidden:
-:caption: Third-Party Integrations
-:maxdepth: 1
-
-sdk/ibis
-sdk/thirdparty/matlab
-sdk/thirdparty/pandas
-sdk/thirdparty/polars
-sdk/thirdparty/tdms
-```
-
-```{toctree}
-:hidden:
 :caption: Experiments
 :maxdepth: 1
 
@@ -211,6 +199,18 @@ sdk/experimental/migration
 sdk/experimental/spatial
 sdk/experimental/video
 sdk/experimental/video_processing
+```
+
+```{toctree}
+:hidden:
+:caption: Third-Party Integrations
+:maxdepth: 1
+
+sdk/ibis
+sdk/thirdparty/matlab
+sdk/thirdparty/pandas
+sdk/thirdparty/polars
+sdk/thirdparty/tdms
 ```
 
 ```{toctree}
