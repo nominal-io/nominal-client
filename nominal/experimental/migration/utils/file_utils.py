@@ -59,7 +59,7 @@ def copy_file_to_dataset(
                 timestamp_column=source_file.timestamp_channel,
                 timestamp_type=source_file.timestamp_type,
                 file_type=file_type,
-                file_name=file_stem,
+                file_name=f"{file_stem}{file_type.extension}",
                 tag_columns=source_file.tag_columns,
                 tags=source_file.file_tags,
             )

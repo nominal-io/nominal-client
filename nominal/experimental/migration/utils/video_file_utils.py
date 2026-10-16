@@ -196,7 +196,7 @@ def _upload_to_destination(
         if timestamp_options is not None:
             return destination_video_dataset.add_from_io(
                 video=raw_video_stream,
-                name=file_stem,
+                name=f"{file_stem}{FileTypes.MP4.extension}",
                 start=timestamp_options.starting_timestamp,
                 description=source_video_file.description,
             )
@@ -204,7 +204,7 @@ def _upload_to_destination(
         if mcap_video_details is not None:
             return destination_video_dataset.add_mcap_from_io(
                 mcap=raw_video_stream,
-                name=file_stem,
+                name=f"{file_stem}{FileTypes.MCAP.extension}",
                 topic=mcap_video_details.mcap_channel_locator_topic,
                 description=source_video_file.description,
                 file_type=FileTypes.MCAP,

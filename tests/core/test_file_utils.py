@@ -179,7 +179,7 @@ class TestCopyFileToDataset:
 
         copy_file_to_dataset(source_file, destination_dataset)
 
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "paren(reduced)"
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "paren(reduced).csv"
 
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_space_encoded_source_key_is_decoded(self, mock_get: MagicMock) -> None:
@@ -199,7 +199,7 @@ class TestCopyFileToDataset:
 
         copy_file_to_dataset(source_file, destination_dataset)
 
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "my file"
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "my file.csv"
 
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_unsafe_chars_in_source_key_are_sanitized(self, mock_get: MagicMock) -> None:
@@ -217,7 +217,22 @@ class TestCopyFileToDataset:
 
         copy_file_to_dataset(source_file, destination_dataset)
 
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "weird_name_"
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "weird_name_.csv"
+
+    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
+    def test_existing_repeated_suffix_is_preserved(self, mock_get: MagicMock) -> None:
+        """A migration passes its full target filename so a stem ending in the format suffix is retained."""
+        source_file = _make_source_file(
+            s3_key="2026-01-01T00:00:00Z_telemetry.csv.csv",
+            timestamp_channel="timestamp",
+            timestamp_type="iso_8601",
+        )
+        mock_get.return_value = _make_http_response()
+        destination_dataset = MagicMock()
+
+        copy_file_to_dataset(source_file, destination_dataset)
+
+        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "telemetry.csv.csv"
 
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_missing_timestamp_metadata_raises(self, mock_get: MagicMock) -> None:

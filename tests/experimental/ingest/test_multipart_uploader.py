@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
+from nominal.core.filetype import FileTypes
 from nominal.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
@@ -247,6 +248,26 @@ class TestValidation:
         up, _, _ = make_uploader()
         with up, pytest.raises(FileNotFoundError):
             up.enqueue_file(tmp_path / "missing.csv")
+
+
+@pytest.mark.parametrize("small_file_route_max_bytes", [None, 1024], ids=["multipart", "single-shot"])
+@pytest.mark.parametrize(
+    ("source_name", "name", "file_type", "expected"),
+    [
+        ("source.csv", "report.csv", FileTypes.CSV, "report.csv"),
+        ("source.parquet.tar.gz", "archive.parquet.tar.gz", FileTypes.PARQUET_TAR_GZ, "archive.parquet.tar.gz"),
+        ("report.csv.csv", None, FileTypes.CSV, "report.csv.csv"),
+    ],
+)
+def test_upload_routes_share_filename_resolution(
+    make_uploader, write_file, small_file_route_max_bytes, source_name, name, file_type, expected
+) -> None:
+    """Both upload routes accept full name overrides and preserve names derived from file paths."""
+    up, _, _ = make_uploader(small_file_route_max_bytes=small_file_route_max_bytes)
+    path = write_file(source_name, 10)
+    with up:
+        location = up.enqueue_file(path, file_type=file_type, name=name).result(timeout=10)
+    assert location == f"s3://bucket/{expected}"
 
 
 class TestNonBlockingEnqueueAndCancellation:

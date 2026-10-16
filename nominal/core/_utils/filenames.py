@@ -50,6 +50,19 @@ def validate_upload_filename(name: str) -> None:
         )
 
 
+def resolve_upload_filename(name: str, extension: str) -> str:
+    """Return a safe filename with the selected format suffix applied once.
+
+    A matching suffix is recognized without regard to case and uses the selected extension's
+    spelling. Existing repeated suffixes are retained. An empty extension leaves the name unchanged.
+    """
+    if extension and name.lower().endswith(extension.lower()):
+        name = name[: -len(extension)]
+    filename = f"{name}{extension}"
+    validate_upload_filename(filename)
+    return filename
+
+
 def sanitize_upload_filename(name: str, replacement: str = "_") -> str:
     """Replace unsafe characters in ``name`` with ``replacement``.
 

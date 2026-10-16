@@ -201,13 +201,14 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     new_file.update.assert_called_once()
 
 
-def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("name", ["video.mp4", "video.mp4.mp4"])
+def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     """A clean copy records the mapping and sets timing from the source's defining pair —
     start + scale, never a segment-derived absolute ending, which goes stale if the source's
     declared start was edited after segmentation (the inverted-bounds production failure).
     """
     ctx = _make_context()
-    source_file = _make_source_video_file(_video_file_rid(4))
+    source_file = _make_source_video_file(_video_file_rid(4), name=name)
     source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
 
     new_file = MagicMock()
@@ -221,6 +222,7 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert ctx.migration_state.skipped_resources == []
+    assert destination_video.add_from_io.call_args.kwargs["name"] == name
     new_file.update.assert_called_once_with(starting_timestamp=0, scale_factor=2.0)
 
 
@@ -244,7 +246,7 @@ def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch:
 
     uploaded_name = destination_video.add_from_io.call_args.kwargs["name"]
     assert "%" not in uploaded_name
-    assert uploaded_name == "flight_2_2520cam_2520front"
+    assert uploaded_name == "flight_2_2520cam_2520front.mp4"
 
 
 def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pytest.MonkeyPatch) -> None:
