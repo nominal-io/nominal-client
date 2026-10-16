@@ -34,6 +34,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event, EventDisposition
+from nominal.core.external_connection import ExternalConnection, ExternalConnectionConfig
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
 from nominal.core.integration import (
@@ -90,6 +91,8 @@ __all__ = [
     "EventDisposition",
     "EventType",
     "ExitCodeMapping",
+    "ExternalConnection",
+    "ExternalConnectionConfig",
     "FileExtractionInput",
     "FileExtractionParameter",
     "FileOutputFormat",
