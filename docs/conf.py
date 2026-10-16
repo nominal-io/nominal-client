@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 from nominal_sphinx_theme import theme_options
-from sphinx.application import Sphinx
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
@@ -101,15 +100,3 @@ html_theme_options = theme_options(
         {"title": "SDK", "url": "sdk/index"},
     ],
 )
-
-
-def _hide_generated_edit_link(
-    app: Sphinx, pagename: str, templatename: str, context: dict[str, object], doctree: object
-) -> None:
-    """Generated stubs have no editable source page on GitHub."""
-    if pagename.startswith("sdk/generated/"):
-        context["page_source_suffix"] = ""
-
-
-def setup(app: Sphinx) -> None:
-    app.connect("html-page-context", _hide_generated_edit_link)
