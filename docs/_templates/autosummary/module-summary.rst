@@ -24,9 +24,10 @@ Module: ``{{ fullname }}``.
 
 {% endfor %}
 
-{% for name in members | sort if name in data.constants and name not in classes + functions + exceptions %}
+{% for heading, entries in [('Constants', data.constants), ('Type aliases', data.type_aliases)] %}
+{% for name in members | sort if name in entries and name not in classes + functions + exceptions %}
 {% if loop.first %}
-.. rubric:: Constants
+.. rubric:: {{ heading }}
 
 .. list-table::
    :class: autosummary
@@ -37,5 +38,6 @@ Module: ``{{ fullname }}``.
           :no-typesetting:
 
        :py:data:`~{{ fullname }}.{{ name }}`
-     - ``{{ data.constants[name] }}``
+     - {{ entries[name] }}
+{% endfor %}
 {% endfor %}

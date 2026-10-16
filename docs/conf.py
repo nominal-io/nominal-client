@@ -3,11 +3,12 @@
 import sys
 from pathlib import Path
 from pkgutil import resolve_name
-from typing import TypeVar
+from typing import TypeVar, get_origin
 
 from nominal_sphinx_theme import theme_options
 from sphinx.ext.autosummary.generate import find_autosummary_in_files
 from sphinx.util.inspect import isenumclass, object_description
+from sphinx.util.typing import restify
 
 import nominal.exceptions
 
@@ -48,12 +49,22 @@ autosummary_context = {
 # Read the same module seed as autosummary; template context must contain plain data.
 for _entry in find_autosummary_in_files(autosummary_generate):
     _module = resolve_name(_entry.name)
+    # Preserve code quotes when Sphinx applies typography to inline type expressions.
+    _type_aliases = {
+        _name: restify(_value, mode="smart").replace("'", r"\'").replace('"', r'\"')
+        for _name, _value in vars(_module).items()
+        if get_origin(_value) is not None
+    }
     autosummary_context["module_data"][_entry.name] = {
         "enums": [_name for _name, _value in vars(_module).items() if isenumclass(_value)],
+        "type_aliases": _type_aliases,
         "constants": {
-            _name: object_description(_value)
+            _name: f"``{object_description(_value)}``"
             for _name, _value in vars(_module).items()
-            if _name.isupper() and not _name.startswith("_") and not isinstance(_value, TypeVar)
+            if _name.isupper()
+            and not _name.startswith("_")
+            and _name not in _type_aliases
+            and not isinstance(_value, TypeVar)
         },
     }
 

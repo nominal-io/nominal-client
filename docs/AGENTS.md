@@ -29,10 +29,11 @@ Converted experiment pages keep prose in Markdown and include native module summ
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
-Classes, enums, and functions get detail pages. Constants use a compact name/value table;
-existing `autodata` directives keep type aliases inline. `conf.py` reads the same native
-module seed to supply enum names and constant values as plain template data. Native
-`py:data` targets preserve constant links without typesetting a second definition block.
+Classes, enums, and functions get detail pages. Constants and type aliases use separate
+compact tables with values and linked type definitions. `conf.py` reads the same native
+module seed to supply enum names, constant values, and type aliases as plain template data;
+Sphinx formats type definitions with `restify`. Native `py:data` targets preserve their
+links without typesetting a second definition block.
 Do not dump implementation type variables into the reference.
 Summary fragments are excluded from page discovery and ignored by Git and the watcher;
 only the Markdown landing page belongs in the sidebar.

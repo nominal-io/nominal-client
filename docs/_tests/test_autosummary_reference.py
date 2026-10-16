@@ -12,12 +12,13 @@ from sphinx.util.inventory import InventoryFile
 def test_reference_tables_discover_exports_and_link_to_detail_pages(
     tmp_path: Path, build_docs: Callable[[], CompletedProcess[str]]
 ) -> None:
-    """Keep enums and constant values in compact tables while preserving reference links and authored prose."""
+    """Keep compact reference tables, linked type definitions, and existing object anchors."""
     docs = tmp_path / "docs"
     source = docs / "src"
     templates = Path(__file__).resolve().parents[1] / "_templates"
     (tmp_path / "_sample_impl.py").write_text(
         '''from enum import Enum
+from typing import Literal, TypeAlias
 
 class Mode(Enum):
     """Available modes."""
@@ -36,6 +37,10 @@ def create() -> Resource:
     """Create a resource."""
     return Resource()
 
+Label: TypeAlias = Literal['fast', 'safe']
+ResourceOrLabel: TypeAlias = Resource | Label
+RESOURCE_TYPE: TypeAlias = Resource | None
+
 MAX_BATCH = 10
 """Maximum items per batch."""
 ''',
@@ -46,18 +51,21 @@ MAX_BATCH = 10
         "from pathlib import Path\n"
         "from typing import TypeVar\n"
         "T = TypeVar('T')\n"
-        "from _sample_impl import Resource, Mode, create, MAX_BATCH, _Internal\n"
-        "__all__ = ['Resource', 'Mode', 'create', 'MAX_BATCH', 'T']\n",
+        "from _sample_impl import Resource, Mode, create, MAX_BATCH, Label, ResourceOrLabel, RESOURCE_TYPE, _Internal\n"
+        "__all__ = ['Resource', 'Mode', 'create', 'MAX_BATCH', 'Label', 'ResourceOrLabel', 'RESOURCE_TYPE', 'T']\n",
         encoding="utf-8",
     )
     (docs / "conf.py").write_text(
         f"import sys\nsys.path.insert(0, {str(tmp_path)!r})\n"
         "extensions = ['myst_parser', 'sphinx.ext.autosummary']\n"
+        "from sphinx.util.typing import restify\nimport sample_api\n"
         f"templates_path = [{str(templates)!r}]\n"
         f"autosummary_generate = [{str(docs / 'autosummary.rst')!r}]\n"
         "autosummary_ignore_module_all = False\n"
         "autosummary_context = {'module_data': {'sample_api': {'enums': ['Mode'], "
-        "'constants': {'MAX_BATCH': '10'}}}}\n"
+        "'constants': {'MAX_BATCH': '``10``'}, 'type_aliases': {\n"
+        "name: restify(getattr(sample_api, name), mode='smart').replace(\"'\", \"\\\\'\")\n"
+        "for name in ['Label', 'ResourceOrLabel', 'RESOURCE_TYPE']}}}}\n"
         "autodoc_default_options = {'members': True}\n"
         "exclude_patterns = ['sdk/_summaries']\n",
         encoding="utf-8",
@@ -86,14 +94,24 @@ MAX_BATCH = 10
         {"Mode"},
         {"create"},
         {"MAX_BATCH"},
+        {"Label", "ResourceOrLabel", "RESOURCE_TYPE"},
     ]
     assert [rubric.astext() for rubric in tree.findall(nodes.rubric)] == [
         "Classes",
         "Enumerations",
         "Functions",
         "Constants",
+        "Type aliases",
     ]
-    assert list(tables[-1].findall(nodes.row))[0][1].astext() == "10"
+    assert list(tables[-2].findall(nodes.row))[0][1].astext() == "10"
+    aliases = {row[0].astext().strip(): row[1] for row in tables[-1].findall(nodes.row)}
+    assert aliases["Label"].astext() == "Literal['fast', 'safe']"
+    assert aliases["ResourceOrLabel"].astext() == "Resource | Literal['fast', 'safe']"
+    assert aliases["RESOURCE_TYPE"].astext() == "Resource | None"
+    html = (output / "sdk/experimental/sample/index.html").read_text()
+    for name in ["ResourceOrLabel", "RESOURCE_TYPE"]:
+        row_html = html.split(f'id="sample_api.{name}"', 1)[1].split("</tr>", 1)[0]
+        assert 'href="../../generated/sample_api.Resource/#sample_api.Resource"' in row_html
     assert "int([x])" not in tree.astext()
     assert "An authored walkthrough." in tree.astext()
     assert "Public resource module." in tree.astext()
@@ -104,6 +122,10 @@ MAX_BATCH = 10
         assert (output / f"sdk/generated/sample_api.{name}/index.html").is_file()
     assert inventory["py:data"]["sample_api.MAX_BATCH"].uri.startswith("sdk/experimental/sample/")
     assert not (output / "sdk/generated/sample_api.MAX_BATCH/index.html").exists()
+    for name in aliases:
+        entry = inventory["py:data"][f"sample_api.{name}"]
+        assert entry.uri == f"sdk/experimental/sample/#sample_api.{name}"
+        assert not (output / f"sdk/generated/sample_api.{name}/index.html").exists()
     assert inventory["py:method"]["sample_api.Resource.read"].uri.startswith("sdk/generated/sample_api.Resource/")
     assert not (output / "sdk/_summaries/sample_api/index.html").exists()
     assert "sample_api.T" not in inventory.get("py:data", {})
