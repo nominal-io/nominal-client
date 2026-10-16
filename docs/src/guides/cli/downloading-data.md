@@ -94,9 +94,10 @@ Enter start timestamp (UTC), e.g. 2025-09-03T10:15:00Z: 2026-09-10T14:00:00Z
 Enter end timestamp (UTC): 2026-09-10T15:00:00Z
 ```
 
-Review the UTC bounds shown by the wizard and edit them if needed. For an ongoing run, check the
-suggested end time before accepting it. Finally, confirm the duration and selected channel count
-to begin downloading.
+Review the UTC bounds shown by the wizard and edit them if needed. For an ongoing run, the
+suggested end time uses your machine's local clock without a timezone, but the wizard interprets
+it as UTC. Unless your machine uses UTC, replace the suggestion with the intended UTC end time,
+including `Z`. Finally, confirm the duration and selected channel count to begin downloading.
 
 ## Understand the output
 
