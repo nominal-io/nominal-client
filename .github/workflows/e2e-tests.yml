@@ -69,7 +69,17 @@ jobs:
             --ignore=tests/e2e/migration \
             --profile staging-e2e \
             --no-cov \
+            --durations=0 --durations-min=0 \
+            --junitxml=test-results/e2e.xml \
             -v
+
+      - name: Upload e2e timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-timings
+          path: test-results/e2e.xml
+          if-no-files-found: warn
 
   migration-e2e-tests:
     name: Migration E2E Tests
@@ -144,7 +154,17 @@ jobs:
             --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
             --fail-on-skip \
             --no-cov \
+            --durations=0 --durations-min=0 \
+            --junitxml=test-results/migration.xml \
             -v
+
+      - name: Upload migration timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: migration-e2e-timings
+          path: test-results/migration.xml
+          if-no-files-found: warn
 
   # Runs the special-character filename tests against each object-store backend. These guard the
   # filename-encoding fix (PR #877): S3 tolerates every character on upload, so it can only catch a
@@ -213,4 +233,14 @@ jobs:
             -k "special_char or unsafe_char" \
             --profile file-upload-e2e \
             --no-cov \
+            --durations=0 --durations-min=0 \
+            --junitxml=test-results/file-upload.xml \
             -v
+
+      - name: Upload file upload timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-upload-e2e-timings-${{ matrix.env.name }}
+          path: test-results/file-upload.xml
+          if-no-files-found: warn
