@@ -18,7 +18,7 @@ Choose the ingestion method that matches your input:
 | Input | Method | Completion |
 | --- | --- | --- |
 | A journal-style JSON Lines file | {py:meth}`~nominal.core.Dataset.add_journal_json` | Returns a `DatasetFile`; poll it for ingestion completion. |
-| Log entries produced by your application or parsed from another format | {py:meth}`~nominal.core.Dataset.write_logs` | Sends points synchronously in batches; returns no file handle. |
+| Log entries produced by your application or parsed from another format | {py:meth}`~nominal.core.Dataset.get_log_stream` | Buffers points for background uploads; use a context manager to close the stream. |
 
 The examples below show **alternative ways to ingest the same synthetic log entries**.
 Choose one, then optionally associate the dataset with an asset or run. Running both
@@ -103,7 +103,7 @@ entries into `LogPoint` objects using the next workflow.
 
 ## Stream parsed log entries
 
-Use `write_logs` when your application already produces log points or you want to parse
+Use `get_log_stream()` when your application produces log entries or you want to parse
 a different text format locally. The source can be a saved file or a live iterable;
 streaming here refers to sending points through the API, not a requirement for a live source.
 
@@ -146,25 +146,42 @@ rest of the message intact, including spaces. `LogPoint.create` also accepts a
 timezone-aware datetime or integer nanoseconds since the Unix epoch. Pass `args=None`
 when an entry has no structured arguments.
 
-### Write the parsed points
+### Enqueue the parsed points
 
 ```python
-dataset.write_logs(parse_logs("engine.log"), channel_name="engine_logs")
+with dataset.get_log_stream() as stream:
+    for point in parse_logs("engine.log"):
+        stream.enqueue(
+            channel_name="engine_logs",
+            timestamp=point.timestamp,
+            value=point.message,
+            tags=point.args,
+        )
 print("Dataset:", dataset.nominal_url)
 ```
 
-The parser yields entries as it reads the file. `write_logs` consumes that iterable
-and sends batches of 1,000 entries by default; set `batch_size` to change the number
-of entries per API request. The default channel name is `"logs"`; this example uses
-`"engine_logs"` to identify the source.
+For a log stream, `value` is the message and `tags` becomes the entry's structured log
+arguments. This preserves the parsed `level` argument. The channel name is supplied
+on each `enqueue` call, so one stream can write to multiple log channels.
 
-The call blocks until all batches have been sent to the API. It returns `None`, not a
-`DatasetFile` or an ingestion job, so there is no file handle to poll. This sends parsed
-log entries; it does not upload or preserve the original text file as a dataset file.
+The stream buffers entries and sends batches in background threads. By default,
+`batch_size` is 50,000 records and `max_wait` is `timedelta(seconds=1)`. Adjust these
+arguments to `get_log_stream()` to balance batch size and buffering time.
 
-Earlier batches may already have been sent if parsing or a later request fails.
-The operation is not an all-or-nothing file upload; account for partial progress before
-retrying a file.
+Leaving the `with` block flushes buffered entries and waits for upload workers to
+finish. If you manage the stream without a context manager, call `close()` when done.
+Enqueueing is not a delivery acknowledgement: background upload failures are logged,
+and closing the stream does not raise those worker errors. Check SDK error logs when
+verifying delivery. Neither this stream nor `write_logs` returns a dataset-file handle
+to poll, and neither uploads the original text file.
+
+For a synchronous alternative, {py:meth}`~nominal.core.Dataset.write_logs` accepts the
+same iterable of `LogPoint` objects:
+`dataset.write_logs(parse_logs("engine.log"), channel_name="engine_logs")`.
+It sends batches of 1,000 points by default and returns after sending them, with request
+errors raised to the caller. Use it instead of the stream example when that behavior
+fits your workflow. Both methods can send earlier batches before a later failure;
+account for partial progress before retrying.
 
 ## View the logs
 
