@@ -84,6 +84,7 @@ Instrumentation sheets <guides/cli/instrumentation-sheets>
 
 Overview <guides/datasets/overview>
 CSV <guides/datasets/csv>
+Logs <guides/datasets/logs>
 HDF5 <guides/datasets/hdf-5>
 PX4 <guides/datasets/px-4>
 Export data <guides/datasets/export-data>
@@ -106,7 +107,6 @@ Use connections (deprecated) <guides/streaming/using-connections>
 :caption: Runs
 
 Overview <guides/runs/overview>
-Log files <guides/runs/log-files>
 ```
 
 ```{toctree}
@@ -114,7 +114,6 @@ Log files <guides/runs/log-files>
 :caption: Assets
 
 Overview <guides/assets/overview>
-Log files <guides/assets/log-files>
 ```
 
 ```{toctree}
