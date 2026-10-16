@@ -40,6 +40,17 @@ def test_registration_is_pure_and_ordered():
     assert len(extract.registration_kwargs()["inputs"]) == 2
 
 
+def test_error_registration_derives_fallback_message_when_omitted() -> None:
+    @ex.manifest_extractor(default_timestamp_column="time", default_timestamp_type="epoch_seconds")
+    @ex.error(ValueError, code="MALFORMED_INPUT", exit_code=65)
+    def extract(ctx):
+        pass
+
+    [mapping] = extract.registration_kwargs()["exit_code_mappings"]
+    assert mapping.code == "MALFORMED_INPUT"
+    assert mapping.message == "Malformed input"
+
+
 @pytest.mark.parametrize("declared", [False, True])
 def test_legacy_lookups_never_appear_in_registration(declared):
     """Only decorators contribute metadata, including on partially migrated callbacks."""
