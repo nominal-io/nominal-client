@@ -1,249 +1,189 @@
 ---
 myst:
   html_meta:
-    description: "Load a video file in Python and upload it to the Nominal platform"
+    description: "Prepare a video, upload it to a dataset, and attach it to a run using its ingested timestamps."
 ---
 
 # Video ingest in Python
 
 {.lead}
-Load a video file in Python and upload it to the Nominal platform
+Upload a video as a named channel on a dataset, then use its ingested timestamps to
+create a run.
 
-With recent advancements in machine learning, robotics, and autonomy,
-video is now an essential test artifact for modern hardware development teams.
+Video channels share the dataset's time domain with telemetry, so a correct capture
+time lets you review them together.
 
-```{include} /guides/_snippets/about-nominal-video.md
-```
-
-This guide demonstrates how to upload a video file to Nominal in Python.
-Other guides in the Video section demonstrate basic Python video analysis
-and computer vision for video pre-processing prior to Nominal upload.
+The examples below form one workflow. They use a short sample clip and an illustrative
+UTC start time; replace both with your own recording and capture time for real test data.
 
 ## Connect to Nominal
 
-```{include} /guides/_snippets/python/auth.md
+Install `nominal` and `huggingface-hub` in your Python environment. The latter is only
+needed to download the sample.
+
+Configure a profile using the [authentication guide](/guides/authentication.md), then create a client:
+
+```python
+from nominal.core import NominalClient
+
+client = NominalClient.from_profile("default")
 ```
 
 ## Download sample video
 
 ```python
-dataset_repo_id = "nominal-io/raptor-engine-fire"
-dataset_filename = "raptor_fire_first_5_seconds.mov"
+from pathlib import Path
+
+from huggingface_hub import hf_hub_download
+
+source_path = Path(hf_hub_download(
+    repo_id="nominal-io/raptor-engine-fire",
+    filename="raptor_fire_first_5_seconds.mov",
+    repo_type="dataset",
+))
 ```
 
-```{include} /guides/_snippets/sample-data.md
-```
-
-Since the dataset is a video file, rename `dataset_path`:
-
-```python
-video_path = dataset_path
-```
+For your own recording, set `source_path = Path("path/to/recording.mov")` instead.
 
 ```{video} https://res.cloudinary.com/didkpxvqu/video/upload/v1727576460/raptor_fire_first_5_seconds_wixsgu.mov
 ```
 
 ## Correct video format
 
-```{include} /guides/_snippets/python/normalizing-video-data.md
-```
+To normalize video, install FFmpeg with H.264 support, including the `ffprobe`
+executable, from [FFmpeg's downloads](https://www.ffmpeg.org/download.html) or your
+OS package manager.
 
-## Upload video to Nominal
-
-Once uploaded to Nominal, video test artifacts can be analyzed collaboratively in no-code workflows and
-integrated with checks to signal off-Nominal video features.
-
-Video is stored as a **video channel** on a dataset, next to the rest of your test data. You give
-the channel a name when you upload, and it then behaves like any other channel: it belongs to the
-dataset's time domain, and you drag it onto a video panel from channel search.
-
-:::{note}
-
-Standalone `Video` objects (`client.create_video()`, `Video.add_file()`, `Run.add_video()`) are
-deprecated in favor of video channels. Using them emits a `LegacyVideoDeprecationWarning`. Attach
-the dataset that carries the video channel instead.
-:::
-
-Nominal requires a video start time for video file upload. If the absolute time that the video was
-captured is not important, you can use an arbitrary datetime like `datetime.now()` or
-`2011-11-11 11:11:11`.
-
-```{include} /guides/_snippets/video-start-times.md
-```
+{py:meth}`~nominal.core.Dataset.add_video` accepts H.264 or H.265 video.
+For playback, use YUV420p pixel format and regularly spaced keyframes.
+The SDK's {py:func}`~nominal.experimental.video_processing.normalize_video` helper
+re-encodes to H.264 with YUV420p, converts existing audio to AAC, and places keyframes
+approximately every two seconds by default. It writes an MP4 or MKV file.
 
 ```python
-from datetime import datetime
+from nominal.experimental.video_processing import normalize_video
 
-from nominal.core import NominalClient
+video_path = Path("raptor_fire_normalized.mp4")
+normalize_video(source_path, video_path, force=False)
+```
 
-client = NominalClient.from_profile("default")
+`force=False` protects an existing output file. Choose a new output path or explicitly
+use `force=True` to replace it. If your video already meets the format requirements,
+skip conversion and set `video_path = source_path`.
 
-# Video is stored as a channel on a dataset, alongside your other test data
+Keyframe spacing affects seeking and playback, especially over constrained networks;
+keep the two-second default unless you have a reason to change it. Normalization can
+also reduce resolution with the `resolution` argument, preserving the aspect ratio.
+This trades image detail for a smaller video. The `num_threads` argument controls the
+thread count passed to FFmpeg; when omitted, FFmpeg chooses it.
+
+Normalization may change the frame count and logs a warning if it does. If you have
+per-frame capture timestamps, verify that they still match the output frames before
+uploading with `frame_timestamps`.
+
+## Upload with a capture time
+
+`start` is the absolute time of the first frame. Use a timezone-aware datetime or
+integer nanoseconds since the Unix epoch. The sample time below is illustrative;
+using it for your own video would misalign the video with its telemetry.
+
+```python
+from datetime import datetime, timezone
+
+start_time = datetime(2011, 11, 11, 11, 11, 11, tzinfo=timezone.utc)
 dataset = client.create_dataset(name="Engine Fire Tests")
-
 video_file = dataset.add_video(
     path=video_path,
     channel="engine_cam",
-    start=datetime.strptime("2011-11-11 11:11:11", "%Y-%m-%d %H:%M:%S"),
+    start=start_time,
 )
+video_file.poll_until_ingestion_completed()
 ```
+
+The upload returns a {py:class}`~nominal.core.VideoDatasetFile` while ingestion is
+still running. Keep that object and wait before using its ingested metadata or bounds.
+The polling method refreshes the file and raises an SDK error if ingestion fails.
+See [ingestion jobs](/guides/ingest/ingestion-jobs.md) for error handling.
+
+To add video to an existing dataset, retrieve it with `client.get_dataset("<DATASET_RID>")`
+instead of creating one. You can upload additional files to the same video channel.
+Overlapping segments are not overwritten by default; `overwrite_overlapping=True`
+deletes overlapping segments on that channel.
+
+For recordings with individual frame capture times, supply `frame_timestamps` instead
+of `start`: a sequence of absolute timestamps in integer nanoseconds since the Unix
+epoch, one for each frame. Supply exactly one of these two arguments.
+
+:::{note}
+Standalone `Video` APIs such as `client.create_video()` and `Run.add_video()` are
+deprecated. Use a dataset's video channel and attach that dataset to a run.
+:::
 
 ## Add the video to a run
 
-Once you've uploaded the video, it's easy to add its dataset to a run -
-Nominal's container for multi-modal datasets that belong to the same test run and time domain.
-
-```{include} /guides/_snippets/what-is-a-run.md
-```
-
-### Create an empty run
-
-The below code will create an empty run container.
-Any type of data that Nominal supports (video channels, CSV files, database connections, etc)
-and has an overlapping time domain can be attached to this run container.
-
-First, use [OpenCV](https://pypi.org/project/opencv-python/) to get the video length in seconds.
-Nominal Runs expect both a start and end timestamp.
-The example above uses `2011-11-11 11:11:11` as an arbitrary start time.
-To get the run end time, add the video duration (in seconds) to this start time.
-If [OpenCV](https://pypi.org/project/opencv-python/) is not yet installed for Python, install it with `pip install opencv-python`.
+This example creates a standalone run and attaches the dataset directly. Use the
+uploaded file's bounds so the run covers this clip, even if the dataset later contains
+other recordings. No local duration estimate is needed.
 
 ```python
-from datetime import datetime, timedelta
+bounds = video_file.bounds
+if bounds is None:
+    raise RuntimeError("The ingested video file has no time bounds")
 
-import cv2
-
-video = cv2.VideoCapture(video_path)
-
-# Get the frames per second and total frame count
-fps = video.get(cv2.CAP_PROP_FPS)
-frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
-
-# Calculate the duration
-duration_seconds = frame_count / fps
-print(f"Duration: {duration_seconds} seconds")
-
-video.release()
-
-start_time = datetime.strptime("2011-11-11 11:11:11", "%Y-%m-%d %H:%M:%S")
-end_time = start_time + timedelta(seconds=duration_seconds)
-```
-
-With the run start and end times as variables, create the empty run container:
-
-```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-engine_fire_run = client.create_run(
+run = client.create_run(
     name="Engine Fire Run",
-    start=start_time,
-    end=end_time,
+    start=bounds.start,
+    end=bounds.end,
     description="Run for Raptor engine fire.",
 )
-
-engine_fire_run
+run.add_dataset(ref_name="engine_fire_video", dataset=dataset)
 ```
 
-### Attach the dataset to a run
+The reference name identifies this dataset within the run. In Nominal, add a video
+panel and select the `engine_cam` channel to review the clip alongside your test data.
 
-Use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>`
-to add the dataset carrying the video channel to the run:
+If the dataset already belongs to an asset, you can instead create a run over that
+asset's time range. Asset-associated runs and direct dataset attachments are distinct
+ways to make data available; see the [Runs overview](/guides/runs/overview.md) for both workflows.
+
+## Inspect uploaded video files
+
+To resume later, retrieve the dataset using its RID, then list its video files:
 
 ```python
-engine_fire_run.add_dataset(
-    ref_name="engine fire video",
-    dataset=dataset,
-)
-```
-
-```{include} /guides/_snippets/what-is-a-ref-name.md
-```
-
-## Retrieve a video
-
-Retrieve the dataset with its RID (resource ID), which can be copy pasted for any dataset on the
-[Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets), then list its video files:
-
-```python
-dataset = client.get_dataset(
-    "ri.catalog.cerulean-staging.dataset.d6c6e12c-05b3-4bb0-9f45-97609b7c9da2"
-)
-
+dataset = client.get_dataset("<DATASET_RID>")
 for video_file in dataset.list_video_files():
-    print(video_file.name, video_file.media_duration_seconds, "seconds")
+    print(video_file.name)
+    print("Frames:", video_file.num_frames)
+    print("Frame rate:", video_file.media_frame_rate)
+    print("Media duration (seconds):", video_file.media_duration_seconds)
+    print("Time bounds:", video_file.bounds)
 ```
 
-## Archive a video
+Metadata fields may be `None` when unavailable. Media duration describes the encoded
+video; use `bounds` for its absolute time range in Nominal.
 
-Archiving the dataset prevents it from displaying on the
-[Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets).
+## Archive the dataset or remove a file
+
+`dataset.archive()` archives the **entire dataset**, including its telemetry and all
+video channels. `dataset.unarchive()` restores it. Archiving is not a way to hide just
+one clip.
+
+To delete a single uploaded video file, call {py:meth}`~nominal.core.DatasetFile.delete`
+on that file. This removes data rather than archiving it; select the intended file
+before calling it.
+
+## Preview locally
+
+In a Jupyter notebook, preview the normalized MP4 with IPython:
 
 ```python
-dataset.archive()
+from IPython.display import Video, display
+
+display(Video(str(video_path), embed=True))
 ```
 
-To unarchive it:
-
-```python
-dataset.unarchive()
-```
-
-Now the dataset will display again on the [Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets).
-
-To remove a single video file rather than the whole dataset, call `delete()` on the file returned by
-`Dataset.add_video()` or `Dataset.list_video_files()`.
-
-## Appendix
-
-### Display video inline
-
-```{include} /guides/_snippets/inline-video.md
-```
-
-### Inspect video metadata with OpenCV
-
-The free [OpenCV](https://pypi.org/project/opencv-python/) Python library is invaluable for video inspection
-and low-level video editing.
-
-Below is a simple script that demonstrates how to capture basic video file properties such as
-video duration, frames per second, frame size, and total frame count.
-
-You can install OpenCV for Python with `pip install opencv-python`.
-
-```python
-import cv2
-
-# Load the video
-# video_path = 'raptor_fire_first_5_seconds.mp4'
-# ☝️ Replace with your video_path or use the example video_path from above
-cap = cv2.VideoCapture(video_path)
-
-# Get video properties
-frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  # Width of the video frames
-frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # Height of the video frames
-fps = cap.get(cv2.CAP_PROP_FPS)  # Frames per second (fps)
-frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
-
-# Calculate the duration of the video in seconds
-duration = frame_count / fps
-
-# Print video properties
-print(f"Video Size: {frame_width}x{frame_height} (width x height)")
-print(f"FPS: {fps}")
-print(f"Total Frames: {frame_count}")
-print(f"Duration: {duration:.2f} seconds")
-
-# Release the video capture object
-cap.release()
-```
-
-```
-Video Size: 640x360 (width x height)
-FPS: 30.0
-Total Frames: 150
-Duration: 5.00 seconds
-```
-
-If interested in more advanced video processing in Python, check out the [object identification guide](/guides/video/object-identification.md).
+Embedding copies the video into the notebook, so use it for short clips. Browser codec
+support varies; converting a MOV to an H.264 MP4 can help with local playback.
+For processing video frames before upload, continue to the
+[object identification guide](/guides/video/object-identification.md).
