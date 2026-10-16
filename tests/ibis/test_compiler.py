@@ -56,6 +56,14 @@ def test_aggregate_window_keeps_frame() -> None:
     assert "ROWS BETWEEN" in sql
 
 
+@pytest.mark.parametrize("picked", [_.value.first(), _.value.last(), _.value.nth(1)], ids=["first", "last", "nth"])
+def test_value_window_keeps_frame(picked: ibis.Deferred) -> None:
+    """First, last, and nth values over a bounded window read only the rows that window covers."""
+    w = ibis.window(group_by="channel", order_by="ts", preceding=2, following=0)
+    sql = compile_sql(POINTS.select(picked=picked.over(w)))
+    assert "ROWS BETWEEN" in sql
+
+
 def test_argmax_renders_as_max_by() -> None:
     """Argmax compiles to the API's max_by, not sqlglot's ARG_MAX canonicalization."""
     sql = compile_sql(POINTS.group_by("channel").agg(last=_.value.argmax(_.ts)))
