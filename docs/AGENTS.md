@@ -20,11 +20,18 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions reference. Native `autosummary` reads
-its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
+generated source pages, except for the exceptions reference and converted experiment
+references. Native `autosummary` reads its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
 under `_templates/autosummary/` to separate errors and warnings without a member list.
 The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
 by Git and the preview watcher. The left sidebar shows only the overview.
+Converted experiment pages keep prose in Markdown and include native module summaries
+from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
+members from `__all__` when present, otherwise from public local definitions. The module
+summary and object templates generate tables and detail pages without member lists.
+Classes and functions get detail pages; aliases and constants remain inline with their values.
+Summary fragments are excluded from page discovery and ignored by Git and the watcher;
+only the Markdown landing page belongs in the sidebar.
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with

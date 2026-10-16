@@ -32,6 +32,7 @@ extensions = [
 
 templates_path = [str(HERE / "_templates")]
 autosummary_generate = [str(HERE / "autosummary.rst")]
+autosummary_ignore_module_all = False
 autosummary_filename_map = {"nominal.exceptions": "exceptions"}
 autosummary_context = {
     "warning_names": [
@@ -40,7 +41,7 @@ autosummary_context = {
 }
 
 # Partials are included by guide pages rather than built as standalone pages.
-exclude_patterns = ["guides/_snippets"]
+exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
