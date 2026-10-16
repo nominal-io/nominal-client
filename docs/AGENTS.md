@@ -20,15 +20,18 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions reference and converted experiment
-references. Native `autosummary` reads its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
-under `_templates/autosummary/` to separate errors and warnings without a member list.
+generated source pages, except for the exceptions reference, experiment references,
+and integration references. Native `autosummary` reads its module entry in `autosummary.rst`,
+discovers public exceptions, and uses the template under `_templates/autosummary/`
+to separate errors and warnings without a member list.
 The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
 by Git and the preview watcher. The left sidebar shows only the overview.
-Converted experiment pages keep prose in Markdown and include native module summaries
+Experiment and integration pages keep prose in Markdown and include native module summaries
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
+Ibis renders its module docstring above the API reference. Its seed uses
+`module-summary-no-prose.rst` to register the module without repeating that prose in the tables.
 Classes, enums, and functions get detail pages. Constants and type aliases use separate
 compact tables with values and linked type definitions. `conf.py` reads the same native
 module seed to supply enum names, constant values, and type aliases as plain template data;
