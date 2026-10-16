@@ -20,6 +20,7 @@ reference/toplevel.md sdk/index.md
 reference/ts.md sdk/ts.md
 changelog.md sdk/changelog.md
 
-# Logs are dataset channels, with optional asset and run context.
-guides/runs/log-files.md guides/datasets/logs.md
-guides/assets/log-files.md guides/datasets/logs.md
+# The old asset/run guides wrote log points; retain their URLs under Stream.
+guides/runs/log-files.md guides/streaming/logs.md
+guides/assets/log-files.md guides/streaming/logs.md
+guides/datasets/logs.md guides/datasets/journal-json.md

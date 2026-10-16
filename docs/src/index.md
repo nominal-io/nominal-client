@@ -84,7 +84,7 @@ Instrumentation sheets <guides/cli/instrumentation-sheets>
 
 Overview <guides/datasets/overview>
 CSV <guides/datasets/csv>
-Logs <guides/datasets/logs>
+Journal JSON <guides/datasets/journal-json>
 HDF5 <guides/datasets/hdf-5>
 PX4 <guides/datasets/px-4>
 Export data <guides/datasets/export-data>
@@ -98,6 +98,7 @@ Avro streams <guides/datasets/avro-streams>
 :caption: Stream
 
 Overview <guides/streaming/overview>
+Logs <guides/streaming/logs>
 Trigger alerts <guides/streaming/streaming-checklists>
 Use connections (deprecated) <guides/streaming/using-connections>
 ```
