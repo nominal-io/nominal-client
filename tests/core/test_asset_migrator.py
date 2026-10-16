@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -135,11 +135,13 @@ class TestAssetMigratorAttachments:
         new_att_2.rid = new_rid_2
 
         mock_att_migrator = mock_att_cls.return_value
-        mock_att_migrator.copy_from.side_effect = [new_att_1, new_att_2]
+        mock_att_migrator.copy_attachments.return_value = [new_att_1, new_att_2]
 
         migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
 
-        mock_att_migrator.copy_from.assert_has_calls([call(source_att_1), call(source_att_2)])
+        mock_att_migrator.copy_attachments.assert_called_once_with(
+            [source_att_1, source_att_2], f"asset {source_asset.rid}"
+        )
         dest_asset.add_attachments.assert_called_once_with([new_att_1, new_att_2])
 
     @patch("nominal.experimental.migration.migrator.asset_migrator.AttachmentMigrator")
@@ -151,9 +153,10 @@ class TestAssetMigratorAttachments:
         dest_asset = _make_dest_asset()
         ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
 
+        mock_att_cls.return_value.copy_attachments.return_value = []
+
         migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
 
-        mock_att_cls.return_value.copy_from.assert_not_called()
         dest_asset.add_attachments.assert_not_called()
 
     @patch("nominal.experimental.migration.migrator.asset_migrator.AttachmentMigrator")
@@ -171,7 +174,7 @@ class TestAssetMigratorAttachments:
 
         new_att = MagicMock()
         new_att.rid = _att_rid(101)
-        mock_att_cls.return_value.copy_from.return_value = new_att
+        mock_att_cls.return_value.copy_attachments.return_value = [new_att]
 
         migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
 
@@ -179,32 +182,50 @@ class TestAssetMigratorAttachments:
         init_ctx = mock_att_cls.call_args[0][0]
         assert init_ctx.migration_state is ctx.migration_state
 
-    @patch("nominal.experimental.migration.migrator.asset_migrator.AttachmentMigrator")
-    def test_archived_attachments_are_skipped(self, mock_att_cls: MagicMock) -> None:
-        """Archived source attachments are not migrated or added to the destination asset."""
-        migrator, ctx = self._make_migrator()
 
-        active_att = MagicMock()
-        active_att.rid = _att_rid(1)
-        active_att.is_archived = False
-        archived_att = MagicMock()
-        archived_att.rid = _att_rid(2)
-        archived_att.is_archived = True
+class TestAssetMigratorAttachmentFailure:
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    @patch("nominal.experimental.migration.migrator.asset_migrator.VideoMigrator")
+    def test_attachment_upload_failure_does_not_abort_sibling_resources(
+        self, mock_vm_cls: MagicMock, mock_wm_cls: MagicMock
+    ) -> None:
+        """Failed attachment uploads are recorded as skips while the run, video, and workbook still migrate."""
+        ctx = _make_context()
+        ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")  # type: ignore[attr-defined]
 
-        source_asset = _make_source_asset(attachments=[active_att, archived_att])
+        def source_attachment(n: int) -> MagicMock:
+            attachment = MagicMock(rid=_att_rid(n), is_archived=False)
+            attachment._clients.attachment.GetAttachment.return_value.attachment.file_type = "image/png"
+            return attachment
+
+        run_attachment, asset_attachment = source_attachment(1), source_attachment(2)
+        source_run = MagicMock(rid=_run_rid(1), is_archived=False)
+        source_run.list_attachments.return_value = [run_attachment]
+        source_run.search_workbooks.return_value = []
+        source_asset = _make_source_asset(rid=_asset_rid(1), attachments=[asset_attachment])
+        source_asset.list_runs.return_value = [source_run]
+        video = MagicMock(is_archived=False)
+        source_asset.list_videos.return_value = [("camera", video)]
+        workbook = _stub_workbook(_wb_rid(1), asset_rids=[source_asset.rid])
+        source_asset.search_workbooks.return_value = [workbook]
 
         dest_asset = _make_dest_asset()
         ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
+        ctx.destination_client.create_run.return_value = MagicMock(rid=_run_rid(100))  # type: ignore[attr-defined]
 
-        new_att = MagicMock()
-        new_att.rid = _att_rid(101)
-        mock_att_migrator = mock_att_cls.return_value
-        mock_att_migrator.copy_from.return_value = new_att
+        AssetMigrator(ctx).copy_from(
+            source_asset,
+            AssetCopyOptions(include_attachments=True, include_runs=True, include_video=True),
+        )
 
-        migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
-
-        mock_att_migrator.copy_from.assert_called_once_with(active_att)
-        dest_asset.add_attachments.assert_called_once_with([new_att])
+        assert ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid) == _run_rid(100)
+        dest_asset.add_video.assert_called_once_with("camera", mock_vm_cls.return_value.copy_from.return_value)
+        assert mock_wm_cls.return_value.copy_from.call_args.args[0] is workbook
+        dest_asset.add_attachments.assert_not_called()
+        assert [(s.resource_type, s.source_rid) for s in ctx.migration_state.skipped_resources] == [
+            (ResourceType.ATTACHMENT.value, f"{run_attachment.rid} on run {source_run.rid}"),
+            (ResourceType.ATTACHMENT.value, f"{asset_attachment.rid} on asset {source_asset.rid}"),
+        ]
 
 
 class TestAssetMigratorDatasets:

@@ -274,18 +274,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
     def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
-        attachment_migrator = AttachmentMigrator(self.ctx)
-        new_attachments = []
-        for source_attachment in source_asset.list_attachments():
-            if source_attachment.is_archived:
-                logger.info(
-                    "Skipping archived attachment '%s' (rid: %s) on asset %s",
-                    source_attachment.name,
-                    source_attachment.rid,
-                    source_asset.rid,
-                )
-                continue
-            new_attachments.append(attachment_migrator.copy_from(source_attachment))
+        new_attachments = AttachmentMigrator(self.ctx).copy_attachments(
+            source_asset.list_attachments(), f"asset {source_asset.rid}"
+        )
         if new_attachments:
             if self.ctx.dry_run:
                 logger.info(

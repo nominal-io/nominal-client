@@ -144,9 +144,13 @@ migrating. Whether a rerun re-attempts the file depends on the failure:
   rejected**: retrying cannot help (or the copy is already recorded), so a rerun does not
   re-attempt it — check the file by hand as the summary line instructs.
 
-A video file appears in the summary at most once, with its latest outcome: a rerun that succeeds
-clears the stale skip entry from the earlier attempt. Checklist skips are still appended per
-attempt.
+Attachment copies retry transient failures the same way. An attachment that still cannot be copied
+is recorded in the summary, and its run or asset is migrated without it. A rerun re-attempts the
+attachment and adds it to the already-migrated run or asset.
+
+Video files appear in the summary at most once, and attachments at most once for each run or asset
+they belong to, with their latest outcome: a rerun that succeeds clears the stale skip entry from the
+earlier attempt. Checklist skips are still appended per attempt.
 
 Example — run with an explicit state path:
 

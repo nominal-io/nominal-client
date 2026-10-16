@@ -5,7 +5,10 @@ from __future__ import annotations
 import io
 from unittest.mock import MagicMock, patch
 
-from nominal.experimental.migration.migration_state import MigrationState
+import pytest
+import urllib3.exceptions
+
+from nominal.experimental.migration.migration_state import MigrationState, SkippedResource
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
@@ -314,3 +317,113 @@ class TestAttachmentMigrator:
         assert call_args[1]["description"] == "Monthly report"
         assert call_args[1]["properties"] == {"team": "eng"}
         assert call_args[1]["labels"] == ["report", "monthly"]
+
+
+# ---------------------------------------------------------------------------
+# copy_attachments: archived filtering and failure containment
+# ---------------------------------------------------------------------------
+
+
+def _make_source_attachment(n: int, is_archived: bool = False) -> MagicMock:
+    attachment = MagicMock()
+    attachment.rid = _rid(n)
+    attachment.name = f"file-{n}.png"
+    attachment.is_archived = is_archived
+    attachment._clients = _make_source_clients(_make_raw_attachment(attachment.rid, title=attachment.name))
+    return attachment
+
+
+def test_copy_attachments_skips_archived() -> None:
+    """Archived attachments are neither uploaded nor returned."""
+    ctx = _make_context()
+    active, archived = _make_source_attachment(1), _make_source_attachment(2, is_archived=True)
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    copied = AttachmentMigrator(ctx).copy_attachments([active, archived], "asset a")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
+
+
+def test_another_owners_copy_keeps_the_failed_owners_skip() -> None:
+    """An attachment shared by a run and an asset stays skipped for the run whose copy failed."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+    ctx.destination_client.create_attachment_from_io.side_effect = None
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    migrator.copy_attachments([source], "asset a")
+
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
+
+
+@patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
+def test_workbook_copy_keeps_owner_skip_until_owner_copy_succeeds(mock_attachment_cls: MagicMock) -> None:
+    """A workbook's copy of a failed attachment leaves its skip; only the owner's own retry clears it."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+
+    destination = MagicMock(rid=_rid(101))
+    ctx.destination_client.create_attachment_from_io.reset_mock(side_effect=True)
+    ctx.destination_client.create_attachment_from_io.return_value = destination
+    ctx.destination_client.get_attachment.return_value = destination
+
+    mock_attachment_cls._from_proto.return_value = source
+    assert migrator.migrate_by_rid(source._clients, source.rid) is destination
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
+
+    assert migrator.copy_attachments([source], "run r") == [destination]
+    assert ctx.migration_state.skipped_resources == []
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(ValueError("upload rejected"), id="permanent"),
+        pytest.param(urllib3.exceptions.ProtocolError("connection reset"), id="transient-exhausted"),
+    ],
+)
+def test_copy_attachments_contains_upload_failure(error: Exception, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed upload is recorded as a skip, left unmapped, and does not stop the next attachment."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    failing, healthy = _make_source_attachment(1), _make_source_attachment(2)
+
+    def upload(content: object, title: str, *args: object, **kwargs: object) -> MagicMock:
+        if title == failing.name:
+            raise error
+        return MagicMock(rid=f"dest-{title}")
+
+    ctx.destination_client.create_attachment_from_io.side_effect = upload
+
+    copied = AttachmentMigrator(ctx).copy_attachments([failing, healthy], "run r")
+
+    assert [a.rid for a in copied] == [f"dest-{healthy.name}"]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, failing.rid) is None
+    assert ctx.migration_state.skipped_resources == [
+        SkippedResource(ResourceType.ATTACHMENT.value, f"{failing.rid} on run r", f"copy failed: {error}")
+    ]
+
+
+def test_copy_attachments_retries_transient_upload_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient upload failure is retried in place, so the attachment copies without a skip."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    ctx.destination_client.create_attachment_from_io.side_effect = [
+        urllib3.exceptions.ProtocolError("connection reset"),
+        MagicMock(rid=_rid(101)),
+    ]
+
+    copied = AttachmentMigrator(ctx).copy_attachments([source], "run r")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, source.rid) == _rid(101)
+    assert ctx.migration_state.skipped_resources == []
