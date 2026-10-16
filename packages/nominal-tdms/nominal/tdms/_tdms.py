@@ -70,7 +70,8 @@ def upload_tdms_to_dataset(
             property to be uploaded.
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested
-        file_name: Manually override the name of the filename given to the uploaded data.
+        file_name: Upload name for the generated CSV, with or without the .csv.gz suffix.
+            The suffix is applied once.
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.

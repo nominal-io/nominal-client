@@ -11,6 +11,13 @@ logger = logging.getLogger(__name__)
 
 
 class FileType(NamedTuple):
+    """Upload suffix and MIME type.
+
+    ``extension`` must be empty or a dot-prefixed suffix with nonempty components, such as
+    ``.csv.gz``. Uploads reject malformed suffixes and unsafe storage characters. Safe custom
+    suffixes are allowed; the extension does not convert or validate the file's contents.
+    """
+
     extension: str
     mimetype: str
 

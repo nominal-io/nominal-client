@@ -37,7 +37,7 @@ def test_journal_stream_matches_path_ingestion_storage_bytes_and_timestamps(
     stream_file = stream_dataset.add_journal_json_from_io(
         stream,
         file_type=file_type,
-        file_name="journal",
+        file_name=path.name,
         channel="events",
         timestamp_column="source_ts",
         timestamp_type=ts.EPOCH_SECONDS,

@@ -50,6 +50,29 @@ def validate_upload_filename(name: str) -> None:
         )
 
 
+def resolve_upload_filename(name: str, extension: str) -> str:
+    """Return a safe filename with the selected format suffix applied once.
+
+    A matching suffix is recognized without regard to case and uses the selected extension's
+    spelling. Existing repeated suffixes are retained. An empty extension leaves the name unchanged.
+
+    Raises:
+        ValueError: The extension is not empty or a dot-prefixed suffix with nonempty components,
+            or the resulting filename contains unsafe storage characters.
+    """
+    if extension:
+        if not extension.startswith(".") or any(not part for part in extension[1:].split(".")):
+            raise ValueError("Upload extension must be empty or a dot-prefixed suffix with nonempty components")
+        # Slice at the original dot boundary: Unicode lowercasing can change the suffix's length.
+        stem, *suffix_parts = name.rsplit(".", extension.count("."))
+        suffix = "." + ".".join(suffix_parts)
+        if suffix.lower() == extension.lower():
+            name = stem
+    filename = f"{name}{extension}"
+    validate_upload_filename(filename)
+    return filename
+
+
 def sanitize_upload_filename(name: str, replacement: str = "_") -> str:
     """Replace unsafe characters in ``name`` with ``replacement``.
 

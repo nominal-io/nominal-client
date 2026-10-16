@@ -10,7 +10,7 @@ from typing import BinaryIO, Iterable, Mapping
 import requests
 from nominal_api import ingest_api, upload_api
 
-from nominal.core._utils.filenames import validate_upload_filename
+from nominal.core._utils.filenames import resolve_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
@@ -181,16 +181,15 @@ def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
         yield data
 
 
-def path_upload_name(path: pathlib.Path, file_type: FileType) -> str:
-    """Extract the name of a file without any extension suffixes associated with the file_type for use in uploads"""
+def path_upload_filename(path: pathlib.Path, file_type: FileType) -> str:
+    """Return the existing path upload filename, including the selected format suffix."""
     filename = path.name
 
-    # If the file type has an extension associated, and the path ends in that extension,
-    # remove exactly the extenion
+    # Preserve the exact-suffix and first-stem fallback rules used by existing path uploads.
     if file_type.extension and filename.endswith(file_type.extension):
-        return filename[: -len(file_type.extension)]
+        return filename
 
-    return path.stem.split(".")[0]
+    return f"{path.stem.split('.')[0]}{file_type.extension}"
 
 
 def put_multipart_upload(
@@ -297,9 +296,9 @@ def upload_multipart_io(
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         f: Binary IO to upload
-        name: Name of the file to create in object storage. Sent literally (no URL-encoding);
-            validated against characters unsafe for storage (raises ValueError if any are present).
-        file_type: Type of data being uploaded
+        name: Upload name, with or without the selected format suffix. The suffix is applied once.
+            Sent literally (no URL-encoding); unsafe storage characters raise ValueError.
+        file_type: Type of data being uploaded, with an empty or dot-prefixed extension.
         upload_client: Conjure upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
@@ -311,8 +310,7 @@ def upload_multipart_io(
         see put_multipart_upload for more details
 
     """
-    validate_upload_filename(name)
-    safe_filename = f"{name}{file_type.extension}"
+    safe_filename = resolve_upload_filename(name, file_type.extension)
     return put_multipart_upload(
         auth_header,
         workspace_rid,
@@ -357,7 +355,7 @@ def upload_multipart_file(
     if file_type is None:
         file_type = FileType.from_path(file)
 
-    file_name = path_upload_name(file, file_type)
+    file_name = path_upload_filename(file, file_type)
     with file.open("rb") as file_handle:
         return upload_multipart_io(
             auth_header,

@@ -1102,7 +1102,17 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
 
+        Args:
+            attachment: Binary stream to upload; the caller retains ownership.
+            name: Attachment title and upload name. The title is kept as supplied; the upload
+                name accepts the selected format suffix or has it appended once.
+            file_type: Extension and MIME type. The default binary type leaves the upload name unchanged.
+            description: Optional description of the attachment.
+            properties: Properties to apply to the attachment.
+            labels: Labels to apply to the attachment.
+
         Raises:
+            ValueError: The selected extension is malformed or the upload filename contains unsafe storage characters.
             NominalError: If creating the attachment from the uploaded file fails.
         """
         if isinstance(attachment, TextIOBase):
