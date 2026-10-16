@@ -1,9 +1,10 @@
 """Sphinx config for the Nominal Python SDK guides, examples, and API reference."""
 
 import sys
+from inspect import get_annotations
 from pathlib import Path
 from pkgutil import resolve_name
-from typing import TypeVar, get_origin
+from typing import TypeAlias, TypeVar, get_origin
 
 from nominal_sphinx_theme import theme_options
 from sphinx.ext.autosummary.generate import find_autosummary_in_files
@@ -49,11 +50,12 @@ autosummary_context = {
 # Read the same module seed as autosummary; template context must contain plain data.
 for _entry in find_autosummary_in_files(autosummary_generate):
     _module = resolve_name(_entry.name)
+    _annotations = get_annotations(_module, eval_str=True)
     # Preserve code quotes when Sphinx applies typography to inline type expressions.
     _type_aliases = {
         _name: restify(_value, mode="smart").replace("'", r"\'").replace('"', r"\"")
         for _name, _value in vars(_module).items()
-        if get_origin(_value) is not None
+        if get_origin(_value) is not None or _annotations.get(_name) is TypeAlias
     }
     autosummary_context["module_data"][_entry.name] = {
         "exports": getattr(_module, "__all__", []),

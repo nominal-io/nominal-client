@@ -186,7 +186,7 @@ in `timestamp_column`. An elapsed value of `1.0` then represents `2026-09-10T14:
 Do not use this format for the ISO 8601 sample above.
 
 Choose the unit that matches the recorded values. For epoch timestamps, use a format such as
-`"epoch_seconds"` or `"epoch_nanoseconds"`. See [Timestamp formats](/sdk/ts.md) for supported
+`"epoch_seconds"` or `"epoch_nanoseconds"`. See [Timestamp formats](/sdk/ts/index.md) for supported
 units and custom formats.
 
 ## Retrieve a dataset

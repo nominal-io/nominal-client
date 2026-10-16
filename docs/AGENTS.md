@@ -20,22 +20,23 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions reference, experiment references,
+generated source pages, except for the exceptions, timestamps, experiment,
 and integration references. Native `autosummary` reads its module entry in `autosummary.rst`,
 discovers public exceptions, and uses the template under `_templates/autosummary/`
 to separate errors and warnings without a member list.
 The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
 by Git and the preview watcher. The left sidebar shows only the overview.
-Experiment and integration pages keep prose in Markdown and include native module summaries
+Timestamp, experiment, and integration pages include native module summaries
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
-Ibis renders its module docstring above the API reference. Its seed uses
-`module-summary-no-prose.rst` to register the module without repeating that prose in the tables.
+Timestamp and Ibis pages render module docstrings above the API reference. Their seeds use
+`module-summary-no-prose.rst` to register modules without repeating that prose in the tables.
 Classes, enums, and functions get detail pages. Constants and type aliases use separate
 compact tables with values and linked type definitions. `conf.py` reads the same native
 module seed to supply enum names, constant values, and type aliases as plain template data;
-Sphinx formats type definitions with `restify`. Constant rows come from `__all__` or
+alias discovery includes explicit `TypeAlias` annotations, including aliases of concrete types;
+Sphinx formats definitions with `restify`. Constant rows come from `__all__` or
 Sphinx's documented local attributes, keeping imported implementation constants out.
 Native `py:data` targets preserve their links without typesetting a second definition block.
 Do not dump implementation type variables into the reference.

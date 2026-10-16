@@ -9,6 +9,7 @@ Module: ``{{ fullname }}``.
 {% endblock %}
 
 {% set data = module_data[fullname] %}
+{% set classes = classes | reject('in', data.type_aliases) | list %}
 {% for heading, names in [
     ('Classes', classes | reject('in', data.enums) | list),
     ('Enumerations', classes | select('in', data.enums) | list),
