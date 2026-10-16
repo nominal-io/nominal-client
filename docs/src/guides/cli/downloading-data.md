@@ -218,7 +218,7 @@ If parts have different channel columns, align their schemas first or analyze th
 Convert epoch seconds to datetimes with `datetime(..., "ConvertFrom", "posixtime", "TimeZone", "UTC")`
 when needed; do not interpret the timestamp values as nanoseconds.
 
-## Adjust download size
+## Tune download performance
 
 | Option | Default | What it controls |
 | --- | --- | --- |
@@ -226,16 +226,57 @@ when needed; do not interpret the timestamp values as nanoseconds.
 | `--channels-per-request` | `10` | Channel grouping within export requests; this is not the number of worker threads. |
 | `--points-per-file` | `25000000` | Target point budget used with estimated channel rates to choose time slices. It is not a strict row-count, byte-size, or memory limit. |
 
-Both numeric options must be at least 1. To request smaller batches:
+Both numeric options must be at least 1. Start with the defaults on a representative time window,
+then change one setting at a time while keeping the channels and interval the same.
+Use a fresh output directory for each trial.
+
+### Many channels: try larger request groups
+
+When exporting many low-rate channels, larger groups can reduce the number of requests. For
+example, compare the default of 10 with 50:
+
+```bash
+nom download --profile default --channels-per-request 50 --format parquet
+```
+
+The exporter also limits groups using estimated sample rates, so a group may contain fewer
+channels than this setting. Increasing it does not increase the worker count, and larger
+requests are not always faster.
+
+### Few channels: try smaller request groups
+
+If all selected channels fit into one request, smaller groups can create more independent work
+for the download workers. For a small channel selection, try:
+
+```bash
+nom download --profile default --channels-per-request 1 --format parquet
+```
+
+This adds request overhead, so compare elapsed time before using it for a longer export.
+The useful setting depends on sample rates and request sizes, not just the number of CPU cores.
+
+### Memory pressure: reduce the batch target
+
+Lower `--points-per-file` to request smaller time slices:
 
 ```bash
 nom download --profile default --points-per-file 1000000 --format parquet
 ```
 
-For slow or memory-intensive exports, start by selecting fewer channels or a shorter interval.
-A lower point target can reduce batch size, but it does not guarantee a memory ceiling. There is
-no universal channels-per-request setting based on CPU count; compare timings on a representative
-selection if you need to tune it.
+Smaller slices can reduce memory used to assemble each part and make downstream processing more
+manageable, at the cost of more requests and output files. The target uses estimated rates;
+it is not a hard memory ceiling. If memory remains a problem, select fewer channels or a shorter
+interval, and read the resulting parts individually rather than loading them all at once.
+
+### Output format and selection
+
+Prefer Parquet when your analysis tools support it: the CLI writes compressed Parquet and
+preserves column types. CSV is useful for text-based tools, but readers must parse values and
+infer types. The format controls the local output files; both choices use the same export pipeline.
+
+Selecting fewer channels and a shorter interval reduces the data requested. Use subsystem
+substrings to narrow the selection, then remove unused channels in the editor. For repeated
+analysis, retain the downloaded files rather than exporting the same interval again.
 
 ## Troubleshoot a selection
 
