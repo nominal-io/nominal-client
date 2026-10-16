@@ -141,13 +141,12 @@ def tagged_datasets(client: NominalClient, csv_data: bytes, csv_data2: bytes) ->
 def mixed_dataset(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[Dataset]:
     """One dataset holding both tag values, so filtering it proves series selection rather than input exclusion."""
     dataset = client.create_dataset(f"derived-input-mixed-{uuid4().hex[:8]}")
-    files: list[DatasetFile] = []
     try:
         for vehicle, data in (("A", csv_data), ("B", csv_data2)):
-            files.append(dataset.add_from_io(BytesIO(data), "timestamp", "iso_8601", tags={"vehicle": vehicle}))
-        done, pending = wait_for_files_to_ingest(files, poll_interval=POLL_INTERVAL)
-        assert not pending
-        assert all(file.ingest_status == IngestStatus.SUCCESS for file in done)
+            dataset_file = dataset.add_from_io(
+                BytesIO(data), "timestamp", "iso_8601", tags={"vehicle": vehicle}
+            ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+            assert dataset_file.ingest_status == IngestStatus.SUCCESS
         yield dataset
     finally:
         _archive_all([dataset])
