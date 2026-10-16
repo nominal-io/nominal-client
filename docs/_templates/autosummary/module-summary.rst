@@ -17,12 +17,3 @@ Module: ``{{ fullname }}``.
 {%- endfor %}
 
 {% endfor %}
-
-{% for name in members | sort if not name.startswith('_') and name not in classes + functions + exceptions %}
-{% if loop.first %}
-.. rubric:: Types and constants
-
-{% endif %}
-.. autodata:: {{ name }}
-
-{% endfor %}

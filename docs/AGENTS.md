@@ -29,7 +29,8 @@ Converted experiment pages keep prose in Markdown and include native module summ
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
-Classes and functions get detail pages; aliases and constants remain inline with their values.
+Classes and functions get detail pages. Keep existing explicit `autodata` directives for
+aliases and constants inline; do not dump every data member or implementation type variable.
 Summary fragments are excluded from page discovery and ignored by Git and the watcher;
 only the Markdown landing page belongs in the sidebar.
 Packages with `__all__` need no `:imported-members:` option.

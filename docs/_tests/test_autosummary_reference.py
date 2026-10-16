@@ -12,7 +12,7 @@ from sphinx.util.inventory import InventoryFile
 def test_reference_tables_discover_exports_and_link_to_detail_pages(
     tmp_path: Path, build_docs: Callable[[], CompletedProcess[str]]
 ) -> None:
-    """Discover classes, functions, and constants through exports without duplicating prose or methods."""
+    """Discover callable exports while keeping authored prose and data definitions inline."""
     docs = tmp_path / "docs"
     source = docs / "src"
     templates = Path(__file__).resolve().parents[1] / "_templates"
@@ -38,8 +38,10 @@ MAX_BATCH = 10
     (tmp_path / "sample_api.py").write_text(
         '"""Public resource module."""\n'
         "from pathlib import Path\n"
+        "from typing import TypeVar\n"
+        "GenericT = TypeVar('GenericT')\n"
         "from _sample_impl import Resource, create, MAX_BATCH, _Internal\n"
-        "__all__ = ['Resource', 'create', 'MAX_BATCH']\n",
+        "__all__ = ['Resource', 'create', 'MAX_BATCH', 'GenericT']\n",
         encoding="utf-8",
     )
     (docs / "conf.py").write_text(
@@ -62,7 +64,7 @@ MAX_BATCH = 10
     page.parent.mkdir(parents=True)
     page.write_text(
         "# Sample API\n\nAn authored walkthrough.\n\n## API reference\n\n"
-        "```{eval-rst}\n.. include:: ../_summaries/sample_api.rst\n```\n",
+        "```{eval-rst}\n.. include:: ../_summaries/sample_api.rst\n\n.. autodata:: sample_api.MAX_BATCH\n```\n",
         encoding="utf-8",
     )
 
@@ -86,5 +88,6 @@ MAX_BATCH = 10
     assert not (output / "sdk/generated/sample_api.MAX_BATCH/index.html").exists()
     assert inventory["py:method"]["sample_api.Resource.read"].uri.startswith("sdk/generated/sample_api.Resource/")
     assert not (output / "sdk/_summaries/sample_api/index.html").exists()
+    assert "sample_api.GenericT" not in inventory.get("py:data", {})
     assert "sample_api._Internal" not in inventory["py:class"]
     assert "sample_api.Path" not in inventory["py:class"]
