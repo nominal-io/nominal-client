@@ -18,7 +18,7 @@ Example:
     per_minute = (
         pts.filter(_.dataset_rid == "ri.catalog....", _.channel == "temperature")
         .group_by(minute=_.ts.truncate("m"))
-        .agg(n=_.count(), avg=_.value.mean())
+        .agg(n=_.count(), avg=_.value.mean().round(2))
         .to_polars()
     )
     print(per_minute.head())
