@@ -92,10 +92,10 @@ def test_a_scope_that_does_not_resolve_is_left_out_of_lists_and_not_found_by_loo
     assert isinstance(raised.value, ValueError)
 
 
-def test_a_run_reads_its_own_refs_not_the_scopes_it_inherits(clients):
+def test_a_run_reads_its_own_refs_not_the_scopes_it_inherits(clients, make_enriched_dataset):
     """A run's dataset methods see its own refs, not the asset scopes it inherits for scoped ingest."""
     clients.catalog.get_enriched_datasets.side_effect = lambda auth, request: [
-        _dataset(rid) for rid in request.dataset_rids
+        make_enriched_dataset(rid) for rid in request.dataset_rids
     ]
     run = _run(clients, direct={"dataset": "direct"})
     clients.run.GetRun.return_value.run.asset_data_scopes.append(
