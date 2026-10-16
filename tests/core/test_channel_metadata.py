@@ -5,11 +5,25 @@ import pytest
 from nominal_api import datasource_api
 
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.core.datasource import DataSource
+from nominal.core.dataset import Dataset
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as pb
 from nominal.protos.types.series import series_pb2
+
+
+def _dataset(clients: MagicMock, rid: str) -> Dataset:
+    """A dataset snapshot for exercising channel operations against mocked service clients."""
+    return Dataset(
+        rid=rid,
+        _clients=clients,
+        name="test",
+        description=None,
+        properties={},
+        labels=[],
+        bounds=None,
+        is_archived=False,
+    )
 
 
 def _metadata(name: str = "temperature", **kwargs) -> pb.ChannelMetadata:
@@ -94,7 +108,7 @@ def test_batch_get_uses_returned_identifiers_and_batches() -> None:
         pb.BatchGetChannelMetadataResponse(channel_metadata=[_metadata("ch499")]),
         pb.BatchGetChannelMetadataResponse(channel_metadata=[_metadata("ch500")]),
     ]
-    datasource = DataSource(rid="ri.datasource.test", _clients=clients)
+    datasource = _dataset(clients, "ri.datasource.test")
     channels = list(datasource.get_channels(names=(f"ch{i}" for i in range(501))))
     assert [channel.name for channel in channels] == ["ch499", "ch500"]
     requests = [call.args[0] for call in clients.channel_metadata.BatchGetChannelMetadata.call_args_list]
@@ -107,7 +121,7 @@ def test_missing_channel_preserves_value_error() -> None:
     clients = MagicMock()
     clients.channel_metadata.BatchGetChannelMetadata.return_value = pb.BatchGetChannelMetadataResponse()
     with pytest.raises(ValueError, match="not found"):
-        DataSource(rid="ri.datasource.test", _clients=clients).get_channel("missing")
+        _dataset(clients, "ri.datasource.test").get_channel("missing")
 
 
 @pytest.mark.parametrize("operation", ["refresh", "update", "batch_get"])
@@ -125,7 +139,7 @@ def test_grpc_errors_translate(operation, fake_rpc_error) -> None:
         elif operation == "update":
             channel.update(unit=None)
         else:
-            list(DataSource(rid=channel.data_source, _clients=clients).get_channels(names=[channel.name]))
+            list(_dataset(clients, channel.data_source).get_channels(names=[channel.name]))
 
 
 def test_small_unit_update_preserves_clearing_in_one_batch() -> None:
@@ -141,7 +155,7 @@ def test_small_unit_update_preserves_clearing_in_one_batch() -> None:
         datasource_api.ChannelMetadata(name="speed", data_source="ri.datasource.test"),
         datasource_api.ChannelMetadata(name="temperature", data_source="ri.datasource.test"),
     ]
-    datasource = DataSource(rid="ri.datasource.test", _clients=clients)
+    datasource = _dataset(clients, "ri.datasource.test")
     datasource.set_channel_units(
         {"speed": Unit(name="speed", symbol="m/s"), "temperature": None}, allow_display_only_units=True
     )
@@ -178,7 +192,7 @@ def test_set_channel_units_batches_all_updates(count, batch_sizes) -> None:
     """Every channel is updated once in bounded requests, preserving unit clearing across the wire."""
     clients = _clients_with_channels(count)
     units = {f"ch{i}": None if i % 2 else "m/s" for i in range(count)}
-    DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(units, allow_display_only_units=True)
+    _dataset(clients, "ri.datasource.test").set_channel_units(units, allow_display_only_units=True)
     requests = [
         pb.BatchUpdateChannelMetadataRequest.FromString(call.args[0].SerializeToString())
         for call in clients.channel_metadata.BatchUpdateChannelMetadata.call_args_list
@@ -201,7 +215,7 @@ def test_set_channel_units_stops_after_failed_batch(fake_rpc_error) -> None:
         fake_rpc_error(grpc.StatusCode.NOT_FOUND),
     ]
     with pytest.raises(NominalNotFoundError):
-        DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(
+        _dataset(clients, "ri.datasource.test").set_channel_units(
             {f"ch{i}": "m/s" for i in range(25_000)}, allow_display_only_units=True
         )
     calls = clients.channel_metadata.BatchUpdateChannelMetadata.call_args_list
@@ -217,5 +231,5 @@ def test_set_channel_units_validates_all_symbols_before_first_write() -> None:
     units: dict[str, str | None] = {f"ch{i}": None for i in range(10_001)}
     units["ch10000"] = "invalid-unit"
     with pytest.raises(ValueError, match="invalid-unit"):
-        DataSource(rid="ri.datasource.test", _clients=clients).set_channel_units(units)
+        _dataset(clients, "ri.datasource.test").set_channel_units(units)
     clients.channel_metadata.BatchUpdateChannelMetadata.assert_not_called()

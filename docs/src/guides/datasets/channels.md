@@ -70,8 +70,7 @@ For a known instrumentation list, `batch_update_or_create_channels()` upserts in
 already exist are updated rather than duplicated, so this is safe to re-run from a setup script:
 
 ```python
-from nominal.core import ChannelDataType
-from nominal.core.datasource import CreateChannelRequest
+from nominal.core import ChannelDataType, CreateChannelRequest
 
 # One request per channel. Existing channels are updated rather than
 # duplicated, so this is safe to re-run as part of a setup script.

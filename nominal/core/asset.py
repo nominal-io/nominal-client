@@ -30,7 +30,6 @@ from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset
-from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -60,7 +59,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
     created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(
-        DataSource._Clients,
+        Dataset._Clients,
         Video._Clients,
         Attachment._Clients,
         Event._Clients,

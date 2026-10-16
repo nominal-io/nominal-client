@@ -95,6 +95,39 @@ class ChannelDataType(enum.Enum):
             return cls("UNKNOWN")
 
 
+@dataclass(frozen=True)
+class CreateChannelRequest:
+    name: str
+    data_type: ChannelDataType
+    description: str | None = None
+    unit: str | None = None
+
+    def _to_proto(
+        self,
+        data_source_rid: str,
+        *,
+        if_exists: series_metadata_pb2.IfSeriesMetadataExists.ValueType,
+    ) -> series_metadata_pb2.CreateSeriesMetadataRequest:
+        nominal_data_type = self.data_type._to_proto()
+        locator = series_metadata_pb2.LocatorTemplate(
+            nominal=series_metadata_pb2.NominalLocatorTemplate(channel=self.name, data_type=nominal_data_type)
+        )
+        return series_metadata_pb2.CreateSeriesMetadataRequest(
+            channel=self.name,
+            data_source_rid=data_source_rid,
+            locator_template=locator,
+            description=self.description,
+            unit=self.unit,
+            if_exists=if_exists,
+        )
+
+
+@dataclass(frozen=True)
+class BatchAddChannelsResult:
+    channels: Sequence[Channel]
+    missing: Sequence[CreateChannelRequest]
+
+
 @dataclass
 class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
     """Metadata for working with channels."""

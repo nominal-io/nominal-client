@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import grpc
 import pytest
 
-from nominal.core.channel import ChannelDataType
-from nominal.core.datasource import CreateChannelRequest, DataSource
+from nominal.core.channel import ChannelDataType, CreateChannelRequest
+from nominal.core.dataset import Dataset
 from nominal.exceptions import NominalPermissionDeniedError
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as metadata_proto
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2 as proto
@@ -24,7 +24,16 @@ def clients():
 
 @pytest.fixture
 def datasource(clients):
-    return DataSource(rid="ri.datasource.test", _clients=clients)
+    return Dataset(
+        name="test",
+        description=None,
+        properties={},
+        labels=[],
+        bounds=None,
+        is_archived=False,
+        rid="ri.datasource.test",
+        _clients=clients,
+    )
 
 
 @pytest.mark.parametrize(

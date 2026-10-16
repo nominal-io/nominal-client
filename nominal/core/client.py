@@ -87,7 +87,6 @@ from nominal.core.dataset import (
     _search_dataset_files,
 )
 from nominal.core.dataset_file import DatasetFile
-from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.filetype import FileType, FileTypes
@@ -989,7 +988,8 @@ class NominalClient:
         """Retrieve videos by their RID."""
         return list(self._iter_get_videos(rids))
 
-    def get_datasource(self, rid: str) -> DataSource:
+    @deprecated("`NominalClient.get_datasource` is deprecated; use `NominalClient.get_dataset` instead.")
+    def get_datasource(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID. Prefer `get_dataset` for dataset operations."""
         if ".dataset." in rid:
             return self.get_dataset(rid)

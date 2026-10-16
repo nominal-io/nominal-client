@@ -12,7 +12,7 @@ from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
-from nominal.core.datasource import DataSource
+from nominal.core.dataset import Dataset
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsDuration,
@@ -441,7 +441,7 @@ class _ExportJob:
         else:
             return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution, buckets=self.buckets)
 
-    def export_channels(self, datasource: DataSource) -> scout_dataexport_api.ExportChannels:
+    def export_channels(self, datasource: Dataset) -> scout_dataexport_api.ExportChannels:
         """Construct data export channels for the configured channels and export options."""
         channels = datasource.get_channels(names=self.channel_names)
         return scout_dataexport_api.ExportChannels(
@@ -454,7 +454,7 @@ class _ExportJob:
             )
         )
 
-    def export_request(self, datasource: DataSource) -> scout_dataexport_api.ExportDataRequest:
+    def export_request(self, datasource: Dataset) -> scout_dataexport_api.ExportDataRequest:
         """Construct conjure export request given the provided configuration options."""
         return scout_dataexport_api.ExportDataRequest(
             channels=self.export_channels(datasource),
@@ -505,7 +505,7 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
     # Warn user about renamed channels, handle data with channel names of "timestamp"
     time_col = _get_exported_timestamp_channel(job.channel_names)
 
-    datasource = client.get_datasource(job.datasource_rid)
+    datasource = client.get_dataset(job.datasource_rid)
     req = job.export_request(datasource)
     resp = client._clients.dataexport.export_channel_data(client._clients.auth_header, req)
 
