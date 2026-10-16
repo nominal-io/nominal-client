@@ -7,5 +7,5 @@
 ## API reference
 
 ```{eval-rst}
-.. automodule:: nominal.experimental.derived_datasets
+.. include:: ../_summaries/nominal.experimental.derived_datasets.rst
 ```
