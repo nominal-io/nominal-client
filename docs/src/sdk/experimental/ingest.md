@@ -4,9 +4,8 @@
 :start-line: 1
 ```
 
-When a container produces these files, declare units through the
-[extractor output context](extractors.md#output-contexts) instead. Those units travel
-in the output manifest, rather than the image's registration contract.
+When a container produces these files, [declare units per output](extractors.md#per-output-units)
+instead. Those units travel in the output manifest, rather than the image's registration contract.
 
 ## Reference
 

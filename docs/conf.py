@@ -56,6 +56,7 @@ for _entry in find_autosummary_in_files(autosummary_generate):
         if get_origin(_value) is not None
     }
     autosummary_context["module_data"][_entry.name] = {
+        "exports": getattr(_module, "__all__", []),
         "enums": [_name for _name, _value in vars(_module).items() if isenumclass(_value)],
         "type_aliases": _type_aliases,
         "constants": {
