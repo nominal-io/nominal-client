@@ -51,7 +51,7 @@ for _entry in find_autosummary_in_files(autosummary_generate):
     _module = resolve_name(_entry.name)
     # Preserve code quotes when Sphinx applies typography to inline type expressions.
     _type_aliases = {
-        _name: restify(_value, mode="smart").replace("'", r"\'").replace('"', r'\"')
+        _name: restify(_value, mode="smart").replace("'", r"\'").replace('"', r"\"")
         for _name, _value in vars(_module).items()
         if get_origin(_value) is not None
     }
