@@ -83,9 +83,9 @@ build:
 clean:
     uv cache clean
 
-# Generated example pages and HTML are disposable.
+# Generated documentation pages and HTML are disposable.
 _clean-docs:
-    rm -rf docs/src/examples docs/_build/dirhtml
+    rm -rf docs/src/examples docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
 
 # Build the docs into folder-style URLs; warnings fail the build.
 build-docs: _clean-docs
@@ -93,4 +93,4 @@ build-docs: _clean-docs
 
 # Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
 serve-docs:
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --ignore "**/__pycache__/**" --ignore docs/src/examples --watch docs/examples --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --ignore "**/__pycache__/**" --ignore docs/src/examples --ignore docs/src/sdk/generated --ignore docs/src/sdk/exceptions.rst --watch docs/autosummary.rst --watch docs/examples --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE

@@ -1,9 +1,11 @@
-"""Sphinx config for the Nominal Python SDK docs: the existing Markdown pages and inline API reference."""
+"""Sphinx config for the Nominal Python SDK guides, examples, and API reference."""
 
 import sys
 from pathlib import Path
 
 from nominal_sphinx_theme import theme_options
+
+import nominal.exceptions
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
@@ -14,6 +16,7 @@ copyright = "Nominal, Inc."
 extensions = [
     "myst_parser",
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx_click",
@@ -26,6 +29,15 @@ extensions = [
     "reference_presentation",
     "nominal_sphinx_theme",
 ]
+
+templates_path = [str(HERE / "_templates")]
+autosummary_generate = [str(HERE / "autosummary.rst")]
+autosummary_filename_map = {"nominal.exceptions": "exceptions"}
+autosummary_context = {
+    "warning_names": [
+        name for name, obj in vars(nominal.exceptions).items() if isinstance(obj, type) and issubclass(obj, Warning)
+    ],
+}
 
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets"]
@@ -89,6 +101,7 @@ html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"
 
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
+    toctree_maxdepth=1,
     nav_socials=["github"],
     nav_links=[
         {"title": "Guides", "url": "index"},
