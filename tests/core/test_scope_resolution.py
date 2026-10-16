@@ -41,10 +41,6 @@ def _run(clients, **sources):
     return Run._from_proto(clients, api)
 
 
-def _dataset(rid):
-    return MagicMock(rid=rid, name=rid, description=None, labels=[], properties={}, bounds=None, is_archived=False)
-
-
 @pytest.mark.parametrize(
     ("resolve", "requests"),
     [

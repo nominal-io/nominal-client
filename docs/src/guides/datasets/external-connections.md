@@ -67,3 +67,12 @@ reconstruct the full previous configuration for a read-modify-write update.
 
 Creating a dataset and registering configuration are two operations. If registration fails, the
 dataset remains available; correct the configuration and retry registration on that dataset.
+
+Read snapshots preserve unrecognized query-duration unit names, but those units cannot be
+registered again. Header variants not understood by the SDK are omitted from the snapshot.
+This does not bypass transport decoding: the current generated client can reject an unknown
+wire union variant before the SDK receives it.
+
+For Timestream discovery, supply a nonempty `tables` sequence. `None` omits the filter and
+`[]` sends an empty table match; the backend rejects scraping without at least one named table.
+`max_look_back_period_hours=None` uses the backend's discovery lookback default.

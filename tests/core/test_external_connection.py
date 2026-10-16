@@ -1,3 +1,4 @@
+import pytest
 from nominal_api import scout_catalog
 from nominal_api import scout_datasource_connection_api as api
 
@@ -111,3 +112,20 @@ def test_native_provider_metadata_is_readable_but_has_no_external_write_conversi
         )
     )
     assert snapshot.details == UnknownExternalConnectionDetails("nominal")
+
+
+def test_unknown_query_unit_cannot_be_written_back():
+    """Read-only unknown duration units cannot accidentally change registration semantics."""
+    with pytest.raises(ValueError, match="Unsupported external query duration unit"):
+        ExternalQueryRange(2, "UNKNOWN")._to_conjure()
+
+
+def test_unrecognized_header_variant_is_omitted_from_read_snapshot():
+    """A header with neither supported payload does not prevent reading other provider details."""
+    raw = api.Influx1ConnectionDetails(
+        host="localhost",
+        port=8086,
+        headers={"future": api.HeaderValue(type_of_union="future"), "known": api.HeaderValue(plain="value")},
+    )
+    details = Influx1ConnectionDetails._from_conjure(raw)
+    assert details.headers == {"known": "value"}

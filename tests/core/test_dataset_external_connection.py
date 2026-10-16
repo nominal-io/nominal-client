@@ -54,3 +54,22 @@ def test_refresh_clears_absent_external_metadata(mock_clients, make_enriched_dat
     assert dataset.external_connection is not None
     dataset._refresh_from_api(make_enriched_dataset())
     assert dataset.external_connection is None
+
+
+def test_dataset_read_preserves_unknown_external_query_unit(mock_clients, make_enriched_dataset):
+    """An unknown query-limit unit does not prevent reading the owning dataset."""
+    metadata = scout_catalog.ExternalConnectionMetadata(
+        connection_details=connection_api.ConnectionDetails(
+            api=connection_api.ApiConnectionDetails(api_uri="https://example.test", token_secret_rid="secret-rid")
+        ),
+        connection_status=connection_api.ConnectionStatus(is_connected=True),
+        limits=connection_api.LimitsConfig(
+            max_query_range=connection_api.Duration(count=2, unit=connection_api.TemporalUnit.UNKNOWN)
+        ),
+    )
+    dataset = Dataset._from_conjure(mock_clients, make_enriched_dataset(external_connection_metadata=metadata))
+    assert dataset.external_connection is not None
+    assert dataset.external_connection.limits is not None
+    limit = dataset.external_connection.limits.max_query_range
+    assert limit is not None
+    assert (limit.count, limit.unit) == (2, "UNKNOWN")

@@ -36,8 +36,7 @@ def _headers_from_conjure(headers: Mapping[str, api.HeaderValue]) -> dict[str, s
             result[name] = value.plain
         elif value.secret_rid is not None:
             result[name] = SecretHeader(value.secret_rid)
-        else:
-            raise ValueError(f"Unsupported external connection header type: {value.type}")
+        # A variant unknown to this SDK is omitted from the read snapshot.
     return result
 
 
@@ -46,12 +45,18 @@ class PasswordCredentials:
     """Username and stored password for an InfluxDB 1 connection."""
 
     username: str
+    """Username used to authenticate to the external database."""
     password_secret: Secret | str
+    """Password secret object or RID in the dataset workspace."""
 
     def _to_conjure(self) -> api.PasswordCredentials:
         return api.PasswordCredentials(
             username=self.username, password_secret_rid=rid_from_instance_or_string(self.password_secret)
         )
+
+    @classmethod
+    def _from_conjure(cls, raw: api.PasswordCredentials) -> PasswordCredentials:
+        return cls(raw.username, raw.password_secret_rid)
 
 
 @dataclass(frozen=True)
@@ -61,10 +66,15 @@ class TimescaleConnectionDetails:
     provider_type: ClassVar[Literal["timescale"]] = "timescale"
 
     database: str
+    """External database name."""
     host: str
+    """External database hostname."""
     port: int
+    """External database port."""
     username: str
+    """Username used to authenticate to the external database."""
     password_secret: Secret | str
+    """Password secret object or RID in the dataset workspace."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -77,6 +87,16 @@ class TimescaleConnectionDetails:
             )
         )
 
+    @classmethod
+    def _from_conjure(cls, raw: api.TimescaleConnectionDetails) -> TimescaleConnectionDetails:
+        return cls(
+            database=raw.database,
+            host=raw.host,
+            port=raw.port,
+            username=raw.username,
+            password_secret=raw.password_secret_rid,
+        )
+
 
 @dataclass(frozen=True)
 class Influx2ConnectionDetails:
@@ -85,10 +105,15 @@ class Influx2ConnectionDetails:
     provider_type: ClassVar[Literal["influx"]] = "influx"
 
     host: str
+    """External database hostname."""
     port: int
+    """External database port."""
     org: str
+    """InfluxDB organization identifier."""
     token_secret: Secret | str
+    """API token secret object or RID in the dataset workspace."""
     headers: Mapping[str, str | SecretHeader] = field(default_factory=dict, kw_only=True)
+    """Additional HTTP headers; strings are literal values and SecretHeader values resolve stored secrets."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -101,6 +126,16 @@ class Influx2ConnectionDetails:
             )
         )
 
+    @classmethod
+    def _from_conjure(cls, raw: api.Influx2ConnectionDetails) -> Influx2ConnectionDetails:
+        return cls(
+            host=raw.host,
+            port=raw.port,
+            org=raw.org,
+            token_secret=raw.token_secret_rid,
+            headers=_headers_from_conjure(raw.headers),
+        )
+
 
 @dataclass(frozen=True)
 class Influx1ConnectionDetails:
@@ -109,9 +144,13 @@ class Influx1ConnectionDetails:
     provider_type: ClassVar[Literal["influx1"]] = "influx1"
 
     host: str
+    """External database hostname."""
     port: int
+    """External database port."""
     headers: Mapping[str, str | SecretHeader] = field(default_factory=dict, kw_only=True)
+    """Additional HTTP headers; strings are literal values and SecretHeader values resolve stored secrets."""
     credentials: PasswordCredentials | None = field(default=None, kw_only=True)
+    """Optional username and password secret; None omits credentials."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -123,6 +162,15 @@ class Influx1ConnectionDetails:
             )
         )
 
+    @classmethod
+    def _from_conjure(cls, raw: api.Influx1ConnectionDetails) -> Influx1ConnectionDetails:
+        return cls(
+            host=raw.host,
+            port=raw.port,
+            headers=_headers_from_conjure(raw.headers),
+            credentials=PasswordCredentials._from_conjure(raw.credentials) if raw.credentials is not None else None,
+        )
+
 
 @dataclass(frozen=True)
 class TimestreamConnectionDetails:
@@ -131,10 +179,15 @@ class TimestreamConnectionDetails:
     provider_type: ClassVar[Literal["timestream"]] = "timestream"
 
     nominal_role_arn: str
+    """Nominal-side AWS role ARN used for access."""
     nominal_role_region: str
+    """AWS region for the Nominal-side role."""
     external_region: str
+    """AWS region of the external Timestream database."""
     external_role_arn: str
+    """External AWS role ARN assumed to access Timestream."""
     database: str
+    """External database name."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -147,6 +200,16 @@ class TimestreamConnectionDetails:
             )
         )
 
+    @classmethod
+    def _from_conjure(cls, raw: api.TimestreamConnectionDetails) -> TimestreamConnectionDetails:
+        return cls(
+            nominal_role_arn=raw.nominal_role_arn,
+            nominal_role_region=raw.nominal_role_region,
+            external_region=raw.external_region,
+            external_role_arn=raw.external_role_arn,
+            database=raw.database,
+        )
+
 
 @dataclass(frozen=True)
 class VisualCrossingConnectionDetails:
@@ -155,6 +218,7 @@ class VisualCrossingConnectionDetails:
     provider_type: ClassVar[Literal["visualCrossing"]] = "visualCrossing"
 
     api_key_secret: Secret | str
+    """API key secret object or RID in the dataset workspace."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -162,6 +226,10 @@ class VisualCrossingConnectionDetails:
                 api_key_secret_rid=rid_from_instance_or_string(self.api_key_secret),
             )
         )
+
+    @classmethod
+    def _from_conjure(cls, raw: api.VisualCrossingConnectionDetails) -> VisualCrossingConnectionDetails:
+        return cls(api_key_secret=raw.api_key_secret_rid)
 
 
 @dataclass(frozen=True)
@@ -171,10 +239,15 @@ class BigQueryConnectionDetails:
     provider_type: ClassVar[Literal["bigQuery"]] = "bigQuery"
 
     region: str
+    """BigQuery region."""
     project: str
+    """BigQuery project identifier."""
     dataset: str
+    """BigQuery dataset name."""
     table: str
+    """BigQuery table name."""
     service_account_key_secret: Secret | str
+    """Service account key secret object or RID in the dataset workspace."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -187,6 +260,16 @@ class BigQueryConnectionDetails:
             )
         )
 
+    @classmethod
+    def _from_conjure(cls, raw: api.BigQueryConnectionDetails) -> BigQueryConnectionDetails:
+        return cls(
+            region=raw.region,
+            project=raw.project,
+            dataset=raw.dataset,
+            table=raw.table,
+            service_account_key_secret=raw.service_account_key_secret_rid,
+        )
+
 
 @dataclass(frozen=True)
 class ApiConnectionDetails:
@@ -195,7 +278,9 @@ class ApiConnectionDetails:
     provider_type: ClassVar[Literal["api"]] = "api"
 
     api_uri: str
+    """Base URI of the external connection API service."""
     token_secret: Secret | str
+    """API token secret object or RID in the dataset workspace."""
 
     def _to_conjure(self) -> api.ConnectionDetails:
         return api.ConnectionDetails(
@@ -204,6 +289,10 @@ class ApiConnectionDetails:
                 token_secret_rid=rid_from_instance_or_string(self.token_secret),
             )
         )
+
+    @classmethod
+    def _from_conjure(cls, raw: api.ApiConnectionDetails) -> ApiConnectionDetails:
+        return cls(api_uri=raw.api_uri, token_secret=raw.token_secret_rid)
 
 
 ExternalConnectionDetails: TypeAlias = (
@@ -224,61 +313,23 @@ class UnknownExternalConnectionDetails:
     provider_type: str
 
 
-def _details_from_conjure(  # noqa: PLR0911 - each provider owns a distinct payload
+def _details_from_conjure(  # noqa: PLR0911 - explicit typed dispatch for each provider
     raw: api.ConnectionDetails,
 ) -> ExternalConnectionDetails | UnknownExternalConnectionDetails:
     if raw.timescale is not None:
-        return TimescaleConnectionDetails(
-            database=raw.timescale.database,
-            host=raw.timescale.host,
-            port=raw.timescale.port,
-            username=raw.timescale.username,
-            password_secret=raw.timescale.password_secret_rid,
-        )
+        return TimescaleConnectionDetails._from_conjure(raw.timescale)
     if raw.influx is not None:
-        return Influx2ConnectionDetails(
-            host=raw.influx.host,
-            port=raw.influx.port,
-            org=raw.influx.org,
-            token_secret=raw.influx.token_secret_rid,
-            headers=_headers_from_conjure(raw.influx.headers),
-        )
+        return Influx2ConnectionDetails._from_conjure(raw.influx)
     if raw.influx1 is not None:
-        return Influx1ConnectionDetails(
-            host=raw.influx1.host,
-            port=raw.influx1.port,
-            headers=_headers_from_conjure(raw.influx1.headers),
-            credentials=PasswordCredentials(
-                raw.influx1.credentials.username, raw.influx1.credentials.password_secret_rid
-            )
-            if raw.influx1.credentials is not None
-            else None,
-        )
+        return Influx1ConnectionDetails._from_conjure(raw.influx1)
     if raw.timestream is not None:
-        return TimestreamConnectionDetails(
-            nominal_role_arn=raw.timestream.nominal_role_arn,
-            nominal_role_region=raw.timestream.nominal_role_region,
-            external_region=raw.timestream.external_region,
-            external_role_arn=raw.timestream.external_role_arn,
-            database=raw.timestream.database,
-        )
+        return TimestreamConnectionDetails._from_conjure(raw.timestream)
     if raw.visual_crossing is not None:
-        return VisualCrossingConnectionDetails(
-            api_key_secret=raw.visual_crossing.api_key_secret_rid,
-        )
+        return VisualCrossingConnectionDetails._from_conjure(raw.visual_crossing)
     if raw.big_query is not None:
-        return BigQueryConnectionDetails(
-            region=raw.big_query.region,
-            project=raw.big_query.project,
-            dataset=raw.big_query.dataset,
-            table=raw.big_query.table,
-            service_account_key_secret=raw.big_query.service_account_key_secret_rid,
-        )
+        return BigQueryConnectionDetails._from_conjure(raw.big_query)
     if raw.api is not None:
-        return ApiConnectionDetails(
-            api_uri=raw.api.api_uri,
-            token_secret=raw.api.token_secret_rid,
-        )
+        return ApiConnectionDetails._from_conjure(raw.api)
     return UnknownExternalConnectionDetails(raw.type)
 
 
@@ -288,7 +339,9 @@ class InfluxScrapingFilter:
 
     kind: Literal["bucket", "measurement"]
     values: Sequence[str]
+    """Names matched by this filter."""
     negate: bool = field(default=False, kw_only=True)
+    """Whether to exclude matching names instead of including them."""
 
     def _to_conjure(self) -> api.InfluxScrapingFilter:
         match = (
@@ -305,7 +358,9 @@ class TimescaleScrapingFilter:
 
     kind: Literal["table", "schema"]
     values: Sequence[str]
+    """Names matched by this filter."""
     negate: bool = field(default=False, kw_only=True)
+    """Whether to exclude matching names instead of including them."""
 
     def _to_conjure(self) -> api.TimescaleScrapingFilter:
         match = (
@@ -321,8 +376,11 @@ class InfluxScrapingConfig:
     """Discover Influx series using ordered channel components and ANDed filters."""
 
     channel_name_components: Sequence[Literal["bucket", "measurement", "field"]]
+    """Ordered components used to construct channel names."""
     separator: str
+    """Separator between channel name components."""
     filters: Sequence[InfluxScrapingFilter] = field(default=(), kw_only=True)
+    """Filters combined with AND; an empty sequence applies no filters."""
 
     def _to_conjure(self) -> api.ScrapingConfig:
         components = []
@@ -352,12 +410,19 @@ class TagValueComponent:
 
 @dataclass(frozen=True)
 class TimestreamScrapingConfig:
-    """Discover Timestream measures, optionally restricted to matching tables."""
+    """Discover Timestream measures in explicitly named tables."""
 
     channel_name_components: Sequence[Literal["table", "measure", "attribute"] | TagValueComponent]
+    """Ordered components used to construct channel names."""
     separator: str
+    """Separator between channel name components."""
     tables: Sequence[str] | None = field(default=None, kw_only=True)
+    """None omits the table filter; an empty sequence sends an empty match.
+
+    The backend requires at least one named table when scraping, so supply a nonempty sequence.
+    """
     max_look_back_period_hours: int | None = field(default=None, kw_only=True)
+    """Maximum discovery lookback in hours; None uses the backend default."""
 
     def _to_conjure(self) -> api.ScrapingConfig:
         components = []
@@ -385,12 +450,19 @@ class TimescaleScrapingConfig:
     """Discover series in a pivoted Timescale table with time, name, and value columns."""
 
     time_column: str
+    """Column containing timestamps."""
     name_column: str
+    """Column containing the series name."""
     value_column: str
+    """Column containing the series value."""
     dimension_columns: Sequence[str]
+    """Columns interpreted as indexed dimensions."""
     channel_name_components: Sequence[Literal["table", "name"]]
+    """Ordered components used to construct channel names."""
     separator: str
+    """Separator between channel name components."""
     filters: Sequence[TimescaleScrapingFilter] = field(default=(), kw_only=True)
+    """Filters combined with AND; an empty sequence applies no filters."""
 
     def _to_conjure(self) -> api.ScrapingConfig:
         components = [
@@ -426,9 +498,13 @@ class BigQueryScrapingConfig:
     """Identify timestamps, tags, and optional channel prefixes in BigQuery."""
 
     time_column: str
+    """Column containing timestamps."""
     tag_columns: Sequence[str]
+    """Columns interpreted as series tags."""
     channel_name_components: BigQueryChannelNameComponents | None = field(default=None, kw_only=True)
+    """Optional prefix identifiers; None adds no project, dataset, or table prefix."""
     separator: str | None = field(default=None, kw_only=True)
+    """Channel prefix separator; None uses the backend default, a period."""
 
     def _to_conjure(self) -> api.ScrapingConfig:
         components = self.channel_name_components
@@ -461,7 +537,9 @@ class ApiScrapingConfig:
     """Scrape all channels, or only allow/block the supplied channel names."""
 
     mode: Literal["all", "allow", "block"] = "all"
+    """Discover all channels, only the allow list, or all except the block list."""
     channels: Sequence[str] = ()
+    """Channel names for allow/block mode; these lists must be nonempty. Ignored in all mode."""
 
     def _to_conjure(self) -> api.ScrapingConfig:
         if self.mode == "all":
@@ -496,9 +574,13 @@ class ExternalQueryRange:
     """Maximum query duration, retaining the backend's integral count and unit."""
 
     count: int
-    unit: Literal["HOURS", "DAYS", "WEEKS"]
+    """Integral number of duration units."""
+    unit: str
+    """HOURS, DAYS, or WEEKS for writes; reads preserve other decoded unit names."""
 
     def _to_conjure(self) -> api.Duration:
+        if self.unit not in {"HOURS", "DAYS", "WEEKS"}:
+            raise ValueError(f"Unsupported external query duration unit: {self.unit}")
         return api.Duration(count=self.count, unit=api.TemporalUnit(self.unit))
 
 
@@ -507,6 +589,7 @@ class ExternalConnectionLimits:
     """Optional maximum range for an external query."""
 
     max_query_range: ExternalQueryRange | None = None
+    """Maximum range of one query; None omits the limit."""
 
     def _to_conjure(self) -> api.LimitsConfig:
         return api.LimitsConfig(
@@ -518,15 +601,7 @@ class ExternalConnectionLimits:
         duration = raw.max_query_range
         if duration is None:
             return cls()
-        if duration.unit == api.TemporalUnit.HOURS:
-            unit: Literal["HOURS", "DAYS", "WEEKS"] = "HOURS"
-        elif duration.unit == api.TemporalUnit.DAYS:
-            unit = "DAYS"
-        elif duration.unit == api.TemporalUnit.WEEKS:
-            unit = "WEEKS"
-        else:
-            raise ValueError(f"Unsupported external query duration unit: {duration.unit}")
-        return cls(ExternalQueryRange(duration.count, unit))
+        return cls(ExternalQueryRange(duration.count, duration.unit.value))
 
 
 @dataclass(frozen=True)
@@ -539,12 +614,19 @@ class ExternalConnectionConfig:
     """
 
     details: ExternalConnectionDetails
+    """Provider-specific connection parameters."""
     metadata: Mapping[str, str] = field(default_factory=dict, kw_only=True)
+    """External configuration metadata; an empty mapping clears previous metadata."""
     required_tag_names: Sequence[str] = field(default=(), kw_only=True)
+    """Additional tags required to fully qualify a series; empty clears previous requirements."""
     available_tag_values: Mapping[str, Sequence[str]] | None = field(default=None, kw_only=True)
+    """Externally supplied tag values; both None and an empty mapping clear previous values."""
     scraping: ExternalScrapingConfig | None = field(default=None, kw_only=True)
+    """Provider-specific discovery configuration; None clears previous scraping settings."""
     should_scrape: bool = field(default=False, kw_only=True)
+    """Enable discovery only when scraping configuration is also supplied; defaults to False."""
     limits: ExternalConnectionLimits | None = field(default=None, kw_only=True)
+    """External query limits; None means no limits in this snapshot or registration."""
 
     def _to_conjure(self, dataset_rid: str) -> scout_catalog.RegisterExternalConnectionConfigRequest:
         return scout_catalog.RegisterExternalConnectionConfigRequest(
@@ -566,8 +648,11 @@ class ExternalConnection:
     """External connection metadata returned with a dataset, without remote lifecycle methods."""
 
     details: ExternalConnectionDetails | UnknownExternalConnectionDetails
+    """Provider-specific connection parameters."""
     is_connected: bool
+    """Last reported status; initial True after registration is not a connectivity check."""
     limits: ExternalConnectionLimits | None
+    """External query limits; None means no limits in this snapshot or registration."""
 
     @property
     def provider_type(self) -> str:
