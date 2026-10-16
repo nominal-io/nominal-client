@@ -5,6 +5,8 @@ from pathlib import Path
 
 from nominal_sphinx_theme import theme_options
 
+import nominal.exceptions
+
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
 
@@ -29,6 +31,13 @@ extensions = [
 ]
 
 templates_path = [str(HERE / "_templates")]
+autosummary_generate = [str(HERE / "autosummary.rst")]
+autosummary_filename_map = {"nominal.exceptions": "exceptions"}
+autosummary_context = {
+    "warning_names": [
+        name for name, obj in vars(nominal.exceptions).items() if isinstance(obj, type) and issubclass(obj, Warning)
+    ],
+}
 
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets"]

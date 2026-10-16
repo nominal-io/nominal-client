@@ -20,10 +20,11 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions overview: it lists error and warning
-names in separate native `autosummary` tables, with summaries and generated detail pages
-from docstrings. Those pages live under `src/sdk/generated/`, are ignored by Git and the
-preview watcher. The left sidebar shows only the overview.
+generated source pages, except for the exceptions reference. Native `autosummary` reads
+its module entry in `autosummary.rst`, discovers public exceptions, and uses the template
+under `_templates/autosummary/` to separate errors and warnings without a member list.
+The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
+by Git and the preview watcher. The left sidebar shows only the overview.
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with

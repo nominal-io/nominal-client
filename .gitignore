@@ -203,3 +203,4 @@ docs/src/examples/
 
 # Native Sphinx autosummary reference pages.
 docs/src/sdk/generated/
+docs/src/sdk/exceptions.rst
