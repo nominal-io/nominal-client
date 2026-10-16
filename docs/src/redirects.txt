@@ -17,7 +17,7 @@ reference/thirdparty/pandas.md sdk/thirdparty/pandas.md
 reference/thirdparty/polars.md sdk/thirdparty/polars.md
 reference/thirdparty/tdms.md sdk/thirdparty/tdms.md
 reference/toplevel.md sdk/index.md
-reference/ts.md sdk/ts.md
+reference/ts.md sdk/ts/index.md
 changelog.md sdk/changelog.md
 
 # The old asset/run guides wrote log points; retain their URLs under Stream.

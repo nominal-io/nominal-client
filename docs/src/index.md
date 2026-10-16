@@ -173,7 +173,7 @@ examples/index
 
 Overview <sdk/index>
 Core SDK <sdk/core>
-Timestamps <sdk/ts>
+Timestamps <sdk/ts/index>
 Exceptions <sdk/exceptions>
 ```
 

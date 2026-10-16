@@ -30,3 +30,4 @@
    :template: autosummary/module-summary-no-prose.rst
 
    nominal.ibis
+   nominal.ts

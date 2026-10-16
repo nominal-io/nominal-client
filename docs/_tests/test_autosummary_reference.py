@@ -40,6 +40,7 @@ def create() -> Resource:
 Label: TypeAlias = Literal['fast', 'safe']
 ResourceOrLabel: TypeAlias = Resource | Label
 RESOURCE_TYPE: TypeAlias = Resource | None
+ItemCount: TypeAlias = int
 
 MAX_BATCH = 10
 """Maximum items per batch."""
@@ -51,8 +52,10 @@ MAX_BATCH = 10
         "from pathlib import Path\n"
         "from typing import TypeVar\n"
         "T = TypeVar('T')\n"
-        "from _sample_impl import Resource, Mode, create, MAX_BATCH, Label, ResourceOrLabel, RESOURCE_TYPE, _Internal\n"
-        "__all__ = ['Resource', 'Mode', 'create', 'MAX_BATCH', 'Label', 'ResourceOrLabel', 'RESOURCE_TYPE', 'T']\n",
+        "from _sample_impl import Resource, Mode, create, MAX_BATCH, "
+        "Label, ResourceOrLabel, RESOURCE_TYPE, ItemCount, _Internal\n"
+        "__all__ = ['Resource', 'Mode', 'create', 'MAX_BATCH', 'Label', "
+        "'ResourceOrLabel', 'RESOURCE_TYPE', 'ItemCount', 'T']\n",
         encoding="utf-8",
     )
     (tmp_path / "sample_local.py").write_text(
@@ -69,7 +72,7 @@ MAX_BATCH = 10
         "autosummary_context = {'module_data': {'sample_api': {'enums': ['Mode'], 'exports': sample_api.__all__, "
         "'constants': {'MAX_BATCH': '``10``'}, 'type_aliases': {\n"
         "name: restify(getattr(sample_api, name), mode='smart').replace(\"'\", \"\\\\'\")\n"
-        "for name in ['Label', 'ResourceOrLabel', 'RESOURCE_TYPE']}},\n"
+        "for name in ['Label', 'ResourceOrLabel', 'RESOURCE_TYPE', 'ItemCount']}},\n"
         "'sample_local': {'enums': [], 'exports': [], 'type_aliases': {},\n"
         "'constants': {'MAX_BATCH': '``10``', 'MAX_RETRIES': '``3``'}}}}\n"
         "autodoc_default_options = {'members': True}\n"
@@ -101,7 +104,7 @@ MAX_BATCH = 10
         {"Mode"},
         {"create"},
         {"MAX_BATCH"},
-        {"Label", "ResourceOrLabel", "RESOURCE_TYPE"},
+        {"Label", "ResourceOrLabel", "RESOURCE_TYPE", "ItemCount"},
         {"MAX_RETRIES"},
     ]
     assert [rubric.astext() for rubric in tree.findall(nodes.rubric)] == [
@@ -117,6 +120,7 @@ MAX_BATCH = 10
     assert aliases["Label"].astext() == "Literal['fast', 'safe']"
     assert aliases["ResourceOrLabel"].astext() == "Resource | Literal['fast', 'safe']"
     assert aliases["RESOURCE_TYPE"].astext() == "Resource | None"
+    assert aliases["ItemCount"].astext() == "int"
     html = (output / "sdk/experimental/sample/index.html").read_text()
     for name in ["ResourceOrLabel", "RESOURCE_TYPE"]:
         row_html = html.split(f'id="sample_api.{name}"', 1)[1].split("</tr>", 1)[0]
