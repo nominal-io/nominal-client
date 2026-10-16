@@ -10,7 +10,7 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000 and watches pages, examples, docstrings and included files.
-  Both commands remove generated example pages and HTML before rebuilding.
+  Both commands remove generated example/reference pages and HTML before rebuilding.
 - The `docs` dependency group requires Python >=3.12. uv selects a compatible interpreter
   and may recreate an older project environment; the SDK still supports Python >=3.11.
 - Autodoc imports the live-video bindings. Linux builds need the GStreamer runtime;
@@ -20,7 +20,11 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 
 API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
 Members come from Python exports and render inline; do not maintain member lists or
-generated source pages. Packages with `__all__` need no `:imported-members:` option.
+generated source pages, except for the exceptions overview: it lists error and warning
+names in separate native `autosummary` tables, with summaries and generated detail pages
+from docstrings. Those pages live under `src/sdk/generated/`, are ignored by Git and the
+preview watcher, and have no GitHub edit link. The left sidebar shows only the overview.
+Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with
 properties after the fields. Core keeps class/function-level local contents (`tocdepth: 2`);

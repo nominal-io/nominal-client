@@ -200,3 +200,6 @@ uv.toml
 docs/src/examples/
 # The quickstart sample is a downloadable archive.
 !docs/src/guides/data/racecar_dataset.csv.gz
+
+# Native Sphinx autosummary reference pages.
+docs/src/sdk/generated/
