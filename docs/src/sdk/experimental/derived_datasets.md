@@ -4,7 +4,7 @@
 :start-line: 1
 ```
 
-## API reference
+## API Reference
 
 ```{eval-rst}
 .. include:: ../_summaries/nominal.experimental.derived_datasets.rst

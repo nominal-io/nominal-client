@@ -4,13 +4,15 @@
 :start-line: 1
 ```
 
-## Bucketed results
+## API Reference
+
+### Bucketed results
 
 ```{eval-rst}
 .. include:: ../_summaries/nominal.experimental.compute.rst
 ```
 
-## Expressions
+### Expressions
 
 ```{eval-rst}
 .. include:: ../_summaries/nominal.experimental.compute.dsl.exprs.rst
