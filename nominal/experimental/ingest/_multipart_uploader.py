@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Self, Type
 import requests
 from nominal_api import upload_api
 
-from nominal.core._utils.filenames import validate_upload_filename
+from nominal.core._utils.filenames import resolve_upload_filename
 from nominal.core._utils.multipart import (
     DEFAULT_CHUNK_SIZE,
     _abort,
@@ -29,7 +29,7 @@ from nominal.core._utils.multipart import (
     _initiate_multipart_upload,
     _put_part,
     _wrap_multipart_retry_exception,
-    path_upload_name,
+    path_upload_filename,
 )
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core.filetype import FileType
@@ -158,7 +158,7 @@ class _PendingUpload:
 
     path: pathlib.Path
     file_type: FileType
-    name: str
+    filename: str
     part_size: int
     total_size: int
 
@@ -460,8 +460,8 @@ class MultipartUploader:
         Args:
             path: File to upload.
             file_type: Override the file type inferred from `path`.
-            name: Override the object name derived from `path` (the file type's extension is
-                still appended).
+            name: Override the object name derived from `path`, with or without the selected
+                format suffix. The suffix is applied once.
             part_size: Bytes per multipart part. Ignored on the small-file route. Each in-flight
                 part is held fully in memory, so peak buffered memory across the uploader is
                 roughly `max_storage_workers × part_size` — tune the two together.
@@ -481,18 +481,21 @@ class MultipartUploader:
         if self._closed:
             raise RuntimeError("uploader is closed")
         file_type = file_type if file_type is not None else FileType.from_path(path)
-        name = name if name is not None else path_upload_name(path, file_type)
-        validate_upload_filename(name)
+        filename = resolve_upload_filename(
+            name if name is not None else path_upload_filename(path, file_type), file_type.extension
+        )
         total_size = path.stat().st_size  # raises FileNotFoundError synchronously if missing
 
-        pending = _PendingUpload(path=path, file_type=file_type, name=name, part_size=part_size, total_size=total_size)
+        pending = _PendingUpload(
+            path=path, file_type=file_type, filename=filename, part_size=part_size, total_size=total_size
+        )
         # A declared size of zero is rejected by the single-shot endpoint, so empty files always
         # take multipart, where a single zero-byte part completes normally.
         small_route = (
             self._small_file_route_max_bytes is not None and 0 < total_size <= self._small_file_route_max_bytes
         )
         if small_route:
-            logger.debug("enqueued %s (%d bytes) on the single-shot route", name, total_size)
+            logger.debug("enqueued %s (%d bytes) on the single-shot route", filename, total_size)
         else:
             # Part geometry only matters on the multipart route; the single-shot route ignores it.
             if part_size <= 0:
@@ -514,7 +517,7 @@ class MultipartUploader:
                     path,
                     num_parts,
                 )
-            logger.debug("enqueued %s (%d bytes) on the multipart route, %d part(s)", name, total_size, num_parts)
+            logger.debug("enqueued %s (%d bytes) on the multipart route, %d part(s)", filename, total_size, num_parts)
         # Issued under the lock so a future can never slip past close's cancel pass: once close
         # holds the lock, enqueueing raises here instead of racing the executors' own shutdown.
         with self._issue_lock:
@@ -566,7 +569,7 @@ class MultipartUploader:
     # ---- small route (small-pool thread) ----
 
     def _run_small_file_upload(self, pending: _PendingUpload) -> str:
-        return self._run_with_file_retry(lambda: self._run_small_file_upload_attempt(pending), pending.name)
+        return self._run_with_file_retry(lambda: self._run_small_file_upload_attempt(pending), pending.filename)
 
     def _run_small_file_upload_attempt(self, pending: _PendingUpload) -> str:
         """Upload a small file in one request via the backend `upload_file` endpoint.
@@ -578,7 +581,7 @@ class MultipartUploader:
         # running first); settle it like every other dropped file, before it spends a request.
         if self._draining.is_set():
             raise CancelledError("uploader is closing")
-        safe_filename = f"{pending.name}{pending.file_type.extension}"
+        safe_filename = pending.filename
         body = pending.path.read_bytes()
         started = time.monotonic()
         location = self._gate.call(
@@ -594,7 +597,7 @@ class MultipartUploader:
     # ---- multipart route (driver-pool thread) ----
 
     def _upload_one(self, pending: _PendingUpload) -> str:
-        return self._run_with_file_retry(lambda: self._upload_one_attempt(pending), pending.name)
+        return self._run_with_file_retry(lambda: self._upload_one_attempt(pending), pending.filename)
 
     def _upload_one_attempt(self, pending: _PendingUpload) -> str:
         """Run one file's whole multipart lifecycle: initiate, fan out parts, complete or abort.
@@ -606,7 +609,7 @@ class MultipartUploader:
         # running first); settle it like every other dropped file, before it spends a request.
         if self._draining.is_set():
             raise CancelledError("uploader is closing")
-        safe_filename = f"{pending.name}{pending.file_type.extension}"
+        safe_filename = pending.filename
         started = time.monotonic()
         key, upload_id = self._gate.call(
             lambda: _initiate_multipart_upload(
