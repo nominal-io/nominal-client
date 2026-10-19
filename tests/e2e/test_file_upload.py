@@ -24,13 +24,7 @@ ArchiveFn = Callable[[object], None]
 def test_special_char_filename_round_trips(
     client: NominalClient, csv_data: bytes, archive: ArchiveFn, stem: str
 ) -> None:
-    """Filenames with safe special characters upload and retain their catalog name.
-
-    Regression test for the filename-encoding fix. This runs against S3 (gov staging), which
-    tolerates the *upload* of any character — so the load-bearing assertion is the stored NAME:
-    before the fix the client quote_plus'd the name (``paren%28reduced%29.csv``); after it, the
-    literal name round-trips.
-    """
+    """Safe special-character filenames upload and retain their literal catalog name on AWS and Azure."""
     ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
     archive(ds)
     # add_from_io completes the storage upload and reads the file metadata from the catalog.
