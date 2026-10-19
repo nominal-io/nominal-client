@@ -54,3 +54,13 @@ The filename e2e matrix consolidates the allowed ASCII characters into one case;
 it does not establish every character in isolation on each backend. Local tests
 cover each character separately. Keep the original Azure regression isolated to
 make that failure recognizable.
+
+## CI credentials
+
+Each CI job creates a separate API key with a one-day expiry from its configured
+repository secret. Migration creates separate source and destination credentials.
+Pytest workers within a job share that job's key; concurrent jobs do not share the
+same rate-limit budget. The workflow masks each key before configuring its profile
+and revokes it in an `always()` cleanup step. Expiry bounds the lifetime when a
+runner is lost before cleanup. Setup fails if the configured credential cannot
+create a key; it does not fall back to sharing the repository secret.
