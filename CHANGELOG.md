@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.178.0](https://github.com/nominal-io/nominal-client/compare/v1.177.0...v1.178.0) (2026-10-19)
+
+
+### Features
+
+* ingest Dataflash and journal files from binary streams ([#1089](https://github.com/nominal-io/nominal-client/issues/1089)) ([76bf741](https://github.com/nominal-io/nominal-client/commit/76bf74195b39ac67574f33fd09546021798c2df0))
+* remove dataset, attachment, and run CLI commands ([#1168](https://github.com/nominal-io/nominal-client/issues/1168)) ([57f1093](https://github.com/nominal-io/nominal-client/commit/57f10933b5f629ac3cfe5ff8de5c67e1a05627e4))
+* remove legacy connection resources ([#1171](https://github.com/nominal-io/nominal-client/issues/1171)) ([b0dc70e](https://github.com/nominal-io/nominal-client/commit/b0dc70ea6547c2d823389ae7cdcaa4d2700db3c4))
+
+
+### Bug Fixes
+
+* keep window frames on Ibis first() and last() ([#1181](https://github.com/nominal-io/nominal-client/issues/1181)) ([34ddfbb](https://github.com/nominal-io/nominal-client/commit/34ddfbb80c6687a5a887375f8e2e2ddc98751cb3))
+* **migration:** contain attachment copy failures ([#1123](https://github.com/nominal-io/nominal-client/issues/1123)) ([8bddeac](https://github.com/nominal-io/nominal-client/commit/8bddeac909cd7902c25276d597d7212ce05a3c44))
+* preserve decimal places when rounding with Ibis ([#1188](https://github.com/nominal-io/nominal-client/issues/1188)) ([66c6e97](https://github.com/nominal-io/nominal-client/commit/66c6e97eccf8d2987564aa699e9c6fea1e4a1f00))
+* update docstrings in nominal.ts to reflect removal of nm ([#1164](https://github.com/nominal-io/nominal-client/issues/1164)) ([665a6cb](https://github.com/nominal-io/nominal-client/commit/665a6cb1bbf749e2052ee5a4dcffc6557edff0bc))
+
+
+### Documentation
+
+* align CLI downloads guide with export behavior ([#1163](https://github.com/nominal-io/nominal-client/issues/1163)) ([b630ee6](https://github.com/nominal-io/nominal-client/commit/b630ee6cc3c30af4171fcd696e6e1f82a1087cd5))
+* align older guides with current SDK workflows ([#1193](https://github.com/nominal-io/nominal-client/issues/1193)) ([08ba83b](https://github.com/nominal-io/nominal-client/commit/08ba83b01aa3b0374a008c10910ff1a797042fbf))
+* connect the video ingestion workflow ([#1166](https://github.com/nominal-io/nominal-client/issues/1166)) ([0aaa9c1](https://github.com/nominal-io/nominal-client/commit/0aaa9c1accb8ed0decd764d5f946bc30e7a544b4))
+* frame the SDK overview by package ([#1162](https://github.com/nominal-io/nominal-client/issues/1162)) ([eddded5](https://github.com/nominal-io/nominal-client/commit/eddded530edd130bd981e9c372daa0cb20e06d87))
+* generate exception and warning references ([#1167](https://github.com/nominal-io/nominal-client/issues/1167)) ([23e6ce6](https://github.com/nominal-io/nominal-client/commit/23e6ce630b121ecd8396395cfb8757d02a1e50c8))
+* give integrations generated API reference tables ([#1186](https://github.com/nominal-io/nominal-client/issues/1186)) ([f12afd6](https://github.com/nominal-io/nominal-client/commit/f12afd6f8131ae4ef9e27417333ba17ca3200efe))
+* make streaming overview a complete telemetry workflow ([#1180](https://github.com/nominal-io/nominal-client/issues/1180)) ([5f363fd](https://github.com/nominal-io/nominal-client/commit/5f363fd1bb272345eac1fcd71423eca52d1c491f))
+* organize Core SDK reference into topic pages ([#1192](https://github.com/nominal-io/nominal-client/issues/1192)) ([f222c6a](https://github.com/nominal-io/nominal-client/commit/f222c6ace0005df815111d29bdcc4ee293ec32bc))
+* organize log guides by file ingestion and streaming ([#1169](https://github.com/nominal-io/nominal-client/issues/1169)) ([735a709](https://github.com/nominal-io/nominal-client/commit/735a709a4bd4b559143630a298df9c4cb6b468b1))
+* rebuild datasets overview around its lifecycle ([#1158](https://github.com/nominal-io/nominal-client/issues/1158)) ([88b14df](https://github.com/nominal-io/nominal-client/commit/88b14df29a57ca742fc38dad83c29595c84ca2ac))
+* separate compute prose and API reference ([#1173](https://github.com/nominal-io/nominal-client/issues/1173)) ([0a91718](https://github.com/nominal-io/nominal-client/commit/0a917185369a63b9f447d5eec75b3734fd4c434e))
+* separate derived dataset prose and API reference ([#1174](https://github.com/nominal-io/nominal-client/issues/1174)) ([4bd2155](https://github.com/nominal-io/nominal-client/commit/4bd215599f3be01420010ff323950b06c6727098))
+* separate integration guides from API reference ([f12afd6](https://github.com/nominal-io/nominal-client/commit/f12afd6f8131ae4ef9e27417333ba17ca3200efe))
+* separate prose and API reference for experiments ([#1175](https://github.com/nominal-io/nominal-client/issues/1175)) ([31f4512](https://github.com/nominal-io/nominal-client/commit/31f45122dac816ae39c10e9af653644ff5a74f33))
+* separate remaining experiment guides and API reference ([#1183](https://github.com/nominal-io/nominal-client/issues/1183)) ([7984a57](https://github.com/nominal-io/nominal-client/commit/7984a57cbf7ef64304b6452f6281fb58d9a22bad))
+* separate standalone and asset run workflows ([#1161](https://github.com/nominal-io/nominal-client/issues/1161)) ([765994e](https://github.com/nominal-io/nominal-client/commit/765994edfe5bdcdd7a2502707c55cd850508a7e2))
+* separate timestamp walkthrough from API reference ([#1187](https://github.com/nominal-io/nominal-client/issues/1187)) ([20ef87e](https://github.com/nominal-io/nominal-client/commit/20ef87eb51c8e7d15894dff30c875fc8292d87c6))
+* unify experiment API reference headings ([099da6f](https://github.com/nominal-io/nominal-client/commit/099da6ff7fdfa26a2c1f36be1d03aa352b97e39c))
+* unify experiment API Reference sections ([#1185](https://github.com/nominal-io/nominal-client/issues/1185)) ([099da6f](https://github.com/nominal-io/nominal-client/commit/099da6ff7fdfa26a2c1f36be1d03aa352b97e39c))
+* update SDK integration label and section order ([#1165](https://github.com/nominal-io/nominal-client/issues/1165)) ([1e071e4](https://github.com/nominal-io/nominal-client/commit/1e071e422e9fd42846a7c1e5cd494bd8f574e231))
+
 ## [1.177.0](https://github.com/nominal-io/nominal-client/compare/v1.176.0...v1.177.0) (2026-10-15)
 
 
