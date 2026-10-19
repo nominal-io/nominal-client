@@ -67,6 +67,7 @@ jobs:
         run: |
           uv run pytest tests/e2e \
             --ignore=tests/e2e/migration \
+            --ignore=tests/e2e/test_file_upload.py \
             --profile staging-e2e \
             --no-cov \
             -v
@@ -209,8 +210,7 @@ jobs:
 
       - name: Run file upload e2e tests
         run: |
-          uv run pytest tests/e2e/test_core.py \
-            -k "special_char or unsafe_char" \
+          uv run pytest tests/e2e/test_file_upload.py \
             --profile file-upload-e2e \
             --no-cov \
             -v

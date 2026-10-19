@@ -45,9 +45,20 @@ def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) 
         ("paren(reduced)", "paren(reduced).csv"),  # was quote_plus'd to paren%28reduced%29.csv
         ("with space", "with space.csv"),  # was with+space.csv
         ("unicode_résumé", "unicode_résumé.csv"),  # was %C3%A9-mangled
+        ("amp&ersand", "amp&ersand.csv"),
+        ("plus+plus", "plus+plus.csv"),
+        ("hash#tag", "hash#tag.csv"),
+        ("bracket[1]", "bracket[1].csv"),
+        ("at@sign", "at@sign.csv"),
+        ("equals=sign", "equals=sign.csv"),
+        ("comma,comma", "comma,comma.csv"),
+        ("semi;colon", "semi;colon.csv"),
+        ("tilde~caret^", "tilde~caret^.csv"),
+        ("dollar$sign", "dollar$sign.csv"),
     ],
 )
 def test_filename_forwarded_unencoded(name: str, expected: str) -> None:
+    """Allowed filename characters reach the upload request without URL encoding."""
     assert _filename_passed_downstream(name) == expected
 
 
