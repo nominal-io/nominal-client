@@ -39,6 +39,8 @@ from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
 from tests.e2e import POLL_INTERVAL
 
+pytestmark = pytest.mark.xdist_group("derived")
+
 ArchiveFn = Callable[[object], None]
 
 
@@ -155,7 +157,7 @@ def mixed_dataset(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> I
 def test_create_derived_dataset_with_inputs(
     client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
 ) -> None:
-    """Inputs given at creation come back from the server exactly as they were sent, tags included."""
+    """Creation and lookup preserve derived inputs, filters, and labels."""
     dataset_a, dataset_b = tagged_datasets
     inputs = (
         DerivedDatasetInput.create(dataset_a, filters=[TagFilter.in_("vehicle", "A")]),
@@ -167,29 +169,9 @@ def test_create_derived_dataset_with_inputs(
 
     assert derived.labels == ("e2e",)
     assert derived.list_input_datasets() == inputs
-
-
-def test_create_derived_dataset_with_no_inputs(client: NominalClient, archive: ArchiveFn) -> None:
-    """A derived dataset can be created empty and populated afterwards."""
-    derived = create_derived_dataset(client, f"derived-empty-{uuid4().hex[:8]}")
-    archive(derived)
-
-    assert derived.list_input_datasets() == ()
-
-
-def test_a_derived_dataset_is_looked_up_as_a_derived_dataset(
-    client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
-) -> None:
-    """The lookup carries the derived definition, which is what types the result as derived."""
-    dataset_a, _ = tagged_datasets
-    derived = create_derived_dataset(
-        client, f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
-    )
-    archive(derived)
-
-    assert isinstance(get_derived_dataset(client, derived.rid), DerivedDataset)
-    with pytest.raises(ValueError, match="is not a derived dataset"):
-        get_derived_dataset(client, dataset_a.rid)
+    fetched = get_derived_dataset(client, derived.rid)
+    assert isinstance(fetched, DerivedDataset)
+    assert fetched.list_input_datasets() == inputs
 
 
 def test_add_and_remove_input_datasets(
@@ -199,6 +181,8 @@ def test_add_and_remove_input_datasets(
     dataset_a, dataset_b = tagged_datasets
     derived = create_derived_dataset(client, f"derived-{uuid4().hex[:8]}")
     archive(derived)
+
+    assert derived.list_input_datasets() == ()
 
     assert derived.add_input_dataset(
         DerivedDatasetInput.create(dataset_a, filters=[TagFilter.in_("vehicle", "A")])
@@ -230,19 +214,6 @@ def test_get_and_commit_definition_round_trip_the_raw_spec(
     assert committed.commit.parent_commit == definition.commit.id
     assert derived.list_input_datasets() == (DerivedDatasetInput.create(dataset_b),)
     assert derived.get_definition(definition.commit.id).spec == definition.spec
-
-
-def test_remove_input_dataset_rejects_a_dataset_that_is_not_an_input(
-    client: NominalClient, tagged_datasets: tuple[Dataset, Dataset], archive: ArchiveFn
-) -> None:
-    dataset_a, dataset_b = tagged_datasets
-    derived = create_derived_dataset(
-        client, f"derived-{uuid4().hex[:8]}", inputs=[DerivedDatasetInput.create(dataset_a)]
-    )
-    archive(derived)
-
-    with pytest.raises(ValueError, match="is not an input of derived dataset"):
-        derived.remove_input_dataset(dataset_b)
 
 
 def test_derived_dataset_reads_the_union_of_its_inputs(

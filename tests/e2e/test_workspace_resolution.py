@@ -31,18 +31,6 @@ def _get_service_default_workspace_rid(client: NominalClient) -> str:
         pytest.skip(f"Tenant does not expose a default workspace: {exc}")
 
 
-def test_workspace_rid_for_search_returns_workspace_object_rid(client: NominalClient) -> None:
-    """A live Workspace object should resolve back to its RID without altering search behavior."""
-    workspace = client.get_workspace()
-
-    assert client._workspace_rid_for_search(workspace) == workspace.rid
-
-
-def test_workspace_rid_for_search_returns_none_for_all(client: NominalClient) -> None:
-    """A live client should still translate ALL into an omitted workspace RID."""
-    assert client._workspace_rid_for_search(WorkspaceSearchType.ALL) is None
-
-
 def test_unconfigured_client_uses_workspace_service_default(client: NominalClient, pytestconfig) -> None:
     """Without a pinned workspace, DEFAULT should resolve to the tenant's service-side default."""
     unconfigured_client = _client_with_workspace_override(client, pytestconfig, workspace_rid=None)

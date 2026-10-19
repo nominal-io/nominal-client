@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Callable, Iterator, Sequence, cast
+from typing import Callable, Sequence, cast
 from uuid import uuid4
 
 import pytest
@@ -30,6 +30,8 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
+
+pytestmark = pytest.mark.xdist_group("search")
 
 _DATASET_HEADER = b"timestamp,temperature,pressure\n"
 
@@ -56,7 +58,7 @@ class SearchContext:
     event_flag: Event
 
     video: Video
-    """Fully ingested video."""
+    """Video metadata; name and archive searches do not need ingested frames."""
 
     dataset: Dataset
     file_jan: DatasetFile
@@ -122,7 +124,7 @@ def _assert_include_drafts_behavior(
 
 
 @pytest.fixture(scope="session")
-def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchContext]:
+def search_context(client: NominalClient, request: pytest.FixtureRequest) -> SearchContext:
     tag = uuid4().hex  # 32-char hex; unique per test session
 
     start, end = _create_random_start_end()
@@ -132,6 +134,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag},
     )
+    request.addfinalizer(asset.archive)
 
     run = client.create_run(
         f"run-{tag}",
@@ -140,16 +143,19 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag, "prop-only": f"proponly{tag}"},
     )
+    request.addfinalizer(run.archive)
 
     event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
+    request.addfinalizer(event_info.archive)
     event_error = client.create_event(f"event-error-{tag}", EventType.ERROR, start, assets=[asset])
+    request.addfinalizer(event_error.archive)
     event_flag = client.create_event(f"event-flag-{tag}", EventType.FLAG, start, assets=[asset])
+    request.addfinalizer(event_flag.archive)
 
     video = client.create_video(f"video-{tag}")
-    video_file = video.add_from_io(BytesIO(mp4_data), f"video-{tag}.mp4", start=start)
-    video_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
-
+    request.addfinalizer(video.archive)
     dataset = client.create_dataset(f"dataset-{tag}")
+    request.addfinalizer(dataset.archive)
     file_jan = dataset.add_from_io(
         BytesIO(_DATASET_HEADER + b"1704067200,20.1,1013.2\n1704070800,21.3,1012.8\n"),
         timestamp_column="timestamp",
@@ -173,7 +179,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     )
     wait_for_files_to_ingest([file_jan, file_jun, file_dec], poll_interval=POLL_INTERVAL)
 
-    ctx = SearchContext(
+    return SearchContext(
         tag=tag,
         run=run,
         asset=asset,
@@ -186,23 +192,14 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         file_jun=file_jun,
         file_dec=file_dec,
     )
-    yield ctx
-
-    run.archive()
-    asset.archive()
-    event_info.archive()
-    event_error.archive()
-    event_flag.archive()
-    video.archive()
-    dataset.archive()
 
 
 @pytest.fixture(scope="session")
 def archive_search_context(  # noqa: PLR0915
     client: NominalClient,
     search_context: SearchContext,
-    mp4_data: bytes,
-) -> Iterator[ArchiveSearchContext]:
+    request: pytest.FixtureRequest,
+) -> ArchiveSearchContext:
     start, end = _create_random_start_end()
 
     archived_run = client.create_run(
@@ -212,6 +209,7 @@ def archive_search_context(  # noqa: PLR0915
         labels=["search-test"],
         properties={"search-tag": search_context.tag},
     )
+    request.addfinalizer(archived_run.archive)
     archived_run.archive()
 
     archived_asset = client.create_asset(
@@ -219,29 +217,30 @@ def archive_search_context(  # noqa: PLR0915
         labels=["search-test"],
         properties={"search-tag": search_context.tag},
     )
+    request.addfinalizer(archived_asset.archive)
     archived_asset.archive()
 
     # Videos are dual-written as datasets sharing the video's name, so the session tag alone matches
     # the fixture's videos too: dataset search needs a tag that only its own datasets carry.
     dataset_tag = f"archive-dataset-{search_context.tag}"
     active_dataset = client.create_dataset(f"{dataset_tag}-active")
+    request.addfinalizer(active_dataset.archive)
     archived_dataset = client.create_dataset(f"{dataset_tag}-archived")
+    request.addfinalizer(archived_dataset.archive)
     archived_dataset.archive()
 
     active_secret = client.create_secret(f"secret-active-{search_context.tag}", "active secret value")
+    request.addfinalizer(active_secret.archive)
     archived_secret = client.create_secret(f"secret-archived-{search_context.tag}", "archived secret value")
+    request.addfinalizer(archived_secret.archive)
     archived_secret.archive()
 
     archived_video = client.create_video(f"video-archived-{search_context.tag}")
-    archived_video_file = archived_video.add_from_io(
-        BytesIO(mp4_data),
-        f"video-archived-{search_context.tag}.mp4",
-        start=start,
-    )
-    archived_video_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    request.addfinalizer(archived_video.archive)
     archived_video.archive()
 
     event_asset = client.create_asset(f"event-asset-{uuid4().hex}")
+    request.addfinalizer(event_asset.archive)
     event_tag = f"archive-event-{search_context.tag}"
     active_archive_event = client.create_event(
         f"{event_tag}-active",
@@ -249,12 +248,14 @@ def archive_search_context(  # noqa: PLR0915
         start,
         assets=[event_asset],
     )
+    request.addfinalizer(active_archive_event.archive)
     archived_archive_event = client.create_event(
         f"{event_tag}-archived",
         EventType.INFO,
         start,
         assets=[event_asset],
     )
+    request.addfinalizer(archived_archive_event.archive)
     archived_archive_event.archive()
 
     template_tag = f"archive-template-{search_context.tag}"
@@ -262,10 +263,12 @@ def archive_search_context(  # noqa: PLR0915
         f"{template_tag}-active",
         labels=[template_tag],
     )
+    request.addfinalizer(active_workbook_template.archive)
     archived_workbook_template = client.create_workbook_template(
         f"{template_tag}-archived",
         labels=[template_tag],
     )
+    request.addfinalizer(archived_workbook_template.archive)
     archived_workbook_template.archive()
 
     run_workbook_tag = f"archive-run-workbook-{search_context.tag}"
@@ -273,27 +276,32 @@ def archive_search_context(  # noqa: PLR0915
         title=f"{run_workbook_tag}-active",
         run=search_context.run,
     )
+    request.addfinalizer(active_run_workbook.archive)
     archived_run_workbook = active_workbook_template.create_workbook(
         title=f"{run_workbook_tag}-archived",
         run=search_context.run,
     )
+    request.addfinalizer(archived_run_workbook.archive)
     archived_run_workbook.archive()
     draft_run_workbook = active_workbook_template.create_workbook(
         title=f"{run_workbook_tag}-draft",
         run=search_context.run,
         is_draft=True,
     )
+    request.addfinalizer(draft_run_workbook.archive)
 
     asset_workbook_tag = f"archive-asset-workbook-{search_context.tag}"
     active_asset_workbook = active_workbook_template.create_workbook(
         title=f"{asset_workbook_tag}-active",
         asset=search_context.asset,
     )
+    request.addfinalizer(active_asset_workbook.archive)
 
     archived_asset_workbook = active_workbook_template.create_workbook(
         title=f"{asset_workbook_tag}-archived",
         asset=search_context.asset,
     )
+    request.addfinalizer(archived_asset_workbook.archive)
     archived_asset_workbook.archive()
 
     draft_asset_workbook = active_workbook_template.create_workbook(
@@ -301,8 +309,9 @@ def archive_search_context(  # noqa: PLR0915
         asset=search_context.asset,
         is_draft=True,
     )
+    request.addfinalizer(draft_asset_workbook.archive)
 
-    ctx = ArchiveSearchContext(
+    return ArchiveSearchContext(
         archived_run=archived_run,
         archived_asset=archived_asset,
         dataset_tag=dataset_tag,
@@ -327,26 +336,6 @@ def archive_search_context(  # noqa: PLR0915
         archived_asset_workbook=archived_asset_workbook,
         draft_asset_workbook=draft_asset_workbook,
     )
-    yield ctx
-
-    active_run_workbook.archive()
-    archived_run_workbook.archive()
-    draft_run_workbook.archive()
-    active_asset_workbook.archive()
-    archived_asset_workbook.archive()
-    draft_asset_workbook.archive()
-    active_workbook_template.archive()
-    archived_workbook_template.archive()
-    active_archive_event.archive()
-    archived_archive_event.archive()
-    event_asset.archive()
-    active_secret.archive()
-    archived_secret.archive()
-    archived_video.archive()
-    active_dataset.archive()
-    archived_dataset.archive()
-    archived_asset.archive()
-    archived_run.archive()
 
 
 # ---------------------------------------------------------------------------

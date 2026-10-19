@@ -26,6 +26,7 @@ def test_search_markings_filters_by_id_substring(client: NominalClient) -> None:
     assert len(filtered) <= len(all_markings)
 
 
+@pytest.mark.xdist_group("readonly_dataset")
 def test_dataset_lists_its_markings(ingested_dataset: Dataset) -> None:
     """A dataset created without markings carries none."""
     assert ingested_dataset.list_markings() == ()

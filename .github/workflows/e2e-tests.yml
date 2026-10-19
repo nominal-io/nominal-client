@@ -20,30 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e-suites:
-    name: E2E Tests (${{ matrix.suite.name }})
+  e2e-tests:
+    name: E2E Tests
     runs-on: depot-ubuntu-24.04
     timeout-minutes: 45
-
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - name: core
-            args: >-
-              tests/e2e
-              --ignore=tests/e2e/migration
-              --ignore=tests/e2e/test_file_upload.py
-              --ignore=tests/e2e/test_timestamps.py
-              --ignore=tests/e2e/test_ingest_units.py
-              --ignore=tests/e2e/test_derived_dataset.py
-              --ignore=tests/e2e/test_spatial.py
-          - name: ingestion
-            args: tests/e2e/test_timestamps.py tests/e2e/test_ingest_units.py -n 2
-          - name: derived
-            args: tests/e2e/test_derived_dataset.py
-          - name: spatial
-            args: tests/e2e/test_spatial.py
 
     # Fork PRs don't have access to secrets — skip gracefully.
     if: >-
@@ -85,7 +65,10 @@ jobs:
 
       - name: Run e2e tests
         run: |
-          uv run pytest ${{ matrix.suite.args }} \
+          uv run pytest tests/e2e \
+            --ignore=tests/e2e/migration \
+            --ignore=tests/e2e/test_file_upload.py \
+            -n 4 --dist=loadgroup \
             --profile staging-e2e \
             --no-cov \
             --durations=0 --durations-min=0 \
@@ -96,22 +79,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: e2e-timings-${{ matrix.suite.name }}
+          name: e2e-timings
           path: test-results/e2e.xml
           if-no-files-found: warn
-
-  e2e-tests:
-    name: E2E Tests
-    needs: e2e-suites
-    if: >-
-      always() && (github.event_name != 'pull_request'
-      || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: depot-ubuntu-24.04
-    steps:
-      - name: Require all suites to pass
-        env:
-          RESULT: ${{ needs.e2e-suites.result }}
-        run: test "$RESULT" = success
 
   migration-e2e-tests:
     name: Migration E2E Tests

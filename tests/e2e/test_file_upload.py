@@ -15,23 +15,11 @@ ArchiveFn = Callable[[object], None]
 @pytest.mark.parametrize(
     "stem",
     [
-        # A representative set of special characters the client allows (see UNSAFE_UPLOAD_CHARS for
-        # the rejected ones). Each is uploaded for real against every backend in this job's matrix, so
-        # if any character that passes our client-side validation starts failing server-side — in
-        # scout or the cloud storage layer — this test goes red and we hear about it immediately.
-        "paren(reduced)",  # the original Azure bug — was stored as paren%28reduced%29.csv
-        "with space",
-        "amp&ersand",
-        "plus+plus",
-        "hash#tag",
-        "bracket[1]",
-        "at@sign",
-        "equals=sign",
-        "comma,comma",
-        "semi;colon",
-        "tilde~caret^",
-        "dollar$sign",
-        "unicode_résumé",
+        # Keep the original Azure regression isolated; cover the other allowed characters
+        # together. Local tests cover each character's validation and filename forwarding.
+        "paren(reduced)",
+        "space +&#[1]@=,;~^$",
+        "unicode_résumé_日本",
     ],
 )
 def test_special_char_filename_round_trips(
