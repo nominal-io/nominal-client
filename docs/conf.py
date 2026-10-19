@@ -82,10 +82,7 @@ for _suffix in [name for modules in core_topic_modules.values() for name in modu
     ]
 
 autosummary_context["core_topics"] = {
-    slug: {
-        "modules": [f"nominal.core.{module}" for module in modules],
-        "exports": [name for module in modules for name in core_module_exports[f"nominal.core.{module}"]],
-    }
+    slug: [name for module in modules for name in core_module_exports[f"nominal.core.{module}"]]
     for slug, modules in core_topic_modules.items()
 }
 autosummary_context["core_legacy_exports"] = [
@@ -125,22 +122,6 @@ for _module_name in _seed_modules:
 autosummary_context["module_data"]["nominal.core"]["canonical_names"] = {
     name: f"{module}.{name}" for module, names in core_module_exports.items() for name in names
 }
-autosummary_context["core_reference_pages"] = {
-    f"#nominal.core.{name}": (
-        f"{slug}/#nominal.core.{name}"
-        if name in autosummary_context["module_data"]["nominal.core"]["type_aliases"]
-        else f"../generated/nominal.core.{name}/#nominal.core.{name}"
-    )
-    for slug, topic in autosummary_context["core_topics"].items()
-    for name in topic["exports"]
-}
-autosummary_context["core_reference_pages"].update(
-    {
-        f"#nominal.core.{name}": f"../generated/nominal.core.{name}/#nominal.core.{name}"
-        for name in autosummary_context["core_legacy_exports"]
-    }
-)
-
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 

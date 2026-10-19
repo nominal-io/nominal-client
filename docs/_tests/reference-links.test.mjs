@@ -7,15 +7,13 @@ const script = readFileSync(new URL("../_static/reference-links.js", import.meta
 const resource = "https://docs.example.test/sdk/generated/sample_api.Resource/#sample_api.Resource";
 const create = "https://docs.example.test/sdk/generated/sample_api.create/#sample_api.create";
 
-function page(hash, hasTarget = false, links = [resource, create], pages = {}) {
+function page(hash, hasTarget = false, links = [resource, create]) {
   const redirects = [];
   const window = new EventTarget();
   window.location = new URL(`https://docs.example.test/sdk/experimental/sample/?view=compact${hash}`);
   window.location.replace = (url) => redirects.push(url);
   const document = new EventTarget();
-  document.querySelector = (selector) => selector === ":target"
-    ? (hasTarget ? {} : null)
-    : { textContent: JSON.stringify(pages) };
+  document.querySelector = () => hasTarget ? {} : null;
   document.querySelectorAll = () => links.map((href) => ({ href }));
   runInNewContext(script, { window, document, URL });
   document.dispatchEvent(new Event("DOMContentLoaded"));
@@ -52,21 +50,4 @@ test("an old member fragment selected after load is also forwarded", () => {
   window.location.hash = "#sample_api.Resource.read";
   window.dispatchEvent(new Event("hashchange"));
   assert.deepEqual(redirects, [resource.replace("#sample_api.Resource", "?view=compact#sample_api.Resource.read")]);
-});
-
-const aliasPage = "https://docs.example.test/sdk/core/resources/#sample_api.Alias";
-const referencePages = { "#sample_api.Resource": resource, "#sample_api.Alias": aliasPage };
-for (const [fragment, destination] of [
-  ["sample_api.Resource", resource],
-  ["sample_api.Resource.read", resource],
-  ["sample_api.Alias", aliasPage],
-]) {
-  test(`a topic directory forwards ${fragment} directly to its reference page`, () => {
-    assert.deepEqual(page(`#${fragment}`, false, [], referencePages).redirects,
-      [`${destination.split("#")[0]}?view=compact#${fragment}`]);
-  });
-}
-
-test("reference page metadata respects symbol boundaries", () => {
-  assert.deepEqual(page("#sample_api.Resourceful.read", false, [], referencePages).redirects, []);
 });

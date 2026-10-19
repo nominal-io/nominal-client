@@ -36,7 +36,8 @@ module docstrings. Internal owning modules may contribute public exports; implem
 helpers and the `nominal.core.exceptions` shim stay out. The strict build rejects unassigned
 or repeated exports. Legacy standalone-video objects retain reference targets for existing
 links but are absent from the topic directory. Native canonical targets preserve defining
-module names alongside public import names.
+object names alongside public import names without registering implementation modules.
+Topic pages direct readers to import from `nominal.core`.
 Timestamp and Ibis pages render module docstrings above the API reference. Their seeds use
 `module-summary-no-prose.rst` to register modules without repeating that prose in the tables.
 Classes, enums, and functions get detail pages. Constants and type aliases use separate
@@ -51,8 +52,9 @@ Summary fragments are excluded from page discovery and ignored by Git and the wa
 only the Markdown landing page belongs in the sidebar.
 `_static/reference-links.js` forwards missing class/member fragments using the native
 summary links, preserving query strings and leaving existing on-page targets alone.
-The Core directory supplies generated reference destinations so old object bookmarks
-reach their detail page or their topic's type-alias table directly.
+The Core directory includes a hidden, HTML-only native autosummary table without a
+toctree. Sphinx resolves its links to detail pages and type-alias tables; the existing
+bookmark script uses those links without duplicating builder paths or output filenames.
 Test this behavior with `node --test docs/_tests/reference-links.test.mjs` (Node 22; no npm dependencies).
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass

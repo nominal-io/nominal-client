@@ -12,10 +12,10 @@ def build_docs(tmp_path: Path):
     docs = tmp_path / "docs"
     source = docs / "src"
     (source / "reference").mkdir(parents=True)
-    output = docs / "_build/dirhtml"
     justfile = Path(__file__).resolve().parents[2] / "justfile"
 
-    def build() -> subprocess.CompletedProcess[str]:
+    def build(builder: str = "dirhtml") -> subprocess.CompletedProcess[str]:
+        output = docs / "_build" / builder
         subprocess.run(
             ["just", "--justfile", str(justfile), "--working-directory", str(tmp_path), "_clean-docs"],
             capture_output=True,
@@ -23,7 +23,7 @@ def build_docs(tmp_path: Path):
             check=True,
         )
         return subprocess.run(
-            [sys.executable, "-m", "sphinx", "-W", "-E", "-b", "dirhtml", "-c", str(docs), str(source), str(output)],
+            [sys.executable, "-m", "sphinx", "-W", "-E", "-b", builder, "-c", str(docs), str(source), str(output)],
             capture_output=True,
             text=True,
             check=False,
