@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Self, Sequence
+from uuid import UUID
 
 from conjure_python_client import ConjureDecoder
 from nominal_api import scout_api, scout_checks_api, scout_compute_api
@@ -67,10 +68,10 @@ class ChannelBinding:
 
 
 class ChecklistBuilder:
-    """Collect compute failure conditions, then create a published checklist.
+    """Collect compute failure conditions to create or commit a published checklist.
 
     Construct directly with ``ChecklistBuilder()``. Adding checks is local and returns
-    the same builder for chaining. Only `create` makes network requests. Expression graphs
+    the same builder for chaining. Only `create` and `commit` make network requests. Expression graphs
     and channel bindings are captured when each check is added; Python source is not stored.
 
     Args:
@@ -100,7 +101,7 @@ class ChecklistBuilder:
 
     def __init__(self, *, strict: bool = False) -> None:
         self._strict = strict
-        self._checks: list[scout_checks_api.CreateChecklistEntryRequest] = []
+        self._checks: list[scout_checks_api.CreateCheckRequest] = []
 
     def add_check(
         self,
@@ -110,6 +111,7 @@ class ChecklistBuilder:
         inputs: Mapping[str, ChannelBinding],
         priority: Priority,
         description: str = "",
+        check_id: UUID | None = None,
     ) -> Self:
         """Add a check whose violations are the ranges produced by an expression.
 
@@ -121,6 +123,8 @@ class ChecklistBuilder:
                 Unused bindings are omitted from the check, or rejected with ``strict=True``.
             priority: Severity of violations, from P0 (most severe) to P4.
             description: Description of the check.
+            check_id: Persistent lineage UUID, distinct from a check version RID. Generate once
+                and keep in source across updates. Optional for creation; required by ``commit``.
 
         Returns:
             This builder.
@@ -128,7 +132,8 @@ class ChecklistBuilder:
         Raises:
             TypeError: If ``failure_ranges`` is not a compute ``RangeSeries``.
             ValueError: If an expression reference has no input binding, or if an input
-                is unused and the builder has ``strict=True``. No check is added.
+                is unused and the builder has ``strict=True``, or a check ID is duplicated.
+                No check is added.
 
         Note:
             Alignment, fill, and missing-data behavior follow the service's checklist defaults.
@@ -137,6 +142,8 @@ class ChecklistBuilder:
         """
         if not isinstance(failure_ranges, nc.RangeSeries):
             raise TypeError("failure_ranges must be a nominal.compute.RangeSeries; convert booleans with .ranges()")
+        if check_id is not None and any(check.check_lineage_rid == str(check_id) for check in self._checks):
+            raise ValueError(f"Duplicate check_id: {check_id}")
         wire = json.loads(failure_ranges.to_json())  # type: ignore[attr-defined]
         references = _expression_references(wire)
         ranges: scout_compute_api.RangeSeries = ConjureDecoder.do_decode(wire, scout_compute_api.RangeSeries)
@@ -153,18 +160,17 @@ class ChecklistBuilder:
             variables={reference: inputs[reference]._to_conjure() for reference in sorted(references)}
         )
         self._checks.append(
-            scout_checks_api.CreateChecklistEntryRequest(
-                create_check=scout_checks_api.CreateCheckRequest(
-                    title=name,
-                    description=description,
-                    priority=scout_api.Priority(priority.name),
-                    condition=scout_checks_api.UnresolvedCheckCondition(
-                        parameterized_num_ranges_v1=scout_checks_api.UnresolvedParameterizedNumRangesConditionV1(
-                            ranges=ranges,
-                            implementations=[variables],
-                        )
-                    ),
-                )
+            scout_checks_api.CreateCheckRequest(
+                title=name,
+                description=description,
+                priority=scout_api.Priority(priority.name),
+                check_lineage_rid=None if check_id is None else str(check_id),
+                condition=scout_checks_api.UnresolvedCheckCondition(
+                    parameterized_num_ranges_v1=scout_checks_api.UnresolvedParameterizedNumRangesConditionV1(
+                        ranges=ranges,
+                        implementations=[variables],
+                    )
+                ),
             )
         )
         return self
@@ -211,9 +217,56 @@ class ChecklistBuilder:
             description=description,
             assignee_rid=None if assignee is None else rid_from_instance_or_string(assignee),
             commit_message=commit_message,
-            checks=list(self._checks),
+            checks=[scout_checks_api.CreateChecklistEntryRequest(create_check=check) for check in self._checks],
             labels=list(labels),
             properties=properties,
             is_published=True,
             workspace=workspace,
         )
+
+    def commit(self, checklist: Checklist, *, commit_message: str) -> Checklist:
+        """Replace a published checklist's definition with a new commit on main.
+
+        Args:
+            checklist: Loaded checklist whose ``commit_id`` is the expected current version.
+            commit_message: Description of this revision.
+
+        Returns:
+            The same checklist, refreshed from the response with its new ``commit_id``.
+            Save the previous ID before committing if you need to execute the earlier version.
+
+        Raises:
+            ValueError: If the builder is empty, any check lacks an explicit ``check_id``,
+                or the checklist has no loaded commit ID.
+
+        Note:
+            This replaces all checks and checklist variables, including content authored in the UI.
+            Omitted checks disappear from the new version; earlier versions remain available.
+            Reusing a UUID preserves check lineage through renames and expression changes.
+            Metadata and streaming settings are not changed by this request.
+
+            The service rejects stale writes. This method does not refresh or retry a conflict;
+            reconcile your definition with the latest checklist before trying again.
+            Every successful call creates a commit, even if the definition is unchanged.
+
+            Committing to main can update running streaming evaluations asynchronously. Returning
+            confirms the commit, not adoption by every asset. No extra reload is issued by the SDK.
+        """
+        if not self._checks:
+            raise ValueError("A checklist needs at least one check")
+        if any(check.check_lineage_rid is None for check in self._checks):
+            raise ValueError("Every check needs an explicit check_id when committing a checklist")
+        if checklist.commit_id is None:
+            raise ValueError("Call checklist.refresh() to load its commit_id before committing")
+        clients = checklist._clients
+        response = clients.checklist.commit(
+            clients.auth_header,
+            checklist.rid,
+            scout_checks_api.CommitChecklistRequest(
+                checks=[scout_checks_api.UpdateChecklistEntryRequest(create_check=check) for check in self._checks],
+                checklist_variables=[],
+                commit_message=commit_message,
+                latest_commit=checklist.commit_id,
+            ),
+        )
+        return checklist._refresh_from_api(response)

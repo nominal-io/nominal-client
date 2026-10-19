@@ -42,9 +42,19 @@ Bindings resolve against the run or asset where the checklist executes. Adding c
 Reuse expressions in ordinary Python loops, calling `add_check` for each channel or tag
 selection. Each call creates a separate check. Missing bindings always fail locally; unused
 bindings are omitted unless `ChecklistBuilder(strict=True)` rejects them. This API stores expression graphs,
-not Python source, and does not edit existing checklists or create drafts. See the
+not Python source. It can commit complete replacement definitions to published checklists;
+it does not create drafts. See the
 [checklist authoring guide](../../../docs/src/sdk/experimental/compute-as-code.md)
 for binding, execution, and evaluation semantics.
+
+For versioned authoring, supply `check_id=UUID("a71bf343-f827-4180-9714-199e149e4c18")` on every `add_check`, retaining the
+same UUID for each logical check across revisions. Then rebuild the desired checks and call
+`builder.commit(checklist, commit_message="Update limits")`. The loaded checklist's commit ID
+protects against stale writes; the checklist is refreshed in place with the new `commit_id`. The full
+definition is replaced, including UI-authored checks and checklist variables. Streaming main
+may adopt the update asynchronously. Use `checklist.execute(run, commit=checklist.commit_id)`
+or `DataReviewBuilder.execute_checklist(..., commit=checklist.commit_id)` to pin a review.
+See the authoring guide above for the complete create, update, and execution walkthrough.
 
 ## Derived datasets
 

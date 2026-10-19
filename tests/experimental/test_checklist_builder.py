@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 from conjure_python_client import ConjureEncoder
 from nominal_api import scout_api, scout_checks_api, scout_versioning_api
 
 import nominal.compute as nc
-from nominal.core import NominalClient, Priority, Workspace
+from nominal.core import Checklist, NominalClient, Priority, Workspace
 from nominal.experimental.compute_as_code import ChannelBinding, ChecklistBuilder
 from nominal.protos.authentication.users.v1 import users_pb2
+from nominal.protos.datareview.v2 import data_review_pb2
+from nominal.protos.run.v1 import run_service_pb2
 
 
 @pytest.fixture
@@ -250,3 +253,160 @@ def test_literal_channel_name_is_not_an_input_reference() -> None:
     """Explicit dataset selectors need no bindings for their literal channel and dataset names."""
     ranges = (nc.NumericSeries.SelectNumeric("temperature", dataset=nc.Dataset.Saved("dataset-rid")) > 0).ranges()
     ChecklistBuilder(strict=True).add_check("Check", ranges, inputs={}, priority=Priority.P1)
+
+
+CHECK_ID = UUID("a71bf343-f827-4180-9714-199e149e4c18")
+OTHER_CHECK_ID = UUID("5c49e4c6-25d5-48fc-a160-cc30ccbc39b1")
+
+
+def test_create_preserves_explicit_check_identity(client: NominalClient, mock_clients: MagicMock) -> None:
+    """An identity in source is used on the initial deployment and the returned commit can be pinned."""
+    checklist = (
+        ChecklistBuilder()
+        .add_check(
+            "Overheating",
+            (nc.NumericSeries.Reference("temperature") > 100).ranges(),
+            check_id=CHECK_ID,
+            inputs={"temperature": ChannelBinding("scope", "temperature")},
+            priority=Priority.P1,
+        )
+        .create(client, "Engine", assignee="user")
+    )
+    request = mock_clients.checklist.create.call_args.args[1]
+    assert request.checks[0].create_check.check_lineage_rid == str(CHECK_ID)
+    assert checklist.commit_id == "commit-id"
+
+
+def test_commit_replaces_definition_and_refreshes_in_place(
+    client: NominalClient,
+    mock_clients: MagicMock,
+) -> None:
+    """A replacement removes omitted checks, preserves renamed/reordered lineage, and checks the loaded version."""
+    original = mock_clients.checklist.create.return_value
+    original.checks.extend(
+        [
+            scout_checks_api.ChecklistEntry(
+                check=scout_checks_api.Check(
+                    rid=f"check-{index}",
+                    check_lineage_rid=str(check_id),
+                    title=f"Old {index}",
+                    description="",
+                    priority=scout_api.Priority.P1,
+                    generated_event_type="ERROR",
+                )
+            )
+            for index, check_id in enumerate([CHECK_ID, OTHER_CHECK_ID, UUID("a75d089b-e227-4ebf-b105-5f63ce8fbdcd")])
+        ]
+    )
+    checklist = Checklist._from_conjure(mock_clients, original)
+    response = scout_checks_api.VersionedChecklist(
+        rid=original.rid,
+        metadata=original.metadata,
+        checks=[],
+        checklist_variables=[],
+        commit=scout_versioning_api.Commit(
+            id="new-commit",
+            committed_at="2026-01-02T00:00:00Z",
+            committed_by="author-rid",
+            is_working_state=False,
+            message="Raise limit",
+            resource_rid=original.rid,
+        ),
+    )
+    mock_clients.checklist.commit.return_value = response
+    ranges = (nc.NumericSeries.Reference("temperature") > 110).ranges()
+    builder = ChecklistBuilder()
+    for check_id, name in [(OTHER_CHECK_ID, "Renamed second"), (CHECK_ID, "Renamed first")]:
+        builder.add_check(
+            name,
+            ranges,
+            check_id=check_id,
+            inputs={"temperature": ChannelBinding("scope", "temperature")},
+            priority=Priority.P2,
+        )
+    updated = builder.commit(checklist, commit_message="Raise limit")
+    auth, rid, request = mock_clients.checklist.commit.call_args.args
+    assert auth == "Bearer test-token"
+    assert rid == checklist.rid
+    assert request.latest_commit == "commit-id"
+    assert request.commit_message == "Raise limit"
+    assert request.checklist_variables == []
+    condition = request.checks[0].create_check.condition.parameterized_num_ranges_v1
+    assert (
+        ConjureEncoder.do_encode(condition.ranges)["booleanRanges"]["input"]
+        == json.loads(ranges.to_json())["booleanRanges"]["input"]
+    )
+    assert condition.implementations[0].variables["temperature"].series.channel == "temperature"
+    assert [entry.create_check.check_lineage_rid for entry in request.checks] == [str(OTHER_CHECK_ID), str(CHECK_ID)]
+    assert [entry.create_check.title for entry in request.checks] == ["Renamed second", "Renamed first"]
+    assert updated is checklist
+    assert updated.rid == checklist.rid
+    assert updated.commit_id == "new-commit"
+    assert checklist.commit_id == "new-commit"
+    assert updated.properties == checklist.properties
+    assert updated.labels == checklist.labels
+    mock_clients.run.GetRun.return_value = run_service_pb2.GetRunResponse(
+        run=run_service_pb2.Run(rid="run-rid", assets=["asset-rid"])
+    )
+    mock_clients.datareview.BatchInitiate.return_value = data_review_pb2.BatchInitiateResponse()
+    client.data_review_builder().execute_checklist(
+        "run-rid", updated, commit=updated.commit_id, asset="asset-rid"
+    ).initiate(wait_for_completion=False)
+    execution = mock_clients.datareview.BatchInitiate.call_args.args[0].requests[0]
+    assert execution.checklist_rid == updated.rid
+    assert execution.commit == "new-commit"
+    assert execution.asset_rid == "asset-rid"
+    mock_clients.checklist.get.assert_not_called()
+    mock_clients.checklist.update_metadata.assert_not_called()
+    mock_clients.checklist_execution.reload_streaming_checklist.assert_not_called()
+
+
+def test_duplicate_identity_rejected_without_adding_check(client: NominalClient, mock_clients: MagicMock) -> None:
+    """A repeated UUID cannot create two versions of the same logical check in one definition."""
+    builder = ChecklistBuilder()
+    ranges = (nc.NumericSeries.Reference("x") > 0).ranges()
+    inputs = {"x": ChannelBinding("scope", "x")}
+    builder.add_check("First", ranges, check_id=CHECK_ID, inputs=inputs, priority=Priority.P1)
+    with pytest.raises(ValueError, match="Duplicate check_id"):
+        builder.add_check("Second", ranges, check_id=CHECK_ID, inputs=inputs, priority=Priority.P1)
+    builder.create(client, "Checks", assignee="user")
+    assert len(mock_clients.checklist.create.call_args.args[1].checks) == 1
+
+
+def test_commit_requires_explicit_identities(client: NominalClient, mock_clients: MagicMock) -> None:
+    """Committing anonymous checks must not silently reset their history on every deployment."""
+    checklist = Checklist._from_conjure(mock_clients, mock_clients.checklist.create.return_value)
+    builder = ChecklistBuilder().add_check(
+        "Anonymous",
+        (nc.NumericSeries.Reference("x") > 0).ranges(),
+        inputs={"x": ChannelBinding("scope", "x")},
+        priority=Priority.P1,
+    )
+    with pytest.raises(ValueError, match="check_id"):
+        builder.commit(checklist, commit_message="Update")
+    mock_clients.checklist.commit.assert_not_called()
+
+
+def test_commit_requires_nonempty_definition(client: NominalClient, mock_clients: MagicMock) -> None:
+    """An empty builder cannot accidentally clear the checklist."""
+    checklist = Checklist._from_conjure(mock_clients, mock_clients.checklist.create.return_value)
+    with pytest.raises(ValueError, match="at least one check"):
+        ChecklistBuilder().commit(checklist, commit_message="Empty")
+    mock_clients.checklist.commit.assert_not_called()
+
+
+def test_commit_requires_loaded_version(mock_clients: MagicMock) -> None:
+    """Manually constructed resources without a version cannot perform an unconditional overwrite."""
+    checklist = Checklist(
+        rid="checklist-rid", name="Checks", description="", properties={}, labels=[], _clients=mock_clients
+    )
+    builder = ChecklistBuilder().add_check(
+        "Check",
+        (nc.NumericSeries.Reference("x") > 0).ranges(),
+        check_id=CHECK_ID,
+        inputs={"x": ChannelBinding("scope", "x")},
+        priority=Priority.P1,
+    )
+    with pytest.raises(ValueError, match="refresh"):
+        builder.commit(checklist, commit_message="Update")
+    mock_clients.checklist.commit.assert_not_called()

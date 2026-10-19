@@ -31,6 +31,8 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
+    commit_id: str | None = None
+    """Loaded version ID; pass explicitly to execution to pin a review. None for unloaded manual instances."""
 
     class _Clients(DataReview._Clients, Protocol):
         @property
@@ -54,6 +56,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             labels=checklist.metadata.labels,
             _clients=clients,
             author_rid=checklist.metadata.author_rid,
+            commit_id=checklist.commit.id,
         )
 
     def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
