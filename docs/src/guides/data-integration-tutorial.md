@@ -489,7 +489,7 @@ However, as useful as it is to see all of the data for an asset in a single plac
 This is where Runs come in to play!
 A run is defined by a start and end time on an existing asset that is a view on all of the files and datasources attached to that asset.
 When creating workbooks, running checklists, or doing other validation on your data, it is useful to be able to perform these tasks on a single flight test.
-Create these runs explicitly when uploading data to Nominal.
+Create these runs with {py:meth}`~nominal.core.Asset.create_run`, which associates the asset automatically.
 
 ```python
 import datetime
@@ -505,8 +505,7 @@ asset = client.get_or_create_asset_by_properties(
     {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
 )
 
-# Create the run in Nominal and associate with the Asset producing the data
-run = client.create_run(
+run = asset.create_run(
     name="Test Flight #2 10/09/2024",
     start=datetime.datetime(
         year=2024,
@@ -528,8 +527,6 @@ run = client.create_run(
     ),
     # Useful for looking up runs later on by asset properties
     properties={"platform": "shimmer", "serial_num": "SN-001"},
-    # Link back to the asset containing data for this run
-    assets=[asset],
     # Optional human description of the run, useful for describing what maneuvers we tested
     description="Testing unpowered glide",
 )
@@ -545,9 +542,8 @@ An example of doing this would look like:
 ```python
 import time
 
-run = client.create_run(
+run = asset.create_run(
     name="Test Flight #2",
-    assets=[asset],
     # The flight happened in the past, so its data starts before now.
     start=time.time_ns(),
     end=None,

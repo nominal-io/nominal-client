@@ -80,13 +80,13 @@ with dataset.get_write_stream(batch_size=len(values)) as stream:
 
 ### Create run to preview in Checklist
 
-Now create a temporary run around the data just streamed to the asset, to preview in a checklist:
+Use {py:meth}`~nominal.core.Asset.create_run` to create a temporary run around the data
+just streamed to the asset and preview it in a checklist:
 ```python
-temp_run = client.create_run(
+temp_run = asset.create_run(
     name = 'temporary_run',
     start = start,
     end = start + timedelta(hours=1),
-    assets=[asset],
 )
 ```
 
