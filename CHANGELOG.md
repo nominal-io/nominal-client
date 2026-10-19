@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.178.0](https://github.com/nominal-io/nominal-client/compare/v1.177.0...v1.178.0) (2026-10-19)
+
+
+### Features
+
+* ingest Dataflash and journal files from binary streams ([#1089](https://github.com/nominal-io/nominal-client/issues/1089)) ([76bf741](https://github.com/nominal-io/nominal-client/commit/76bf74195b39ac67574f33fd09546021798c2df0))
+* remove dataset, attachment, and run CLI commands ([#1168](https://github.com/nominal-io/nominal-client/issues/1168)) ([57f1093](https://github.com/nominal-io/nominal-client/commit/57f10933b5f629ac3cfe5ff8de5c67e1a05627e4))
+* remove legacy connection resources ([#1171](https://github.com/nominal-io/nominal-client/issues/1171)) ([b0dc70e](https://github.com/nominal-io/nominal-client/commit/b0dc70ea6547c2d823389ae7cdcaa4d2700db3c4))
+
+
+### Bug Fixes
+
+* **migration:** contain attachment copy failures ([#1123](https://github.com/nominal-io/nominal-client/issues/1123)) ([8bddeac](https://github.com/nominal-io/nominal-client/commit/8bddeac909cd7902c25276d597d7212ce05a3c44))
+* update docstrings in nominal.ts to reflect removal of nm ([#1164](https://github.com/nominal-io/nominal-client/issues/1164)) ([665a6cb](https://github.com/nominal-io/nominal-client/commit/665a6cb1bbf749e2052ee5a4dcffc6557edff0bc))
+
 ## [1.177.0](https://github.com/nominal-io/nominal-client/compare/v1.176.0...v1.177.0) (2026-10-15)
 
 

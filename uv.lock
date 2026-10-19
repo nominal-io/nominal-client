@@ -607,7 +607,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.177.0"
+version = "1.178.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -767,7 +767,7 @@ wheels = [
 
 [[package]]
 name = "nominal-ibis"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "packages/nominal-ibis" }
 dependencies = [
     { name = "ibis-framework" },
