@@ -22,11 +22,11 @@ test:
 
 # run e2e tests using a named Nominal profile (preferred)
 test-e2e profile:
-    uv run pytest tests/e2e --profile {{ profile }} --no-cov -v
+    uv run pytest tests/e2e --ignore=tests/e2e/migration -n 4 --dist=loadgroup --profile {{ profile }} --no-cov -v
 
 # run e2e tests using a raw auth token
 test-e2e-token token:
-    uv run pytest tests/e2e --auth-token {{ token }} --no-cov -v
+    uv run pytest tests/e2e --ignore=tests/e2e/migration -n 4 --dist=loadgroup --auth-token {{ token }} --no-cov -v
 
 # run migration e2e tests using named Nominal profiles (source is prod, dest is staging)
 test-e2e-migration source-profile dest-profile:

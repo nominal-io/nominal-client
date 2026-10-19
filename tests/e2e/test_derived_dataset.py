@@ -39,6 +39,8 @@ from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
 from tests.e2e import POLL_INTERVAL
 
+pytestmark = pytest.mark.xdist_group("derived")
+
 ArchiveFn = Callable[[object], None]
 
 

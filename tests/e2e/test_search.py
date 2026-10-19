@@ -31,6 +31,8 @@ from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
+pytestmark = pytest.mark.xdist_group("search")
+
 _DATASET_HEADER = b"timestamp,temperature,pressure\n"
 
 

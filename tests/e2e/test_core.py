@@ -224,6 +224,7 @@ def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_d
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
 
 
+@pytest.mark.xdist_group("readonly_dataset")
 def test_get_channel(ingested_dataset: Dataset):
     """Fetching a channel by name returns correct metadata: data type, unit, and description."""
     c = ingested_dataset.get_channel("temperature")
@@ -234,6 +235,7 @@ def test_get_channel(ingested_dataset: Dataset):
     assert c.description is None
 
 
+@pytest.mark.xdist_group("readonly_dataset")
 def test_get_channel_pandas(ingested_dataset: Dataset, csv_data):
     """Converting a channel to a pandas Series produces values identical to the original CSV."""
     c = ingested_dataset.get_channel("temperature")
@@ -249,6 +251,7 @@ def test_get_channel_pandas(ingested_dataset: Dataset, csv_data):
     assert s.equals(df["temperature"])
 
 
+@pytest.mark.xdist_group("readonly_dataset")
 def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
     """Converting a full dataset to a DataFrame matches the original CSV; channel_exact_match filters columns."""
     expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp", parse_dates=["timestamp"])
