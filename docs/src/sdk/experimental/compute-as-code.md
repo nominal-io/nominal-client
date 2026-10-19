@@ -45,15 +45,15 @@ selects a particular tagged series. Adding a check always raises `ValueError` if
 reference has no binding. For example, referencing `temperature_deg` while only supplying
 `temperature` fails immediately, before the builder is changed or any network request is made.
 
-Unused bindings are allowed by default, so multiple checks can share one input mapping.
+Unused bindings are allowed by default and omitted from the published check, so multiple checks
+can share one input mapping without depending on channels they do not use.
 Opt into rejecting them with:
 
 ```python
 builder = ChecklistBuilder(strict_inputs=True)
 ```
 
-Errors identify the check, the zero-based implementation index, and the missing or unused
-names. Validation checks reference names; channel availability and type compatibility are
+Errors identify the check and the missing or unused names. Validation checks reference names; channel availability and type compatibility are
 still resolved by the service at execution time.
 
 Execute through the existing checklist API:
@@ -70,24 +70,23 @@ to select the asset explicitly.
 
 ## Reuse a condition across channels
 
-For several sensors with the same rule, supply one binding map per implementation:
+For several sensors with the same rule, reuse the expression in an ordinary Python loop:
 
 ```python
-builder = ChecklistBuilder().add_parameterized_check(
-    "Sustained overheating",
-    overheated,
-    implementations=(
-        {"temperature": ChannelBinding("telemetry", "engine.temperature", tags={"sensor": sensor})}
-        for sensor in ("left", "right")
-    ),
-    priority=Priority.P1,
-)
+builder = ChecklistBuilder()
+for sensor in ("left", "right"):
+    builder.add_check(
+        f"{sensor} sustained overheating",
+        overheated,
+        inputs={"temperature": ChannelBinding("telemetry", "engine.temperature", tags={"sensor": sensor})},
+        priority=Priority.P1,
+    )
 checklist = builder.create(client, "Engine sensors")
 ```
 
-The service evaluates each implementation independently and associates violations with its
-implementation index. Use separate `add_check` calls when checks need different names,
-descriptions, or priorities.
+Each call adds a separately named check. Use Python functions and loops to share logic;
+checks can have different descriptions, priorities, or expressions. Grouping multiple
+implementations under one check identity is outside this builder's scope.
 
 ## Evaluation and authoring scope
 

@@ -105,25 +105,25 @@ def test_create_serializes_failure_ranges_and_relative_bindings(client: NominalC
     assert result.properties == {"source": "server"}
 
 
-def test_parameterized_check_snapshots_each_binding(client: NominalClient, mock_clients: MagicMock) -> None:
-    """Consume one-shot implementations once and own their mappings before callers mutate them."""
+def test_checks_snapshot_shared_bindings(client: NominalClient, mock_clients: MagicMock) -> None:
+    """Each loop iteration captures its channel tags before the caller reuses the mapping."""
     tags = {"sensor": "left"}
-    left = {"temperature": ChannelBinding("telemetry", "temperature", tags=tags)}
-    right = {"temperature": ChannelBinding("telemetry", "temperature", tags={"sensor": "right"})}
+    inputs = {"temperature": ChannelBinding("telemetry", "temperature", tags=tags)}
     ranges = (nc.NumericSeries.Reference("temperature") > 100).ranges()
-    builder = ChecklistBuilder().add_parameterized_check(
-        "Overheating", ranges, implementations=(binding for binding in [left, right]), priority=Priority.P1
-    )
-    tags["sensor"] = "changed"
-    left.clear()
+    builder = ChecklistBuilder()
+    for sensor in ("left", "right"):
+        tags["sensor"] = sensor
+        builder.add_check(f"{sensor} overheating", ranges, inputs=inputs, priority=Priority.P1)
+    tags.clear()
+    inputs.clear()
     builder.create(client, "Engine", assignee="user")
 
-    condition = mock_clients.checklist.create.call_args.args[1].checks[0].create_check.condition
-    implementations = condition.parameterized_num_ranges_v1.implementations
-    assert [impl.variables["temperature"].series.tags for impl in implementations] == [
-        {"sensor": "left"},
-        {"sensor": "right"},
-    ]
+    checks = mock_clients.checklist.create.call_args.args[1].checks
+    assert [entry.create_check.title for entry in checks] == ["left overheating", "right overheating"]
+    assert [
+        entry.create_check.condition.parameterized_num_ranges_v1.implementations[0].variables["temperature"].series.tags
+        for entry in checks
+    ] == [{"sensor": "left"}, {"sensor": "right"}]
 
 
 def test_create_keeps_builder_reusable_without_mutating_prior_requests(
@@ -147,18 +147,6 @@ def test_empty_builder_rejected_before_network(client: NominalClient, mock_clien
     """Creating an empty checklist fails locally without a user lookup or creation request."""
     with pytest.raises(ValueError, match="at least one check"):
         ChecklistBuilder().create(client, "Empty")
-    assert not mock_clients.mock_calls
-
-
-def test_empty_implementations_rejected_without_adding_check(client: NominalClient, mock_clients: MagicMock) -> None:
-    """A parameterized check with no implementations cannot silently become a no-op."""
-    builder = ChecklistBuilder()
-    with pytest.raises(ValueError, match="at least one implementation"):
-        builder.add_parameterized_check(
-            "Empty", (nc.NumericSeries.Reference("x") > 0).ranges(), implementations=iter(()), priority=Priority.P1
-        )
-    with pytest.raises(ValueError, match="at least one check"):
-        builder.create(client, "Empty")
     assert not mock_clients.mock_calls
 
 
@@ -200,10 +188,10 @@ def test_missing_bindings_rejected_before_adding_check(strict_inputs: bool, clie
         builder.create(client, "Empty")
 
 
-def test_shared_bindings_allowed_by_default() -> None:
-    """Checks may reuse a shared mapping even when they only use a subset of its inputs."""
+def test_shared_bindings_allowed_by_default(client: NominalClient, mock_clients: MagicMock) -> None:
+    """Unused shared bindings never become dependencies in the published check."""
     temperature = nc.NumericSeries.Reference("temperature")
-    ChecklistBuilder().add_check(
+    builder = ChecklistBuilder().add_check(
         "Overheating",
         (temperature + temperature > 100).ranges(),
         inputs={
@@ -212,6 +200,10 @@ def test_shared_bindings_allowed_by_default() -> None:
         },
         priority=Priority.P1,
     )
+
+    builder.create(client, "Engine", assignee="user")
+    condition = mock_clients.checklist.create.call_args.args[1].checks[0].create_check.condition
+    assert set(condition.parameterized_num_ranges_v1.implementations[0].variables) == {"temperature"}
 
 
 def test_strict_inputs_rejects_unused_bindings() -> None:
@@ -258,17 +250,3 @@ def test_literal_channel_name_is_not_an_input_reference() -> None:
     """Explicit dataset selectors need no bindings for their literal channel and dataset names."""
     ranges = (nc.NumericSeries.SelectNumeric("temperature", dataset=nc.Dataset.Saved("dataset-rid")) > 0).ranges()
     ChecklistBuilder(strict_inputs=True).add_check("Check", ranges, inputs={}, priority=Priority.P1)
-
-
-def test_invalid_later_implementation_does_not_add_partial_check(client: NominalClient) -> None:
-    """Validate every implementation before changing the builder, even with one-shot inputs."""
-    builder = ChecklistBuilder()
-    with pytest.raises(ValueError, match="implementation 1.*missing input bindings.*temperature"):
-        builder.add_parameterized_check(
-            "Overheating",
-            (nc.NumericSeries.Reference("temperature") > 100).ranges(),
-            implementations=iter([{"temperature": ChannelBinding("scope", "temperature")}, {}]),
-            priority=Priority.P1,
-        )
-    with pytest.raises(ValueError, match="at least one check"):
-        builder.create(client, "Empty")

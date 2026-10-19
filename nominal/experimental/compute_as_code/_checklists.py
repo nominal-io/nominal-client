@@ -118,6 +118,7 @@ class ChecklistBuilder:
             failure_ranges: Compute range expression describing violations, not passing intervals.
                 Convert boolean expressions with ``.ranges()`` before passing them here.
             inputs: Map expression reference names to channels in the execution context.
+                Unused bindings are omitted from the check, or rejected with ``strict_inputs=True``.
             priority: Severity of violations, from P0 (most severe) to P4.
             description: Description of the check.
 
@@ -134,63 +135,23 @@ class ChecklistBuilder:
             The SDK does not interpret absence of data as a passing check or validate references
             against live channels. Persistence and other range operations belong in the expression.
         """
-        return self.add_parameterized_check(
-            name, failure_ranges, implementations=(inputs,), priority=priority, description=description
-        )
-
-    def add_parameterized_check(
-        self,
-        name: str,
-        failure_ranges: nc.RangeSeries,
-        *,
-        implementations: Iterable[Mapping[str, ChannelBinding]],
-        priority: Priority,
-        description: str = "",
-    ) -> Self:
-        """Add one expression evaluated separately for each set of input bindings.
-
-        Args:
-            name: Display name of the check.
-            failure_ranges: Range expression describing violations. Uses the same execution
-                semantics as `add_check`.
-            implementations: Nonempty iterable of reference-to-channel mappings. Each mapping
-                is evaluated independently; violations are associated with its implementation
-                index. Consumed and copied once when this method is called.
-            priority: Severity of violations, from P0 (most severe) to P4.
-            description: Description shared by the implementations.
-
-        Returns:
-            This builder.
-
-        Raises:
-            TypeError: If ``failure_ranges`` is not a compute ``RangeSeries``.
-            ValueError: If an expression reference has no input binding, or if an input
-                is unused and the builder has ``strict_inputs=True``, or no implementations
-                are supplied. No check is added.
-        """
         if not isinstance(failure_ranges, nc.RangeSeries):
             raise TypeError("failure_ranges must be a nominal.compute.RangeSeries; convert booleans with .ranges()")
         wire = json.loads(failure_ranges.to_json())  # type: ignore[attr-defined]
         references = _expression_references(wire)
         ranges: scout_compute_api.RangeSeries = ConjureDecoder.do_decode(wire, scout_compute_api.RangeSeries)
-        variables = []
-        for index, inputs in enumerate(implementations):
-            missing = references - inputs.keys()
-            unused = inputs.keys() - references if self._strict_inputs else set()
-            errors = []
-            if missing:
-                errors.append(f"missing input bindings: {', '.join(sorted(missing))}")
-            if unused:
-                errors.append(f"unused input bindings: {', '.join(sorted(unused))}")
-            if errors:
-                raise ValueError(f"Check {name!r}, implementation {index}: {'; '.join(errors)}")
-            variables.append(
-                scout_checks_api.UnresolvedVariables(
-                    variables={reference: binding._to_conjure() for reference, binding in inputs.items()}
-                )
-            )
-        if not variables:
-            raise ValueError("A parameterized check needs at least one implementation")
+        missing = references - inputs.keys()
+        unused = inputs.keys() - references if self._strict_inputs else set()
+        errors = []
+        if missing:
+            errors.append(f"missing input bindings: {', '.join(sorted(missing))}")
+        if unused:
+            errors.append(f"unused input bindings: {', '.join(sorted(unused))}")
+        if errors:
+            raise ValueError(f"Check {name!r}: {'; '.join(errors)}")
+        variables = scout_checks_api.UnresolvedVariables(
+            variables={reference: inputs[reference]._to_conjure() for reference in sorted(references)}
+        )
         self._checks.append(
             scout_checks_api.CreateChecklistEntryRequest(
                 create_check=scout_checks_api.CreateCheckRequest(
@@ -200,7 +161,7 @@ class ChecklistBuilder:
                     condition=scout_checks_api.UnresolvedCheckCondition(
                         parameterized_num_ranges_v1=scout_checks_api.UnresolvedParameterizedNumRangesConditionV1(
                             ranges=ranges,
-                            implementations=variables,
+                            implementations=[variables],
                         )
                     ),
                 )

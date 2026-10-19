@@ -39,8 +39,9 @@ Bindings resolve against the run or asset where the checklist executes. Adding c
 `create` creates and publishes a new checklist on every call without executing it. Use
 `checklist.execute(run).poll_for_completion()` to execute and wait for evaluation.
 
-`add_parameterized_check` accepts an iterable of binding maps to evaluate the same expression
-independently for multiple channels or tag selections. This API stores expression graphs,
+Reuse expressions in ordinary Python loops, calling `add_check` for each channel or tag
+selection. Each call creates a separate check. Missing bindings always fail locally; unused
+bindings are omitted unless `ChecklistBuilder(strict_inputs=True)` rejects them. This API stores expression graphs,
 not Python source, and does not edit existing checklists or create drafts. See the
 [checklist authoring guide](../../../docs/src/sdk/experimental/compute-as-code.md)
 for binding, execution, and evaluation semantics.
