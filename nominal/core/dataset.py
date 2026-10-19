@@ -476,61 +476,120 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             ValueError: if only one of `timestamp_column` / `timestamp_type` is given, or if
                 `timestamp_type` is not an absolute epoch type.
         """
-        _validate_timestamp_pair(timestamp_column, timestamp_type)
-
-        timestamp_metadata = None
-        if timestamp_column is not None and timestamp_type is not None:
-            typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
-            # Journal ingest carries an epoch time unit with nowhere to record a starting offset, so a
-            # relative or string-format type cannot be expressed here.
-            # TODO(drake): once this routes through v2 ingest, which can carry a relative timestamp type,
-            # widen this guard and the _AnyEpochTimestampType annotations here and on _DatasetScopeIngestMixin to
-            # accept ts.Relative. The log pipeline already reads relative timestamps -- only this request
-            # shape blocks it, and IngestBuilder.add_journal_json accepts them today.
-            if not isinstance(typed_timestamp_type, Epoch):
-                raise ValueError(
-                    f"journal json timestamps must be an absolute epoch type, received {typed_timestamp_type!r}"
-                )
-            timestamp_metadata = ingest_api.JournalTimestampMetadata(
-                epoch_of_time_unit=typed_timestamp_type._to_conjure_epoch_timestamp(),
-                field_name=timestamp_column,
-            )
-
+        # Preserve timestamp validation before path inspection or file I/O.
+        _validate_journal_timestamps(timestamp_column, timestamp_type)
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-
-        # Upload to S3
-        s3_path = upload_multipart_file(
-            self._clients.auth_header,
-            workspace_rid,
-            log_path,
-            self._clients.upload,
-            file_type=file_type,
-            header_provider=self._clients.header_provider,
-        )
-
-        # Trigger Ingest
-        target = ingest_api.DatasetIngestTarget(
-            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-        )
-        resp = self._clients.ingest.ingest(
-            self._clients.auth_header,
-            ingest_api.IngestRequest(
-                options=ingest_api.IngestOptions(
-                    journal_json=ingest_api.JournalJsonOpts(
-                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
-                        target=target,
-                        channel=channel,
-                        timestamp_metadata=timestamp_metadata,
-                    )
+        file_name = path_upload_name(log_path, file_type)
+        with log_path.open("rb") as journal:
+            if timestamp_column is not None and timestamp_type is not None:
+                return self.add_journal_json_from_io(
+                    journal,
+                    file_type=file_type,
+                    file_name=file_name,
+                    channel=channel,
+                    timestamp_column=timestamp_column,
+                    timestamp_type=timestamp_type,
                 )
-            ),
-        )
-        return self._handle_ingest_response(resp)
+            return self.add_journal_json_from_io(journal, file_type=file_type, file_name=file_name, channel=channel)
 
     # Backward compatibility
     add_journal_json_to_dataset = add_journal_json
+
+    @overload
+    def add_journal_json_from_io(
+        self,
+        journal: BinaryIO,
+        *,
+        file_type: tuple[str, str] | FileType,
+        file_name: str | None = None,
+        channel: str | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_journal_json_from_io(
+        self,
+        journal: BinaryIO,
+        *,
+        file_type: tuple[str, str] | FileType,
+        file_name: str | None = None,
+        channel: str | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyEpochTimestampType,
+    ) -> DatasetFile: ...
+    def add_journal_json_from_io(
+        self,
+        journal: BinaryIO,
+        *,
+        file_type: tuple[str, str] | FileType,
+        file_name: str | None = None,
+        channel: str | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyEpochTimestampType | None = None,
+    ) -> DatasetFile:
+        """Add journald-style JSONL logs from a binary stream.
+
+        Args:
+            journal: Binary stream consumed from its current position. Seeking is not required;
+                the caller retains ownership and must close it.
+            file_type: `FileTypes.JOURNAL_JSONL` or `FileTypes.JOURNAL_JSONL_GZ`, supplied as a
+                `FileType` or an ``(extension, mimetype)`` pair. Supply compressed bytes for
+                the gzip format; contents are not inspected.
+            file_name: Upload-name prefix. The selected file type's extension is appended,
+                matching the other stream APIs. Defaults to this dataset's name.
+            channel: Log channel name. Defaults to 'logs' when omitted.
+            timestamp_column: Timestamp field. Defaults to __REALTIME_TIMESTAMP when omitted.
+            timestamp_type: Absolute epoch unit for that field. Defaults to epoch microseconds when omitted.
+                Pass this together with ``timestamp_column``.
+
+        Returns:
+            Dataset file after upload and ingestion submission. Call
+            `DatasetFile.poll_until_ingestion_completed` to wait for ingestion.
+
+        Raises:
+            TypeError: The stream is open in text mode.
+            ValueError: The format is not journal JSONL, only one timestamp
+                option is supplied, or the timestamp type is not an absolute epoch type.
+
+        Note:
+            Records must contain a timestamp and a ``MESSAGE`` field, as described by `add_journal_json`.
+        """
+        if isinstance(journal, TextIOBase):
+            raise TypeError("journal must be open in binary mode, rather than text mode")
+        file_type = FileType(*file_type)
+        if not file_type.is_journal():
+            raise ValueError("journal file_type must be FileTypes.JOURNAL_JSONL or FileTypes.JOURNAL_JSONL_GZ")
+        if file_name is None:
+            file_name = self.name
+        typed_timestamp_type = _validate_journal_timestamps(timestamp_column, timestamp_type)
+        timestamp_metadata = None
+        if timestamp_column is not None and typed_timestamp_type is not None:
+            timestamp_metadata = ingest_api.JournalTimestampMetadata(
+                epoch_of_time_unit=typed_timestamp_type._to_conjure_epoch_timestamp(), field_name=timestamp_column
+            )
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            self._clients.resolve_default_workspace_rid(),
+            journal,
+            file_name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                journal_json=ingest_api.JournalJsonOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=target,
+                    channel=channel,
+                    timestamp_metadata=timestamp_metadata,
+                )
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_ingest_response(response)
 
     def add_mcap(
         self,
@@ -949,24 +1008,55 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             tags: key-value pairs to apply as tags to all data uniformly in the file.
         """
         dataflash_path = Path(path)
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-        s3_path = upload_multipart_file(
+        file_name = path_upload_name(dataflash_path, FileTypes.DATAFLASH)
+        with dataflash_path.open("rb") as dataflash:
+            return self.add_ardupilot_dataflash_from_io(dataflash, file_name=file_name, tags=tags)
+
+    # Backward compatibility
+    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
+
+    def add_ardupilot_dataflash_from_io(
+        self,
+        dataflash: BinaryIO,
+        *,
+        file_name: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        """Add an ArduPilot Dataflash file from a binary stream.
+
+        Args:
+            dataflash: Binary stream consumed from its current position. Seeking is not required;
+                the caller retains ownership and must close it.
+            file_name: Upload-name prefix. The .bin extension is appended, matching the other
+                stream APIs. Defaults to this dataset's name.
+            tags: Key-value pairs applied as tags to all data uniformly in the file.
+
+        Returns:
+            Dataset file after upload and ingestion submission. Call
+            `DatasetFile.poll_until_ingestion_completed` to wait for ingestion.
+
+        Raises:
+            TypeError: The stream is open in text mode.
+        """
+        if isinstance(dataflash, TextIOBase):
+            raise TypeError("dataflash must be open in binary mode, rather than text mode")
+        if file_name is None:
+            file_name = self.name
+        s3_path = upload_multipart_io(
             self._clients.auth_header,
-            workspace_rid,
-            dataflash_path,
+            self._clients.resolve_default_workspace_rid(),
+            dataflash,
+            file_name,
+            FileTypes.DATAFLASH,
             self._clients.upload,
-            file_type=FileTypes.DATAFLASH,
             header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
         request = _create_dataflash_ingest_request(s3_path, target, tags)
-        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_ingest_response(resp)
-
-    # Backward compatibility
-    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_ingest_response(response)
 
     @overload
     def add_containerized(
@@ -1766,6 +1856,25 @@ def _create_dataset(
         marking_rids=marking_rids or (),
     )
     return client.create_dataset(auth_header, request)
+
+
+def _validate_journal_timestamps(
+    timestamp_column: str | None,
+    timestamp_type: _AnyEpochTimestampType | None,
+) -> Epoch | None:
+    """Validate paired journal timestamp options and return the normalized epoch type."""
+    _validate_timestamp_pair(timestamp_column, timestamp_type)
+    if timestamp_column is None or timestamp_type is None:
+        return None
+    typed_timestamp_type = _to_typed_timestamp_type(timestamp_type)
+    # This v1 request carries an epoch unit, with no field for a relative starting offset.
+    # TODO(drake): once this routes through v2 ingest, which can carry a relative timestamp type,
+    # widen this guard and the _AnyEpochTimestampType annotations here and on _DatasetScopeIngestMixin to
+    # accept ts.Relative. The log pipeline already reads relative timestamps -- only this request
+    # shape blocks it, and IngestBuilder.add_journal_json accepts them today.
+    if not isinstance(typed_timestamp_type, Epoch):
+        raise ValueError(f"journal json timestamps must be an absolute epoch type, received {typed_timestamp_type!r}")
+    return typed_timestamp_type
 
 
 def _create_dataflash_ingest_request(
