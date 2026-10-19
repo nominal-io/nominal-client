@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
+from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import (
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
@@ -247,6 +248,42 @@ class TestValidation:
         up, _, _ = make_uploader()
         with up, pytest.raises(FileNotFoundError):
             up.enqueue_file(tmp_path / "missing.csv")
+
+
+@pytest.mark.parametrize("small_file_route_max_bytes", [None, 1024], ids=["multipart", "single-shot"])
+@pytest.mark.parametrize(
+    ("source_name", "name", "file_type", "expected"),
+    [
+        ("source.csv", "report.csv", FileTypes.CSV, "report.csv"),
+        ("source.parquet.tar.gz", "archive.parquet.tar.gz", FileTypes.PARQUET_TAR_GZ, "archive.parquet.tar.gz"),
+        ("report.csv.csv", None, FileTypes.CSV, "report.csv.csv"),
+        ("source.dat", "x.İ", FileType(".i\u0307", "application/octet-stream"), "x.İ"),
+        ("flight..ulg", None, None, "flight..ulg"),
+        ("flight..ulg", "copy", None, "copy..ulg"),
+        ("source.csv", "data.weird", FileTypes.CSV, "data.weird"),
+        ("a.b.CSV", None, FileTypes.CSV, "a.b.CSV"),
+    ],
+)
+def test_upload_routes_share_filename_resolution(
+    make_uploader, write_file, small_file_route_max_bytes, source_name, name, file_type, expected
+) -> None:
+    """Both upload routes accept full name overrides and preserve names derived from file paths."""
+    up, _, _ = make_uploader(small_file_route_max_bytes=small_file_route_max_bytes)
+    path = write_file(source_name, 10)
+    with up:
+        location = up.enqueue_file(path, file_type=file_type, name=name).result(timeout=10)
+    assert location == f"s3://bucket/{expected}"
+
+
+@pytest.mark.parametrize("extension", ["csv", ".bad/name"])
+def test_invalid_default_extension_is_rejected_before_queueing(make_uploader, write_file, extension: str) -> None:
+    """An invalid default fails before storage requests when a suffix-free name requires it."""
+    up, service, _ = make_uploader()
+    path = write_file("source.dat", 10)
+    with up:
+        with pytest.raises(ValueError, match="extension|unsafe for storage"):
+            up.enqueue_file(path, file_type=FileType(extension, "application/octet-stream"), name="source")
+    assert service.calls == []
 
 
 class TestNonBlockingEnqueueAndCancellation:

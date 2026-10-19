@@ -11,6 +11,14 @@ logger = logging.getLogger(__name__)
 
 
 class FileType(NamedTuple):
+    """Default upload extension and MIME type.
+
+    Existing filename extensions are preserved verbatim. If the filename has none, ``extension``
+    supplies the default: empty or a dot-prefixed suffix, such as ``.csv.gz``.
+    An applied default is validated, and unsafe storage characters are rejected in the final filename.
+    Neither the filename nor the default extension converts or validates the file's contents.
+    """
+
     extension: str
     mimetype: str
 

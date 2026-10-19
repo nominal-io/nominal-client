@@ -17,7 +17,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
+from nominal.core._utils.multipart import upload_multipart_io
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.marking import MarkableMixin
@@ -243,7 +243,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             if start is not None:
                 return self.add_from_io(
                     video_file,
-                    name=path_upload_name(path, file_type),
+                    name=path.name,
                     start=start,
                     description=description,
                     file_type=file_type,
@@ -252,7 +252,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
             elif frame_timestamps is not None:
                 return self.add_from_io(
                     video_file,
-                    name=path_upload_name(path, file_type),
+                    name=path.name,
                     frame_timestamps=frame_timestamps,
                     description=description,
                     file_type=file_type,
@@ -304,7 +304,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
         Args:
             video: File-like object containing video data encoded in H264 or H265.
-            name: Name of the file to use when uploading to S3.
+            name: Upload filename. An existing extension is preserved; otherwise the selected type supplies the default.
             start: Starting timestamp of the video file in absolute UTC time
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
@@ -405,7 +405,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         with path.open("rb") as video_file:
             return self.add_mcap_from_io(
                 video_file,
-                name=path_upload_name(path, file_type),
+                name=path.name,
                 topic=topic,
                 description=description,
                 file_type=file_type,
@@ -432,7 +432,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
         Args:
             mcap: File-like binary object containing MCAP data to upload.
-            name: Name of the file to create in S3 during upload
+            name: Upload filename. An existing extension is preserved; otherwise the selected type supplies the default.
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
 

@@ -19,6 +19,7 @@ new backend rejects more.
 from __future__ import annotations
 
 import unicodedata
+from os.path import splitext
 
 # Characters that break at least one verified object-store backend when used literally:
 #   /  \      path separators — truncate or nest the object key
@@ -48,6 +49,24 @@ def validate_upload_filename(name: str) -> None:
             f"Upload filename {name!r} contains characters that are unsafe for storage: {rendered}. "
             "Remove or replace them before uploading."
         )
+
+
+def resolve_upload_filename(name: str, default_extension: str) -> str:
+    """Keep an existing extension, or append the default if there is none.
+
+    Extension detection follows `os.path.splitext`: leading-dot names such as ``.config``
+    have no extension, while a trailing dot counts as an explicit extension and is preserved.
+    Validate the default only when it is used, and always validate the resulting filename.
+
+    Raises:
+        ValueError: An applied default is malformed, or the filename contains unsafe storage characters.
+    """
+    if not splitext(name)[1]:
+        if default_extension and not default_extension.startswith("."):
+            raise ValueError("Default upload extension must be empty or start with '.'")
+        name += default_extension
+    validate_upload_filename(name)
+    return name
 
 
 def sanitize_upload_filename(name: str, replacement: str = "_") -> str:

@@ -42,7 +42,8 @@ def upload_dataframe_to_dataset(
         timestamp_column: Column containing timestamps to use for their respective rows
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested
-        file_name: Manually override the name of the filename given to the uploaded data.
+        file_name: Upload filename for the generated CSV. An existing extension is preserved;
+            otherwise .csv.gz is appended.
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.

@@ -60,13 +60,19 @@ def dataset() -> Dataset:
         (
             Dataset.add_ardupilot_dataflash_from_io,
             {"file_name": "flight.bin", "tags": {"vehicle": "v1"}},
-            "flight.bin.bin",
+            "flight.bin",
             "dataflash",
         ),
         (
             Dataset.add_ardupilot_dataflash_from_io,
             {"file_name": "flight.BIN", "tags": {"vehicle": "v1"}},
-            "flight.BIN.bin",
+            "flight.BIN",
+            "dataflash",
+        ),
+        (
+            Dataset.add_ardupilot_dataflash_from_io,
+            {"file_name": "flight.weird", "tags": {"vehicle": "v1"}},
+            "flight.weird",
             "dataflash",
         ),
         (
@@ -144,17 +150,66 @@ def test_journal_stream_keeps_known_type_channel_and_timestamp_options(dataset, 
 
 
 @pytest.mark.parametrize(
-    ("method", "kwargs"),
+    ("file_name", "kwargs", "expected_name"),
     [
-        (Dataset.add_ardupilot_dataflash_from_io, {}),
-        (Dataset.add_journal_json_from_io, {"file_type": FileTypes.JOURNAL_JSONL}),
+        ("logs.jsonl", {}, "logs.jsonl"),
+        ("logs.jsonl.gz", {}, "logs.jsonl.gz"),
+        ("logs.JSONL.GZ", {}, "logs.JSONL.GZ"),
+        ("logs.jsonl.gz", {"file_type": FileTypes.JOURNAL_JSONL_GZ}, "logs.jsonl.gz"),
+        ("logs.weird", {"file_type": FileTypes.JOURNAL_JSONL}, "logs.weird"),
     ],
 )
-def test_native_streams_reject_text_before_upload(dataset, method, kwargs) -> None:
+def test_journal_stream_preserves_filename_with_inferred_or_explicit_type(
+    dataset, file_name, kwargs, expected_name
+) -> None:
+    """Explicit journal names are preserved with either inferred or supplied format metadata."""
+    stream = HTTPResponse(body=io.BytesIO(b"journal-bytes"), preload_content=False)
+    with patch("nominal.core._utils.multipart.put_multipart_upload", return_value=LOCATION) as upload:
+        result = dataset.add_journal_json_from_io(stream, file_name=file_name, **kwargs)
+    assert upload.call_args.args[2] is stream
+    assert upload.call_args.args[3] == expected_name
+    assert stream.read() == b"journal-bytes"
+    assert not stream.closed
+    assert result.id == "native-file"
+    stream.close()
+
+
+def test_journal_stream_requires_file_name_or_type_for_named_sources(dataset, tmp_path) -> None:
+    """Stream metadata does not substitute for an explicit filename or format."""
+    path = tmp_path / "source.jsonl.gz"
+    path.write_bytes(b"prefixjournal-bytes")
+    with path.open("rb") as stream:
+        stream.seek(len(b"prefix"))
+        with patch("nominal.core._utils.multipart.put_multipart_upload") as upload:
+            with pytest.raises(ValueError, match="file_type or file_name"):
+                dataset.add_journal_json_from_io(stream, file_type=None)
+        upload.assert_not_called()
+        assert stream.read() == b"journal-bytes"
+        assert not stream.closed
+
+
+@pytest.mark.parametrize(
+    ("file_name", "message"),
+    [(None, "file_type"), ("logs", "journal"), ("logs.tar.gz", "journal")],
+)
+def test_journal_stream_requires_a_known_format_before_upload(dataset, file_name, message) -> None:
+    """Anonymous inputs and unsupported filename extensions fail locally instead of assuming JSONL."""
+    stream = io.BytesIO(b"prefixjournal-bytes")
+    stream.seek(len(b"prefix"))
+    with patch("nominal.core._utils.multipart.put_multipart_upload") as upload:
+        with pytest.raises(ValueError, match=message):
+            dataset.add_journal_json_from_io(stream, file_name=file_name)
+    upload.assert_not_called()
+    assert stream.read() == b"journal-bytes"
+    assert not stream.closed
+
+
+@pytest.mark.parametrize("method", [Dataset.add_ardupilot_dataflash_from_io, Dataset.add_journal_json_from_io])
+def test_native_streams_reject_text_before_upload(dataset, method) -> None:
     """Text streams are rejected locally, before the binary upload reader can block."""
     with patch("nominal.core._utils.multipart.put_multipart_upload") as upload:
         with pytest.raises(TypeError, match="binary"):
-            method(dataset, io.StringIO("text"), **kwargs)
+            method(dataset, io.StringIO("text"))
     upload.assert_not_called()
 
 
@@ -172,7 +227,7 @@ def test_journal_stream_invalid_options_fail_before_upload(dataset, kwargs, mess
     """Unsupported journal formats or timestamp contracts fail before spending bytes on upload."""
     with patch("nominal.core._utils.multipart.put_multipart_upload") as upload:
         with pytest.raises(ValueError, match=message):
-            dataset.add_journal_json_from_io(io.BytesIO(b"journal"), **{"file_type": FileTypes.JOURNAL_JSONL, **kwargs})
+            dataset.add_journal_json_from_io(io.BytesIO(b"journal"), file_name="journal.jsonl", **kwargs)
     upload.assert_not_called()
 
 

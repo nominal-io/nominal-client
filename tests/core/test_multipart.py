@@ -18,11 +18,11 @@ from nominal.core._utils.multipart import (
     _put_part,
     _sign_and_put_part,
 )
-from nominal.core.filetype import FileTypes
+from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalMultipartUploadFailed
 
 
-def _filename_passed_downstream(name: str) -> str:
+def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) -> str:
     """Call upload_multipart_io and return the filename it forwards to put_multipart_upload."""
     with patch.object(multipart, "put_multipart_upload") as mock_put:
         mock_put.return_value = "s3://bucket/key"
@@ -31,7 +31,7 @@ def _filename_passed_downstream(name: str) -> str:
             "ri.workspace",
             io.BytesIO(b"data"),
             name,
-            FileTypes.CSV,
+            file_type,
             MagicMock(),
         )
     # put_multipart_upload(auth, workspace, f, filename, mimetype, upload_client, ...)
@@ -49,6 +49,95 @@ def _filename_passed_downstream(name: str) -> str:
 )
 def test_filename_forwarded_unencoded(name: str, expected: str) -> None:
     assert _filename_passed_downstream(name) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "file_type", "expected"),
+    [
+        ("data.csv", FileTypes.CSV, "data.csv"),
+        ("data.CSV", FileTypes.CSV, "data.CSV"),
+        ("data", FileTypes.CSV_GZ, "data.csv.gz"),
+        ("data.csv.gz", FileTypes.CSV_GZ, "data.csv.gz"),
+        ("data.parquet", FileTypes.PARQUET, "data.parquet"),
+        ("archive.parquet.tar.gz", FileTypes.PARQUET_TAR_GZ, "archive.parquet.tar.gz"),
+        ("flight.bin", FileTypes.DATAFLASH, "flight.bin"),
+        ("flight.mcap", FileTypes.MCAP, "flight.mcap"),
+        ("clip.mp4", FileTypes.MP4, "clip.mp4"),
+        ("clip.mkv", FileTypes.MKV, "clip.mkv"),
+        ("logs.jsonl.gz", FileTypes.JOURNAL_JSONL_GZ, "logs.jsonl.gz"),
+        ("records.avro.gz", FileTypes.AVRO_STREAM_GZ, "records.avro.gz"),
+        ("report.pdf", FileTypes.BINARY, "report.pdf"),
+        ("data.csv.csv", FileTypes.CSV, "data.csv.csv"),
+        ("", FileTypes.CSV, ".csv"),
+        ("flight.weird", FileTypes.DATAFLASH, "flight.weird"),
+        ("data.csv", FileTypes.PARQUET, "data.csv"),
+        ("readings.nominalraw", FileType(".nominalraw", "application/octet-stream"), "readings.nominalraw"),
+        ("x.İ", FileType(".i\u0307", "application/octet-stream"), "x.İ"),
+        ("x.i\u0307", FileType(".İ", "application/octet-stream"), "x.i\u0307"),
+        ("x.İ.gz", FileType(".i\u0307.gz", "application/octet-stream"), "x.İ.gz"),
+        ("data.csv", FileType("invalid/default", "application/octet-stream"), "data.csv"),
+        (".config", FileTypes.CSV, ".config.csv"),
+        (".config.local", FileTypes.CSV, ".config.local"),
+        ("data.", FileTypes.CSV, "data."),
+        ("data", FileType(".", "application/octet-stream"), "data."),
+        ("data", FileType(".csv..gz", "application/octet-stream"), "data.csv..gz"),
+    ],
+)
+def test_stream_uploads_default_only_missing_extensions(name, file_type, expected) -> None:
+    """Existing suffixes are preserved verbatim; only names without one use the default extension."""
+    assert _filename_passed_downstream(name, file_type) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "file_type", "expected"),
+    [
+        ("a.b.csv", FileTypes.CSV, "a.b.csv"),
+        ("a.b.CSV", FileTypes.CSV, "a.b.CSV"),
+        ("flight.bin.bin", FileTypes.DATAFLASH, "flight.bin.bin"),
+        ("logs.jsonl.gz.jsonl.gz", FileTypes.JOURNAL_JSONL_GZ, "logs.jsonl.gz.jsonl.gz"),
+        ("archive.parquet.tar.gz", FileTypes.PARQUET_TAR_GZ, "archive.parquet.tar.gz"),
+        ("report.pdf", FileTypes.BINARY, "report.pdf"),
+        ("flight..ulg", None, "flight..ulg"),
+    ],
+)
+def test_path_uploads_use_the_actual_filename(tmp_path, name, file_type, expected) -> None:
+    """Path names retain their case, repeated dots, and suffixes even with explicit or inferred types."""
+    path = tmp_path / name
+    path.write_bytes(b"data")
+    with patch.object(multipart, "put_multipart_upload", return_value="s3://backend/opaque") as upload:
+        multipart.upload_multipart_file("test", None, path, MagicMock(), file_type=file_type)
+    assert upload.call_args.args[3] == expected
+
+
+def test_unsafe_format_suffix_is_rejected_before_upload() -> None:
+    """An explicit format cannot bypass filename safety by putting unsafe characters in its suffix."""
+    with patch.object(multipart, "put_multipart_upload") as upload:
+        with pytest.raises(ValueError, match="unsafe for storage"):
+            multipart.upload_multipart_io(
+                "test",
+                None,
+                io.BytesIO(b"data"),
+                "safe",
+                FileType(".bad/name", "application/octet-stream"),
+                MagicMock(),
+            )
+    upload.assert_not_called()
+
+
+@pytest.mark.parametrize("extension", ["csv", "csv.gz"])
+def test_malformed_default_extension_is_rejected_before_upload(extension: str) -> None:
+    """An applied default must be empty or start with a dot."""
+    with patch.object(multipart, "put_multipart_upload") as upload:
+        with pytest.raises(ValueError, match="extension"):
+            multipart.upload_multipart_io(
+                "test",
+                None,
+                io.BytesIO(b"data"),
+                "traffic",
+                FileType(extension, "application/octet-stream"),
+                MagicMock(),
+            )
+    upload.assert_not_called()
 
 
 @pytest.mark.parametrize("name", ["bad?name", "has/slash", "brace{x}", "quote'it", "pct%20"])

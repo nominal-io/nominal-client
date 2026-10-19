@@ -15,6 +15,7 @@ from google.protobuf import timestamp_pb2
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.client import NominalClient
+from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.attachments.v2 import attachments_pb2
@@ -186,25 +187,35 @@ def test_list_attachments_leaves_out_inaccessible_attachments(fake_rpc_error) ->
     assert [a.rid for a in attachments] == [_RID]
 
 
-def test_create_attachment_from_io_creates_in_the_resolved_workspace() -> None:
-    """The created attachment references the uploaded file and is placed in the client's resolved workspace."""
+@pytest.mark.parametrize(
+    ("name", "file_type", "expected_filename"),
+    [
+        ("report.pdf", FileTypes.BINARY, "report.pdf"),
+        ("report.pdf", FileType(".pdf", "application/pdf"), "report.pdf"),
+        ("report", FileType(".pdf", "application/pdf"), "report.pdf"),
+        ("report.weird", FileType(".pdf", "application/pdf"), "report.weird"),
+    ],
+)
+def test_attachment_filename_defaults_preserve_title_and_workspace(name, file_type, expected_filename) -> None:
+    """Attachment filenames default missing extensions while preserving the requested title and workspace."""
     clients = MagicMock()
     clients.resolve_default_workspace_rid.return_value = "ri.workspace.test"
     clients.attachment.CreateAttachment.return_value = attachments_pb2.CreateAttachmentResponse(
-        attachment=_proto_attachment(title="report.pdf")
+        attachment=_proto_attachment(title=name)
     )
 
-    with patch("nominal.core.client.upload_multipart_io", return_value="s3://bucket/report.pdf"):
+    with patch("nominal.core._utils.multipart.put_multipart_upload", return_value="s3://bucket/report.pdf") as upload:
         attachment = NominalClient(_clients=clients).create_attachment_from_io(
-            io.BytesIO(b"data"), "report.pdf", labels=["monthly"]
+            io.BytesIO(b"data"), name, file_type=file_type, labels=["monthly"]
         )
 
+    assert upload.call_args.args[3] == expected_filename
     request = clients.attachment.CreateAttachment.call_args.args[0]
     assert request.workspace_rid == "ri.workspace.test"
     assert request.attachment == attachments_pb2.Attachment(
-        s3_path="s3://bucket/report.pdf", title="report.pdf", labels=["monthly"]
+        s3_path="s3://bucket/report.pdf", title=name, labels=["monthly"]
     )
-    assert attachment.name == "report.pdf"
+    assert attachment.name == name
 
 
 def test_get_attachment_translates_not_found(fake_rpc_error) -> None:

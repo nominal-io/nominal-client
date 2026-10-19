@@ -29,7 +29,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
+from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
@@ -246,7 +246,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 timestamp_column,
                 timestamp_type,
                 file_type,
-                file_name=path_upload_name(path, file_type),
+                file_name=path.name,
                 tag_columns=tag_columns,
                 tags=tags,
             )
@@ -271,7 +271,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             timestamp_column: the column in the dataset that contains the timestamp data.
             timestamp_type: the type of timestamp data in the dataset.
             file_type: a (extension, mimetype) pair describing the type of file.
-            file_name: the name of the file to upload.
+            file_name: Upload filename. An existing extension is preserved; otherwise the selected type
+                supplies the default extension. Defaults to this dataset's name.
             tag_columns: a dictionary mapping tag keys to column names.
             tags: key-value pairs to apply as tags to all data uniformly in the file
         """
@@ -480,7 +481,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         _validate_journal_timestamps(timestamp_column, timestamp_type)
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
-        file_name = path_upload_name(log_path, file_type)
+        file_name = log_path.name
         with log_path.open("rb") as journal:
             if timestamp_column is not None and timestamp_type is not None:
                 return self.add_journal_json_from_io(
@@ -501,7 +502,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         self,
         journal: BinaryIO,
         *,
-        file_type: tuple[str, str] | FileType,
+        file_type: tuple[str, str] | FileType | None = None,
         file_name: str | None = None,
         channel: str | None = None,
     ) -> DatasetFile: ...
@@ -510,7 +511,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         self,
         journal: BinaryIO,
         *,
-        file_type: tuple[str, str] | FileType,
+        file_type: tuple[str, str] | FileType | None = None,
         file_name: str | None = None,
         channel: str | None = None,
         timestamp_column: str,
@@ -520,7 +521,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         self,
         journal: BinaryIO,
         *,
-        file_type: tuple[str, str] | FileType,
+        file_type: tuple[str, str] | FileType | None = None,
         file_name: str | None = None,
         channel: str | None = None,
         timestamp_column: str | None = None,
@@ -532,10 +533,11 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             journal: Binary stream consumed from its current position. Seeking is not required;
                 the caller retains ownership and must close it.
             file_type: `FileTypes.JOURNAL_JSONL` or `FileTypes.JOURNAL_JSONL_GZ`, supplied as a
-                `FileType` or an ``(extension, mimetype)`` pair. Supply compressed bytes for
-                the gzip format; contents are not inspected.
-            file_name: Upload-name prefix. The selected file type's extension is appended,
-                matching the other stream APIs. Defaults to this dataset's name.
+                `FileType` or an ``(extension, mimetype)`` pair. When omitted or ``None``, infer
+                from ``file_name``. Without ``file_name``, supply an explicit type. Compressed
+                bytes must be supplied for the gzip format; contents are not inspected.
+            file_name: Upload filename. An existing extension is preserved; otherwise the selected type
+                supplies the default extension. Defaults to this dataset's name.
             channel: Log channel name. Defaults to 'logs' when omitted.
             timestamp_column: Timestamp field. Defaults to __REALTIME_TIMESTAMP when omitted.
             timestamp_type: Absolute epoch unit for that field. Defaults to epoch microseconds when omitted.
@@ -547,7 +549,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Raises:
             TypeError: The stream is open in text mode.
-            ValueError: The format is not journal JSONL, only one timestamp
+            ValueError: The format cannot be inferred or is not journal JSONL, only one timestamp
                 option is supplied, or the timestamp type is not an absolute epoch type.
 
         Note:
@@ -555,7 +557,12 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """
         if isinstance(journal, TextIOBase):
             raise TypeError("journal must be open in binary mode, rather than text mode")
-        file_type = FileType(*file_type)
+        if file_type is None:
+            if file_name is None:
+                raise ValueError("file_type or file_name must be provided")
+            file_type = FileType.from_path_journal_json(file_name)
+        else:
+            file_type = FileType(*file_type)
         if not file_type.is_journal():
             raise ValueError("journal file_type must be FileTypes.JOURNAL_JSONL or FileTypes.JOURNAL_JSONL_GZ")
         if file_name is None:
@@ -615,7 +622,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 data_file,
                 include_topics=include_topics,
                 exclude_topics=exclude_topics,
-                file_name=path_upload_name(path, FileTypes.MCAP),
+                file_name=path.name,
                 tags=tags,
                 ignore_invalid_topics=ignore_invalid_topics,
             )
@@ -643,7 +650,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
-            file_name: If present, name to use when uploading file. Otherwise, defaults to dataset name.
+            file_name: Upload filename. The .mcap extension is added only when the name has no extension.
+                Defaults to this dataset's name.
             tags: key-value pairs to apply as tags to all data uniformly in the file.
             ignore_invalid_topics: If true, ignore invalid MCAP topics and continue ingesting valid topics.
         """
@@ -742,7 +750,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             if start is not None:
                 return self.add_video_from_io(
                     video,
-                    path_upload_name(path, file_type),
+                    path.name,
                     channel=channel,
                     start=start,
                     file_type=file_type,
@@ -752,7 +760,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             elif frame_timestamps is not None:
                 return self.add_video_from_io(
                     video,
-                    path_upload_name(path, file_type),
+                    path.name,
                     channel=channel,
                     frame_timestamps=frame_timestamps,
                     file_type=file_type,
@@ -807,7 +815,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Args:
             video: File-like object containing video data encoded in H264 or H265.
-            file_name: Name of the file to use when uploading.
+            file_name: Upload filename. An existing extension is preserved; otherwise the selected type supplies the default.
             channel: Name of the video channel within this dataset that the file's frames belong to.
             start: Starting timestamp of the video file in absolute UTC time (datetime or epoch nanoseconds).
                 Exactly one of `start` or `frame_timestamps` must be provided.
@@ -876,7 +884,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         with path.open("rb") as mcap:
             return self.add_mcap_video_from_io(
                 mcap,
-                path_upload_name(path, file_type),
+                path.name,
                 channel=channel,
                 topic=topic,
                 file_type=file_type,
@@ -901,7 +909,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Args:
             mcap: File-like binary object containing MCAP data with H264/H265 video.
-            file_name: Name of the file to use when uploading.
+            file_name: Upload filename. An existing extension is preserved; otherwise the selected type supplies the default.
             channel: Name of the video channel within this dataset that the file's frames belong to.
             topic: MCAP topic containing the video data; per-frame timestamps come from this topic's messages.
             file_type: Metadata about the type of file (e.g. MCAP).
@@ -1008,7 +1016,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             tags: key-value pairs to apply as tags to all data uniformly in the file.
         """
         dataflash_path = Path(path)
-        file_name = path_upload_name(dataflash_path, FileTypes.DATAFLASH)
+        file_name = dataflash_path.name
         with dataflash_path.open("rb") as dataflash:
             return self.add_ardupilot_dataflash_from_io(dataflash, file_name=file_name, tags=tags)
 
@@ -1027,8 +1035,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Args:
             dataflash: Binary stream consumed from its current position. Seeking is not required;
                 the caller retains ownership and must close it.
-            file_name: Upload-name prefix. The .bin extension is appended, matching the other
-                stream APIs. Defaults to this dataset's name.
+            file_name: Upload filename. The .bin extension is added only when the name has no extension.
+                Defaults to this dataset's name.
             tags: Key-value pairs applied as tags to all data uniformly in the file.
 
         Returns:

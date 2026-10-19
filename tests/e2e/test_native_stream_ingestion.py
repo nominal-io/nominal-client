@@ -15,10 +15,10 @@ from tests.e2e import POLL_INTERVAL
 
 
 @pytest.mark.parametrize("compressed", [False, True], ids=["jsonl", "jsonl-gz"])
-def test_journal_stream_matches_path_ingestion_storage_bytes_and_timestamps(
+def test_journal_stream_with_explicit_suffix_matches_path_ingestion(
     client: NominalClient, archive, tmp_path: Path, compressed: bool
 ) -> None:
-    """Core path and stream ingestion use the same upload bucket and retain bytes and custom epoch timestamps."""
+    """An unfamiliar stream suffix preserves the name, source bytes, bucket, and custom epoch timestamps."""
     payload = b'{"source_ts":1767225600,"MESSAGE":"stream-first"}\n{"source_ts":1767225601,"MESSAGE":"stream-second"}\n'
     if compressed:
         payload = gzip.compress(payload)
@@ -37,7 +37,7 @@ def test_journal_stream_matches_path_ingestion_storage_bytes_and_timestamps(
     stream_file = stream_dataset.add_journal_json_from_io(
         stream,
         file_type=file_type,
-        file_name="journal",
+        file_name="journal.weird",
         channel="events",
         timestamp_column="source_ts",
         timestamp_type=ts.EPOCH_SECONDS,
@@ -45,6 +45,7 @@ def test_journal_stream_matches_path_ingestion_storage_bytes_and_timestamps(
     assert not stream.closed
     stream.close()
     stream_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    assert stream_file.name == "journal.weird"
 
     path_handle = path_file._get_latest_api().handle.s3
     stream_handle = stream_file._get_latest_api().handle.s3
