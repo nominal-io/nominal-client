@@ -1,11 +1,17 @@
-// Old class/member bookmarks belong on the detail pages linked by native autosummary tables.
+// Old class/member bookmarks belong on their generated reference pages.
 function forwardMovedReference() {
   const fragment = window.location.hash;
   if (!fragment || document.querySelector(":target")) return;
 
-  for (const link of document.querySelectorAll("table.autosummary td:first-child a.reference.internal")) {
-    const destination = new URL(link.href);
-    if (destination.hash && (fragment === destination.hash || fragment.startsWith(`${destination.hash}.`))) {
+  const pages = JSON.parse(document.querySelector("#reference-pages")?.textContent || "{}");
+  const references = [
+    ...Array.from(document.querySelectorAll("table.autosummary td:first-child a.reference.internal"),
+      (link) => [new URL(link.href).hash, link.href]),
+    ...Object.entries(pages),
+  ];
+  for (const [prefix, href] of references) {
+    if (prefix && (fragment === prefix || fragment.startsWith(`${prefix}.`))) {
+      const destination = new URL(href, window.location.href);
       destination.hash = fragment;
       destination.search = window.location.search;
       window.location.replace(destination.href);

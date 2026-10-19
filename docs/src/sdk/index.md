@@ -6,7 +6,7 @@ see the [guides](/index.md).
 
 The main components of the SDK are:
 
-- **[`nominal.core`](core.md)**: the object-oriented client for the Nominal core platform.
+- **[`nominal.core`](core/index.md)**: the object-oriented client for the Nominal core platform.
   Start from {py:class}`~nominal.core.NominalClient`.
 - **[`nominal.ts`](ts/index.md)**: how timestamps in your data are encoded across the SDK.
 - **[`nominal.exceptions`](exceptions.rst)**: errors raised by the client.

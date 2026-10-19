@@ -172,7 +172,7 @@ examples/index
 :maxdepth: 2
 
 Overview <sdk/index>
-Core SDK <sdk/core>
+Core SDK <sdk/core/index>
 Timestamps <sdk/ts/index>
 Exceptions <sdk/exceptions>
 ```
