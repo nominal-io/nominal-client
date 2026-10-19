@@ -91,6 +91,7 @@ Export data <guides/datasets/export-data>
 Decimate data <guides/datasets/decimating-data>
 Channels and data types <guides/datasets/channels>
 Avro streams <guides/datasets/avro-streams>
+External connections <guides/datasets/external-connections>
 ```
 
 ```{toctree}
@@ -173,6 +174,7 @@ examples/index
 
 Overview <sdk/index>
 Core SDK <sdk/core/index>
+External connections <sdk/external-connections>
 Timestamps <sdk/ts/index>
 Exceptions <sdk/exceptions>
 ```

@@ -37,8 +37,9 @@ class _Markable(MarkableMixin):
 
 
 @pytest.fixture
-def client(mock_clients: MagicMock) -> NominalClient:
+def client(mock_clients: MagicMock, make_enriched_dataset) -> NominalClient:
     """A NominalClient over the shared mock clients bunch."""
+    mock_clients.catalog.create_dataset.return_value = make_enriched_dataset()
     return NominalClient(_clients=mock_clients)
 
 
