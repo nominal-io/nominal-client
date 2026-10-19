@@ -183,3 +183,92 @@ def test_explicit_workspace_and_default_assignee(client: NominalClient, mock_cli
     assert request.workspace == "explicit-workspace"
     assert request.assignee_rid == "current-user"
     mock_clients.resolve_default_workspace_rid.assert_not_called()
+
+
+@pytest.mark.parametrize("strict_inputs", [False, True])
+def test_missing_bindings_rejected_before_adding_check(strict_inputs: bool, client: NominalClient) -> None:
+    """A misspelled binding fails locally in either mode and leaves the builder empty."""
+    builder = ChecklistBuilder(strict_inputs=strict_inputs)
+    with pytest.raises(ValueError, match="Overheating.*missing input bindings.*temperature_deg"):
+        builder.add_check(
+            "Overheating",
+            (nc.NumericSeries.Reference("temperature_deg") > 100).ranges(),
+            inputs={"temperature": ChannelBinding("telemetry", "temperature")},
+            priority=Priority.P1,
+        )
+    with pytest.raises(ValueError, match="at least one check"):
+        builder.create(client, "Empty")
+
+
+def test_shared_bindings_allowed_by_default() -> None:
+    """Checks may reuse a shared mapping even when they only use a subset of its inputs."""
+    temperature = nc.NumericSeries.Reference("temperature")
+    ChecklistBuilder().add_check(
+        "Overheating",
+        (temperature + temperature > 100).ranges(),
+        inputs={
+            "temperature": ChannelBinding("telemetry", "temperature"),
+            "pressure": ChannelBinding("telemetry", "pressure"),
+        },
+        priority=Priority.P1,
+    )
+
+
+def test_strict_inputs_rejects_unused_bindings() -> None:
+    """Strict mode identifies bindings unused by an otherwise fully bound expression."""
+    with pytest.raises(ValueError, match="Overheating.*unused input bindings.*pressure"):
+        ChecklistBuilder(strict_inputs=True).add_check(
+            "Overheating",
+            (nc.NumericSeries.Reference("temperature") > 100).ranges(),
+            inputs={
+                "temperature": ChannelBinding("telemetry", "temperature"),
+                "pressure": ChannelBinding("telemetry", "pressure"),
+            },
+            priority=Priority.P1,
+        )
+
+
+@pytest.mark.parametrize(
+    "ranges, missing",
+    [
+        (
+            nc.RangeSeries.Union(
+                [(nc.NumericSeries.Reference("x") > 0).ranges(), (nc.NumericSeries.Reference("y") > 0).ranges()]
+            ),
+            "y",
+        ),
+        (
+            (
+                nc.NumericSeries.Reference("x")
+                > nc.NumericSeries.Constant(nc.ConstantNumericSeries.Float(nc.FloatConstant.Reference("limit")))
+            ).ranges(),
+            "limit",
+        ),
+        ((nc.NumericSeries.Reference("x") > 0).ranges(min_duration=nc.Duration.Reference("duration")), "duration"),
+        (nc.RangeSeries.Reference("ranges"), "ranges"),
+    ],
+)
+def test_nested_and_non_numeric_references_require_bindings(ranges: nc.RangeSeries, missing: str) -> None:
+    """Traverse list operands and reference encodings beyond numeric series leaves."""
+    with pytest.raises(ValueError, match=f"missing input bindings.*{missing}"):
+        ChecklistBuilder().add_check("Check", ranges, inputs={"x": ChannelBinding("scope", "x")}, priority=Priority.P1)
+
+
+def test_literal_channel_name_is_not_an_input_reference() -> None:
+    """Explicit dataset selectors need no bindings for their literal channel and dataset names."""
+    ranges = (nc.NumericSeries.SelectNumeric("temperature", dataset=nc.Dataset.Saved("dataset-rid")) > 0).ranges()
+    ChecklistBuilder(strict_inputs=True).add_check("Check", ranges, inputs={}, priority=Priority.P1)
+
+
+def test_invalid_later_implementation_does_not_add_partial_check(client: NominalClient) -> None:
+    """Validate every implementation before changing the builder, even with one-shot inputs."""
+    builder = ChecklistBuilder()
+    with pytest.raises(ValueError, match="implementation 1.*missing input bindings.*temperature"):
+        builder.add_parameterized_check(
+            "Overheating",
+            (nc.NumericSeries.Reference("temperature") > 100).ranges(),
+            implementations=iter([{"temperature": ChannelBinding("scope", "temperature")}, {}]),
+            priority=Priority.P1,
+        )
+    with pytest.raises(ValueError, match="at least one check"):
+        builder.create(client, "Empty")

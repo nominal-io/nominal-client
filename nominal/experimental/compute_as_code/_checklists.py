@@ -16,6 +16,28 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
 
 
+def _expression_references(node: object) -> set[str]:
+    """Collect named inputs from the serialized nominal-compute expression graph."""
+    children: Iterable[object]
+    match node:
+        case (
+            {"type": "raw", "raw": {"name": str(name)}}
+            | {"type": "reference", "reference": {"name": str(name)}}
+            | {"type": "variable", "variable": str(name)}
+        ):
+            return {name}
+        case dict():
+            children = node.values()
+        case list():
+            children = node
+        case _:
+            return set()
+    references: set[str] = set()
+    for child in children:
+        references.update(_expression_references(child))
+    return references
+
+
 @dataclass(frozen=True)
 class ChannelBinding:
     """A channel resolved relative to the run or asset where a checklist executes.
@@ -51,6 +73,10 @@ class ChecklistBuilder:
     the same builder for chaining. Only `create` makes network requests. Expression graphs
     and channel bindings are captured when each check is added; Python source is not stored.
 
+    Args:
+        strict_inputs: Reject unused input bindings when True. Defaults to False so checks
+            can share a binding map. Missing bindings always raise when adding a check.
+
     Example:
         ```python
         import nominal.compute as nc
@@ -72,7 +98,8 @@ class ChecklistBuilder:
         ```
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, strict_inputs: bool = False) -> None:
+        self._strict_inputs = strict_inputs
         self._checks: list[scout_checks_api.CreateChecklistEntryRequest] = []
 
     def add_check(
@@ -99,6 +126,8 @@ class ChecklistBuilder:
 
         Raises:
             TypeError: If ``failure_ranges`` is not a compute ``RangeSeries``.
+            ValueError: If an expression reference has no input binding, or if an input
+                is unused and the builder has ``strict_inputs=True``. No check is added.
 
         Note:
             Alignment, fill, and missing-data behavior follow the service's checklist defaults.
@@ -135,20 +164,31 @@ class ChecklistBuilder:
 
         Raises:
             TypeError: If ``failure_ranges`` is not a compute ``RangeSeries``.
-            ValueError: If no implementations are supplied.
+            ValueError: If an expression reference has no input binding, or if an input
+                is unused and the builder has ``strict_inputs=True``, or no implementations
+                are supplied. No check is added.
         """
         if not isinstance(failure_ranges, nc.RangeSeries):
             raise TypeError("failure_ranges must be a nominal.compute.RangeSeries; convert booleans with .ranges()")
-        ranges: scout_compute_api.RangeSeries = ConjureDecoder.do_decode(
-            json.loads(failure_ranges.to_json()),  # type: ignore[attr-defined]
-            scout_compute_api.RangeSeries,
-        )
-        variables = [
-            scout_checks_api.UnresolvedVariables(
-                variables={reference: binding._to_conjure() for reference, binding in inputs.items()}
+        wire = json.loads(failure_ranges.to_json())  # type: ignore[attr-defined]
+        references = _expression_references(wire)
+        ranges: scout_compute_api.RangeSeries = ConjureDecoder.do_decode(wire, scout_compute_api.RangeSeries)
+        variables = []
+        for index, inputs in enumerate(implementations):
+            missing = references - inputs.keys()
+            unused = inputs.keys() - references if self._strict_inputs else set()
+            errors = []
+            if missing:
+                errors.append(f"missing input bindings: {', '.join(sorted(missing))}")
+            if unused:
+                errors.append(f"unused input bindings: {', '.join(sorted(unused))}")
+            if errors:
+                raise ValueError(f"Check {name!r}, implementation {index}: {'; '.join(errors)}")
+            variables.append(
+                scout_checks_api.UnresolvedVariables(
+                    variables={reference: binding._to_conjure() for reference, binding in inputs.items()}
+                )
             )
-            for inputs in implementations
-        ]
         if not variables:
             raise ValueError("A parameterized check needs at least one implementation")
         self._checks.append(

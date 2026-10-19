@@ -41,8 +41,20 @@ the checklist. Each call creates a new resource; it does not update a previously
 
 `ChannelBinding` uses the data source reference or data scope name and channel name,
 so the same checklist can run against different runs or assets. Its optional `tags` mapping
-selects a particular tagged series. Missing references and channel availability are resolved
-by the service, not checked while building.
+selects a particular tagged series. Adding a check always raises `ValueError` if an expression
+reference has no binding. For example, referencing `temperature_deg` while only supplying
+`temperature` fails immediately, before the builder is changed or any network request is made.
+
+Unused bindings are allowed by default, so multiple checks can share one input mapping.
+Opt into rejecting them with:
+
+```python
+builder = ChecklistBuilder(strict_inputs=True)
+```
+
+Errors identify the check, the zero-based implementation index, and the missing or unused
+names. Validation checks reference names; channel availability and type compatibility are
+still resolved by the service at execution time.
 
 Execute through the existing checklist API:
 
