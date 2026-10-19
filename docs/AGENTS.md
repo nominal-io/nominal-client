@@ -18,18 +18,26 @@ and other pages to Guides. Keep each captioned root toctree within one section.
 - Test docstring and signature rendering with
   `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
 
-API pages use native `automodule`/`autoclass` directives in MyST `{eval-rst}` blocks.
-Members come from Python exports and render inline; do not maintain member lists or
-generated source pages, except for the exceptions, timestamps, experiment,
-and integration references. Native `autosummary` reads its module entry in `autosummary.rst`,
-discovers public exceptions, and uses the template under `_templates/autosummary/`
-to separate errors and warnings without a member list.
+API references use native `autosummary` with templates under `_templates/autosummary/`.
+Members come from Python exports; do not maintain member lists or generated source pages.
+The exceptions template separates errors and warnings without a member list.
 The overview (`src/sdk/exceptions.rst`) and detail pages (`src/sdk/generated/`) are ignored
 by Git and the preview watcher. The left sidebar shows only the overview.
-Timestamp, experiment, and integration pages include native module summaries
+Core, timestamp, experiment, and integration pages include native module summaries
 from `src/sdk/_summaries/`. Their module entries live in `autosummary.rst`; Sphinx discovers
 members from `__all__` when present, otherwise from public local definitions. The module
 summary and object templates generate tables and detail pages without member lists.
+Core's landing page links to authored topic pages, with only Core SDK in the left sidebar.
+`core_topic_modules` in `conf.py` assigns defining modules to topics. Each topic includes its
+section of the native Core summary, combining the modules' public package exports into one
+set of class, enum, function, constant, and type-alias tables. All SDK references share the
+same table template. Keep topic prose in its Markdown page, not in generator hooks or SDK
+module docstrings. Internal owning modules may contribute public exports; implementation
+helpers and the `nominal.core.exceptions` shim stay out. The strict build rejects unassigned
+or repeated exports. Legacy standalone-video objects retain reference targets for existing
+links but are absent from the topic directory. Native canonical targets preserve defining
+object names alongside public import names without registering implementation modules.
+Topic pages direct readers to import from `nominal.core`.
 Timestamp and Ibis pages render module docstrings above the API reference. Their seeds use
 `module-summary-no-prose.rst` to register modules without repeating that prose in the tables.
 Classes, enums, and functions get detail pages. Constants and type aliases use separate
@@ -44,12 +52,15 @@ Summary fragments are excluded from page discovery and ignored by Git and the wa
 only the Markdown landing page belongs in the sidebar.
 `_static/reference-links.js` forwards missing class/member fragments using the native
 summary links, preserving query strings and leaving existing on-page targets alone.
+The Core directory includes a hidden, HTML-only native autosummary table without a
+toctree. Sphinx resolves its links to detail pages and type-alias tables; the existing
+bookmark script uses those links without duplicating builder paths or output filenames.
 Test this behavior with `node --test docs/_tests/reference-links.test.mjs` (Node 22; no npm dependencies).
 Packages with `__all__` need no `:imported-members:` option.
 Classes list attributes and properties first, then alphabetical methods. Dataclass
 fields follow declaration order (including inherited fields), with
-properties after the fields. Core keeps class/function-level local contents (`tocdepth: 2`);
-methods and attributes render inline. The reference presentation extension uses native
+properties after the fields. Methods and attributes render on their class's detail page.
+The reference presentation extension uses native
 Sphinx contents flags to omit attributes and aliases from navigation, preserving their body
 and link targets. Integrations and Experimental pages are listed directly under
 captioned root toctrees. Their folder indexes remain standalone overview pages for

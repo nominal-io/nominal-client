@@ -31,3 +31,9 @@
 
    nominal.ibis
    nominal.ts
+
+.. autosummary::
+   :toctree: src/sdk/_summaries
+   :template: autosummary/core-summary.rst
+
+   nominal.core

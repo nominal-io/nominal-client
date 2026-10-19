@@ -1,5 +1,5 @@
 # Published URLs retained after moving the API reference under sdk/.
-reference/core.md sdk/core.md
+reference/core.md sdk/core/index.md
 reference/exceptions.md sdk/exceptions.rst
 reference/experimental/compute.md sdk/experimental/compute.md
 reference/experimental/derived_datasets.md sdk/experimental/derived_datasets.md
