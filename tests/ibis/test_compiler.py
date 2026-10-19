@@ -40,6 +40,22 @@ def test_map_get_renders_as_item_syntax() -> None:
     assert "json" not in sql.lower()
 
 
+@pytest.mark.parametrize("digits", [2, 0, -1])
+def test_round_preserves_digits_without_decimal_cast(digits: int) -> None:
+    """Rounding passes the requested precision directly to the API without losing fractional digits."""
+    sql = compile_sql(POINTS.select(rounded=_.value.round(digits)))
+    assert f'ROUND("t0"."value", {digits})' in sql
+    assert "DECIMAL" not in sql
+    result_type = "BIGINT" if digits == 0 else "DOUBLE PRECISION"
+    assert f") AS {result_type})" in sql
+
+
+def test_round_without_digits_returns_integer() -> None:
+    """Rounding with omitted digits keeps Ibis's integer result type."""
+    sql = compile_sql(POINTS.select(rounded=_.value.round()))
+    assert 'CAST(ROUND("t0"."value", 0) AS BIGINT)' in sql
+
+
 def test_lag_window_has_no_frame() -> None:
     """LAG/LEAD windows omit the frame clause the API rejects."""
     w = ibis.window(group_by="channel", order_by="ts")
