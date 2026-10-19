@@ -74,7 +74,7 @@ class ChecklistBuilder:
     and channel bindings are captured when each check is added; Python source is not stored.
 
     Args:
-        strict_inputs: Reject unused input bindings when True. Defaults to False so checks
+        strict: Reject unused input bindings when True. Defaults to False so checks
             can share a binding map. Missing bindings always raise when adding a check.
 
     Example:
@@ -98,8 +98,8 @@ class ChecklistBuilder:
         ```
     """
 
-    def __init__(self, *, strict_inputs: bool = False) -> None:
-        self._strict_inputs = strict_inputs
+    def __init__(self, *, strict: bool = False) -> None:
+        self._strict = strict
         self._checks: list[scout_checks_api.CreateChecklistEntryRequest] = []
 
     def add_check(
@@ -118,7 +118,7 @@ class ChecklistBuilder:
             failure_ranges: Compute range expression describing violations, not passing intervals.
                 Convert boolean expressions with ``.ranges()`` before passing them here.
             inputs: Map expression reference names to channels in the execution context.
-                Unused bindings are omitted from the check, or rejected with ``strict_inputs=True``.
+                Unused bindings are omitted from the check, or rejected with ``strict=True``.
             priority: Severity of violations, from P0 (most severe) to P4.
             description: Description of the check.
 
@@ -128,7 +128,7 @@ class ChecklistBuilder:
         Raises:
             TypeError: If ``failure_ranges`` is not a compute ``RangeSeries``.
             ValueError: If an expression reference has no input binding, or if an input
-                is unused and the builder has ``strict_inputs=True``. No check is added.
+                is unused and the builder has ``strict=True``. No check is added.
 
         Note:
             Alignment, fill, and missing-data behavior follow the service's checklist defaults.
@@ -141,7 +141,7 @@ class ChecklistBuilder:
         references = _expression_references(wire)
         ranges: scout_compute_api.RangeSeries = ConjureDecoder.do_decode(wire, scout_compute_api.RangeSeries)
         missing = references - inputs.keys()
-        unused = inputs.keys() - references if self._strict_inputs else set()
+        unused = inputs.keys() - references if self._strict else set()
         errors = []
         if missing:
             errors.append(f"missing input bindings: {', '.join(sorted(missing))}")

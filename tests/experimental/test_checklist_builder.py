@@ -173,10 +173,10 @@ def test_explicit_workspace_and_default_assignee(client: NominalClient, mock_cli
     mock_clients.resolve_default_workspace_rid.assert_not_called()
 
 
-@pytest.mark.parametrize("strict_inputs", [False, True])
-def test_missing_bindings_rejected_before_adding_check(strict_inputs: bool, client: NominalClient) -> None:
+@pytest.mark.parametrize("strict", [False, True])
+def test_missing_bindings_rejected_before_adding_check(strict: bool, client: NominalClient) -> None:
     """A misspelled binding fails locally in either mode and leaves the builder empty."""
-    builder = ChecklistBuilder(strict_inputs=strict_inputs)
+    builder = ChecklistBuilder(strict=strict)
     with pytest.raises(ValueError, match="Overheating.*missing input bindings.*temperature_deg"):
         builder.add_check(
             "Overheating",
@@ -206,10 +206,10 @@ def test_shared_bindings_allowed_by_default(client: NominalClient, mock_clients:
     assert set(condition.parameterized_num_ranges_v1.implementations[0].variables) == {"temperature"}
 
 
-def test_strict_inputs_rejects_unused_bindings() -> None:
+def test_strict_rejects_unused_bindings() -> None:
     """Strict mode identifies bindings unused by an otherwise fully bound expression."""
     with pytest.raises(ValueError, match="Overheating.*unused input bindings.*pressure"):
-        ChecklistBuilder(strict_inputs=True).add_check(
+        ChecklistBuilder(strict=True).add_check(
             "Overheating",
             (nc.NumericSeries.Reference("temperature") > 100).ranges(),
             inputs={
@@ -249,4 +249,4 @@ def test_nested_and_non_numeric_references_require_bindings(ranges: nc.RangeSeri
 def test_literal_channel_name_is_not_an_input_reference() -> None:
     """Explicit dataset selectors need no bindings for their literal channel and dataset names."""
     ranges = (nc.NumericSeries.SelectNumeric("temperature", dataset=nc.Dataset.Saved("dataset-rid")) > 0).ranges()
-    ChecklistBuilder(strict_inputs=True).add_check("Check", ranges, inputs={}, priority=Priority.P1)
+    ChecklistBuilder(strict=True).add_check("Check", ranges, inputs={}, priority=Priority.P1)

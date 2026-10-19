@@ -41,7 +41,7 @@ Bindings resolve against the run or asset where the checklist executes. Adding c
 
 Reuse expressions in ordinary Python loops, calling `add_check` for each channel or tag
 selection. Each call creates a separate check. Missing bindings always fail locally; unused
-bindings are omitted unless `ChecklistBuilder(strict_inputs=True)` rejects them. This API stores expression graphs,
+bindings are omitted unless `ChecklistBuilder(strict=True)` rejects them. This API stores expression graphs,
 not Python source, and does not edit existing checklists or create drafts. See the
 [checklist authoring guide](../../../docs/src/sdk/experimental/compute-as-code.md)
 for binding, execution, and evaluation semantics.

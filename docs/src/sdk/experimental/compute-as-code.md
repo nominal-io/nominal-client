@@ -50,7 +50,7 @@ can share one input mapping without depending on channels they do not use.
 Opt into rejecting them with:
 
 ```python
-builder = ChecklistBuilder(strict_inputs=True)
+builder = ChecklistBuilder(strict=True)
 ```
 
 Errors identify the check and the missing or unused names. Validation checks reference names; channel availability and type compatibility are
