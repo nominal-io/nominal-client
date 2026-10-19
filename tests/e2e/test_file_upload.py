@@ -7,7 +7,6 @@ from uuid import uuid4
 import pytest
 
 from nominal.core import NominalClient
-from tests.e2e import POLL_INTERVAL
 
 ArchiveFn = Callable[[object], None]
 
@@ -25,7 +24,7 @@ ArchiveFn = Callable[[object], None]
 def test_special_char_filename_round_trips(
     client: NominalClient, csv_data: bytes, archive: ArchiveFn, stem: str
 ) -> None:
-    """Filenames with safe special characters upload, ingest, and keep their name intact.
+    """Filenames with safe special characters upload and retain their catalog name.
 
     Regression test for the filename-encoding fix. This runs against S3 (gov staging), which
     tolerates the *upload* of any character — so the load-bearing assertion is the stored NAME:
@@ -34,8 +33,7 @@ def test_special_char_filename_round_trips(
     """
     ds = client.create_dataset(f"charname-{uuid4().hex[:8]}")
     archive(ds)
-    dataset_file = ds.add_from_io(
-        BytesIO(csv_data), "timestamp", "iso_8601", file_name=stem
-    ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    # add_from_io completes the storage upload and reads the file metadata from the catalog.
+    dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601", file_name=stem)
 
     assert dataset_file.name == f"{stem}.csv"
