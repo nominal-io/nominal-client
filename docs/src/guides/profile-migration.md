@@ -119,7 +119,7 @@ data, you can do so as follows:
 
 1. Upload data
 2. Get the data bounds
-3. Create a run that matches those bounds
+3. Create a run that matches those bounds and associate the dataset
 
 ```python
 # Wait until data is fully ingested, and time bounds have been computed
@@ -133,6 +133,7 @@ run = client.create_run(
     start=dataset.bounds.start,
     end=dataset.bounds.end
 )
+run.add_dataset("engine", dataset)
 ```
 
 ### Uploading videos

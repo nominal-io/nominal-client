@@ -34,14 +34,15 @@ dataset_filename = 'PX4-quadrotor-example-log.ulg'
 
 ## Convert ULog to CSV
 
-Install [pyulog](https://github.com/PX4/pyulog): `pip install pyulog`.
+Install [pyulog](https://github.com/PX4/pyulog), Polars, and Plotly: `pip install pyulog polars plotly`.
 
-It provides `ulog2csv`, which converts the PX4 ULog file to a folder of CSV logs:
+pyulog provides `ulog2csv`, which converts the PX4 ULog file to a folder of CSV logs:
 
 ```python
+import subprocess
 
 ulog_path = dataset_path
-subprocess.run(["ulog2csv", ulog_path], capture_output=True, text=True)
+subprocess.run(["ulog2csv", ulog_path], check=True, capture_output=True, text=True)
 ```
 
 ### List all CSV flight logs
@@ -51,10 +52,10 @@ Depending on the flight, the ULog-to-CSV converter outputs ~50 CSV flight logs. 
 ```python
 from pathlib import Path
 folder_path = Path(ulog_path).parent
-files = [file for file in folder_path.iterdir() if file.is_file()]
+files = sorted(folder_path.glob(f"{Path(ulog_path).stem}_*.csv"))
 
 for file in files:
-    print(file.name.strip('PX4-quadrotor-example-log'))
+    print(file.name.removeprefix('PX4-quadrotor-example-log'))
 ```
 
 ~50 CSV flight log names are printed.
@@ -69,11 +70,13 @@ _vehicle_attitude_setpoint_0.csv
 
 ## Inspect PX4 GPS log
 
-Inspect a single log file (`..log_vehicle_gps_position_0.csv`). Note that the `timestamp` column is common across log files and always in relative microseconds, meaning microseconds from the start of the flight or whenever the sensor began recording.
+Inspect a single log file (`..log_vehicle_gps_position_0.csv`). Its `timestamp` column, like the other topic timestamps, is measured in microseconds since system boot. The GPS log also provides `time_utc_usec`, an absolute UTC timestamp in microseconds. We will use it to align all topics to UTC before bulk upload.
 
 ```python
 
 from pathlib import Path
+
+import polars as pl
 
 full_path = folder_path / 'PX4-quadrotor-example-log_vehicle_gps_position_0.csv'
 
@@ -95,12 +98,13 @@ df_gps.head().select(df_gps.columns[:6])
 Plot the recorded latitude vs longitude from the GPS sensor:
 
 ```python
+import plotly.express as px
+import plotly.io as pio
 
 pio.templates.default = 'plotly_dark'
 
 fig = px.line(df_gps, x='lon_normalized', y='lat_normalized', width=500, height=500)
 
-fig.write_image('drone_gps_flight.svg')
 fig.show()
 ```
 
@@ -152,11 +156,11 @@ for file in files:
         df_csv = pl.read_csv(full_path)
         if 'timestamp' in df_csv.columns:
             log_path.append(full_path)
-            log_names.append(file.name.strip('PX4-quadrotor-example-log'))
+            log_names.append(file.name.removeprefix('PX4-quadrotor-example-log'))
             time_range_mins.append(df_csv['timestamp'].min())
             time_range_maxs.append(df_csv['timestamp'].max())
-    except:
-        pass
+    except pl.exceptions.PolarsError as error:
+        print(f"Skipping {file.name}: {error}")
 
 df_log_time_ranges = pl.DataFrame({
     "log_files": log_names,
@@ -185,7 +189,6 @@ fig = px.scatter(df_filtered_logs.drop('log_path'),
 
 fig.update_layout(showlegend=False)
 fig.update_layout(yaxis_title='Log time span (microseconds)')
-fig.write_image('flight_log_start_and_end_times.png')
 fig.show()
 ```
 
@@ -195,31 +198,51 @@ Each log's start and end times vary slightly but are generally uniform. No senso
 
 ### Extract absolute flight time
 
-To get an absolute flight start time, use the `time_utc_usec` column from the GPS sensor log file.
+Use a GPS row with a valid UTC timestamp to map the boot clock to UTC. In this log,
+`timestamp + timestamp_time_relative` is the boot-relative time corresponding to
+`time_utc_usec`, as defined by the [PX4 GPS message schema](https://github.com/PX4/PX4-Autopilot/blob/v1.11.0/msg/vehicle_gps_position.msg).
+Subtract both fields to get the UTC time of system boot.
 
 ```python
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 
-def convert_micro_s_to_hours_minutes_seconds(micro_s):
-    total_seconds = micro_s // 1000 // 1000
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    return hours, minutes, seconds
+from nominal.ts import Relative
 
-timestamp_seconds = df_gps['time_utc_usec'].min() / 1_000_000
-dt_flight_start = datetime.fromtimestamp(timestamp_seconds, UTC)
-dt_flight_duration_micro_s = df_filtered_logs['max_micro_s'].max() - df_filtered_logs['min_micro_s'].min()
-hours, minutes, seconds = convert_micro_s_to_hours_minutes_seconds(dt_flight_duration_micro_s)
+gps_anchor = df_gps.filter(pl.col("time_utc_usec") > 0).row(
+    0, named=True
+)
+boot_epoch_us = (
+    gps_anchor["time_utc_usec"]
+    - gps_anchor["timestamp"]
+    - gps_anchor["timestamp_time_relative"]
+)
+timestamp_type = Relative(
+    unit="microseconds", start=boot_epoch_us * 1000
+)
 
-print(f"Flight start time in UTC: {dt_flight_start}")
+# All retained topics share this boot clock. Run bounds use UTC nanoseconds.
+run_start_us = boot_epoch_us + df_filtered_logs["min_micro_s"].min()
+run_end_us = boot_epoch_us + df_filtered_logs["max_micro_s"].max()
+dt_flight_start = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(
+    microseconds=run_start_us
+)
+flight_duration_us = run_end_us - run_start_us
+hours, remainder = divmod(flight_duration_us // 1_000_000, 3600)
+minutes, seconds = divmod(remainder, 60)
+
+print(f"Flight data start time in UTC: {dt_flight_start}")
 print(f"Flight duration: {hours}h {minutes}m {seconds}s")
 ```
 
-```yaml
-Flight start time in UTC: 2020-02-17 09:52:50.999989+00:00
+```text
+Flight data start time in UTC: 2020-02-17 09:52:49.236470+00:00
 Flight duration: 0h 2m 0s
 ```
+
+The `Relative` start is the UTC time of **system boot**, rather than the first GPS
+sample's UTC time. Using `epoch_microseconds` for the boot-relative `timestamp` column
+would place the flight data near January 1970. For logs spanning multiple boots,
+compute a separate clock mapping for each boot.
 
 ## Create PX4 log run
 
@@ -230,14 +253,13 @@ Use the {py:obj}`create_run() <nominal.core.NominalClient.create_run>` routine t
 
 ```python
 from nominal.core import NominalClient
-from datetime import timedelta
 
 client = NominalClient.from_profile("default")
 
 quadrotor_run = client.create_run(
     name = 'PX4 single quadrotor flight',
-    start = dt_flight_start,
-    end = dt_flight_start + timedelta(microseconds=dt_flight_duration_ms),
+    start = run_start_us * 1000,
+    end = run_end_us * 1000,
     description = 'https://logs.px4.io/plot_app?log=89b87d6f-d286-4703-b36b-573191a907f1',
 )
 ```
@@ -250,12 +272,13 @@ If you head over to the [Runs page](https://app.gov.nominal.io/runs) on Nominal 
 
 To upload all ~50 PX4 log files to the quadrotor run, iterate through the lookup table created and validated above.
 
-There may be multiple CSV files associated with each log category, for example `_battery_status_0.csv` and `_battery_status_1.csv`. Combine these into a single `battery_status.csv` file.
+There may be multiple CSV files associated with each log category, for example `_battery_status_0.csv` and `_battery_status_1.csv`. Upload them to the same dataset for that category.
 
 For each category, create a dataset using {py:obj}`client.create_dataset <nominal.core.NominalClient.create_dataset>`, and then use
 {py:obj}`Dataset.add_tabular_data() <nominal.core.Dataset.add_tabular_data>` to upload related CSV files. Then use {py:obj}`Run.add_dataset() <nominal.core.Run.add_dataset>` to associate the dataset with the run.
 
 ```python
+import traceback
 
 log_files = {}
 
@@ -269,7 +292,7 @@ for row in df_filtered_logs.iter_rows():
             ref_name = '-'.join(file_name.split('_')[1:-1])
             csv_name = f'{ref_name}.csv'
 
-            if ref_name in log_files:{
+            if ref_name in log_files:
                 dataset = log_files[ref_name]
             else:
                 print('\nCreating dataset:', csv_name)
@@ -280,9 +303,9 @@ for row in df_filtered_logs.iter_rows():
             dataset.add_tabular_data(
                 path=full_path,
                 timestamp_column = 'timestamp',
-                timestamp_type = 'epoch_microseconds'
+                timestamp_type = timestamp_type
             )
-        except:
+        except Exception:
             print('Error uploading: ', file_name)
             print(traceback.format_exc())
 

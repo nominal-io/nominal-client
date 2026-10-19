@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "Learn how to use the python client for automating the most common data"
+    description: "Automate uploads of telemetry, video, and logs, and organize flight tests with assets and runs."
 ---
 
 # Data Integration Tutorial for Python
 
 {.lead}
-Learn how to use the python client for automating the most common data
+Automate uploads of telemetry, video, and logs, and organize flight tests with assets and runs.
 
 The [quickstart](/guides/quickstart.md) covered the mechanics of setting up the Nominal Python client and uploading simple datasets.
 This tutorial considers the broader steps in data capture, how those steps correspond to the Nominal data model, and how to automate uploads using Python.
@@ -67,57 +67,19 @@ With thousands of gliders, automate the process using Python.
 ```python
 from nominal.core import NominalClient
 
-# Get a client to interact with Nominal.
-# Assumes authentication has already been performed.
-# Replace "default" with your profile name.
 client = NominalClient.from_profile("default")
-
-asset = client.create_asset(
-    # Human readable name for the asset
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"},
     name="Shimmer SN-001",
-    # Optional description, useful if you have notes about this glider.
     description="Our very first shimmer glider produced",
-    # Properties which can help us find this asset later.
-    # Nominal supports unique identification of any physical asset
-    # using some combination of these properties.
-    properties={
-        "platform": "shimmer",
-        "serial_num": "SN-001",
-    },
 )
 ```
 
-:::{tip}
+Use this same call for each flight test. It returns the asset matching these properties,
+or creates it if none exists. Multiple matches raise `ValueError`; use
+{py:meth}`~nominal.core.NominalClient.search_assets` directly if you need custom selection behavior.
 
-This step happens once per asset.
-Future test events upload to the same asset created initially.
-:::
-
-Once an asset exists, it is useful to write a function that can look up an asset for uploading data to later.
-Here is an example that uses the example's `platform` and `serial_num` properties:
-
-```python
-def retrieve_asset(
-    client: nominal.NominalClient, platform: str, serial_num: str
-) -> nominal.Asset:
-    properties = {"platform": platform, "serial_num": serial_num}
-    existing_assets = client.search_assets(properties=properties)
-    if len(existing_assets) > 1:
-        raise RuntimeError(
-            f"Too many assets ({len(existing_assets)}) found with properties {properties}"
-        )
-    elif len(existing_assets) == 0:
-        raise RuntimeError(f"No such asset found with properties {properties}")
-    else:
-        return existing_assets[0]
-```
-
-:::{tip}
-
-Later, once data from a test event is in hand, this helper function looks up the correct asset to append data to.
-:::
-
-See the {py:obj}`Asset function reference <nominal.core.Asset>` for more information on what you can do with a `nominal.Asset`.
+See the {py:obj}`Asset function reference <nominal.core.Asset>` for more information on what you can do with a `nominal.core.Asset`.
 ::::::::::
 
 ::::::::::{container} step
@@ -140,12 +102,7 @@ Parquet is generally preferred, since it produces smaller files that can be inge
 
 The platform imposes a few additional requirements:
 
-* Only floating point and string columns are supported.
-    :::{note}
-
-    Nominal is considering including other data types, such as vectors, uint64, and others.
-    Please contact your Nominal representative if this is of interest.
-    :::
+* Use [supported channel data types](/guides/datasets/channels.md).
 
 * Each file of data *must* have one known column with timestamps.
     Nominal supports a wide array of timestamp types, with some of the most popular including:
@@ -176,7 +133,7 @@ The platform imposes a few additional requirements:
 
     You can preserve the hierarchical structure of this data by naming columns appropriately:
 
-    | timestamp | gps.lat | gps.lon | gps.height | imu.roll | imu.pitch | imu.roll |
+    | timestamp | gps.lat | gps.lon | gps.height | imu.roll | imu.pitch | imu.yaw |
     | --- | --- | --- | --- | --- | --- | --- |
     | 12345 | 12.1 | 12.3 | 10000 | 1.23 | -0.2 | 0.0 |
 
@@ -255,8 +212,8 @@ Reach out to your Nominal representative for help integrating your logging infra
 
 Once your data has been transformed into a neutral / normalized format, uploading and ingesting the data into Nominal is straightforward.
 
-The first time data is uploaded to an asset, Nominal creates new datasets and video datasources for the asset.
-On subsequent uploads, Nominal appends new files directly to existing datasources (datasets, videos, and so on).
+Create or retrieve a dataset for each data source on the asset, then append files to it.
+Video is stored in named channels on a dataset, alongside telemetry and logs.
 
 See below for instructions on uploading data to an asset in each case:
 
@@ -265,8 +222,8 @@ See below for instructions on uploading data to an asset in each case:
 The following examples associate datasources with an asset using a "refname".
 Refnames are a mechanism for performing two common tasks within Nominal:
 
-    * Looking up a datasource on an asset to later edit / append data to, and
-    * Comparing likewise datasources on different assets in multi-asset workflows.
+* Looking up a datasource on an asset to later edit / append data to, and
+* Comparing likewise datasources on different assets in multi-asset workflows.
 
 Use a descriptive but terse refname when associating a datasource with an asset.
 For example, if the gliders communicate data over mavlink, a common refname for data associated with that connection is `"mavlink_data"`.
@@ -291,10 +248,10 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name.
 client = NominalClient.from_profile("default")
 
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
+# Use the same identifying properties for each flight.
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
+)
 
 # Get or create dataset linked to the asset.
 # If a dataset with this data scope name already exists on the asset, it is returned.
@@ -365,14 +322,14 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name.
 client = NominalClient.from_profile("default")
 
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
+# Use the same identifying properties for each flight.
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
+)
 
-# Create dataset (only required for the first upload for a given data source)
-dataset = client.create_dataset(
-    # Human readable name for the dataset
+# Reuse the dataset for this data scope across flight tests.
+dataset = asset.get_or_create_dataset(
+    "mcap_flight_data",
     name="MCAP Flight Data",
     # Key-value properties that are useful for looking up and finding this dataset
     properties={
@@ -384,19 +341,8 @@ dataset = client.create_dataset(
 )
 
 # Add the MCAP file to the dataset.
-# NOTE: can use `include_topics` and `exclude_topics` arguments to customize what data
-#       actually gets ingested into nominal. By default, all protobuf-encoded topics
-#       get ingested.
+# Use include_topics or exclude_topics to select which telemetry topics to ingest.
 dataset.add_mcap("path/to/data.mcap")
-
-# Attach the dataset to the asset
-asset.add_dataset(
-    # reference name for this dataset within the asset
-    # This can be used later to retrieve a reference to this dataset via the same reference name for
-    # future flight tests
-    "mcap_flight_data",
-    dataset,
-)
 
 # Video frames from the same MCAP land on a channel of the same dataset,
 # so telemetry and video share one time domain.
@@ -410,20 +356,8 @@ dataset.add_mcap_video(
 )
 ```
 
-For subsequent flight test events, skip creating the dataset in favor of searching for the dataset created earlier:
-
-```python
-# NOTE: refname needs to match the refname used to add the dataset to the asset
-dataset = asset.get_dataset("mcap_flight_data")
-dataset.add_mcap("path/to/other/data.mcap")
-
-# Video frames from the MCAP land on a channel of the same dataset
-dataset.add_mcap_video(
-    "path/to/other/data.mcap",
-    channel="mcap_flight_video",
-    topic="video_data_topic",
-)
-```
+Repeat the same get-or-create and upload calls for subsequent flight tests. Files are
+appended to the dataset already linked as `mcap_flight_data`.
 ::::::
 
 ::::::{tab-item} Video Files
@@ -442,16 +376,16 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name
 client = NominalClient.from_profile("default")
 
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
+# Use the same identifying properties for each flight.
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
+)
 
-# Video is stored as a channel on a dataset. Create the dataset once per data
-# source; each camera becomes a channel on it.
+# Reuse the camera's dataset across flight tests.
 # Make sure to run nominal.experimental.video_processing.normalize_video()
 # on your raw video files first!
-dataset = client.create_dataset(
+dataset = asset.get_or_create_dataset(
+    "front_center_camera",
     name="Front center camera video",
     # Optional description for the dataset, useful for storing notes and details
     # about the video (e.g., details about the camera)
@@ -470,11 +404,8 @@ video_file = dataset.add_video(
     # Name of the video channel within the dataset that these frames belong to
     channel="front_center_camera",
     # Starting timestamp, in absolute time, for this particular video file
-    start=datetime.datetime(year=2025, month=2, day=7, hour=14, minute=38, second=19),
+    start=datetime.datetime(2025, 2, 7, 14, 38, 19, tzinfo=datetime.timezone.utc),
 )
-
-# Attach the dataset to the asset
-asset.add_dataset("front_center_camera", dataset)
 ```
 
 For subsequent flight test events, or even just additional video files
@@ -489,7 +420,7 @@ dataset = asset.get_dataset("front_center_camera")
 dataset.add_video(
     "path/to/video_pt2.mp4",
     channel="front_center_camera",
-    start=datetime.datetime(year=2025, month=2, day=7, hour=15, minute=17, second=3),
+    start=datetime.datetime(2025, 2, 7, 15, 17, 3, tzinfo=datetime.timezone.utc),
 )
 ```
 
@@ -511,14 +442,14 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name
 client = NominalClient.from_profile("default")
 
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
+# Use the same identifying properties for each flight.
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
+)
 
-# Create dataset (only required for the first upload for a given data source)
-dataset = client.create_dataset(
-    # Human readable name for the dataset
+# Reuse the dataset for this data scope across flight tests.
+dataset = asset.get_or_create_dataset(
+    "flight_controller_logs",
     name="Flight Controller Logs",
     # Key-value properties that are useful for looking up and finding this dataset
     properties={
@@ -531,29 +462,14 @@ dataset = client.create_dataset(
 
 # Add the systemd journal JSON file to the dataset
 dataset.add_journal_json("path/to/log.jsonl")
-
-# Attach the dataset to the asset
-asset.add_dataset(
-    # reference name for this dataset within the asset
-    # This can be used later to retrieve a reference to this dataset via the same reference name for
-    # future flight tests
-    "flight_controller_logs",
-    dataset,
-)
 ```
 
-For subsequent flight test events, skip creating the dataset in favor of searching for the dataset created earlier:
-
-```python
-# NOTE: refname needs to match the refname used to add the dataset to the asset
-dataset = asset.get_dataset("flight_controller_logs")
-dataset.add_journal_json("path/to/other/log.jsonl")
-```
+Repeat the same get-or-create and upload calls to append journal files from later flight tests.
 
 :::{admonition} How is this different from tabular data?
 :class: note
 
-The same `nominal.Dataset` class handles uploading text logs *and* tabular data.
+The same `nominal.core.Dataset` class handles uploading text logs *and* tabular data.
 You *can* add text logs to a dataset created from `.csv` files, assuming that the dataset does not already have a channel named `logs`.
 The text logs and numeric tabular data will show up as separate channels, and can be added/visualized in a workbook as normal.
 :::
@@ -584,10 +500,10 @@ from nominal.core import NominalClient
 # Replace "default" with your profile name
 client = NominalClient.from_profile("default")
 
-# Using utility from previous section on creating assets
-# Hardcoding platform and serial number for this example, but typically this would be
-# computed dynamically based on metadata about the data files, such as the filepath.
-asset = retrieve_asset(client, platform="shimmer", serial_num="SN-001")
+# Use the same identifying properties for each flight.
+asset = client.get_or_create_asset_by_properties(
+    {"platform": "shimmer", "serial_num": "SN-001"}, name="Shimmer SN-001"
+)
 
 # Create the run in Nominal and associate with the Asset producing the data
 run = client.create_run(
@@ -621,35 +537,30 @@ run = client.create_run(
 
 :::{tip}
 
-Determining the correct start / end bounds for a `nominal.Run` can be challenging when you have a large number of data files being ingested.
-A good practice is to create the `nominal.Run` early on in the data ingestion script and to update the bounds as you go.
+Determining the correct start / end bounds for a `nominal.core.Run` can be challenging when you have a large number of data files being ingested.
+A good practice is to create the `nominal.core.Run` early on in the data ingestion script and to update the bounds as you go.
 
 An example of doing this would look like:
 
 ```python
-import datetime
+import time
 
 run = client.create_run(
-    ...,
-    # Initialize start time to now, as it will always be greater than data
-    # we are ingesting from a flight test that happened in the past
-    start=datetime.datetime.now(),
+    name="Test Flight #2",
+    assets=[asset],
+    # The flight happened in the past, so its data starts before now.
+    start=time.time_ns(),
+    end=None,
 )
 
-# ... normalize data from flight test ...
+# Read the earliest and latest UTC timestamps from the flight data, in nanoseconds.
+data_start_ns = 1_728_478_985_000_000_000
+data_end_ns = 1_728_482_537_000_000_000
 
-# derived directly from the data uploaded to nominal---
-# can look at the start and end of the provided timestamp_column
-data_start_time = datetime.datetime(...)
-data_end_time = datetime.datetime(...)
-
-# ... upload data to nominal ...
-
-# Update bounds of run based on the earlier / latest of the start and end
-# times respectively from the existing run, and
+# Run.start and Run.end also use integer UTC nanoseconds.
 run.update(
-    start=min(run.start, data_start_time),
-    end=data_end_time if run.end is None else max(run.end, data_end_time),
+    start=min(run.start, data_start_ns),
+    end=data_end_ns if run.end is None else max(run.end, data_end_ns),
 )
 ```
 
