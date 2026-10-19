@@ -87,20 +87,21 @@ The example below uploads the dataset in batches, flattening it into `x1, x2, x3
 1. Index the data into a reasonable size.
 2. Create the flattened structure.
 3. Create a pandas dataframe.
-4. Upload the batch with `nominal.thirdparty.pandas.upload_dataframe`.
+4. Upload each batch to the same dataset with
+   {py:func}`~nominal.thirdparty.pandas.upload_dataframe_to_dataset`, waiting for ingestion before readback.
+
+The sample has no recorded timestamps, so the example's synthetic `ts` column assigns
+sequential epoch seconds. Use the measurements' actual timestamps for real test data.
 
 ```python
-import io
-
 import h5py
 import pandas as pd
 from nominal.core import NominalClient
-from nominal.thirdparty.pandas import upload_dataframe
+from nominal.thirdparty.pandas import upload_dataframe_to_dataset
 
 client = NominalClient.from_profile("default")
 
-
-dataset = None
+dataset = client.create_dataset(name="h5_flattened")
 num_rows = 0
 with h5py.File(local_path, "r") as file:
     data = file["data"]["1"]["meshes"]["B"]
@@ -121,24 +122,13 @@ with h5py.File(local_path, "r") as file:
 
         df = pd.DataFrame(batch)
         df["ts"] = list(range(num_rows, num_rows + len(df)))
-        if dataset is None:
-            # First batch, create the dataset from dataframe
-            dataset = upload_dataframe(
-                client,
-                df,
-                name="h5_flattened",
-                timestamp_column="ts",
-                timestamp_type="epoch_seconds",
-                wait_until_complete=True,
-            )
-        else:
-            # Subsequent batches; convert batch dataframe to buffer and append to dataset
-            buffer = io.BytesIO()
-            df.to_csv(buffer, index=False)
-            buffer.seek(0)
-            dataset.add_from_io(
-                dataset=buffer, timestamp_column="ts", timestamp_type="epoch_seconds"
-            )
+        upload_dataframe_to_dataset(
+            dataset,
+            df,
+            timestamp_column="ts",
+            timestamp_type="epoch_seconds",
+            wait_until_complete=True,
+        )
         num_rows += len(df)
 ```
 
