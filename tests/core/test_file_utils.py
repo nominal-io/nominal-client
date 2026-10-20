@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import os
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
+from urllib3.response import HTTPResponse
 
+from nominal.core import Dataset, FileType, FileTypes
 from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+SOURCE_URI = "https://source-bucket.s3.example.com/opaque%2Fkey+name?signature=preserved"
 
 
 def _make_source_file(s3_key: str, timestamp_channel: str | None, timestamp_type: object | None) -> MagicMock:
@@ -29,214 +30,126 @@ def _make_source_file(s3_key: str, timestamp_channel: str | None, timestamp_type
     source_file._get_latest_api.return_value = api_file
 
     uri_response = MagicMock()
-    uri_response.uri = "https://s3.example.com/file"
+    uri_response.uri = SOURCE_URI
     source_file._clients.catalog.get_dataset_file_uri.return_value = uri_response
     source_file._clients.auth_header = "Bearer token"
 
     return source_file
 
 
-def _make_http_response(content: bytes = b"data") -> MagicMock:
-    """Build a mock requests.Response whose .raw behaves like a readable stream."""
-    response = MagicMock()
-    # shutil.copyfileobj calls response.raw.read(length) in a loop
-    response.raw.read.side_effect = [content, b""]
+def _make_http_response(content: bytes = b"data") -> requests.Response:
+    """Build an HTTP response with a non-seekable body to exercise stream identity and cleanup."""
+    response = requests.Response()
+    response.status_code = 200
+    response.raw = HTTPResponse(body=BytesIO(content), preload_content=False)
     return response
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def destination_dataset() -> MagicMock:
+    """Mock the SDK boundary used by migration, leaving upload internals to Dataset tests."""
+    destination = MagicMock(spec=Dataset)
+    destination.name = "Destination"
+    destination.rid = "destination-dataset"
+    destination._clients = MagicMock(workspace_rid="destination-workspace")
+    return destination
+
+
+@pytest.mark.parametrize(
+    ("source_name", "file_type", "expected_name"),
+    [
+        ("system.jsonl", FileTypes.JOURNAL_JSONL, "system.jsonl"),
+        ("system.jsonl.gz", FileTypes.JOURNAL_JSONL_GZ, "system.jsonl.gz"),
+        ("my+logs%28raw%29.JSONL.GZ", FileTypes.JOURNAL_JSONL_GZ, "my logs(raw).JSONL.GZ"),
+        ("system.jsonl.jsonl.gz", FileTypes.JOURNAL_JSONL_GZ, "system.jsonl.jsonl.gz"),
+    ],
+)
+def test_journal_migration_preserves_known_type_and_compound_suffix(
+    destination_dataset, source_name, file_type, expected_name
+) -> None:
+    """Journal migration passes the raw response and known format to the SDK, preserving every suffix and polling."""
+    source_file = _make_source_file(f"source/2026-01-01T00:00:00Z_{source_name}", None, None)
+    response = _make_http_response()
+
+    with patch("nominal.experimental.migration.utils.file_utils.requests.get", return_value=response) as get:
+        result = copy_file_to_dataset(source_file, destination_dataset)
+
+    get.assert_called_once_with(SOURCE_URI, stream=True)
+    destination_dataset.add_journal_json_from_io.assert_called_once_with(
+        response.raw, file_type=file_type, file_name=expected_name
+    )
+    assert result is destination_dataset.add_journal_json_from_io.return_value
+    result.poll_until_ingestion_completed.assert_called_once_with()
+    assert response.raw.closed
+
+
+@pytest.mark.parametrize(
+    ("source_key", "expected_name", "file_type"),
+    [
+        ("source/2026-01-01T00:00:00Z_data.csv", "data.csv", FileTypes.CSV),
+        ("source/2026-01-01T00:00:00Z_data.csv.gz", "data.csv.gz", FileTypes.CSV_GZ),
+        ("source/data.PARQUET", "data.PARQUET", FileTypes.PARQUET),
+        ("source/data.parquet.gz", "data.parquet.gz", FileTypes.PARQUET_GZ),
+        ("source/data.parquet.tar", "data.parquet.tar", FileTypes.PARQUET_TAR),
+        ("source/2026-01-01T00:00:00Z_data.v2.PARQUET.TAR.GZ", "data.v2.PARQUET.TAR.GZ", FileTypes.PARQUET_TAR_GZ),
+        ("source/data.parquet.zip", "data.parquet.zip", FileTypes.PARQUET_ZIP),
+        ("source/2026-01-01T00:00:00Z_telemetry.csv.csv", "telemetry.csv.csv", FileTypes.CSV),
+        ("source/data.csv.csv.gz", "data.csv.csv.gz", FileTypes.CSV_GZ),
+        ("source/data.v2.nonsense", "data.v2.nonsense", FileType(".v2.nonsense", "application/octet-stream")),
+        (
+            "source/data.nonsenseZ_suffix",
+            "data.nonsenseZ_suffix",
+            FileType(".nonsensez_suffix", "application/octet-stream"),
+        ),
+        ("source/2026-01-01T00:00:00Z_paren%28reduced%29.csv", "paren(reduced).csv", FileTypes.CSV),
+        ("source/2026-01-01T00:00:00Z_my+file.csv", "my file.csv", FileTypes.CSV),
+        ("source/2026-01-01T00:00:00Z_weird%7Bname%7D.csv", "weird_name_.csv", FileTypes.CSV),
+    ],
+)
+def test_tabular_migration_preserves_complete_filename_and_ingest_metadata(
+    destination_dataset: MagicMock, source_key: str, expected_name: str, file_type: FileType
+) -> None:
+    """Tabular migration preserves the raw stream, inferred type, filename, and timestamp/tag metadata."""
+    source_file = _make_source_file(source_key, "timestamp", "epoch_seconds")
+    source_file.tag_columns = {"vehicle": "vehicle_id"}
+    source_file.file_tags = {"campaign": "test"}
+    response = _make_http_response()
+
+    with patch("nominal.experimental.migration.utils.file_utils.requests.get", return_value=response) as get:
+        result = copy_file_to_dataset(source_file, destination_dataset)
+
+    get.assert_called_once_with(SOURCE_URI, stream=True)
+    destination_dataset.add_from_io.assert_called_once_with(
+        dataset=response.raw,
+        timestamp_column="timestamp",
+        timestamp_type="epoch_seconds",
+        file_type=file_type,
+        file_name=expected_name,
+        tag_columns={"vehicle": "vehicle_id"},
+        tags={"campaign": "test"},
+    )
+    assert result is destination_dataset.add_from_io.return_value
+    result.poll_until_ingestion_completed.assert_called_once_with()
+    assert response.raw.closed
+
+
+def test_journal_upload_failure_closes_source_response(destination_dataset: MagicMock) -> None:
+    """A failed journal upload closes its source HTTP response and propagates the failure."""
+    source_file = _make_source_file("system.jsonl.gz", None, None)
+    response = _make_http_response()
+    destination_dataset.add_journal_json_from_io.side_effect = RuntimeError("upload failed")
+
+    with patch("nominal.experimental.migration.utils.file_utils.requests.get", return_value=response):
+        with pytest.raises(RuntimeError, match="upload failed"):
+            copy_file_to_dataset(source_file, destination_dataset)
+
+    assert response.raw.closed
 
 
 class TestCopyFileToDataset:
     @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_journal_json_calls_add_journal_json(self, mock_get: MagicMock) -> None:
-        """Journal JSON files are ingested via add_journal_json, not add_from_io."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_system.jsonl",
-            timestamp_channel=None,  # journal JSON has no timestamp_channel
-            timestamp_type=None,
-        )
-        mock_get.return_value = _make_http_response(b'{"__REALTIME_TIMESTAMP": "1000"}')
-
-        destination_dataset = MagicMock()
-        new_file = MagicMock()
-        destination_dataset.add_journal_json.return_value = new_file
-
-        result = copy_file_to_dataset(source_file, destination_dataset)
-
-        destination_dataset.add_journal_json.assert_called_once()
-        destination_dataset.add_from_io.assert_not_called()
-        assert result is new_file
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_journal_json_gz_calls_add_journal_json(self, mock_get: MagicMock) -> None:
-        """.jsonl.gz files are also routed through add_journal_json."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_system.jsonl.gz",
-            timestamp_channel=None,
-            timestamp_type=None,
-        )
-        mock_get.return_value = _make_http_response(b"compressed-data")
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_journal_json.return_value = MagicMock()
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        destination_dataset.add_journal_json.assert_called_once()
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_journal_json_temp_file_cleaned_up(self, mock_get: MagicMock) -> None:
-        """Temp file is deleted after add_journal_json returns, even on success."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_system.jsonl",
-            timestamp_channel=None,
-            timestamp_type=None,
-        )
-        mock_get.return_value = _make_http_response(b"log-data")
-
-        captured_path: list[str] = []
-
-        def capture_path(path: str) -> MagicMock:
-            captured_path.append(path)
-            return MagicMock()
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_journal_json.side_effect = capture_path
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        assert captured_path, "add_journal_json was not called"
-        assert not os.path.exists(captured_path[0]), "Temp file was not cleaned up"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_journal_json_temp_file_cleaned_up_on_error(self, mock_get: MagicMock) -> None:
-        """Temp file is deleted even if add_journal_json raises."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_system.jsonl",
-            timestamp_channel=None,
-            timestamp_type=None,
-        )
-        mock_get.return_value = _make_http_response(b"log-data")
-
-        captured_path: list[str] = []
-
-        def capture_and_raise(path: str) -> None:
-            captured_path.append(path)
-            raise RuntimeError("ingest failed")
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_journal_json.side_effect = capture_and_raise
-
-        with pytest.raises(RuntimeError, match="ingest failed"):
-            copy_file_to_dataset(source_file, destination_dataset)
-
-        assert captured_path, "add_journal_json was not called"
-        assert not os.path.exists(captured_path[0]), "Temp file was not cleaned up after error"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_csv_calls_add_from_io(self, mock_get: MagicMock) -> None:
-        """CSV files are ingested via add_from_io using the source timestamp metadata."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_telemetry.csv",
-            timestamp_channel="timestamp",
-            timestamp_type="iso_8601",
-        )
-        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
-
-        destination_dataset = MagicMock()
-        new_file = MagicMock()
-        destination_dataset.add_from_io.return_value = new_file
-
-        result = copy_file_to_dataset(source_file, destination_dataset)
-
-        destination_dataset.add_from_io.assert_called_once()
-        destination_dataset.add_journal_json.assert_not_called()
-        call_kwargs = destination_dataset.add_from_io.call_args
-        assert call_kwargs.kwargs["timestamp_column"] == "timestamp"
-        assert call_kwargs.kwargs["timestamp_type"] == "iso_8601"
-        assert result is new_file
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_percent_encoded_source_key_is_decoded(self, mock_get: MagicMock) -> None:
-        """Legacy percent-encoded source keys are URL-decoded before re-upload.
-
-        Files uploaded before the encoding fix have keys like ``...Z_paren%28reduced%29.csv``.
-        Re-uploading the literal ``%28`` breaks Azure Blob, so the destination name must be
-        decoded back to ``paren(reduced)``.
-        """
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_paren%28reduced%29.csv",
-            timestamp_channel="timestamp",
-            timestamp_type="iso_8601",
-        )
-        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_from_io.return_value = MagicMock()
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "paren(reduced).csv"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_space_encoded_source_key_is_decoded(self, mock_get: MagicMock) -> None:
-        """Spaces were stored as '+' by the old quote_plus encoder, so decode with unquote_plus.
-
-        A plain unquote would leave the literal '+' (e.g. 'my+file'); unquote_plus restores the space.
-        """
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_my+file.csv",
-            timestamp_channel="timestamp",
-            timestamp_type="iso_8601",
-        )
-        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_from_io.return_value = MagicMock()
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "my file.csv"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_unsafe_chars_in_source_key_are_sanitized(self, mock_get: MagicMock) -> None:
-        """Unsafe characters in a source filename are replaced (migration never blocks on one file)."""
-        # %7B/%7D decode to { } which are unsafe and must be sanitized to underscores.
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_weird%7Bname%7D.csv",
-            timestamp_channel="timestamp",
-            timestamp_type="iso_8601",
-        )
-        mock_get.return_value = _make_http_response(b"ts,val\n2026-01-01,1.0")
-
-        destination_dataset = MagicMock()
-        destination_dataset.add_from_io.return_value = MagicMock()
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "weird_name_.csv"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
-    def test_existing_repeated_suffix_is_preserved(self, mock_get: MagicMock) -> None:
-        """A migration passes its full target filename so a stem ending in the format suffix is retained."""
-        source_file = _make_source_file(
-            s3_key="2026-01-01T00:00:00Z_telemetry.csv.csv",
-            timestamp_channel="timestamp",
-            timestamp_type="iso_8601",
-        )
-        mock_get.return_value = _make_http_response()
-        destination_dataset = MagicMock()
-
-        copy_file_to_dataset(source_file, destination_dataset)
-
-        assert destination_dataset.add_from_io.call_args.kwargs["file_name"] == "telemetry.csv.csv"
-
-    @patch("nominal.experimental.migration.utils.file_utils.requests.get")
     def test_missing_timestamp_metadata_raises(self, mock_get: MagicMock) -> None:
-        """Non-journal files with no timestamp metadata raise ValueError."""
+        """Tabular files without timestamp metadata raise ValueError."""
         source_file = _make_source_file(
             s3_key="2026-01-01T00:00:00Z_telemetry.csv",
             timestamp_channel=None,
