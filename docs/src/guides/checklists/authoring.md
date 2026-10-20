@@ -247,7 +247,7 @@ These expressions illustrate the initial source-authoring core. Bind each channe
 | --- | --- |
 | Upper threshold | `(temperature > 100).ranges()` |
 | Sustained violation | `(temperature > 100).ranges(min_duration=Duration.Seconds(2))` |
-| Outside a numeric band | `((temperature < 10) | (temperature > 100)).ranges()` |
+| Outside a numeric band | `((temperature < 10) \| (temperature > 100)).ranges()` |
 | Combined condition | `((temperature > 100) & (pressure < 20)).ranges()` |
 | Categorical fault | `mode.category_ranges().eq("FAULT")` |
 
