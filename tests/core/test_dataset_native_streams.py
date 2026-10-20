@@ -50,6 +50,7 @@ def dataset() -> Dataset:
 @pytest.mark.parametrize(
     ("method", "kwargs", "expected_name", "expected_arm"),
     [
+        (Dataset.add_mcap_from_io, {"tags": {"vehicle": "v1"}}, "default-name.mcap", "mcap"),
         (Dataset.add_ardupilot_dataflash_from_io, {"tags": {"vehicle": "v1"}}, "default-name.bin", "dataflash"),
         (
             Dataset.add_ardupilot_dataflash_from_io,
@@ -108,13 +109,17 @@ def test_native_streams_preserve_storage_location_and_caller_owned_stream(
     with patch("nominal.core._utils.multipart.put_multipart_upload", side_effect=upload):
         result = method(dataset, stream, **kwargs)
     _, request = dataset._clients.ingest.ingest.call_args.args
-    options = request.options.dataflash if expected_arm == "dataflash" else request.options.journal_json
+    options = {
+        "mcap": request.options.mcap_protobuf_timeseries,
+        "dataflash": request.options.dataflash,
+        "journal_json": request.options.journal_json,
+    }[expected_arm]
     assert options.source.s3.path == LOCATION
     assert options.target.existing.dataset_rid == dataset.rid
     assert result.id == "native-file"
     assert result.ingest_status is IngestStatus.IN_PROGRESS
     assert not stream.closed
-    if expected_arm == "dataflash":
+    if expected_arm != "journal_json":
         assert options.additional_file_tags == {"vehicle": "v1"}
     else:
         assert options.timestamp_metadata is None
