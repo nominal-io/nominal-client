@@ -41,6 +41,8 @@ def test_registration_is_pure_and_ordered():
 
 
 def test_error_registration_derives_fallback_message_when_omitted() -> None:
+    """Registration derives readable fallback text when a declaration omits its message."""
+
     @ex.manifest_extractor(default_timestamp_column="time", default_timestamp_type="epoch_seconds")
     @ex.error(ValueError, code="MALFORMED_INPUT", exit_code=65)
     def extract(ctx):

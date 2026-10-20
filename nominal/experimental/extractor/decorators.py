@@ -100,10 +100,11 @@ def parameter(
         description: Optional registration description.
         type: Built-in type or converter object for supplied strings, such as ``int`` or
             ``IntRange(min=1)``. When omitted, infer str/int/float/bool from a concrete
-            default, otherwise use str. Existing callable values remain supported.
+            default, otherwise use str, unless ``convert`` is supplied. Existing callable values
+            remain supported. Annotations do not select conversion. Built-in boolean conversion
+            accepts true/false, yes/no, on/off, and 1/0 case-insensitively; built-in float
+            conversion requires finite values.
         convert: Custom callable for supplied strings. Cannot be combined with ``type``.
-            Annotations do not select conversion. Boolean conversion accepts true/false,
-            yes/no, on/off, and 1/0 case-insensitively. Float values must be finite.
         default: Already-converted Python value used when absent, including None; omit to
             require the parameter. Built-in types and constraints validate concrete defaults.
             Custom converters are never invoked on defaults. An empty supplied string
@@ -111,7 +112,8 @@ def parameter(
 
     Raises:
         ValueError: A name is invalid or reserved, or a constrained default is invalid.
-        TypeError: The converter is not callable or a default has an incompatible type.
+        TypeError: Both ``type`` and ``convert`` are supplied, the converter is not callable,
+            or a default has an incompatible type.
         ExtractorError: At binding time, a parameter is missing or unregistered, or conversion
             raises ValueError or TypeError. Those converter messages and values are suppressed,
             except BadParameter, whose author-controlled diagnostic is included.

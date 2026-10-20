@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, ParamSpec
 
-from nominal.core.exceptions import ExtractorError
+from nominal.exceptions import ExtractorError
 from nominal.experimental.extractor._definition import _declare, _DeclaredCallback
 
 logger = logging.getLogger(__name__)

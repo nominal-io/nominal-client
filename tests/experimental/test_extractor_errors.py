@@ -51,6 +51,8 @@ def test_framework_errors_are_mapped(stage: str, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("stage", ["startup", "finalization"])
 def test_framework_errors_have_structured_reporting_without_declaration(stage: str, tmp_path: Path) -> None:
+    """Startup and output-contract failures use the built-in structured error policy."""
+
     @manifest_extractor
     def extract(ctx: ExtractorContext) -> None:
         pass
@@ -65,6 +67,8 @@ def test_framework_errors_have_structured_reporting_without_declaration(stage: s
 
 
 def test_broad_application_error_mapping_does_not_override_framework_policy(tmp_path: Path) -> None:
+    """A broad application mapping preserves the more specific built-in framework policy."""
+
     @manifest_extractor
     @ex.error(Exception, code="APPLICATION", exit_code=65)
     def extract(ctx: ExtractorContext) -> None:
@@ -220,6 +224,8 @@ def test_environment_cannot_redirect_termination_output(tmp_path, monkeypatch):
 def test_invalid_metadata_does_not_echo_raw_value(
     tmp_path: Path, capsys, variable: str, value: str, diagnostic: str
 ) -> None:
+    """Malformed metadata is identified without leaking its contents to either output."""
+
     @manifest_extractor
     def extract(ctx: ExtractorContext) -> None:
         _ = ctx.additional_tags
