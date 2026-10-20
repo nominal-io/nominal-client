@@ -10,6 +10,7 @@ import pytest
 import requests
 import urllib3.exceptions
 
+from nominal.core import FileType, FileTypes
 from nominal.core._video_types import McapVideoDetails
 from nominal.exceptions import (
     NominalIngestError,
@@ -202,11 +203,26 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     new_file.update.assert_called_once()
 
 
-@pytest.mark.parametrize("name", ["video", "video.mp4", "video.mp4.mp4", "video.v2.MP4", "video.mkv", "video.nonsense"])
+@pytest.mark.parametrize(
+    ("name", "expected_name", "file_type"),
+    [
+        ("video", "video", FileTypes.MP4),
+        ("video.mp4", "video.mp4", FileTypes.MP4),
+        ("video.mp4.mp4", "video.mp4.mp4", FileTypes.MP4),
+        ("video.v2.MP4", "video.v2.MP4", FileTypes.MP4),
+        ("video.mkv", "video.mkv", FileTypes.MKV),
+        ("video.avi", "video.avi", FileTypes.AVI),
+        ("video.ts", "video.ts", FileTypes.TS),
+        ("video.m2ts", "video.m2ts", FileTypes.M2TS),
+        ("video.nonsense", "video.nonsense", FileTypes.MP4),
+        ("cam/front.mp4", "cam_front.mp4", FileTypes.MP4),
+        ("2026-01-01T00:00:00Z_cam\\front.MKV", "cam_front.MKV", FileTypes.MKV),
+    ],
+)
 def test_successful_copy_preserves_filename_mapping_and_source_timing(
-    monkeypatch: pytest.MonkeyPatch, name: str
+    monkeypatch: pytest.MonkeyPatch, name: str, expected_name: str, file_type: FileType
 ) -> None:
-    """A successful copy preserves filename suffixes, records the mapping, and applies source timing.
+    """A successful copy retains the name and video type, records the mapping, and applies source timing.
 
     Timing comes from start + scale, never a segment-derived absolute ending, which goes stale if the source's
     declared start was edited after segmentation (the inverted-bounds production failure).
@@ -226,7 +242,9 @@ def test_successful_copy_preserves_filename_mapping_and_source_timing(
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert ctx.migration_state.skipped_resources == []
-    assert destination_video.add_from_io.call_args.kwargs["name"] == name
+    kwargs = destination_video.add_from_io.call_args.kwargs
+    assert kwargs["name"] == expected_name
+    assert kwargs["file_type"] == file_type
     new_file.update.assert_called_once_with(starting_timestamp=0, scale_factor=2.0)
 
 

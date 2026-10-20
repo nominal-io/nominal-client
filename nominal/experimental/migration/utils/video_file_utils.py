@@ -9,7 +9,7 @@ from typing import BinaryIO, cast
 import requests
 
 from nominal.core._video_types import McapVideoDetails, TimestampOptions
-from nominal.core.filetype import FileTypes
+from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout, NominalVideoFileMetadataError
@@ -193,11 +193,16 @@ def _upload_to_destination(
 
         file_name = resolve_destination_filename(source_video_file.name)
         if timestamp_options is not None:
+            file_type = FileType.from_path(file_name)
+            # Keep the existing MP4 default when the source title does not identify a supported video format.
+            if not file_type.is_video():
+                file_type = FileTypes.MP4
             return destination_video_dataset.add_from_io(
                 video=raw_video_stream,
                 name=file_name,
                 start=timestamp_options.starting_timestamp,
                 description=source_video_file.description,
+                file_type=file_type,
             )
 
         if mcap_video_details is not None:

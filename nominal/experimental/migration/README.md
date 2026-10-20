@@ -130,6 +130,13 @@ characters, preserving the complete remaining name. Existing extensions, includi
 and repeated suffixes, are kept exactly: `data.csv.gz` stays `data.csv.gz`, and `logs.jsonl.jsonl` stays
 `logs.jsonl.jsonl`. The client applies a default extension only when the name has none. Attachment
 migration already passes the complete source title to the client and follows the same extension rule.
+Unsafe characters are replaced before parsing the name. For legacy dataset keys, an encoded slash in
+`run%2Fdata.csv` becomes `run_data.csv`, preserving both parts of the name.
+
+For timestamp-based video uploads, supported video extensions (`.avi`, `.m2ts`, `.mkv`, `.mp4`, `.ts`)
+select the matching upload MIME type (for example, `.mkv` uses `video/x-matroska`). Names with no extension
+or an unrecognized extension retain the existing MP4 type default; an existing extension is still preserved exactly. This selects
+upload metadata from the name and does not inspect or convert the video's contents.
 
 ## Resumable Migrations
 

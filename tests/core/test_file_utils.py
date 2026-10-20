@@ -104,6 +104,7 @@ def test_journal_migration_preserves_known_type_and_compound_suffix(
         ("source/2026-01-01T00:00:00Z_paren%28reduced%29.csv", "paren(reduced).csv", FileTypes.CSV),
         ("source/2026-01-01T00:00:00Z_my+file.csv", "my file.csv", FileTypes.CSV),
         ("source/2026-01-01T00:00:00Z_weird%7Bname%7D.csv", "weird_name_.csv", FileTypes.CSV),
+        ("source/2026-01-01T00:00:00Z_run%2Fdata.csv", "run_data.csv", FileTypes.CSV),
     ],
 )
 def test_tabular_migration_preserves_complete_filename_and_ingest_metadata(
