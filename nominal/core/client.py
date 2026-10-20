@@ -23,6 +23,7 @@ from nominal_api import (
 from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._event_types import EventType
@@ -811,6 +812,8 @@ class NominalClient:
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
         created_before: str | datetime | IntegralNanosecondsUTC | None,
+        asset_rid: str | None,
+        run_prefix: str | None,
         workspace_rid: str | None,
         archive_status: ArchiveStatusFilter,
     ) -> Iterable[Run]:
@@ -824,6 +827,8 @@ class NominalClient:
             search_text=search_text,
             created_after=created_after,
             created_before=created_before,
+            asset_rid=asset_rid,
+            run_prefix=run_prefix,
             workspace_rid=workspace_rid,
         )
         for run in search_runs_paginated(self._clients.run, query, archive_status):
@@ -835,6 +840,8 @@ class NominalClient:
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
         *,
+        asset: Asset | str | None = None,
+        run_prefix: str | None = None,
         labels: Sequence[str] | None = None,
         properties: NominalProperties | None = None,
         exact_match: str | None = None,
@@ -853,6 +860,8 @@ class NominalClient:
             name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
+            asset: Filter runs associated with this asset or asset RID.
+            run_prefix: Filter by the stored run prefix, not a substring of the run name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
@@ -893,6 +902,8 @@ class NominalClient:
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
+                asset_rid=None if asset is None else rid_from_instance_or_string(asset),
+                run_prefix=run_prefix,
                 workspace_rid=self._workspace_rid_for_search(workspace),
                 archive_status=archive_status,
             )
@@ -1638,6 +1649,7 @@ class NominalClient:
         data_review: DataReview | str | None = None,
         assignee: User | str | None = None,
         event_type: EventType | None = None,
+        priority: Priority | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
@@ -1658,6 +1670,7 @@ class NominalClient:
             data_review: Search for events from the given data review
             assignee: Search for events with the given assignee
             event_type: Search for events based on level
+            priority: Filter events by disposition priority. None leaves priority unrestricted.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1687,6 +1700,7 @@ class NominalClient:
             data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
+            priority=priority,
             workspace_rid=self._workspace_rid_for_search(workspace),
             archive_status=archive_status,
         )

@@ -3,6 +3,7 @@ from typing import Callable
 import pytest
 from nominal_api import api, scout_catalog
 
+from nominal.core import Priority
 from nominal.core._event_types import EventType, SearchEventOriginTypes
 from nominal.core._utils.query_tools import (
     AssetMatch,
@@ -18,6 +19,36 @@ from nominal.protos.types import types_pb2
 
 _STRING_PROPERTY = types_pb2.Property(name="serial", value="")
 _NUMERIC_EQUALITY = types_pb2.NumericPropertyPredicate(name="count", operator=types_pb2.EQ, value=2.0)
+
+
+@pytest.mark.parametrize(
+    "priority, expected",
+    [
+        (Priority.P0, event_pb2.P0),
+        (Priority.P1, event_pb2.P1),
+        (Priority.P2, event_pb2.P2),
+        (Priority.P3, event_pb2.P3),
+        (Priority.P4, event_pb2.P4),
+    ],
+)
+def test_event_priority_filter(priority: Priority, expected: event_pb2.Priority.ValueType) -> None:
+    """Each priority, including Python value zero, becomes its corresponding wire enum."""
+    query = create_search_events_query(priority=priority, asset_rids=["asset"])
+    assert query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[event_pb2.SearchQuery(asset="asset"), event_pb2.SearchQuery(priority=expected)]
+            )
+        }
+    )
+
+
+def test_event_priority_omitted_adds_no_clause() -> None:
+    """Omitting priority leaves the search unrestricted by disposition priority."""
+    query = create_search_events_query(asset_rids=["asset"])
+    assert query == event_pb2.SearchQuery(
+        **{"and": event_pb2.SearchQueryList(queries=[event_pb2.SearchQuery(asset="asset")])}
+    )
 
 
 def test_create_search_events_query_asset_match_all_ands_per_asset_clauses():
