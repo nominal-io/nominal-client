@@ -11,7 +11,6 @@ from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
     FileExtractionInput,
-    FileExtractionParameter,
     FileOutputFormat,
     TimestampMetadata,
     _get_container_image,
@@ -195,27 +194,27 @@ def test_enum_from_proto_falls_back_to_unspecified_on_unknown_value() -> None:
 
 
 def _source_image(clients: MagicMock, *, with_timestamp_metadata: bool = True) -> ContainerImage:
-    return ContainerImage(
+    msg = registry_pb2.ContainerImage(
         rid="ri.img.source",
         tag="v1",
-        status=ContainerImageStatus.READY,
-        size_bytes=123,
-        exit_code_mappings=(core.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Invalid file"),),
-        resources=core.ContainerResources(cpu_cores=4, memory_gib=16),
-        created_at=0,
+        status=registry_pb2.CONTAINER_IMAGE_STATUS_READY,
         extractor_rid="ri.ext",
-        inputs=(FileExtractionInput(name="data", environment_variable="INPUT_PATH", file_suffixes=("csv",)),),
-        parameters=(FileExtractionParameter(name="scale", environment_variable="SCALE"),),
-        file_output_format=FileOutputFormat.PARQUET,
+        inputs=[registry_pb2.FileExtractionInput(name="data", environment_variable="INPUT_PATH")],
+        parameters=[registry_pb2.FileExtractionParameter(name="scale", environment_variable="SCALE")],
+        exit_code_mappings=[registry_pb2.ExitCodeMapping(exit_code=2, code="INVALID_INPUT", message="Invalid file")],
+        resources=registry_pb2.ContainerResources(cpu_cores=4, memory_gib=16),
+        file_output_format=registry_pb2.FILE_OUTPUT_FORMAT_PARQUET,
         default_timestamp_metadata=(
-            TimestampMetadata(series_name="time", timestamp_type="iso_8601") if with_timestamp_metadata else None
+            TimestampMetadata(series_name="time", timestamp_type="iso_8601")._to_proto()
+            if with_timestamp_metadata
+            else None
         ),
-        _workspace_rid="ri.workspace.source",
-        _clients=clients,
     )
+    clients.registry.GetImage.return_value = registry_pb2.GetImageResponse(image=msg)
+    return ContainerImage._from_proto(clients, "ri.workspace.source", msg)
 
 
-def test_duplicate_inherits_contract_and_reuses_source_binary() -> None:
+def test_clone_inherits_contract_and_reuses_source_binary() -> None:
     """Registering from an image creates a new tag without uploading or changing its execution contract."""
     clients = _clients()
     source = _source_image(clients)
@@ -223,7 +222,7 @@ def test_duplicate_inherits_contract_and_reuses_source_binary() -> None:
         image=_img_with_status("ri.img.new", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     )
 
-    image = source.duplicate(tag="v2")
+    image = source.clone(tag="v2")
 
     request = clients.registry.CreateImage.call_args.args[0]
     assert request.source_image_rid == "ri.img.source"
@@ -248,7 +247,7 @@ def test_duplicate_inherits_contract_and_reuses_source_binary() -> None:
     clients.containerized_extractor.UpdateContainerizedExtractor.assert_not_called()
 
 
-def test_duplicate_allows_execution_contract_overrides() -> None:
+def test_clone_allows_execution_contract_overrides() -> None:
     """Callers can change the new image's contract while reusing the source image binary."""
     clients = _clients()
     source = _source_image(clients)
@@ -256,7 +255,7 @@ def test_duplicate_allows_execution_contract_overrides() -> None:
         image=_img_with_status("ri.img.new", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     )
 
-    source.duplicate(
+    source.clone(
         tag="v2",
         inputs=(FileExtractionInput(name="new", environment_variable="NEW_PATH"),),
         parameters=(),
@@ -276,14 +275,14 @@ def test_duplicate_allows_execution_contract_overrides() -> None:
     assert request.resources == registry_pb2.ContainerResources(disk_gib=64)
 
 
-def test_duplicate_can_reset_resources_to_deployment_defaults() -> None:
+def test_clone_can_reset_resources_to_deployment_defaults() -> None:
     """An explicit empty resource object clears inherited overrides."""
     clients = _clients()
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(
         image=_img_with_status("ri.img.new", registry_pb2.CONTAINER_IMAGE_STATUS_READY)
     )
 
-    _source_image(clients).duplicate(tag="v2", resources=core.ContainerResources())
+    _source_image(clients).clone(tag="v2", resources=core.ContainerResources())
 
     assert clients.registry.CreateImage.call_args.args[0].resources == registry_pb2.ContainerResources()
 
@@ -295,7 +294,7 @@ def test_duplicate_can_reset_resources_to_deployment_defaults() -> None:
         {"default_timestamp_type": "iso_8601"},
     ],
 )
-def test_duplicate_requires_timestamp_overrides_together(timestamp_overrides: dict[str, object]) -> None:
+def test_clone_requires_timestamp_overrides_together(timestamp_overrides: dict[str, object]) -> None:
     """A partial timestamp override is rejected rather than silently mixing old and new metadata."""
     clients = _clients()
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(
@@ -303,23 +302,23 @@ def test_duplicate_requires_timestamp_overrides_together(timestamp_overrides: di
     )
 
     with pytest.raises(ValueError, match="provided together"):
-        _source_image(clients).duplicate(tag="v2", **timestamp_overrides)
+        _source_image(clients).clone(tag="v2", **timestamp_overrides)
 
     clients.registry.CreateImage.assert_not_called()
 
 
-def test_duplicate_requires_timestamp_metadata_when_the_source_has_none() -> None:
+def test_clone_requires_timestamp_metadata_when_the_source_has_none() -> None:
     """Legacy images without timestamp metadata require an explicit replacement contract."""
     clients = _clients()
 
     with pytest.raises(ValueError, match="no default timestamp metadata"):
-        _source_image(clients, with_timestamp_metadata=False).duplicate(tag="v2")
+        _source_image(clients, with_timestamp_metadata=False).clone(tag="v2")
 
     clients.registry.CreateImage.assert_not_called()
 
 
 @pytest.mark.parametrize("output_format", [FileOutputFormat.JSON_L, FileOutputFormat.PARQUET_TAR])
-def test_duplicate_rejects_non_ingestible_output_formats(output_format: FileOutputFormat) -> None:
+def test_clone_rejects_non_ingestible_output_formats(output_format: FileOutputFormat) -> None:
     """Derived images apply the same output-format guard as tarball registrations."""
     clients = _clients()
     clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(
@@ -327,6 +326,27 @@ def test_duplicate_rejects_non_ingestible_output_formats(output_format: FileOutp
     )
 
     with pytest.raises(ValueError, match=output_format.name):
-        _source_image(clients).duplicate(tag="v2", output_format=output_format)
+        _source_image(clients).clone(tag="v2", output_format=output_format)
 
     clients.registry.CreateImage.assert_not_called()
+
+
+def test_clone_inherits_fresh_metadata_without_mutating_source() -> None:
+    """Cloning uses the latest server contract while preserving the caller's source snapshot."""
+    clients = _clients()
+    source = _source_image(clients)
+    latest = clients.registry.GetImage.return_value.image
+    latest.resources.memory_gib = 32
+    latest.default_timestamp_metadata.series_name = "latest_time"
+    clients.registry.CreateImage.return_value = registry_pb2.CreateImageResponse(image=_img("ri.img.copy"))
+
+    source.clone(tag="v2")
+
+    request = clients.registry.CreateImage.call_args.args[0]
+    assert request.resources.memory_gib == 32
+    assert request.default_timestamp_metadata.series_name == "latest_time"
+    assert source.resources.memory_gib == 16
+    assert source.default_timestamp_metadata.series_name == "time"
+    clients.registry.GetImage.assert_called_once_with(
+        registry_pb2.GetImageRequest(rid=source.rid, workspace_rid="ri.workspace.source")
+    )

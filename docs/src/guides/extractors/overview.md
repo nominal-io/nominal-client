@@ -383,17 +383,17 @@ CI release identifier over a movable alias like `latest`. Re-registering an exis
 `NominalAlreadyExistsError`; inspect the existing image with
 `extractor.search_container_images(tag=...)` rather than retrying under a new suffix.
 
-### Duplicate an image with overrides
+### Clone an image with overrides
 
 When only the tag or execution contract changes, use
-{py:meth}`~nominal.core.ContainerImage.duplicate` to reuse the stored binary
+{py:meth}`~nominal.core.ContainerImage.clone` to reuse the stored binary
 without uploading another tarball. The source must be READY and belong to the same extractor
 and workspace.
 
 ```python
 from nominal.core import ContainerResources
 
-replacement = image.duplicate(
+replacement = image.clone(
     tag="0.3.1",
     resources=ContainerResources(memory_gib=16),
 )
@@ -406,9 +406,8 @@ configuration: the example sets memory while CPU and disk use deployment default
 Pass `ContainerResources()` to reset all resource overrides, or an empty sequence to clear
 parameters or exit-code mappings. Timestamp column and type must be overridden together.
 
-The duplicate inherits from the image's local snapshot; call `image.refresh()` first to fetch
-its latest metadata. The source stays unchanged, and the duplicate has a new RID.
-Duplication does not activate the replacement.
+Cloning fetches the image's latest metadata before applying overrides. The source object stays
+unchanged, and the clone has a new RID. Cloning does not activate the replacement.
 
 ### From the CLI
 
