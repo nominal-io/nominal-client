@@ -17,7 +17,6 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview, _get_data_review
 from nominal.core.streaming_checklist import (
-    CheckResolution,
     StreamingChecklistConfiguration,
     StreamingChecklistStatus,
     StreamingNotificationConfig,
@@ -163,7 +162,6 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
 
         Returns:
             Status for each returned asset, including the executing commit when running.
-            Use `get_resolution` to investigate unresolved channels or unsupported streaming features.
 
         Raises:
             ValueError: The service returns a lifecycle or check-status variant unknown to the
@@ -189,37 +187,6 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
                 for result in response.checklist_live_status_responses
             )
         return statuses
-
-    def get_resolution(
-        self, assets: Sequence[Asset | str], *, commit: str | None = None
-    ) -> Mapping[str, Sequence[CheckResolution]]:
-        """Inspect channel resolution and streaming compatibility without starting execution.
-
-        Args:
-            assets: Assets or their RIDs to resolve against. An empty sequence returns an empty mapping.
-            commit: Checklist commit to inspect, or ``None`` for the latest commit on main.
-
-        Returns:
-            Per-check diagnostics keyed by asset RID. Parameterized checks have a result per parameter index.
-            Resolution does not guarantee that data will arrive or notifications will be delivered.
-        """
-        if not assets:
-            return {}
-        response = self._clients.checklist_execution.validate_checklist_resolution(
-            self._clients.auth_header,
-            scout_checklistexecution_api.BatchValidateChecklistResolutionRequest(
-                requests=[
-                    scout_checklistexecution_api.ValidateChecklistResolutionRequest(
-                        asset_rid=rid_from_instance_or_string(asset), checklist_rid=self.rid, commit_id=commit
-                    )
-                    for asset in assets
-                ]
-            ),
-        )
-        return {
-            result.asset_rid: tuple(CheckResolution._from_conjure(check) for check in result.resolution_status)
-            for result in response.checklist_results
-        }
 
     def stop_streaming(self) -> None:
         """Stop the checklist."""

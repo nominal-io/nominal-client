@@ -2,11 +2,10 @@ from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from conjure_python_client import ConjureDecoder
-from nominal_api import scout_api, scout_integrations_api, scout_run_api
 from nominal_api import scout_checklistexecution_api as api
+from nominal_api import scout_integrations_api, scout_run_api
 
-from nominal.core import Asset, Checklist, Integration, UnsupportedStreamingFeature
+from nominal.core import Asset, Checklist, Integration
 from nominal.core import streaming_checklist as streaming
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.integrations.v1 import integrations_pb2
@@ -171,67 +170,9 @@ def test_live_status_keeps_state_commit_and_parameter_indices(checklist):
     assert statuses["failed"].checks == ()
 
 
-def test_resolution_preserves_missing_channels_and_unsupported_features(checklist):
-    """Resolution keeps channel scopes/tags, unknown status, and unsupported features per parameterized check."""
-    checklist._clients.checklist_execution.validate_checklist_resolution.return_value = (
-        api.BatchValidateChecklistResolutionResponse(
-            checklist_results=[
-                api.ValidateChecklistResolutionResponse(
-                    asset_rid="asset",
-                    checklist_rid="checklist",
-                    resolution_status=[
-                        api.ResolvedCheckStatus(
-                            check_rid="check",
-                            check_parameter_index=0,
-                            invalid_streaming_compute_nodes=[
-                                api.InvalidStreamingComputeNode.INTEGRAL,
-                                ConjureDecoder.do_decode("FUTURE_FEATURE", api.InvalidStreamingComputeNode),
-                            ],
-                            channels=[
-                                api.ChannelLocatorWithStatus(
-                                    channel_locator=scout_api.ChannelLocator(
-                                        channel="temperature", data_source_ref="daq", tags={"sensor": "1"}
-                                    ),
-                                    resolution_status=api.ChannelResolutionStatus.UNRESOLVED,
-                                ),
-                                api.ChannelLocatorWithStatus(
-                                    channel_locator=scout_api.ChannelLocator(
-                                        channel="pressure", data_source_ref="daq", tags={}
-                                    ),
-                                    resolution_status=api.ChannelResolutionStatus.UNKNOWN,
-                                ),
-                            ],
-                        )
-                    ],
-                )
-            ]
-        )
-    )
-    checks = checklist.get_resolution(["asset", "other"], commit="revision")["asset"]
-    check = checks[0]
-    assert (check.check_rid, check.parameter_index) == ("check", 0)
-    assert check.unsupported_streaming_features[0] is UnsupportedStreamingFeature.INTEGRAL
-    assert check.unsupported_streaming_features[1] is UnsupportedStreamingFeature.UNKNOWN
-    assert check.unsupported_streaming_features == ("INTEGRAL", "UNKNOWN")
-    channel = check.channels[0]
-    assert (channel.channel, channel.data_scope, channel.tags, channel.state.value) == (
-        "temperature",
-        "daq",
-        {"sensor": "1"},
-        "unresolved",
-    )
-    assert check.channels[1].state.value == "unknown"
-    request = checklist._clients.checklist_execution.validate_checklist_resolution.call_args.args[1]
-    assert [(r.asset_rid, r.checklist_rid, r.commit_id) for r in request.requests] == [
-        ("asset", "checklist", "revision"),
-        ("other", "checklist", "revision"),
-    ]
-
-
 def test_empty_asset_reads_do_not_request_status(checklist):
     """Empty read batches are local no-ops rather than invalid service requests."""
     assert checklist.get_streaming_status([]) == {}
-    assert checklist.get_resolution([]) == {}
     assert checklist._clients.checklist_execution.mock_calls == []
 
 

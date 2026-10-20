@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Self, Sequence
+from typing import Iterable, Protocol, Self, Sequence
 
 from nominal_api import scout_checklistexecution_api, scout_integrations_api
 
@@ -170,101 +170,4 @@ class StreamingChecklistStatus:
             checks=()
             if running is None
             else tuple(StreamingCheckStatus._from_conjure(c) for c in running.check_results),
-        )
-
-
-class ChannelResolutionState(str, Enum):
-    """Whether a channel reference resolves for an asset; values use lowercase like the streaming state enums."""
-
-    RESOLVED = "resolved"
-    UNRESOLVED = "unresolved"
-    UNKNOWN = "unknown"
-    """The channel resolution state is not recognized by this SDK."""
-
-
-@dataclass(frozen=True)
-class ChecklistChannelResolution:
-    """Resolution of a channel reference, including its data scope and series tags.
-
-    Optional asset, run, and input identifiers describe any explicit context in the reference.
-    """
-
-    channel: str
-    data_scope: str
-    tags: Mapping[str, str]
-    state: ChannelResolutionState
-    asset_rid: str | None
-    run_rid: str | None
-    input_id: str | None
-
-    @classmethod
-    def _from_conjure(cls, result: scout_checklistexecution_api.ChannelLocatorWithStatus) -> Self:
-        channel = result.channel_locator
-        return cls(
-            channel=channel.channel,
-            data_scope=channel.data_source_ref,
-            tags=dict(channel.tags),
-            state=ChannelResolutionState(result.resolution_status.value.lower()),
-            asset_rid=channel.asset,
-            run_rid=channel.run,
-            input_id=channel.input_id,
-        )
-
-
-class UnsupportedStreamingFeature(str, Enum):
-    """Operation categories the service reports as unsupported for streaming.
-
-    Values retain the service's diagnostic codes. Unrecognized service values become
-    ``UNKNOWN`` in the generated decoder; the original unknown code is not retained.
-    """
-
-    POINT_PERSISTENCE = "POINT_PERSISTENCE"
-    """Persistence measured in a number of points."""
-    CUMULATIVE_SUM = "CUMULATIVE_SUM"
-    """Cumulative summation."""
-    INTEGRAL = "INTEGRAL"
-    """Integration over time."""
-    STALENESS_DETECTION = "STALENESS_DETECTION"
-    """A staleness-detection operation flagged by the service."""
-    LITERAL_RANGES = "LITERAL_RANGES"
-    """Literal time ranges."""
-    LITERAL_ENUM_SERIES = "LITERAL_ENUM_SERIES"
-    """Literal categorical series."""
-    TAG_BY_INTERVALS = "TAG_BY_INTERVALS"
-    """Tagging a series by intervals."""
-    NUMERIC_COMBINE_WITH_TAGS = "NUMERIC_COMBINE_WITH_TAGS"
-    """Combining numeric series with tags."""
-    PHASE_UNWRAP = "PHASE_UNWRAP"
-    """Phase unwrapping."""
-    RUN_WITH_FIXED_END = "RUN_WITH_FIXED_END"
-    """A run reference with a fixed end time."""
-    TIME_RANGE_FILTER_WITH_FIXED_END = "TIME_RANGE_FILTER_WITH_FIXED_END"
-    """A time-range filter with a fixed end time."""
-    UNKNOWN = "UNKNOWN"
-    """An unsupported feature not recognized by the installed API bindings."""
-
-
-@dataclass(frozen=True)
-class CheckResolution:
-    """Channel resolution and streaming compatibility for an individual check.
-
-    ``parameter_index`` is zero-based, or ``None`` for a non-parameterized check.
-    ``unsupported_streaming_features`` contains `UnsupportedStreamingFeature` members.
-    A resolved channel alone does not establish streaming compatibility.
-    """
-
-    check_rid: str
-    parameter_index: int | None
-    channels: Sequence[ChecklistChannelResolution]
-    unsupported_streaming_features: Sequence[UnsupportedStreamingFeature]
-
-    @classmethod
-    def _from_conjure(cls, result: scout_checklistexecution_api.ResolvedCheckStatus) -> Self:
-        return cls(
-            check_rid=result.check_rid,
-            parameter_index=result.check_parameter_index,
-            channels=tuple(ChecklistChannelResolution._from_conjure(channel) for channel in result.channels),
-            unsupported_streaming_features=tuple(
-                UnsupportedStreamingFeature(feature.value) for feature in result.invalid_streaming_compute_nodes
-            ),
         )

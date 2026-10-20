@@ -120,30 +120,6 @@ integration = client.get_integration("integration-rid")
 checklist = client.get_checklist(checklist_rid)
 ```
 
-### Check channel resolution
-
-Inspect whether the checklist's channel references resolve against your asset before starting:
-
-```python
-from nominal.core import ChannelResolutionState, UnsupportedStreamingFeature
-
-for check in checklist.get_resolution([asset])[asset.rid]:
-    for channel in check.channels:
-        if channel.state != ChannelResolutionState.RESOLVED:
-            print(channel.data_scope, channel.channel, channel.tags, channel.state)
-    if UnsupportedStreamingFeature.POINT_PERSISTENCE in check.unsupported_streaming_features:
-        print(check.check_rid, "Use time-based persistence for streaming")
-    if check.unsupported_streaming_features:
-        print(check.check_rid, check.parameter_index, [feature.value for feature in check.unsupported_streaming_features])
-```
-
-Feature diagnostics are SDK-owned `UnsupportedStreamingFeature` enum members. Their string values
-retain the uppercase backend codes; unrecognized codes become `UnsupportedStreamingFeature.UNKNOWN`.
-An empty collection means the service reported no unsupported features, not that execution will succeed.
-
-This reports diagnostics without starting execution. Resolved channels do not guarantee that data will arrive.
-Unsupported streaming features must be addressed in the checklist's definition or settings in the UI.
-
 ### Execute the streaming checklist
 
 Configure notifications with optional tags, a workbook link, execution-error suppression, and a mute deadline:
@@ -190,12 +166,10 @@ for check in status.checks:
 ```
 
 A running checklist can contain failing, invalid, or skipped checks. Parameterized checks have separate results
-identified by their zero-based `parameter_index`. Use `get_resolution` to investigate missing channels or
-unsupported streaming features. If inspecting a running version, pass `commit=status.commit_id` to resolve that version.
+identified by their zero-based `parameter_index`.
 Live status is available only for assets configured to stream the checklist.
-All public state enums use lowercase string values; prefer comparing enum members. Unknown
-channel-resolution values map to `ChannelResolutionState.UNKNOWN`. Unknown lifecycle or check-status
-variants fail in the generated decoder with `ValueError` and require an SDK upgrade.
+All public state enums use lowercase string values; prefer comparing enum members. Unknown lifecycle or
+check-status variants fail in the generated decoder with `ValueError` and require an SDK upgrade.
 
 Read existing settings before changing them. For example, increase the evaluation delay while keeping the other settings:
 
