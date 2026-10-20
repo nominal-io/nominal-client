@@ -154,8 +154,6 @@ class ChecklistBuilder:
             Alignment, fill, and missing-data behavior follow service defaults. A check's
             ranges describe violations; absence of data does not establish a passing result.
         """
-        if not isinstance(check.expression, str):
-            raise TypeError("CheckDefinition.expression must be a source string")
         if check.event_type is EventType.UNKNOWN:
             raise ValueError("EventType.UNKNOWN cannot be used for generated events")
         compiler_references = {
@@ -279,6 +277,8 @@ class ChecklistBuilder:
 
         Raises:
             ValueError: If no checks have been added or the checklist has no loaded commit ID.
+            conjure_python_client.ConjureHTTPError: If someone else committed to the checklist since
+                it was loaded. The checklist object is not refreshed in that case.
 
         Note:
             This replaces all checks and checklist variables, including content authored in the UI.

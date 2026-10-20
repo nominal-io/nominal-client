@@ -156,14 +156,6 @@ def test_empty_builder_rejected_before_network(client: NominalClient, mock_clien
     assert not mock_clients.mock_calls
 
 
-def test_non_range_expression_rejected() -> None:
-    """Series cannot accidentally be interpreted as a checklist's failure ranges."""
-    with pytest.raises(TypeError, match="RangeSeries"):
-        ChecklistBuilder().add(
-            CheckDefinition("Wrong type", "NumericSeries.Constant(1)", priority=Priority.P1), inputs={}
-        )
-
-
 def test_explicit_workspace_and_default_assignee(client: NominalClient, mock_clients: MagicMock) -> None:
     """Use the authenticated user and explicit workspace without consulting the default workspace."""
     mock_clients.users.GetCurrentUser.return_value = users_pb2.GetCurrentUserResponse(

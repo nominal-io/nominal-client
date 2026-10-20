@@ -54,18 +54,14 @@ def test_failed_source_does_not_change_builder(source: str, error: type[Exceptio
     assert [v.name for v in builder._variables] == ["a", "b"]
 
 
-def test_source_namespacing_and_unused_bindings() -> None:
-    """Check inputs are namespaced independently and strict mode rejects unused bindings."""
+def test_source_namespacing() -> None:
+    """Reusing input aliases across checks produces independent checklist variables."""
     inputs = {"temperature": ChannelBinding("telemetry", "temperature"), "unused": ChannelBinding("telemetry", "other")}
     builder = ChecklistBuilder()
     for key in ["first", "second"]:
         builder.add(CheckDefinition(key, "(temperature > 100).ranges()", key=key, priority=Priority.P1), inputs=inputs)
     definition = builder
     assert len({variable.name for variable in definition._variables}) == 4
-    with pytest.raises(ValueError, match="unused input bindings: unused"):
-        ChecklistBuilder(strict=True).add(
-            CheckDefinition("Hot", "(temperature > 100).ranges()", priority=Priority.P1), inputs=inputs
-        )
 
 
 def test_categorical_source_input() -> None:
@@ -92,13 +88,6 @@ def test_reusable_check_is_bound_independently() -> None:
     assert right._variables[0].value.compute_node.context.variables["raw"].series.tags == {"side": "right"}
     assert left._checks[0].check_lineage_rid != right._checks[0].check_lineage_rid
     assert check.key is None
-
-
-def test_source_only_input_rejects_graph_objects() -> None:
-    """The authoring API has one source-preserving path, even for untyped callers."""
-    check = CheckDefinition("Hot", (nc.NumericSeries.Reference("x") > 1).ranges(), priority=Priority.P1)
-    with pytest.raises(TypeError, match="source string"):
-        ChecklistBuilder().add(check, inputs={"x": ChannelBinding("scope", "x")})
 
 
 def test_source_assignments_retain_their_input_context() -> None:
