@@ -27,6 +27,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.core.asset_type import AssetType
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset
 from nominal.core.event import Event, _create_event, _search_events
@@ -61,6 +62,8 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
+    type_rids: Sequence[str] = ()
+    """Asset type memberships in this snapshot; use ``get_types()`` to fetch their definitions."""
 
     class _Clients(
         Dataset._Clients,
@@ -86,6 +89,21 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
 
+    def get_types(self) -> Sequence[AssetType]:
+        """Fetch definitions for this snapshot's memberships, including archived types.
+
+        Call ``refresh()`` first to fetch changed memberships. Missing or inaccessible
+        definitions raise ``NominalNotFoundError`` rather than silently disappearing.
+        """
+        if not self.type_rids:
+            return []
+        with translate_grpc_errors():
+            response = self._clients.assets.GetTypes(asset_pb2.GetTypesRequest(rids=list(self.type_rids)))
+        missing = set(self.type_rids) - response.responses.keys()
+        if missing:
+            raise NominalNotFoundError(f"Asset types not found: {sorted(missing)!r}")
+        return [AssetType._from_proto(self._clients, response.responses[rid]) for rid in self.type_rids]
+
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
 
@@ -108,12 +126,15 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str] | Sequence[Link] | None = None,
+        types: Sequence[AssetType | str] | None = None,
     ) -> Self:
         """Replace asset metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         Links can be URLs or tuples of (URL, name).
+        ``types=None`` preserves memberships; an empty sequence removes them all.
+        The server checks the resulting properties against every assigned type.
 
         Args:
             name: Replacement name.
@@ -146,6 +167,11 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             typed_properties=typed_property_update(properties),
             title=name,
             links=updated_links,
+            types=None
+            if types is None
+            else asset_pb2.TypeRidList(
+                types=[rid_from_instance_or_string(kind) for kind in types],
+            ),
         )
         with translate_grpc_errors():
             response = self._clients.assets.UpdateAsset(request)
@@ -788,6 +814,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             is_archived=asset.is_archived,
             _clients=clients,
             created_by_rid=asset.created_by if asset.HasField("created_by") else None,
+            type_rids=tuple(asset.types),
         )
 
 

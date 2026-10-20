@@ -256,8 +256,11 @@ def create_search_assets_query(
     properties: NominalProperties | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
+    type_rids: Sequence[str] | None = None,
 ) -> asset_pb2.SearchAssetsQuery:
     queries = []
+    if type_rids is not None:
+        queries.append(asset_pb2.SearchAssetsQuery(asset_types=asset_pb2.AssetTypesFilter(asset_types=list(type_rids))))
     if search_text is not None:
         queries.append(asset_pb2.SearchAssetsQuery(search_text=search_text))
     if exact_substring is not None:
