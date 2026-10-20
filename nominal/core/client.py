@@ -41,6 +41,7 @@ from nominal.core._utils.multipart import (
 from nominal.core._utils.networking import HeaderProvider, normalize_header_provider
 from nominal.core._utils.pagination_tools import (
     list_integrations_paginated,
+    paginate_grpc,
     search_assets_paginated,
     search_checklists_paginated,
     search_datasets_paginated,
@@ -111,9 +112,8 @@ from nominal.core.marking import (
 )
 from nominal.core.resource_metadata import (
     MetadataResourceType,
-    _list_labels,
-    _list_property_keys,
-    _list_property_values,
+    _get_dedicated_metadata,
+    _search_params,
 )
 from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
@@ -133,6 +133,7 @@ from nominal.exceptions import (
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.attachments.v2 import attachments_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
+from nominal.protos.metadata.v2 import resource_metadata_pb2 as metadata_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -339,23 +340,28 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[str]:
-        """List distinct resource labels in alphabetical order.
-
-        Metadata visibility follows the backend semantics described by `MetadataResourceType`.
+        """List distinct resource labels alphabetically.
 
         Args:
-            resource_type: Resource family whose labels to discover.
-            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+            resource_type: Resource family to inspect; see `MetadataResourceType` for visibility rules.
+            workspace: Workspace or RID, DEFAULT/None for the client's default,
                 or ALL for every permitted workspace.
-
-        Returns:
-            Distinct resource labels sorted alphabetically.
 
         Raises:
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If a workspace lookup or indexed metadata request fails.
         """
-        return _list_labels(self._clients, resource_type, self._workspace_rid_for_search(workspace))
+        workspace_rid = self._workspace_rid_for_search(workspace)
+        metadata = _get_dedicated_metadata(self._clients, resource_type, workspace_rid)
+        if metadata is not None:
+            return sorted(set(metadata.labels))
+        responses = paginate_grpc(
+            self._clients.resource_metadata.SearchLabels,
+            request_factory=lambda token: metadata_pb2.SearchLabelsRequest(
+                params=_search_params(resource_type, workspace_rid, token)
+            ),
+        )
+        return sorted({label.label for response in responses for label in response.labels})
 
     def list_property_keys(
         self,
@@ -363,24 +369,28 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[str]:
-        """List distinct resource property keys in alphabetical order.
-
-        Keys may include numeric properties. Metadata visibility follows the backend semantics
-        described by `MetadataResourceType`.
+        """List distinct resource property keys alphabetically, including numeric property keys.
 
         Args:
-            resource_type: Resource family whose property keys to discover.
-            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+            resource_type: Resource family to inspect; see `MetadataResourceType` for visibility rules.
+            workspace: Workspace or RID, DEFAULT/None for the client's default,
                 or ALL for every permitted workspace.
-
-        Returns:
-            Distinct resource property keys sorted alphabetically, including numeric property keys.
 
         Raises:
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If a workspace lookup or indexed metadata request fails.
         """
-        return _list_property_keys(self._clients, resource_type, self._workspace_rid_for_search(workspace))
+        workspace_rid = self._workspace_rid_for_search(workspace)
+        metadata = _get_dedicated_metadata(self._clients, resource_type, workspace_rid)
+        if metadata is not None:
+            return sorted(metadata.properties)
+        responses = paginate_grpc(
+            self._clients.resource_metadata.SearchPropertyKeys,
+            request_factory=lambda token: metadata_pb2.SearchPropertyKeysRequest(
+                params=_search_params(resource_type, workspace_rid, token)
+            ),
+        )
+        return sorted({key.property_key for response in responses for key in response.property_keys})
 
     def list_property_values(
         self,
@@ -389,29 +399,31 @@ class NominalClient:
         *,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[PropertyValue]:
-        """List distinct string values for a property key in alphabetical order.
+        """List distinct string values for a property key alphabetically.
 
-        The discovery route currently enumerates string values only; numeric values are not returned.
-        Returns an empty sequence when the key has no string values. Metadata visibility follows
-        the backend semantics described by `MetadataResourceType`.
+        Numeric values are not enumerated. Returns an empty sequence when the key has no string values.
 
         Args:
-            resource_type: Resource family whose property values to discover.
+            resource_type: Resource family to inspect; see `MetadataResourceType` for visibility rules.
             property_key: Property key whose string values to list.
-            workspace: Workspace object or RID, DEFAULT (also None) for the client's resolved default,
+            workspace: Workspace or RID, DEFAULT/None for the client's default,
                 or ALL for every permitted workspace.
-
-        Returns:
-            Distinct string property values sorted alphabetically, or an empty sequence when the key
-            has no string values.
 
         Raises:
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If a workspace lookup or indexed metadata request fails.
         """
-        return _list_property_values(
-            self._clients, resource_type, property_key, self._workspace_rid_for_search(workspace)
+        workspace_rid = self._workspace_rid_for_search(workspace)
+        metadata = _get_dedicated_metadata(self._clients, resource_type, workspace_rid)
+        if metadata is not None:
+            return sorted(set(metadata.properties.get(property_key, [])))
+        responses = paginate_grpc(
+            self._clients.resource_metadata.SearchPropertyValues,
+            request_factory=lambda token: metadata_pb2.SearchPropertyValuesRequest(
+                params=_search_params(resource_type, workspace_rid, token), property_key=property_key
+            ),
         )
+        return sorted({value.property_value for response in responses for value in response.property_values})
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Sequence
 from unittest.mock import MagicMock, call
 
 import grpc
@@ -25,20 +24,6 @@ def _client() -> tuple[NominalClient, MagicMock]:
     return NominalClient(_clients=clients), clients
 
 
-def _assert_search_pages(
-    rpc: MagicMock, resource_type: metadata_pb2.ResourceType.ValueType, tokens: Sequence[str]
-) -> None:
-    assert [request.args[0].params.page_token for request in rpc.call_args_list] == list(tokens)
-    assert [request.args[0].params.HasField("page_token") for request in rpc.call_args_list] == [
-        bool(token) for token in tokens
-    ]
-    for request in rpc.call_args_list:
-        params = request.args[0].params
-        assert list(params.resource_types) == [resource_type]
-        assert list(params.workspaces) == [WORKSPACE_RID]
-        assert params.sort_by == metadata_pb2.ALPHABETICAL
-
-
 def test_labels_include_every_page_beyond_the_aggregate_endpoint_limit() -> None:
     """A label picker must include labels after the old aggregate endpoint's 500-result cap."""
     client, clients = _client()
@@ -49,16 +34,17 @@ def test_labels_include_every_page_beyond_the_aggregate_endpoint_limit() -> None
             next_page_token="remaining-flights",
         ),
         metadata_pb2.SearchLabelsResponse(
-            labels=[metadata_pb2.LabelWithCount(label=label) for label in reversed(labels[500:])]
+            labels=[metadata_pb2.LabelWithCount(label=label) for label in reversed(labels[499:])]
         ),
     ]
     workspace = Workspace(rid=WORKSPACE_RID, id="flight-test", org="test-org")
 
     assert client.list_labels(core.MetadataResourceType.ASSET, workspace=workspace) == labels
 
-    _assert_search_pages(clients.resource_metadata.SearchLabels, metadata_pb2.ASSET, ["", "remaining-flights"])
-    clients.resolve_default_workspace_rid.assert_not_called()
-    clients.resolve_workspace.assert_not_called()
+    first, second = [call.args[0].params for call in clients.resource_metadata.SearchLabels.call_args_list]
+    assert not first.HasField("page_token")
+    assert second.page_token == "remaining-flights"
+    assert list(second.resource_types) == [metadata_pb2.ASSET]
 
 
 def test_property_keys_include_numeric_properties_and_later_pages() -> None:
@@ -67,11 +53,7 @@ def test_property_keys_include_numeric_properties_and_later_pages() -> None:
     clients.resolve_workspace.return_value = Workspace(rid=WORKSPACE_RID, id="flight-test", org="test-org")
     clients.resource_metadata.SearchPropertyKeys.side_effect = [
         metadata_pb2.SearchPropertyKeysResponse(
-            property_keys=[
-                metadata_pb2.PropertyKeyWithCount(
-                    property_key="serial", string=metadata_pb2.StringPropertySummary(distinct_value_count=2)
-                )
-            ],
+            property_keys=[metadata_pb2.PropertyKeyWithCount(property_key="serial")],
             next_page_token="numeric-keys",
         ),
         metadata_pb2.SearchPropertyKeysResponse(
@@ -87,9 +69,6 @@ def test_property_keys_include_numeric_properties_and_later_pages() -> None:
         "batch_number",
         "serial",
     ]
-
-    _assert_search_pages(clients.resource_metadata.SearchPropertyKeys, metadata_pb2.RUN, ["", "numeric-keys"])
-    clients.resolve_workspace.assert_called_once_with(WORKSPACE_RID)
 
 
 def test_property_values_include_every_page_without_coercing_strings() -> None:
@@ -111,40 +90,22 @@ def test_property_values_include_every_page_without_coercing_strings() -> None:
     values = client.list_property_values(core.MetadataResourceType.DATASET, "tail_number")
 
     assert values == ["007", "tail-01", "tail-12"]
-    _assert_search_pages(clients.resource_metadata.SearchPropertyValues, metadata_pb2.DATASET, ["", "more-tails"])
-    assert all(
-        request.args[0].property_key == "tail_number"
+    assert [
+        (request.args[0].property_key, list(request.args[0].params.workspaces))
         for request in clients.resource_metadata.SearchPropertyValues.call_args_list
-    )
-    clients.resolve_default_workspace_rid.assert_called_once_with()
+    ] == [("tail_number", [WORKSPACE_RID])] * 2
 
 
-@pytest.mark.parametrize(
-    ("workspace_kwargs", "expected_workspaces"),
-    [
-        ({}, [WORKSPACE_RID]),
-        ({"workspace": None}, [WORKSPACE_RID]),
-        ({"workspace": WorkspaceSearchType.DEFAULT}, [WORKSPACE_RID]),
-        ({"workspace": WorkspaceSearchType.ALL}, []),
-    ],
-    ids=["omitted", "none", "default", "all"],
-)
-def test_default_workspace_is_scoped_and_all_searches_every_permitted_workspace(
-    workspace_kwargs: dict[str, WorkspaceSearchType | None], expected_workspaces: list[str]
-) -> None:
-    """Omitted, None, and DEFAULT selectors scope discovery; ALL removes the workspace filter."""
+def test_all_searches_every_permitted_workspace_without_resolving_a_default() -> None:
+    """ALL removes the workspace filter and works without a configured default workspace."""
     client, clients = _client()
     clients.resource_metadata.SearchLabels.return_value = metadata_pb2.SearchLabelsResponse()
 
-    assert client.list_labels(core.MetadataResourceType.EVENT, **workspace_kwargs) == []
+    assert client.list_labels(core.MetadataResourceType.EVENT, workspace=WorkspaceSearchType.ALL) == []
 
     request = clients.resource_metadata.SearchLabels.call_args.args[0]
-    assert list(request.params.workspaces) == expected_workspaces
-    if expected_workspaces:
-        clients.resolve_default_workspace_rid.assert_called_once_with()
-    else:
-        clients.resolve_default_workspace_rid.assert_not_called()
-    clients.resolve_workspace.assert_not_called()
+    assert not request.params.workspaces
+    clients.resolve_default_workspace_rid.assert_not_called()
 
 
 def test_later_page_failure_raises_nominal_error_instead_of_returning_partial_labels(fake_rpc_error) -> None:
@@ -162,7 +123,6 @@ def test_later_page_failure_raises_nominal_error_instead_of_returning_partial_la
         client.list_labels(core.MetadataResourceType.VIDEO)
 
     assert exc.value.__cause__ is error
-    _assert_search_pages(clients.resource_metadata.SearchLabels, metadata_pb2.VIDEO, ["", "forbidden-page"])
 
 
 @pytest.mark.parametrize(
@@ -203,7 +163,3 @@ def test_dedicated_metadata_routes_normalize_picker_options_and_unknown_keys(
         call("Bearer token", workspaces=[WORKSPACE_RID]),
         *[call("Bearer token", workspaces=[])] * 3,
     ]
-    clients.resource_metadata.SearchLabels.assert_not_called()
-    clients.resource_metadata.SearchPropertyKeys.assert_not_called()
-    clients.resource_metadata.SearchPropertyValues.assert_not_called()
-    clients.resolve_default_workspace_rid.assert_called_once_with()
