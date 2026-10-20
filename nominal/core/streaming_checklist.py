@@ -158,7 +158,7 @@ class StreamingChecklistStatus:
     """
 
     state: StreamingChecklistState
-    commit: str | None
+    commit_id: str | None
     checks: Sequence[StreamingCheckStatus]
 
     @classmethod
@@ -166,7 +166,7 @@ class StreamingChecklistStatus:
         running = status.running
         return cls(
             state=StreamingChecklistState(status.type),
-            commit=None if running is None else running.commit_id,
+            commit_id=None if running is None else running.commit_id,
             checks=()
             if running is None
             else tuple(StreamingCheckStatus._from_conjure(c) for c in running.check_results),

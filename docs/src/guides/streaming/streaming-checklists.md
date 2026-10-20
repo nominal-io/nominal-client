@@ -127,7 +127,7 @@ Inspect whether the checklist's channel references resolve against your asset be
 ```python
 from nominal.core import ChannelResolutionState
 
-for check in checklist.validate_resolution([asset])[asset.rid]:
+for check in checklist.get_resolution([asset])[asset.rid]:
     for channel in check.channels:
         if channel.state != ChannelResolutionState.RESOLVED:
             print(channel.data_scope, channel.channel, channel.tags, channel.state)
@@ -178,14 +178,14 @@ Inspect the executing commit and individual check results:
 
 ```python
 status = checklist.get_streaming_status([asset])[asset.rid]
-print(status.state, status.commit)
+print(status.state, status.commit_id)
 for check in status.checks:
     print(check.check_rid, check.parameter_index, check.state)
 ```
 
 A running checklist can contain failing, invalid, or skipped checks. Parameterized checks have separate results
-identified by their zero-based `parameter_index`. Use `validate_resolution` to investigate missing channels or
-unsupported streaming features. If inspecting a running version, pass `commit=status.commit` to resolve that version.
+identified by their zero-based `parameter_index`. Use `get_resolution` to investigate missing channels or
+unsupported streaming features. If inspecting a running version, pass `commit=status.commit_id` to resolve that version.
 Live status is available only for assets configured to stream the checklist.
 All public state enums use lowercase string values; prefer comparing enum members. Unknown
 channel-resolution values map to `ChannelResolutionState.UNKNOWN`. Unknown lifecycle or check-status

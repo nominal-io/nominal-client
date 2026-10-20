@@ -163,7 +163,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
 
         Returns:
             Status for each returned asset, including the executing commit when running.
-            Use `validate_resolution` to investigate unresolved channels or unsupported streaming features.
+            Use `get_resolution` to investigate unresolved channels or unsupported streaming features.
 
         Raises:
             ValueError: The service returns a lifecycle or check-status variant unknown to the
@@ -190,7 +190,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             )
         return statuses
 
-    def validate_resolution(
+    def get_resolution(
         self, assets: Sequence[Asset | str], *, commit: str | None = None
     ) -> Mapping[str, Sequence[CheckResolution]]:
         """Inspect channel resolution and streaming compatibility without starting execution.

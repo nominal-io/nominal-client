@@ -157,16 +157,16 @@ def test_live_status_keeps_state_commit_and_parameter_indices(checklist):
         "initializing": "initializing",
         "failed": "failed",
     }
-    assert statuses["running"].commit == "commit"
+    assert statuses["running"].commit_id == "commit"
     assert [(c.check_rid, c.parameter_index, c.state.value) for c in statuses["running"].checks] == [
         ("check", 0, "pass"),
         ("check", 1, "skipped"),
         ("other", None, "invalid"),
         ("failure", None, "fail"),
     ]
-    assert statuses["initializing"].commit is None
+    assert statuses["initializing"].commit_id is None
     assert statuses["initializing"].checks == ()
-    assert statuses["failed"].commit is None
+    assert statuses["failed"].commit_id is None
     assert statuses["failed"].checks == ()
 
 
@@ -203,7 +203,7 @@ def test_resolution_preserves_missing_channels_and_unsupported_features(checklis
             ]
         )
     )
-    checks = checklist.validate_resolution(["asset", "other"], commit="revision")["asset"]
+    checks = checklist.get_resolution(["asset", "other"], commit="revision")["asset"]
     check = checks[0]
     assert (check.check_rid, check.parameter_index) == ("check", 0)
     assert check.unsupported_streaming_features == ("INTEGRAL",)
@@ -225,7 +225,7 @@ def test_resolution_preserves_missing_channels_and_unsupported_features(checklis
 def test_empty_asset_reads_do_not_request_status(checklist):
     """Empty read batches are local no-ops rather than invalid service requests."""
     assert checklist.get_streaming_status([]) == {}
-    assert checklist.validate_resolution([]) == {}
+    assert checklist.get_resolution([]) == {}
     assert checklist._clients.checklist_execution.mock_calls == []
 
 
