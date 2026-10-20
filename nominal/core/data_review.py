@@ -34,10 +34,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
-    """The progress and results of a checklist execution.
-
-    Use `poll_for_completion` to wait for execution and `get_events` to retrieve generated events.
-    """
+    """The progress and results of a checklist execution."""
 
     rid: str
     run_rid: str

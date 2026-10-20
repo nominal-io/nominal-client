@@ -27,10 +27,7 @@ _DOWNLOAD_TIMEOUT = 30.0
 
 @dataclass(frozen=True)
 class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
-    """An uploaded file that can be attached to assets or runs.
-
-    Upload attachments with `NominalClient.create_attachment`.
-    """
+    """An uploaded file that can be attached to assets or runs."""
 
     rid: str
     name: str

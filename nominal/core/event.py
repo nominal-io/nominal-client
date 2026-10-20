@@ -45,10 +45,7 @@ class EventDisposition:
 
 @dataclass(frozen=True)
 class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
-    """An annotation at a point or interval in time, optionally associated with assets.
-
-    Create events with `Asset.create_event` or `NominalClient.create_event`.
-    """
+    """An annotation at a point or interval in time, optionally associated with assets."""
 
     rid: str
     asset_rids: Sequence[str]

@@ -99,10 +99,7 @@ class ChannelDataType(enum.Enum):
 
 @dataclass(frozen=True)
 class CreateChannelRequest:
-    """Channel metadata to create or update through a dataset's batch methods.
-
-    Pass requests to `Dataset.batch_add_channels` or `Dataset.batch_update_or_create_channels`.
-    """
+    """Channel metadata to create or update through a dataset's batch methods."""
 
     name: str
     data_type: ChannelDataType

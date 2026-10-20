@@ -97,10 +97,7 @@ class WorkbookType(Enum):
 class Workbook(
     HasRid, RefreshableConjureMixin[scout_notebook_api.Notebook | scout_notebook_api.NotebookMetadataWithRid]
 ):
-    """An interactive view for visualizing data from assets and runs.
-
-    Retrieve a workbook with `NominalClient.get_workbook` or create one from a `WorkbookTemplate`.
-    """
+    """An interactive view for visualizing data from assets and runs."""
 
     rid: str
     title: str

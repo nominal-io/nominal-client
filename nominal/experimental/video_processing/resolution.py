@@ -6,10 +6,7 @@ from typing import Literal, TypeAlias
 
 @dataclasses.dataclass(frozen=True)
 class VideoResolution:
-    """Width and height limits for video scaling, with optional upscaling.
-
-    Pass a resolution to `scale_factor_from_resolution` or `normalize_video`.
-    """
+    """Width and height limits for video scaling, with optional upscaling."""
 
     resolution_width: int | None = None
     """Maximum width of the video, in pixels. Unbounded if None.

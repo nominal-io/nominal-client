@@ -110,10 +110,7 @@ class EnumExpr(ChannelExpr[scout_compute_api.EnumSeries]):
 
 @dataclass(frozen=True)
 class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
-    """A compute expression for numeric channel data and derived signals.
-
-    Start with `asset_channel`, `run_channel`, or `datasource_channel`, then compose operations.
-    """
+    """A compute expression for numeric channel data and derived signals."""
 
     @abstractmethod
     def _to_conjure(self) -> scout_compute_api.NumericSeries:

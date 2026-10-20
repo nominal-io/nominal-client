@@ -141,7 +141,7 @@ MAX_ASSETS_SHOWN = 10
 
 
 class WorkspaceSearchType(enum.Enum):
-    """Select all accessible workspaces or the client's default workspace when searching."""
+    """Workspace scope for searches: all accessible workspaces or the client's default workspace."""
 
     ALL = "ALL"
     DEFAULT = "DEFAULT"
@@ -152,10 +152,7 @@ WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 
 @dataclass(frozen=True)
 class NominalClient:
-    """A client for uploading data and managing resources on the Nominal platform.
-
-    Create a client with `from_profile` or `from_token`.
-    """
+    """A client for uploading data and managing resources on the Nominal platform."""
 
     _clients: ClientsBunch = field(repr=False)
     _profile: str | None = None
