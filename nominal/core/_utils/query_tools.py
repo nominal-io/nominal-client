@@ -14,6 +14,7 @@ from nominal_api import (
     scout_video_api,
 )
 
+from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
@@ -423,7 +424,7 @@ def create_search_datasets_query(
     return scout_catalog.SearchDatasetsQuery(and_=queries)
 
 
-def create_search_runs_query(
+def create_search_runs_query(  # noqa: PLR0912
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
@@ -433,9 +434,18 @@ def create_search_runs_query(
     search_text: str | None = None,
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
+    asset_rid: str | None = None,
+    run_number: int | None = None,
+    run_prefix: str | None = None,
     workspace_rid: str | None = None,
 ) -> run_service_pb2.SearchQuery:
     queries = []
+    if asset_rid is not None:
+        queries.append(run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=[asset_rid])))
+    if run_number is not None:
+        queries.append(run_service_pb2.SearchQuery(run_number=run_number))
+    if run_prefix is not None:
+        queries.append(run_service_pb2.SearchQuery(run_prefix=run_prefix))
     if start is not None:
         start_time = _SecondsNanos.from_flexible(start).to_run_proto()
         queries.append(
@@ -596,6 +606,7 @@ def create_search_events_query(  # noqa: PLR0912
     data_review_rid: str | None = None,
     assignee_rid: str | None = None,
     event_type: EventType | None = None,
+    priority: Priority | None = None,
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
 ) -> event_pb2.SearchQuery:
@@ -636,6 +647,8 @@ def create_search_events_query(  # noqa: PLR0912
         queries.append(event_pb2.SearchQuery(assignee=assignee_rid))
     if event_type is not None:
         queries.append(event_pb2.SearchQuery(event_type=event_type._to_proto()))
+    if priority is not None:
+        queries.append(event_pb2.SearchQuery(priority=priority._to_proto()))
     if origin_types:
         origin_type_filter = event_pb2.OriginTypesFilter(
             operator=event_pb2.OR, origin_types=[origin_type._to_proto() for origin_type in origin_types]

@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from nominal.core import Asset, Priority
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_ingest_jobs_query,
@@ -10,7 +13,57 @@ from nominal.core.client import NominalClient
 from nominal.core.ingestion_job import IngestionJobStatus
 from nominal.core.user import User
 from nominal.protos.authentication.users.v1 import users_pb2
+from nominal.protos.event.v2 import event_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.ts import _SecondsNanos
+
+
+@pytest.mark.parametrize("use_object", [False, True])
+def test_search_runs_asset_and_identity_filters(use_object: bool) -> None:
+    """Asset objects and RIDs produce the same combined identity and workspace constraints."""
+    clients = MagicMock()
+    clients.resolve_workspace.return_value.rid = "workspace"
+    clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse()
+    client = NominalClient(_clients=clients)
+    asset = Asset(
+        rid="asset",
+        name="Aircraft",
+        description=None,
+        properties={},
+        labels=[],
+        created_at=0,
+        is_archived=False,
+        _clients=clients,
+    )
+
+    client.search_runs(
+        asset=asset if use_object else asset.rid, run_number=0, run_prefix="FLIGHT", workspace="workspace"
+    )
+
+    request = clients.run.SearchRuns.call_args.args[0]
+    assert request.query.all_of.queries == [
+        run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=["asset"])),
+        run_service_pb2.SearchQuery(run_number=0),
+        run_service_pb2.SearchQuery(run_prefix="FLIGHT"),
+        run_service_pb2.SearchQuery(workspace="workspace"),
+    ]
+
+
+def test_search_events_priority_preserves_asset_scope() -> None:
+    """The public search combines P0 disposition priority with the requested asset scope."""
+    clients = MagicMock()
+    clients.resolve_workspace.return_value.rid = "workspace"
+    clients.event.SearchEvents.return_value = event_pb2.SearchEventsResponse()
+    client = NominalClient(_clients=clients)
+
+    client.search_events(assets=["asset"], priority=Priority.P0, workspace="workspace")
+
+    clauses = getattr(clients.event.SearchEvents.call_args.args[0].query, "and").queries
+    assert clauses == [
+        event_pb2.SearchQuery(asset="asset"),
+        event_pb2.SearchQuery(priority=event_pb2.P0),
+        event_pb2.SearchQuery(workspace="workspace"),
+    ]
 
 
 def test_search_data_reviews_passes_archive_status():
