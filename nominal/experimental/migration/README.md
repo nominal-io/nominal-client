@@ -125,6 +125,12 @@ Journal JSON and gzip-compressed journal JSON stream directly, without staging t
 This does not copy streamed data that has no stored source file. MCAP and ArduPilot Dataflash
 dataset file migration remain unsupported.
 
+Draft native-file migration work is blocked on retrieving and preserving each source file's ingest
+settings. Re-ingesting MCAP with default topic filters can add data that was excluded at the source;
+resetting invalid-topic or Dataflash invalid-timestamp policies can change whether ingestion succeeds.
+Native migration must recover those settings, or require an explicit choice when they are unavailable,
+before it can be supported. The draft native routing alone does not establish migration fidelity.
+
 Dataset and video migration remove the source upload's timestamp prefix and sanitize unsafe filename
 characters, preserving the complete remaining name. Existing extensions, including compound, uppercase,
 and repeated suffixes, are kept exactly: `data.csv.gz` stays `data.csv.gz`, and `logs.jsonl.jsonl` stays

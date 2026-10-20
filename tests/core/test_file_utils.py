@@ -56,6 +56,56 @@ def destination_dataset() -> MagicMock:
 
 
 @pytest.mark.parametrize(
+    ("source_name", "expected_name", "expected_arm", "timestamp_channel", "timestamp_type"),
+    [
+        ("drone.mcap", "drone.mcap", "mcap", None, None),
+        ("flight.bin", "flight.bin", "dataflash", "timestamp", "epoch_seconds"),
+        ("my+flight%28raw%29.mcap", "my flight(raw).mcap", "mcap", "timestamp", "epoch_seconds"),
+        ("flight.bin.bin", "flight.bin.bin", "dataflash", None, None),
+        ("flight.v2.MCAP", "flight.v2.MCAP", "mcap", None, None),
+        ("flight.BIN", "flight.BIN", "dataflash", None, None),
+    ],
+)
+def test_native_migration_preserves_format_tags_and_filename(
+    destination_dataset, source_name, expected_name, expected_arm, timestamp_channel, timestamp_type
+) -> None:
+    """Native files stream through the correct SDK method with tags and filenames, regardless of timestamp metadata."""
+    source_file = _make_source_file(
+        f"source-prefix/2026-01-01T00:00:00Z_{source_name}", timestamp_channel, timestamp_type
+    )
+    source_file.file_tags = {"vehicle": "drone-1"}
+    response = _make_http_response()
+    method = {
+        "mcap": destination_dataset.add_mcap_from_io,
+        "dataflash": destination_dataset.add_ardupilot_dataflash_from_io,
+    }[expected_arm]
+
+    with patch("nominal.experimental.migration.utils.file_utils.requests.get", return_value=response) as get:
+        result = copy_file_to_dataset(source_file, destination_dataset)
+
+    get.assert_called_once_with(SOURCE_URI, stream=True)
+    method.assert_called_once_with(response.raw, file_name=expected_name, tags={"vehicle": "drone-1"})
+    assert result is method.return_value
+    result.poll_until_ingestion_completed.assert_called_once_with()
+    assert response.raw.closed
+
+
+@pytest.mark.parametrize("filename", ["flight.mcap", "flight.bin"])
+def test_native_upload_failure_closes_source_response(destination_dataset: MagicMock, filename: str) -> None:
+    """A failed native upload closes its source HTTP response and propagates the failure."""
+    source_file = _make_source_file(filename, None, None)
+    response = _make_http_response()
+    destination_dataset.add_mcap_from_io.side_effect = RuntimeError("upload failed")
+    destination_dataset.add_ardupilot_dataflash_from_io.side_effect = RuntimeError("upload failed")
+
+    with patch("nominal.experimental.migration.utils.file_utils.requests.get", return_value=response):
+        with pytest.raises(RuntimeError, match="upload failed"):
+            copy_file_to_dataset(source_file, destination_dataset)
+
+    assert response.raw.closed
+
+
+@pytest.mark.parametrize(
     ("source_name", "file_type", "expected_name"),
     [
         ("system.jsonl", FileTypes.JOURNAL_JSONL, "system.jsonl"),

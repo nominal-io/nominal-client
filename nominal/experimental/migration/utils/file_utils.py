@@ -46,6 +46,18 @@ def copy_file_to_dataset(
                         file_type=file_type,
                         file_name=file_name,
                     )
+                case FileTypes.MCAP:
+                    new_file = destination_dataset.add_mcap_from_io(
+                        cast(BinaryIO, response.raw),
+                        file_name=file_name,
+                        tags=source_file.file_tags,
+                    )
+                case FileTypes.DATAFLASH:
+                    new_file = destination_dataset.add_ardupilot_dataflash_from_io(
+                        cast(BinaryIO, response.raw),
+                        file_name=file_name,
+                        tags=source_file.file_tags,
+                    )
                 case _ if source_file.timestamp_channel is not None and source_file.timestamp_type is not None:
                     new_file = destination_dataset.add_from_io(
                         dataset=cast(BinaryIO, response.raw),
