@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.179.0](https://github.com/nominal-io/nominal-client/compare/v1.178.0...v1.179.0) (2026-10-20)
+
+
+### Features
+
+* expose consistent workbook and template state controls ([#1033](https://github.com/nominal-io/nominal-client/issues/1033)) ([e2fcd72](https://github.com/nominal-io/nominal-client/commit/e2fcd7272ff6338b08ea88edf8b4968ee0480e69))
+* expose workspace preferences for retrieval ([#801](https://github.com/nominal-io/nominal-client/issues/801)) ([7fc80f9](https://github.com/nominal-io/nominal-client/commit/7fc80f9ab8a70151c3e08a64b1bc7c4a14645aca))
+* support typed properties on assets, runs, datasets, and events ([1b383ea](https://github.com/nominal-io/nominal-client/commit/1b383ea8d479f78526c4bb0d978fd930ff8b6887))
+* unify attachment and template archive updates ([#1203](https://github.com/nominal-io/nominal-client/issues/1203)) ([bf55733](https://github.com/nominal-io/nominal-client/commit/bf55733b7fd1d11794971dde03cbdcb2a3ba9f63))
+
+
+### Bug Fixes
+
+* default upload extensions only when missing ([#1189](https://github.com/nominal-io/nominal-client/issues/1189)) ([a916bc4](https://github.com/nominal-io/nominal-client/commit/a916bc4c42c970505c8c88f7b4b33439af256e72))
+* **migration:** preserve filenames and stream journal uploads ([#1206](https://github.com/nominal-io/nominal-client/issues/1206)) ([fee094b](https://github.com/nominal-io/nominal-client/commit/fee094b0fb8f7f9effd050a7c8e6dc8bba3d536b))
+
+
+### Documentation
+
+* add concise descriptions for public SDK classes ([#1201](https://github.com/nominal-io/nominal-client/issues/1201)) ([26d9206](https://github.com/nominal-io/nominal-client/commit/26d92066c884fdb50f395297f539a6e4a25a0892))
+
 ## [1.178.0](https://github.com/nominal-io/nominal-client/compare/v1.177.0...v1.178.0) (2026-10-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.144.1](https://github.com/nominal-io/nominal-client/compare/nominal-tdms-v1.144.0...nominal-tdms-v1.144.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* default upload extensions only when missing ([#1189](https://github.com/nominal-io/nominal-client/issues/1189)) ([a916bc4](https://github.com/nominal-io/nominal-client/commit/a916bc4c42c970505c8c88f7b4b33439af256e72))
+
 ## [1.144.0](https://github.com/nominal-io/nominal-client/compare/nominal-tdms-v1.143.0...nominal-tdms-v1.144.0) (2026-10-13)
 
 
