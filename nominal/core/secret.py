@@ -13,6 +13,11 @@ from nominal.ts import IntegralNanosecondsUTC
 
 @dataclass(frozen=True)
 class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
+    """Metadata and lifecycle operations for a stored secret.
+
+    Secret values are supplied at creation and are not returned by this object.
+    """
+
     rid: str
     name: str
     description: str

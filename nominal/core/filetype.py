@@ -161,6 +161,8 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
+    """Named file-type presets for SDK uploads."""
+
     AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
     AVRO_STREAM_GZ: FileType = FileType(".avro.gz", "application/avro")

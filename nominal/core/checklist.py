@@ -24,6 +24,11 @@ from nominal.ts import _to_api_duration
 
 @dataclass(frozen=True)
 class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedChecklist]):
+    """A set of checks that can evaluate a run or monitor streaming asset data.
+
+    Retrieve a checklist with `NominalClient.get_checklist`.
+    """
+
     rid: str
     name: str
     description: str

@@ -179,6 +179,12 @@ LogItem: TypeAlias = BatchItem[str]
 
 @dataclass(frozen=True)
 class WriteStream(WriteStreamBase[StreamType]):
+    """A buffered asynchronous writer for time-series or log data.
+
+    Obtain a stream with `Dataset.get_write_stream` or `Dataset.get_log_stream`.
+    Use it as a context manager to flush pending data when it closes.
+    """
+
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem[StreamType]]], None]

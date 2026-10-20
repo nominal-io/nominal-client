@@ -40,6 +40,11 @@ def filename_from_uri(uri: str) -> str:
 
 @dataclass(frozen=True)
 class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
+    """An uploaded dataset file and its ingestion status and time bounds.
+
+    Returned by dataset upload methods. Use `poll_until_ingestion_completed` to wait for ingestion.
+    """
+
     id: str
     dataset_rid: str
     name: str
@@ -360,6 +365,8 @@ class IngestStatus(Enum):
 
 
 class IngestWaitType(Enum):
+    """The completion condition for `wait_for_files_to_ingest`."""
+
     FIRST_COMPLETED = "FIRST_COMPLETED"
     FIRST_EXCEPTION = "FIRST_EXCEPTION"
     ALL_COMPLETED = "ALL_COMPLETED"

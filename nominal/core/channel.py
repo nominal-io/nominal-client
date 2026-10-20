@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelDataType(enum.Enum):
+    """The type of values stored in a channel."""
+
     DOUBLE = "DOUBLE"
     STRING = "STRING"
     LOG = "LOG"
@@ -97,6 +99,11 @@ class ChannelDataType(enum.Enum):
 
 @dataclass(frozen=True)
 class CreateChannelRequest:
+    """Channel metadata to create or update through a dataset's batch methods.
+
+    Pass requests to `Dataset.batch_add_channels` or `Dataset.batch_update_or_create_channels`.
+    """
+
     name: str
     data_type: ChannelDataType
     description: str | None = None
@@ -124,6 +131,11 @@ class CreateChannelRequest:
 
 @dataclass(frozen=True)
 class BatchAddChannelsResult:
+    """Results of a batch channel create or update, including unresolved requests.
+
+    Requests in ``missing`` were not found by the channel lookup after the write.
+    """
+
     channels: Sequence[Channel]
     missing: Sequence[CreateChannelRequest]
 

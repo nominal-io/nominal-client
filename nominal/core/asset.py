@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
+    """A test subject that groups datasets, runs, events, and attachments.
+
+    Obtain an asset with `NominalClient.get_asset` or `NominalClient.get_or_create_asset_by_properties`.
+    """
+
     rid: str
     name: str
     description: str | None

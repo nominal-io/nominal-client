@@ -9,6 +9,11 @@ from nominal.protos.authentication.users.v1 import users_pb2
 
 @dataclass(frozen=True)
 class User(HasRid):
+    """A Nominal user's identity and contact details.
+
+    Retrieve users with `NominalClient.get_user` or `NominalClient.search_users`.
+    """
+
     rid: str
     display_name: str
     email: str

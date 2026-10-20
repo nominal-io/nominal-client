@@ -9,6 +9,11 @@ from nominal.protos.workspaces.v1 import workspaces_pb2
 
 @dataclass(frozen=True)
 class Workspace(HasRid):
+    """A workspace used to scope resource creation and searches.
+
+    Retrieve workspaces with `NominalClient.get_workspace` or `NominalClient.list_workspaces`.
+    """
+
     rid: str
     id: str
     org: str

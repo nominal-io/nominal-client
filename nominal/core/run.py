@@ -41,6 +41,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngestMixin):
+    """A view of asset and dataset data within a time interval.
+
+    Create runs with `Asset.create_run` or `NominalClient.create_run`.
+    """
+
     rid: str
     name: str
     description: str
