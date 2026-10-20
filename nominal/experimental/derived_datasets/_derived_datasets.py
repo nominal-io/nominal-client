@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
-from types import MappingProxyType
 from typing import Any, Callable, Self, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.properties import properties_from_conjure
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
 from nominal.core.marking import Marking, _marking_rids
@@ -327,7 +327,7 @@ class DerivedDataset:
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             is_archived=dataset.is_archived,
             _clients=clients,
@@ -522,13 +522,17 @@ def create_derived_dataset(
             populated later with `DerivedDataset.add_input_dataset`.
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
-        properties: Key-value properties to apply to the created dataset.
+        properties: String or numeric properties for the created derived dataset.
+            Integers are stored as floats.
         markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
             the creation request rather than applied in a follow-up call.
         message: Commit message for the initial definition.
 
     Returns:
         Reference to the created derived dataset in Nominal.
+
+    Raises:
+        TypeError: If a property value is a boolean or is not a string, integer, or float.
     """
     return _create_derived_dataset(
         client._clients,

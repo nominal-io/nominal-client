@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Protocol, Self, Sequence
+from typing import Mapping, Protocol, Self, Sequence
 
 from nominal_api import (
     scout_checklistexecution_api,
@@ -12,7 +12,6 @@ from nominal_api import (
 
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
@@ -29,7 +28,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: Mapping[str, str]
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)

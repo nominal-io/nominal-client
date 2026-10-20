@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Protocol, Self, Sequence, TypeAlias, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
@@ -31,6 +30,10 @@ from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.properties import (
+    properties_from_conjure,
+    typed_properties_to_conjure,
+)
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
@@ -124,6 +127,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
+        Args:
+            name: Replacement name.
+            description: Replacement description.
+            properties: String or numeric properties. Integers are stored as floats.
+                None leaves properties unchanged; an empty mapping clears them.
+            labels: Replacement labels.
+
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
@@ -134,12 +144,15 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
             ```
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
             labels=None if labels is None else list(labels),
             name=name,
-            properties=None if properties is None else dict(properties),
+            typed_properties=typed_properties_to_conjure(properties),
         )
         updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
         return self._refresh_from_api(updated_dataset)
@@ -1220,7 +1233,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
@@ -1833,8 +1846,8 @@ def _create_dataset_request(
         name=name,
         description=description,
         labels=list(labels),
-        properties={} if properties is None else dict(properties),
-        typed_properties={},
+        properties={},
+        typed_properties=typed_properties_to_conjure(properties) or {},
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
