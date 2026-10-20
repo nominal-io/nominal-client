@@ -54,11 +54,23 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         description: str | None = None,
         properties: NominalProperties | None = None,
         labels: Sequence[str] | None = None,
+        is_archived: bool | None = None,
     ) -> Self:
         """Replace attachment metadata.
         Updates the current instance, and returns it.
 
-        Only the metadata passed in will be replaced, the rest will remain untouched.
+        None leaves a field unchanged. Updates refresh this instance from the response;
+        when no fields are supplied, fetch the latest attachment instead.
+
+        Args:
+            name: Replacement name.
+            description: Replacement description. An empty string clears it.
+            properties: Replacement properties. An empty mapping clears them.
+            labels: Replacement labels. An empty sequence clears them.
+            is_archived: True archives the attachment; False restores it.
+
+        Returns:
+            This instance with refreshed metadata.
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -87,6 +99,9 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         if labels is not None:
             attachment.labels.extend(labels)
             update_mask.paths.append("labels")
+        if is_archived is not None:
+            attachment.is_archived = is_archived
+            update_mask.paths.append("is_archived")
         if not update_mask.paths:
             # gRPC rejects an empty update mask; refresh to keep returning the latest server state.
             return self.refresh()
@@ -131,32 +146,22 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         """Archive this attachment.
         Archived attachments are not deleted, but are hidden from the UI.
 
-        Note:
-            This does not update the instance in place; call `refresh()` to see the change reflected.
+        Refreshes this instance from the update response without an additional fetch.
 
         Raises:
             NominalError: If the archive request fails.
         """
-        self._set_archived(True)
+        self.update(is_archived=True)
 
     def unarchive(self) -> None:
         """Unarchive this attachment, allowing it to be viewed in the UI.
 
-        Note:
-            This does not update the instance in place; call `refresh()` to see the change reflected.
+        Refreshes this instance from the update response without an additional fetch.
 
         Raises:
             NominalError: If the unarchive request fails.
         """
-        self._set_archived(False)
-
-    def _set_archived(self, is_archived: bool) -> None:
-        request = attachments_pb2.UpdateAttachmentRequest(
-            attachment=attachments_pb2.Attachment(rid=self.rid, is_archived=is_archived),
-            update_mask=field_mask_pb2.FieldMask(paths=["is_archived"]),
-        )
-        with translate_grpc_errors():
-            self._clients.attachment.UpdateAttachment(request)
+        self.update(is_archived=False)
 
     @classmethod
     def _from_proto(cls, clients: _Clients, attachment: attachments_pb2.Attachment) -> Self:

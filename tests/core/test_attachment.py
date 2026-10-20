@@ -79,6 +79,16 @@ def object_storage_url() -> Iterator[str]:
             ["properties", "labels"],
             attachments_pb2.Attachment(rid=_RID, properties={"team": "eng"}),
         ),
+        (
+            {"name": "renamed", "is_archived": True},
+            ["title", "is_archived"],
+            attachments_pb2.Attachment(rid=_RID, title="renamed", is_archived=True),
+        ),
+        (
+            {"labels": [], "is_archived": False},
+            ["labels", "is_archived"],
+            attachments_pb2.Attachment(rid=_RID),
+        ),
     ],
 )
 def test_update_masks_passed_fields_and_clears_explicit_empties(
@@ -87,8 +97,9 @@ def test_update_masks_passed_fields_and_clears_explicit_empties(
     """Only passed fields are sent, each under its mask path; an explicitly empty collection is masked to clear it."""
     clients = MagicMock()
     attachment = _attachment(clients)
+    clients.attachment.GetAttachment.side_effect = AssertionError("Use the update response without another fetch")
     clients.attachment.UpdateAttachment.return_value = attachments_pb2.UpdateAttachmentResponse(
-        attachment=_proto_attachment(title="renamed")
+        attachment=_proto_attachment(title="renamed", is_archived=sent.is_archived)
     )
 
     returned = attachment.update(**changes)
@@ -99,6 +110,7 @@ def test_update_masks_passed_fields_and_clears_explicit_empties(
     assert returned is attachment
     assert attachment.name == "renamed"
     assert attachment.labels == ()
+    assert attachment.is_archived is sent.is_archived
 
 
 def test_update_without_fields_refreshes_instead_of_sending_an_empty_mask() -> None:
@@ -120,15 +132,22 @@ def test_update_without_fields_refreshes_instead_of_sending_an_empty_mask() -> N
 def test_archive_state_is_updated_through_its_mask_path(
     set_state: Callable[[Attachment], None], is_archived: bool
 ) -> None:
-    """archive()/unarchive() update only the is_archived path of the attachment."""
+    """Archive controls patch only archive state and refresh all metadata from the response."""
     clients = MagicMock()
     attachment = _attachment(clients)
+    clients.attachment.GetAttachment.side_effect = AssertionError("Use the update response without another fetch")
+    clients.attachment.UpdateAttachment.return_value = attachments_pb2.UpdateAttachmentResponse(
+        attachment=_proto_attachment(title="latest", is_archived=is_archived)
+    )
 
-    set_state(attachment)
+    assert set_state(attachment) is None
 
     request = clients.attachment.UpdateAttachment.call_args.args[0]
     assert list(request.update_mask.paths) == ["is_archived"]
     assert request.attachment == attachments_pb2.Attachment(rid=_RID, is_archived=is_archived)
+    assert attachment.is_archived is is_archived
+    assert attachment.name == "latest"
+    assert attachment.labels == ()
 
 
 def test_from_proto_keeps_nanosecond_created_at_and_detaches_properties() -> None:
