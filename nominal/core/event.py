@@ -264,6 +264,7 @@ def _search_events(
     data_review_rid: str | None = None,
     assignee_rid: str | None = None,
     event_type: EventType | None = None,
+    priority: Priority | None = None,
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
@@ -281,6 +282,7 @@ def _search_events(
         data_review_rid=data_review_rid,
         assignee_rid=assignee_rid,
         event_type=event_type,
+        priority=priority,
         origin_types=origin_types,
         workspace_rid=workspace_rid,
     )

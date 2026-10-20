@@ -8,6 +8,7 @@ from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 from typing_extensions import deprecated
 
 from nominal.core import data_review, streaming_checklist
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -637,6 +638,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         data_review_rid: str | None = None,
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
+        priority: Priority | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
@@ -654,6 +656,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             data_review_rid: Search for events from this data review.
             assignee_rid: Search for events assigned to this user.
             event_type: Search for events of this verbosity level.
+            priority: Filter events by disposition priority. None leaves priority unrestricted.
             origin_types: Search for events created by these origin types.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -673,6 +676,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             data_review_rid=data_review_rid,
             assignee_rid=assignee_rid,
             event_type=event_type,
+            priority=priority,
             origin_types=origin_types,
             archive_status=archive_status,
         )
