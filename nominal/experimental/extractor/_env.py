@@ -39,7 +39,7 @@ def _json_env(env: Mapping[str, str], var: str) -> Any:
     try:
         return json.loads(raw)
     except json.JSONDecodeError as ex:
-        raise ExtractorError(f"{var} is not valid JSON: {ex}") from None
+        raise ExtractorError(f"{var} is not valid JSON: {raw!r}") from ex
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ def _parse_input_specs(env: Mapping[str, str]) -> list[_InputSpec] | None:
             for entry in entries
         ]
     except (KeyError, TypeError, AttributeError) as ex:
-        raise ExtractorError(f"{_INPUTS_ENV} is not valid extractor contract metadata") from ex
+        raise ExtractorError(f"{_INPUTS_ENV} is not valid extractor contract metadata: {entries!r}") from ex
 
 
 def _parse_param_specs(env: Mapping[str, str]) -> list[_ParamSpec] | None:
@@ -103,7 +103,7 @@ def _parse_param_specs(env: Mapping[str, str]) -> list[_ParamSpec] | None:
             for entry in entries
         ]
     except (KeyError, TypeError, AttributeError) as ex:
-        raise ExtractorError(f"{_PARAMETERS_ENV} is not valid extractor contract metadata") from ex
+        raise ExtractorError(f"{_PARAMETERS_ENV} is not valid extractor contract metadata: {entries!r}") from ex
 
 
 def _find_spec(specs: list[_SpecT] | None, name: str, *, envvar_only: bool = False) -> _SpecT | None:

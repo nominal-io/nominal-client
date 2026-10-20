@@ -214,11 +214,11 @@ class ExtractorContext:
         if tags is None:
             return {}
         if not isinstance(tags, dict):
-            raise ExtractorError(f"{_ADDITIONAL_TAGS_ENV} is not a JSON object")
+            raise ExtractorError(f"{_ADDITIONAL_TAGS_ENV} is not a JSON object: {tags!r}")
         result: dict[str, str] = {}
         for key, value in tags.items():
             if not isinstance(key, str) or not isinstance(value, str):
-                raise ExtractorError(f"{_ADDITIONAL_TAGS_ENV} must map string tag names to string values")
+                raise ExtractorError(f"{_ADDITIONAL_TAGS_ENV} must map string tag names to string values: {tags!r}")
             result[key] = value
         return result
 
@@ -236,8 +236,8 @@ class ExtractorContext:
             return None
         try:
             decoded = ConjureDecoder().decode(document, scout_catalog.TimestampMetadata)
-        except Exception:
-            raise ExtractorError(f"{_JOB_TIMESTAMP_METADATA_ENV} is not valid timestamp metadata") from None
+        except Exception as ex:
+            raise ExtractorError(f"{_JOB_TIMESTAMP_METADATA_ENV} is not valid timestamp metadata: {document!r}") from ex
         return TimestampMetadata(
             series_name=decoded.series_name,
             timestamp_type=ts._catalog_timestamp_type_to_typed_timestamp_type(decoded.timestamp_type),
