@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.180.0](https://github.com/nominal-io/nominal-client/compare/v1.179.0...v1.180.0) (2026-10-20)
+
+
+### Features
+
+* add run asset/prefix and event priority search filters ([#1209](https://github.com/nominal-io/nominal-client/issues/1209)) ([c983ee9](https://github.com/nominal-io/nominal-client/commit/c983ee9241b4227fb7d59ff0569e519137c1d82c))
+* author reusable source checks and deploy checklist revisions ([#1138](https://github.com/nominal-io/nominal-client/issues/1138)) ([0e349b1](https://github.com/nominal-io/nominal-client/commit/0e349b1d442eaea3b94cda26bf63169cc48a8077))
+* expose streaming checklist settings and status ([#1199](https://github.com/nominal-io/nominal-client/issues/1199)) ([3a9fe9c](https://github.com/nominal-io/nominal-client/commit/3a9fe9ca26718f75c7ab9402ecc256dcb3cba6a8))
+
+
+### Bug Fixes
+
+* derive extractor registration fallback messages ([#1001](https://github.com/nominal-io/nominal-client/issues/1001)) ([2934b32](https://github.com/nominal-io/nominal-client/commit/2934b32191cd6aa95d4774fa575620e71ef61da3))
+
 ## [1.179.0](https://github.com/nominal-io/nominal-client/compare/v1.178.0...v1.179.0) (2026-10-20)
 
 
