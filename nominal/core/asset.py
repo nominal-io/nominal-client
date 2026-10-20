@@ -20,13 +20,12 @@ from nominal.core._utils.api_tools import (
     create_proto_links,
     label_update,
     rid_from_instance_or_string,
-    typed_property_update,
 )
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
-from nominal.core._utils.properties import properties_from_proto
+from nominal.core._utils.properties import properties_from_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset

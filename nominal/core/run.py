@@ -16,12 +16,11 @@ from nominal.core._utils.api_tools import (
     RefreshableGrpcMixin,
     create_proto_links,
     rid_from_instance_or_string,
-    typed_property_update,
 )
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto
+from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.comment import Comment

@@ -19,12 +19,12 @@ from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,
     label_update,
-    property_update,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
+from nominal.core._utils.properties import property_update
 from nominal.core.container_image import (
     REGISTERABLE_OUTPUT_FORMATS,
     ContainerImage,

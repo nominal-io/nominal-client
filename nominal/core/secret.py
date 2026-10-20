@@ -4,8 +4,9 @@ from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update, property_update
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.properties import property_update
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 

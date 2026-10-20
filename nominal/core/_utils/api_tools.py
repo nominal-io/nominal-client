@@ -24,8 +24,6 @@ from typing import (
 from nominal_api import scout_compute_api
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.properties import typed_properties_to_proto
 from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
@@ -101,18 +99,6 @@ def rid_from_instance_or_string(value: HasRid | str) -> str:
 def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper | None:
     """Wrap labels for a proto update request: None omits the field, any collection replaces it."""
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
-
-
-def typed_property_update(properties: NominalProperties | None) -> types_pb2.TypedPropertyUpdateWrapper | None:
-    """Wrap typed properties for a proto update request: None omits the field, any mapping replaces it."""
-    if properties is None:
-        return None
-    return types_pb2.TypedPropertyUpdateWrapper(typed_properties=typed_properties_to_proto(properties))
-
-
-def property_update(properties: Mapping[str, str] | None) -> types_pb2.PropertyUpdateWrapper | None:
-    """Wrap properties for a proto update request: None omits the field, any mapping replaces it."""
-    return None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
 
 
 def construct_user_agent_string() -> str:
