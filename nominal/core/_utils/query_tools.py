@@ -435,15 +435,12 @@ def create_search_runs_query(  # noqa: PLR0912
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
     asset_rid: str | None = None,
-    run_number: int | None = None,
     run_prefix: str | None = None,
     workspace_rid: str | None = None,
 ) -> run_service_pb2.SearchQuery:
     queries = []
     if asset_rid is not None:
         queries.append(run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=[asset_rid])))
-    if run_number is not None:
-        queries.append(run_service_pb2.SearchQuery(run_number=run_number))
     if run_prefix is not None:
         queries.append(run_service_pb2.SearchQuery(run_prefix=run_prefix))
     if start is not None:

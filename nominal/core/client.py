@@ -813,7 +813,6 @@ class NominalClient:
         created_after: str | datetime | IntegralNanosecondsUTC | None,
         created_before: str | datetime | IntegralNanosecondsUTC | None,
         asset_rid: str | None,
-        run_number: int | None,
         run_prefix: str | None,
         workspace_rid: str | None,
         archive_status: ArchiveStatusFilter,
@@ -829,7 +828,6 @@ class NominalClient:
             created_after=created_after,
             created_before=created_before,
             asset_rid=asset_rid,
-            run_number=run_number,
             run_prefix=run_prefix,
             workspace_rid=workspace_rid,
         )
@@ -843,7 +841,6 @@ class NominalClient:
         name_substring: str | None = None,
         *,
         asset: Asset | str | None = None,
-        run_number: int | None = None,
         run_prefix: str | None = None,
         labels: Sequence[str] | None = None,
         properties: NominalProperties | None = None,
@@ -864,7 +861,6 @@ class NominalClient:
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
             asset: Filter runs associated with this asset or asset RID.
-            run_number: Filter by exact run number.
             run_prefix: Filter by the stored run prefix, not a substring of the run name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Property equalities that must ALL match. String values match string properties;
@@ -907,7 +903,6 @@ class NominalClient:
                 created_after=created_after,
                 created_before=created_before,
                 asset_rid=None if asset is None else rid_from_instance_or_string(asset),
-                run_number=run_number,
                 run_prefix=run_prefix,
                 workspace_rid=self._workspace_rid_for_search(workspace),
                 archive_status=archive_status,

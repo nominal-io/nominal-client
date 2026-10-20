@@ -19,8 +19,8 @@ from nominal.ts import _SecondsNanos
 
 
 @pytest.mark.parametrize("use_object", [False, True])
-def test_search_runs_asset_and_identity_filters(use_object: bool) -> None:
-    """Asset objects and RIDs produce the same combined identity and workspace constraints."""
+def test_search_runs_asset_and_prefix_filters(use_object: bool) -> None:
+    """Asset objects and RIDs produce the same combined prefix and workspace constraints."""
     clients = MagicMock()
     clients.resolve_workspace.return_value.rid = "workspace"
     clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse()
@@ -36,14 +36,11 @@ def test_search_runs_asset_and_identity_filters(use_object: bool) -> None:
         _clients=clients,
     )
 
-    client.search_runs(
-        asset=asset if use_object else asset.rid, run_number=0, run_prefix="FLIGHT", workspace="workspace"
-    )
+    client.search_runs(asset=asset if use_object else asset.rid, run_prefix="FLIGHT", workspace="workspace")
 
     request = clients.run.SearchRuns.call_args.args[0]
     assert request.query.all_of.queries == [
         run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=["asset"])),
-        run_service_pb2.SearchQuery(run_number=0),
         run_service_pb2.SearchQuery(run_prefix="FLIGHT"),
         run_service_pb2.SearchQuery(workspace="workspace"),
     ]
