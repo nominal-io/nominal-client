@@ -174,11 +174,11 @@ class StreamingChecklistStatus:
 
 
 class ChannelResolutionState(str, Enum):
-    """Whether a channel reference can be resolved for an asset."""
+    """Whether a channel reference resolves for an asset; values use lowercase like the streaming state enums."""
 
-    RESOLVED = "RESOLVED"
-    UNRESOLVED = "UNRESOLVED"
-    UNKNOWN = "UNKNOWN"
+    RESOLVED = "resolved"
+    UNRESOLVED = "unresolved"
+    UNKNOWN = "unknown"
     """The channel resolution state is not recognized by this SDK."""
 
 
@@ -204,7 +204,7 @@ class ChecklistChannelResolution:
             channel=channel.channel,
             data_scope=channel.data_source_ref,
             tags=dict(channel.tags),
-            state=ChannelResolutionState(result.resolution_status.value),
+            state=ChannelResolutionState(result.resolution_status.value.lower()),
             asset_rid=channel.asset,
             run_rid=channel.run,
             input_id=channel.input_id,

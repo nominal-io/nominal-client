@@ -165,6 +165,10 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             Status for each returned asset, including the executing commit when running.
             Use `validate_resolution` to investigate unresolved channels or unsupported streaming features.
 
+        Raises:
+            ValueError: The service returns a lifecycle or check-status variant unknown to the
+                installed generated bindings. Upgrade the SDK to read newer status variants.
+
         Note:
             Large reads use multiple requests and are not an atomic snapshot. If any request fails,
             the method raises without returning partial results.

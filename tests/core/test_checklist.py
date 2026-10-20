@@ -212,9 +212,9 @@ def test_resolution_preserves_missing_channels_and_unsupported_features(checklis
         "temperature",
         "daq",
         {"sensor": "1"},
-        "UNRESOLVED",
+        "unresolved",
     )
-    assert check.channels[1].state.value == "UNKNOWN"
+    assert check.channels[1].state.value == "unknown"
     request = checklist._clients.checklist_execution.validate_checklist_resolution.call_args.args[1]
     assert [(r.asset_rid, r.checklist_rid, r.commit_id) for r in request.requests] == [
         ("asset", "checklist", "revision"),
