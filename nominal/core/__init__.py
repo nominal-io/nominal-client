@@ -1,4 +1,5 @@
 from nominal.core._checklist_types import Priority
+from nominal.core._datasource_types import DataSourceType
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
@@ -84,6 +85,7 @@ __all__ = [
     "DataReview",
     "DataReviewBuilder",
     "Dataset",
+    "DataSourceType",
     "DatasetFile",
     "DataStream",
     "Event",
