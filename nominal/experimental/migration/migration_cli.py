@@ -657,7 +657,10 @@ def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[
     "--add-label",
     "added_labels",
     multiple=True,
-    help="Label to add to every resource the migration creates (written into the generated config). Repeatable.",
+    help=(
+        "Label to add to every resource the migration creates, written to add_labels in the generated config. "
+        "Pass once for each label to be added."
+    ),
 )
 def prep(client: NominalClient, migration_name: str, output_path: Path, added_labels: tuple[str, ...]) -> None:
     """Count resources on a tenant to determine migration scope and generate a starter config."""

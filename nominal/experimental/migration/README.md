@@ -44,7 +44,8 @@ nom migrate prep \
   --output my_migration.yml
 ```
 
-Pass `--add-label <label>` (repeatable) to write `add_labels` into the generated config.
+Pass `--add-label` once for each label to be added, for example `--add-label migrated --add-label batch-1`.
+The labels are written to `add_labels` in the generated config.
 
 **`nom migrate copy`** — copy resources from a source tenant to a destination tenant:
 
