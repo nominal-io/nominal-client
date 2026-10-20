@@ -1,6 +1,7 @@
 """Credential ownership and failure handling for the opt-in E2E fixture helper."""
 
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,12 +9,12 @@ from nominal_api import authorization
 
 from nominal.core import NominalClient
 from tests.e2e import credentials
+from tests.e2e.test_workspace_resolution import _client_with_workspace_override
 
 
 @pytest.fixture
-def credential_setup(monkeypatch):
+def credential_setup():
     """Provide a real parent client and stub only credential service I/O and fixture registration."""
-    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     parent = NominalClient.create("https://api.example.com/api", "parent-key", workspace_rid="workspace")
     service = MagicMock(spec=authorization.AuthorizationService)
     service.create_api_key.return_value = authorization.CreateApiKeyResponse(
@@ -22,7 +23,7 @@ def credential_setup(monkeypatch):
         ),
         api_key_value="child-key",
     )
-    monkeypatch.setattr(credentials, "create_conjure_service_client", lambda *args, **kwargs: service)
+    parent = replace(parent, _clients=replace(parent._clients, authorization=service))
     request = MagicMock(spec=pytest.FixtureRequest)
     request.config.getoption.return_value = True
     with ExitStack() as cleanup:
@@ -72,23 +73,24 @@ def test_creation_failure_does_not_fall_back(credential_setup) -> None:
     request.addfinalizer.assert_not_called()
 
 
-def test_revocation_failure_is_visible(credential_setup) -> None:
-    """A failed revocation surfaces as a teardown error instead of silently leaking a key."""
-    parent, service, request, cleanup = credential_setup
-    credentials.with_temporary_api_key(parent, request)
-    service.revoke_api_key.side_effect = RuntimeError("revocation failed")
-    with pytest.raises(RuntimeError, match="revocation failed"):
-        cleanup.close()
+def test_credentials_are_not_printed(credential_setup, capsys) -> None:
+    """Creating and revoking a credential produces no token-bearing console output."""
+    parent, _, request, cleanup = credential_setup
+    child = credentials.with_temporary_api_key(parent, request)
+    cleanup.close()
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+    assert "child-key" not in repr(child)
 
 
-def test_ci_masks_before_client_construction(credential_setup, monkeypatch, capsys) -> None:
-    """The mask command bypasses pytest capture before a child client can use the generated key."""
+def test_workspace_override_keeps_temporary_credential(credential_setup) -> None:
+    """Changing a workspace pin keeps the active key instead of reloading a profile's parent credential."""
     parent, _, request, _ = credential_setup
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    capture = request.config.pluginmanager.getplugin.return_value
-    capture.global_and_fixture_disabled.side_effect = nullcontext
-    monkeypatch.setattr(credentials.ClientsBunch, "from_config", MagicMock(side_effect=RuntimeError("stop here")))
-    with pytest.raises(RuntimeError, match="stop here"):
-        credentials.with_temporary_api_key(parent, request)
-    capture.global_and_fixture_disabled.assert_called_once()
-    assert capsys.readouterr().err == "::add-mask::child-key\n"
+    parent = replace(parent, _profile="original-profile")
+    child = credentials.with_temporary_api_key(parent, request)
+    unpinned = _client_with_workspace_override(child, workspace_rid=None)
+    assert unpinned._clients.workspace_rid is None
+    assert unpinned._clients.auth_header == "Bearer child-key"
+    assert unpinned._clients.api_base_url == child._clients.api_base_url
+    assert unpinned._clients._service_config is child._clients._service_config
+    assert unpinned._clients._default_workspace is not child._clients._default_workspace

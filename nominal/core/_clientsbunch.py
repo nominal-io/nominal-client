@@ -7,6 +7,7 @@ from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
+    authorization,
     ingest_api,
     scout,
     scout_catalog,
@@ -137,6 +138,7 @@ class ClientsBunch:
     )
 
     # Conjure services
+    authorization: authorization.AuthorizationService
     catalog: scout_catalog.CatalogService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
@@ -309,6 +311,7 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
+            authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
