@@ -52,7 +52,7 @@ def test_explicit_converter_wins_without_executing_on_default(tmp_path):
     assert run_parameter(tmp_path, ex.parameter("value", type=str, default=None), "3") == "3"
 
 
-def test_custom_convert_is_separate_from_parameter_type(tmp_path):
+def test_custom_type_converts_supplied_values_only(tmp_path):
     """Custom conversion handles supplied values and errors without converting defaults."""
     calls = []
 
@@ -63,19 +63,13 @@ def test_custom_convert_is_separate_from_parameter_type(tmp_path):
             raise ex.BadParameter("must be odd")
         return value
 
-    declaration = ex.parameter("value", convert=parse_odd, default=3)
+    declaration = ex.parameter("value", type=parse_odd, default=3)
     assert run_parameter(tmp_path, declaration) == 3
     assert calls == []
     assert run_parameter(tmp_path, declaration, "5") == 5
     assert calls == ["5"]
     with pytest.raises(ex.ExtractorError, match="must be odd"):
         run_parameter(tmp_path, declaration, "4")
-
-
-def test_parameter_rejects_type_and_convert_together():
-    """Conflicting converter declarations fail before binding any values."""
-    with pytest.raises(TypeError, match="type.*convert"):
-        ex.parameter("value", type=int, convert=lambda raw: raw)
 
 
 @pytest.mark.parametrize("default", [None, pytest.param("fallback", id="string")])

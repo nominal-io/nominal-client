@@ -147,7 +147,7 @@ def _error_fallbacks(errors: Mapping[type[Exception], _ErrorMapping]) -> list[Ex
             exit_code=mapping.exit_code,
             code=mapping.code,
             message=_text(
-                mapping.code.replace("_", " ").capitalize() if mapping.message is None else mapping.message,
+                mapping.code.replace("_", " ").capitalize()[:512] if mapping.message is None else mapping.message,
                 f"error {mapping.code!r} message",
                 512,
             ),

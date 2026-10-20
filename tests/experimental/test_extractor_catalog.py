@@ -135,3 +135,13 @@ def test_both_exports_reject_invalid_error_fallbacks(options, match):
         convert.registration_kwargs()
     with pytest.raises(ValueError, match=match):
         convert.catalog_manifest(**IDENTITY)
+
+
+def test_generated_fallback_is_bounded_in_both_exports():
+    """Long valid codes get bounded generated messages without changing their identity."""
+    code = "A" * 513
+    extract = make_extractor(code=code, message=None)
+    [mapping] = extract.registration_kwargs()["exit_code_mappings"]
+    assert mapping.code == code
+    assert mapping.message == "A" + "a" * 511
+    assert extract.catalog_manifest(**IDENTITY)["exit_code_mappings"] == [asdict(mapping)]
