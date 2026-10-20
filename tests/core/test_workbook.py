@@ -4,9 +4,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from conjure_python_client import ConjureEncoder
-from nominal_api import scout, scout_layout_api, scout_notebook_api, scout_workbookcommon_api
+from nominal_api import scout, scout_notebook_api
 
 from nominal.core.workbook import Workbook, WorkbookType
+from tests.core._workbook_fixtures import notebook_response
 
 
 def _metadata(
@@ -30,25 +31,7 @@ def _metadata(
 
 
 def _notebook(metadata: scout_notebook_api.NotebookMetadata) -> scout_notebook_api.Notebook:
-    return scout_notebook_api.Notebook(
-        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(
-            workbook=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
-        ),
-        event_refs=[],
-        layout=scout_layout_api.WorkbookLayout(
-            v1=scout_layout_api.WorkbookLayoutV1(
-                root_panel=scout_layout_api.Panel(
-                    tabbed=scout_layout_api.TabbedPanel(v1=scout_layout_api.TabbedPanelV1(id="root", tabs=[]))
-                )
-            )
-        ),
-        metadata=metadata,
-        rid="duplicated-workbook-rid",
-        snapshot_author_rid="creator-rid",
-        snapshot_created_at="2026-10-07T00:00:00Z",
-        snapshot_rid="snapshot-rid",
-        state_as_json="{}",
-    )
+    return notebook_response(metadata, rid="duplicated-workbook-rid")
 
 
 @pytest.fixture
