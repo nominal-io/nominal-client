@@ -4,6 +4,9 @@ Connection setup
 ----------------
 The `client` fixture builds a NominalClient from either a named profile
 (``--profile``) or a raw token+URL pair (``--auth-token`` / ``--base-url``).
+With ``--temporary-api-key``, each session client uses a one-day key revoked during
+teardown. Under xdist this is one key per worker; migration source and destination
+clients have separate keys. Expiry bounds their lifetime if the runner is killed.
 
 Shared data fixtures
 --------------------
@@ -38,10 +41,16 @@ from nominal.core import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request
 from nominal.core.dataset_file import IngestStatus
 from tests.e2e import POLL_INTERVAL
+from tests.e2e.credentials import with_temporary_api_key
 
 
 def pytest_addoption(parser):
     """Register e2e-specific CLI options for choosing the target Nominal environment."""
+    parser.addoption(
+        "--temporary-api-key",
+        action="store_true",
+        help="Create a one-day API key per session client and revoke on teardown",
+    )
     parser.addoption("--base-url", default="https://api.nominal.test")
     parser.addoption("--auth-token", default=None)
     parser.addoption(
@@ -50,7 +59,7 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope="session")
-def client(pytestconfig) -> NominalClient:
+def client(pytestconfig, request: pytest.FixtureRequest) -> NominalClient:
     """Build a NominalClient for the target environment.
 
     Precedence: ``--profile`` > ``--auth-token`` + ``--base-url``.
@@ -59,13 +68,13 @@ def client(pytestconfig) -> NominalClient:
     profile = pytestconfig.getoption("profile")
     if profile is not None:
         print(f"Using NominalClient.from_profile({profile!r})")
-        return NominalClient.from_profile(profile)
+        return with_temporary_api_key(NominalClient.from_profile(profile), request)
     auth_token = pytestconfig.getoption("auth_token")
     if auth_token is None:
         raise pytest.UsageError("Either --profile or --auth-token must be provided")
     base_url = pytestconfig.getoption("base_url")
     print(f"Using NominalClient.create(base_url={base_url!r})")
-    return NominalClient.create(base_url=base_url, token=auth_token)
+    return with_temporary_api_key(NominalClient.create(base_url=base_url, token=auth_token), request)
 
 
 @pytest.fixture

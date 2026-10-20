@@ -47,14 +47,21 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Create staging job credential
-        id: staging-profile
-        uses: ./.github/actions/e2e-profile
-        with:
-          base-url: https://api-staging.gov.nominal.io/api
-          parent-token: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
-          workspace-rid: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
-          profile: staging-e2e
+      - name: Write staging profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_STAGING_API_KEY secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add staging-e2e \
+            --base-url https://api-staging.gov.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
 
       - name: Run e2e tests
         run: |
@@ -62,20 +69,9 @@ jobs:
             --ignore=tests/e2e/migration \
             --ignore=tests/e2e/test_file_upload.py \
             --profile staging-e2e \
+            --temporary-api-key \
             --no-cov \
             -v
-
-      - name: Revoke staging job credential
-        if: always() && steps.staging-profile.outputs.key-rid != ''
-        env:
-          BASE_URL: https://api-staging.gov.nominal.io/api
-          PARENT_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
-          KEY_RID: ${{ steps.staging-profile.outputs.key-rid }}
-        run: |
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
-            --retry 3 --output /dev/null -X PUT \
-            -H "Authorization: Bearer $PARENT_TOKEN" \
-            "$BASE_URL/authorization/v1/api-key/$KEY_RID/delete"
 
   migration-e2e-tests:
     name: Migration E2E Tests
@@ -104,23 +100,37 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Create staging job credential
-        id: staging-profile
-        uses: ./.github/actions/e2e-profile
-        with:
-          base-url: https://api-staging.gov.nominal.io/api
-          parent-token: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
-          workspace-rid: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
-          profile: staging-e2e
+      - name: Write staging profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_STAGING_API_KEY secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add staging-e2e \
+            --base-url https://api-staging.gov.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
 
-      - name: Create production job credential
-        id: production-profile
-        uses: ./.github/actions/e2e-profile
-        with:
-          base-url: https://api.gov.nominal.io/api
-          parent-token: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
-          workspace-rid: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
-          profile: production-e2e
+      - name: Write production profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_PRODUCTION_API_KEY secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add production-e2e \
+            --base-url https://api.gov.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
 
       - name: Run migration e2e tests
         # --fail-on-skip: a skipped migration test is a coverage gap, not a pass — missing
@@ -135,32 +145,9 @@ jobs:
             --source-profile production-e2e \
             --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
             --fail-on-skip \
+            --temporary-api-key \
             --no-cov \
             -v
-
-      - name: Revoke staging job credential
-        if: always() && steps.staging-profile.outputs.key-rid != ''
-        env:
-          BASE_URL: https://api-staging.gov.nominal.io/api
-          PARENT_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
-          KEY_RID: ${{ steps.staging-profile.outputs.key-rid }}
-        run: |
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
-            --retry 3 --output /dev/null -X PUT \
-            -H "Authorization: Bearer $PARENT_TOKEN" \
-            "$BASE_URL/authorization/v1/api-key/$KEY_RID/delete"
-
-      - name: Revoke production job credential
-        if: always() && steps.production-profile.outputs.key-rid != ''
-        env:
-          BASE_URL: https://api.gov.nominal.io/api
-          PARENT_TOKEN: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
-          KEY_RID: ${{ steps.production-profile.outputs.key-rid }}
-        run: |
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
-            --retry 3 --output /dev/null -X PUT \
-            -H "Authorization: Bearer $PARENT_TOKEN" \
-            "$BASE_URL/authorization/v1/api-key/$KEY_RID/delete"
 
   # Runs the special-character filename tests against each object-store backend. These guard the
   # filename-encoding fix (PR #877): S3 tolerates every character on upload, so it can only catch a
@@ -207,30 +194,26 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Create file upload job credential
-        id: file-upload-profile
-        uses: ./.github/actions/e2e-profile
-        with:
-          base-url: ${{ matrix.env.base_url }}
-          parent-token: ${{ secrets[matrix.env.token_secret] }}
-          workspace-rid: ${{ secrets[matrix.env.workspace_secret] }}
-          profile: file-upload-e2e
+      - name: Write ${{ matrix.env.name }} staging profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets[matrix.env.token_secret] }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets[matrix.env.workspace_secret] }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::${{ matrix.env.token_secret }} secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add file-upload-e2e \
+            --base-url ${{ matrix.env.base_url }} \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
 
       - name: Run file upload e2e tests
         run: |
           uv run pytest tests/e2e/test_file_upload.py \
             --profile file-upload-e2e \
+            --temporary-api-key \
             --no-cov \
             -v
-
-      - name: Revoke file upload job credential
-        if: always() && steps.file-upload-profile.outputs.key-rid != ''
-        env:
-          BASE_URL: ${{ matrix.env.base_url }}
-          PARENT_TOKEN: ${{ secrets[matrix.env.token_secret] }}
-          KEY_RID: ${{ steps.file-upload-profile.outputs.key-rid }}
-        run: |
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
-            --retry 3 --output /dev/null -X PUT \
-            -H "Authorization: Bearer $PARENT_TOKEN" \
-            "$BASE_URL/authorization/v1/api-key/$KEY_RID/delete"
