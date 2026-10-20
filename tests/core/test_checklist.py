@@ -1,3 +1,4 @@
+import warnings
 from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -37,10 +38,17 @@ def test_notification_configuration_preserves_options(checklist):
     assert request.auto_create_events is True
 
 
+@pytest.mark.parametrize("keyword", [False, True])
 @pytest.mark.parametrize("integrations", [[], ["one", "two"]])
-def test_existing_rid_calls_keep_their_behavior(checklist, integrations):
-    """Existing positional RID calls retain destinations, empty tags, and timing defaults."""
-    checklist.execute_streaming(["asset"], integrations)
+def test_existing_rid_calls_keep_their_behavior(checklist, integrations, keyword):
+    """Legacy positional and keyword RID calls warn at the caller while preserving destinations and defaults."""
+    with pytest.warns(UserWarning, match="integration_rids.*deprecated.*notifications") as caught:
+        if keyword:
+            checklist.execute_streaming(["asset"], integration_rids=integrations)
+        else:
+            checklist.execute_streaming(["asset"], integrations)
+    assert len(caught) == 1
+    assert caught[0].filename == __file__
     request = checklist._clients.checklist_execution.execute_streaming_checklist.call_args.args[1]
     assert [n.integration_rid for n in request.notification_configurations] == integrations
     assert all(n.tags == [] for n in request.notification_configurations)
@@ -222,3 +230,31 @@ def test_status_reads_batch_at_the_service_limit(checklist):
     assert [request.asset_rid for call in calls for request in call.args[1].requests] == assets
     assert statuses["asset-0"].state is streaming.StreamingChecklistState.INITIALIZING
     assert statuses["asset-10000"].state is streaming.StreamingChecklistState.FAILED
+
+
+def test_mixed_notification_destinations_use_defaults_without_warnings(checklist):
+    """Objects and RIDs use default settings while configured destinations retain their options."""
+    integration = Integration._from_proto(MagicMock(), integrations_pb2.Integration(rid="object"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        checklist.execute_streaming(
+            ["asset"],
+            notifications=[integration, "rid", streaming.StreamingNotificationConfig("configured", tags=["tag"])],
+        )
+    request = checklist._clients.checklist_execution.execute_streaming_checklist.call_args.args[1]
+    assert [n.integration_rid for n in request.notification_configurations] == ["object", "rid", "configured"]
+    assert [n.tags for n in request.notification_configurations] == [[], [], ["tag"]]
+    for notification in request.notification_configurations[:2]:
+        assert notification.appended_workbook_rid is None
+        assert notification.mute_until is None
+        assert notification.notification_filters == []
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"integration_rids": None}, {"notifications": []}])
+def test_omitted_notification_destinations_do_not_warn(checklist, kwargs):
+    """Omitted legacy inputs and empty canonical inputs disable notifications without warnings."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        checklist.execute_streaming(["asset"], **kwargs)
+    request = checklist._clients.checklist_execution.execute_streaming_checklist.call_args.args[1]
+    assert request.notification_configurations == []

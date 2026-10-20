@@ -122,7 +122,13 @@ checklist = client.get_checklist(checklist_rid)
 
 ### Execute the streaming checklist
 
-Configure notifications with optional tags, a workbook link, execution-error suppression, and a mute deadline:
+Pass integrations or their RIDs directly for default notification settings:
+
+```python
+checklist.execute_streaming([asset], notifications=[integration, "another-integration-rid"])
+```
+
+Wrap a destination to configure tags, a workbook link, execution-error suppression, or a mute deadline:
 
 ```python
 from nominal.core import StreamingNotificationConfig
@@ -144,7 +150,9 @@ Set `workbook="workbook-rid"` to include a workbook link in failure and recovery
 Set `mute_until` to a timezone-aware `datetime` to temporarily suppress all notifications for a destination.
 
 To execute without notifications, pass `notifications=[]`. Existing calls using
-`integration_rids=["integration-rid"]` remain supported; supply only one of these arguments.
+`integration_rids=["integration-rid"]` remain supported but emit a deprecation warning.
+Replace that argument with `notifications=["integration-rid"]`. Positional integration lists should
+also move to the keyword-only `notifications=` argument. Supply only one of these arguments.
 
 :::{warning}
 Executing again **replaces all streaming settings for the specified assets**, including notification destinations.

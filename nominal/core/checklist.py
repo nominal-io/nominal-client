@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Mapping, Protocol, Self, Sequence
@@ -16,6 +17,7 @@ from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_u
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview, _get_data_review
+from nominal.core.integration import Integration
 from nominal.core.streaming_checklist import (
     StreamingChecklistConfiguration,
     StreamingChecklistStatus,
@@ -97,7 +99,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         assets: Sequence[Asset | str],
         integration_rids: Sequence[str] | None = None,
         *,
-        notifications: Sequence[StreamingNotificationConfig] | None = None,
+        notifications: Sequence[Integration | str | StreamingNotificationConfig] | None = None,
         evaluation_delay: timedelta | IntegralNanosecondsDuration = timedelta(),
         recovery_delay: timedelta | IntegralNanosecondsDuration = timedelta(seconds=15),
         auto_create_events: bool = False,
@@ -110,8 +112,10 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         Args:
             assets: Assets or their RIDs to run this published checklist against.
             integration_rids: Notification integration RIDs with default settings. Existing positional
-                and keyword calls remain supported. Use ``notifications`` to configure each destination.
-            notifications: Destinations with tags, workbook links, and mute settings. Cannot be combined
+                and keyword calls remain supported but emit a deprecation warning. Pass these RIDs
+                through ``notifications`` instead.
+            notifications: Integrations or their RIDs, optionally wrapped in `StreamingNotificationConfig`
+                for tags, workbook links, and mute settings. Cannot be combined
                 with ``integration_rids``. Omitting both arguments or passing an empty list disables notifications.
             evaluation_delay: Delay evaluation to accommodate late-arriving data, as a timedelta or integer nanoseconds.
             recovery_delay: Minimum time before a failing check can recover, as a timedelta or integer nanoseconds.
@@ -127,14 +131,27 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         """
         if integration_rids is not None and notifications is not None:
             raise ValueError("Supply either integration_rids or notifications, not both")
+        if integration_rids is not None:
+            warnings.warn(
+                "integration_rids is deprecated; pass integrations or their RIDs through notifications instead",
+                UserWarning,
+                stacklevel=2,
+            )
         if notifications is None:
-            notifications = [StreamingNotificationConfig(rid) for rid in (integration_rids or ())]
+            notifications = integration_rids or ()
         self._clients.checklist_execution.execute_streaming_checklist(
             self._clients.auth_header,
             scout_checklistexecution_api.ExecuteChecklistForAssetsRequest(
                 assets=[rid_from_instance_or_string(asset) for asset in assets],
                 checklist=self.rid,
-                notification_configurations=[notification._to_conjure() for notification in notifications],
+                notification_configurations=[
+                    (
+                        notification
+                        if isinstance(notification, StreamingNotificationConfig)
+                        else StreamingNotificationConfig(notification)
+                    )._to_conjure()
+                    for notification in notifications
+                ],
                 evaluation_delay=_to_api_duration(evaluation_delay),
                 recovery_delay=_to_api_duration(recovery_delay),
                 auto_create_events=auto_create_events,
