@@ -1,6 +1,6 @@
 [project]
 name = "nominal-tdms"
-version = "1.144.0"
+version = "1.144.1"
 description = "TDMS integrations for the Nominal Python client"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
