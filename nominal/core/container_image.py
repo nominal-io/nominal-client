@@ -96,6 +96,16 @@ up-front. Update when the backend gains readers for the remaining formats.
 """
 
 
+def _validate_registerable_output_format(output_format: FileOutputFormat) -> None:
+    if output_format not in REGISTERABLE_OUTPUT_FORMATS:
+        supported = ", ".join(sorted(fmt.name for fmt in REGISTERABLE_OUTPUT_FORMATS))
+        raise ValueError(
+            f"Output format {output_format.name} is not currently supported for containerized "
+            f"extraction ingest; an image registered with it could never ingest data successfully. "
+            f"Supported formats: {supported}."
+        )
+
+
 class ContainerImageStatus(Enum):
     """Lifecycle status of a container image: PENDING while being processed, then READY or FAILED."""
 
@@ -353,6 +363,85 @@ class ContainerImage(HasRid, RefreshableMixin[registry_pb2.ContainerImage]):
 
     def _refresh_to_self(self, msg: registry_pb2.ContainerImage) -> Self:
         return type(self)._from_proto(self._clients, self._workspace_rid, msg)
+
+    def duplicate(
+        self,
+        *,
+        tag: str,
+        inputs: Sequence[FileExtractionInput] | None = None,
+        default_timestamp_column: str | None = None,
+        default_timestamp_type: ts._AnyTimestampType | None = None,
+        output_format: FileOutputFormat | None = None,
+        parameters: Sequence[FileExtractionParameter] | None = None,
+        exit_code_mappings: Sequence[ExitCodeMapping] | None = None,
+        resources: ContainerResources | None = None,
+    ) -> Self:
+        """Duplicate this image under a new tag, optionally overriding its execution contract.
+
+        Reuses the stored binary without uploading another tarball. Omitted fields inherit from
+        this instance's local snapshot; call `refresh` first to fetch its latest metadata.
+        The source must be READY. The copy belongs to the same extractor and workspace, has a new
+        RID, and is not activated. This instance is unchanged; use
+        `ContainerizedExtractor.set_active_image` to select the copy for future ingests.
+
+        Args:
+            tag: New, unused tag for the duplicate.
+            inputs: Input contract for the new image. Inherits the source inputs when omitted.
+            default_timestamp_column: Timestamp column for the new image. Must be provided together
+                with `default_timestamp_type`; both inherit from the source when omitted.
+            default_timestamp_type: Timestamp encoding for `default_timestamp_column`.
+            output_format: Output format for the new image. Inherits from the source when omitted.
+            parameters: Parameter contract for the new image. Inherits from the source when omitted;
+                pass an empty sequence to clear the parameters.
+            exit_code_mappings: Fallback errors for failed container exit codes. Inherits from the
+                source when omitted; pass an empty sequence to clear the mappings.
+            resources: Resource overrides replacing the source's overrides as a whole. Inherits
+                when omitted; pass ``ContainerResources()`` to use deployment-wide defaults.
+
+        Returns:
+            The newly registered image. Current backends return it READY; `ContainerizedExtractor.set_active_image`
+            waits for readiness if the backend processes it asynchronously.
+
+        Raises:
+            ValueError: If only one timestamp override is provided, the effective timestamp metadata
+                is absent, or the effective output format cannot be ingested.
+            NominalAlreadyExistsError: If `tag` is already registered against this extractor.
+            NominalInvalidArgumentError: If a resource override is outside its documented bounds.
+        """
+        timestamp_metadata: TimestampMetadata | None
+        if (default_timestamp_column is None) != (default_timestamp_type is None):
+            raise ValueError("default_timestamp_column and default_timestamp_type must be provided together")
+        if default_timestamp_column is not None and default_timestamp_type is not None:
+            timestamp_metadata = TimestampMetadata(
+                series_name=default_timestamp_column,
+                timestamp_type=default_timestamp_type,
+            )
+        else:
+            timestamp_metadata = self.default_timestamp_metadata
+        if timestamp_metadata is None:
+            raise ValueError("The source image has no default timestamp metadata to inherit")
+
+        effective_inputs = self.inputs if inputs is None else inputs
+        effective_parameters = self.parameters if parameters is None else parameters
+        effective_exit_code_mappings = self.exit_code_mappings if exit_code_mappings is None else exit_code_mappings
+        effective_resources = self.resources if resources is None else resources
+        effective_output_format = self.file_output_format if output_format is None else output_format
+        _validate_registerable_output_format(effective_output_format)
+        request = registry_pb2.CreateImageRequest(
+            workspace_rid=self._workspace_rid,
+            tag=tag,
+            extractor_rid=self.extractor_rid,
+            inputs=[i._to_proto() for i in effective_inputs],
+            parameters=[p._to_proto() for p in effective_parameters],
+            exit_code_mappings=[m._to_proto() for m in effective_exit_code_mappings],
+            resources=effective_resources._to_proto(),
+            file_output_format=effective_output_format._to_proto(),
+            default_timestamp_metadata=timestamp_metadata._to_proto(),
+            source_image_rid=self.rid,
+        )
+        with translate_grpc_errors():
+            create_response = self._clients.registry.CreateImage(request)
+        return type(self)._from_proto(self._clients, self._workspace_rid, create_response.image)
 
     def delete(self) -> None:
         """Delete this image.
