@@ -20,7 +20,7 @@ def test_workspace_without_preferences(display_name: str | None) -> None:
 
 
 def test_workspace_preferences_are_detached_from_response() -> None:
-    """Preferences exclude connection/video entries and preserve order independently of the response."""
+    """Preferences preserve all names and their order independently of the response."""
     raw = workspaces_pb2.Workspace(
         settings=workspaces_pb2.WorkspaceSettings(
             ref_names=workspaces_pb2.PreferredRefNameConfiguration(
@@ -41,5 +41,5 @@ def test_workspace_preferences_are_detached_from_response() -> None:
     workspace = Workspace._from_proto(raw)
     raw.ClearField("settings")
 
-    assert workspace.preferred_refnames == ("telemetry", "position", "unset", "future")
+    assert workspace.preferred_refnames == ("telemetry", "live", "camera", "position", "unset", "future")
     assert workspace.preferred_procedure_rids == ("second", "first")

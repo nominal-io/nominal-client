@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Self, Sequence
 
 from nominal.core._utils.api_tools import HasRid
-from nominal.protos.types import types_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 
 
@@ -19,7 +18,7 @@ class Workspace(HasRid):
     """User-facing name, or ``None`` when no display name is configured."""
 
     preferred_refnames: Sequence[str] = ()
-    """Preferred refnames excluding connection and video entries; empty when unconfigured."""
+    """Preferred refnames for the workspace."""
 
     preferred_procedure_rids: Sequence[str] = ()
     """Procedure RIDs offered on the application home page; empty when unconfigured."""
@@ -31,10 +30,6 @@ class Workspace(HasRid):
             id=workspace.id,
             org=workspace.org,
             display_name=workspace.display_name if workspace.HasField("display_name") else None,
-            preferred_refnames=tuple(
-                refname.name
-                for refname in workspace.settings.ref_names.v1
-                if refname.type not in (types_pb2.CONNECTION, types_pb2.VIDEO)
-            ),
+            preferred_refnames=tuple(refname.name for refname in workspace.settings.ref_names.v1),
             preferred_procedure_rids=tuple(workspace.settings.procedures.v1.workspace_procedures),
         )
