@@ -6,7 +6,7 @@ A CLI to copy resources from one Nominal tenant to another.
 
 ## Features supported
 
-1. CSV/Parquet Dataset file cloning
+1. Dataset file cloning: CSV, Parquet, and journal JSON
 2. Asset cloning
 3. Workbook Template cloning
 4. Workbook cloning
@@ -119,6 +119,24 @@ Misc. configs:
    - Resources whose source user has no mapping are created as the destination service user.
    - Checklist executions (data reviews) are re-executed as the mapped creator of the source data review, so `created_by` on the destination reflects the original executor.
    - The checklist assignee is translated through the same user mapping; an unmapped assignee falls back to the user creating the checklist (the impersonated author or the service user).
+
+Dataset file migration re-uploads the stored source files and waits for ingestion at the destination.
+Journal JSON and gzip-compressed journal JSON stream directly, without staging to disk.
+This does not copy streamed data that has no stored source file. MCAP and ArduPilot Dataflash
+dataset file migration remain unsupported.
+
+Dataset and video migration remove the source upload's timestamp prefix and sanitize unsafe filename
+characters, preserving the complete remaining name. Existing extensions, including compound, uppercase,
+and repeated suffixes, are kept exactly: `data.csv.gz` stays `data.csv.gz`, and `logs.jsonl.jsonl` stays
+`logs.jsonl.jsonl`. The client applies a default extension only when the name has none. Attachment
+migration already passes the complete source title to the client and follows the same extension rule.
+Unsafe characters are replaced before parsing the name. For legacy dataset keys, an encoded slash in
+`run%2Fdata.csv` becomes `run_data.csv`, preserving both parts of the name.
+
+For timestamp-based video uploads, supported video extensions (`.avi`, `.m2ts`, `.mkv`, `.mp4`, `.ts`)
+select the matching upload MIME type (for example, `.mkv` uses `video/x-matroska`). Names with no extension
+or an unrecognized extension retain the existing MP4 type default; an existing extension is still preserved exactly. This selects
+upload metadata from the name and does not inspect or convert the video's contents.
 
 ## Resumable Migrations
 
