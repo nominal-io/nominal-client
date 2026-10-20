@@ -20,7 +20,7 @@ def test_workspace_without_preferences(display_name: str | None) -> None:
 
 
 def test_workspace_preferences_are_detached_from_response() -> None:
-    """Preferences preserve all names and their order independently of the response."""
+    """Preferences deduplicate names in first-seen order independently of the response."""
     raw = workspaces_pb2.Workspace(
         settings=workspaces_pb2.WorkspaceSettings(
             ref_names=workspaces_pb2.PreferredRefNameConfiguration(
@@ -29,6 +29,7 @@ def test_workspace_preferences_are_detached_from_response() -> None:
                     types_pb2.RefNameAndType(name="live", type=types_pb2.CONNECTION),
                     types_pb2.RefNameAndType(name="camera", type=types_pb2.VIDEO),
                     types_pb2.RefNameAndType(name="position", type=types_pb2.SPATIAL),
+                    types_pb2.RefNameAndType(name="telemetry", type=types_pb2.SPATIAL),
                     types_pb2.RefNameAndType(name="unset"),
                     types_pb2.RefNameAndType(name="future", type=999),
                 ]
