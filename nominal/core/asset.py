@@ -133,8 +133,6 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         Links can be URLs or tuples of (URL, name).
-        ``types=None`` preserves memberships; an empty sequence removes them all.
-        The server checks the resulting properties against every assigned type.
 
         Args:
             name: Replacement name.
@@ -143,6 +141,9 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
                 None leaves properties unchanged; an empty mapping clears them.
             labels: Replacement labels.
             links: Replacement links.
+            types: Replacement memberships. None preserves memberships; an empty
+                sequence removes them all. The server checks the resulting properties
+                against every assigned type.
 
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before

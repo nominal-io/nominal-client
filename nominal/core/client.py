@@ -1311,7 +1311,6 @@ class NominalClient:
             types: Asset-type objects or RIDs to assign. Properties must satisfy every
                 selected type, including its required nonempty string primary key.
 
-
         Raises:
             TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If no default workspace can be resolved.
