@@ -16,7 +16,6 @@ from nominal.experimental.migration.config.migration_resources import AssetResou
 from nominal.experimental.migration.migration_runner import MigrationRunner, log_skipped_resources
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
-from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.parallel_migration_executor import (
     MigrationTask,
@@ -172,17 +171,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     thread_safe_state.set_persist_hook(debounced_save)
     runner.migration_state = thread_safe_state
 
-    ctx = MigrationContext(
-        destination_client=runner.destination_client,
-        migration_state=runner.migration_state,
-        user_rid_mapping=runner.user_rid_mapping,
-        source_asset_rids=frozenset(runner.migration_resources.source_assets.keys()),
-        dry_run=runner.dry_run,
-        video_ingest_timeout=runner.video_ingest_timeout,
-        added_labels=runner.added_labels,
-    )
-    if getattr(runner, "destination_client_resolver", None) is not None:
-        setattr(ctx, "destination_client_resolver", runner.destination_client_resolver)
+    ctx = runner.build_context()
     asset_migrator = AssetMigrator(ctx)
     template_migrator = WorkbookTemplateMigrator(ctx)
     checklist_migrator = ChecklistMigrator(ctx)

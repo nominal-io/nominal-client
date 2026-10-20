@@ -186,13 +186,15 @@ def _load_standalone_checklists(source_client: NominalClient, checklist_rids: An
     return checklists
 
 
-def _load_labels(labels: Any) -> tuple[str, ...]:
-    if labels is None:
+def _load_added_labels(added_labels: Any) -> tuple[str, ...]:
+    if added_labels is None:
         return ()
 
-    if not isinstance(labels, list) or not all(isinstance(label, str) and label.strip() for label in labels):
+    if not isinstance(added_labels, list) or not all(
+        isinstance(label, str) and label.strip() for label in added_labels
+    ):
         raise click.UsageError("'migration.add_labels' must be a list of non-empty strings.")
-    return tuple(labels)
+    return tuple(added_labels)
 
 
 def load_impersonation_config(raw: Any) -> ImpersonationConfig | None:
@@ -406,6 +408,7 @@ def _load_migration_config(
         include_checklists=_optional_bool(m.get("include_checklists"), "migration.include_checklists", default=True),
         include_workbooks=_optional_bool(m.get("include_workbooks"), "migration.include_workbooks", default=True),
     )
+    added_labels = _load_added_labels(m.get("add_labels"))
 
     asset_resources_by_rid = _load_asset_resources(
         source_client,
@@ -422,7 +425,6 @@ def _load_migration_config(
         m.get("standalone_checklist_rids"),
     )
     impersonation_config = load_impersonation_config(m.get("impersonation"))
-    labels = _load_labels(m.get("add_labels"))
 
     dataset_config = MigrationDatasetConfig(
         preserve_dataset_uuid=preserve_dataset_uuid,
@@ -440,7 +442,7 @@ def _load_migration_config(
         asset_inclusion_config,
         set_to_demo_workbook,
         impersonation_config,
-        labels,
+        added_labels,
     )
 
 
@@ -572,7 +574,7 @@ def copy(
         asset_inclusion_config,
         set_to_demo_workbook,
         impersonation_config,
-        labels,
+        added_labels,
     ) = _load_migration_config(source_client, config_path)
 
     if set_to_demo_workbook:
@@ -617,7 +619,7 @@ def copy(
         video_ingest_timeout=(
             timedelta(seconds=video_ingest_timeout_seconds) if video_ingest_timeout_seconds > 0 else None
         ),
-        added_labels=labels,
+        added_labels=added_labels,
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
@@ -653,12 +655,15 @@ def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[
 )
 @click.option(
     "--add-label",
-    "labels",
+    "added_labels",
     multiple=True,
     help="Label to add to every resource the migration creates (written into the generated config). Repeatable.",
 )
-def prep(client: NominalClient, migration_name: str, output_path: Path, labels: tuple[str, ...]) -> None:
+def prep(client: NominalClient, migration_name: str, output_path: Path, added_labels: tuple[str, ...]) -> None:
     """Count resources on a tenant to determine migration scope and generate a starter config."""
+    if any(not label.strip() for label in added_labels):
+        raise click.BadParameter("labels must be non-empty.", param_hint="'--add-label'")
+
     logger.info("In-scope migration numbers:")
 
     runs = client.search_runs()
@@ -731,7 +736,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, labels: 
             "include_checklists": True,
             "include_workbooks": True,
             "set_to_demo_workbook": False,
-            "add_labels": list(labels),
+            "add_labels": list(added_labels),
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
             "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
             "standalone_checklist_rids": [],

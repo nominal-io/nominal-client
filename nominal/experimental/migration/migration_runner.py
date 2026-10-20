@@ -110,6 +110,19 @@ class MigrationRunner:
         # the signal handler may re-enter save_state on a main thread already mid-save.
         self._save_lock = threading.RLock()
 
+    def build_context(self) -> MigrationContext:
+        """Build the context shared by every migrator in this run, over the runner's current migration state."""
+        return MigrationContext(
+            destination_client=self.destination_client,
+            migration_state=self.migration_state,
+            destination_client_resolver=self.destination_client_resolver,
+            user_rid_mapping=self.user_rid_mapping,
+            source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
+            dry_run=self.dry_run,
+            video_ingest_timeout=self.video_ingest_timeout,
+            added_labels=self.added_labels,
+        )
+
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
         new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
@@ -121,16 +134,7 @@ class MigrationRunner:
         dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
         """
         try:
-            migration_context = MigrationContext(
-                destination_client=self.destination_client,
-                migration_state=self.migration_state,
-                destination_client_resolver=self.destination_client_resolver,
-                user_rid_mapping=self.user_rid_mapping,
-                source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
-                dry_run=self.dry_run,
-                video_ingest_timeout=self.video_ingest_timeout,
-                added_labels=self.added_labels,
-            )
+            migration_context = self.build_context()
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
             checklist_migrator = ChecklistMigrator(migration_context)
