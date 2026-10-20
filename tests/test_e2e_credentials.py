@@ -47,7 +47,9 @@ def test_temporary_client_preserves_configuration_and_revokes(credential_setup) 
     assert child._clients.auth_header == "Bearer child-key"
     assert child._clients.api_base_url == parent._clients.api_base_url
     assert child._clients.workspace_rid == parent._clients.workspace_rid
-    assert child._clients._service_config is parent._clients._service_config
+    assert child._clients._service_config.connect_timeout == parent._clients._service_config.connect_timeout
+    assert child._clients._service_config.security == parent._clients._service_config.security
+    assert child._clients.header_provider is parent._clients.header_provider
     assert service.create_api_key.call_args.args[1].expires_after_days == 1
     service.revoke_api_key.assert_not_called()
     cleanup.close()
@@ -57,7 +59,7 @@ def test_temporary_client_preserves_configuration_and_revokes(credential_setup) 
 def test_failed_client_setup_still_revokes(credential_setup, monkeypatch) -> None:
     """Construction failure after minting cannot bypass the already-registered revocation."""
     parent, service, request, cleanup = credential_setup
-    monkeypatch.setattr(credentials.ClientsBunch, "from_config", MagicMock(side_effect=RuntimeError("setup failed")))
+    monkeypatch.setattr(credentials.NominalClient, "from_token", MagicMock(side_effect=RuntimeError("setup failed")))
     with pytest.raises(RuntimeError, match="setup failed"):
         credentials.with_temporary_api_key(parent, request)
     cleanup.close()

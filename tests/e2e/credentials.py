@@ -9,7 +9,6 @@ import pytest
 from nominal_api import authorization
 
 from nominal.core import NominalClient
-from nominal.core._clientsbunch import ClientsBunch
 
 
 def with_temporary_api_key(client: NominalClient, request: pytest.FixtureRequest) -> NominalClient:
@@ -17,22 +16,20 @@ def with_temporary_api_key(client: NominalClient, request: pytest.FixtureRequest
     if not request.config.getoption("temporary_api_key"):
         return client
 
-    clients = client._clients
-    service = clients.authorization
-    key = service.create_api_key(
-        clients.auth_header,
+    key = client._clients.authorization.create_api_key(
+        client._clients.auth_header,
         authorization.CreateApiKeyRequest(api_key_name=f"e2e-{uuid4().hex}", expires_after_days=1),
     )
-    request.addfinalizer(partial(service.revoke_api_key, clients.auth_header, key.api_key_metadata.rid))
+    request.addfinalizer(
+        partial(client._clients.authorization.revoke_api_key, client._clients.auth_header, key.api_key_metadata.rid)
+    )
 
-    return NominalClient(
-        _clients=ClientsBunch.from_config(
-            clients._service_config,
-            clients.api_base_url,
-            clients._user_agent,
-            key.api_key_value,
-            clients.workspace_rid,
-            header_provider=clients.header_provider,
-        ),
-        _profile=client._profile,
+    security = client._clients._service_config.security
+    return NominalClient.from_token(
+        key.api_key_value,
+        client._clients.api_base_url,
+        workspace_rid=client._clients.workspace_rid,
+        trust_store_path=security.trust_store_path if security is not None else None,
+        connect_timeout=client._clients._service_config.connect_timeout,
+        extra_headers=client._clients.header_provider,
     )
