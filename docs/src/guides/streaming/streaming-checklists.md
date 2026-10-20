@@ -125,8 +125,15 @@ checklist = client.get_checklist(checklist_rid)
 Pass integrations or their RIDs directly for default notification settings:
 
 ```python
-checklist.execute_streaming([asset], notifications=[integration, "another-integration-rid"])
+checklist.execute_streaming(
+    [asset],
+    notifications=[integration, "another-integration-rid"],
+    auto_create_events=True,
+)
 ```
+
+The recommended example enables automatic events so failing checks create events and recovery updates them.
+The API defaults to `auto_create_events=False`; omit the argument or pass `False` to monitor without creating events.
 
 Wrap a destination to configure tags, a workbook link, execution-error suppression, or a mute deadline:
 
