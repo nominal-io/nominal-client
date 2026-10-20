@@ -120,6 +120,23 @@ def test_unarchive_applies_returned_metadata_in_place(template: WorkbookTemplate
     assert template.created_by_rid == "creator-rid"
 
 
+@pytest.mark.parametrize("is_archived", [None, False, True])
+def test_update_preserves_optional_archive_state(
+    template: WorkbookTemplate, mock_clients: MagicMock, is_archived: bool | None
+) -> None:
+    """Metadata and archive state can change together; None preserves state while False explicitly restores it."""
+    result = template.update(title="Requested title", is_archived=is_archived)
+
+    request = mock_clients.template.update_metadata.call_args.args[1]
+    assert request.title == "Requested title"
+    assert request.is_archived is is_archived
+    assert request.labels is None
+    assert request.properties is None
+    assert result is template
+    assert template.title == "Latest template"
+    assert template.labels == ["latest-label"]
+
+
 def test_refname_updates_refresh_returned_metadata(template: WorkbookTemplate) -> None:
     """Renaming refnames also catches the instance up to the metadata returned by the server."""
     template.update_refnames({"source": "replacement"})

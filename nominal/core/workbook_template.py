@@ -110,6 +110,7 @@ class WorkbookTemplate(
         labels: Sequence[str] | None = None,
         properties: NominalProperties | None = None,
         is_published: bool | None = None,
+        is_archived: bool | None = None,
     ) -> Self:
         """Replace template metadata and refresh this instance from the response.
 
@@ -122,6 +123,7 @@ class WorkbookTemplate(
             labels: Replacement labels. An empty sequence clears them.
             properties: Replacement properties. An empty mapping clears them.
             is_published: True publishes the template; False unpublishes it.
+            is_archived: True archives the template; False restores it.
 
         Returns:
             This instance with refreshed metadata, without an additional fetch.
@@ -134,6 +136,7 @@ class WorkbookTemplate(
                 labels=None if labels is None else [*labels],
                 properties=None if properties is None else {**properties},
                 is_published=is_published,
+                is_archived=is_archived,
             ),
             self.rid,
         )
@@ -331,20 +334,14 @@ class WorkbookTemplate(
         """Unarchive this workbook template, making it visible in the UI again.
         Refreshes this instance from the returned metadata.
         """
-        metadata = self._clients.template.update_metadata(
-            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=False), self.rid
-        )
-        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
+        self.update(is_archived=False)
 
     def archive(self) -> None:
         """Archive this workbook template.
         Archived workbook templates are not deleted, but are hidden from the UI.
         Refreshes this instance from the returned metadata.
         """
-        metadata = self._clients.template.update_metadata(
-            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=True), self.rid
-        )
-        self._refresh_from_api(scout_template_api.TemplateSummary(metadata=metadata, rid=self.rid))
+        self.update(is_archived=True)
 
     @classmethod
     def _from_conjure(
