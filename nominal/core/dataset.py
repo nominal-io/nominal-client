@@ -127,6 +127,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
+        Args:
+            name: Replacement name.
+            description: Replacement description.
+            properties: String or numeric properties. Integers are stored as floats.
+                None leaves properties unchanged; an empty mapping clears them.
+            labels: Replacement labels.
+
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
@@ -137,6 +144,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
             ```
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,

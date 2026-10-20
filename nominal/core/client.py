@@ -432,6 +432,7 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a dataset to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -446,6 +447,9 @@ class NominalClient:
 
         Returns:
             All datasets which match all of the provided conditions
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         query = create_search_datasets_query(
             exact_match=exact_match,
@@ -755,7 +759,8 @@ class NominalClient:
             start: Starting timestamp of the run to create
             end: Ending timestamp of the run to create, or None for an unbounded run.
             description: Optional description of the run to create
-            properties: Optional key-value pairs to use as properties on the created run
+            properties: String or numeric properties for the created run.
+                Integers are stored as floats.
             labels: Optional sequence of labels for the created run
             links: Link metadata to add to the created run
             attachments: Attachments to associate with the created run
@@ -765,6 +770,7 @@ class NominalClient:
             Reference to the created run object
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the run service request fails.
         """
@@ -850,6 +856,7 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -871,6 +878,7 @@ class NominalClient:
             All runs which match all of the provided conditions
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
@@ -906,13 +914,17 @@ class NominalClient:
             name: Name of the dataset to create in Nominal.
             description: Human readable description of the dataset.
             labels: Text labels to apply to the created dataset
-            properties: Key-value properties to apply to the cleated dataset
+            properties: String or numeric properties for the created dataset.
+                Integers are stored as floats.
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
             markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
                 the creation request rather than applied in a follow-up call.
 
         Returns:
             Reference to the created dataset in Nominal.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         response = _create_dataset(
             self._clients.auth_header,
@@ -1222,7 +1234,15 @@ class NominalClient:
     ) -> Asset:
         """Create an asset.
 
+        Args:
+            name: Name of the asset.
+            description: Human readable description of the asset.
+            properties: String or numeric properties for the created asset.
+                Integers are stored as floats.
+            labels: Labels to apply to the asset.
+
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the creation request fails.
         """
@@ -1254,7 +1274,8 @@ class NominalClient:
            If multiple assets returned, throw error.
 
         Args:
-            properties: key-value properties to use when searching for and creating assets.
+            properties: String or numeric properties used to search for or create the asset.
+                Integer values are converted to floats.
             name: Name of asset to be used if creation is necessary.
             description: Description of asset to be used if creation is necessary.
             labels: a sequence of labels to use when if creation is necessary.
@@ -1263,6 +1284,7 @@ class NominalClient:
             The existing or newly created asset.
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             ValueError: If multiple assets match the properties.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If searching for or creating the asset fails.
@@ -1310,6 +1332,7 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
@@ -1326,6 +1349,7 @@ class NominalClient:
             All assets which match all of the provided conditions
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
@@ -1523,6 +1547,22 @@ class NominalClient:
         properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
+        """Create an event.
+
+        Args:
+            name: Name of the event.
+            type: Verbosity level of the event.
+            start: Starting timestamp of the event.
+            duration: Duration of the event, or zero for an event without duration.
+            description: Human readable description of the event.
+            assets: Assets or asset RIDs associated with the event.
+            properties: String or numeric properties for the created event.
+                Integers are stored as floats.
+            labels: Labels to apply to the event.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
+        """
         return _create_event(
             clients=self._clients,
             name=name,
@@ -1612,6 +1652,7 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an event to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             created_by: A User (or rid) of the author that must be present on an event to be included.
             workbook: Workbook to search for events on
             data_review: Search for events from the given data review
@@ -1629,6 +1670,9 @@ class NominalClient:
 
         Returns:
             All events which match all of the provided conditions
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _search_events(
             clients=self._clients,

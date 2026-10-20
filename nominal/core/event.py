@@ -107,7 +107,8 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             assets: Assets or asset rids the event applies to. An empty sequence clears them.
             start: New starting timestamp for the event.
             duration: New duration for the event.
-            properties: String or numeric properties replacing the existing ones. An empty mapping clears them.
+            properties: String or numeric properties. Integers are stored as floats.
+                None leaves properties unchanged; an empty mapping clears them.
             labels: Labels replacing the existing ones. An empty sequence clears them.
             type: New verbosity level for the event.
 
@@ -119,6 +120,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             unchanged. That is distinct from passing an empty collection, which clears the field.
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             ValueError: If the backend does not echo back exactly one updated event.
             NominalError: If the update request fails.
         """

@@ -115,6 +115,14 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
         Links can be URLs or tuples of (URL, name).
 
+        Args:
+            name: Replacement name.
+            description: Replacement description.
+            properties: String or numeric properties. Integers are stored as floats.
+                None leaves properties unchanged; an empty mapping clears them.
+            labels: Replacement labels.
+            links: Replacement links.
+
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
@@ -127,6 +135,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             ```
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalError: If the update request fails.
         """
         updated_links = None if links is None else asset_pb2.LinkList(links=create_proto_links(links, asset_pb2.Link))
@@ -339,7 +348,8 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             name: Name of the dataset to create, if one is not found.
             description: Human readable description of the dataset to create, if one is not found.
             labels: Labels of the dataset to create, if one is not found.
-            properties: Key-value properties of the dataset to create, if one is not found.
+            properties: String or numeric properties for a newly created dataset.
+                Integers are stored as floats.
             prefix_tree_delimiter: The prefix tree delimiter to use with the created dataset, if one is not found.
             series_tags: Tags to filter the created dataset by in the datascope, if one is not found.
 
@@ -347,6 +357,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             The retrieved or created dataset.
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalNotFoundError: If a dataset data scope with this name exists but its dataset is not readable.
             ValueError: If a dataset data scope with this name exists with different series tags, or a data scope
                 of another type has this name.
@@ -464,11 +475,15 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             start: Starting timestamp of the event
             duration: Duration of the event, or 0 for an event without duration.
             description: Optionally, a human readable description of the event to create
-            properties: String or numeric properties to set on the created event.
+            properties: String or numeric properties for the created event.
+                Integers are stored as floats.
             labels: Sequence of labels to use on the created event.
 
         Returns:
             The created event that is associated with the asset.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _create_event(
             self._clients,
@@ -501,13 +516,17 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             start: Starting timestamp of the run.
             end: Ending timestamp of the run, or None for an unbounded run.
             description: Optionally, a human readable description of the run to create.
-            properties: Key-value pairs to use as properties on the created run.
+            properties: String or numeric properties for the created run.
+                Integers are stored as floats.
             labels: Sequence of labels to use on the created run.
             links: Link metadata to add to the created run.
             attachments: Attachments to associate with the created run.
 
         Returns:
             Returns the created run
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _create_run(
             self._clients,
@@ -621,7 +640,26 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         origin_types: Iterable[SearchEventOriginType] | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
-        """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
+        """Search for events associated with this Asset. See nominal.core.event._search_events for details.
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: Labels that must all be present on an event.
+            properties: Property equalities that must all match. Strings and numbers match their
+                respective types. Integer values are converted to floats.
+            created_by_rid: Search for events created by this author.
+            workbook_rid: Search for events on this workbook.
+            data_review_rid: Search for events from this data review.
+            assignee_rid: Search for events assigned to this user.
+            event_type: Search for events of this verbosity level.
+            origin_types: Search for events created by these origin types.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
+        """
         return _search_events(
             self._clients,
             search_text=search_text,
