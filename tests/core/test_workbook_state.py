@@ -73,6 +73,8 @@ def workbook(state_clients: MagicMock) -> Workbook:
         rid="workbook-rid",
         title="Cached workbook",
         description="Cached description",
+        labels=[],
+        properties={},
         workbook_type=WorkbookType.WORKBOOK,
         run_rids=["cached-run-rid"],
         asset_rids=None,
