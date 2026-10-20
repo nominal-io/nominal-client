@@ -607,7 +607,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.178.0"
+version = "1.179.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -816,7 +816,7 @@ wheels = [
 
 [[package]]
 name = "nominal-tdms"
-version = "1.144.0"
+version = "1.144.1"
 source = { editable = "packages/nominal-tdms" }
 dependencies = [
     { name = "nominal" },
