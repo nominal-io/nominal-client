@@ -92,6 +92,9 @@ temp_run = asset.create_run(
 
 ### Create the checklist in the Nominal web UI
 
+Alternatively, [author and publish the checklist in Python](../checklists/authoring.md), then
+use its RID below. The same published checklist supports historical and streaming execution.
+
 ![Checklist preview](/guides/images/b4/checklist_preview_bwaqex.png)
 
 1. Go to the [Checklist Page](https://app.gov.nominal.io/checklists).

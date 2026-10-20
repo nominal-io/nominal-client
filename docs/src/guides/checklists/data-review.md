@@ -19,6 +19,8 @@ Data review is the process of:
 
 This guide shows you how to apply a checklist to a run using the Nominal Python client. You can read more on data review in the [Data Review guide](https://docs.nominal.io/core/documentation/platform/flag-events/data-review) in the Core Platform docs.
 
+To create or revise the checklist itself, follow [Authoring checklists as code](authoring.md).
+
 ## Connect to Nominal
 
 ```{include} /guides/_snippets/python/auth.md
