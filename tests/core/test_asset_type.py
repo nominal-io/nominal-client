@@ -6,6 +6,7 @@ from nominal.core import AssetType, AssetTypeProperty, NominalClient
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.types import types_pb2
 
 
 def test_type_round_trip_and_update_presence() -> None:
@@ -65,9 +66,16 @@ def test_search_types_paginates_and_scopes_query() -> None:
     assert [t.rid for t in result] == ["a", "b"]
     first, second = [call.args[0] for call in clients.assets.SearchTypes.call_args_list]
     assert second.next_page_token == "next"
-    assert second.query == first.query
-    assert [q.WhichOneof("query") for q in getattr(first.query, "and").queries] == ["search_text", "workspace"]
-    assert first.HasField("archived_statuses")
+    for request in (first, second):
+        assert request.query.WhichOneof("query") == "and"
+        assert list(getattr(request.query, "and").queries) == [
+            asset_pb2.SearchTypesQuery(search_text="Pump"),
+            asset_pb2.SearchTypesQuery(workspace="workspace-1"),
+        ]
+        assert set(request.archived_statuses.archived_statuses) == {
+            types_pb2.ARCHIVED,
+            types_pb2.NOT_ARCHIVED,
+        }
 
 
 def test_missing_type_raises_sdk_not_found() -> None:
