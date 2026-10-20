@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import sys
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import get_type_hints
 from unittest.mock import MagicMock, patch
 
@@ -292,7 +293,11 @@ def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_c
 
 def test_experimental_factory_writes_to_dataset(mock_dataset: Dataset, mock_clients: MagicMock):
     """The experimental context manager sends batches to the supplied dataset RID."""
+    written = Event()
+    mock_clients.proto_write.write_nominal_batches_with_metrics.side_effect = lambda *args: written.set()
+
     with create_write_stream(mock_dataset, max_batch_size=1, serialize_process_workers=1) as stream:
         stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+        assert written.wait(timeout=10), "experimental stream did not write the batch"
 
     assert mock_clients.proto_write.write_nominal_batches_with_metrics.call_args.args[1] == mock_dataset.rid
