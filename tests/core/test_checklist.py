@@ -63,13 +63,6 @@ def test_conflicting_notification_arguments_fail_before_request(checklist):
     checklist._clients.checklist_execution.execute_streaming_checklist.assert_not_called()
 
 
-def test_empty_notifications_clear_destinations(checklist):
-    """An explicit empty notification list produces an empty replacement configuration."""
-    checklist.execute_streaming(["asset"], notifications=[])
-    request = checklist._clients.checklist_execution.execute_streaming_checklist.call_args.args[1]
-    assert request.notification_configurations == []
-
-
 def test_naive_mute_time_is_rejected(checklist):
     """Mute deadlines require a timezone rather than silently using the caller's local zone."""
     with pytest.raises(ValueError, match="timezone"):

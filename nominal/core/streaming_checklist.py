@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Iterable, Protocol, Self, Sequence
@@ -32,7 +32,7 @@ def _iter_list_streaming_checklists(
     return list_streaming_checklists_for_asset_paginated(clients.checklist_execution, clients.auth_header, asset_rid)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class StreamingNotificationConfig:
     """A notification destination and its settings for streaming checklist execution.
 
@@ -46,8 +46,7 @@ class StreamingNotificationConfig:
             notifications unmuted. Readback uses Python datetime's microsecond precision.
     """
 
-    integration: Integration | str
-    _: KW_ONLY
+    integration: Integration | str = field(kw_only=False)
     tags: Sequence[str] = ()
     workbook: Workbook | str | None = None
     mute_execution_errors: bool = False
