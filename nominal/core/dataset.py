@@ -71,6 +71,8 @@ DatasetBounds: TypeAlias = Bounds
 
 @dataclass(frozen=True)
 class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
+    """A collection of channels populated by uploaded files and streamed data."""
+
     rid: str
     _clients: _Clients = field(repr=False)
     name: str

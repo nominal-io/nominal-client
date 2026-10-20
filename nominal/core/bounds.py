@@ -13,6 +13,8 @@ from nominal.ts import (
 
 @dataclass(frozen=True)
 class Bounds:
+    """Start and end timestamps of a time interval, in UTC nanoseconds."""
+
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC
 

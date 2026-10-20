@@ -62,6 +62,8 @@ class EventCreationType(Enum):
 
 
 class SearchEventOriginType(NamedTuple):
+    """An event source and creation category used to filter event searches."""
+
     name: str
     creation_type: EventCreationType
 

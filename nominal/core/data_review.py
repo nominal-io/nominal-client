@@ -34,6 +34,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
+    """The progress and results of a checklist execution."""
+
     rid: str
     run_rid: str
     checklist_rid: str
@@ -142,6 +144,8 @@ class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
 
 @dataclass(frozen=True)
 class CheckViolation:
+    """A checklist violation with its affected time interval and priority."""
+
     rid: str
     check_rid: str
     name: str

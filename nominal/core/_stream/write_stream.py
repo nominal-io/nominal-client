@@ -179,6 +179,8 @@ LogItem: TypeAlias = BatchItem[str]
 
 @dataclass(frozen=True)
 class WriteStream(WriteStreamBase[StreamType]):
+    """A buffered asynchronous writer for time-series or log data."""
+
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem[StreamType]]], None]

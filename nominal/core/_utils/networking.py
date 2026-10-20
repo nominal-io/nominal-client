@@ -74,6 +74,8 @@ def validate_api_base_url(api_base_url: str) -> ParseResult:
 
 
 class HeaderProvider(ABC):
+    """A provider of additional headers for SDK requests."""
+
     @abstractmethod
     def headers(self) -> Mapping[str, str]: ...
 

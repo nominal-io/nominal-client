@@ -75,6 +75,8 @@ def _rebind_video_datasources(
 class WorkbookTemplate(
     HasRid, RefreshableConjureMixin[scout_template_api.Template | scout_template_api.TemplateSummary]
 ):
+    """A reusable workbook layout for creating workbooks with new data scopes."""
+
     rid: str
     title: str
     description: str

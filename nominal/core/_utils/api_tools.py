@@ -127,6 +127,8 @@ Link: TypeAlias = tuple[str, str]
 
 
 class LinkDict(TypedDict):
+    """A resource link with a URL and an optional display title."""
+
     url: str
     title: NotRequired[str]
 
