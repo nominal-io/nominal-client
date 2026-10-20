@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from nominal.core import DataSourceType, Workspace
+from nominal.core import Workspace
 from nominal.protos.types import types_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 
@@ -15,12 +15,12 @@ def test_workspace_without_preferences(display_name: str | None) -> None:
     )
 
     assert workspace.display_name == display_name
-    assert workspace.preferred_refnames == {}
+    assert workspace.preferred_refnames == ()
     assert workspace.preferred_procedure_rids == ()
 
 
 def test_workspace_preferences_are_detached_from_response() -> None:
-    """Preferences preserve categories and procedure order without retaining transport collections."""
+    """Preferences exclude connection/video entries and preserve order independently of the response."""
     raw = workspaces_pb2.Workspace(
         settings=workspaces_pb2.WorkspaceSettings(
             ref_names=workspaces_pb2.PreferredRefNameConfiguration(
@@ -41,12 +41,5 @@ def test_workspace_preferences_are_detached_from_response() -> None:
     workspace = Workspace._from_proto(raw)
     raw.ClearField("settings")
 
-    assert workspace.preferred_refnames == {
-        "telemetry": DataSourceType.DATASET,
-        "live": DataSourceType.CONNECTION,
-        "camera": DataSourceType.VIDEO,
-        "position": DataSourceType.SPATIAL,
-        "unset": DataSourceType.UNKNOWN,
-        "future": DataSourceType.UNKNOWN,
-    }
+    assert workspace.preferred_refnames == ("telemetry", "position", "unset", "future")
     assert workspace.preferred_procedure_rids == ("second", "first")
