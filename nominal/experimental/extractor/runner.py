@@ -109,8 +109,9 @@ class Extractor(Generic[_CtxT]):
 
         Does not execute the callback or converters, inspect its body, read the environment,
         upload an image, or activate it. Parameter types/defaults remain runtime-only.
-        Error mappings require a static message and non-reserved code; identical exit-code
-        fallbacks are combined, while conflicting fallbacks raise ValueError.
+        Error mappings require a non-reserved code; omitted messages are derived from the code
+        and truncated to 512 characters. Identical exit-code fallbacks are combined, while
+        conflicting fallbacks raise ValueError.
         Legacy lookups add no metadata: no argument declarations yields empty
         inputs/parameters. Keep complete manual registration metadata for partially migrated
         extractors with additional undeclared dependencies.
@@ -126,9 +127,10 @@ class Extractor(Generic[_CtxT]):
         a file, or publish a release. The publisher owns versioning and artifact identity.
 
         Catalog export requires at least one input with suffix filters, uppercase environment
-        variables, epoch or ISO 8601 timestamp defaults, and a ``message`` on each error
-        declaration. Error codes must be non-reserved catalog identifiers. Identical error
-        fallbacks sharing an exit code are combined; conflicting fallbacks are rejected.
+        variables, and epoch or ISO 8601 timestamp defaults. Omitted error messages are derived
+        from their codes and truncated to 512 characters. Error codes must be non-reserved
+        catalog identifiers. Identical error fallbacks sharing an exit code are combined;
+        conflicting fallbacks are rejected.
         Input display metadata, converters and defaults have no catalog schema fields.
         Incomplete or unrepresentable metadata raises ValueError before publication.
         """

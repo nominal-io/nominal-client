@@ -161,8 +161,9 @@ def error(
     mapped failures retain their full traceback on stderr.
 
     Mappings cover startup, argument binding, extraction, and output finalization. They
-    configure runtime reporting. ``message`` supplies static fallback text required by both
-    :meth:`Extractor.registration_kwargs` and :meth:`Extractor.catalog_manifest`.
+    configure runtime reporting. ``message`` optionally supplies static fallback text for both
+    :meth:`Extractor.registration_kwargs` and :meth:`Extractor.catalog_manifest`; when omitted,
+    the code supplies a readable fallback truncated to 512 characters.
     Runtime messages come from the exception. Both exports validate and combine exit-code fallbacks.
     ``run(exit=False)`` and direct callback invocation propagate errors without reporting.
     """
