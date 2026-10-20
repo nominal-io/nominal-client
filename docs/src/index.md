@@ -134,6 +134,7 @@ Overview <guides/events/overview>
 :hidden:
 :caption: Auto-flag events
 
+Authoring checklists as code <guides/checklists/authoring>
 Data review <guides/checklists/data-review>
 ```
 
@@ -191,6 +192,7 @@ nom CLI <sdk/cli>
 :maxdepth: 1
 
 sdk/experimental/compute
+sdk/experimental/compute-as-code
 sdk/experimental/derived_datasets
 sdk/experimental/extractors
 sdk/experimental/ingest

@@ -6,10 +6,27 @@ This module executes expressions authored with the separate `nominal-compute` li
 pip install 'nominal[compute]'
 ```
 
-The compute extra now uses `nominal-compute` 0.1480.0. Update older scripts from
+The compute extra now uses `nominal-compute` 0.1495.1. Update older scripts from
 `import nominal_compute as nc` to `import nominal.compute as nc`. The client helpers
 accept expressions from the installed version; expression objects from the older
 package are not interchangeable with the new types.
+
+## Authoring checklists
+
+Use `CheckDefinition` for reusable source and metadata, and `ChecklistBuilder.add(check, inputs=...)`
+to bind channels. Every check is compiled with nominal-compute and saved with its source for the
+frontend code editor. Use `dataclasses.replace` or Python functions for variations; bindings have
+one owner, the builder's `add()` call.
+
+Use `builder.create(client, name)` once and `builder.commit(checklist, commit_message=...)`
+for complete revisions to the same checklist. No separate build step or compiled definition is needed. Missing bindings
+always fail locally; unused bindings are allowed unless `strict=True`. UUIDs are automatic, with
+optional stable keys for continuity. Updates use the loaded commit as a conflict precondition and
+replace all checks and variables, including frontend edits. Checks can set `event_type` and
+`event_labels` for generated events. Graph-only checklist authoring is not exposed.
+
+See the [Authoring checklists as code](../../../docs/src/guides/checklists/authoring.md)
+for reusable checks, core source recipes, and the create/update/evaluate workflow.
 
 ## Derived datasets
 
