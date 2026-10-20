@@ -55,12 +55,16 @@ def create_derived_dataset(
         message: Commit message for the initial derived definition.
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
-        properties: Key-value properties to apply to the created dataset.
+        properties: String or numeric properties for the created derived dataset.
+            Integers are stored as floats.
         markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
             the creation request rather than applied in a follow-up call.
 
     Returns:
         Reference to the created derived dataset in Nominal.
+
+    Raises:
+        TypeError: If a property value is a boolean or is not a string, integer, or float.
     """
     return _create_derived_dataset(
         client._clients,

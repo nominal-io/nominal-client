@@ -13,7 +13,6 @@ from nominal_api import scout_notebook_api, scout_workbookcommon_api
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core.workbook import Workbook
 from nominal.experimental.id_utils.id_utils import UUID_RE
 from nominal.experimental.migration.dry_run import would_create_message
@@ -31,7 +30,7 @@ ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID
 class WorkbookCopyOptions(ResourceCopyOptions):
     source_to_destination_asset_rid_mapping: Mapping[str, str] = field(default_factory=dict)
     source_to_destination_run_rid_mapping: Mapping[str, str] = field(default_factory=dict)
-    new_properties: NominalProperties | None = None
+    new_properties: Mapping[str, str] | None = None
     # source run rids that were intentionally not migrated (archived); the workbook is
     # migrated with only its remaining runs instead of failing on the missing mapping
     archived_run_rids: frozenset[str] = frozenset()
@@ -110,7 +109,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         raw_notebook: Any,
         rid_overrides: dict[str, str],
         data_scope: scout_notebook_api.NotebookDataScope,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Workbook:
         """Create a new workbook in the destination by find/replacing RIDs in the source content.
 

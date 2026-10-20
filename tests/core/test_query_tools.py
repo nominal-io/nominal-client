@@ -1,6 +1,23 @@
+from typing import Callable
+
+import pytest
+from nominal_api import api, scout_catalog
+
 from nominal.core._event_types import EventType, SearchEventOriginTypes
-from nominal.core._utils.query_tools import AssetMatch, create_search_events_query
+from nominal.core._utils.query_tools import (
+    AssetMatch,
+    create_search_assets_query,
+    create_search_datasets_query,
+    create_search_events_query,
+    create_search_runs_query,
+)
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.event.v2 import event_pb2
+from nominal.protos.run.v1 import run_service_pb2
+from nominal.protos.types import types_pb2
+
+_STRING_PROPERTY = types_pb2.Property(name="serial", value="")
+_NUMERIC_EQUALITY = types_pb2.NumericPropertyPredicate(name="count", operator=types_pb2.EQ, value=2.0)
 
 
 def test_create_search_events_query_asset_match_all_ands_per_asset_clauses():
@@ -56,3 +73,72 @@ def test_create_search_events_query_drops_an_empty_origin_types() -> None:
     assert create_search_events_query(origin_types=[]) == event_pb2.SearchQuery(
         **{"and": event_pb2.SearchQueryList(queries=[])}
     )
+
+
+@pytest.mark.parametrize(
+    ("build_query", "expected"),
+    [
+        pytest.param(
+            create_search_assets_query,
+            asset_pb2.SearchAssetsQuery(
+                **{
+                    "and": asset_pb2.SearchAssetsQueryList(
+                        queries=[
+                            asset_pb2.SearchAssetsQuery(property=_STRING_PROPERTY),
+                            asset_pb2.SearchAssetsQuery(numeric_property=_NUMERIC_EQUALITY),
+                        ]
+                    )
+                }
+            ),
+            id="assets",
+        ),
+        pytest.param(
+            create_search_runs_query,
+            run_service_pb2.SearchQuery(
+                all_of=run_service_pb2.SearchQueryList(
+                    queries=[
+                        run_service_pb2.SearchQuery(
+                            properties=run_service_pb2.PropertiesFilter(name="serial", values=[""])
+                        ),
+                        run_service_pb2.SearchQuery(numeric_property=_NUMERIC_EQUALITY),
+                    ]
+                )
+            ),
+            id="runs",
+        ),
+        pytest.param(
+            create_search_events_query,
+            event_pb2.SearchQuery(
+                **{
+                    "and": event_pb2.SearchQueryList(
+                        queries=[
+                            event_pb2.SearchQuery(property=_STRING_PROPERTY),
+                            event_pb2.SearchQuery(numeric_property=_NUMERIC_EQUALITY),
+                        ]
+                    )
+                }
+            ),
+            id="events",
+        ),
+        pytest.param(
+            create_search_datasets_query,
+            scout_catalog.SearchDatasetsQuery(
+                and_=[
+                    scout_catalog.SearchDatasetsQuery(archive_status=False),
+                    scout_catalog.SearchDatasetsQuery(properties=api.Property(name="serial", value="")),
+                    scout_catalog.SearchDatasetsQuery(
+                        numeric_property=api.NumericPropertyPredicate(
+                            name="count", operator=api.PropertyComparisonOperator.EQ, value=2.0
+                        )
+                    ),
+                ]
+            ),
+            id="datasets",
+        ),
+    ],
+)
+def test_property_search_matches_strings_and_numbers_by_equality(
+    build_query: Callable[..., object], expected: object
+) -> None:
+    """A string keeps the resource's string filter, and a number (an int here) becomes a numeric equality."""
+    assert build_query(properties={"serial": "", "count": 2}) == expected

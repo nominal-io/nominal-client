@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Protocol, Self, Sequence
+from typing import Iterable, Mapping, Protocol, Self, Sequence
 
 from nominal_api import upload_api
 
@@ -19,13 +19,12 @@ from nominal.core._utils.api_tools import (
     HasRid,
     RefreshableGrpcMixin,
     label_update,
-    property_update,
     rid_from_instance_or_string,
 )
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core._utils.pagination_tools import search_containerized_extractors_paginated
+from nominal.core._utils.properties import property_update
 from nominal.core.container_image import (
     REGISTERABLE_OUTPUT_FORMATS,
     ContainerImage,
@@ -55,7 +54,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
     active_image: ContainerImage | None
     created_at: IntegralNanosecondsUTC
     labels: Sequence[str]
-    properties: NominalProperties
+    properties: Mapping[str, str]
     _workspace_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
 
@@ -81,7 +80,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         is_archived: bool | None = None,
         active_container_image: ContainerImage | str | None = None,
         labels: Iterable[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Self:
         """Update the extractor in-place.
 
@@ -303,7 +302,7 @@ def _create_containerized_extractor(
     *,
     description: str | None,
     labels: Sequence[str] | None,
-    properties: NominalProperties | None,
+    properties: Mapping[str, str] | None,
 ) -> ContainerizedExtractor:
     request = containerized_extractor_pb2.CreateContainerizedExtractorRequest(
         workspace_rid=clients.resolve_default_workspace_rid(),
@@ -333,7 +332,7 @@ def _iter_search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: NominalProperties | None,
+    properties: Mapping[str, str] | None,
     workspace_rid: str | None,
 ) -> Iterable[ContainerizedExtractor]:
     ws = clients.resolve_workspace(workspace_rid).rid
@@ -355,7 +354,7 @@ def _search_containerized_extractors(
     include_archived: bool,
     file_extension: str | None,
     labels: Sequence[str] | None,
-    properties: NominalProperties | None,
+    properties: Mapping[str, str] | None,
     workspace_rid: str | None,
 ) -> Sequence[ContainerizedExtractor]:
     return list(
