@@ -44,6 +44,8 @@ nom migrate prep \
   --output my_migration.yml
 ```
 
+Pass `--add-label <label>` (repeatable) to write `add_labels` into the generated config.
+
 **`nom migrate copy`** — copy resources from a source tenant to a destination tenant:
 
 ```sh
@@ -92,6 +94,8 @@ migration:
   name: "my migration"
   include_dataset_files: false   # true to copy dataset file contents
   preserve_dataset_uuid: true    # true to keep dataset UUIDs identical across tenants
+  add_labels:                    # optional: added to every resource the migration creates
+    - migrated
   source_asset_rids:
     - asset_rid: ri.scout.main.asset.<uuid>
   standalone_workbook_template_rids:
@@ -113,7 +117,8 @@ How it works:
 Misc. configs:
 1. `include_dataset_files` — if `true`, copies all dataset files attached to a dataset into the destination. Typically `true` for demo hydration and `false` for tenant migration (which relies on a separate Clickhouse backup).
 2. `preserve_dataset_uuid` — if `true`, the dataset UUID is the same between source and destination. Typically `false` for demo hydration and `true` for tenant migration.
-3. `impersonation` — optional block for creating migrated resources on behalf of mapped destination users. When enabled:
+3. `add_labels` — optional list of labels added to every resource the migration creates (assets, datasets, runs, events, videos, workbooks, workbook templates, checklists, and attachments), after the resource's own source labels. Resources created by an earlier run of a resumed migration are not relabeled.
+4. `impersonation` — optional block for creating migrated resources on behalf of mapped destination users. When enabled:
    - `source_to_destination_user_rids` maps source user RIDs to destination user RIDs.
    - The destination profile should be a service user with permission to impersonate destination users.
    - Resources whose source user has no mapping are created as the destination service user.

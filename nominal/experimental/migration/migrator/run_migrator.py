@@ -27,7 +27,6 @@ class RunCopyOptions(ResourceCopyOptions):
     new_end: datetime | IntegralNanosecondsUTC | None = None
     new_description: str | None = None
     new_properties: NominalProperties | None = None
-    new_labels: Sequence[str] | None = None
     new_links: Sequence[str | Link | LinkDict] | None = None
     new_attachments: Iterable[Attachment] | Iterable[str] | None = None
     new_assets: Sequence[Asset | str] | None = None
@@ -72,7 +71,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             end=options.new_end if options.new_end is not None else source.end,
             description=options.new_description if options.new_description is not None else source.description,
             properties=options.new_properties if options.new_properties is not None else source.properties,
-            labels=options.new_labels if options.new_labels is not None else source.labels,
+            labels=self.ctx.destination_labels(source.labels),
             assets=options.new_assets if options.new_assets is not None else source.assets,
             links=options.new_links if options.new_links is not None else source.links,
             attachments=attachments,

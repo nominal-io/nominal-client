@@ -96,6 +96,18 @@ class TestRunMigratorNewRun:
 
         assert ctx.migration_state.get_mapped_rid(ResourceType.RUN, _run_rid(1)) == _run_rid(100)
 
+    def test_added_labels_follow_source_labels_without_duplicates(self) -> None:
+        """Context extra labels are appended to the source labels, skipping ones the source already has."""
+        ctx = _make_context()
+        ctx.added_labels = ("shared", "migrated")
+        source_run = _make_run(_run_rid(1))
+        source_run.labels = ["flight", "shared"]
+        ctx.destination_client.create_run.return_value = _make_run(_run_rid(100))
+
+        RunMigrator(ctx).copy_from(source_run, RunCopyOptions())
+
+        assert ctx.destination_client.create_run.call_args.kwargs["labels"] == ["flight", "shared", "migrated"]
+
 
 class TestRunMigratorExistingRun:
     def test_adds_missing_asset_to_existing_run(self) -> None:

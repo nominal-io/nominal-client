@@ -23,7 +23,6 @@ class DatasetCopyOptions(ResourceCopyOptions):
     new_dataset_name: str | None = None
     new_dataset_description: str | None = None
     new_dataset_properties: NominalProperties | None = None
-    new_dataset_labels: Sequence[str] | None = None
     include_files: bool = False
     preserve_uuid: bool = False
 
@@ -67,7 +66,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         dataset_properties = (
             options.new_dataset_properties if options.new_dataset_properties is not None else source.properties
         )
-        dataset_labels = options.new_dataset_labels if options.new_dataset_labels is not None else source.labels
+        dataset_labels = self.ctx.destination_labels(source.labels)
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)

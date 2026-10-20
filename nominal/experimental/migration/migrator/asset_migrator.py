@@ -34,7 +34,6 @@ class AssetCopyOptions(ResourceCopyOptions):
     new_asset_name: str | None = None
     new_asset_description: str | None = None
     new_asset_properties: NominalProperties | None = None
-    new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
     include_attachments: bool = False
     include_events: bool = False
@@ -124,7 +123,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             properties=options.new_asset_properties
             if options.new_asset_properties is not None
             else source_asset.properties,
-            labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
+            labels=self.ctx.destination_labels(source_asset.labels),
         )
 
         if source_asset._get_latest_api().is_staged:

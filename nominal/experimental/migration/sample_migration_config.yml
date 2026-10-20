@@ -20,6 +20,14 @@ migration:
   preserve_dataset_uuid: true
 
   # -------------------------------------------------------------------------
+  # Labels (optional)
+  # Added to every resource the migration creates, after the resource's own
+  # source labels. Resources created by an earlier run are not relabeled.
+  # -------------------------------------------------------------------------
+  # add_labels:
+  #   - "migrated"
+
+  # -------------------------------------------------------------------------
   # Asset child-resource inclusion
   # All fields below default to true when omitted.
   # Set any to false to skip that resource type entirely.

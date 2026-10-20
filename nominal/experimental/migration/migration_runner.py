@@ -7,7 +7,7 @@ import re
 import threading
 from datetime import timedelta
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Mapping, Sequence, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
@@ -61,6 +61,7 @@ class MigrationRunner:
         migration_state_path: Path | str | None = None,
         dry_run: bool = False,
         video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+        added_labels: Sequence[str] = (),
     ) -> None:
         """Create a migration runner state.
 
@@ -78,6 +79,8 @@ class MigrationRunner:
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
             video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
                 ingesting before recording it as incomplete and moving on. None waits indefinitely.
+            added_labels (Sequence[str]): Labels added to every resource the migration creates, after the
+                source resource's own labels. Resources created by an earlier run are not relabeled.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
@@ -89,6 +92,7 @@ class MigrationRunner:
         self.user_rid_mapping = dict(user_rid_mapping) if user_rid_mapping is not None else {}
         self.dry_run = dry_run
         self.video_ingest_timeout = video_ingest_timeout
+        self.added_labels = added_labels
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
@@ -125,6 +129,7 @@ class MigrationRunner:
                 source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
                 dry_run=self.dry_run,
                 video_ingest_timeout=self.video_ingest_timeout,
+                added_labels=self.added_labels,
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
