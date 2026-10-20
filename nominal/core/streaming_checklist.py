@@ -211,19 +211,52 @@ class ChecklistChannelResolution:
         )
 
 
+class UnsupportedStreamingFeature(str, Enum):
+    """Operation categories the service reports as unsupported for streaming.
+
+    Values retain the service's diagnostic codes. Unrecognized service values become
+    ``UNKNOWN`` in the generated decoder; the original unknown code is not retained.
+    """
+
+    POINT_PERSISTENCE = "POINT_PERSISTENCE"
+    """Persistence measured in a number of points."""
+    CUMULATIVE_SUM = "CUMULATIVE_SUM"
+    """Cumulative summation."""
+    INTEGRAL = "INTEGRAL"
+    """Integration over time."""
+    STALENESS_DETECTION = "STALENESS_DETECTION"
+    """A staleness-detection operation flagged by the service."""
+    LITERAL_RANGES = "LITERAL_RANGES"
+    """Literal time ranges."""
+    LITERAL_ENUM_SERIES = "LITERAL_ENUM_SERIES"
+    """Literal categorical series."""
+    TAG_BY_INTERVALS = "TAG_BY_INTERVALS"
+    """Tagging a series by intervals."""
+    NUMERIC_COMBINE_WITH_TAGS = "NUMERIC_COMBINE_WITH_TAGS"
+    """Combining numeric series with tags."""
+    PHASE_UNWRAP = "PHASE_UNWRAP"
+    """Phase unwrapping."""
+    RUN_WITH_FIXED_END = "RUN_WITH_FIXED_END"
+    """A run reference with a fixed end time."""
+    TIME_RANGE_FILTER_WITH_FIXED_END = "TIME_RANGE_FILTER_WITH_FIXED_END"
+    """A time-range filter with a fixed end time."""
+    UNKNOWN = "UNKNOWN"
+    """An unsupported feature not recognized by the installed API bindings."""
+
+
 @dataclass(frozen=True)
 class CheckResolution:
     """Channel resolution and streaming compatibility for an individual check.
 
     ``parameter_index`` is zero-based, or ``None`` for a non-parameterized check.
-    ``unsupported_streaming_features`` contains feature codes such as ``INTEGRAL`` or
-    ``TIME_RANGE_FILTER_WITH_FIXED_END``. A resolved channel alone does not establish streaming compatibility.
+    ``unsupported_streaming_features`` contains `UnsupportedStreamingFeature` members.
+    A resolved channel alone does not establish streaming compatibility.
     """
 
     check_rid: str
     parameter_index: int | None
     channels: Sequence[ChecklistChannelResolution]
-    unsupported_streaming_features: Sequence[str]
+    unsupported_streaming_features: Sequence[UnsupportedStreamingFeature]
 
     @classmethod
     def _from_conjure(cls, result: scout_checklistexecution_api.ResolvedCheckStatus) -> Self:
@@ -231,5 +264,7 @@ class CheckResolution:
             check_rid=result.check_rid,
             parameter_index=result.check_parameter_index,
             channels=tuple(ChecklistChannelResolution._from_conjure(channel) for channel in result.channels),
-            unsupported_streaming_features=tuple(feature.value for feature in result.invalid_streaming_compute_nodes),
+            unsupported_streaming_features=tuple(
+                UnsupportedStreamingFeature(feature.value) for feature in result.invalid_streaming_compute_nodes
+            ),
         )

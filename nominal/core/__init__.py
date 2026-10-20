@@ -65,6 +65,7 @@ from nominal.core.streaming_checklist import (
     StreamingCheckState,
     StreamingCheckStatus,
     StreamingNotificationConfig,
+    UnsupportedStreamingFeature,
 )
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
@@ -139,6 +140,7 @@ __all__ = [
     "StreamingCheckState",
     "StreamingCheckStatus",
     "StreamingNotificationConfig",
+    "UnsupportedStreamingFeature",
     "Symbol",
     "SymbolKind",
     "TeamsIntegrationDetails",

@@ -2,10 +2,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from conjure_python_client import ConjureDecoder
 from nominal_api import scout_api, scout_integrations_api, scout_run_api
 from nominal_api import scout_checklistexecution_api as api
 
-from nominal.core import Asset, Checklist, Integration
+from nominal.core import Asset, Checklist, Integration, UnsupportedStreamingFeature
 from nominal.core import streaming_checklist as streaming
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.integrations.v1 import integrations_pb2
@@ -182,7 +183,10 @@ def test_resolution_preserves_missing_channels_and_unsupported_features(checklis
                         api.ResolvedCheckStatus(
                             check_rid="check",
                             check_parameter_index=0,
-                            invalid_streaming_compute_nodes=[api.InvalidStreamingComputeNode.INTEGRAL],
+                            invalid_streaming_compute_nodes=[
+                                api.InvalidStreamingComputeNode.INTEGRAL,
+                                ConjureDecoder.do_decode("FUTURE_FEATURE", api.InvalidStreamingComputeNode),
+                            ],
                             channels=[
                                 api.ChannelLocatorWithStatus(
                                     channel_locator=scout_api.ChannelLocator(
@@ -206,7 +210,9 @@ def test_resolution_preserves_missing_channels_and_unsupported_features(checklis
     checks = checklist.get_resolution(["asset", "other"], commit="revision")["asset"]
     check = checks[0]
     assert (check.check_rid, check.parameter_index) == ("check", 0)
-    assert check.unsupported_streaming_features == ("INTEGRAL",)
+    assert check.unsupported_streaming_features[0] is UnsupportedStreamingFeature.INTEGRAL
+    assert check.unsupported_streaming_features[1] is UnsupportedStreamingFeature.UNKNOWN
+    assert check.unsupported_streaming_features == ("INTEGRAL", "UNKNOWN")
     channel = check.channels[0]
     assert (channel.channel, channel.data_scope, channel.tags, channel.state.value) == (
         "temperature",
