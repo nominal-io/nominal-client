@@ -55,12 +55,18 @@ def test_search_events_priority_preserves_asset_scope() -> None:
 
     client.search_events(assets=["asset"], priority=Priority.P0, workspace="workspace")
 
-    clauses = getattr(clients.event.SearchEvents.call_args.args[0].query, "and").queries
-    assert clauses == [
-        event_pb2.SearchQuery(asset="asset"),
-        event_pb2.SearchQuery(priority=event_pb2.P0),
-        event_pb2.SearchQuery(workspace="workspace"),
-    ]
+    request = clients.event.SearchEvents.call_args.args[0]
+    assert request.query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[
+                    event_pb2.SearchQuery(asset="asset"),
+                    event_pb2.SearchQuery(priority=event_pb2.P0),
+                    event_pb2.SearchQuery(workspace="workspace"),
+                ]
+            )
+        }
+    )
 
 
 def test_search_data_reviews_passes_archive_status():

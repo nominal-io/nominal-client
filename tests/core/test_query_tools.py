@@ -24,7 +24,6 @@ _NUMERIC_EQUALITY = types_pb2.NumericPropertyPredicate(name="count", operator=ty
 @pytest.mark.parametrize(
     "priority, expected",
     [
-        (None, None),
         (Priority.P0, event_pb2.P0),
         (Priority.P1, event_pb2.P1),
         (Priority.P2, event_pb2.P2),
@@ -32,17 +31,24 @@ _NUMERIC_EQUALITY = types_pb2.NumericPropertyPredicate(name="count", operator=ty
         (Priority.P4, event_pb2.P4),
     ],
 )
-def test_event_priority_filter(priority: Priority | None, expected: int | None) -> None:
-    """Priority zero is converted to the wire enum; omission adds no constraint."""
+def test_event_priority_filter(priority: Priority, expected: event_pb2.Priority.ValueType) -> None:
+    """Each priority, including Python value zero, becomes its corresponding wire enum."""
     query = create_search_events_query(priority=priority, asset_rids=["asset"])
-    clauses = getattr(query, "and").queries
-    assert clauses[0] == event_pb2.SearchQuery(asset="asset")
-    if expected is None:
-        assert len(clauses) == 1
-    else:
-        assert len(clauses) == 2
-        assert clauses[1].HasField("priority")
-        assert clauses[1].priority == expected
+    assert query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[event_pb2.SearchQuery(asset="asset"), event_pb2.SearchQuery(priority=expected)]
+            )
+        }
+    )
+
+
+def test_event_priority_omitted_adds_no_clause() -> None:
+    """Omitting priority leaves the search unrestricted by disposition priority."""
+    query = create_search_events_query(asset_rids=["asset"])
+    assert query == event_pb2.SearchQuery(
+        **{"and": event_pb2.SearchQueryList(queries=[event_pb2.SearchQuery(asset="asset")])}
+    )
 
 
 def test_create_search_events_query_asset_match_all_ands_per_asset_clauses():
