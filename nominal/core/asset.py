@@ -47,7 +47,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Asset]):
-    """A test subject that groups datasets, runs, events, and attachments."""
+    """A logical grouping of datasets, runs, events, and attachments.
+
+    Often a digital twin of a physical asset; it can also represent a shared concept.
+    """
 
     rid: str
     name: str
