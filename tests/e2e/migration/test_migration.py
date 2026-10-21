@@ -7,6 +7,7 @@ Tests cover:
   - Full migration of an asset with datasets, events, a run, a checklist, a video, and a workbook
   - Dataset file upload and channel verification
   - Standalone workbook template migration
+  - The `nom migrate copy` command, run from a config with `add_labels`
   - Idempotency: running the same runner twice produces no duplicates
   - Resumption from a partial state: missing resources are created, existing ones reused
   - Resumption from a complete state: a fully-recorded state causes the runner to do nothing
@@ -29,9 +30,12 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Callable, Sequence
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import yaml
+from click.testing import CliRunner
 from nominal_api import scout_notebook_api
 
 from nominal.core import NominalClient
@@ -52,6 +56,7 @@ from nominal.experimental.migration.config.migration_resources import AssetResou
 from nominal.experimental.migration.migration_cli import (
     ImpersonationConfig,
     build_destination_client_resolver,
+    migrate_cmd,
 )
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
@@ -723,6 +728,59 @@ def test_migrate_standalone_template(
     assert dest_template.description == source_template.description
     assert sorted(dest_template.labels) == sorted({*source_template.labels, *added_labels})
     assert dest_template.properties == source_template.properties
+
+
+def test_migrate_copy_command_adds_config_labels(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """`nom migrate copy` reads add_labels from its config and adds them to the resources it creates."""
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    config_path = tmp_path / "migration.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "migration": {
+                    "name": f"migration-e2e-copy-{uuid4()}",
+                    "include_dataset_files": False,
+                    "preserve_dataset_uuid": False,
+                    "add_labels": list(ADDED_LABELS),
+                    "source_asset_rids": [{"asset_rid": source_asset.rid}],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "state.json"
+    args = [
+        "copy",
+        "--source-profile",
+        "source",
+        "--destination-profile",
+        "destination",
+        "--config",
+        str(config_path),
+        "--migration-state-path",
+        str(state_path),
+    ]
+
+    # Hand the command the suite's clients instead of loading profiles, so it uses their temporary API keys.
+    with patch.object(NominalClient, "from_profile", side_effect=[source_client, dest_client]):
+        result = CliRunner().invoke(migrate_cmd, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+
+    state = MigrationState.from_json(state_path.read_text(encoding="utf-8"))
+    assert (dest_asset_rid := state.get_mapped_rid(ResourceType.ASSET, source_asset.rid)) is not None
+    assert (dest_ds_rid := state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)) is not None
+    dest_asset = dest_client.get_asset(dest_asset_rid)
+    register_cleanup(dest_asset.archive)
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_asset_migrated(source_asset, dest_asset, added_labels=ADDED_LABELS)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, added_labels=ADDED_LABELS)
 
 
 def test_migrate_standalone_checklist(
