@@ -56,6 +56,12 @@ Every class, function and `nom` command.
 :::
 ::::
 
+## Automate test review
+
+[Create and update checklists from Python](guides/checklists/authoring.md), with recipes for
+thresholds, operating conditions, and fault states. See the
+[test-stand example](examples/deploy_checklist.py.md) for a complete script.
+
 <!-- Guides section: navigation follows the Python section of the Fern docs (fern/products/core.yaml) -->
 
 ```{toctree}

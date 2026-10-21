@@ -12,10 +12,13 @@ How to apply checklists to runs in Nominal using Python, as part of your data re
 ```{include} /guides/_snippets/install-warning.md
 ```
 
-Data review is the process of:
-1. Applying a checklist to a run
-2. Reviewing time ranges where checks were violated
-3. Determining if violations should be ignored or require further action
+A **checklist** is a reusable set of checks. Each check describes a condition to evaluate against
+telemetry, such as a temperature limit or a controller fault. The intervals where a check is violated
+can generate **events** for an engineer to review.
+
+A **data review** records the evaluation of a checklist version against a run. The checklist is the
+definition you reuse; the data review contains the results for that run. During review, inspect the
+flagged intervals alongside the data and decide which violations need further action.
 
 This guide shows you how to apply a checklist to a run using the Nominal Python client. You can read more on data review in the [Data Review guide](https://docs.nominal.io/core/documentation/platform/flag-events/data-review) in the Core Platform docs.
 
