@@ -59,7 +59,7 @@ core_topic_modules = {
     "streaming": ("_stream.write_stream", "log"),
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
     "events": ("event", "_event_types"),
-    "automatic-validation": ("checklist", "_checklist_types", "data_review", "integration"),
+    "automatic-validation": ("checklist", "_checklist_types", "streaming_checklist", "data_review", "integration"),
     "workbooks": ("workbook", "workbook_template"),
     "markings": ("marking", "elements"),
     "shared-types": ("bounds", "_utils.api_tools", "_utils.query_tools", "_utils.api_types"),

@@ -9,6 +9,7 @@
    :template: autosummary/module-summary.rst
 
    nominal.experimental.compute
+   nominal.experimental.compute_as_code
    nominal.experimental.compute.dsl.exprs
    nominal.experimental.derived_datasets
    nominal.experimental.spatial

@@ -56,6 +56,12 @@ Every class, function and `nom` command.
 :::
 ::::
 
+## Automate test review
+
+[Create and update checklists from Python](guides/checklists/authoring.md), with recipes for
+thresholds, operating conditions, and fault states. See the
+[test-stand example](examples/deploy_checklist.py.md) for a complete script.
+
 <!-- Guides section: navigation follows the Python section of the Fern docs (fern/products/core.yaml) -->
 
 ```{toctree}
@@ -134,6 +140,7 @@ Overview <guides/events/overview>
 :hidden:
 :caption: Auto-flag events
 
+Authoring checklists as code <guides/checklists/authoring>
 Data review <guides/checklists/data-review>
 ```
 
@@ -191,6 +198,7 @@ nom CLI <sdk/cli>
 :maxdepth: 1
 
 sdk/experimental/compute
+sdk/experimental/compute-as-code
 sdk/experimental/derived_datasets
 sdk/experimental/extractors
 sdk/experimental/ingest

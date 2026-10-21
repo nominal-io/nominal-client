@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal streaming checklists in"
+    description: "Configure and monitor published checklists against live asset data with Python."
 ---
 
 # Trigger alerts on live data
 
 {.lead}
-Overview and recipes for working with Nominal streaming checklists in
+Configure and monitor published checklists against live asset data with Python.
 
 ## Overview
 
@@ -92,6 +92,9 @@ temp_run = asset.create_run(
 
 ### Create the checklist in the Nominal web UI
 
+Alternatively, [author and publish the checklist in Python](../checklists/authoring.md), then
+use its RID below. The same published checklist supports historical and streaming execution.
+
 ![Checklist preview](/guides/images/b4/checklist_preview_bwaqex.png)
 
 1. Go to the [Checklist Page](https://app.gov.nominal.io/checklists).
@@ -112,57 +115,105 @@ checklist_rid = "paste_rid_here"
 
 ### Select an integration for notifications (optional)
 
-Notification integrations are optional. You can run a streaming checklist without configuring any notification integrations to track checklist status and generate events without sending alerts.
-
-This is useful when you want to:
-
-- Monitor check results through the workbook event panel without triggering external alerts.
-- Run checklists in observation mode during early testing before configuring production notification channels.
-- Create events from streaming checklists for historical analysis without real-time notifications.
-
-To skip notifications, pass an empty list for `integration_rids` when calling `execute_streaming` (see the code example below).
-
-If you want to receive alerts through Slack, Teams, PagerDuty, or other channels, find available integrations in the [Integrations Page](https://app.gov.nominal.io/settings/org/integrations), copy the RID, and paste it in the code below.
+Fetch an existing integration from the [Integrations page](https://app.gov.nominal.io/settings/org/integrations),
+or use the client's integration creation methods. Slack destinations are authorized in the UI.
 
 ```python
-integration_rid = "paste_rid_here"
+integration = client.get_integration("integration-rid")
+checklist = client.get_checklist(checklist_rid)
 ```
-
-![integrations](/guides/images/b4/integrations_nn0y0c.png)
 
 ### Execute the streaming checklist
 
-With the checklist and asset ready, you can now execute the streaming checklist.
+Pass integrations or their RIDs directly for default notification settings:
 
-With notifications:
 ```python
-checklist = client.get_checklist(checklist_rid)
-
 checklist.execute_streaming(
-    assets=[asset],
-    integration_rids=[integration_rid],
+    [asset],
+    notifications=[integration, "another-integration-rid"],
+    auto_create_events=True,
 )
 ```
 
-Without notifications (status tracking only):
+The recommended example enables automatic events so failing checks create events and recovery updates them.
+The API defaults to `auto_create_events=False`; omit the argument or pass `False` to monitor without creating events.
+
+Wrap a destination to configure tags, a workbook link, execution-error suppression, or a mute deadline:
+
 ```python
-checklist = client.get_checklist(checklist_rid)
+from nominal.core import StreamingNotificationConfig
 
 checklist.execute_streaming(
     assets=[asset],
-    integration_rids=[],
+    notifications=[
+        StreamingNotificationConfig(
+            integration,
+            tags=["test-stand"],
+            mute_execution_errors=True,
+        )
+    ],
+    auto_create_events=True,
 )
 ```
+
+Set `workbook="workbook-rid"` to include a workbook link in failure and recovery notifications.
+Set `mute_until` to a timezone-aware `datetime` to temporarily suppress all notifications for a destination.
+
+To execute without notifications, pass `notifications=[]`. Existing calls using
+`integration_rids=["integration-rid"]` remain supported but emit a deprecation warning.
+Replace that argument with `notifications=["integration-rid"]`. Positional integration lists should
+also move to the keyword-only `notifications=` argument. Supply only one of these arguments.
+
+:::{warning}
+Executing again **replaces all streaming settings for the specified assets**, including notification destinations.
+Omitting notifications disables them. Settings for other assets are unchanged.
+:::
+
+Returning from `execute_streaming` means the request was accepted. It does not mean evaluation has started
+or confirm that notifications have been delivered.
 
 ## Monitoring and managing streaming checklists
 
-- List running streaming checklists:
+Inspect the executing commit and individual check results:
+
 ```python
-list(client.list_streaming_checklists())
+status = checklist.get_streaming_status([asset])[asset.rid]
+print(status.state, status.commit_id)
+for check in status.checks:
+    print(check.check_rid, check.parameter_index, check.state)
 ```
 
-- Stop a running streaming checklist:
+A running checklist can contain failing, invalid, or skipped checks. Parameterized checks have separate results
+identified by their zero-based `parameter_index`.
+Live status is available only for assets configured to stream the checklist.
+All public state enums use lowercase string values; prefer comparing enum members. Unknown lifecycle or
+check-status variants fail in the generated decoder with `ValueError` and require an SDK upgrade.
+
+Read existing settings before changing them. For example, increase the evaluation delay while keeping the other settings:
+
 ```python
+from datetime import timedelta
+
+configuration = checklist.get_streaming_configurations()[asset.rid]
+checklist.execute_streaming(
+    [asset],
+    notifications=configuration.notifications,
+    evaluation_delay=timedelta(seconds=5),
+    recovery_delay=configuration.recovery_delay,
+    auto_create_events=configuration.auto_create_events,
+)
+```
+
+Readback contains integration and workbook RIDs, and delays in integer nanoseconds. Both nanoseconds and
+`timedelta` are accepted when configuring execution. Mute deadlines use Python datetime's microsecond precision.
+Reading and reapplying settings is not an atomic update; coordinate with other users changing the same asset's settings.
+
+List streaming checklist RIDs or stop execution:
+
+```python
+client.list_streaming_checklists(asset=asset)
+checklist.stop_streaming_for_assets([asset])
+# Or stop execution on every asset:
 checklist.stop_streaming()
 ```
 
@@ -172,9 +223,6 @@ Now that your streaming checklist is active, send more data to trigger notificat
 sends data points every 2 seconds. When conditions are met, notifications will be sent to the configured integration.
 
 ```python
-from datetime import datetime, timedelta
-from time import sleep
-
 from datetime import datetime, timedelta
 from time import sleep
 

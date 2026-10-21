@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Mapping, Protocol, Self, Sequence
@@ -7,18 +8,26 @@ from typing import Mapping, Protocol, Self, Sequence
 from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_integrations_api,
 )
 
+from nominal._utils.iterator_tools import batched
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview, _get_data_review
+from nominal.core.integration import Integration
+from nominal.core.streaming_checklist import (
+    StreamingChecklistConfiguration,
+    StreamingChecklistStatus,
+    StreamingNotificationConfig,
+)
 from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.protos.datareview.v2 import data_review_pb2
-from nominal.ts import _to_api_duration
+from nominal.ts import IntegralNanosecondsDuration, _to_api_duration
+
+_LIVE_STATUS_BATCH_SIZE = 10_000
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,8 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
+    commit_id: str | None = None
+    """Loaded version ID; pass explicitly to execution to pin a review. None for unloaded manual instances."""
 
     class _Clients(DataReview._Clients, Protocol):
         @property
@@ -55,6 +66,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             labels=checklist.metadata.labels,
             _clients=clients,
             author_rid=checklist.metadata.author_rid,
+            commit_id=checklist.commit.id,
         )
 
     def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
@@ -85,36 +97,113 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     def execute_streaming(
         self,
         assets: Sequence[Asset | str],
-        integration_rids: Sequence[str],
+        integration_rids: Sequence[str] | None = None,
         *,
-        evaluation_delay: timedelta = timedelta(),
-        recovery_delay: timedelta = timedelta(seconds=15),
+        notifications: Sequence[Integration | str | StreamingNotificationConfig] | None = None,
+        evaluation_delay: timedelta | IntegralNanosecondsDuration = timedelta(),
+        recovery_delay: timedelta | IntegralNanosecondsDuration = timedelta(seconds=15),
         auto_create_events: bool = False,
     ) -> None:
-        """Execute the checklist for the given assets.
+        """Start streaming or replace the streaming settings for the specified assets.
+
+        Settings for other assets are unchanged. Returning means the request was accepted;
+        use `get_streaming_status` to inspect execution. It does not confirm notification delivery.
 
         Args:
-            assets: List of assets or asset rids to execute the streaming checklist upon
-            integration_rids: List of rids of integrations to apply to the created streaming checklist for notifications
-            evaluation_delay: Delays the evaluation of the streaming checklist-- useful when data lags behind live.
-            recovery_delay: Specifies the minimum amount of time that must pass before a check may recover from a
-                failure state. Minimum value is 15 seconds.
-            auto_create_events: If true, automatically creates events for check status changes, in particular, when
-                checks fail and then recover.
+            assets: Assets or their RIDs to run this published checklist against.
+            integration_rids: Notification integration RIDs with default settings. Existing positional
+                and keyword calls remain supported but emit a deprecation warning. Pass these RIDs
+                through ``notifications`` instead.
+            notifications: Integrations or their RIDs, optionally wrapped in `StreamingNotificationConfig`
+                for tags, workbook links, and mute settings. Cannot be combined
+                with ``integration_rids``. Omitting both arguments or passing an empty list disables notifications.
+            evaluation_delay: Delay evaluation to accommodate late-arriving data, as a timedelta or integer nanoseconds.
+            recovery_delay: Minimum time before a failing check can recover, as a timedelta or integer nanoseconds.
+                Must be at least 15 seconds.
+            auto_create_events: Create events when checks fail and update them when checks recover.
+
+        Raises:
+            ValueError: Both notification arguments are supplied, or a mute deadline lacks a timezone.
+
+        Note:
+            This replaces all streaming settings for the specified assets, including existing notification
+            destinations. Read `get_streaming_configurations` first to preserve settings when changing them.
         """
+        if integration_rids is not None and notifications is not None:
+            raise ValueError("Supply either integration_rids or notifications, not both")
+        if integration_rids is not None:
+            warnings.warn(
+                "integration_rids is deprecated; pass integrations or their RIDs through notifications instead",
+                UserWarning,
+                stacklevel=2,
+            )
+        if notifications is None:
+            notifications = integration_rids or ()
         self._clients.checklist_execution.execute_streaming_checklist(
             self._clients.auth_header,
             scout_checklistexecution_api.ExecuteChecklistForAssetsRequest(
                 assets=[rid_from_instance_or_string(asset) for asset in assets],
                 checklist=self.rid,
                 notification_configurations=[
-                    scout_integrations_api.NotificationConfiguration(c, tags=[]) for c in integration_rids
+                    (
+                        notification
+                        if isinstance(notification, StreamingNotificationConfig)
+                        else StreamingNotificationConfig(notification)
+                    )._to_conjure()
+                    for notification in notifications
                 ],
                 evaluation_delay=_to_api_duration(evaluation_delay),
                 recovery_delay=_to_api_duration(recovery_delay),
                 auto_create_events=auto_create_events,
             ),
         )
+
+    def get_streaming_configurations(self) -> Mapping[str, StreamingChecklistConfiguration]:
+        """Fetch streaming settings keyed by asset RID.
+
+        Notification destinations and workbooks are returned as RIDs without fetching those resources.
+        A checklist with no streaming configuration raises the service's not-found error.
+        """
+        info = self._clients.checklist_execution.get_streaming_checklist(self._clients.auth_header, self.rid)
+        return {
+            asset_rid: StreamingChecklistConfiguration._from_conjure(config)
+            for asset_rid, config in info.asset_configurations.items()
+        }
+
+    def get_streaming_status(self, assets: Sequence[Asset | str]) -> Mapping[str, StreamingChecklistStatus]:
+        """Fetch live status and check results keyed by asset RID.
+
+        Args:
+            assets: Assets or their RIDs already configured to stream this checklist. An asset without
+                a streaming configuration causes the request to fail. An empty sequence returns an empty mapping.
+
+        Returns:
+            Status for each returned asset, including the executing commit when running.
+
+        Raises:
+            ValueError: The service returns a lifecycle or check-status variant unknown to the
+                installed generated bindings. Upgrade the SDK to read newer status variants.
+
+        Note:
+            Large reads use multiple requests and are not an atomic snapshot. If any request fails,
+            the method raises without returning partial results.
+        """
+        statuses: dict[str, StreamingChecklistStatus] = {}
+        for asset_batch in batched(assets, _LIVE_STATUS_BATCH_SIZE):
+            request = scout_checklistexecution_api.BatchChecklistLiveStatusRequest(
+                requests=[
+                    scout_checklistexecution_api.ChecklistLiveStatusRequest(
+                        asset_rid=rid_from_instance_or_string(asset), checklist_rid=self.rid
+                    )
+                    for asset in asset_batch
+                ]
+            )
+            response = self._clients.checklist_execution.checklist_live_status(self._clients.auth_header, request)
+            statuses.update(
+                (result.asset_rid, StreamingChecklistStatus._from_conjure(result.status))
+                for result in response.checklist_live_status_responses
+            )
+        return statuses
 
     def stop_streaming(self) -> None:
         """Stop the checklist."""
