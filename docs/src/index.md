@@ -120,6 +120,7 @@ Overview <guides/runs/overview>
 :caption: Assets
 
 Overview <guides/assets/overview>
+Asset types <guides/assets/asset-types>
 ```
 
 ```{toctree}

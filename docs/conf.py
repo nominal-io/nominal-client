@@ -53,7 +53,7 @@ autosummary_context = {
 # Curate topic ownership by module; names still come from nominal.core.__all__.
 core_topic_modules = {
     "client": ("client", "workspace", "user", "_utils.networking"),
-    "assets-and-runs": ("asset", "run", "attachment", "comment"),
+    "assets-and-runs": ("asset", "asset_type", "run", "attachment", "comment"),
     "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job"),
     "channels-and-units": ("channel", "unit"),
     "streaming": ("_stream.write_stream", "log"),
