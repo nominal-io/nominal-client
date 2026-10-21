@@ -39,6 +39,7 @@ from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
+from nominal.core.external_connection import ExternalConnection, ExternalConnectionConfig
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
@@ -84,6 +85,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
+    external_connection: ExternalConnection | None = field(default=None, kw_only=True)
+    """External provider details and last reported status, or None for a native dataset."""
 
     class _Clients(
         Channel._Clients,
@@ -113,6 +116,28 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
+
+    def register_external_connection(self, config: ExternalConnectionConfig) -> Self:
+        """Replace this dataset's external connection configuration and refresh this instance.
+
+        Args:
+            config: Complete external configuration. Empty collections replace existing values;
+                omitted scraping and query limits clear the previous settings. Referenced secrets
+                must be accessible in this dataset's workspace.
+
+        Returns:
+            This dataset, refreshed from the registration response.
+
+        Note:
+            Registration does not test connectivity or wait for channel discovery. A newly registered
+            connection initially reports connected; this is not a successful query health check.
+            Readback includes details, status, and limits, not the full scraping configuration.
+            Use an ordinary dataset without external configuration for native streaming.
+        """
+        response = self._clients.catalog.register_external_connection_config(
+            self._clients.auth_header, config._to_conjure(self.rid)
+        )
+        return self._refresh_from_api(response)
 
     def update(
         self,
@@ -1237,6 +1262,11 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
+            external_connection=(
+                None
+                if dataset.external_connection_metadata is None
+                else ExternalConnection._from_conjure(dataset.external_connection_metadata)
+            ),
             _clients=clients,
         )
 

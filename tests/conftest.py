@@ -70,6 +70,7 @@ def make_enriched_dataset():
         *,
         name: str = "A dataset",
         derived_definition: scout_catalog.DerivedDefinition | None = None,
+        external_connection_metadata: scout_catalog.ExternalConnectionMetadata | None = None,
     ) -> scout_catalog.EnrichedDataset:
         return scout_catalog.EnrichedDataset(
             rid=rid,
@@ -89,6 +90,7 @@ def make_enriched_dataset():
             retention_policy=scout_catalog.RetentionPolicy(type=scout_catalog.RetentionPolicyType.KEEP_FOREVER),
             timestamp_type=scout_catalog.WeakTimestampType.ABSOLUTE,
             derived_definition=derived_definition,
+            external_connection_metadata=external_connection_metadata,
         )
 
     return _make
