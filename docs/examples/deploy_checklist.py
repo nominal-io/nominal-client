@@ -4,6 +4,8 @@ Create temperature, oil-pressure, and controller-fault checks, then evaluate a h
 For setup, creation and updates, stable keys, and reviewing results, see
 [Authoring checklists as code](/guides/checklists/authoring.md).
 
+This example accepts runs with at most one asset. For multi-asset runs, select an asset using
+the [data review builder](/guides/checklists/data-review.md#applying-checklists-to-runs).
 The run needs a data source reference named `telemetry`. Channel names, units, and expected
 results are documented alongside each check below; adapt them to your test setup.
 
@@ -13,7 +15,8 @@ Create the checklist and review a run:
 python deploy_checklist.py --profile my-profile --source-revision YOUR_GIT_SHA --run-rid RUN_RID
 ```
 
-The script prints the checklist RID and commit, followed by the review URL and generated events.
+The script prints a JSON deployment record to stdout; redirect it to a file to save the checklist
+RID and commit. The review URL and generated events go to stderr.
 To compare limits against the same telemetry, use the saved checklist RID and the same run RID:
 
 ```shell
@@ -101,6 +104,9 @@ def main(profile: str, source_revision: str, run_rid: str, checklist_rid: str | 
     builder = test_stand_checks(temperature_limit)
     client = NominalClient.from_profile(profile)
     run = client.get_run(run_rid)
+    # Check the example's run restriction before publishing a new checklist version.
+    if len(run.assets) > 1:
+        raise click.ClickException("Use the data review builder with asset= to review a multi-asset run.")
     message = f"Deploy test-stand checks from {source_revision}"
     # Create once; later deployments use the saved RID and replace the complete
     # definition. Include all three checks even when only the thermal limit changes.
@@ -125,13 +131,13 @@ def main(profile: str, source_revision: str, run_rid: str, checklist_rid: str | 
     # Evaluate exactly this version. Print the URL before waiting so the review
     # remains accessible if polling is interrupted.
     review = checklist.execute(run, commit=checklist.commit_id)
-    click.echo(f"Review: {review.nominal_url}")
+    click.echo(f"Review: {review.nominal_url}", err=True)
     review.poll_for_completion()
     # Compare the actual events with the cases described alongside the checks.
     # An empty list alone does not establish that all required data was present.
     for event in review.get_events():
-        click.echo(f"{event.name}: start={event.start} ns UTC, duration={event.duration} ns")
-    click.echo("Inspect evaluation status and telemetry coverage before accepting the run.")
+        click.echo(f"{event.name}: start={event.start} ns UTC, duration={event.duration} ns", err=True)
+    click.echo("Inspect evaluation status and telemetry coverage before accepting the run.", err=True)
 
 
 if __name__ == "__main__":
