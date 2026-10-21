@@ -25,6 +25,8 @@ classifiers = [
 
 requires-python = ">=3.11,<4"
 dependencies = [
+    # Removes the emSign ECC Root CA - G3 trust anchor after intermediate key compromise.
+    "certifi>=2026.10.18",
     "conjure-python-client>=3.1.0,<4",
     "nominal-api==0.1495.1",
     "nominal-api-protos==0.1495.1",
