@@ -21,7 +21,7 @@ UTC start time; replace both with your own recording and capture time for real t
 Install `nominal` and `huggingface-hub` in your Python environment. The latter is only
 needed to download the sample.
 
-Configure a profile using the [authentication guide](/guides/authentication.md), then create a client:
+Configure a profile as in [API keys setup](/guides/api-keys-setup.md), then create a client:
 
 ```python
 from nominal.core import NominalClient

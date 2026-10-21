@@ -20,7 +20,7 @@ For background on checklists, violations, and reviewing results, start with
 ## Setup
 
 Install the `compute` extra and configure a client profile using the
-[authentication guide](../authentication.md):
+[API keys setup](../api-keys-setup.md):
 
 ```shell
 pip install 'nominal[compute]'

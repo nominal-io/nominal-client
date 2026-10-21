@@ -34,8 +34,8 @@ dataset.add_tabular_data("run_042.csv", timestamp_column="timestamp", timestamp_
 Create an asset, upload a CSV and stream live data.
 :::
 
-:::{grid-item-card} {octicon}`key` Authenticate
-:link: guides/authentication
+:::{grid-item-card} {octicon}`key` API keys setup
+:link: guides/api-keys-setup
 :link-type: doc
 
 Create an API key and save it as a profile.
@@ -70,7 +70,7 @@ thresholds, operating conditions, and fault states. See the
 
 Overview <self>
 Quickstart <guides/quickstart>
-Authenticate <guides/authentication>
+API keys setup <guides/api-keys-setup>
 Data integration tutorial <guides/data-integration-tutorial>
 Networking and TLS <networking-tls>
 ```

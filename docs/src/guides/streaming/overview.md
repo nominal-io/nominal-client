@@ -20,7 +20,7 @@ For uploading a saved streaming recording, see [Avro stream files](/guides/datas
 
 ## Create a dataset and register channels
 
-Install `nominal` and [configure an authentication profile](/guides/authentication.md).
+Install `nominal` and [configure an authentication profile](/guides/api-keys-setup.md).
 Then create the dataset that will receive the points:
 
 ```python

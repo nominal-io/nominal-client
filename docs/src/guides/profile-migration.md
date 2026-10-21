@@ -32,14 +32,14 @@ python -m nominal.cli config migrate
 
 ## Creating credentials from scratch
 
-See [Authentication](/guides/authentication.md).
+See [API keys setup](/guides/api-keys-setup.md).
 
 ## Creating a client from a profile
 
 All operations will happen via the {py:obj}`NominalClient
 interface <nominal.core.NominalClient>`. You
 can construct a Client from profile or from token (see
-[Authentication](/guides/authentication.md) for more detail).
+[API keys setup](/guides/api-keys-setup.md) for more detail).
 
 ```python
 from nominal.core import NominalClient
