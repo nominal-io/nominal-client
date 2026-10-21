@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.180.1](https://github.com/nominal-io/nominal-client/compare/v1.180.0...v1.180.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* require certifi without compromised emSign trust anchor ([#1214](https://github.com/nominal-io/nominal-client/issues/1214)) ([11cd1d2](https://github.com/nominal-io/nominal-client/commit/11cd1d28d9a497c623ab6c763c719ac54da03746))
+
+
+### Documentation
+
+* fix numeric band checklist recipe formatting ([#1212](https://github.com/nominal-io/nominal-client/issues/1212)) ([9ecbef4](https://github.com/nominal-io/nominal-client/commit/9ecbef4d5964d480ec3020c2b80e0e00a16cc493))
+
 ## [1.180.0](https://github.com/nominal-io/nominal-client/compare/v1.179.0...v1.180.0) (2026-10-20)
 
 
