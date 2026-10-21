@@ -15,8 +15,7 @@ Create the checklist and review a run:
 python deploy_checklist.py --profile my-profile --source-revision YOUR_GIT_SHA --run-rid RUN_RID
 ```
 
-The script prints a JSON deployment record to stdout; redirect it to a file to save the checklist
-RID and commit. The review URL and generated events go to stderr.
+The script prints the checklist RID and version, review URL, and generated events.
 To compare limits against the same telemetry, use the saved checklist RID and the same run RID:
 
 ```shell
@@ -25,8 +24,6 @@ python deploy_checklist.py --profile my-profile --source-revision NEXT_GIT_SHA \
 ```
 
 """
-
-import json
 
 import click
 
@@ -115,29 +112,21 @@ def main(profile: str, source_revision: str, run_rid: str, checklist_rid: str | 
     else:
         checklist = client.get_checklist(checklist_rid)
         builder.commit(checklist, commit_message=message)
-    # Save this record to associate the source and limit with the published version.
-    click.echo(
-        json.dumps(
-            {
-                "source_revision": source_revision,
-                "temperature_limit_c": temperature_limit,
-                "checklist_rid": checklist.rid,
-                "checklist_commit": checklist.commit_id,
-                "url": checklist.nominal_url,
-            },
-            indent=2,
-        )
-    )
+    print(f"Source revision: {source_revision}")
+    print(f"Temperature limit: {temperature_limit} °C")
+    print(f"Checklist RID: {checklist.rid}")
+    print(f"Checklist version: {checklist.commit_id}")
+    print(f"Checklist: {checklist.nominal_url}")
     # Evaluate exactly this version. Print the URL before waiting so the review
     # remains accessible if polling is interrupted.
     review = checklist.execute(run, commit=checklist.commit_id)
-    click.echo(f"Review: {review.nominal_url}", err=True)
+    print(f"Review: {review.nominal_url}")
     review.poll_for_completion()
     # Compare the actual events with the cases described alongside the checks.
     # An empty list alone does not establish that all required data was present.
     for event in review.get_events():
-        click.echo(f"{event.name}: start={event.start} ns UTC, duration={event.duration} ns", err=True)
-    click.echo("Inspect evaluation status and telemetry coverage before accepting the run.", err=True)
+        print(f"{event.name}: start={event.start} ns UTC, duration={event.duration} ns")
+    print("Inspect evaluation status and telemetry coverage before accepting the run.")
 
 
 if __name__ == "__main__":

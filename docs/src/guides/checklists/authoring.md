@@ -305,7 +305,7 @@ For repeatable deployments, save:
 
 1. The complete set of definitions and channel bindings in source control.
 2. The checklist RID in configuration, so subsequent deployments update the same resource.
-3. A deployment record containing the source revision and published checklist `commit_id`.
+3. The source revision and published checklist `commit_id` in your deployment logs.
 
 If you also edit the checklist in the UI, copy those changes back to source before deploying.
 `commit()` catches concurrent changes made after lookup, but it will overwrite UI edits that were
