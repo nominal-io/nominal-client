@@ -79,8 +79,12 @@ class MigrationRunner:
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
             video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
                 ingesting before recording it as incomplete and moving on. None waits indefinitely.
-            added_labels (Sequence[str]): Labels added to every resource the migration creates, after the
-                source resource's own labels. Resources created by an earlier run are not relabeled.
+            added_labels (Sequence[str]): Labels added to every resource the migration creates, alongside the
+                source resource's own labels. The labels are copied when the runner is created, so later changes
+                to the passed collection have no effect. Resources created by an earlier run are not relabeled.
+
+        Raises:
+            TypeError: If added_labels is a single string rather than a collection of strings.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
@@ -92,7 +96,9 @@ class MigrationRunner:
         self.user_rid_mapping = dict(user_rid_mapping) if user_rid_mapping is not None else {}
         self.dry_run = dry_run
         self.video_ingest_timeout = video_ingest_timeout
-        self.added_labels = added_labels
+        if isinstance(added_labels, str):
+            raise TypeError("added_labels must be a collection of strings, not a single string")
+        self.added_labels = tuple(added_labels)
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():

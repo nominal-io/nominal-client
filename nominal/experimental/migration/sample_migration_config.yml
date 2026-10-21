@@ -21,7 +21,7 @@ migration:
 
   # -------------------------------------------------------------------------
   # Labels (optional)
-  # Added to every resource the migration creates, after the resource's own
+  # Added to every resource the migration creates, alongside the resource's own
   # source labels. Resources created by an earlier run are not relabeled.
   # -------------------------------------------------------------------------
   # add_labels:

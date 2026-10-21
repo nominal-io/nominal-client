@@ -5,7 +5,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Callable, Iterable, Mapping, Sequence, TypeVar, cast
+from typing import Any, Callable, Iterable, Mapping, TypeVar, cast
 
 from nominal.core import NominalClient
 from nominal.experimental.migration.migration_state import MigrationState
@@ -32,8 +32,8 @@ class MigrationContext:
     dry_run: bool = False
     video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT
     """How long to wait for a copied video to finish ingesting before moving on. `None` waits forever."""
-    added_labels: Sequence[str] = ()
-    """Labels added to every resource the migration creates, after the source resource's own labels."""
+    added_labels: tuple[str, ...] = ()
+    """Labels added to every resource the migration creates, alongside the source resource's own labels."""
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _singleflight_futures: dict[tuple[str, str], concurrent.futures.Future[Any]] = field(
         default_factory=dict,
@@ -57,9 +57,10 @@ class MigrationContext:
             logger.warning("No mapped destination user RID for source user %s.", source_user_rid)
         return destination_user_rid
 
-    def destination_labels(self, source_labels: Iterable[str]) -> list[str]:
-        """The source labels followed by `added_labels`, without duplicates."""
-        return list(dict.fromkeys([*source_labels, *self.added_labels]))
+    def destination_labels(self, source_labels: Iterable[str], override: Iterable[str] | None = None) -> list[str]:
+        """`override` if given, else the source labels, followed by `added_labels`, without duplicates."""
+        labels = source_labels if override is None else override
+        return list(dict.fromkeys([*labels, *self.added_labels]))
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.migration_state.record_mapping(resource_type=resource_type, old_rid=old_rid, new_rid=new_rid)

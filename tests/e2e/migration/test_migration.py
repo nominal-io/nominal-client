@@ -60,7 +60,8 @@ from tests.e2e import POLL_INTERVAL
 
 RegisterCleanup = Callable[[Callable[[], None]], None]
 
-ADDED_LABELS = ("migration-e2e-added",)
+# Includes the source resources' own label, so the migration must not add it a second time.
+ADDED_LABELS = ("migration-e2e", "migration-e2e-added")
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ def _create_source_checklist_and_review(
     source_run: Run,
 ) -> tuple[Checklist, DataReview]:
     checklist = _create_checklist_with_content(
-        source_client, title=f"migration-e2e-checklist-{uuid4()}", is_published=True
+        source_client, title=f"migration-e2e-checklist-{uuid4()}", labels=["migration-e2e"], is_published=True
     )
     register_cleanup(checklist.archive)
     data_review = checklist.execute(source_run)
@@ -346,7 +347,7 @@ def _create_multi_asset_workbook(
 def _assert_asset_migrated(source: Asset, dest: Asset, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
 
 
@@ -359,7 +360,7 @@ def _assert_dataset_migrated(
 ) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: dataset is accessible under the expected scope on the destination asset.
     dest_datasets = dict(dest_asset.list_datasets())
@@ -373,7 +374,7 @@ def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset, added_
     assert dest.start == source.start
     assert dest.duration == source.duration
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: event is associated with exactly the destination asset (no others).
     assert dest.rid in {e.rid for e in dest_asset.search_events()}
@@ -383,7 +384,7 @@ def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset, added_
 def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     assert dest.start == source.start
     assert dest.end == source.end
@@ -395,7 +396,7 @@ def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset, added_labels
 def _assert_checklist_migrated(source: Checklist, dest: Checklist, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
 
 
@@ -404,7 +405,7 @@ def _assert_video_migrated(
 ) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: video is accessible under the expected scope on the destination asset.
     dest_videos = dict(dest_asset.list_videos())
@@ -420,7 +421,7 @@ def _assert_workbook_migrated(
     source: Workbook, dest: Workbook, dest_asset: Asset, added_labels: Sequence[str] = ()
 ) -> None:
     assert dest.title == source.title
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: workbook appears on the destination asset and references exactly it.
     assert dest.rid in {w.rid for w in dest_asset.search_workbooks(include_drafts=True)}
@@ -432,7 +433,7 @@ def _assert_workbook_migrated_multi_run(
     source: Workbook, dest: Workbook, dest_runs: list[Run], added_labels: Sequence[str] = ()
 ) -> None:
     assert dest.title == source.title
-    assert set(dest.labels) == {*source.labels, *added_labels}
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     assert dest.run_rids is not None
     assert set(dest.run_rids) == {r.rid for r in dest_runs}
@@ -573,7 +574,7 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     dest_att = dest_client.get_attachment(dest_att_rid)
     register_cleanup(dest_att.archive)
     assert dest_att.name == source_att.name
-    assert set(dest_att.labels) == {*source_att.labels, *ADDED_LABELS}
+    assert sorted(dest_att.labels) == sorted({*source_att.labels, *ADDED_LABELS})
 
     # --- second run ---
     dest_run_b_rid = state.get_mapped_rid(ResourceType.RUN, source_run_b.rid)
@@ -688,7 +689,7 @@ def test_migrate_asset_with_dataset_files(
     )
 
 
-@pytest.mark.parametrize("added_labels", [(), ADDED_LABELS], ids=["source-labels", "added-labels"])
+@pytest.mark.parametrize("added_labels", [(), ADDED_LABELS], ids=["no-added-labels", "added-labels"])
 def test_migrate_standalone_template(
     source_client: NominalClient,
     dest_client: NominalClient,
@@ -720,7 +721,7 @@ def test_migrate_standalone_template(
     register_cleanup(dest_template.archive)
     assert dest_template.title == source_template.title
     assert dest_template.description == source_template.description
-    assert set(dest_template.labels) == {*source_template.labels, *added_labels}
+    assert sorted(dest_template.labels) == sorted({*source_template.labels, *added_labels})
     assert dest_template.properties == source_template.properties
 
 

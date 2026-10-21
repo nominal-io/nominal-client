@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Sequence, cast
 
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
@@ -30,6 +30,7 @@ ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID
 class WorkbookCopyOptions(ResourceCopyOptions):
     source_to_destination_asset_rid_mapping: Mapping[str, str] = field(default_factory=dict)
     source_to_destination_run_rid_mapping: Mapping[str, str] = field(default_factory=dict)
+    new_labels: Sequence[str] | None = None
     new_properties: Mapping[str, str] | None = None
     # source run rids that were intentionally not migrated (archived); the workbook is
     # migrated with only its remaining runs instead of failing on the missing mapping
@@ -100,6 +101,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             raw_notebook,
             rid_overrides,
             data_scope,
+            labels=options.new_labels,
             properties=options.new_properties,
         )
 
@@ -109,6 +111,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         raw_notebook: Any,
         rid_overrides: dict[str, str],
         data_scope: scout_notebook_api.NotebookDataScope,
+        labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Workbook:
         """Create a new workbook in the destination by find/replacing RIDs in the source content.
@@ -133,18 +136,17 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         destination_client = self.destination_client_for(source)
         dest_clients = destination_client._clients
-        source_metadata = raw_notebook.metadata
         request = scout_notebook_api.CreateNotebookRequest(
-            title=source_metadata.title,
-            description=source_metadata.description,
+            title=raw_notebook.metadata.title,
+            description=raw_notebook.metadata.description,
             is_draft=source.is_draft(),
             state_as_json="{}",
             data_scope=data_scope,
             layout=new_layout,
             content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=new_content),
             event_refs=[],
-            labels=self.ctx.destination_labels(source_metadata.labels),
-            properties=dict(properties if properties is not None else source_metadata.properties),
+            labels=self.ctx.destination_labels(raw_notebook.metadata.labels, override=labels),
+            properties=dict(properties if properties is not None else raw_notebook.metadata.properties),
             workspace=dest_clients.resolve_default_workspace_rid(),
         )
         raw_new_notebook = dest_clients.notebook.create(dest_clients.auth_header, request)

@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Mapping, cast
+from typing import Mapping, Sequence, cast
 
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
@@ -30,6 +30,7 @@ ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID
 class WorkbookTemplateCopyOptions(ResourceCopyOptions):
     new_template_title: str | None = None
     new_template_description: str | None = None
+    new_template_labels: Sequence[str] | None = None
     new_template_properties: Mapping[str, str] | None = None
     include_content_and_layout: bool = False
 
@@ -77,7 +78,9 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             description=options.new_template_description
             if options.new_template_description is not None
             else raw_source_template.metadata.description,
-            labels=self.ctx.destination_labels(raw_source_template.metadata.labels),
+            labels=self.ctx.destination_labels(
+                raw_source_template.metadata.labels, override=options.new_template_labels
+            ),
             properties=options.new_template_properties
             if options.new_template_properties is not None
             else raw_source_template.metadata.properties,
