@@ -1,13 +1,15 @@
+from pathlib import Path
 from typing import Iterable
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 from click import UsageError
+from click.testing import CliRunner
 
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
-from nominal.experimental.migration.migration_cli import _load_added_labels
+from nominal.experimental.migration.migration_cli import _load_added_labels, migrate_cmd
 from nominal.experimental.migration.migration_runner import MigrationRunner
 
 
@@ -68,3 +70,26 @@ def test_runner_ignores_changes_to_a_passed_list_after_creation() -> None:
     ctx = _make_runner(labels).build_context()
     labels.append("batch-1")
     assert ctx.destination_labels([]) == ["migrated"]
+
+
+def test_copy_passes_config_add_labels_to_the_runner(tmp_path: Path) -> None:
+    """`nom migrate copy` starts the migration with the config's add_labels."""
+    config = tmp_path / "migration.yml"
+    config.write_text(
+        "migration:\n"
+        "  name: labels\n"
+        "  include_dataset_files: false\n"
+        "  preserve_dataset_uuid: false\n"
+        "  add_labels: [migrated, batch-1]\n",
+        encoding="utf-8",
+    )
+    args = ["copy", "--source-profile", "source", "--destination-profile", "destination", "--config", str(config)]
+
+    with (
+        patch("nominal.experimental.migration.migration_decorators.NominalClient.from_profile"),
+        patch("nominal.experimental.migration.migration_cli.run_parallel_migration") as run_parallel_migration,
+    ):
+        result = CliRunner().invoke(migrate_cmd, args)
+
+    assert result.exit_code == 0, result.output
+    assert run_parallel_migration.call_args.args[0].added_labels == ("migrated", "batch-1")
