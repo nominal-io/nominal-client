@@ -4,6 +4,10 @@
 The API reference for the `nominal` package. For installation, quickstarts, and how-to guides,
 see the [guides](/index.md).
 
+[Authoring checklists as code](../guides/checklists/authoring.md) covers creating and updating
+checklists, writing checks, and running them against your data. The
+[test-stand example](../examples/deploy_checklist.py.md) is a complete script.
+
 The main components of the SDK are:
 
 - **[`nominal.core`](core/index.md)**: the object-oriented client for the Nominal core platform.

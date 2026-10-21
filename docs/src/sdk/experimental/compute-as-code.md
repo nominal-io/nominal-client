@@ -5,8 +5,8 @@ with `nominal.experimental.compute_as_code`. This module is experimental and req
 `pip install 'nominal[compute]'`.
 
 For the checklist workflow, see [Authoring checklists as code](../../guides/checklists/authoring.md).
-The [deployment example](../../examples/deploy_checklist.py.md) is a runnable script for creating
-and updating a checklist from source control.
+The [propulsion test-stand example](../../examples/deploy_checklist.py.md) creates and revises
+thermal, pressure, and controller checks, evaluates a run, and inspects generated events.
 
 ## API Reference
 

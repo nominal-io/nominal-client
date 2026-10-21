@@ -32,11 +32,11 @@ class CheckDefinition:
         expression: Source ending in a range expression describing violations. Assignments
             are allowed; omit imports. Convert boolean conditions with ``.ranges()``.
         priority: Severity of violations, from P0 (most severe) to P4.
-        event_type: Category of generated events. Omit to use the service default.
+        event_type: Category of generated events. When omitted, the service uses ``EventType.ERROR``.
             This does not change the condition or turn absence of matching ranges into success.
             ``EventType.UNKNOWN`` is not a valid category for creation.
         event_labels: Labels applied to generated events, not checklist grouping labels.
-            Omit to use the service default; an empty sequence requests no labels.
+            When omitted or empty, this check supplies no event labels.
             Labels are copied when the definition is added to a builder.
         description: Description of the check.
         key: Optional stable identity, independent of title and source. The same key preserves
