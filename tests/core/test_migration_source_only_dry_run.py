@@ -78,11 +78,11 @@ def test_explicit_destination_dry_run_still_reads_the_destination(tmp_path: Path
     destination_client.get_workspace.assert_called()
 
 
-def _invoke_copy(tmp_path: Path, *args: str) -> tuple[Result, MagicMock, MagicMock]:
+def _invoke_copy(tmp_path: Path, *args: str, config_extra: str = "") -> tuple[Result, MagicMock, MagicMock]:
     """Run `nom migrate copy` on an empty config, returning the result and the profile and migration spies."""
     config = tmp_path / "migration.yml"
     config.write_text(
-        "migration:\n  name: dry-run\n  include_dataset_files: false\n  preserve_dataset_uuid: false\n",
+        "migration:\n  name: dry-run\n  include_dataset_files: false\n  preserve_dataset_uuid: false\n" + config_extra,
         encoding="utf-8",
     )
     with (
@@ -119,3 +119,12 @@ def test_source_only_dry_run_leaves_state_files_untouched(tmp_path: Path) -> Non
     assert [call.args for call in from_profile.call_args_list] == [("source",)]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["migration.yml", "migration_state.json"]
     assert state_path.read_text(encoding="utf-8") == state_text
+
+
+def test_source_only_dry_run_with_demo_workbooks_skips_the_sandbox_check(tmp_path: Path) -> None:
+    """Without a destination, a set_to_demo_workbook dry run warns that it cannot check the sandbox and still runs."""
+    result, _, run_migration = _invoke_copy(tmp_path, "--dry-run", config_extra="  set_to_demo_workbook: true\n")
+
+    assert result.exit_code == 0, result.output
+    run_migration.assert_called_once()
+    assert "not checking that the destination workspace is 'sandbox'" in result.output
