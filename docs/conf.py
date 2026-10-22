@@ -171,6 +171,8 @@ html_copy_source = False
 
 nominal_hub_url = "https://docs.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
+# Left sidebar groups fold; only "Get started" (and the current page's group) start open.
+nominal_sidebar_open = ["Get started"]
 
 html_context = {
     "source_type": "github",

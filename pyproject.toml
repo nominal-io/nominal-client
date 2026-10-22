@@ -94,7 +94,7 @@ docs = [
 docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "eff08ba0d7e2aa35f7c250beae9aa813fb2e6cfd" }
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "7bd5350972dd2306a72b2fb36584c8715c8479e3" }
 nominal = { workspace = true }
 nominal-ibis = { workspace = true }
 nominal-tdms = { workspace = true }
