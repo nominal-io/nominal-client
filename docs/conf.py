@@ -122,9 +122,8 @@ for _module_name in _seed_modules:
 autosummary_context["module_data"]["nominal.core"]["canonical_names"] = {
     name: f"{module}.{name}" for module, names in core_module_exports.items() for name in names
 }
-# Partials are included by guide pages rather than built as standalone pages. The old
-# authentication page is kept for reference only; its URL redirects to API keys setup.
-exclude_patterns = ["guides/_snippets", "sdk/_summaries", "guides/authentication_deprecated.md"]
+# Partials are included by guide pages rather than built as standalone pages.
+exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
