@@ -22,7 +22,7 @@ an asset or run.
 ## Connect to Nominal
 
 Install the SDK with `pip install nominal` and
-[configure an authentication profile](/guides/authentication.md) before running the examples.
+[configure an authentication profile](/guides/api-keys-setup.md) before running the examples.
 
 ```python
 from nominal.core import NominalClient

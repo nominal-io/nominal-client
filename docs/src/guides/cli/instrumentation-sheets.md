@@ -313,4 +313,4 @@ Use `nom mis list-units --profile default` to see the complete list of available
 ## Related Commands
 
 - [Dataset CLI](/guides/datasets/overview.md) - Other dataset management commands
-- [Authentication](/guides/authentication.md) - Setting up API access
+- [API keys setup](/guides/api-keys-setup.md) - Setting up API access

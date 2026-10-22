@@ -19,7 +19,7 @@ For a dataset that is only attached directly to a run, or for whole-file downloa
 ## Start the wizard
 
 Install the SDK with `pip install nominal` and
-[save a connection profile](/guides/authentication.md), then run:
+[save a connection profile](/guides/api-keys-setup.md), then run:
 
 ```bash
 nom download --profile default

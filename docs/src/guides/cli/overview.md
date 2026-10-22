@@ -17,7 +17,7 @@ The CLI executable is called `nom`, and installed when you do `pip install nomin
 nom --version
 ```
 
-Before using the CLI, save a connection profile following the [Authentication guide](/guides/authentication.md). Commands that access Nominal require `--profile default` (replace `default` with your profile name).
+Before using the CLI, save a connection profile following [API keys setup](/guides/api-keys-setup.md). Commands that access Nominal require `--profile default` (replace `default` with your profile name).
 
 The CLI provides commands for managing connection profiles and containerized extractors, downloading data, processing instrumentation sheets, and migrating resources between tenants:
 
@@ -58,7 +58,7 @@ nom config profile add --help
 
 ## Next Steps
 
-- **Authentication**: Set up your API tokens with `nom config profile add` - see the [Authentication guide](/guides/authentication.md)
+- **Authentication**: Set up your API tokens with `nom config profile add` - see [API keys setup](/guides/api-keys-setup.md)
 - **Download Data**: Learn how to use the interactive download wizard - see the [Downloading Data](/guides/cli/downloading-data.md) guide
 - **Instrumentation Sheets**: Learn how to bulk-update channel metadata - see the [Instrumentation Sheet Handling](/guides/cli/instrumentation-sheets.md) guide
 - **API Reference**: For programmatic access, check out the [Python SDK documentation](/sdk/index.md)

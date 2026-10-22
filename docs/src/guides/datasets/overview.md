@@ -32,7 +32,7 @@ see [Assets](/guides/assets/overview.md) and [Runs](/guides/runs/overview.md) fo
 ## Connect to Nominal
 
 Install the SDK with `pip install nominal` and
-[save an authentication profile](/guides/authentication.md) before running the examples.
+[save an authentication profile](/guides/api-keys-setup.md) before running the examples.
 The Python blocks below continue the same workflow unless labeled as an alternative.
 
 ```python

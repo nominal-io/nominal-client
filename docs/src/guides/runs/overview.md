@@ -29,7 +29,7 @@ operations later in the page.
 
 ## Connect to Nominal
 
-Install the SDK and [save an authentication profile](/guides/authentication.md), then create a
+Install the SDK and [save an authentication profile](/guides/api-keys-setup.md), then create a
 client. Both workflows below use these imports and this client:
 
 ```python

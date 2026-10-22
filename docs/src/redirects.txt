@@ -25,3 +25,6 @@ guides/runs/log-files.md guides/streaming/logs.md
 guides/assets/log-files.md guides/streaming/logs.md
 guides/datasets/logs.md guides/datasets/journal-json.md
 guides/streaming/using-connections.md guides/streaming/overview.md
+
+# Authentication is replaced by the shared API keys setup page.
+guides/authentication.md guides/api-keys-setup.md
