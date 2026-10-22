@@ -1,20 +1,20 @@
 ---
 myst:
   html_meta:
-    description: "Stream live video from any source to the Nominal platform using the Nominal Python SDK."
+    description: "Stream live video from any source to the Nominal platform using the Nominal Python Client."
 ---
 
 # Live video streaming
 
 {.lead}
-Stream live video from any source to the Nominal platform using the Nominal Python SDK.
+Stream live video from any source to the Nominal platform using the Nominal Python Client.
 
 Nominal supports live video streaming, allowing you to broadcast a video feed directly to the platform in real time.
 Live video streams can be viewed alongside telemetry data in [workbooks](https://docs.nominal.io/core/documentation/platform/workbooks/live-video-streaming), enabling synchronized analysis of visual and sensor data during active tests.
 
 ## How it works
 
-The Nominal Python SDK's video module connects a **source** to a **sink** and handles encoding, timestamping, and transport in between.
+The Nominal Python Client's video module connects a **source** to a **sink** and handles encoding, timestamping, and transport in between.
 Video is delivered to the Nominal platform over **WebRTC** using the WHIP (WebRTC-HTTP Ingestion Protocol) standard.
 
 On the viewer side, workbooks connect to the stream using WHEP (WebRTC-HTTP Egress Protocol) for low-latency playback directly in the browser.
@@ -23,7 +23,7 @@ Every frame carries an absolute wall-clock timestamp (nanoseconds) through the e
 
 Sources are either **raw** or **encoded**:
 
-- **Raw sources** (`Src.camera`, `Src.test`, `Src.app`, `Src.app_image`, `Src.file`, `Src.images`, `Src.display`). The SDK encodes the video using the codec and options you specify.
+- **Raw sources** (`Src.camera`, `Src.test`, `Src.app`, `Src.app_image`, `Src.file`, `Src.images`, `Src.display`). The client encodes the video using the codec and options you specify.
 - **Encoded sources** (`Src.udp_rtp`, `Src.udp_mpegts`, `Src.rtsp`, `Src.custom`, `Src.app_encoded`). The video is already compressed and is passed through without re-encoding.
 
 ## Prerequisites
@@ -52,7 +52,7 @@ Download and install the GStreamer runtime libraries from the [GStreamer downloa
 :::
 ::::
 
-Install the Nominal Python SDK with the video extra:
+Install the Nominal Python Client with the video extra:
 
 ```shell
 pip install nominal[video]
@@ -152,7 +152,7 @@ with VideoStream.create(
 `timestamp_ns` is an absolute wall-clock timestamp in nanoseconds, used to synchronize the video with telemetry data in workbooks.
 
 Set `auto_timestamp=False` when you are providing your own timestamps via `timestamp_ns`.
-When `auto_timestamp=True` (the default), the SDK assigns wall-clock timestamps automatically.
+When `auto_timestamp=True` (the default), the client assigns wall-clock timestamps automatically.
 
 ## View the live stream
 

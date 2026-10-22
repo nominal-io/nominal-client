@@ -10,7 +10,7 @@ myst:
 Overview and recipes for working with Nominal's Workbooks in Python
 
 Workbooks are Nominal's tool for creating and sharing interactive data visualizations and analyses. They can be created
-directly on the Nominal platform or programmatically using the Nominal Python SDK.
+directly on the Nominal platform or programmatically using the Nominal Python Client.
 
 ## Creating a workbook from a template
 
@@ -35,7 +35,7 @@ directly on the Nominal platform or programmatically using the Nominal Python SD
    - Navigate to Runs.
    - Click on the run you want to associate with the workbook.
    - On the right side of the screen, locate the RID under "Metadata".
-3. Create the Workbook Using the SDK:
+3. Create the Workbook Using the Client:
 
 ```python
 from nominal.core import NominalClient

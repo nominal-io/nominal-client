@@ -76,7 +76,7 @@ explicit error rather than producing an ingest that silently drops output.
 ### The manifest contract
 
 Save this template as `extractor_manifest.py`. Supply your format-specific parser as
-`parse_bespoke_binary` in `bespoke_parser.py`; it is not part of the SDK. In this example,
+`parse_bespoke_binary` in `bespoke_parser.py`; it is not part of the client. In this example,
 it returns pandas dataframes `telemetry` (with epoch-microsecond `timestamp` and `veh_id`
 columns) and `logs` (with `MESSAGE` and epoch-microsecond `__REALTIME_TIMESTAMP` columns),
 plus `write_video(path)` and an absolute `started_at` timestamp for the video.

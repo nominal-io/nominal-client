@@ -60,7 +60,7 @@ def generate(app: Sphinx) -> None:
     links = "".join(f"- [{title}]({name}.md)\n" for title, name in entries)
     toc = "".join(f"{name}\n" for _, name in entries)
     introduction = (
-        "Full, runnable scripts using the Nominal Python SDK. The source is in "
+        "Full, runnable scripts using the Nominal Python Client. The source is in "
         f"[`docs/examples/`]({_source_url(app, 'docs/examples', 'tree')})."
         if entries
         else "No example scripts have been added yet. Add a script under `docs/examples/` to generate its page."

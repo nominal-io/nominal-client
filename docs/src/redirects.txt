@@ -28,3 +28,9 @@ guides/streaming/using-connections.md guides/streaming/overview.md
 
 # Authentication is replaced by the shared API keys setup page.
 guides/authentication.md guides/api-keys-setup.md
+
+# Single-page concepts moved out of their own folders.
+guides/runs/overview.md guides/runs.md
+guides/assets/overview.md guides/assets.md
+guides/workbooks/overview.md guides/workbooks.md
+guides/events/overview.md guides/events.md

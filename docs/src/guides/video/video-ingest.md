@@ -56,7 +56,7 @@ OS package manager.
 
 {py:meth}`~nominal.core.Dataset.add_video` accepts H.264 or H.265 video.
 For playback, use YUV420p pixel format and regularly spaced keyframes.
-The SDK's {py:func}`~nominal.experimental.video_processing.normalize_video` helper
+The {py:func}`~nominal.experimental.video_processing.normalize_video` helper
 re-encodes to H.264 with YUV420p, converts existing audio to AAC, and places keyframes
 approximately every two seconds by default. It writes an MP4 or MKV file.
 
@@ -102,7 +102,7 @@ video_file.poll_until_ingestion_completed()
 
 The upload returns a {py:class}`~nominal.core.VideoDatasetFile` while ingestion is
 still running. Keep that object and wait before using its ingested metadata or bounds.
-The polling method refreshes the file and raises an SDK error if ingestion fails.
+The polling method refreshes the file and raises an error if ingestion fails.
 See [ingestion jobs](/guides/ingest/ingestion-jobs.md) for error handling.
 
 To add video to an existing dataset, retrieve it with `client.get_dataset("<DATASET_RID>")`
@@ -144,7 +144,7 @@ panel and select the `engine_cam` channel to review the clip alongside your test
 
 If the dataset already belongs to an asset, you can instead create a run over that
 asset's time range. Asset-associated runs and direct dataset attachments are distinct
-ways to make data available; see the [Runs overview](/guides/runs/overview.md) for both workflows.
+ways to make data available; see the [Runs overview](/guides/runs.md) for both workflows.
 
 ## Inspect uploaded video files
 

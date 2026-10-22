@@ -21,7 +21,7 @@ an asset or run.
 
 ## Connect to Nominal
 
-Install the SDK with `pip install nominal` and
+Install the client with `pip install nominal` and
 [configure an authentication profile](/guides/api-keys-setup.md) before running the examples.
 
 ```python
@@ -99,7 +99,7 @@ arguments to `get_log_stream()` to balance batch size and buffering time.
 Leaving the `with` block flushes buffered entries and waits for upload workers to
 finish. If you manage the stream without a context manager, call `close()` when done.
 Enqueueing is not a delivery acknowledgement: background upload failures are logged,
-and closing the stream does not raise those worker errors. Check SDK error logs when
+and closing the stream does not raise those worker errors. Check the client's error logs when
 verifying delivery. Neither this stream nor `write_logs` returns a dataset-file handle
 to poll, and neither uploads the original text file.
 
@@ -114,7 +114,7 @@ account for partial progress before retrying.
 ## View and organize the logs
 
 To view the logs in a workbook, attach the dataset to an
-[asset](/guides/assets/overview.md) or use a [run](/guides/runs/overview.md) with a direct
+[asset](/guides/assets.md) or use a [run](/guides/runs.md) with a direct
 dataset attachment or an associated asset. Open that asset or run in a workbook,
 add a **Logs** panel, and select the dataset's `engine_logs` channel. You can inspect
 it alongside telemetry covering the same times.

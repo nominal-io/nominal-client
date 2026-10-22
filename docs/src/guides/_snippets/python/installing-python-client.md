@@ -1,4 +1,4 @@
-Install the Nominal SDK for Core in Python with `pip`:
+Install the Nominal Python Client with `pip`:
 
 ```shell
 pip install nominal

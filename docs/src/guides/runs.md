@@ -29,7 +29,7 @@ operations later in the page.
 
 ## Connect to Nominal
 
-Install the SDK and [save an authentication profile](/guides/api-keys-setup.md), then create a
+[Install the client](/guides/install.md) and [save an authentication profile](/guides/api-keys-setup.md), then create a
 client. Both workflows below use these imports and this client:
 
 ```python
@@ -100,7 +100,7 @@ Use this workflow when the recordings or live data already belong to an asset. C
 associates it with that asset; you do not need to attach each of its datasets to the run again.
 
 Replace `<ASSET_RID>` with an existing asset that has data during your chosen interval. For setup,
-see [Add data to an asset](/guides/assets/overview.md#add-data-to-an-asset).
+see [Add data to an asset](/guides/assets.md#add-data-to-an-asset).
 This is an alternative to the standalone example:
 
 ```python
@@ -226,7 +226,7 @@ template.create_workbook(
 )
 ```
 
-See [Workbooks](/guides/workbooks/overview.md) for finding template RIDs and opening the result.
+See [Workbooks](/guides/workbooks.md) for finding template RIDs and opening the result.
 
 ## Remove directly attached data
 

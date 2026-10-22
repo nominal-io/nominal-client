@@ -2,6 +2,7 @@
 
 - Writing rules for pages and docstrings come from the `nominal-docs` skill. See the root [AGENTS.md](../AGENTS.md).
 - This file covers this site's folders, build commands and layout.
+- Call the library the "Nominal Python Client", or "the client" after first use. "SDK" means only the reference section under `sdk/`, as in "SDK reference".
 
 ## Contents
 
@@ -21,7 +22,7 @@
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000. It watches pages, examples, docstrings and included files.
 - Both commands remove generated example and reference pages and HTML before rebuilding.
-- The `docs` dependency group needs Python >=3.12. uv picks a compatible interpreter and may recreate an older project environment. The SDK still supports Python >=3.11.
+- The `docs` dependency group needs Python >=3.12. uv picks a compatible interpreter and may recreate an older project environment. The client still supports Python >=3.11.
 - Autodoc imports the live-video bindings. Linux builds need the GStreamer runtime; the Ubuntu docs job installs `libgstreamer-plugins-bad1.0-0`.
 - Docstring and signature rendering tests: `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
 - Reference-link script tests: `node --test docs/_tests/reference-links.test.mjs` (Node 22, no npm dependencies).
@@ -71,12 +72,12 @@
   - Their module entries live in `autosummary.rst`.
   - Sphinx finds members from `__all__` when present, otherwise from public local definitions.
   - Packages with `__all__` need no `:imported-members:` option.
-- Core's landing page links to authored topic pages, with only Core SDK in the sidebar.
+- Core's landing page links to authored topic pages, with only Core in the sidebar.
 - `core_topic_modules` in `conf.py` assigns defining modules to topics.
   - Each topic includes its section of the Core summary, combining the modules' public package exports into one set of tables.
   - Internal owning modules may contribute public exports. Implementation helpers and the `nominal.core.exceptions` shim stay out.
   - The strict build rejects unassigned or repeated exports.
-- Keep topic prose in its Markdown page, not in generator hooks or SDK module docstrings.
+- Keep topic prose in its Markdown page, not in generator hooks or module docstrings.
 - Topic pages tell readers to import from `nominal.core`.
 - Legacy standalone-video objects keep reference targets for existing links but are left out of the topic directory.
 - Timestamp and Ibis pages render module docstrings above the API reference. Their seeds use `module-summary-no-prose.rst` so the tables don't repeat that prose.

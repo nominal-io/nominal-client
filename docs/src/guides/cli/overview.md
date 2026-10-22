@@ -61,4 +61,4 @@ nom config profile add --help
 - **Authentication**: Set up your API tokens with `nom config profile add` - see [API keys setup](/guides/api-keys-setup.md)
 - **Download Data**: Learn how to use the interactive download wizard - see the [Downloading Data](/guides/cli/downloading-data.md) guide
 - **Instrumentation Sheets**: Learn how to bulk-update channel metadata - see the [Instrumentation Sheet Handling](/guides/cli/instrumentation-sheets.md) guide
-- **API Reference**: For programmatic access, check out the [Python SDK documentation](/sdk/index.md)
+- **API Reference**: For programmatic access, check out the [SDK reference](/sdk/index.md)

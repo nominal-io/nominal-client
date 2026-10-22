@@ -36,7 +36,7 @@ integrations to send notifications if violations are found.
 
 1. Locate or Create Run RIDs
 
-   Find the run RID(s) in the [platform](https://app.gov.nominal.io/runs) or [create new runs with the Nominal client](/guides/runs/overview.md).
+   Find the run RID(s) in the [platform](https://app.gov.nominal.io/runs) or [create new runs with the Nominal client](/guides/runs.md).
    Then paste the run RID(s) below.
 
    ```python

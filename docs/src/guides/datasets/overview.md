@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "Create a dataset, ingest and inspect data, and add recordings over time with the Python SDK"
+    description: "Create a dataset, ingest and inspect data, and add recordings over time with the Nominal Python Client."
 ---
 
 # Datasets in Python
 
 {.lead}
-Create a dataset, ingest and inspect data, and add recordings over time with the Python SDK
+Create a dataset, ingest and inspect data, and add recordings over time with the Nominal Python Client.
 
 A **dataset** is a named resource that holds timestamped data in channels. It can receive data
 from multiple uploaded files or from a live stream. Depending on the ingestion method, those
@@ -27,11 +27,11 @@ These objects play different roles:
 Attaching a dataset to an asset or run references the existing data; it does not upload a copy.
 For an asset's ongoing recordings, you can create or reuse its dataset with
 {py:meth}`~nominal.core.Asset.get_or_create_dataset`. The example below creates a dataset directly;
-see [Assets](/guides/assets/overview.md) and [Runs](/guides/runs/overview.md) for organizing it.
+see [Assets](/guides/assets.md) and [Runs](/guides/runs.md) for organizing it.
 
 ## Connect to Nominal
 
-Install the SDK with `pip install nominal` and
+Install the client with `pip install nominal` and
 [save an authentication profile](/guides/api-keys-setup.md) before running the examples.
 The Python blocks below continue the same workflow unless labeled as an alternative.
 

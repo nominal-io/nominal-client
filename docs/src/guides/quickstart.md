@@ -1,297 +1,142 @@
 ---
 myst:
   html_meta:
-    description: "Getting started with the Nominal Python client."
+    description: "Upload, stream, organize and read back data with the Nominal Python Client."
 ---
 
 # Python quickstart
 
 {.lead}
-Getting started with the Nominal Python client.
+A simple quickstart to show some basic features of `NominalClient`.
 
-This page walks through creating an asset, uploading a CSV dataset, and streaming continuous data to it using the Nominal SDK for Core in Python. To do this in the Nominal app instead, see the [quickstart: See your data in Nominal](https://docs.nominal.io/core/documentation/getting-started/quickstart).
 
-Commands on this page use these placeholders. Replace each with your own value as you go:
+To run this code locally, you need nominal-client  [installed](/guides/install.md) and your [API keys](/guides/api-keys-setup.md) setup.
 
-| Placeholder | Value |
-|---|---|
-| `<WORKSPACE_RID>` | the Nominal Core workspace's resource ID (`ri.organization.workspace....`) |
-| `<NOMINAL_API_KEY>` | your Nominal API key (`nominal_api_...`) |
-| `<API_URL>` | the API base URL for your Nominal Core app (for example `https://api.gov.nominal.io/api`) |
-| `<PROFILE>` | a short name for your saved credentials (for example `default`) |
-| `<DATASET_FILE_PATH>` | full path to the CSV file you'll upload (`/full/path/to/racecar_dataset.csv.gz`) |
+ 
 
-## Gather your Nominal credentials
+## Connect
 
-Copy your workspace RID, API key, and API URL from the Nominal app. You'll use them as `<WORKSPACE_RID>`, `<NOMINAL_API_KEY>` and `<API_URL>` below.
+The first step is to open a connection to nominal through the NominalClient.  
+```python
+from nominal.core import NominalClient
 
-:::{dropdown} Where to find these values
-
-Open your organization's **API keys** page  in Settings:
-
-```{button-link} https://app.gov.nominal.io/settings/org/api-keys
-:color: primary
-
-Go to API keys page
+client = NominalClient.from_profile("default") # replace if different 
 ```
 
-1. **API key:** Click **Create key**, name it, set an expiration, and click **Generate key**. Copy the key and keep it for `<NOMINAL_API_KEY>`. _You won’t be able to see it again. Store your API key securely to protect your Nominal data._
-1. **API URL:** On the same page, click **Copy URL** and keep it for `<API_URL>`.
-1. **Workspace RID:** On the same page, find your workspace in the list of all the organization’s workspaces, click **Copy RID**, and keep it for `<WORKSPACE_RID>`.
+## Upload Data
 
-![Settings API keys page](/guides/images/b5/settings-api-keys-page.png)
-:::
+Next, we synthesize some sample data and upload it to nominal. An asset represents the system you test, such as a vehicle or a test stand.
+Its datasets hold the channels you record.
 
-## Set up your environment
+### Synthesize Data 
+Generate one minute of sample engine data as a CSV:
 
-Pick a short profile name (`<PROFILE>`) to save your Nominal credentials under. Then download the sample CSV you'll upload later in this guide.
+```python
+import uuid
+from datetime import datetime, timedelta, timezone
 
-Download the `racecar_dataset.csv.gz` sample data file; its full path is `<DATASET_FILE_PATH>` below. It's a gzipped CSV, which Nominal ingests as is, so there's no need to unzip it:
+import numpy as np
+import pandas as pd
 
-{download}`Download racecar_dataset.csv.gz </guides/data/racecar_dataset.csv.gz>`
+# A unique ID keeps this run's asset separate from anyone else's.
+run_id = uuid.uuid4().hex[:8]
+start = datetime.now(timezone.utc) - timedelta(minutes=1)
 
-Set up a Python virtual environment so the SDK has an isolated place to live:
+t = np.arange(0, 60, 0.1)  # 10 Hz for 60 seconds
+pd.DataFrame({"timestamp": start.timestamp() + t,
+              "rpm": 3000 + 500 * np.sin(t / 5),
+              "coolant_temp_c": 80 + t / 6}
+).to_csv("engine.csv", index=False)
+```
+### Upload  
+Create the asset and a dataset on it, then upload the file:
 
-Set up your Python development environment:
+```python
+asset = client.get_or_create_asset_by_properties(
+    {"serial": f"QS-{run_id}"},  # properties identify the physical system
+    name=f"Quickstart engine {run_id}",
+)
+dataset = asset.get_or_create_dataset("engine")
 
-:::{dropdown} Verify Python version 3.11 or newer
+file = dataset.add_tabular_data("engine.csv", timestamp_column="timestamp", timestamp_type="epoch_seconds")
+file.poll_until_ingestion_completed()
 
-The Nominal SDK requires Python 3.11 or newer:
-
-  ```bash
-  python --version
-  ```
-
-  or
-
-  ```bash
-  python3 --version
-  ```
-
-  If your version is older, update Python to a supported version. If you get an error, you might not have Python. [Download and install Python](https://www.python.org/downloads/).
-:::
-
-:::::{dropdown} Set up a virtual environment
-
-Keep the Nominal SDK and its dependencies separate from other Python projects using a virtual environment:
-1. Set up a virtual environment:
-
-    ::::{tab-set}
-
-    :::{tab-item} macOS/Linux
-
-    ```bash
-    python3 -m venv nominal-env
-    ```
-    :::
-
-    :::{tab-item} Windows
-
-    ```bash
-    python -m venv nominal-env
-    ```
-    :::
-    ::::
-
-    This creates a new folder called `nominal-env` containing an isolated Python installation.
-
-1. Activate your virtual environment:
-
-    ::::{tab-set}
-
-    :::{tab-item} macOS/Linux
-
-    ```bash
-    source nominal-env/bin/activate
-    ```
-    :::
-
-    :::{tab-item} Windows (Command Prompt)
-
-    ```bash
-    nominal-env\Scripts\activate.bat
-    ```
-    :::
-
-    :::{tab-item} Windows (PowerShell)
-
-    ```bash
-    nominal-env\Scripts\Activate.ps1
-    ```
-    :::
-    ::::
-
-    When activated, you should see `(nominal-env)` at the beginning of your command prompt.
-:::::
-
-## Install the Nominal SDK for Core in Python
-
-```{include} /guides/_snippets/python/installing-python-client.md
+print(asset.nominal_url)
 ```
 
-## Save your credentials as a Nominal profile
+Open the printed URL to see the asset and its `engine` dataset in Nominal.
+Every other column in the CSV becomes a channel: `rpm` and `coolant_temp_c`.
+For other formats, see [Datasets](/guides/datasets/overview.md).
 
-In your terminal, run this command to save the credentials you entered above as a Nominal profile:
+## Stream live data
 
-```shell
-nominal config profile add '<PROFILE>' -t '<NOMINAL_API_KEY>' -w '<WORKSPACE_RID>' -u '<API_URL>'
+A write stream sends values as your code produces them, batching them in the background.
+This block streams 10 seconds of values to the same dataset:
+
+```python
+import time
+
+with dataset.get_write_stream() as stream:  # the stream flushes when the block exits
+    for _ in range(100):
+        now = datetime.now(timezone.utc)
+        stream.enqueue("rpm", now, 3000 + 200 * np.random.randn())
+        stream.enqueue("oil_pressure_kpa", now, 300 + 5 * np.random.randn())
+        time.sleep(0.1)
 ```
 
-Confirm the profile was written:
+To watch values arrive, open a workbook on the asset and click **Go Live**.
+See [Streaming](/guides/streaming/overview.md) for the full set of options.
 
-```shell
-nominal config profile list
+## Mark a run and an event
+
+A run names a span of time on an asset, such as one test.
+An event marks a moment or span inside it that a reviewer should see.
+
+```python
+from nominal.core import EventType
+
+end = datetime.now(timezone.utc)
+run = asset.create_run(f"Quickstart run {run_id}", start=start, end=end)
+event = asset.create_event(
+    "Coolant above 85 °C",
+    EventType.FLAG,
+    start=start + timedelta(seconds=30),
+    duration=timedelta(seconds=30),
+)
+
+print(run.nominal_url)
 ```
 
-## Build an asset with data in Nominal
+Read more about [runs](/guides/runs.md) and [events](/guides/events.md).
 
-Nominal uses assets to organize, process, and analyze time-synchronized data.
-Assets represent physical systems you’re testing such as vehicles, components, or testbeds.
+## Read data back
 
-Run the following script to create an {abbr}`asset (Representation of physical or simulated devices or systems that you're testing (example: vehicles, components, or testbeds).)` and upload the CSV you downloaded earlier:
+`datasource_to_dataframe` downloads channels into a pandas DataFrame indexed by timestamp.
 
-1. Create a new file named `fsae_asset_upload.py` and copy the following code into it:
+```python
+from nominal.thirdparty.pandas import datasource_to_dataframe
 
-    ```{literalinclude} /../examples/fsae_asset_upload.py
-    :language: python
-    ```
-
-1. Upload data to Nominal by running the script in your terminal from your virtual environment, passing the profile name and CSV path as flags:
-
-    ```shell
-    python fsae_asset_upload.py --profile '<PROFILE>' --file '<DATASET_FILE_PATH>'
-    ```
-
-    Run `python fsae_asset_upload.py --help` to see all available flags.
-
-## Verify your data in Nominal
-
-Verify that your Python script successfully created an asset and uploaded data to it:
-
-1. Open the Nominal app, and go to the **Assets** tab in the left sidebar:
-
-    ```{button-link} https://app.gov.nominal.io/assets
-    :color: primary
-
-    Go to Assets page
-    ```
-1. Click on the `FSAE CT8 Vehicle` asset you created and verify the uploaded `racecar_dataset` file appears under the **Data sources** tab:
-
-    ```{video} https://res.cloudinary.com/didkpxvqu/image/upload/v1766096480/Documentation/quickstart/qq2_fast.mp4
-    :loop:
-    :alt: The uploaded racecar_dataset file under the asset's Data sources tab
-    ```
-
-## Stream data to Nominal
-
-You can also stream continuous data to an asset in real time. Run the following script to stream sine, temperature, CPU utilization, and CPU info struct channels to the same `FSAE CT8 Vehicle` asset and dataset you created above:
-
-1. Create a new file named `stream_data_to_dataset.py` and copy the following code into it:
-
-    ```{literalinclude} /guides/_snippets/code/sdk/python/getting_started/stream_data_to_dataset.py
-    :language: python
-    ```
-
-1. Run the script from your virtual environment:
-
-    ```shell
-    python stream_data_to_dataset.py --profile '<PROFILE>'
-    ```
-
-    :::{note}
-
-    Keep the script running while you complete the next section. Press `Ctrl+C` to stop streaming when you're done.
-    :::
-
-## View your streaming data in Nominal
-
-While the streaming script is still running, create a workbook to watch data arrive in real time:
-
-1. Open the Nominal app, and go to the **Assets** tab in the left sidebar:
-
-    ```{button-link} https://app.gov.nominal.io/assets
-    :color: primary
-
-    Go to Assets page
-    ```
-1. Click the `FSAE CT8 Vehicle` asset, then click **New workbook** in the top right and select **New empty workbook**.
-1. Drag `sine_wave`, `temperature`, or `cpu_utilization` from **Channel search** onto the time series chart.
-1. `cpu_info` is a struct channel, so it cannot render directly on a time series chart. View it in one of two ways:
-    * **Value grid:** Add a **Value grid** panel to the workbook and drag `cpu_info` onto a cell. The grid updates as new points stream in.
-    * **Time series chart:** Apply a transform to `cpu_info` to extract a numeric subfield (for example, `frequency_ghz`), then drag the derived series onto the time series chart. See [Transforming variables](https://docs.nominal.io/core/documentation/platform/workbooks/manipulating-time-series#transforming-variables).
-1. Click **Go Live** in the bottom left of the workbook to start streaming. New points appear as the script continues streaming:
-
-    ```{video} /guides/images/b5/stream-gif.mp4
-    :loop:
-    :alt: Streaming data flowing into a Nominal workbook
-    ```
-
-::::{dropdown} Running this tutorial alongside other people? Filter the workbook to only your session's data.
-:icon: people
-
-When the streaming script runs, it prints a `Tutorial session ID` (a UUID) in your terminal and tags every point it enqueues with `tutorial_session_id = <that UUID>`.
-
-Run the same streaming script as in the previous step:
-
-```shell
-python stream_data_to_dataset.py --profile '<PROFILE>'
+df = datasource_to_dataframe(dataset, channel_exact_match=["rpm"])
+print(df.describe())
 ```
 
-Your terminal shows something like:
-
-```text
-Tutorial session ID: c066ff84-89a0-43aa-9d3c-2e14b5e44385
-Filter by tag 'tutorial_session_id' = 'c066ff84-89a0-43aa-9d3c-2e14b5e44385' in Nominal
-to isolate this stream.
-
-Asset: FSAE CT8 Vehicle, RID: ri.scout.cerulean-staging.asset.4a5ce8bd-7425-478f-b279-1bfc742c2bde
-Dataset: FSAE CT8 Vehicle dataset, RID: ri.catalog.cerulean-staging.dataset.13007ff7-ad41-4ac0-a5b5-ed0b922b97ba
-Streaming all set up and queueing has started! Press ctrl+c to terminate streaming.
-```
-
-Copy the UUID from the output, then paste it into a workbook tag filter:
-
-1. In the workbook's **Inputs** panel (left sidebar), click **+**.
-1. Set **Type** to **Tag filter**.
-1. Set **Tag key** to `tutorial_session_id`.
-1. Paste your UUID into **Tag values**, then click **Save input**.
-
-![Adding a tutorial_session_id tag filter in the workbook Inputs panel](/guides/images/b5/workbook-tutorial-session-filter.png)
-
-The chart now shows only the points this streaming session has uploaded.
-
-If you drag additional channels onto the chart after adding the filter, click the **+** next to the `tutorial_session_id` input and select **Apply to all variables** so the new channels also respect the filter.
-
-::::
-
-Congrats! You have successfully created an asset, uploaded a CSV dataset, and streamed continuous data to it using the Nominal SDK for Core in Python.
+The result includes both the uploaded and the streamed `rpm` values.
+To export to files or decimate long recordings, see [Export data](/guides/datasets/export-data.md).
 
 ## Clean up
 
-This quickstart creates a test asset and dataset in your workspace. To avoid cluttering your workspace with sample data, clean up after completing the guide:
+Archiving hides the objects from views and searches. It doesn't delete the data.
 
-1. **Archive the test asset**: Navigate to the **Assets** tab, find the test asset you created, open its options menu, and select **Archive**.
-    Archiving hides the asset from active views but does not delete the underlying data. To fully remove the data, coordinate with your data admin.
-1. **Delete the dataset**: Datasets can only be deleted by an admin user. Contact your workspace's data admin to delete the dataset created during this quickstart.
-
-You can also archive the asset using the Python SDK:
-
-```{code-block} python
-:caption: archive_asset.py
-my_asset.archive()
+```python
+event.archive()
+run.archive()
+dataset.archive()
+asset.archive()
 ```
 
 ## Next steps
 
-* [Create a workbook to visualize this data in Nominal](https://docs.nominal.io/core/documentation/platform/workbooks/overview#creating-a-workbook).
-* [Query this data with SQL](https://docs.nominal.io/developers/sql/overview) to pull it into a notebook or your own tooling.
-* [Explore additional streaming patterns with the Nominal SDK](/guides/streaming/overview.md).
-* [Start building with the Nominal SDK reference](/sdk/index.md).
-* [Securely store your API key by creating a profile stored on disk](/guides/api-keys-setup.md).
-
-:::{dropdown} New to Python? IDE recommendations
-
-**Jupyter** is a free, beginner-friendly analysis environment ideal for notebooks, charts, and annotated workflows. Try [JupyterLab](https://jupyter.org/) if you’re new to Python.
-
-**VSCode** is a lightweight editor suited for scripts and automation. Download it from [here](https://code.visualstudio.com/).
-:::
+* [Upload and stream tutorial](/guides/longstart.md): a longer walkthrough with a racecar dataset and live workbooks.
+* [Data integration tutorial](/guides/data-integration-tutorial.md): connect your own data sources.
+* [Examples](/examples/index.md): full, runnable scripts.
+* [SDK reference](/sdk/index.md): every class and function.

@@ -112,7 +112,7 @@ channels and time range in Nominal before treating a recording as complete.
 
 ### Streaming implementations and recovery
 
-By default, the SDK uses the Rust backend from `nominal-streaming` when it is available,
+By default, the client uses the Rust backend from `nominal-streaming` when it is available,
 and otherwise uses the Python backend. You can select one explicitly with
 `implementation="rust"` or `implementation="python"`.
 
@@ -124,7 +124,7 @@ The Rust backend supports `file_fallback="failed-batches.avro"` to save failed b
 locally. This is a recovery option, not a backup of every point. Use a writable `.avro`
 path and retain any fallback file for later upload using the
 [Avro stream guide](/guides/datasets/avro-streams.md). Supplying `file_fallback` requires
-the Rust backend; the SDK raises if that backend is unavailable instead of silently
+the Rust backend; the client raises if that backend is unavailable instead of silently
 ignoring the option.
 
 Rust also supports `num_workers` for upload concurrency and `track_metrics=True` for
@@ -152,8 +152,8 @@ print("Run:", run.nominal_url)
 
 The filter selects existing tagged series; it does not alter or delete the right
 motor's data. An asset can similarly attach the dataset with `series_tags`; see the
-[Assets overview](/guides/assets/overview.md). For asset-associated runs, see the
-[Runs overview](/guides/runs/overview.md).
+[Assets overview](/guides/assets.md). For asset-associated runs, see the
+[Runs overview](/guides/runs.md).
 
 Keep tag combinations limited and meaningful: component, vehicle, environment, or test
 configuration are useful examples. Avoid values that change every point, such as a
@@ -179,11 +179,11 @@ every expected sample did. For retrieving samples for further checks, see
 ```
 
 For a longer walkthrough with continuously generated data and live workbook viewing,
-continue to the [Python quickstart](/guides/quickstart.md#stream-data-to-nominal).
+continue to the [upload and stream tutorial](/guides/longstart.md#stream-data-to-nominal).
 
 ## Migrate legacy connections
 
-The SDK no longer exposes `Connection`, `StreamingConnection`, or their client, asset,
+The client no longer exposes `Connection`, `StreamingConnection`, or their client, asset,
 and run methods. Use `client.get_dataset()` and `dataset.get_write_stream()` for existing
 data, and `client.create_dataset()` for new streaming datasets. Attach datasets with
 `asset.add_dataset()` or `run.add_dataset()`.

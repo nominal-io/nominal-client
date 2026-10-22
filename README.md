@@ -1,5 +1,5 @@
 # ⟢ Nominal
-Nominal Python SDK for test data, storage, and compute.
+Nominal Python Client for test data, storage, and compute.
 
 ### 📖 Docs
 View on [docs.nominal.io](https://docs.nominal.io/).

@@ -187,7 +187,7 @@ A running checklist can contain failing, invalid, or skipped checks. Parameteriz
 identified by their zero-based `parameter_index`.
 Live status is available only for assets configured to stream the checklist.
 All public state enums use lowercase string values; prefer comparing enum members. Unknown lifecycle or
-check-status variants fail in the generated decoder with `ValueError` and require an SDK upgrade.
+check-status variants fail in the generated decoder with `ValueError` and require upgrading `nominal`.
 
 Read existing settings before changing them. For example, increase the evaluation delay while keeping the other settings:
 
