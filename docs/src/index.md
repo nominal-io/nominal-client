@@ -16,10 +16,10 @@ pip install nominal
 ```python
 from nominal.core import NominalClient
 
-client = NominalClient.from_profile("default")
-asset = client.get_or_create_asset_by_properties({"serial_number": "SN-0042"}, name="Test stand 4")
-dataset = asset.get_or_create_dataset("primary", name="Test stand 4 data")
-dataset.add_tabular_data("run_042.csv", timestamp_column="timestamp", timestamp_type="iso_8601")
+client  = NominalClient.from_profile("default")
+asset   = client.get_or_create_asset_by_properties({"serial": "SN42"}, name="Stand 4")
+dataset = asset.get_or_create_dataset("primary")
+dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")
 ```
 
 ## Let's go
