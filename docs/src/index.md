@@ -7,10 +7,10 @@ myst:
 # Nominal Python Client
 
 {.lead}
-Upload, stream, organize and retrieve test data on [Nominal](https://nominal.io) from Python.
+An Open-source Python library for working with the [Nominal](https://nominal.io) platform.  It allows you to automate data upload, streaming, and retrieval. 
 
-
-Once you [install](/guides/install.md) the library  and set-up your [API keys](/guides/api-keys-setup.md), you can [upload data to Nominal](/guides/quickstart.md#upload-data).
+## Intro
+Once you [install](/guides/install.md) the library  and set-up your [API keys](/guides/api-keys-setup.md), you can easily upload data to Nominal.
 
 ```python
 from nominal.core import NominalClient

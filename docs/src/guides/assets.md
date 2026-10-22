@@ -1,200 +1,101 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal's Asset primitive in Python"
+    description: "Create, find, update and archive assets, and attach datasets to them with data scopes."
 ---
 
-# Assets in Nominal with Python
+# Assets
 
 {.lead}
-Overview and recipes for working with Nominal's Asset primitive in Python
+An asset represents a system you test, such as a vehicle, satellite or test stand.
+It collects that system's datasets, runs, events and attachments across every test.
 
-```{include} /guides/_snippets/install-warning.md
+```{include} /guides/_snippets/connect-the-client.md
 ```
 
-Assets organize test data around physical systems, rather than around individual test events.
-For example, an asset might be an airplane or a satellite. Each asset can connect to runs, workbooks, and checklists.
+## Create or find an asset
 
-## Connect to Nominal
-
-```{include} /guides/_snippets/python/auth.md
-```
-
-## Create an asset
-
-To create an asset, use {py:obj}`create_asset() <nominal.core.NominalClient.create_asset>`.
-You can optionally add a description, properties, and labels:
+Properties identify the physical system, such as a serial number.
+{py:meth}`~nominal.core.NominalClient.get_or_create_asset_by_properties` returns the asset with those properties, creating it if none exists, so a script can run more than once:
 
 ```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-uav_drone_asset = client.create_asset(
-    name="Quadcopter-456",
+asset = client.get_or_create_asset_by_properties(
+    {"serial": "QC-456"},
+    name="Quadcopter 456",
     description="Airborne observation platform",
-    properties={"rotors": "4"},
-    labels=("camera", "airborne"),
-)
-
-print("Created asset:", uav_drone_asset.rid)
-```
-
-## Add data to an asset
-
-Use {py:meth}`~nominal.core.Asset.get_or_create_dataset` to retrieve or create a dataset
-under a data scope name, then upload through the dataset. This uses `uav_drone_asset`
-from the previous example. Install `huggingface_hub` to download the sample CSV.
-
-```python
-from huggingface_hub import hf_hub_download
-
-csv_path = hf_hub_download(
-    repo_id="nominal-io/frosty-flight",
-    filename="frosty_flight_1k_rows.csv",
-    repo_type="dataset",
-)
-csv_dataset = uav_drone_asset.get_or_create_dataset(
-    data_scope_name="high-precipitation-flight",
-    name="Frosty Flight",
-)
-dataset_file = csv_dataset.add_tabular_data(
-    csv_path,
-    timestamp_column="source_time",
-    timestamp_type="iso_8601",
-)
-dataset_file.poll_until_ingestion_completed()
-```
-
-The dataset is attached to the asset by `get_or_create_dataset()`. Polling waits for
-this file to finish ingestion and raises if ingestion fails. Reusing the data scope
-reuses the dataset; running the upload again still adds another file.
-
-```{include} /guides/_snippets/what-is-a-dataset.md
-```
-
-## Asset data with data scope names
-
-To attach an existing dataset instead of creating one through the asset, set the `data_scope_name` parameter in {py:obj}`Asset.add_dataset() <nominal.core.Asset.add_dataset>`.
-
-Replace `<DATASET_RID>` with an existing dataset RID and choose a scope name not already
-used by this asset:
-
-```python
-existing_dataset = client.get_dataset("<DATASET_RID>")
-uav_drone_asset.add_dataset(
-    dataset=existing_dataset, data_scope_name="ground-station-telemetry"
+    labels=["camera", "airborne"],
 )
 ```
 
-:::{note}
+It raises `ValueError` if more than one asset has those properties.
+To always create a new asset, use {py:meth}`~nominal.core.NominalClient.create_asset`.
 
-Data scope names are a namespace for data sources that share common channels, but do not necessarily belong to the same asset.
-They allow data sources with similar schema to be referenced as a group. For example, data sources with the same data scope
-name can share workbook templates and Checklists.
-:::
+## Add data with data scopes
 
-## Check if an asset exists
+An asset holds each dataset under a data scope name, such as `"telemetry"`.
+Use the same data scope name for the same kind of data on every asset, so workbook templates and checklists work across them.
 
-You can search for an asset with {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>`.
-
-```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")  # replace with your profile name
-
-found_assets = client.search_assets(search_text="000-123")
-
-if len(found_assets) == 0:
-    matching_asset = client.create_asset(
-        name="Quadcopter-000-123",
-    )
-```
-
-`search_text` is a fuzzy search, so inspect the returned matches before treating one as
-a specific asset. This search-and-create example does not guarantee uniqueness.
-It illustrates searching for a separate asset; the update, attachment, and archive
-examples below continue to operate on `uav_drone_asset` created at the start of this guide.
-
-## Update an asset
-
-Asset metadata can be updated with {py:obj}`Asset.update() <nominal.core.Asset.update>`:
-
-For example, to set an asset's title:
+{py:meth}`~nominal.core.Asset.get_or_create_dataset` returns the dataset under a data scope name, creating it if needed:
 
 ```python
-uav_drone_asset.update(name="Quadcopter-001-456")
+dataset = asset.get_or_create_dataset("telemetry", name="Quadcopter 456 telemetry")
+dataset.add_tabular_data("flight.csv", timestamp_column="time", timestamp_type="iso_8601")
 ```
 
-Please see {py:obj}`Asset.update() <nominal.core.Asset.update>` for all updatable metadata.
+Running the upload again adds another file to the same dataset.
+See [Datasets](/guides/datasets/overview.md) for file formats and waiting for ingestion.
 
-## Asset attachments
-
-File attachments such as PDF reports or PowerPoints can be added to Assets:
+To attach a dataset that already exists, use {py:meth}`~nominal.core.Asset.add_dataset`:
 
 ```python
-filepath = "/path/to/my_report.pdf"
-attachment = client.create_attachment(filepath)
-uav_drone_asset.add_attachments(attachments=[attachment])
+asset.add_dataset("ground-station", client.get_dataset("<DATASET_RID>"))
 ```
 
-## Retrieve an asset
-
-Like Datasets, Assets can be retrieved by their resource ID ("RID"). Replace
-`<ASSET_RID>` with an asset RID from your workspace:
+{py:meth}`~nominal.core.Asset.remove_data_scopes` detaches data by data scope name or by dataset. It doesn't delete the dataset.
 
 ```python
-asset = client.get_asset(
-    "<ASSET_RID>"
-)
-asset.update(labels=["NEW-MOTOR-VENDOR"])
+asset.remove_data_scopes(names=["ground-station"])
 ```
 
-To retrieve an Asset's RID, visit its detail page and click on the clipboard icon next to "ID" in the right-hand drawer:
+## Find assets
 
-![run-metadata](/guides/images/b4/asset_metadata_drawer_srnsdh.png)
-
-```{include} /guides/_snippets/what-is-a-rid.md
-```
-
-## Query Assets
-
-Assets can be queried with {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>`.
-
-For example, to retrieve all assets with the label "NEW-MOTOR-VENDOR":
+{py:meth}`~nominal.core.NominalClient.search_assets` combines its filters with AND:
 
 ```python
-quadcopter_assets = client.search_assets(labels=["NEW-MOTOR-VENDOR"])
+assets = client.search_assets(labels=["airborne"], properties={"serial": "QC-456"})
 ```
 
-See {py:obj}`search_assets() <nominal.core.NominalClient.search_assets>` for all Assets search parameters.
+`search_text` is a fuzzy match, so results may not contain the text verbatim.
+Use `exact_substring` when they must.
 
-## Remove Asset Data Sources
-
-Pass Dataset or Video instances or their RIDs in `scopes`. You can also
-remove scopes by their names with `names=["high-precipitation-flight"]`. Replace the
-RID placeholders below with resources from your workspace. Removing a scope detaches
-the source from the asset; it does not delete the source.
+To retrieve one asset, use its RID from the asset's page in Nominal:
 
 ```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")  # replace with your profile name
-
-asset = client.get_asset(
-    "<ASSET_RID>"
-)
-
-asset.remove_data_scopes(
-    scopes=["<DATASET_RID>"]
-)
+asset = client.get_asset("<ASSET_RID>")
 ```
+
+## Update metadata and attachments
+
+{py:meth}`~nominal.core.Asset.update` replaces each field you pass and leaves the others unchanged.
+To add a label, merge it with the existing ones:
+
+```python
+asset.update(labels=[*asset.labels, "new-motor-vendor"])
+```
+
+Attach files that describe the system across tests, such as a specification:
+
+```python
+asset.add_attachments([client.create_attachment("spec.pdf")])
+```
+
+Attach files about a single test to its [run](/guides/runs.md) instead.
 
 ## Archive an asset
 
-Once an asset is no longer needed, it can be {py:obj}`archived <nominal.core.Asset.archive>`.
-This does not delete the asset, but makes it invisible on the web.
-If you save the `rid` of the asset, you can {py:obj}`retrieve <nominal.core.NominalClient.get_asset>` and {py:obj}`unarchive <nominal.core.Asset.unarchive>` it at a later date.
+{py:meth}`~nominal.core.Asset.archive` hides the asset from views and searches without deleting its data.
+{py:meth}`~nominal.core.Asset.unarchive` restores it.
 
 ```python
-uav_drone_asset.archive()
+asset.archive()
 ```

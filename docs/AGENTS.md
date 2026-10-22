@@ -40,6 +40,9 @@
 ## Guides
 
 - Guides live in `src/guides/`. Keep their images, recordings and downloadable data there too.
+- Assets, datasets, runs, events, workbooks and channels are each defined on their own guide. Other guides link there rather than define them again.
+- Each guide runs from the top. Guides whose code needs a client include `_snippets/connect-the-client.md` before their first section, instead of repeating install, API key or connection steps.
+- Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the SDK reference.
 - Reusable prose goes in `src/guides/_snippets/`, code fragments in `src/guides/_snippets/code/`. Include them with MyST `{include}` and `{literalinclude}`. Partials are excluded from page discovery.
 - MyST colon fences support nested admonitions and Sphinx Design tabs, dropdowns and cards. Outer directives need more colons than nested ones.
 - `{video}` embeds local recordings or remote URLs.

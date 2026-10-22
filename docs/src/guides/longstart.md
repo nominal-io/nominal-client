@@ -1,165 +1,90 @@
 ---
 myst:
   html_meta:
-    description: "Create an asset, upload a racecar CSV and stream live data to it with the Nominal Python Client."
+    description: "Upload a racecar CSV to a vehicle asset, stream live data to it and watch the data arrive in a workbook."
 ---
 
 # Upload and stream tutorial
 
 {.lead}
-Create a vehicle asset, upload a racecar CSV to it and watch streamed data arrive in a workbook.
+Upload a race car's recorded telemetry to a vehicle asset, stream live data to the same asset, and watch it arrive in a workbook.
+It uses two complete scripts, run from the terminal.
 
-Before using this guide, [install](/guides/install.md) the Nominal Python Client and [set up your API keys](/guides/api-keys-setup.md).
+You need the [installed client](/guides/install.md) and a [profile](/guides/api-keys-setup.md). The scripts take the profile name with `--profile`.
 
-## Build an asset with data in Nominal
+## Upload a CSV to an asset
 
-Nominal uses assets to organize, process, and analyze time-synchronized data.
-Assets represent physical systems you’re testing such as vehicles, components, or testbeds.
+1. Download the sample data. Nominal ingests the gzipped CSV as it is:
 
-Run the following script to create an {abbr}`asset (Representation of physical or simulated devices or systems that you're testing (example: vehicles, components, or testbeds).)` and upload the CSV you downloaded earlier:
+    {download}`Download racecar_dataset.csv.gz </guides/data/racecar_dataset.csv.gz>`
 
-1. Create a new file named `fsae_asset_upload.py` and copy the following code into it:
+1. Save this script as `fsae_asset_upload.py`. It finds or creates the `FSAE CT8 Vehicle` [asset](/guides/assets.md), uploads the CSV to its dataset and sets the channels' units:
 
     ```{literalinclude} /../examples/fsae_asset_upload.py
     :language: python
     ```
 
-1. Upload data to Nominal by running the script in your terminal from your virtual environment, passing the profile name and CSV path as flags:
+1. Run it:
 
     ```shell
-    python fsae_asset_upload.py --profile '<PROFILE>' --file '<DATASET_FILE_PATH>'
+    python fsae_asset_upload.py --profile <PROFILE> --file racecar_dataset.csv.gz
     ```
 
-    Run `python fsae_asset_upload.py --help` to see all available flags.
-
-## Verify your data in Nominal
-
-Verify that your Python script successfully created an asset and uploaded data to it:
-
-1. Open the Nominal app, and go to the **Assets** tab in the left sidebar:
-
-    ```{button-link} https://app.gov.nominal.io/assets
-    :color: primary
-
-    Go to Assets page
-    ```
-1. Click on the `FSAE CT8 Vehicle` asset you created and verify the uploaded `racecar_dataset` file appears under the **Data sources** tab:
+1. In the [Assets page](https://app.gov.nominal.io/assets), open `FSAE CT8 Vehicle`. The `racecar_dataset` file appears under **Data sources**:
 
     ```{video} https://res.cloudinary.com/didkpxvqu/image/upload/v1766096480/Documentation/quickstart/qq2_fast.mp4
     :loop:
     :alt: The uploaded racecar_dataset file under the asset's Data sources tab
     ```
 
-## Stream data to Nominal
+## Stream data to the asset
 
-You can also stream continuous data to an asset in real time. Run the following script to stream sine, temperature, CPU utilization, and CPU info struct channels to the same `FSAE CT8 Vehicle` asset and dataset you created above:
-
-1. Create a new file named `stream_data_to_dataset.py` and copy the following code into it:
+1. Save this script as `stream_data_to_dataset.py`. It streams a sine wave, temperature, CPU use and a `cpu_info` struct to the same dataset until you stop it. See [Stream data](/guides/streaming/overview.md) for how streaming works.
 
     ```{literalinclude} /guides/_snippets/code/sdk/python/getting_started/stream_data_to_dataset.py
     :language: python
     ```
 
-1. Run the script from your virtual environment:
+1. Run it, and leave it running for the next section:
 
     ```shell
-    python stream_data_to_dataset.py --profile '<PROFILE>'
+    python stream_data_to_dataset.py --profile <PROFILE>
     ```
 
-    :::{note}
+    It prints a session ID and tags every point with it as `tutorial_session_id`.
 
-    Keep the script running while you complete the next section. Press `Ctrl+C` to stop streaming when you're done.
-    :::
+## Watch the data arrive
 
-## View your streaming data in Nominal
-
-While the streaming script is still running, create a workbook to watch data arrive in real time:
-
-1. Open the Nominal app, and go to the **Assets** tab in the left sidebar:
-
-    ```{button-link} https://app.gov.nominal.io/assets
-    :color: primary
-
-    Go to Assets page
-    ```
-1. Click the `FSAE CT8 Vehicle` asset, then click **New workbook** in the top right and select **New empty workbook**.
-1. Drag `sine_wave`, `temperature`, or `cpu_utilization` from **Channel search** onto the time series chart.
-1. `cpu_info` is a struct channel, so it cannot render directly on a time series chart. View it in one of two ways:
-    * **Value grid:** Add a **Value grid** panel to the workbook and drag `cpu_info` onto a cell. The grid updates as new points stream in.
-    * **Time series chart:** Apply a transform to `cpu_info` to extract a numeric subfield (for example, `frequency_ghz`), then drag the derived series onto the time series chart. See [Transforming variables](https://docs.nominal.io/core/documentation/platform/workbooks/manipulating-time-series#transforming-variables).
-1. Click **Go Live** in the bottom left of the workbook to start streaming. New points appear as the script continues streaming:
+1. Open `FSAE CT8 Vehicle`, click **New workbook** and select **New empty workbook**.
+1. Drag `sine_wave`, `temperature` or `cpu_utilization` from **Channel search** onto the chart.
+1. Click **Go Live** in the bottom left. New points appear as the script sends them.
 
     ```{video} /guides/images/b5/stream-gif.mp4
     :loop:
     :alt: Streaming data flowing into a Nominal workbook
     ```
 
-::::{dropdown} Running this tutorial alongside other people? Filter the workbook to only your session's data.
-:icon: people
+`cpu_info` is a struct, so a time series chart can't plot it directly.
+Drag it onto a **Value grid** panel, or [transform it](https://docs.nominal.io/core/documentation/platform/workbooks/manipulating-time-series#transforming-variables) to a numeric field such as `frequency_ghz`.
 
-When the streaming script runs, it prints a `Tutorial session ID` (a UUID) in your terminal and tags every point it enqueues with `tutorial_session_id = <that UUID>`.
+If other people are running this tutorial in your workspace, show only your points with a tag filter:
 
-Run the same streaming script as in the previous step:
-
-```shell
-python stream_data_to_dataset.py --profile '<PROFILE>'
-```
-
-Your terminal shows something like:
-
-```text
-Tutorial session ID: c066ff84-89a0-43aa-9d3c-2e14b5e44385
-Filter by tag 'tutorial_session_id' = 'c066ff84-89a0-43aa-9d3c-2e14b5e44385' in Nominal
-to isolate this stream.
-
-Asset: FSAE CT8 Vehicle, RID: ri.scout.cerulean-staging.asset.4a5ce8bd-7425-478f-b279-1bfc742c2bde
-Dataset: FSAE CT8 Vehicle dataset, RID: ri.catalog.cerulean-staging.dataset.13007ff7-ad41-4ac0-a5b5-ed0b922b97ba
-Streaming all set up and queueing has started! Press ctrl+c to terminate streaming.
-```
-
-Copy the UUID from the output, then paste it into a workbook tag filter:
-
-1. In the workbook's **Inputs** panel (left sidebar), click **+**.
-1. Set **Type** to **Tag filter**.
-1. Set **Tag key** to `tutorial_session_id`.
-1. Paste your UUID into **Tag values**, then click **Save input**.
+1. In the workbook's **Inputs** panel, click **+** and set **Type** to **Tag filter**.
+1. Set **Tag key** to `tutorial_session_id`, paste your session ID into **Tag values** and click **Save input**.
+1. For channels you add later, click **+** next to the input and select **Apply to all variables**.
 
 ![Adding a tutorial_session_id tag filter in the workbook Inputs panel](/guides/images/b5/workbook-tutorial-session-filter.png)
 
-The chart now shows only the points this streaming session has uploaded.
-
-If you drag additional channels onto the chart after adding the filter, click the **+** next to the `tutorial_session_id` input and select **Apply to all variables** so the new channels also respect the filter.
-
-::::
-
-Congrats! You have successfully created an asset, uploaded a CSV dataset, and streamed continuous data to it using the Nominal Python Client.
+Press `Ctrl+C` to stop streaming.
 
 ## Clean up
 
-This quickstart creates a test asset and dataset in your workspace. To avoid cluttering your workspace with sample data, clean up after completing the guide:
+Archive the asset from its options menu on the Assets page, or from Python:
 
-1. **Archive the test asset**: Navigate to the **Assets** tab, find the test asset you created, open its options menu, and select **Archive**.
-    Archiving hides the asset from active views but does not delete the underlying data. To fully remove the data, coordinate with your data admin.
-1. **Delete the dataset**: Datasets can only be deleted by an admin user. Contact your workspace's data admin to delete the dataset created during this quickstart.
-
-You can also archive the asset using the Python client:
-
-```{code-block} python
-:caption: archive_asset.py
-my_asset.archive()
+```python
+client.get_asset("<ASSET_RID>").archive()
 ```
 
-## Next steps
+Archiving hides the asset without deleting its data. Only a workspace admin can delete the dataset.
 
-* [Create a workbook to visualize this data in Nominal](https://docs.nominal.io/core/documentation/platform/workbooks/overview#creating-a-workbook).
-* [Query this data with SQL](https://docs.nominal.io/developers/sql/overview) to pull it into a notebook or your own tooling.
-* [Explore additional streaming patterns with the Python client](/guides/streaming/overview.md).
-* [Start building with the SDK reference](/sdk/index.md).
-* [Securely store your API key by creating a profile stored on disk](/guides/api-keys-setup.md).
-
-:::{dropdown} New to Python? IDE recommendations
-
-**Jupyter** is a free, beginner-friendly analysis environment ideal for notebooks, charts, and annotated workflows. Try [JupyterLab](https://jupyter.org/) if you’re new to Python.
-
-**VSCode** is a lightweight editor suited for scripts and automation. Download it from [here](https://code.visualstudio.com/).
-:::
+To query the data with SQL, see the [SQL interface](https://docs.nominal.io/developers/sql/overview).

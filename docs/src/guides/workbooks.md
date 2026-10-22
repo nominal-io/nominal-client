@@ -1,58 +1,39 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal's Workbooks in Python"
+    description: "Create workbooks from templates for a run or an asset, and find existing workbooks."
 ---
 
-# Workbooks in Nominal with Python
+# Workbooks
 
 {.lead}
-Overview and recipes for working with Nominal's Workbooks in Python
+A workbook is a set of charts and panels for viewing a run's or an asset's data in Nominal.
+A workbook template defines the panels once, so you can create the same workbook for every test.
 
-Workbooks are Nominal's tool for creating and sharing interactive data visualizations and analyses. They can be created
-directly on the Nominal platform or programmatically using the Nominal Python Client.
-
-## Creating a workbook from a template
-
-###  Prerequisites
-
-```{include} /guides/_snippets/python/installing-python-client.md
+```{include} /guides/_snippets/connect-the-client.md
 ```
 
-#### Connect to Nominal
+## Create a workbook from a template
 
-```{include} /guides/_snippets/python/auth.md
-```
-
-### Steps to Create a workbook from a Template
-1. Obtain the Template RID:
-   - Navigate to the Nominal platform.
-   - Go to Workbooks ➔ Templates.
-   - Click on the desired template.
-   - In the top-left corner next to the template name, click the dropdown arrow ⌄.
-   - Select Copy RID to copy the template RID to your clipboard.
-2. Obtain the Run RID:
-   - Navigate to Runs.
-   - Click on the run you want to associate with the workbook.
-   - On the right side of the screen, locate the RID under "Metadata".
-3. Create the Workbook Using the Client:
+{py:meth}`~nominal.core.WorkbookTemplate.create_workbook` creates a workbook for a [run](/guides/runs.md) or an [asset](/guides/assets.md).
+The template's inputs must match the run's ref names or the asset's data scope names.
 
 ```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-
-template = client.get_workbook_template("your_template_rid")
-template.create_workbook(
-    run="your_run_rid",
-    title="My new workbook",
-    description="This is a new workbook created from a template",
-)
+template = client.get_workbook_template("<TEMPLATE_RID>")
+workbook = template.create_workbook(run=client.get_run("<RUN_RID>"), title="Flight review")
+print(workbook.nominal_url)
 ```
 
-### Accessing Your New workbook
+To copy a template's RID, open it from **Workbooks** → **Templates**, click the arrow next to its name and select **Copy RID**.
+To look templates up by name or label instead, use {py:meth}`~nominal.core.NominalClient.search_workbook_templates`.
 
-After creating the workbook programmatically:
-- Navigate back to Workbooks on the Nominal platform.
-- Locate your new workbook titled "My New Workbook".
-- Open it to view and interact with your data visualizations.
+## Find workbooks
+
+{py:meth}`~nominal.core.NominalClient.search_workbooks` filters by run, asset, labels and author:
+
+```python
+for workbook in client.search_workbooks(run=run):
+    print(workbook.title, workbook.nominal_url)
+```
+
+{py:meth}`~nominal.core.Run.search_workbooks` and {py:meth}`~nominal.core.Asset.search_workbooks` search the workbooks of one run or asset.

@@ -6,7 +6,7 @@ Polars is installed with `nominal`.
 
 The handler supports numeric (`DOUBLE` and `INT`) and `STRING` channels.
 Other channel types are skipped with a warning. See the
-[export guide](../../guides/datasets/export-data.md#export-channel-samples)
+[export guide](../../guides/datasets/export-data.md#export-in-batches)
 for examples of selecting channels, time bounds, and batch output.
 
 ## API Reference
