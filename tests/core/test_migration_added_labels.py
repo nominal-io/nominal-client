@@ -18,7 +18,7 @@ def _make_runner(added_labels: Iterable[str]) -> MigrationRunner:
         migration_resources=MigrationResources(source_assets={}, source_standalone_templates=[]),
         dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=False, include_dataset_files=False),
         destination_client=MagicMock(),
-        added_labels=added_labels,  # type: ignore[arg-type]
+        added_labels=added_labels,
     )
 
 

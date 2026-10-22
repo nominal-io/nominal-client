@@ -7,7 +7,7 @@ import re
 import threading
 from datetime import timedelta
 from pathlib import Path
-from typing import Mapping, Sequence, cast
+from typing import Iterable, Mapping, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
@@ -61,7 +61,7 @@ class MigrationRunner:
         migration_state_path: Path | str | None = None,
         dry_run: bool = False,
         video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
-        added_labels: Sequence[str] = (),
+        added_labels: Iterable[str] = (),
     ) -> None:
         """Create a migration runner state.
 
@@ -79,7 +79,7 @@ class MigrationRunner:
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
             video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
                 ingesting before recording it as incomplete and moving on. None waits indefinitely.
-            added_labels (Sequence[str]): Labels added to every resource the migration creates, alongside the
+            added_labels (Iterable[str]): Labels added to every resource the migration creates, alongside the
                 source resource's own labels. The labels are copied when the runner is created, so later changes
                 to the passed collection have no effect. Resources created by an earlier run are not relabeled.
 
