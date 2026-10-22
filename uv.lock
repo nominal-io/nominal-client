@@ -722,7 +722,7 @@ dev = [
 ]
 docs = [
     { name = "myst-parser", marker = "python_full_version >= '3.12'", specifier = ">=5.1.0" },
-    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=7bd5350972dd2306a72b2fb36584c8715c8479e3" },
+    { name = "nominal-sphinx-theme", marker = "python_full_version >= '3.12'", git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=24fe6e0cc27b3f34b8c713c1daf5b270abcc2707" },
     { name = "sphinx", marker = "python_full_version >= '3.12'", specifier = ">=9.1.0" },
     { name = "sphinx-click", marker = "python_full_version >= '3.12'", specifier = ">=6.0.0" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.12'", specifier = ">=0.5.2" },
@@ -793,7 +793,7 @@ requires-dist = [
 [[package]]
 name = "nominal-sphinx-theme"
 version = "0.1.0"
-source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=7bd5350972dd2306a72b2fb36584c8715c8479e3#7bd5350972dd2306a72b2fb36584c8715c8479e3" }
+source = { git = "https://github.com/nominal-io/nominal-sphinx-theme?rev=24fe6e0cc27b3f34b8c713c1daf5b270abcc2707#24fe6e0cc27b3f34b8c713c1daf5b270abcc2707" }
 dependencies = [
     { name = "myst-parser" },
     { name = "shibuya" },
