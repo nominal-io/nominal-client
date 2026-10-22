@@ -67,6 +67,21 @@ Optional flags:
   Video files are evaluated through the real read path, so the end-of-run skip summary predicts what a
   real run would flag (unusable files, timing payloads) before any bytes move.
 
+**Source-only dry run** — with `--dry-run`, `--destination-profile` is optional. Use this to estimate the
+scope of a migration before a destination is configured:
+
+```sh
+nom migrate copy \
+  --source-profile SOURCE \
+  --config my_migration.yml \
+  --dry-run \
+  -v --no-color
+```
+
+It estimates scope and reports source-side problems in the end-of-run skip summary. It does not check that
+the destination is ready (credentials, permissions, impersonation mappings, or the `set_to_demo_workbook`
+sandbox check). A real copy requires `--destination-profile`.
+
 **`nom migrate summary`** — summarize a migration as a markdown table. Fully offline: no profiles or
 tokens required. Provide exactly one source:
 

@@ -54,12 +54,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         if existing_dataset is not None:
             return existing_dataset
 
-        destination_client = self.destination_client_for(source)
-        log_extras = {
-            "destination_client_workspace": destination_client.get_workspace(
-                destination_client._clients.workspace_rid
-            ).rid
-        }
+        log_extras = {"destination_client_workspace": self.ctx.destination_workspace_rid_for(source)}
         dataset_name = options.new_dataset_name if options.new_dataset_name is not None else source.name
         dataset_description = (
             options.new_dataset_description if options.new_dataset_description is not None else source.description

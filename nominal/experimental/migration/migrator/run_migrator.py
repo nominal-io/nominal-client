@@ -55,8 +55,6 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
                 return self._ensure_assets_added(existing_run, options.new_assets)
             return existing_run
 
-        destination_client = self.destination_client_for(source)
-
         attachments = options.new_attachments
         if attachments is None:
             attachments = AttachmentMigrator(self.ctx).copy_attachments(source.list_attachments(), f"run {source.rid}")
@@ -66,6 +64,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
             return source
 
+        destination_client = self.destination_client_for(source)
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
