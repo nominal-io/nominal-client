@@ -35,7 +35,9 @@ To always create a new asset, use {py:meth}`~nominal.core.NominalClient.create_a
 An asset holds each dataset under a data scope name, such as `"telemetry"`.
 Use the same data scope name for the same kind of data on every asset, so workbook templates and checklists work across them.
 
-{py:meth}`~nominal.core.Asset.get_or_create_dataset` returns the dataset under a data scope name, creating it if needed:
+{py:meth}`~nominal.core.Asset.get_or_create_dataset` returns the dataset under a data scope name, creating it if needed.
+```{include} /guides/_snippets/sample-flight-csv.md
+```
 
 ```python
 dataset = asset.get_or_create_dataset("telemetry", name="Quadcopter 456 telemetry")

@@ -48,7 +48,7 @@ from nominal.thirdparty.pandas import upload_dataframe
 
 dataset = upload_dataframe(
     client,
-    detections.drop("object").to_pandas(),  # numeric columns only
+    detections.to_pandas(),
     "Drone flight detections",
     "timestamps",
     timestamp_type="iso_8601",

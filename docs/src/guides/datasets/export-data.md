@@ -69,7 +69,8 @@ A run or asset can select part of a dataset by [tags](/guides/streaming/overview
 Exports don't apply that selection automatically, so pass the same tags:
 
 ```python
-PolarsExportHandler(client).export(channels, start=run.start, end=end, tags={"test_id": "flight-042"})
+for df in PolarsExportHandler(client).export(channels, start=run.start, end=end, tags={"test_id": "flight-042"}):
+    print(df.head())
 ```
 
 ## Download stored files

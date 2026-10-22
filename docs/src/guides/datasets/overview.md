@@ -16,11 +16,13 @@ Files you upload and points you stream add to the same dataset over time.
 ## Create a dataset and upload a file
 
 Create a dataset with {py:meth}`~nominal.core.NominalClient.create_dataset`, or on an asset with {py:meth}`~nominal.core.Asset.get_or_create_dataset` (see [Assets](/guides/assets.md#add-data-with-data-scopes)).
-Then upload a file to it:
+Then upload a file to it.
+```{include} /guides/_snippets/sample-flight-csv.md
+```
 
 ```python
 dataset = client.create_dataset("Flight telemetry")
-file = dataset.add_tabular_data("flight_001.csv", timestamp_column="time", timestamp_type="iso_8601")
+file = dataset.add_tabular_data("flight.csv", timestamp_column="time", timestamp_type="iso_8601")
 file.poll_until_ingestion_completed()  # raises NominalIngestError if ingestion fails
 print(dataset.nominal_url)
 ```

@@ -17,9 +17,12 @@ For creating datasets and waiting for ingestion, see [Datasets](/guides/datasets
 
 ## Upload a file
 
+```{include} /guides/_snippets/sample-flight-csv.md
+```
+
 ```python
 dataset = client.create_dataset("Frosty flight")
-file = dataset.add_tabular_data("flight.csv", timestamp_column="source_time", timestamp_type="iso_8601")
+file = dataset.add_tabular_data("flight.csv", timestamp_column="time", timestamp_type="iso_8601")
 file.poll_until_ingestion_completed()
 ```
 
@@ -69,7 +72,7 @@ Tags label the points in a file so you can filter them later, such as by test or
 ```python
 dataset.add_tabular_data(
     "flight.csv",
-    timestamp_column="source_time",
+    timestamp_column="time",
     timestamp_type="iso_8601",
     tags={"test_id": "flight-042"},
     tag_columns={"aircraft": "tail_number"},  # tag key: column name

@@ -64,16 +64,20 @@ Create one dataset per topic, upload each instance's CSV to it, then attach the 
 
 ```python
 datasets = {}
+first_us, last_us = [], []
 for path in csv_files:
     if "timestamp" not in pl.read_csv(path, n_rows=1).columns:
         continue  # skip topics without a timestamp column
+    stamps = pl.read_csv(path, columns=["timestamp"])["timestamp"]
+    first_us.append(stamps.min())
+    last_us.append(stamps.max())
     topic = path.stem.removeprefix(f"{ulog_path.stem}_").rsplit("_", 1)[0]  # drop the instance number
     if topic not in datasets:
         datasets[topic] = client.create_dataset(topic)
     datasets[topic].add_tabular_data(path, timestamp_column="timestamp", timestamp_type=boot_clock)
 
-start_us = boot_us + gps["timestamp"].min()
-end_us = boot_us + gps["timestamp"].max()
+start_us = boot_us + min(first_us)
+end_us = boot_us + max(last_us)
 run = client.create_run("PX4 quadrotor flight", start=start_us * 1000, end=end_us * 1000)
 for topic, dataset in datasets.items():
     run.add_dataset(topic, dataset)
@@ -81,7 +85,7 @@ for topic, dataset in datasets.items():
 print(run.nominal_url)
 ```
 
-The run spans the GPS topic's time range.
+The run spans every uploaded topic, from the earliest sample to the latest.
 Open the run in Nominal to chart topics side by side in a [workbook](/guides/workbooks.md).
 
 `ulog_info -v <log>.ulg`, also from pyulog, prints the log's start time, duration and flight computer details.

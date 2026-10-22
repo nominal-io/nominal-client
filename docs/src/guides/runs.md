@@ -36,7 +36,9 @@ For a run across several assets, use {py:meth}`~nominal.core.NominalClient.creat
 ## Create a run from datasets
 
 Without an asset, attach each dataset to the run under a ref name with {py:meth}`~nominal.core.Run.add_dataset`.
-This example sets the run's bounds from an uploaded file:
+This example sets the run's bounds from an uploaded file.
+```{include} /guides/_snippets/sample-flight-csv.md
+```
 
 ```python
 dataset = client.create_dataset("Frosty flight")

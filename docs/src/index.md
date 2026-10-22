@@ -16,9 +16,9 @@ Once you [install](/guides/install.md) the library  and set-up your [API keys](/
 from nominal.core import NominalClient
 
 client  = NominalClient.from_profile("default")
-asset   = client.get_or_create_asset_by_properties({"serial": "SN42"})
+asset   = client.get_or_create_asset_by_properties({"serial": "SN42"}, name="Test stand SN42")
 dataset = asset.get_or_create_dataset("primary")
-dataset.add_tabular_data("run.csv", timestamp_column="time")
+dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")  # your CSV
 print(asset.nominal_url)
 ```
 
