@@ -1,4 +1,4 @@
-# Core SDK
+# Core
 
 `nominal.core` is the object-oriented client for the Nominal core platform.
 Start with {py:class}`~nominal.core.NominalClient`, then work with the resources it returns.

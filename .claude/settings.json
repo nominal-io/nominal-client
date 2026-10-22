@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "nominal-docs@nominal": true
+  },
+  "extraKnownMarketplaces": {
+    "nominal": {
+      "source": {
+        "source": "github",
+        "repo": "nominal-io/nominal-sphinx-theme"
+      }
+    }
+  }
+}

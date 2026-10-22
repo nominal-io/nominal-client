@@ -1,211 +1,101 @@
 ---
 myst:
   html_meta:
-    description: "Stream numeric and string channels to a dataset, manage buffering, and view tagged data in a run."
+    description: "Stream values to a dataset as they're produced, tune batching, and filter streamed data by tags."
 ---
 
 # Stream data
 
 {.lead}
-Stream timestamped telemetry to a dataset and view it in a run.
+A write stream sends values to a dataset as your program produces them, batching them in the background.
+Use it for live telemetry. For files, see [Datasets](/guides/datasets/overview.md).
 
-A dataset receives points through named channels. Use
-{py:meth}`~nominal.core.Dataset.get_write_stream` to buffer those points and send
-batches in the background. This guide creates a dataset, registers numeric and string
-channels, sends a short synthetic recording, and attaches it to a run for inspection.
-The Python blocks continue the same workflow.
+For log messages, see [Stream logs](/guides/streaming/logs.md).
 
-For structured log messages and arguments, use [Stream logs](/guides/streaming/logs.md).
-For uploading a saved streaming recording, see [Avro stream files](/guides/datasets/avro-streams.md).
+```{include} /guides/_snippets/connect-the-client.md
+```
 
-## Create a dataset and register channels
+## Stream values
 
-Install `nominal` and [configure an authentication profile](/guides/api-keys-setup.md).
-Then create the dataset that will receive the points:
+{py:meth}`~nominal.core.Dataset.get_write_stream` returns a stream. Leaving the `with` block sends what's left and closes it.
 
 ```python
-from nominal.core import ChannelDataType, NominalClient
+import time
+from datetime import datetime, timezone
 
-client = NominalClient.from_profile("default")
-dataset = client.create_dataset(
-    name="Motor test telemetry",
-    description="Synthetic temperature and operating-mode samples",
-    labels=["example"],
-    properties={"environment": "simulation"},
-    prefix_tree_delimiter=".",
-)
+from nominal.core import ChannelDataType
 
+dataset = client.create_dataset("Motor test telemetry", prefix_tree_delimiter=".")
 dataset.add_channel("motor.temperature", ChannelDataType.DOUBLE, unit="K")
 dataset.add_channel("motor.mode", ChannelDataType.STRING)
-print("Dataset:", dataset.nominal_url)
+
+start = datetime.now(timezone.utc)
+with dataset.get_write_stream() as stream:
+    for i in range(50):
+        now = datetime.now(timezone.utc)
+        for motor, baseline in [("left", 295.0), ("right", 297.0)]:
+            stream.enqueue("motor.temperature", now, baseline + 0.1 * i, tags={"motor_id": motor})
+            stream.enqueue("motor.mode", now, "idle" if i < 10 else "running", tags={"motor_id": motor})
+        time.sleep(0.2)
+end = datetime.now(timezone.utc)
 ```
 
-Register channels before sending data so their types reflect your intent. A numeric
-measurement that can be fractional should use `DOUBLE`; an operating mode should use
-`STRING`. The delimiter organizes dotted channel names into a hierarchy.
-See [Channels and data types](/guides/datasets/channels.md) for registration details.
+Registering channels first sets their types. See [Channels and data types](/guides/datasets/channels.md).
+Timestamps can be timezone-aware datetimes, ISO 8601 strings or epoch nanoseconds.
+Use the time each value was measured, not the time you enqueue it.
 
-To continue an existing recording, retrieve its dataset with
-`client.get_dataset("<DATASET_RID>")` instead of creating one. Registration with
-`add_channel` leaves an existing channel unchanged; it does not repair a mismatched type.
+To write several channels at one timestamp, use `enqueue_from_dict`.
+To write many points of one channel, use `enqueue_batch`.
+Arrays and structs have `enqueue_float_array`, `enqueue_string_array` and `enqueue_struct`.
 
-## Send numeric and string samples
+## Batching and delivery
 
-This example runs for roughly ten seconds. It samples temperature every iteration
-and operating mode every fifth iteration, for two simulated motors. Both channels
-use the same timestamp when sampled together.
+The stream sends a batch when it reaches `batch_size` points, 250,000 by default, or after `max_wait`, 0.25 seconds by default.
+Smaller values lower latency. Larger values lower request overhead.
 
-```python
-from datetime import datetime, timedelta, timezone
-from time import sleep
+`enqueue` doesn't confirm delivery, and there's no file to poll.
+The two implementations report failures differently:
 
-start_time = datetime.now(timezone.utc)
-with dataset.get_write_stream(max_wait=timedelta(seconds=1)) as stream:
-    for sample_index in range(50):
-        timestamp = datetime.now(timezone.utc)
-        for motor_id, baseline in (("left", 295.0), ("right", 297.0)):
-            tags = {"motor_id": motor_id}
-            stream.enqueue(
-                channel_name="motor.temperature",
-                timestamp=timestamp,
-                value=baseline + 0.1 * sample_index,
-                tags=tags,
-            )
-            if sample_index % 5 == 0:
-                stream.enqueue(
-                    channel_name="motor.mode",
-                    timestamp=timestamp,
-                    value="idle" if sample_index < 10 else "running",
-                    tags=tags,
-                )
-        sleep(0.2)
-end_time = datetime.now(timezone.utc)
-```
+- **Rust**, the default where `nominal-streaming` is installed, can save failed batches to an `.avro` file with `file_fallback` for [later upload](/guides/datasets/avro-streams.md).
+  It also supports `num_workers` and `track_metrics`.
+- **Python** logs failed uploads and doesn't raise them when the stream closes.
 
-This sends 100 temperature points and 20 mode points. `sleep` paces the demonstration;
-it is not a precision sampling clock. For real measurements, use their capture timestamps
-rather than the time you happen to enqueue them. Timestamps can be timezone-aware
-datetimes, ISO 8601 strings with an offset, or integer nanoseconds since the Unix epoch.
-
-A string channel represents a value such as `"running"` at a time. Use a
-[log stream](/guides/streaming/logs.md) when you need messages with structured arguments
-such as severity, filename, or subsystem.
-
-## Buffering, shutdown, and delivery
-
-`enqueue` adds a point to the stream; it is not an acknowledgement that the point is
-available to query. Batches are sent based on their size and buffering time:
-
-| Setting | Default | Effect |
-| --- | --- | --- |
-| `batch_size` | 250,000 points | Limits the number of points grouped into a batch. Larger batches can reduce request overhead. |
-| `max_wait` | 0.25 seconds | Controls how long a batch buffers before being flushed. The example uses one second. |
-
-Buffering time is not an end-to-end delivery deadline. Network conditions and upload
-work also affect when data becomes available. Tune batching against your desired
-latency and throughput rather than increasing batch size automatically.
-
-Use the `with` block to close the stream and drain pending work when the producer
-finishes. If you manage the stream manually, call `close()` when done. There is no
-`DatasetFile` to poll for streamed points. Inspect upload errors and verify the expected
-channels and time range in Nominal before treating a recording as complete.
-
-### Streaming implementations and recovery
-
-By default, the SDK uses the Rust backend from `nominal-streaming` when it is available,
-and otherwise uses the Python backend. You can select one explicitly with
-`implementation="rust"` or `implementation="python"`.
-
-Failure reporting depends on the backend. In particular, the Python backend logs
-background upload failures rather than raising them when the context closes; a normal
-exit alone does not establish successful delivery of every point.
-
-The Rust backend supports `file_fallback="failed-batches.avro"` to save failed batches
-locally. This is a recovery option, not a backup of every point. Use a writable `.avro`
-path and retain any fallback file for later upload using the
-[Avro stream guide](/guides/datasets/avro-streams.md). Supplying `file_fallback` requires
-the Rust backend; the SDK raises if that backend is unavailable instead of silently
-ignoring the option.
-
-Rust also supports `num_workers` for upload concurrency and `track_metrics=True` for
-request timing and point-staleness metrics. These are optional tuning tools; consult
-{py:meth}`~nominal.core.Dataset.get_write_stream` for their behavior before changing them.
+Choose one with `implementation="rust"` or `implementation="python"`.
+After streaming, check that the channels cover the expected time range.
 
 ## Add tags to filter data in a run or asset
 
-The sample wrote both motors into the same channels, distinguished by `motor_id`.
-Create a run covering the recording and attach only the left motor's series:
+Tags tell apart points in the same channel, such as the two motors above.
+A [run](/guides/runs.md) or [asset](/guides/assets.md) can select one tag value with `series_tags`:
 
 ```python
-run = client.create_run(
-    name="Left motor temperature test",
-    start=start_time,
-    end=end_time,
-)
-run.add_dataset(
-    ref_name="motor",
-    dataset=dataset,
-    series_tags={"motor_id": "left"},
-)
-print("Run:", run.nominal_url)
+run = client.create_run("Left motor test", start=start, end=end)
+run.add_dataset("motor", dataset, series_tags={"motor_id": "left"})
 ```
 
-The filter selects existing tagged series; it does not alter or delete the right
-motor's data. An asset can similarly attach the dataset with `series_tags`; see the
-[Assets overview](/guides/assets/overview.md). For asset-associated runs, see the
-[Runs overview](/guides/runs/overview.md).
+Use tags for a small set of values, such as component, vehicle or test configuration.
+Don't tag with values that change every point, such as a counter or a UUID per sample, because each tag combination adds query work.
 
-Keep tag combinations limited and meaningful: component, vehicle, environment, or test
-configuration are useful examples. Avoid values that change every point, such as a
-sequence number, timestamp, random UUID, or continuously changing measurement. Store
-measurements in channels. Large numbers of distinct tag combinations increase query
-work; consider how many combinations your identifiers will produce over time.
+## View streamed data
 
-## View and verify the recording
-
-Open the run in Nominal and create a workbook. Add `motor.temperature` to a time-series
-chart and inspect `motor.mode` in a value grid over the run's interval. This example
-has finished streaming, so select its recorded time range rather than looking only at
-live data. The run's `motor` data scope should show the left motor's series.
-
-Check that both channels contain data over the expected interval and that the mode
-changes from `idle` to `running`. A visible point confirms some data arrived, not that
-every expected sample did. For retrieving samples for further checks, see
-[Export data](/guides/datasets/export-data.md).
+Open the dataset's asset or run in a workbook and click **Go Live** to follow new points.
+For a full walkthrough, see the [upload and stream tutorial](/guides/longstart.md#stream-data-to-the-asset).
 
 ```{video} /guides/images/b5/stream-gif.mp4
 :loop:
-:alt: Example of streaming data displayed in a Nominal workbook
+:alt: Streamed data in a Nominal workbook
 ```
 
-For a longer walkthrough with continuously generated data and live workbook viewing,
-continue to the [Python quickstart](/guides/quickstart.md#stream-data-to-nominal).
+## Migrate from connections
 
-## Migrate legacy connections
-
-The SDK no longer exposes `Connection`, `StreamingConnection`, or their client, asset,
-and run methods. Use `client.get_dataset()` and `dataset.get_write_stream()` for existing
-data, and `client.create_dataset()` for new streaming datasets. Attach datasets with
-`asset.add_dataset()` or `run.add_dataset()`.
-
-For a migrated external connection, the dataset RID uses the same UUID as the old
-connection RID. For a native streaming connection, the dataset RID uses the UUID of
-its **backing data source**, not the connection UUID. Obtain the migrated dataset RID
-from Nominal before updating your code; passing a connection RID to `get_dataset()`
-does not resolve or translate it.
-
-For a migrated **native streaming dataset**, continue writing with its dataset RID:
+`Connection` and `StreamingConnection` were removed. Stream to a dataset instead:
 
 ```python
-from nominal.core import NominalClient
-
-client = NominalClient.from_profile("default")
-dataset = client.get_dataset("<migrated-native-dataset-rid>")
+dataset = client.get_dataset("<DATASET_RID>")
 with dataset.get_write_stream() as stream:
-    stream.enqueue("temperature", timestamp="2026-01-01T00:00:00Z", value=42.0)
+    stream.enqueue("temperature", "2026-01-01T00:00:00Z", 42.0)
 ```
 
-External datasets query their external providers rather than accepting streamed writes.
-
-The experimental `nominal.experimental.stream_v2.create_write_stream()` factory now
-accepts a `Dataset` as its first argument (`dataset=` for keyword calls).
+Get a migrated connection's dataset RID from Nominal. A connection RID passed to `get_dataset` doesn't resolve.
+External datasets read from their provider and don't accept streamed writes.
+`nominal.experimental.stream_v2.create_write_stream()` now takes a `Dataset` as its first argument.

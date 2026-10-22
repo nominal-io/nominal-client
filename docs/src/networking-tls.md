@@ -1,61 +1,47 @@
-# Networking & TLS on corporate networks
+---
+myst:
+  html_meta:
+    description: "Connect through corporate TLS-inspecting proxies, and to local plaintext deployments."
+---
 
-The Nominal client talks to the platform over two transports: HTTP (conjure services) and gRPC
-(e.g. the Role Service). HTTPS URLs verify the server's TLS certificate on both transports.
+# Networking and TLS
 
-## Local plaintext HTTP deployments
+{.lead}
+The client verifies Nominal's TLS certificate on both of its connections, HTTP and gRPC.
+On Windows and Linux it trusts the certificate authorities installed on the machine. On macOS, behind a TLS-inspecting proxy, you give it your corporate CA.
 
-An `http://` API base URL is accepted only when its host is a literal loopback IP address:
-IPv4 `127.0.0.0/8` (normally `127.0.0.1`) or IPv6 `::1`. Use `https://` for remote deployments.
-Other HTTP hosts raise `NominalConfigError` during client construction, even if you only intend to use
-Conjure HTTP APIs. URLs with embedded user information are rejected for both HTTP and HTTPS; supply
-your API token separately.
-There is no remote-plaintext override or automatic fallback from TLS to plaintext.
+## Corporate proxies
 
-Use `127.0.0.1` or `[::1]` rather than `localhost` or another hostname; the check does not trust DNS
-resolution. Loopback HTTP still sends credentials and custom headers without TLS encryption.
-This client-wide restriction does not add TLS to the Conjure HTTP transport.
+HTTP uses the operating system's trust store and [certifi](https://pypi.org/project/certifi/)'s certificate authorities.
+gRPC can't use the operating system's trust store directly, so the client builds a bundle for it from certifi plus:
 
-For example, connect to a local runtime using its HTTP ingress URL, including `/api`:
+- **Windows:** the `ROOT` and `CA` system stores, including CAs installed by group policy or device management.
+- **Linux:** the system `ca-certificates` bundle, including CAs added with `update-ca-certificates`.
+- **macOS:** nothing more, because it can't read the Keychain.
 
-```python
-client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
-dataset = client.create_dataset("x")
-```
-
-For HTTP URLs, gRPC services use plaintext HTTP/2 on the same host and port as the HTTP API.
-The runtime ingress must support both ordinary HTTP and plaintext gRPC, including the workspace
-service used to resolve the client's workspace. Desktop Core provides these routes through its
-loopback ingress. Authentication, custom headers, retries, deadlines, and Nominal exception
-translation apply to both plaintext and TLS gRPC calls. HTTPS URLs continue to use TLS.
-
-## How trust is established for HTTPS
-
-- **HTTP** uses your operating system's trust store directly (via `truststore`), plus certifi.
-- **gRPC** cannot use the OS trust store on demand, so at startup the client builds a CA bundle by
-  unioning certifi with the OS trust anchors it can read with the Python standard library:
-    - **Windows** — the `ROOT` and `CA` system stores (including GPO/MDM-pushed enterprise CAs).
-    - **Linux** — the system `ca-certificates` bundle (including CAs added via `update-ca-certificates`).
-    - **macOS** — certifi only; the macOS Keychain is not auto-detected (see below).
-
-On Windows and Linux this means the client **just works** behind a corporate TLS-inspecting proxy
-whose CA is installed in the host trust store — no configuration needed.
-
-## macOS behind a corporate proxy
-
-If you are on macOS behind a TLS-inspecting proxy, export your corporate root CA to a PEM file and
-point the client at it:
+So on Windows and Linux, a proxy whose CA is installed on the machine needs no setup.
+On macOS, export the corporate root CA as a PEM file and pass it to the client:
 
 ```python
 from nominal.core import NominalClient
 
-client = NominalClient.from_token(token, trust_store_path="/path/to/corp-ca.pem")
+client = NominalClient.from_profile("default", trust_store_path="/path/to/corp-ca.pem")
 ```
 
-Alternatively, set `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/path/to/corp-ca.pem` in your environment.
+Or set `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/path/to/corp-ca.pem` in the environment.
 
-## Troubleshooting
+A missing CA shows up as a gRPC `UNAVAILABLE` error that mentions SSL, a handshake or a certificate.
 
-A TLS verification failure surfaces as a gRPC `UNAVAILABLE` error mentioning an SSL/handshake/certificate
-problem. The fix is the same as above: supply your corporate CA via `trust_store_path` (or
-`GRPC_DEFAULT_SSL_ROOTS_FILE_PATH`).
+## Local plaintext deployments
+
+An `http://` base URL works only for a loopback IP address: `127.0.0.1`, or another `127.x.x.x` address, or `[::1]`.
+Use the address, not `localhost`. Any other `http://` host raises `NominalConfigError`, and there's no fallback from TLS to plaintext.
+
+```python
+client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
+```
+
+gRPC then uses plaintext HTTP/2 on the same host and port, so the local deployment must serve both HTTP and gRPC there, as Desktop Core does.
+Plaintext still sends your API key and headers unencrypted.
+
+Base URLs with a user name or password in them are rejected. Pass the API key separately.

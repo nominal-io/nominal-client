@@ -1,4 +1,4 @@
-"""Sphinx config for the Nominal Python SDK guides, examples, and API reference."""
+"""Sphinx config for the Nominal Python Client guides, examples, and SDK reference."""
 
 import sys
 from collections import Counter
@@ -19,7 +19,7 @@ import nominal.exceptions
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
 
-project = "Nominal Python SDK"
+project = "Python Client"
 copyright = "Nominal, Inc."
 
 extensions = [
@@ -163,7 +163,7 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
-html_title = "Nominal Python SDK"
+html_title = "Nominal Python Client"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_js_files = ["reference-links.js"]
@@ -171,6 +171,8 @@ html_copy_source = False
 
 nominal_hub_url = "https://docs.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
+# Left sidebar groups fold; only "Get started" (and the current page's group) start open.
+nominal_sidebar_open = ["Get started"]
 
 html_context = {
     "source_type": "github",

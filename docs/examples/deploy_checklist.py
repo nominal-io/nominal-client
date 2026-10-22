@@ -5,7 +5,7 @@ For setup, creation and updates, stable keys, and reviewing results, see
 [Authoring checklists as code](/guides/checklists/authoring.md).
 
 This example accepts runs with at most one asset. For multi-asset runs, select an asset using
-the [data review builder](/guides/checklists/data-review.md#applying-checklists-to-runs).
+the [data review builder](/guides/checklists/data-review.md#run-checklists-against-runs).
 The run needs a data source reference named `telemetry`. Channel names, units, and expected
 results are documented alongside each check below; adapt them to your test setup.
 

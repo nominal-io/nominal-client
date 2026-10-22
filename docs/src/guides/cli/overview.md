@@ -1,64 +1,21 @@
 ---
 myst:
   html_meta:
-    description: "Overview of the Nominal CLI"
+    description: "What the nom command line interface does, and where each command is documented."
 ---
 
 # Command line interface
 
 {.lead}
-Overview of the Nominal CLI
+`nom` is the client's command line interface. It installs with `nominal` and covers profiles, extractors, downloads, instrumentation sheets and migrations.
 
-A subset of the functionality of the Python API is made available via a command-line interface (CLI).
+Commands that call Nominal take `--profile <name>`, using a profile from [API keys setup](/guides/api-keys-setup.md).
+Add `--help` to any command for its options, or see the [CLI reference](/sdk/cli.md).
 
-The CLI executable is called `nom`, and installed when you do `pip install nominal`.
-
-```sh
-nom --version
-```
-
-Before using the CLI, save a connection profile following [API keys setup](/guides/api-keys-setup.md). Commands that access Nominal require `--profile default` (replace `default` with your profile name).
-
-The CLI provides commands for managing connection profiles and containerized extractors, downloading data, processing instrumentation sheets, and migrating resources between tenants:
-
-```sh
-nom --help
-```
-
-See the [generated CLI reference](/sdk/cli.md) for current command options and defaults.
-
-## Available Commands
-
-### `config`
-Manage authentication profiles for connecting to Nominal. Add, remove, list, and migrate profiles that store your API tokens and workspace settings.
-
-### `container`
-Work with containerized extractors and the container images they run. An extractor carries identity; its execution contract (inputs, parameters, output format, timestamp defaults) lives on the container images registered against it, exactly one of which is active.
-
-### `download`
-Interactive data browsing and download wizard. Select an asset and dataset through an interactive terminal UI, choose channels and time bounds, and export data to CSV or Parquet. See the [Downloading Data](/guides/cli/downloading-data.md) guide for a detailed walkthrough.
-
-### `migrate`
-Copy resources between Nominal tenants. Use `prep` to count in-scope resources and generate a migration plan, `copy` to perform the copy, and `summary` to summarize a migration as a markdown table.
-
-### `mis`
-Process Master Instrumentation Sheets (MIS) to bulk-update channel descriptions and units. Validate units against Nominal's UCUM catalog and list available units. See the [Instrumentation Sheet Handling](/guides/cli/instrumentation-sheets.md) guide for detailed documentation.
-
-## Using Commands
-
-To find out more about each command, run it with `--help`:
-
-```sh
-nom config --help
-```
-
-```sh
-nom config profile add --help
-```
-
-## Next Steps
-
-- **Authentication**: Set up your API tokens with `nom config profile add` - see [API keys setup](/guides/api-keys-setup.md)
-- **Download Data**: Learn how to use the interactive download wizard - see the [Downloading Data](/guides/cli/downloading-data.md) guide
-- **Instrumentation Sheets**: Learn how to bulk-update channel metadata - see the [Instrumentation Sheet Handling](/guides/cli/instrumentation-sheets.md) guide
-- **API Reference**: For programmatic access, check out the [Python SDK documentation](/sdk/index.md)
+| Command | Use it to | Guide |
+| --- | --- | --- |
+| `nom config` | Add, list, remove and migrate profiles | [API keys setup](/guides/api-keys-setup.md) |
+| `nom container` | Register and manage file extractors and their images | [File extractors](/guides/extractors/overview.md#from-the-cli) |
+| `nom download` | Pick channels and a time range, and save them as CSV or Parquet | [Download data](/guides/cli/downloading-data.md) |
+| `nom mis` | Set channel units and descriptions from an instrumentation sheet | [Instrumentation sheets](/guides/cli/instrumentation-sheets.md) |
+| `nom migrate` | Copy resources between Nominal tenants | [CLI reference](/sdk/cli.md) |

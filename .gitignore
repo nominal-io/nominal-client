@@ -183,6 +183,8 @@ uv.toml
 # A nested negation has no effect while its parent dir stays excluded, so re-include the
 # skills dir, re-exclude its contents, then re-include the specific skill.
 .claude/*
+# Shared project settings enable the nominal-docs plugin; settings.local.json stays ignored.
+!.claude/settings.json
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/thermo-nuclear-code-quality-review

@@ -41,7 +41,7 @@ not optional background. Read only relevant routes; changes can need more than o
 | Write or review Python, imports, dependencies, or performance-sensitive code | [Python quality](.agents/conventions/python.md), affected `pyproject.toml` and callers |
 | Expose or deprecate an API, add a route, or change public behavior, conversion, or failure semantics | [SDK contracts](.agents/conventions/sdk.md), relevant callers and neighboring wrappers |
 | Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](.agents/conventions/testing.md), existing coverage for the affected contract |
-| Change public docstrings, examples, or documentation rendering | [Documentation policy](.agents/conventions/documentation.md), [site setup](docs/AGENTS.md), [renderer configuration](docs/conf.py) |
+| Change public docstrings, examples, or documentation rendering | [Documentation policy](.agents/conventions/documentation.md), [site setup](docs/AGENTS.md), [renderer configuration](docs/conf.py), `nominal-docs` skill |
 | Upgrade `nominal-api` or `nominal-api-protos` | [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md), plus affected contracts above |
 | Review or simplify structure | [Structural review skill](.agents/skills/thermo-nuclear-code-quality-review/SKILL.md), plus affected contracts above |
 | Change AI instructions, review automation, or shared skills | [Guidance ownership](.agents/conventions/README.md) |
@@ -81,6 +81,11 @@ Skills live in `.agents/skills/`; `.claude/skills/` exposes the same files to Cl
 Use `reviewing-nominal-api-bumps` when changing `nominal-api` or `nominal-api-protos`, and
 `thermo-nuclear-code-quality-review` for deep structural review. If skill invocation is not
 available in the current tool, read the relevant `SKILL.md` directly.
+
+Nominal's shared writing rules for docs and docstrings come from the `nominal-docs` skill in
+[nominal-sphinx-theme](https://github.com/nominal-io/nominal-sphinx-theme/tree/main/skills/nominal-docs).
+`.claude/settings.json` enables it as a Claude Code plugin; other tools read its `SKILL.md`
+there. This repository's documentation policy and site setup add the SDK-specific rules.
 
 The CI review job is explicitly static and read-only; its no-execution rule does not apply
 to local implementation work. An explicit review-only/no-execution request still takes

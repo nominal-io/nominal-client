@@ -1,7 +1,7 @@
 """Create an asset and upload a CSV dataset to it.
 
 Creates (or reuses) an FSAE vehicle asset, uploads the racecar CSV from the
-[quickstart](/guides/quickstart.md) as its dataset, and tags each channel with its unit.
+[upload and stream tutorial](/guides/longstart.md) as its dataset, and tags each channel with its unit.
 Run it with `python fsae_asset_upload.py --file racecar_dataset.csv.gz --profile <profile>`.
 """
 

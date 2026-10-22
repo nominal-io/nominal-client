@@ -1,108 +1,49 @@
 ---
 myst:
   html_meta:
-    description: "How to apply checklists to runs in Nominal using Python, as part of your data review process"
+    description: "Run published checklists against runs as data reviews, and read the events they create."
 ---
 
-# Initiate Data Review in Nominal with Python
+# Data review
 
 {.lead}
-How to apply checklists to runs in Nominal using Python, as part of your data review process
+A data review runs a published [checklist](/guides/checklists/authoring.md) against a [run](/guides/runs.md).
+Each place a check fails becomes an [event](/guides/events.md) for an engineer to review.
 
-```{include} /guides/_snippets/install-warning.md
+For checking live data as it arrives, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
+
+```{include} /guides/_snippets/connect-the-client.md
 ```
 
-A **checklist** is a reusable set of checks. Each check describes a condition to evaluate against
-telemetry, such as a temperature limit or a controller fault. The intervals where a check is violated
-can generate **events** for an engineer to review.
+## Run checklists against runs
 
-A **data review** records the evaluation of a checklist version against a run. The checklist is the
-definition you reuse; the data review contains the results for that run. During review, inspect the
-flagged intervals alongside the data and decide which violations need further action.
+{py:meth}`~nominal.core.NominalClient.data_review_builder` returns a {py:class}`~nominal.core.DataReviewBuilder`.
+Add one {py:meth}`~nominal.core.DataReviewBuilder.execute_checklist` per run and checklist pair, then start them all with {py:meth}`~nominal.core.DataReviewBuilder.initiate`:
 
-This guide shows you how to apply a checklist to a run using the Nominal Python client. You can read more on data review in the [Data Review guide](https://docs.nominal.io/core/documentation/platform/flag-events/data-review) in the Core Platform docs.
+```python
+builder = client.data_review_builder()
+builder.execute_checklist("<RUN_RID>", "<CHECKLIST_RID>", commit="<COMMIT_SHA>")  # pin a version
+builder.execute_checklist("<OTHER_RUN_RID>", "<CHECKLIST_RID>")  # latest version
+builder.add_integration("<INTEGRATION_RID>")  # optional: notify when checks fail
 
-To create or revise the checklist itself, follow [Authoring checklists as code](authoring.md).
-
-## Connect to Nominal
-
-```{include} /guides/_snippets/python/auth.md
+for review in builder.initiate():
+    print(review.nominal_url, len(review.get_events()))
 ```
 
-## Applying Checklists to Runs
+Copy checklist RIDs and commit SHAs from the [Checklists page](https://app.gov.nominal.io/checklists).
+For a run with several assets, pass `asset=` to choose the one to review.
 
-Nominal allows you to apply multiple checklists to multiple runs simultaneously. You can also optionally specify
-integrations to send notifications if violations are found.
+`initiate` waits for the reviews to finish by default, but doesn't wait for notifications.
+Pass `wait_for_completion=False` to return immediately, then call {py:meth}`~nominal.core.DataReview.poll_for_completion` on each review.
 
-1. Locate or Create Run RIDs
+Notifications support Slack, Opsgenie and webhook integrations.
 
-   Find the run RID(s) in the [platform](https://app.gov.nominal.io/runs) or [create new runs with the Nominal client](/guides/runs/overview.md).
-   Then paste the run RID(s) below.
-
-   ```python
-   run1_rid = "paste_rid_here"
-   run2_rid = "paste_rid_here"
-   ```
-
-2. Locate Checklist RIDs and Commits
-
-   Find the checklist RID(s) in the [platform](https://app.gov.nominal.io/checklists).
-   To pin a version, copy the commit SHA of the version you want to apply.
-   To apply the latest version, omit `commit=` from the `execute_checklist()` call;
-   no commit variable is needed for that call. The examples below pin the reviews
-   for `run1_rid` and use the latest version for `run2_rid`.
-
-   ```python
-   checklist1_rid = "paste_rid_here"
-   checklist1_commit = "paste_commit_sha_here"
-
-   checklist2_rid = "paste_rid_here"
-   checklist2_commit = "paste_commit_sha_here"
-   ```
-
-3. Optionally, Specify an Integration
-
-   If you would like to send notifications when violations occur, you can specify an integration RID. You can find the integration RID in the [platform](https://app.gov.nominal.io/settings/integrations).
-
-   ```python
-   integration_rid = "paste_rid_here"
-   ```
-
-4. Apply Checklists
-
-   Create a data review builder and call `execute_checklist()` for each run/checklist pair.
-   For a run with multiple assets, also supply `asset=` to select the asset to review.
-   Add an integration if notifications are needed, then initiate the reviews.
-   `initiate()` waits for review completion by default; it does not confirm notification delivery.
-
-   ```python
-   review_builder = client.data_review_builder()
-   # Optional: uncomment after setting integration_rid above.
-   # review_builder.add_integration(integration_rid)
-
-   # Pin checklist versions for run1
-   review_builder.execute_checklist(run1_rid, checklist1_rid, commit=checklist1_commit)
-   review_builder.execute_checklist(run1_rid, checklist2_rid, commit=checklist2_commit)  # Optional
-
-   # Use the latest version of checklist1 for run2
-   review_builder.execute_checklist(run2_rid, checklist1_rid)  # Optional
-
-   # Initiate reviews
-   reviews = review_builder.initiate()
-
-   # Print out results
-   for review in reviews:
-       print(f"review: {review.rid}, URL: {review.nominal_url}")
-       print(f"  nr. of generated events: {len(review.get_events())}")
-   ```
-
-Each returned review has completed. Use `get_events()` to retrieve its generated events.
-
-## Retrieving Data Review Results Later
-
-Retrieve a review with `client.get_data_review()`. Replace `<DATA_REVIEW_RID>` with
-one of the review RIDs printed above.
+## Read results later
 
 ```python
 review = client.get_data_review("<DATA_REVIEW_RID>")
+events = review.get_events()
 ```
+
+{py:meth}`~nominal.core.NominalClient.search_data_reviews` and {py:meth}`~nominal.core.Asset.search_data_reviews` find reviews by run or asset.
+To review the results in the UI, see [Data review](https://docs.nominal.io/core/documentation/platform/flag-events/data-review).
