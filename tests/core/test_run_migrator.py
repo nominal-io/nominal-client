@@ -96,6 +96,29 @@ class TestRunMigratorNewRun:
 
         assert ctx.migration_state.get_mapped_rid(ResourceType.RUN, _run_rid(1)) == _run_rid(100)
 
+    @pytest.mark.parametrize(
+        ("override", "expected"),
+        [
+            (None, ["flight", "shared", "migrated"]),
+            ([], ["shared", "migrated"]),
+            (["replaced"], ["replaced", "shared", "migrated"]),
+        ],
+        ids=["source-labels", "empty-override", "override"],
+    )
+    def test_added_labels_follow_source_or_override_labels_without_duplicates(
+        self, override: list[str] | None, expected: list[str]
+    ) -> None:
+        """Context extra labels are appended to the override labels if given, else the source labels, once each."""
+        ctx = _make_context()
+        ctx.added_labels = ("shared", "migrated")
+        source_run = _make_run(_run_rid(1))
+        source_run.labels = ["flight", "shared"]
+        ctx.destination_client.create_run.return_value = _make_run(_run_rid(100))
+
+        RunMigrator(ctx).copy_from(source_run, RunCopyOptions(new_labels=override))
+
+        assert ctx.destination_client.create_run.call_args.kwargs["labels"] == expected
+
 
 class TestRunMigratorExistingRun:
     def test_adds_missing_asset_to_existing_run(self) -> None:

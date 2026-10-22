@@ -183,9 +183,10 @@ class TestCopyFromImpl:
         create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
         assert set(create_req.data_scope.asset_rids) == {new_a1, new_a2}
         assert create_req.data_scope.run_rids is None
+        assert create_req.labels == ["lbl"]
+        assert create_req.properties == {"k": "v"}
 
         assert ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, wb_src) == wb_dst
-        new_wb.update.assert_called_once_with(labels=["lbl"], properties={"k": "v"})
         assert result is new_wb
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")

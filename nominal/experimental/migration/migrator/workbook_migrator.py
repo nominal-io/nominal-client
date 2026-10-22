@@ -145,18 +145,14 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             layout=new_layout,
             content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=new_content),
             event_refs=[],
+            labels=self.ctx.destination_labels(raw_notebook.metadata.labels, override=labels),
+            properties=dict(properties if properties is not None else raw_notebook.metadata.properties),
             workspace=dest_clients.resolve_default_workspace_rid(),
         )
         raw_new_notebook = dest_clients.notebook.create(dest_clients.auth_header, request)
         new_workbook = Workbook._from_conjure(dest_clients, raw_new_notebook)
 
         self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, new_workbook.rid)
-
-        source_metadata = raw_notebook.metadata
-        new_workbook.update(
-            labels=labels if labels is not None else source_metadata.labels,
-            properties=properties if properties is not None else source_metadata.properties,
-        )
 
         self._migrate_preview_image(source, new_workbook)
         return new_workbook
