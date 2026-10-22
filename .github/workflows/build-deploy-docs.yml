@@ -58,7 +58,9 @@ jobs:
           name: docs-site
           path: ./docs/_build/dirhtml
           retention-days: 7
+      # PRs aren't deployed and preview from docs-site, so only other builds keep a Pages upload
       - name: Upload pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: ./docs/_build/dirhtml
