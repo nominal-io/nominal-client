@@ -78,9 +78,9 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             description=options.new_template_description
             if options.new_template_description is not None
             else raw_source_template.metadata.description,
-            labels=options.new_template_labels
-            if options.new_template_labels is not None
-            else raw_source_template.metadata.labels,
+            labels=self.ctx.destination_labels(
+                raw_source_template.metadata.labels, override=options.new_template_labels
+            ),
             properties=options.new_template_properties
             if options.new_template_properties is not None
             else raw_source_template.metadata.properties,

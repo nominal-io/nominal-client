@@ -60,7 +60,7 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
             if options.new_video_description is not None
             else source.description,
             properties=options.new_video_properties if options.new_video_properties is not None else source.properties,
-            labels=options.new_video_labels if options.new_video_labels is not None else source.labels,
+            labels=self.ctx.destination_labels(source.labels, override=options.new_video_labels),
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_video.rid)
         return new_video

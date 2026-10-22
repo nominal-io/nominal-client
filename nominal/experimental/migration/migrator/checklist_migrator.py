@@ -70,7 +70,7 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         properties = (
             options.new_properties if options.new_properties is not None else api_source_checklist.metadata.properties
         )
-        labels = options.new_labels if options.new_labels is not None else api_source_checklist.metadata.labels
+        labels = self.ctx.destination_labels(api_source_checklist.metadata.labels, override=options.new_labels)
         checklist_variables = (
             options.new_checklist_variables
             if options.new_checklist_variables is not None
