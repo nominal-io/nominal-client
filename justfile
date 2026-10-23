@@ -69,6 +69,14 @@ fix-format:
 # fix imports and formatting
 fix: fix-format fix-imports
 
+# check the code in docs notebooks with ruff format | fix with `just fix-format-notebooks`
+check-format-notebooks:
+    uv run --group docs jupytext --from myst --pipe-fmt ipynb --check "ruff format --line-length 85 --check --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
+
+# format the code in docs notebooks with ruff format (note: mutates the notebooks)
+fix-format-notebooks:
+    uv run --group docs jupytext --from myst --pipe-fmt ipynb --pipe "ruff format --line-length 85 --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
+
 # run all tests and checks, except e2e tests
 verify: install test check
 

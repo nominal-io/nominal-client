@@ -92,6 +92,7 @@ docs = [
     "matplotlib>=3.11.2",
     "numpy>=2.4.6",
     "sphinx-codeautolink>=0.19.0",
+    "jupytext>=1.19.6",
 ]
 
 [tool.uv.dependency-groups]
@@ -134,7 +135,7 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/src/examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
 
 [tool.ruff.lint.isort]
 # The nominal.ibis package root is a directory named "ibis", which ruff would otherwise

@@ -1,4 +1,5 @@
 ---
+icon: chevron-right
 jupytext:
   text_representation:
     format_name: myst
@@ -6,7 +7,6 @@ kernelspec:
   display_name: Python 3
   language: python
   name: python3
-icon: chevron-right
 ---
 
 # A Typical Experimental Run
@@ -75,7 +75,9 @@ old_datasets = helicopter.list_datasets()
 helicopter.remove_data_scopes(names=[name for name, _ in old_datasets])
 for _, old_dataset in old_datasets:
     old_dataset.archive()
-helicopter.add_dataset("telemetry", client.create_dataset("Helicopter N123HX telemetry"))
+helicopter.add_dataset(
+    "telemetry", client.create_dataset("Helicopter N123HX telemetry")
+)
 ```
 
 ```{code-cell} python
@@ -105,10 +107,12 @@ speed = 31.4 * (1 - np.exp(-t / 5)) + 0.3 * np.sin(2 * np.pi * t / 4)
 speed = np.where(t > 45, speed * np.exp(-(t - 45) / 4), speed).clip(min=0)
 
 test_start = pd.Timestamp.now(tz="UTC").floor("s") - pd.Timedelta(minutes=5)
-data = pd.DataFrame({
-    "time": test_start + pd.to_timedelta(t, unit="s"),
-    "rotor_speed": speed.round(3)
-})
+data = pd.DataFrame(
+    {
+        "time": test_start + pd.to_timedelta(t, unit="s"),
+        "rotor_speed": speed.round(3),
+    }
+)
 
 data_file = Path(tempfile.mkdtemp()) / "rotor_spin_up.csv"
 data.to_csv(data_file, index=False, date_format="%Y-%m-%dT%H:%M:%S.%fZ")
@@ -121,9 +125,7 @@ We now commence our test run. During the run, we "measure" the data simulated ab
 ```{code-cell} python
 dataset = helicopter.get_dataset("telemetry")
 file = dataset.add_tabular_data(
-    data_file,
-    timestamp_column="time",
-    timestamp_type="iso_8601"
+    data_file, timestamp_column="time", timestamp_type="iso_8601"
 )
 file.poll_until_ingestion_completed()  # wait until done
 ```
@@ -159,7 +161,9 @@ from nominal.thirdparty.pandas import datasource_to_dataframe
 run = client.get_run(run.rid)  # in practice, the RID from the run's page
 helicopter: Asset = run.list_assets()[0]
 telemetry = helicopter.get_dataset("telemetry")
-df = datasource_to_dataframe(telemetry, channel_exact_match=["rotor_speed"], start=run.start, end=run.end)
+df = datasource_to_dataframe(
+    telemetry, channel_exact_match=["rotor_speed"], start=run.start, end=run.end
+)
 ax = df.plot(y="rotor_speed", legend=False, title=run.name)
 ax.set_ylabel("Angular velocity (rad/s)");
 ```
