@@ -91,6 +91,6 @@ _clean-docs:
 build-docs: _clean-docs
     uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
-# Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
-serve-docs:
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --ignore "**/__pycache__/**" --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated --ignore docs/src/sdk/exceptions.rst --ignore docs/src/_nominal_snippets --watch docs/autosummary.rst --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE
+# Live preview on http://127.0.0.1:8000; rebuilds only pages affected by a change.
+serve-docs: _clean-docs
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --ignore "**/__pycache__/**" --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated --ignore docs/src/sdk/exceptions.rst --ignore docs/src/_nominal_snippets --watch docs/autosummary.rst --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE

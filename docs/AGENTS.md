@@ -21,7 +21,8 @@
 
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000. It watches pages, examples, docstrings and included files.
-- Both commands remove generated reference pages and HTML before rebuilding.
+- Both commands start by removing generated reference pages and HTML.
+- `serve-docs` then rebuilds only the pages a change affects. Restart it after editing `_ext/` or `_templates/`.
 - The `docs` dependency group needs Python >=3.12. uv picks a compatible interpreter and may recreate an older project environment. The client still supports Python >=3.11.
 - Autodoc imports the live-video bindings. Linux builds need the GStreamer runtime; the Ubuntu docs job installs `libgstreamer-plugins-bad1.0-0`.
 - Docstring and signature rendering tests: `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
