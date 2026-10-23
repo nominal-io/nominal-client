@@ -132,6 +132,13 @@ Object identification <guides/video/object-identification>
 
 ```{toctree}
 :hidden:
+:caption: Drives
+
+Overview <guides/drives/overview>
+```
+
+```{toctree}
+:hidden:
 :caption: Advanced Ingest Guides
 
 Ingest jobs <guides/ingest/ingestion-jobs>
