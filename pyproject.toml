@@ -94,9 +94,14 @@ docs = [
     "sphinx-codeautolink>=0.19.0",
     "jupytext>=1.19.6",
 ]
+notebook = [
+    "jupyterlab>=4.4,<4.6",  # check that jupyterlab-myst renders before raising the cap
+    "jupyterlab-myst>=2.4",
+]
 
 [tool.uv.dependency-groups]
 docs = { requires-python = ">=3.12" }
+notebook = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
 nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "24fe6e0cc27b3f34b8c713c1daf5b270abcc2707" }
