@@ -69,6 +69,14 @@ fix-format:
 # fix imports and formatting
 fix: fix-format fix-imports
 
+# check the code in docs notebooks with ruff format | fix with `just fix-format-notebooks`
+check-format-notebooks:
+    uv run --group docs jupytext --from myst --pipe-fmt ipynb --check "ruff format --line-length 85 --check --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
+
+# format the code in docs notebooks with ruff format (note: mutates the notebooks)
+fix-format-notebooks:
+    uv run --group docs jupytext --from myst --pipe-fmt ipynb --pipe "ruff format --line-length 85 --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
+
 # run all tests and checks, except e2e tests
 verify: install test check
 
@@ -85,12 +93,18 @@ clean:
 
 # Generated documentation pages and HTML are disposable.
 _clean-docs:
-    rm -rf docs/src/examples docs/src/sdk/_summaries docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
+    rm -rf docs/src/sdk/_summaries docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
 
 # Build the docs into folder-style URLs; warnings fail the build.
 build-docs: _clean-docs
     uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
-# Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
-serve-docs:
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --ignore "**/__pycache__/**" --ignore docs/src/examples --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated --ignore docs/src/sdk/exceptions.rst --ignore docs/src/_nominal_snippets --watch docs/autosummary.rst --watch docs/examples --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE
+# Live preview on http://127.0.0.1:8000; rebuilds only pages affected by a change.
+serve-docs: _clean-docs
+    uv run --all-packages --all-extras --group docs \
+        sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml \
+        --watch docs --watch nominal --watch packages --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE \
+        --ignore docs/_build --ignore docs/_tests --ignore "**/__pycache__/**" \
+        --ignore docs/src/_nominal_snippets --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated \
+        --ignore docs/src/sdk/exceptions.rst \
+        --re-ignore '(~|/\.?#[^/]*)$'

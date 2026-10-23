@@ -138,5 +138,5 @@ asset.archive()
 
 * [Upload and stream tutorial](/guides/longstart.md): a longer walkthrough with a racecar dataset and live workbooks.
 * [Data integration tutorial](/guides/data-integration-tutorial.md): connect your own data sources.
-* [Examples](/examples/index.md): full, runnable scripts.
+* [Examples](/examples/index.md): runnable notebooks.
 * [SDK reference](/sdk/index.md): every class and function.

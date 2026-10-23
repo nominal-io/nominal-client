@@ -6,7 +6,7 @@ see the [guides](/index.md).
 
 [Authoring checklists as code](../guides/checklists/authoring.md) covers creating and updating
 checklists, writing checks, and running them against your data. The
-[test-stand example](../examples/deploy_checklist.py.md) is a complete script.
+{download}`deploy_checklist.py </examples/deploy_checklist.py>` is a complete test-stand script.
 
 The main components of the `nominal` package are:
 
