@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 import sys
 from datetime import UTC, datetime, timedelta
-from threading import Event
+from threading import Event, Thread
+from types import SimpleNamespace
 from typing import get_type_hints
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ import pytest
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core.dataset import Dataset
 from nominal.experimental.stream_v2 import create_write_stream
+from nominal.protos.write.nominal_write_pb2 import WriteRequestNominal
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
@@ -301,3 +303,52 @@ def test_experimental_factory_writes_to_dataset(mock_dataset: Dataset, mock_clie
         assert written.wait(timeout=10), "experimental stream did not write the batch"
 
     assert mock_clients.proto_write.write_nominal_batches_with_metrics.call_args.args[1] == mock_dataset.rid
+
+
+@pytest.mark.parametrize("batch_size", [2, 10], ids=["full-batches", "partial-batch"])
+def test_experimental_context_exit_drains_queued_batches(
+    mock_dataset: Dataset, mock_clients: MagicMock, batch_size: int
+) -> None:
+    """Context exit serializes and writes queued batches before closing their workers."""
+    consume_batches = Event()
+
+    class DeferredConsumer(Thread):
+        """Hold the batch consumer until shutdown explicitly waits for it."""
+
+        def run(self) -> None:
+            """Delay batch submission to reproduce a consumer that has not been scheduled."""
+            assert consume_batches.wait(timeout=10)
+            super().run()
+
+        def join(self, timeout: float | None = None) -> None:
+            """Allow the consumer to run when shutdown starts draining it."""
+            consume_batches.set()
+            super().join(timeout)
+
+    with (
+        patch(
+            "nominal.experimental.stream_v2._write_stream.threading",
+            SimpleNamespace(Thread=DeferredConsumer),
+        ),
+        create_write_stream(
+            mock_dataset,
+            max_batch_size=batch_size,
+            max_wait=timedelta(hours=1),
+            serialize_process_workers=1,
+        ) as stream,
+    ):
+        for index in range(4):
+            stream.enqueue("temperature", 1_700_000_000_000_000_000 + index, float(index))
+
+    written_points = []
+    for call in mock_clients.proto_write.write_nominal_batches_with_metrics.call_args_list:
+        assert call.args[1] == mock_dataset.rid
+        request = WriteRequestNominal.FromString(call.args[2])
+        for series in request.series:
+            assert series.channel.name == "temperature"
+            written_points.extend(
+                (point.timestamp.seconds, point.timestamp.nanos, point.value)
+                for point in series.points.double_points.points
+            )
+
+    assert sorted(written_points) == [(1_700_000_000, index, float(index)) for index in range(4)]

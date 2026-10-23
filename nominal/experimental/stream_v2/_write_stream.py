@@ -215,14 +215,18 @@ class WriteStreamV2(DataStream):
         self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff / 1e9)
 
     def close(self, wait: bool = True) -> None:
+        """Close the stream and wait for serialization and upload workers.
+
+        Args:
+            wait: Finish pending tasks instead of cancelling tasks that have not started.
+        """
         logger.debug("Closing write stream (wait=%s)", wait)
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
+        self._batch_serialize_thread.join()
 
         self._serializer.close(cancel_futures=not wait)
         self._write_pool.shutdown(cancel_futures=not wait)
-
-        self._batch_serialize_thread.join()
 
     def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
         """Add a metric using the configured implementation."""
