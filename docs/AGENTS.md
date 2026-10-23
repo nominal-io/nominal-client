@@ -55,6 +55,7 @@
 - Examples are MyST Markdown notebooks in `src/examples/`. The build runs them; `nb_execution_mode = "cache"` re-runs only changed notebooks.
 - A notebook has `kernelspec` and a Jupytext `format_name: myst` header in its front matter. The optional `icon` key names an octicon for its card.
 - The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading, and adds it to a hidden toctree. Other pages in the folder need their own toctree entry.
+- Do numerical work in examples with numpy arrays, not the `math` module or Python loops. Notebook-only dependencies, such as numpy and matplotlib, belong in the `docs` dependency group.
 
 ## Reference
 

@@ -89,6 +89,8 @@ docs = [
     "sphinxext-rediraffe>=0.3.0",
     "myst-nb>=1.4.0",
     "sphinx-autobuild>=2025.8.25",
+    "matplotlib>=3.11.2",
+    "numpy>=2.4.6",
 ]
 
 [tool.uv.dependency-groups]

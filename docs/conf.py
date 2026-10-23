@@ -15,6 +15,7 @@ from sphinx.util.typing import restify
 
 import nominal.core
 import nominal.exceptions
+from nominal.config import NominalConfig
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
@@ -142,6 +143,11 @@ nb_execution_cache_path = str(HERE / "_build" / ".jupyter_cache")
 nb_execution_raise_on_error = True
 nb_execution_show_tb = True  # print a failing cell's traceback, not only the log file's path
 nb_execution_timeout = 120
+# Examples connect with the "default" profile; without it, they render unexecuted.
+try:
+    NominalConfig.from_yaml().get_profile("default")
+except (FileNotFoundError, nominal.exceptions.NominalConfigError):
+    nb_execution_excludepatterns = ["examples/*.md"]
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
