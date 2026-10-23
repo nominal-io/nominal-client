@@ -25,6 +25,7 @@ copyright = "Nominal, Inc."
 
 extensions = [
     "myst_nb",
+    "sphinx_codeautolink",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -123,6 +124,16 @@ for _module_name in _seed_modules:
 autosummary_context["module_data"]["nominal.core"]["canonical_names"] = {
     name: f"{module}.{name}" for module, names in core_module_exports.items() for name in names
 }
+# Code examples resolve members by defining module; link them to their nominal.core reference.
+codeautolink_inventory_map = {
+    f"{module}.{name}.{member}": f"nominal.core.{name}.{member}"
+    for module, names in core_module_exports.items()
+    for name in names
+    for member in dir(getattr(nominal.core, name))
+    if not member.startswith("_")
+}
+# A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
+codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 
@@ -172,7 +183,11 @@ napoleon_numpy_docstring = False
 napoleon_use_rtype = False
 napoleon_use_param = False
 
-intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+}
 
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"

@@ -79,10 +79,10 @@ helicopter.add_dataset("telemetry", client.create_dataset("Helicopter N123HX tel
 ```
 
 ```{code-cell} python
-from nominal.core import NominalClient
+from nominal.core import Asset, NominalClient
 
 client = NominalClient.from_profile("default")
-[helicopter] = client.search_assets(properties={"tail_number": "N123HX"})
+helicopter: Asset = client.search_assets(properties={"tail_number": "N123HX"})[0]
 print(helicopter.nominal_url)
 ```
 
@@ -157,7 +157,7 @@ The dataset holds every test on the helicopter, so read it between the run's sta
 from nominal.thirdparty.pandas import datasource_to_dataframe
 
 run = client.get_run(run.rid)  # in practice, the RID from the run's page
-[helicopter] = run.list_assets()
+helicopter: Asset = run.list_assets()[0]
 telemetry = helicopter.get_dataset("telemetry")
 df = datasource_to_dataframe(telemetry, channel_exact_match=["rotor_speed"], start=run.start, end=run.end)
 ax = df.plot(y="rotor_speed", legend=False, title=run.name)

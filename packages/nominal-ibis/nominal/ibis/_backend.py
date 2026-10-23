@@ -209,6 +209,12 @@ class Backend(SQLBackend, NoUrl):
         self._catalog = response.sql_catalog
 
     def list_tables(self, *, like: str | None = None, database: tuple[str, str] | str | None = None) -> list[str]:
+        """Return the sorted names of the tables in the Nominal SQL catalog.
+
+        Args:
+            like: Regular expression; return only names that contain a match.
+            database: Ignored. The catalog has a single database.
+        """
         return self._filter_with_like(sorted(table.name for table in self._catalog.tables), like)
 
     def get_schema(
