@@ -198,8 +198,6 @@ uv.toml
 !.agents/skills/thermo-nuclear-code-quality-review
 !.agents/skills/reviewing-nominal-api-bumps
 
-# Sphinx example pages are generated from scripts.
-docs/src/examples/
 # The quickstart sample is a downloadable archive.
 !docs/src/guides/data/racecar_dataset.csv.gz
 

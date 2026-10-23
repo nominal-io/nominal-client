@@ -21,7 +21,7 @@
 
 - `just build-docs` builds `docs/_build/dirhtml` and fails on warnings, including in CI.
 - `just serve-docs` previews at http://127.0.0.1:8000. It watches pages, examples, docstrings and included files.
-- Both commands remove generated example and reference pages and HTML before rebuilding.
+- Both commands remove generated reference pages and HTML before rebuilding.
 - The `docs` dependency group needs Python >=3.12. uv picks a compatible interpreter and may recreate an older project environment. The client still supports Python >=3.11.
 - Autodoc imports the live-video bindings. Linux builds need the GStreamer runtime; the Ubuntu docs job installs `libgstreamer-plugins-bad1.0-0`.
 - Docstring and signature rendering tests: `uv run --all-packages --all-extras --group docs pytest docs/_tests --no-cov`.
@@ -51,9 +51,9 @@
 
 ## Examples
 
-- Scripts in `docs/examples/` get pages automatically from `_ext/examples.py`.
-- The first line of the module docstring is the title. The rest is the introduction.
-- Generated `src/examples/` pages are ignored by Git and the preview watcher. Edit the script, not its page.
+- Examples are MyST Markdown notebooks in `src/examples/`. The build runs them; `nb_execution_mode = "cache"` re-runs only changed notebooks.
+- A notebook has `kernelspec` and a Jupytext `format_name: myst` header in its front matter. The optional `icon` key names an octicon for its card.
+- The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading, and adds it to a hidden toctree. Other pages in the folder need their own toctree entry.
 
 ## Reference
 

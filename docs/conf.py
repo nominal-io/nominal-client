@@ -23,7 +23,7 @@ project = "Python Client"
 copyright = "Nominal, Inc."
 
 extensions = [
-    "myst_parser",
+    "myst_nb",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -135,6 +135,13 @@ default_role = "py:obj"
 # -- MyST ---------------------------------------------------------------------
 myst_heading_anchors = 6
 myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
+
+# Run each example on build; the cache (in _build) re-runs only notebooks that changed.
+nb_execution_mode = "cache"
+nb_execution_cache_path = str(HERE / "_build" / ".jupyter_cache")
+nb_execution_raise_on_error = True
+nb_execution_show_tb = True  # print a failing cell's traceback, not only the log file's path
+nb_execution_timeout = 120
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
