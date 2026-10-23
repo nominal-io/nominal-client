@@ -1338,6 +1338,10 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     ) -> LogStream:
         """Stream to asynchronously write log data to a dataset.
 
+        Closing the stream waits for uploads and raises the first unreported upload
+        exception. Other upload failures are logged. Stop enqueueing before closing.
+        Upload completion does not guarantee immediate query visibility.
+
         Args:
             batch_size: Number of records to upload at a time to Nominal.
 

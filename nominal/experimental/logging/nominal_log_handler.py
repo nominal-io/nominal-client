@@ -70,14 +70,25 @@ class NominalLogHandler(logging.Handler):
             self.handleError(record)
 
     def close(self) -> None:
-        """Shutoff log handler from sending logs to Nominal"""
-        self._log_stream.close()
+        """Wait for log uploads, report an upload failure, and release the handler.
+
+        Raises:
+            Exception: The first unreported log-upload exception.
+        """
+        try:
+            self._log_stream.close()
+        finally:
+            super().close()
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
     ) -> None:
-        """Exit the stream and close out any used system resources."""
-        self.close()
+        """Close the handler, preserving an exception raised by the context body."""
+        try:
+            self.close()
+        except Exception:
+            if exc_value is None:
+                raise
 
 
 class ModuleFilter(logging.Filter):
