@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 import logging
+import weakref
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import timedelta
+from logging.handlers import MemoryHandler
 from threading import Event
 from unittest.mock import MagicMock, patch
 
@@ -119,10 +122,11 @@ def test_context_exit_raises_upload_failure():
         stream.close()
 
 
-def test_context_exit_preserves_body_exception():
+@pytest.mark.parametrize("upload_error", [RuntimeError("upload rejected"), SystemExit(2), KeyboardInterrupt()])
+def test_context_exit_preserves_body_exception(upload_error: BaseException):
     """Closing after an upload failure does not replace an exception from the context body."""
     original = ValueError("application failed")
-    stream = WriteStream.create(10, timedelta(hours=1), MagicMock(side_effect=RuntimeError("upload rejected")))
+    stream = WriteStream.create(10, timedelta(hours=1), MagicMock(side_effect=upload_error))
     with pytest.raises(ValueError, match="application failed") as raised:
         with stream:
             stream.enqueue("temperature", 0, 1.0)
@@ -165,7 +169,7 @@ def test_log_handler_close_propagates_upload_rejection(dataset: Dataset, mock_cl
     try:
         handler.emit(logging.LogRecord("test", logging.INFO, "example.py", 1, "test message", (), None))
         with pytest.raises(RuntimeError, match="log upload rejected"):
-            handler.close()
+            handler.close(raise_on_error=True)
         assert handler._closed
     finally:
         with suppress(Exception):
@@ -209,9 +213,12 @@ def test_nonblocking_close_leaves_running_failure_observable():
         stream.close()
 
 
-def test_log_handler_exit_preserves_body_exception(dataset: Dataset, mock_clients: MagicMock):
+@pytest.mark.parametrize("upload_error", [RuntimeError("log upload rejected"), SystemExit(2), KeyboardInterrupt()])
+def test_log_handler_exit_preserves_body_exception(
+    dataset: Dataset, mock_clients: MagicMock, upload_error: BaseException
+):
     """Log-handler cleanup reports failures without replacing an application exception."""
-    mock_clients.storage_writer.write_logs.side_effect = RuntimeError("log upload rejected")
+    mock_clients.storage_writer.write_logs.side_effect = upload_error
     handler = NominalLogHandler(dataset)
     original = ValueError("application failed")
     try:
@@ -243,3 +250,27 @@ def test_nonblocking_close_cancels_queued_uploads():
     finally:
         release.set()
         stream.close()
+
+
+def test_logging_shutdown_finishes_other_handlers_after_upload_failure(dataset: Dataset, mock_clients: MagicMock):
+    """Default handler close does not interrupt logging.shutdown or lose earlier buffered output."""
+    output = io.StringIO()
+    buffered = MemoryHandler(10, target=logging.StreamHandler(output))
+    mock_clients.storage_writer.write_logs.side_effect = RuntimeError("log upload rejected")
+    handler = NominalLogHandler(dataset)
+    record = logging.LogRecord("test", logging.INFO, "example.py", 1, "buffered output", (), None)
+    try:
+        diagnostics_output = io.StringIO()
+        diagnostics = logging.Logger("nominal.core._stream.write_stream")
+        diagnostics.addHandler(handler)
+        diagnostics.addHandler(logging.StreamHandler(diagnostics_output))
+        with patch("nominal.core._stream.write_stream.logger", diagnostics):
+            buffered.emit(record)
+            handler.emit(record)
+            logging.shutdown([weakref.ref(buffered), weakref.ref(handler)])
+        assert "Batched upload task failed" in diagnostics_output.getvalue()
+        assert output.getvalue() == "buffered output\n"
+        assert buffered._closed and handler._closed
+    finally:
+        handler.close()
+        buffered.close()

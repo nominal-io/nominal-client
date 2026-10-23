@@ -239,7 +239,7 @@ class WriteStream(WriteStreamBase[StreamType]):
         """Close the stream, preserving an exception raised by the context body."""
         try:
             self.close()
-        except Exception:
+        except BaseException:
             if exc_value is None:
                 raise
 

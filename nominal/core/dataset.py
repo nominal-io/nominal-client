@@ -1336,7 +1336,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
     ) -> LogStream:
-        """Stream to asynchronously write log data to a dataset.
+        """Create a Python stream to write log data asynchronously.
 
         Closing the stream waits for uploads and raises the first unreported upload
         exception. Other upload failures are logged. Stop enqueueing before closing.
@@ -1496,7 +1496,10 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
-        Data is written asynchronously.
+        Data is written asynchronously. With ``implementation="python"``, blocking close
+        (including successful context exit) waits for outstanding uploads and raises the
+        first unreported upload exception. Stop enqueueing before closing; upload completion
+        does not guarantee immediate query visibility.
 
         Args:
             batch_size: How big the batch can get before writing to Nominal.
