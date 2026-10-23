@@ -1,2 +1,3 @@
 # Keep the card icon and leave out version stamps when Jupytext rewrites a notebook's front matter.
-notebook_metadata_filter = "icon,-jupytext.text_representation.jupytext_version,-jupytext.text_representation.format_version,-jupytext.text_representation.extension"
+# Keep the extension: without it, Jupytext reads the notebook as plain Markdown unless given --from myst.
+notebook_metadata_filter = "icon,-jupytext.text_representation.jupytext_version,-jupytext.text_representation.format_version"

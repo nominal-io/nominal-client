@@ -53,9 +53,10 @@
 ## Examples
 
 - Examples are MyST Markdown notebooks in `src/examples/`. The build runs them; `nb_execution_mode = "cache"` re-runs only changed notebooks.
-- A notebook has `kernelspec` and a Jupytext `format_name: myst` header in its front matter. The optional `icon` key names an octicon for its card.
+- A notebook has `kernelspec` and a Jupytext `extension: .md` and `format_name: myst` header in its front matter. Without the extension, Jupytext reads the file as plain Markdown unless given `--from myst`. The optional `icon` key names an octicon for its card.
 - The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading, and adds it to a hidden toctree. Other pages in the folder need their own toctree entry.
 - `just fix-format-notebooks` formats notebook code with ruff, through Jupytext, at 85 columns so it fits the page. CI runs `just check-format-notebooks`.
+- `just notebook` opens the examples in JupyterLab, where `.md` files open as notebooks with MyST rendered. `docs/.jupyterlab/overrides.json` sets that default viewer. Running a notebook uses your `default` profile and creates real assets, datasets and runs.
 - `src/examples/jupytext.toml` keeps the `icon` key and drops version stamps when Jupytext rewrites a notebook's front matter.
 - Do numerical work in examples with numpy arrays, not the `math` module or Python loops. Notebook-only dependencies, such as numpy and matplotlib, belong in the `docs` dependency group.
 
