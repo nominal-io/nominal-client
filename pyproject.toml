@@ -88,6 +88,7 @@ docs = [
     "sphinx-click>=6.0.0",
     "sphinxext-rediraffe>=0.3.0",
     "myst-nb>=1.4.0",
+    "sphinx-autobuild>=2025.8.25",
 ]
 
 [tool.uv.dependency-groups]
