@@ -48,8 +48,9 @@ with dataset.get_log_stream() as stream:
 For a log stream, `tags` are the entry's arguments.
 One stream can write to several log channels.
 
-The stream logs upload failures rather than raising them, so check the client's logs.
-To send synchronously and raise on errors, use {py:meth}`~nominal.core.Dataset.write_logs`:
+Leaving the context waits for uploads and raises the first unreported upload exception.
+Other upload failures are logged. Upload completion does not guarantee immediate query visibility.
+To send each batch synchronously, use {py:meth}`~nominal.core.Dataset.write_logs`:
 
 ```python
 dataset.write_logs(parse_logs("engine.log"), channel_name="engine_logs")

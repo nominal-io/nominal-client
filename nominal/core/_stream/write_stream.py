@@ -4,7 +4,7 @@ import concurrent.futures
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from types import TracebackType
@@ -177,6 +177,15 @@ LogItem: TypeAlias = BatchItem[str]
 """Individual item of log data to stream to Nominal."""
 
 
+@dataclass
+class _UploadState:
+    """Track outstanding uploads and the first unreported failure under one condition."""
+
+    pending: int = 0
+    error: BaseException | None = None
+    condition: threading.Condition = field(default_factory=threading.Condition)
+
+
 @dataclass(frozen=True)
 class WriteStream(WriteStreamBase[StreamType]):
     """A buffered asynchronous writer for time-series or log data."""
@@ -188,6 +197,7 @@ class WriteStream(WriteStreamBase[StreamType]):
     _thread_safe_batch: ThreadSafeBatch[StreamType]
     _stop: threading.Event
     _pending_jobs: threading.BoundedSemaphore
+    _uploads: _UploadState = field(default_factory=_UploadState, repr=False)
 
     @classmethod
     def create(
@@ -226,8 +236,12 @@ class WriteStream(WriteStreamBase[StreamType]):
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
     ) -> None:
-        """Leave the context manager. Close all running threads."""
-        self.close()
+        """Close the stream, preserving an exception raised by the context body."""
+        try:
+            self.close()
+        except BaseException:
+            if exc_value is None:
+                raise
 
     def enqueue(
         self,
@@ -315,48 +329,79 @@ class WriteStream(WriteStreamBase[StreamType]):
         self._flush(condition=lambda size: size >= self.batch_size)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
-        batch = self._thread_safe_batch.swap(condition)
+        with self._uploads.condition:
+            batch = self._thread_safe_batch.swap(condition)
+            if not batch:
+                return None
+            # Register before submission or backpressure can hide a timeout-worker batch from flush().
+            self._uploads.pending += 1
 
-        if batch is None:
-            return None
-        if not batch:
-            logger.debug("Not flushing... no enqueued batch")
-            return None
+        acquired = False
+        try:
+            acquired = self._pending_jobs.acquire()
+            future = self._executor.submit(self._process_batch, batch)
+        except BaseException:
+            if acquired:
+                self._pending_jobs.release()
+            with self._uploads.condition:
+                self._uploads.pending -= 1
+                self._uploads.condition.notify_all()
+            raise
 
-        self._pending_jobs.acquire()
-
-        def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
-            """Callback to print errors to the console if a batch upload fails."""
+        def process_future(fut: concurrent.futures.Future[None]) -> None:
+            """Retain the first upload failure and signal completion, including cancellation."""
+            cancelled = fut.cancelled()
+            error = None if cancelled else fut.exception()
+            with self._uploads.condition:
+                if error is not None and self._uploads.error is None:
+                    self._uploads.error = error
+                self._uploads.pending -= 1
+                self._uploads.condition.notify_all()
             self._pending_jobs.release()
-            maybe_ex = fut.exception()
-            if maybe_ex is not None:
-                logger.error("Batched upload task failed with exception", exc_info=maybe_ex)
+            if cancelled:
+                return
+            if error is not None:
+                logger.error("Batched upload task failed with exception", exc_info=error)
             else:
-                logger.debug("Batched upload task succeeded")
+                logger.debug("Batched upload task completed")
 
-        logger.debug(f"Starting flush with {len(batch)} records")
-        future = self._executor.submit(self._process_batch, batch)
+        logger.debug("Starting flush with %s records", len(batch))
         future.add_done_callback(process_future)
         return future
 
     def flush(self, wait: bool = False, timeout: float | None = None) -> None:
-        """Flush current batch of records to nominal in a background thread.
+        """Submit buffered records and optionally wait for all outstanding uploads.
+
+        Stop enqueueing before calling a blocking flush. Upload completion does not
+        guarantee that the data is already visible to queries. Uploads are not retried here.
 
         Args:
-            wait: If true, wait for the batch to complete uploading before returning
-            timeout: If wait is true, the time to wait for flush completion in seconds.
+            wait: Wait for outstanding uploads, including batches submitted earlier. Raise
+                the first unreported upload exception after they finish. Other failures
+                are logged. A reported exception is cleared, so a later wait can succeed.
+            timeout: Maximum wait in seconds. If uploads are still pending, log a warning
+                and retain any failure for the next blocking flush or close.
 
-                **Note:** If None, waits indefinitely.
+                **Note:** Passing ``None`` waits indefinitely. Ignored unless ``wait=True``.
+                Time spent submitting the buffered batch is not included in this limit.
 
+        Raises:
+            Exception: The first unreported upload exception, when ``wait=True`` and
+                all outstanding uploads finish within the timeout.
         """
-        future = self._flush()
+        self._flush()
+        if not wait:
+            return
 
-        # Synchronously wait, if requested
-        if wait and future is not None:
-            # Warn user if timeout is too short
-            _, pending = concurrent.futures.wait([future], timeout)
-            if pending:
-                logger.warning("Upload task still pending after flushing batch... increase timeout or setting to None")
+        with self._uploads.condition:
+            completed = self._uploads.condition.wait_for(lambda: self._uploads.pending == 0, timeout)
+            if completed:
+                error = self._uploads.error
+                self._uploads.error = None
+        if not completed:
+            logger.warning("Upload task still pending after flushing batch... increase timeout or setting to None")
+        elif error is not None:
+            raise error
 
     def _process_timeout_batches(self) -> None:
         max_wait_seconds = self.max_wait.total_seconds()
@@ -375,15 +420,24 @@ class WriteStream(WriteStreamBase[StreamType]):
             self._flush()
 
     def close(self, wait: bool = True) -> None:
-        """Close the Nominal Stream.
+        """Stop periodic flushing, submit buffered records, and shut down the workers.
 
-        Stop the process timeout thread and flush any remaining batches.
+        Stop enqueueing before closing. Workers are released even if an upload fails.
+        Successful upload completion does not guarantee immediate query visibility.
+
+        Args:
+            wait: Wait for all uploads and raise the first unreported upload exception.
+                If false, return without reporting failures and cancel uploads that
+                have not started; running uploads continue.
+
+        Raises:
+            Exception: The first unreported upload exception, when ``wait=True``.
         """
         self._stop.set()
-
-        self._flush()
-
-        self._executor.shutdown(wait=wait, cancel_futures=not wait)
+        try:
+            self.flush(wait=wait)
+        finally:
+            self._executor.shutdown(wait=wait, cancel_futures=not wait)
 
 
 class ThreadSafeBatch(Generic[StreamType]):
