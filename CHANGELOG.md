@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.181.0](https://github.com/nominal-io/nominal-client/compare/v1.180.1...v1.181.0) (2026-10-24)
+
+
+### Features
+
+* **migration:** add labels to every resource a migration creates ([#1210](https://github.com/nominal-io/nominal-client/issues/1210)) ([c863433](https://github.com/nominal-io/nominal-client/commit/c8634336828dd3a87bf560fcaaf12da07da770fe))
+* **migration:** allow dry runs without a destination profile ([#1223](https://github.com/nominal-io/nominal-client/issues/1223)) ([0a308ec](https://github.com/nominal-io/nominal-client/commit/0a308eccbcc938f20c9af1a8cd58bda48a8c6dae))
+
+
+### Bug Fixes
+
+* **streaming:** drain experimental batches before shutdown ([#1227](https://github.com/nominal-io/nominal-client/issues/1227)) ([825234e](https://github.com/nominal-io/nominal-client/commit/825234e21e052ad10338c589edd5af03246092b9))
+* **video:** distinguish missing extra from native loader errors ([#1228](https://github.com/nominal-io/nominal-client/issues/1228)) ([493b210](https://github.com/nominal-io/nominal-client/commit/493b210a914617d586de9ddbf433ae3f4537eb96))
+
+
+### Documentation
+
+* bump nominal-sphinx-theme so sidebar groups unfold on click ([#1222](https://github.com/nominal-io/nominal-client/issues/1222)) ([71fb015](https://github.com/nominal-io/nominal-client/commit/71fb0151283c582d0909434bc8366552886ef619))
+* explain checklist authoring with practical recipes and a test-stand example ([#1215](https://github.com/nominal-io/nominal-client/issues/1215)) ([ea93d69](https://github.com/nominal-io/nominal-client/commit/ea93d69e26b57bb21c148d38e49ac1057a89e7cb))
+* rename to the Nominal Python Client, rewrite the quickstart, and tighten the guides ([#1221](https://github.com/nominal-io/nominal-client/issues/1221)) ([b3a3e54](https://github.com/nominal-io/nominal-client/commit/b3a3e543934c6f68026fe62bb6242981527d6279))
+* replace the authentication page with the shared API keys setup page ([#1217](https://github.com/nominal-io/nominal-client/issues/1217)) ([91456ce](https://github.com/nominal-io/nominal-client/commit/91456ce16a5fb66673ab270a34c604b81edf19c4))
+
 ## [1.180.1](https://github.com/nominal-io/nominal-client/compare/v1.180.0...v1.180.1) (2026-10-21)
 
 
