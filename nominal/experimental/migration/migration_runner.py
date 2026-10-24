@@ -46,7 +46,7 @@ class MigrationRunner:
     migration_resources: MigrationResources
     dataset_config: MigrationDatasetConfig
     asset_inclusion_config: AssetInclusionConfig
-    destination_client: NominalClient
+    destination_client: NominalClient | None
     destination_client_resolver: DestinationClientResolver | None
     user_rid_mapping: dict[str, str]
 
@@ -54,7 +54,7 @@ class MigrationRunner:
         self,
         migration_resources: MigrationResources,
         dataset_config: MigrationDatasetConfig,
-        destination_client: NominalClient,
+        destination_client: NominalClient | None,
         asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
         user_rid_mapping: Mapping[str, str] | None = None,
@@ -68,7 +68,8 @@ class MigrationRunner:
         Args:
             migration_resources (MigrationResources): _description_
             dataset_config (MigrationDatasetConfig): _description_
-            destination_client (NominalClient): _description_
+            destination_client (NominalClient | None): Client for the destination tenant. May be None only
+                for a dry run, which then reads only the source tenant.
             asset_inclusion_config (AssetInclusionConfig | None): Controls which resource types are copied per
                 asset. Defaults to including all resource types.
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the

@@ -53,7 +53,6 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
         if existing_template is not None:
             return existing_template
 
-        destination_client = self.destination_client_for(source)
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
 
         if self.ctx.dry_run:
@@ -61,6 +60,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
             return source
 
+        destination_client = self.destination_client_for(source)
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
             raw_source_template,
             options,
