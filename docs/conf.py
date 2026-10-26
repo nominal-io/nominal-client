@@ -149,9 +149,10 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 autoclass_content = "both"  # merge_init_into_class
-# Signatures read as calls (names and defaults); each parameter's type sits with its description.
+# Signatures read as calls (names and defaults); each parameter's type sits with its description,
+# and the return type is always listed, with or without a Returns: section.
 autodoc_typehints = "description"
-autodoc_typehints_description_target = "documented"
+autodoc_typehints_description_target = "documented_params"
 autodoc_preserve_defaults = True
 python_use_unqualified_type_names = True  # show_root_full_path: false
 toc_object_entries_show_parents = "hide"
