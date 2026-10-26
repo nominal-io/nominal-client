@@ -555,10 +555,13 @@ def migrate_cmd() -> None:
     "dry_run",
     is_flag=True,
     default=False,
-    help="Log what would be created without writing anything to the destination tenant or state file.",
+    help=(
+        "Log what would be created without writing anything to the destination tenant or state file. "
+        "--destination-profile is optional; without it, the destination tenant is not contacted."
+    ),
 )
 def copy(
-    clients: tuple[NominalClient, NominalClient],
+    clients: tuple[NominalClient, NominalClient | None],
     config_path: Path,
     migration_state_path: Path | None,
     max_workers: int,
@@ -566,6 +569,8 @@ def copy(
     dry_run: bool,
 ) -> None:
     source_client, target_client = clients
+    if target_client is None and not dry_run:
+        raise click.UsageError("--destination-profile is required unless --dry-run is set.")
     logger.info("Loading migration config from: %s", config_path)
     (
         name,
@@ -578,14 +583,20 @@ def copy(
     ) = _load_migration_config(source_client, config_path)
 
     if set_to_demo_workbook:
-        workspace = target_client.get_workspace()
-        if workspace.id != "sandbox":
-            logger.error(
-                "set_to_demo_workbook is true but destination workspace displayable id is '%s', expected 'sandbox'. "
-                "Skipping migration.",
-                workspace.id,
+        if target_client is None:
+            logger.warning(
+                "set_to_demo_workbook is true but no destination profile was given; "
+                "not checking that the destination workspace is 'sandbox'."
             )
-            return
+        else:
+            workspace = target_client.get_workspace()
+            if workspace.id != "sandbox":
+                logger.error(
+                    "set_to_demo_workbook is true but destination workspace displayable id is '%s', "
+                    "expected 'sandbox'. Skipping migration.",
+                    workspace.id,
+                )
+                return
         if not _validate_demo_workbook_metadata(source_client, migration_resources):
             logger.error("Demo workbook validation failed. Skipping migration.")
             return
@@ -598,7 +609,9 @@ def copy(
         len(migration_resources.source_standalone_templates),
         len(migration_resources.source_standalone_checklists),
     )
-    destination_client_resolver = build_destination_client_resolver(target_client, impersonation_config)
+    destination_client_resolver = (
+        None if target_client is None else build_destination_client_resolver(target_client, impersonation_config)
+    )
     if destination_client_resolver is not None:
         logger.info("Destination impersonation is enabled for this migration config.")
 
@@ -623,7 +636,7 @@ def copy(
     )
     run_parallel_migration(runner, max_workers=max_workers)
 
-    if set_to_demo_workbook and not dry_run:
+    if set_to_demo_workbook and target_client is not None and not dry_run:
         _update_demo_workbooks(target_client, runner)
 
 

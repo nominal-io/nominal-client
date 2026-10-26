@@ -22,7 +22,8 @@ def migration_client_options(
     NominalClient into commands based on user-provided flags to configure its creation.
 
     This will add options --source-profile and --destination-profile which perform the aforementioned
-    configurations before spawning a NominalClient.
+    configurations before spawning a NominalClient. --destination-profile is optional: when it is omitted,
+    no destination client is created and the injected destination is None.
     """
     source_profile_option = click.option(
         "--source-profile",
@@ -37,12 +38,12 @@ def migration_client_options(
 
     destination_profile_option = click.option(
         "--destination-profile",
-        required=True,
+        required=False,
         help=(
             "If provided, use the given named config profile for instantiating a Nominal Client "
             "for the destination tenant. This is the preferred mechanism for instantiating a client today-- "
             "see `nom config profile add` to create a configuration profile. If provided, takes precedence "
-            "over --token, --token-path, and --base-url."
+            "over --token, --token-path, and --base-url. Required unless --dry-run is set."
         ),
     )
 
@@ -61,15 +62,17 @@ def migration_client_options(
         **kwargs: Param.kwargs,
     ) -> T:
         source_profile: str = kwargs.pop("source_profile")  # type: ignore[assignment]
-        destination_profile: str = kwargs.pop("destination_profile")  # type: ignore[assignment]
+        destination_profile: str | None = kwargs.pop("destination_profile")  # type: ignore[assignment]
         trust_store_path: pathlib.Path | None = kwargs.pop("trust_store_path")  # type: ignore[assignment]
 
         trust_store_str = str(trust_store_path) if trust_store_path else None
 
         logger.info("Instantiating client from profile '%s'", source_profile)
         source_client = NominalClient.from_profile(source_profile, trust_store_path=trust_store_str)
-        logger.info("Instantiating client from profile '%s'", destination_profile)
-        destination_client = NominalClient.from_profile(destination_profile, trust_store_path=trust_store_str)
+        destination_client = None
+        if destination_profile is not None:
+            logger.info("Instantiating client from profile '%s'", destination_profile)
+            destination_client = NominalClient.from_profile(destination_profile, trust_store_path=trust_store_str)
         kwargs["clients"] = (source_client, destination_client)
         return func(*args, **kwargs)
 

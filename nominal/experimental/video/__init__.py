@@ -14,9 +14,7 @@ try:
 
     from nominal.experimental.video._video_stream import VideoStream  # noqa: F401
 except ImportError as e:
-    # If the error mentions nominal_video itself, the package is not installed.
-    # Otherwise, nominal_video is installed but failed to load (e.g. GStreamer is missing).
-    if "nominal_video" in str(e):
+    if isinstance(e, ModuleNotFoundError) and e.name == "nominal_video":
         raise ImportError(
             "nominal[video] is required for live video streaming. Install it with: pip install 'nominal[video]'"
         ) from e
