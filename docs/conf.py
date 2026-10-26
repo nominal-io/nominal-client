@@ -149,7 +149,9 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 autoclass_content = "both"  # merge_init_into_class
-autodoc_typehints = "signature"
+# Signatures read as calls (names and defaults); each parameter's type sits with its description.
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented"
 autodoc_preserve_defaults = True
 python_use_unqualified_type_names = True  # show_root_full_path: false
 toc_object_entries_show_parents = "hide"
@@ -157,7 +159,7 @@ toc_object_entries_show_parents = "hide"
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_rtype = False
-napoleon_use_param = False
+napoleon_use_param = True  # :param: fields, which autodoc adds the types to
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
