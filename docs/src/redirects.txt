@@ -34,3 +34,6 @@ guides/runs/overview.md guides/runs.md
 guides/assets/overview.md guides/assets.md
 guides/workbooks/overview.md guides/workbooks.md
 guides/events/overview.md guides/events.md
+# Example scripts that became notebooks or guide downloads.
+examples/deploy_checklist.py.md guides/checklists/authoring.md
+examples/fsae_asset_upload.py.md guides/longstart.md

@@ -1,0 +1,2 @@
+# Keep the card icon and leave out version stamps when Jupytext rewrites a notebook's front matter.
+notebook_metadata_filter = "icon,-jupytext.text_representation.jupytext_version,-jupytext.text_representation.format_version,-jupytext.text_representation.extension"

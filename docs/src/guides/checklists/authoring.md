@@ -12,7 +12,7 @@ A checklist is a set of checks, each a condition on channel data that should nev
 
 The examples also need the [`compute` extra](/guides/install.md#extras).
 Checklist authoring is experimental, so the API may change between releases.
-The [test-stand example](/examples/deploy_checklist.py.md) is a complete script.
+{download}`deploy_checklist.py </examples/deploy_checklist.py>` is a complete test-stand script.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```

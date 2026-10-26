@@ -1,90 +1,93 @@
-"""Generate the Examples section (``docs/src/examples/``, gitignored) from the example scripts.
+"""The ``example-gallery`` directive: a card grid and hidden toctree for the notebooks beside the page.
 
-Each ``docs/examples/**/*.py`` becomes a page showing the script, titled from the first
-line of its module docstring, and the index links them all. Nothing here is
-hand-maintained: add a script and it appears. Build recipes clean these pages
-before each build; live preview ignores generated files.
+A notebook is a MyST Markdown file with ``kernelspec`` in its front matter. Its card shows the
+first ``#`` heading as the title and the optional front-matter ``icon`` as an octicon.
 """
 
-import ast
-import os
 from pathlib import Path
 from typing import Any
 
+import yaml
+from docutils import nodes
+from docutils.statemachine import StringList
 from sphinx.application import Sphinx
+from sphinx.environment import BuildEnvironment
+from sphinx.util.docutils import SphinxDirective
+
+GALLERY = """\
+::::{{grid}} 1 1 2 2
+:gutter: 2
+
+{cards}
+::::
+
+```{{toctree}}
+:hidden:
+
+{toc}
+```
+"""
+
+CARD = """\
+:::{{grid-item-card}} {label}
+:link: {name}
+:link-type: doc
+:::
+"""
 
 
-def _script_docstring(py: Path) -> tuple[str, str]:
-    """Extract a title and the remaining summary with one parse of the script."""
-    doc = ast.get_docstring(ast.parse(py.read_text(encoding="utf-8"))) or ""
-    lines = doc.strip().splitlines()
-    title = lines[0].strip() if lines else py.stem
-    if title.lower().startswith("example:"):
-        title = title[len("example:") :].strip()
-    return title.rstrip(".") or py.stem, "\n".join(lines[1:]).strip()
+def _notebook_card(path: Path) -> tuple[str, str] | None:
+    """Return (title, icon) for a MyST notebook, or None for any other page."""
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return None
+    front, _, body = text[4:].partition("\n---\n")
+    meta = yaml.safe_load(front) or {}
+    if "kernelspec" not in meta:
+        return None
+    title = next((line[2:].strip() for line in body.splitlines() if line.startswith("# ")), path.stem)
+    return title, meta.get("icon", "")
 
 
-def _source_url(app: Sphinx, relative: str, kind: str = "blob") -> str:
-    """Use the configured repository and revision for every generated source link."""
-    ctx = app.config.html_context
-    return f"https://github.com/{ctx['source_user']}/{ctx['source_repo']}/{kind}/{ctx['source_version']}/{relative}"
+class ExampleGallery(SphinxDirective):
+    def run(self) -> list[nodes.Node]:
+        folder = Path(self.env.doc2path(self.env.docname)).parent
+        cards, toc = [], []
+        for path in sorted(folder.glob("*.md")):
+            card = _notebook_card(path)
+            if card is None:
+                continue
+            self.env.note_dependency(path)
+            title, icon = card
+            label = f"{{octicon}}`{icon}` {title}" if icon else title
+            cards.append(CARD.format(label=label, name=path.stem))
+            toc.append(path.stem)
+        self.env.example_galleries = getattr(self.env, "example_galleries", set()) | {self.env.docname}
+
+        markup = GALLERY.format(cards="\n".join(cards), toc="\n".join(toc))
+        container = nodes.Element()
+        source = self.get_source_info()[0]
+        self.state.nested_parse(StringList(markup.splitlines(), source), self.content_offset, container)
+        return container.children
 
 
-def _page(app: Sphinx, py: Path, repo: Path, title: str, summary: str) -> str:
-    rel = py.relative_to(repo).as_posix()
-    include = Path(os.path.relpath(py, app.srcdir)).as_posix()
-    return (
-        f"# {title}\n\n"
-        + (f"{summary}\n\n" if summary else "")
-        + f"```{{literalinclude}} /{include}\n:caption: {py.name}\n:language: python\n```\n\n"
-        f"Source: [`{rel}`]({_source_url(app, rel)})\n"
-    )
+def _purge(app: Sphinx, env: BuildEnvironment, docname: str) -> None:
+    getattr(env, "example_galleries", set()).discard(docname)
 
 
-def generate(app: Sphinx) -> None:
-    repo = Path(app.confdir).parent
-    scripts = Path(app.confdir) / "examples"
-    out = Path(app.srcdir) / "examples"
-
-    entries: list[tuple[str, str]] = []
-    for py in sorted(scripts.rglob("*.py")):
-        # Preserve the .py suffix so index.py never overwrites the landing page
-        # or collides with dirhtml's special handling of index documents.
-        name = py.relative_to(scripts).as_posix()
-        title, summary = _script_docstring(py)
-        page = out / f"{name}.md"
-        page.parent.mkdir(parents=True, exist_ok=True)
-        page.write_text(_page(app, py, repo, title, summary), encoding="utf-8")
-        entries.append((title, name))
-
-    links = "".join(f"- [{title}]({name}.md)\n" for title, name in entries)
-    toc = "".join(f"{name}\n" for _, name in entries)
-    introduction = (
-        "Full, runnable scripts using the Nominal Python Client. The source is in "
-        f"[`docs/examples/`]({_source_url(app, 'docs/examples', 'tree')})."
-        if entries
-        else "No example scripts have been added yet. Add a script under `docs/examples/` to generate its page."
-    )
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "index.md").write_text(
-        f"# Examples\n\n{{.lead}}\n{introduction}\n\n{links}\n```{{toctree}}\n:hidden:\n\n{toc}```\n",
-        encoding="utf-8",
-    )
+def _merge(app: Sphinx, env: BuildEnvironment, docnames: set[str], other: BuildEnvironment) -> None:
+    env.example_galleries = getattr(env, "example_galleries", set()) | getattr(other, "example_galleries", set())
 
 
-def _edit_link(app: Sphinx, pagename: str, templatename: str, context: dict[str, Any], doctree: Any) -> None:
-    """Point the sidebar's "Edit this page" at the script; the generated .md isn't in the repo."""
-    if not pagename.startswith("examples/"):
-        return
-    if pagename == "examples/index":
-        context["page_source_suffix"] = ""
-        return
-    url = _source_url(app, f"docs/{pagename}")
-    context["edit_source_link"] = lambda filename: url
+def _outdated(app: Sphinx, env: BuildEnvironment, added: set[str], changed: set[str], removed: set[str]) -> list[str]:
+    """Rebuild a gallery when a page is added to or removed from its folder."""
+    folders = {docname.rpartition("/")[0] for docname in added | removed}
+    return [doc for doc in getattr(env, "example_galleries", set()) if doc.rpartition("/")[0] in folders]
 
 
-def setup(app: Sphinx) -> dict[str, bool]:
-    app.connect("builder-inited", generate)
-    # after the theme's own hook (priority 500), which installs edit_source_link
-    app.connect("html-page-context", _edit_link, priority=600)
-    return {"parallel_read_safe": True}
+def setup(app: Sphinx) -> dict[str, Any]:
+    app.add_directive("example-gallery", ExampleGallery)
+    app.connect("env-purge-doc", _purge)
+    app.connect("env-merge-info", _merge)
+    app.connect("env-get-outdated", _outdated)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
