@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from nominal.core import NominalClient
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core.video import Video
 from nominal.experimental.migration.dry_run import would_create_message
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class VideoCopyOptions(ResourceCopyOptions):
     new_video_name: str | None = None
     new_video_description: str | None = None
-    new_video_properties: NominalProperties | None = None
+    new_video_properties: Mapping[str, str] | None = None
     new_video_labels: Sequence[str] | None = None
     include_files: bool = False
 
@@ -61,7 +60,7 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
             if options.new_video_description is not None
             else source.description,
             properties=options.new_video_properties if options.new_video_properties is not None else source.properties,
-            labels=options.new_video_labels if options.new_video_labels is not None else source.labels,
+            labels=self.ctx.destination_labels(source.labels, override=options.new_video_labels),
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_video.rid)
         return new_video

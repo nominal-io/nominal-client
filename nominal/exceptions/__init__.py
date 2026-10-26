@@ -1,8 +1,5 @@
 from typing import Mapping
 
-# Remove this import once the minimum supported Python version is 3.11+.
-from exceptiongroup import ExceptionGroup
-
 
 class NominalError(Exception):
     """Base class for Nominal exceptions."""
@@ -86,6 +83,14 @@ class NominalAuthenticationError(NominalError):
 
 class NominalNotFoundError(NominalError):
     """The requested resource does not exist."""
+
+
+class NominalDataScopeNotFoundError(NominalNotFoundError, ValueError):
+    """No readable resource has this data scope name on an asset, or this ref name on a run.
+
+    Also a `ValueError`, which is what these lookups raised before this type existed, so
+    `except ValueError` keeps working.
+    """
 
 
 class NominalAlreadyExistsError(NominalError):

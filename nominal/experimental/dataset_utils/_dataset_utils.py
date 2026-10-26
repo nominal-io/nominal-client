@@ -7,6 +7,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.dataset import _create_dataset_request
 from nominal.core.marking import _marking_rids
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.roles.v1 import roles_pb2
 
 
@@ -77,6 +78,13 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
 
 
 def get_dataset_owner(dataset: Dataset) -> User:
-    """Retrieve the owner user for a dataset via the Role Service."""
+    """Retrieve the owner user for a dataset via the Role Service.
+
+    Raises:
+        ValueError: No owner assignment could be resolved for the dataset.
+        NominalError: If the role or user request fails.
+    """
     owner_rid = get_dataset_owner_rid(dataset)
-    return User._from_conjure(dataset._clients.authentication.get_user(dataset._clients.auth_header, owner_rid))
+    with translate_grpc_errors():
+        response = dataset._clients.users.GetUser(users_pb2.GetUserRequest(user_rid=owner_rid))
+    return User._from_proto(response.user)

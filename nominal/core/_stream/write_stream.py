@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from types import TracebackType
-from typing import Any, Callable, Generic, Mapping, Sequence, Type, TypeAlias
-
-from typing_extensions import Self
+from typing import Any, Callable, Generic, Mapping, Self, Sequence, Type, TypeAlias
 
 from nominal.core._stream.write_stream_base import StreamType, WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -181,6 +179,8 @@ LogItem: TypeAlias = BatchItem[str]
 
 @dataclass(frozen=True)
 class WriteStream(WriteStreamBase[StreamType]):
+    """A buffered asynchronous writer for time-series or log data."""
+
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem[StreamType]]], None]

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Iterable, Protocol, Sequence
-
-from typing_extensions import Self
+from typing import Iterable, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string

@@ -4,13 +4,7 @@ and abandon every asset stage after it.
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, patch
-
-import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.exceptions import NominalChecklistNotPublishedError
 from nominal.experimental.migration.migration_state import MigrationState

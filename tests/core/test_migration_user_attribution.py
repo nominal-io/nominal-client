@@ -8,13 +8,9 @@ rather than the checklist author's client.
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
@@ -127,8 +123,8 @@ def test_checklist_assignee_option_overrides_mapping() -> None:
 
 
 def test_parallel_migration_passes_user_rid_mapping_to_context(tmp_path) -> None:
-    # The CLI always runs through run_parallel_migration, which builds its own MigrationContext —
-    # the mapping must survive that path, not just MigrationRunner.run_migration.
+    # The CLI always runs through run_parallel_migration, so the mapping must survive
+    # that path, not just MigrationRunner.run_migration.
     source_checklist = _make_source_checklist(assignee_rid="source-user-rid")
     runner = MigrationRunner(
         migration_resources=MigrationResources(

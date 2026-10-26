@@ -3,12 +3,11 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
-    attachments_api,
-    authentication_api,
+    authorization,
     ingest_api,
     scout,
     scout_catalog,
@@ -17,16 +16,10 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
-    scout_datasource_connection,
-    scout_spatial,
     scout_video,
-    storage_datasource_api,
     storage_writer_api,
-    timeseries_channelmetadata,
-    timeseries_metadata,
     upload_api,
 )
-from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors
@@ -37,16 +30,22 @@ from nominal.core._utils.networking import (
 )
 from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
+from nominal.protos.attachments.v2 import attachments_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
+from nominal.protos.integrations.v1 import integrations_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
+from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
@@ -139,24 +138,19 @@ class ClientsBunch:
     )
 
     # Conjure services
-    attachment: attachments_api.AttachmentService
-    authentication: authentication_api.AuthenticationServiceV2
+    authorization: authorization.AuthorizationService
     catalog: scout_catalog.CatalogService
-    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
-    connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
     ingest: ingest_api.IngestService
     notebook: scout.NotebookService
     proto_write: ProtoWriteService
-    series_metadata: timeseries_metadata.SeriesMetadataService
-    spatial: scout_spatial.SpatialService
+    series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
     storage_writer: storage_writer_api.NominalChannelWriterService
-    storage: storage_datasource_api.NominalDataSourceService
     template: scout.TemplateService
     upload: upload_api.UploadService
     video_file: scout_video.VideoFileService
@@ -164,20 +158,30 @@ class ClientsBunch:
 
     # GRPC services
     assets: asset_pb2_grpc.AssetServiceStub
+    attachment: attachments_pb2_grpc.AttachmentServiceStub
+    channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
     event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
+    integrations: integrations_pb2_grpc.IntegrationsServiceStub
     markings: markings_pb2_grpc.MarkingServiceStub
     registry: registry_pb2_grpc.RegistryServiceStub
     roles: roles_pb2_grpc.RoleServiceStub
     run: run_service_pb2_grpc.RunServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
+    spatial: spatial_pb2_grpc.SpatialServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
+    users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
+
+    @property
+    def api_base_url(self) -> str:
+        """Configured API endpoint for clients that manage their own transport."""
+        return self._api_base_url
 
     def _get_workspace_by_rid(self, workspace_rid: str) -> workspaces_pb2.Workspace:
         """Fetch a single workspace by its RID via the gRPC workspace service.
@@ -307,48 +311,50 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
-            attachment=client_factory(attachments_api.AttachmentService),
-            authentication=client_factory(authentication_api.AuthenticationServiceV2),
+            authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
-            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),
-            connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
             ingest=client_factory(ingest_api.IngestService),
             notebook=client_factory(scout.NotebookService),
             proto_write=client_factory(ProtoWriteService),
-            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
-            spatial=client_factory(scout_spatial.SpatialService),
+            series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
-            storage=client_factory(storage_datasource_api.NominalDataSourceService),
             template=client_factory(scout.TemplateService),
             upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
+            attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
+            channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
+            integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),
             markings=grpc_factory(markings_pb2_grpc.MarkingServiceStub),
             registry=grpc_factory(registry_pb2_grpc.RegistryServiceStub),
             roles=grpc_factory(roles_pb2_grpc.RoleServiceStub),
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
+            users=grpc_factory(users_pb2_grpc.UserServiceStub),
             workspace=grpc_factory(workspaces_pb2_grpc.WorkspaceServiceStub),
         )
 
 
 class HasScoutParams(Protocol):
+    @property
+    def api_base_url(self) -> str: ...
     @property
     def auth_header(self) -> str: ...
     @property

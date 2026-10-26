@@ -67,7 +67,9 @@ jobs:
         run: |
           uv run pytest tests/e2e \
             --ignore=tests/e2e/migration \
+            --ignore=tests/e2e/test_file_upload.py \
             --profile staging-e2e \
+            --temporary-api-key \
             --no-cov \
             -v
 
@@ -143,6 +145,7 @@ jobs:
             --source-profile production-e2e \
             --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
             --fail-on-skip \
+            --temporary-api-key \
             --no-cov \
             -v
 
@@ -209,8 +212,8 @@ jobs:
 
       - name: Run file upload e2e tests
         run: |
-          uv run pytest tests/e2e/test_core.py \
-            -k "special_char or unsafe_char" \
+          uv run pytest tests/e2e/test_file_upload.py \
             --profile file-upload-e2e \
+            --temporary-api-key \
             --no-cov \
             -v

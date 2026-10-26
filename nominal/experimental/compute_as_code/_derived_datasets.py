@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from typing import Sequence
 
-import nominal_compute
 from conjure_python_client import ConjureDecoder
 from nominal_api import scout_catalog, scout_compute_api
 
+import nominal.compute
 from nominal.core import Marking, NominalClient
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
@@ -19,8 +19,8 @@ from nominal.experimental.derived_datasets._derived_datasets import (
 )
 
 
-def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Dataset:
-    """Convert a ``nominal_compute.Dataset`` into the ``scout_compute_api.Dataset`` the catalog API expects."""
+def _to_conjure_dataset(spec: nominal.compute.Dataset) -> scout_compute_api.Dataset:
+    """Convert a ``nominal.compute.Dataset`` into the ``scout_compute_api.Dataset`` the catalog API expects."""
     wire_json = spec.to_json()  # type: ignore[attr-defined]
     dataset: scout_compute_api.Dataset = ConjureDecoder().decode(json.loads(wire_json), scout_compute_api.Dataset)
     return dataset
@@ -29,7 +29,7 @@ def _to_conjure_dataset(spec: nominal_compute.Dataset) -> scout_compute_api.Data
 def create_derived_dataset(
     client: NominalClient,
     name: str,
-    spec: nominal_compute.Dataset,
+    spec: nominal.compute.Dataset,
     *,
     message: str = "Initial derived definition",
     description: str | None = None,
@@ -37,10 +37,10 @@ def create_derived_dataset(
     properties: NominalProperties | None = None,
     markings: Sequence[Marking | str] | None = None,
 ) -> DerivedDataset:
-    """Create a derived dataset defined by a ``nominal_compute`` graph.
+    """Create a derived dataset defined by a ``nominal.compute`` graph.
 
     A derived dataset is a regular dataset whose contents are computed from a
-    ``nominal_compute`` graph (``spec``) instead of ingested files. It is returned
+    ``nominal.compute`` graph (``spec``) instead of ingested files. It is returned
     as a :class:`~nominal.experimental.derived_datasets.DerivedDataset`, which is not a `Dataset`:
     look it up with `NominalClient.get_dataset` to read its data or attach it to an asset.
 
@@ -51,16 +51,20 @@ def create_derived_dataset(
     Args:
         client: The NominalClient to use for creating the derived dataset.
         name: Name of the derived dataset to create.
-        spec: ``nominal_compute`` graph defining how the dataset's contents are computed.
+        spec: ``nominal.compute`` graph defining how the dataset's contents are computed.
         message: Commit message for the initial derived definition.
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
-        properties: Key-value properties to apply to the created dataset.
+        properties: String or numeric properties for the created derived dataset.
+            Integers are stored as floats.
         markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
             the creation request rather than applied in a follow-up call.
 
     Returns:
         Reference to the created derived dataset in Nominal.
+
+    Raises:
+        TypeError: If a property value is a boolean or is not a string, integer, or float.
     """
     return _create_derived_dataset(
         client._clients,
@@ -96,7 +100,7 @@ def get_derived_definition(
 def commit_derived_definition(
     client: NominalClient,
     dataset: Dataset | str,
-    spec: nominal_compute.Dataset,
+    spec: nominal.compute.Dataset,
     *,
     message: str,
     latest_commit: str | None = None,
@@ -106,7 +110,7 @@ def commit_derived_definition(
     Args:
         client: The NominalClient to use for the commit.
         dataset: The derived dataset, or its RID, whose definition to replace.
-        spec: ``nominal_compute`` graph defining the new derived definition.
+        spec: ``nominal.compute`` graph defining the new derived definition.
         message: Commit message describing the change.
         latest_commit: If provided, the dataset's expected current commit, used for optimistic
             concurrency control.

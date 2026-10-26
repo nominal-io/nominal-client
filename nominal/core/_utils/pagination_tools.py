@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Protocol, Sequence, TypeVar, overload
+from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
-    authentication_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -15,14 +14,15 @@ from nominal_api import (
     scout_video_api,
 )
 
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
+from nominal.protos.authentication.users.v1 import users_pb2, users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
+from nominal.protos.integrations.v1 import integrations_pb2, integrations_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
@@ -159,6 +159,21 @@ def search_data_reviews_paginated(
 
     for response in paginate_grpc(datareview.FindDataReviews, request_factory=factory):
         yield from response.data_reviews
+
+
+def list_integrations_paginated(
+    client: integrations_pb2_grpc.IntegrationsServiceStub,
+    workspace_rid: str | None,
+) -> Iterable[integrations_pb2.Integration]:
+    def factory(page_token: str | None) -> integrations_pb2.ListIntegrationsRequest:
+        return integrations_pb2.ListIntegrationsRequest(
+            workspaces=[] if workspace_rid is None else [workspace_rid],
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+        )
+
+    for response in paginate_grpc(client.ListIntegrations, request_factory=factory):
+        yield from response.integrations
 
 
 def list_streaming_checklists_paginated(
@@ -302,20 +317,20 @@ def search_videos_paginated(
 
 
 def search_users_paginated(
-    authentication: authentication_api.AuthenticationServiceV2,
-    auth_header: str,
-    query: authentication_api.SearchUsersQuery,
-) -> Iterable[authentication_api.UserV2]:
-    def factory(page_token: str | None) -> authentication_api.SearchUsersRequest:
-        return authentication_api.SearchUsersRequest(
+    users: users_pb2_grpc.UserServiceStub,
+    query: users_pb2.SearchUsersQuery,
+) -> Iterable[users_pb2.User]:
+    def factory(page_token: str | None) -> users_pb2.SearchUsersRequest:
+        return users_pb2.SearchUsersRequest(
             page_size=DEFAULT_PAGE_SIZE,
-            next_page_token=page_token,
+            # Unlike its neighbours, the token is a plain proto3 string: empty requests the first page.
+            page_token=page_token or "",
             query=query,
-            sort_by=authentication_api.SortBy(field=authentication_api.SortByField.EMAIL, is_descending=False),
+            sort=users_pb2.UserSort(field=users_pb2.USER_SORT_FIELD_EMAIL, is_descending=False),
         )
 
-    for response in paginate_rpc(authentication.search_users_v2, auth_header, request_factory=factory):
-        yield from response.results
+    for response in paginate_grpc(users.SearchUsers, request_factory=factory):
+        yield from response.users
 
 
 def search_workbooks_paginated(
@@ -360,7 +375,7 @@ def search_containerized_extractors_paginated(
     include_archived: bool = False,
     file_extension: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
 ) -> Iterable[containerized_extractor_pb2.ContainerizedExtractor]:
     # The v2 request has no nested query/filter message (its search parameters are flat fields), so —
     # like `search_data_reviews_paginated` — the parameters are taken directly rather than as a query type.

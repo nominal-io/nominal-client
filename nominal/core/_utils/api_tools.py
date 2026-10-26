@@ -10,9 +10,10 @@ from typing import (
     Callable,
     Generic,
     Iterable,
-    Literal,
     Mapping,
+    NotRequired,
     Protocol,
+    Self,
     Sequence,
     TypeAlias,
     TypedDict,
@@ -21,13 +22,9 @@ from typing import (
 )
 
 from nominal_api import scout_compute_api
-from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal.core._utils.api_types import NominalProperties
 from nominal.protos.types import types_pb2
-
-ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video", "spatial"]
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +101,6 @@ def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper |
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
 
 
-def property_update(properties: NominalProperties | None) -> types_pb2.PropertyUpdateWrapper | None:
-    """Wrap properties for a proto update request: None omits the field, any mapping replaces it."""
-    return None if properties is None else types_pb2.PropertyUpdateWrapper(properties=dict(properties))
-
-
 def construct_user_agent_string() -> str:
     """Constructs a user-agent string with system & Python metadata.
     E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
@@ -129,6 +121,8 @@ Link: TypeAlias = tuple[str, str]
 
 
 class LinkDict(TypedDict):
+    """A resource link with a URL and an optional display title."""
+
     url: str
     title: NotRequired[str]
 

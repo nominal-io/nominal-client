@@ -124,7 +124,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             properties=options.new_asset_properties
             if options.new_asset_properties is not None
             else source_asset.properties,
-            labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
+            labels=self.ctx.destination_labels(source_asset.labels, override=options.new_asset_labels),
         )
 
         if source_asset._get_latest_api().is_staged:
@@ -141,12 +141,11 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
         dataset_migrator = DatasetMigrator(self.ctx)
 
-        source_data_scopes = source_asset._list_dataset_scopes()
+        source_data_scopes = source_asset._scopes().datasets
         source_datasets = {ds.rid: ds for _, ds in source_asset.list_datasets()}
 
-        for source_data_scope in source_data_scopes:
-            source_data_scope_name = source_data_scope.data_scope_name
-            source_dataset_rid = source_data_scope.data_source.dataset
+        for source_data_scope_name, source_data_scope in source_data_scopes.items():
+            source_dataset_rid = source_data_scope.rid
             if source_dataset_rid not in source_datasets:
                 raise ValueError(
                     f"Data scope {source_data_scope_name} on asset {source_asset.rid} references dataset "
@@ -275,18 +274,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
     def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
-        attachment_migrator = AttachmentMigrator(self.ctx)
-        new_attachments = []
-        for source_attachment in source_asset.list_attachments():
-            if source_attachment.is_archived:
-                logger.info(
-                    "Skipping archived attachment '%s' (rid: %s) on asset %s",
-                    source_attachment.name,
-                    source_attachment.rid,
-                    source_asset.rid,
-                )
-                continue
-            new_attachments.append(attachment_migrator.copy_from(source_attachment))
+        new_attachments = AttachmentMigrator(self.ctx).copy_attachments(
+            source_asset.list_attachments(), f"asset {source_asset.rid}"
+        )
         if new_attachments:
             if self.ctx.dry_run:
                 logger.info(

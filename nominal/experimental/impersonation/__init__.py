@@ -12,7 +12,7 @@ def as_user(client: NominalClient, user_rid: str) -> NominalClient:
     security = client._clients._service_config.security
     return NominalClient.from_token(
         client._clients._token,
-        client._clients._api_base_url,
+        client._clients.api_base_url,
         workspace_rid=client._clients.workspace_rid,
         trust_store_path=security.trust_store_path if security is not None else None,
         connect_timeout=client._clients._service_config.connect_timeout,

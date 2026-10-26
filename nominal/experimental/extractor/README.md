@@ -642,10 +642,11 @@ must be integers from 1 through 255. Unmapped failures keep the traceback and ex
 `exit=False` re-raises without writing a termination message. Direct calls to the decorated
 function likewise propagate exceptions; reporting belongs to `run()`.
 
-`message=` on `@error` supplies static fallback text. It is optional for runtime-only use,
-and does **not** replace `str(exception)` in runtime reports. Both `registration_kwargs()` and
-`catalog_manifest()` require it for each mapping, because the platform needs a useful message when
-no termination message is available. Both exports reject reserved codes and conflicting fallbacks
+`message=` on `@error` supplies static fallback text and does **not** replace
+`str(exception)` in runtime reports. When omitted, both `registration_kwargs()` and
+`catalog_manifest()` derive a fallback from the code (`MALFORMED_INPUT` becomes
+`Malformed input`), truncated to 512 characters. Explicit messages must fit that limit.
+Both exports reject reserved codes and conflicting fallbacks
 for the same exit code; identical fallbacks are combined. Direct registration supplies typed
 `ExitCodeMapping` objects, while the catalog export serializes the same mappings.
 

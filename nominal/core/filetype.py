@@ -11,11 +11,19 @@ logger = logging.getLogger(__name__)
 
 
 class FileType(NamedTuple):
+    """Default upload extension and MIME type.
+
+    Existing filename extensions are preserved verbatim. If the filename has none, ``extension``
+    supplies the default: empty or a dot-prefixed suffix, such as ``.csv.gz``.
+    An applied default is validated, and unsafe storage characters are rejected in the final filename.
+    Neither the filename nor the default extension converts or validates the file's contents.
+    """
+
     extension: str
     mimetype: str
 
     @classmethod
-    def from_path(cls, path: PathLike, default_mimetype: str = "application/octect-stream") -> FileType:
+    def from_path(cls, path: PathLike, default_mimetype: str = "application/octet-stream") -> FileType:
         path = Path(path)
 
         # Note: not using path.suffix because this fails for files with multiple suffixes,
@@ -153,6 +161,8 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
+    """Named file-type presets for SDK uploads."""
+
     AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
     AVRO_STREAM_GZ: FileType = FileType(".avro.gz", "application/avro")

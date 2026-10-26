@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -9,7 +9,7 @@ from conjure_python_client import ConjureEncoder
 from nominal.core._video_types import _scale_parameter
 from nominal.exceptions import NominalVideoScaleModeError
 
-_END = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+_END = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
 
 
 def test_scale_parameter_is_none_when_nothing_given() -> None:

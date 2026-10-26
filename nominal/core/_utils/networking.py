@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 ZSTD_COMPRESSION_LEVEL = 1
+# Idle connections kept per host. Multipart uploads sign parts from DEFAULT_NUM_WORKERS
+# threads each on this session, and parallel uploads must not discard them.
+SERVICE_SESSION_POOL_SIZE = 16
 
 _LOOPBACK_NETWORKS = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
 
@@ -71,6 +74,8 @@ def validate_api_base_url(api_base_url: str) -> ParseResult:
 
 
 class HeaderProvider(ABC):
+    """A provider of additional headers for SDK requests."""
+
     @abstractmethod
     def headers(self) -> Mapping[str, str]: ...
 
@@ -294,7 +299,7 @@ def create_conjure_service_client(
     )
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, pool_maxsize=SERVICE_SESSION_POOL_SIZE)
     session = HeaderProviderSession(header_provider)
     # Replaces Requests' default headers; the adapter supplies Accept-Encoding.
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})

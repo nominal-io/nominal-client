@@ -2,13 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Mapping, Sequence, TypeAlias
-
-from nominal_api import (
-    api,
-    timeseries_logicalseries_api,
-)
-from typing_extensions import Self
+from typing import Mapping, Self, Sequence, TypeAlias
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.protos.units.v1 import units_pb2, units_pb2_grpc
@@ -55,15 +49,6 @@ def _available_units(client: units_pb2_grpc.UnitsServiceStub) -> Sequence[Unit]:
     with translate_grpc_errors():
         response = client.GetAllUnits(units_pb2.GetAllUnitsRequest())
     return [Unit._from_proto(unit) for wrapper in response.units_by_property.values() for unit in wrapper.value]
-
-
-def _build_unit_update(unit: UnitLike) -> timeseries_logicalseries_api.UnitUpdate:
-    """Helper function for building a UnitUpdate enum from a potentially null unit symbol."""
-    unit = _unit_symbol_from_unit_like(unit)
-    if unit is None:
-        return timeseries_logicalseries_api.UnitUpdate(clear_unit=api.Empty())
-    else:
-        return timeseries_logicalseries_api.UnitUpdate(unit=unit)
 
 
 def _error_on_invalid_units(unit_map: UnitMapping, unit_service: units_pb2_grpc.UnitsServiceStub) -> None:

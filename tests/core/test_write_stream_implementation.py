@@ -2,24 +2,33 @@ from __future__ import annotations
 
 import inspect
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
+from types import SimpleNamespace
+from typing import get_type_hints
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nominal.core._stream.write_stream import WriteStream
-from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
+from nominal.experimental.stream_v2 import create_write_stream
+from nominal.protos.write.nominal_write_pb2 import WriteRequestNominal
 
 # The rust backend validates the rid it is handed, so the fixtures below use a well-formed one.
 _DATASET_RID = "ri.catalog.ws.dataset.abc"
+
+
+def test_experimental_stream_annotations_resolve_at_runtime():
+    """Runtime introspection resolves the experimental writer's Dataset parameter."""
+    assert get_type_hints(create_write_stream)["dataset"] is Dataset
 
 
 @pytest.fixture
 def mock_clients():
     clients = MagicMock()
     clients.auth_header = "Bearer test-token"
-    clients.storage_writer._uri = "https://api.example.com"
+    clients.api_base_url = "https://api.example.com"
     return clients
 
 
@@ -34,17 +43,6 @@ def mock_dataset(mock_clients):
         labels=[],
         bounds=None,
         is_archived=False,
-    )
-
-
-@pytest.fixture
-def mock_connection(mock_clients):
-    return StreamingConnection(
-        rid="test-connection-rid",
-        name="Test Connection",
-        description="A connection for testing",
-        _clients=mock_clients,
-        nominal_data_source_rid=_DATASET_RID,
     )
 
 
@@ -74,15 +72,10 @@ def rust_write_stream_type() -> type:
 
 
 def test_dataset_write_stream_defaults_to_rust(mock_dataset: Dataset):
-    """Omitting implementation streams over the rust backend when nominal-streaming is installed."""
+    """Default Rust streaming leaves runtime metrics disabled."""
     with mock_dataset.get_write_stream() as stream:
         assert isinstance(stream, rust_write_stream_type())
-
-
-def test_connection_write_stream_defaults_to_rust(mock_connection: StreamingConnection):
-    """Connections pick the same rust default as datasets when implementation is omitted."""
-    with mock_connection.get_write_stream() as stream:
-        assert isinstance(stream, rust_write_stream_type())
+        assert stream._opts.track_metrics is False  # type: ignore[attr-defined]
 
 
 def test_falls_back_to_python_without_nominal_streaming(
@@ -90,7 +83,7 @@ def test_falls_back_to_python_without_nominal_streaming(
 ):
     """Without nominal-streaming the default stream is the pure-python one, writing protobuf."""
     with mock_dataset.get_write_stream(batch_size=1) as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
@@ -105,15 +98,38 @@ def test_explicit_rust_raises_without_nominal_streaming(mock_dataset: Dataset, w
     assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
 
 
+@pytest.mark.parametrize("implementation", [None, "rust"])
+def test_rust_construction_error_does_not_trigger_fallback(mock_dataset: Dataset, implementation):
+    """Only an unavailable Rust import permits fallback; errors constructing its stream propagate."""
+    rust_stream = rust_write_stream_type()
+    error = ImportError("construction failed")
+    with (
+        patch.object(rust_stream, "_from_dataset", side_effect=error),
+        pytest.raises(ImportError) as raised,
+    ):
+        mock_dataset.get_write_stream(implementation=implementation)
+    assert raised.value is error
+
+
+def test_explicit_python_ignores_rust_options_without_importing_rust(
+    mock_dataset: Dataset, without_nominal_streaming: None, caplog: pytest.LogCaptureFixture
+):
+    """Explicit Python selection retains option warnings without requiring the Rust backend."""
+    with mock_dataset.get_write_stream(implementation="python", file_fallback="fallback.avro") as stream:  # type: ignore[call-overload]
+        assert isinstance(stream, WriteStream)
+    assert "Argument file_fallback has no effect unless `implementation='rust'`" in caplog.text
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
         {"file_fallback": "fallback.avro"},
         {"log_level": "info"},
         {"num_workers": 2},
+        {"track_metrics": True},
         {"file_fallback": "fallback.avro", "log_level": "info", "num_workers": 2},
     ],
-    ids=["file-fallback", "logging", "workers", "combined-options"],
+    ids=["file-fallback", "logging", "workers", "metrics", "combined-options"],
 )
 def test_rust_only_arguments_raise_without_nominal_streaming(
     mock_dataset: Dataset, without_nominal_streaming: None, arguments: dict[str, str | int]
@@ -136,13 +152,14 @@ def test_superseded_python_spellings_resolve_to_python(
 ):
     """'json' and 'protobuf' both now mean 'python', which writes protobuf on the wire."""
     with (
-        pytest.warns(UserWarning, match="use implementation='python'"),
+        pytest.warns(UserWarning, match="use implementation='python'") as recorded,
         mock_dataset.get_write_stream(batch_size=1, implementation=implementation) as stream,  # type: ignore[call-overload]
     ):
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
 
     mock_clients.proto_write.write_nominal_batches.assert_called_once()
     mock_clients.storage_writer.write_batches.assert_not_called()
+    assert recorded[0].filename == __file__
 
 
 def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
@@ -152,6 +169,12 @@ def test_rust_experimental_resolves_to_rust(mock_dataset: Dataset):
         mock_dataset.get_write_stream(implementation="rust_experimental") as stream,
     ):
         assert isinstance(stream, rust_write_stream_type())
+
+
+def test_rust_stream_tracks_metrics(mock_dataset: Dataset):
+    """Opting into runtime metrics configures the Rust stream."""
+    with mock_dataset.get_write_stream(implementation="rust", track_metrics=True) as stream:
+        assert stream._opts.track_metrics is True  # type: ignore[attr-defined]
 
 
 @pytest.fixture
@@ -189,14 +212,12 @@ def test_experimental_rust_write_stream_submodule_is_a_deprecated_alias(unimport
     assert record[0].lineno == expected_lineno
 
 
+@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
 def test_experimental_is_not_collapsed_into_python(mock_dataset: Dataset):
-    """'experimental' is not aliased away while it is the only implementation streaming metrics."""
+    """Experimental selection retains its Python metrics backend."""
     from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
-    with (
-        pytest.warns(UserWarning, match="does not carry streaming metrics yet"),
-        mock_dataset.get_write_stream(implementation="experimental") as stream,
-    ):
+    with mock_dataset.get_write_stream(implementation="experimental") as stream:
         assert isinstance(stream, WriteStreamV2)
 
 
@@ -232,28 +253,18 @@ def test_unknown_implementation_is_rejected(mock_dataset: Dataset):
         mock_dataset.get_write_stream(implementation="parquet")  # type: ignore[call-overload]
 
 
-def test_connection_writes_to_its_datasource_not_itself(mock_connection: StreamingConnection, mock_clients: MagicMock):
-    """A streaming connection routes writes to its backing datasource rid, not its own rid."""
-    with mock_connection.get_write_stream(batch_size=1, implementation="python") as stream:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
-
-    kwargs = mock_clients.proto_write.write_nominal_batches.call_args.kwargs
-    assert kwargs["data_source_rid"] == _DATASET_RID
-    assert kwargs["data_source_rid"] != mock_connection.rid
-
-
 def test_default_stream_accepts_enqueue_without_a_context_manager(mock_dataset: Dataset):
     """The default stream takes enqueues when closed explicitly, the lifecycle the docstring offers."""
     stream = mock_dataset.get_write_stream()
     try:
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
     finally:
         stream.close()
 
 
 def test_default_stream_accepts_arrays_and_structs(mock_dataset: Dataset):
     """The default stream takes the array and struct enqueues WriteStreamBase declares."""
-    timestamp = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    timestamp = datetime(2025, 1, 1, tzinfo=UTC)
 
     with mock_dataset.get_write_stream() as stream:
         stream.enqueue_float_array("floats", timestamp, [1.0, 2.0])
@@ -267,4 +278,77 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
         with pytest.warns(UserWarning, match=r"flush\(\) does nothing"):
             stream.flush(wait=True)  # type: ignore[attr-defined]
 
-        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=timezone.utc), 42.0)
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+
+
+def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_clients):
+    """Rust streaming uses client configuration without inspecting a service transport."""
+    rust_write_stream = rust_write_stream_type()
+
+    mock_clients.api_base_url = "https://api.example.com/api"
+    with patch.object(rust_write_stream, "create") as create:
+        mock_dataset.get_write_stream(implementation="rust")
+    assert create.call_args.args == ("test-token", "https://api.example.com/api")
+    create.return_value.with_core_consumer.assert_called_once_with(mock_dataset.rid)
+    create.return_value.with_core_consumer.return_value.open.assert_called_once()
+
+
+def test_experimental_factory_writes_to_dataset(mock_dataset: Dataset, mock_clients: MagicMock):
+    """The experimental context manager sends batches to the supplied dataset RID."""
+    written = Event()
+    mock_clients.proto_write.write_nominal_batches_with_metrics.side_effect = lambda *args: written.set()
+
+    with create_write_stream(mock_dataset, max_batch_size=1, serialize_process_workers=1) as stream:
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+        assert written.wait(timeout=10), "experimental stream did not write the batch"
+
+    assert mock_clients.proto_write.write_nominal_batches_with_metrics.call_args.args[1] == mock_dataset.rid
+
+
+@pytest.mark.parametrize("batch_size", [2, 10], ids=["full-batches", "partial-batch"])
+def test_experimental_context_exit_drains_queued_batches(
+    mock_dataset: Dataset, mock_clients: MagicMock, batch_size: int
+) -> None:
+    """Context exit serializes and writes queued batches before closing their workers."""
+    consume_batches = Event()
+
+    class DeferredConsumer(Thread):
+        """Hold the batch consumer until shutdown explicitly waits for it."""
+
+        def run(self) -> None:
+            """Delay batch submission to reproduce a consumer that has not been scheduled."""
+            assert consume_batches.wait(timeout=10)
+            super().run()
+
+        def join(self, timeout: float | None = None) -> None:
+            """Allow the consumer to run when shutdown starts draining it."""
+            consume_batches.set()
+            super().join(timeout)
+
+    with (
+        patch(
+            "nominal.experimental.stream_v2._write_stream.threading",
+            SimpleNamespace(Thread=DeferredConsumer),
+        ),
+        create_write_stream(
+            mock_dataset,
+            max_batch_size=batch_size,
+            max_wait=timedelta(hours=1),
+            serialize_process_workers=1,
+        ) as stream,
+    ):
+        for index in range(4):
+            stream.enqueue("temperature", 1_700_000_000_000_000_000 + index, float(index))
+
+    written_points = []
+    for call in mock_clients.proto_write.write_nominal_batches_with_metrics.call_args_list:
+        assert call.args[1] == mock_dataset.rid
+        request = WriteRequestNominal.FromString(call.args[2])
+        for series in request.series:
+            assert series.channel.name == "temperature"
+            written_points.extend(
+                (point.timestamp.seconds, point.timestamp.nanos, point.value)
+                for point in series.points.double_points.points
+            )
+
+    assert sorted(written_points) == [(1_700_000_000, index, float(index)) for index in range(4)]

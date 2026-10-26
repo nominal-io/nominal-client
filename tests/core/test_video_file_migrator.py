@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
 import requests
 import urllib3.exceptions
 
+from nominal.core import FileType, FileTypes
+from nominal.core._video_types import McapVideoDetails
 from nominal.exceptions import (
     NominalIngestError,
     NominalIngestFailed,
@@ -206,13 +203,32 @@ def test_ingest_timeout_records_mapping_and_skip(monkeypatch: pytest.MonkeyPatch
     new_file.update.assert_called_once()
 
 
-def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A clean copy records the mapping and sets timing from the source's defining pair —
-    start + scale, never a segment-derived absolute ending, which goes stale if the source's
+@pytest.mark.parametrize(
+    ("name", "expected_name", "file_type"),
+    [
+        ("video", "video", FileTypes.MP4),
+        ("video.mp4", "video.mp4", FileTypes.MP4),
+        ("video.mp4.mp4", "video.mp4.mp4", FileTypes.MP4),
+        ("video.v2.MP4", "video.v2.MP4", FileTypes.MP4),
+        ("video.mkv", "video.mkv", FileTypes.MKV),
+        ("video.avi", "video.avi", FileTypes.AVI),
+        ("video.ts", "video.ts", FileTypes.TS),
+        ("video.m2ts", "video.m2ts", FileTypes.M2TS),
+        ("video.nonsense", "video.nonsense", FileTypes.MP4),
+        ("cam/front.mp4", "cam_front.mp4", FileTypes.MP4),
+        ("2026-01-01T00:00:00Z_cam\\front.MKV", "cam_front.MKV", FileTypes.MKV),
+    ],
+)
+def test_successful_copy_preserves_filename_mapping_and_source_timing(
+    monkeypatch: pytest.MonkeyPatch, name: str, expected_name: str, file_type: FileType
+) -> None:
+    """A successful copy retains the name and video type, records the mapping, and applies source timing.
+
+    Timing comes from start + scale, never a segment-derived absolute ending, which goes stale if the source's
     declared start was edited after segmentation (the inverted-bounds production failure).
     """
     ctx = _make_context()
-    source_file = _make_source_video_file(_video_file_rid(4))
+    source_file = _make_source_video_file(_video_file_rid(4), name=name)
     source_file._get_file_ingest_options.return_value = (None, _timestamp_options())
 
     new_file = MagicMock()
@@ -226,7 +242,40 @@ def test_successful_copy_records_mapping_and_no_skip(monkeypatch: pytest.MonkeyP
 
     assert ctx.migration_state.get_mapped_rid(ResourceType.VIDEO_FILE, source_file.rid) == new_file.rid
     assert ctx.migration_state.skipped_resources == []
+    kwargs = destination_video.add_from_io.call_args.kwargs
+    assert kwargs["name"] == expected_name
+    assert kwargs["file_type"] == file_type
     new_file.update.assert_called_once_with(starting_timestamp=0, scale_factor=2.0)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected_name"),
+    [
+        ("video.mcap.mcap", "video.mcap.mcap"),
+        ("2026-01-01T00:00:00Z_video.v2.MCAP", "video.v2.MCAP"),
+    ],
+)
+def test_mcap_video_copy_preserves_filename_and_topic(
+    monkeypatch: pytest.MonkeyPatch, name: str, expected_name: str
+) -> None:
+    """MCAP video uses the same filename rule while retaining its topic and completion polling."""
+    source_file = _make_source_video_file(_video_file_rid(4), name=name)
+    source_file._get_file_ingest_options.return_value = (McapVideoDetails("/camera"), None)
+    new_file = MagicMock()
+    destination_video = _make_destination_video(new_file)
+    destination_video.add_mcap_from_io.return_value = new_file
+    response = _mock_stream_response(monkeypatch)
+
+    outcome = copy_video_file_to_video_dataset(source_file, destination_video)
+
+    assert outcome.file is new_file
+    assert outcome.skip_reason is None
+    kwargs = destination_video.add_mcap_from_io.call_args.kwargs
+    assert kwargs["name"] == expected_name
+    assert kwargs["mcap"] is response.__enter__.return_value.raw
+    assert kwargs["topic"] == "/camera"
+    new_file.poll_until_ingestion_completed.assert_called_once()
+    destination_video.add_from_io.assert_not_called()
 
 
 def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,7 +298,7 @@ def test_percent_encoded_source_filename_is_sanitized_before_upload(monkeypatch:
 
     uploaded_name = destination_video.add_from_io.call_args.kwargs["name"]
     assert "%" not in uploaded_name
-    assert uploaded_name == "flight_2_2520cam_2520front"
+    assert uploaded_name == "flight_2_2520cam_2520front.mp4"
 
 
 def test_video_ingest_timeout_is_threaded_through_from_context(monkeypatch: pytest.MonkeyPatch) -> None:

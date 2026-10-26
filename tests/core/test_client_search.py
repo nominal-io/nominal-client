@@ -1,10 +1,72 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_ingest_jobs_query
+import pytest
+
+from nominal.core import Asset, Priority
+from nominal.core._utils.query_tools import (
+    ArchiveStatusFilter,
+    create_search_ingest_jobs_query,
+    create_search_users_query,
+)
 from nominal.core.client import NominalClient
 from nominal.core.ingestion_job import IngestionJobStatus
+from nominal.core.user import User
+from nominal.protos.authentication.users.v1 import users_pb2
+from nominal.protos.event.v2 import event_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from nominal.ts import _SecondsNanos
+
+
+@pytest.mark.parametrize("use_object", [False, True])
+def test_search_runs_asset_and_prefix_filters(use_object: bool) -> None:
+    """Asset objects and RIDs produce the same combined prefix and workspace constraints."""
+    clients = MagicMock()
+    clients.resolve_workspace.return_value.rid = "workspace"
+    clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse()
+    client = NominalClient(_clients=clients)
+    asset = Asset(
+        rid="asset",
+        name="Aircraft",
+        description=None,
+        properties={},
+        labels=[],
+        created_at=0,
+        is_archived=False,
+        _clients=clients,
+    )
+
+    client.search_runs(asset=asset if use_object else asset.rid, run_prefix="FLIGHT", workspace="workspace")
+
+    request = clients.run.SearchRuns.call_args.args[0]
+    assert request.query.all_of.queries == [
+        run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=["asset"])),
+        run_service_pb2.SearchQuery(run_prefix="FLIGHT"),
+        run_service_pb2.SearchQuery(workspace="workspace"),
+    ]
+
+
+def test_search_events_priority_preserves_asset_scope() -> None:
+    """The public search combines P0 disposition priority with the requested asset scope."""
+    clients = MagicMock()
+    clients.resolve_workspace.return_value.rid = "workspace"
+    clients.event.SearchEvents.return_value = event_pb2.SearchEventsResponse()
+    client = NominalClient(_clients=clients)
+
+    client.search_events(assets=["asset"], priority=Priority.P0, workspace="workspace")
+
+    request = clients.event.SearchEvents.call_args.args[0]
+    assert request.query == event_pb2.SearchQuery(
+        **{
+            "and": event_pb2.SearchQueryList(
+                queries=[
+                    event_pb2.SearchQuery(asset="asset"),
+                    event_pb2.SearchQuery(priority=event_pb2.P0),
+                    event_pb2.SearchQuery(workspace="workspace"),
+                ]
+            )
+        }
+    )
 
 
 def test_search_data_reviews_passes_archive_status():
@@ -84,3 +146,47 @@ def test_search_ingestion_jobs_forwards_filter_to_the_search_endpoint():
     assert result == []
     request = client._clients.ingest_jobs.search_ingest_jobs.call_args.args[1]
     assert [s.name for s in request.filter.and_[0].statuses] == ["FAILED"]
+
+
+def test_search_users_follows_pagination_cursors_and_ands_filters() -> None:
+    """search_users accumulates users across pages, ANDing exact_match (an email match) with search_text."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.users.SearchUsers.side_effect = [
+        users_pb2.SearchUsersResponse(
+            users=[users_pb2.User(rid="ri.authn.user.a", display_name="A", email="a@example.com")],
+            next_page_token="tok",
+        ),
+        users_pb2.SearchUsersResponse(
+            users=[users_pb2.User(rid="ri.authn.user.b", display_name="B", email="b@example.com")],
+        ),
+    ]
+
+    results = client.search_users(exact_match="example.com", search_text="a")
+
+    assert results == [
+        User(rid="ri.authn.user.a", display_name="A", email="a@example.com"),
+        User(rid="ri.authn.user.b", display_name="B", email="b@example.com"),
+    ]
+    first_request, second_request = (call.args[0] for call in clients.users.SearchUsers.call_args_list)
+    assert first_request.page_token == ""
+    assert first_request.sort == users_pb2.UserSort(field=users_pb2.USER_SORT_FIELD_EMAIL, is_descending=False)
+    assert first_request.query == users_pb2.SearchUsersQuery(
+        **{
+            "and": users_pb2.SearchUsersQueries(
+                queries=[
+                    users_pb2.SearchUsersQuery(exact_email="example.com"),
+                    users_pb2.SearchUsersQuery(search_text="a"),
+                ]
+            )
+        }
+    )
+    assert second_request.page_token == "tok"
+
+
+def test_create_search_users_query_without_filters_sets_an_empty_and() -> None:
+    """Without filters the query still sets its match-all `and` arm, since the service rejects an unset query."""
+    query = create_search_users_query()
+
+    assert query.WhichOneof("query") == "and"
+    assert list(getattr(query, "and").queries) == []

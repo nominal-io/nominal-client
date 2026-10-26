@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
-
-from typing_extensions import Self
+from typing import Self
 
 from nominal.core._stream.batch_processor_proto import SerializedBatch, serialize_batch
 from nominal.core._stream.write_stream import StreamValueType

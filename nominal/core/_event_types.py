@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Iterable, NamedTuple
-
-from typing_extensions import assert_never
+from typing import Iterable, NamedTuple, assert_never
 
 from nominal.protos.event.v2 import event_pb2
 
@@ -64,6 +62,8 @@ class EventCreationType(Enum):
 
 
 class SearchEventOriginType(NamedTuple):
+    """An event source and creation category used to filter event searches."""
+
     name: str
     creation_type: EventCreationType
 

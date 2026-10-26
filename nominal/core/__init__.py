@@ -8,11 +8,16 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
-from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
+from nominal.core.channel import (
+    BatchAddChannelsResult,
+    Channel,
+    ChannelDataType,
+    CreateChannelRequest,
+    filter_channels_with_data,
+)
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.comment import Comment
-from nominal.core.connection import Connection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
@@ -27,15 +32,37 @@ from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
-from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol, SymbolKind
 from nominal.core.event import Event, EventDisposition
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, IngestType
+from nominal.core.integration import (
+    Integration,
+    IntegrationDetails,
+    OpsgenieIntegrationDetails,
+    OpsgenieRegion,
+    PagerDutyIntegrationDetails,
+    SecureWebhookIntegrationDetails,
+    SlackInstanceType,
+    SlackWebhookIntegrationDetails,
+    TeamsIntegrationDetails,
+    UnknownIntegrationDetails,
+    WebhookContentType,
+    WebhookDeliveryConfig,
+    WebhookIntegrationDetails,
+)
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
 from nominal.core.run import Run
 from nominal.core.secret import Secret
+from nominal.core.streaming_checklist import (
+    StreamingChecklistConfiguration,
+    StreamingChecklistState,
+    StreamingChecklistStatus,
+    StreamingCheckState,
+    StreamingCheckStatus,
+    StreamingNotificationConfig,
+)
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
@@ -51,12 +78,13 @@ __all__ = [
     "Asset",
     "Attachment",
     "Bounds",
+    "BatchAddChannelsResult",
     "Channel",
     "ChannelDataType",
+    "CreateChannelRequest",
     "filter_channels_with_data",
     "Checklist",
     "CheckViolation",
-    "Connection",
     "ContainerImage",
     "ContainerImageStatus",
     "ContainerizedExtractor",
@@ -65,7 +93,6 @@ __all__ = [
     "DataReviewBuilder",
     "Dataset",
     "DatasetFile",
-    "DataSource",
     "DataStream",
     "Event",
     "EventDisposition",
@@ -81,6 +108,8 @@ __all__ = [
     "IngestionJobStatus",
     "IngestType",
     "IngestWaitType",
+    "Integration",
+    "IntegrationDetails",
     "LinkDict",
     "LogPoint",
     "LogStream",
@@ -88,20 +117,37 @@ __all__ = [
     "Comment",
     "NominalClient",
     "NominalProperties",
+    "OpsgenieIntegrationDetails",
+    "OpsgenieRegion",
+    "PagerDutyIntegrationDetails",
     "Priority",
     "Run",
     "SearchEventOriginType",
     "Secret",
+    "SecureWebhookIntegrationDetails",
+    "SlackInstanceType",
+    "SlackWebhookIntegrationDetails",
+    "StreamingChecklistConfiguration",
+    "StreamingChecklistState",
+    "StreamingChecklistStatus",
+    "StreamingCheckState",
+    "StreamingCheckStatus",
+    "StreamingNotificationConfig",
     "Symbol",
     "SymbolKind",
+    "TeamsIntegrationDetails",
     "TimestampMetadata",
     "Unit",
     "UnitLike",
+    "UnknownIntegrationDetails",
     "User",
     "Video",
     "VideoDatasetFile",
     "VideoFile",
     "wait_for_files_to_ingest",
+    "WebhookContentType",
+    "WebhookDeliveryConfig",
+    "WebhookIntegrationDetails",
     "Workbook",
     "WorkbookTemplate",
     "WorkbookType",

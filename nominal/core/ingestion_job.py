@@ -4,10 +4,9 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import AbstractSet, Collection, Iterable, Protocol, Sequence
+from typing import AbstractSet, Collection, Iterable, Protocol, Self, Sequence
 
 from nominal_api import ingest_api
-from typing_extensions import Self
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
@@ -33,6 +32,10 @@ class IngestionJobStatus(Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    DELETION_IN_PROGRESS = "DELETION_IN_PROGRESS"
+    """The ingest job is being deleted."""
+    DELETED = "DELETED"
+    """The ingest job has been deleted."""
     UNKNOWN = "UNKNOWN"
     """Unknown or unrecognized status returned by a newer server."""
 
@@ -51,6 +54,10 @@ class IngestionJobStatus(Enum):
                 result = cls.FAILED
             case "CANCELLED":
                 result = cls.CANCELLED
+            case "DELETION_IN_PROGRESS":
+                result = cls.DELETION_IN_PROGRESS
+            case "DELETED":
+                result = cls.DELETED
             case _:
                 result = cls.UNKNOWN
         return result
@@ -69,6 +76,10 @@ class IngestionJobStatus(Enum):
                 result = ingest_api.IngestJobStatus.FAILED
             case "CANCELLED":
                 result = ingest_api.IngestJobStatus.CANCELLED
+            case "DELETION_IN_PROGRESS":
+                result = ingest_api.IngestJobStatus.DELETION_IN_PROGRESS
+            case "DELETED":
+                result = ingest_api.IngestJobStatus.DELETED
             case _:
                 result = ingest_api.IngestJobStatus.UNKNOWN
         return result
@@ -283,6 +294,8 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         Yielded files may have failed: a job can complete with some of its files FAILED, so check
         `ingest_status` on each yielded file if that matters. A job that was cancelled yields whatever
         did ingest and logs a warning, since a cancelled job is the caller getting what they asked for.
+        Jobs with status ``DELETION_IN_PROGRESS`` or ``DELETED`` also stop job polling, yield any
+        listed files as they finish ingesting, and log a warning; this does not wait for deletion.
 
         Unlike the free function `nominal.core.as_files_ingested`, which only ever reports per-file
         status, this raises when the job itself fails — a failed job can have no files to report the

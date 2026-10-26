@@ -41,11 +41,11 @@ check-types:
 
 # check static typing across all supported python versions
 check-types-all:
+    uv run mypy --python-version 3.15
     uv run mypy --python-version 3.14
     uv run mypy --python-version 3.13
     uv run mypy --python-version 3.12
     uv run mypy --python-version 3.11
-    uv run mypy --python-version 3.10
 
 # check code formatting | fix with `just fix-format`
 check-format:
@@ -83,11 +83,14 @@ build:
 clean:
     uv cache clean
 
-# Build the existing docs into folder-style URLs; warnings fail the build.
-build-docs:
-    rm -rf docs/_build/dirhtml
+# Generated documentation pages and HTML are disposable.
+_clean-docs:
+    rm -rf docs/src/examples docs/src/sdk/_summaries docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
+
+# Build the docs into folder-style URLs; warnings fail the build.
+build-docs: _clean-docs
     uv run --all-packages --all-extras --group docs sphinx-build -E -W --keep-going -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml
 
 # Live preview on http://127.0.0.1:8000, rebuilding on page or docstring changes.
 serve-docs:
-    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --ignore "**/__pycache__/**" --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE
+    uv run --all-packages --all-extras --group docs --with sphinx-autobuild sphinx-autobuild -E -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml --pre-build "just _clean-docs" --ignore "**/__pycache__/**" --ignore docs/src/examples --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated --ignore docs/src/sdk/exceptions.rst --ignore docs/src/_nominal_snippets --watch docs/autosummary.rst --watch docs/examples --watch nominal --watch packages --watch docs/conf.py --watch docs/_ext --watch docs/_templates --watch docs/_static --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE

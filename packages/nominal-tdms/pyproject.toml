@@ -1,6 +1,6 @@
 [project]
 name = "nominal-tdms"
-version = "1.143.0"
+version = "1.144.1"
 description = "TDMS integrations for the Nominal Python client"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -11,7 +11,7 @@ authors = [
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 readme = { text = "TDMS integrations for the Nominal Python client.", content-type = "text/markdown" }
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<4"
 dependencies = ["nominal>=1.143.0", "nptdms>=1.9.0,<2"]
 
 [project.urls]

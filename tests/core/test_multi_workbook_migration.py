@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import logging
-import sys
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -187,9 +183,10 @@ class TestCopyFromImpl:
         create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
         assert set(create_req.data_scope.asset_rids) == {new_a1, new_a2}
         assert create_req.data_scope.run_rids is None
+        assert create_req.labels == ["lbl"]
+        assert create_req.properties == {"k": "v"}
 
         assert ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, wb_src) == wb_dst
-        new_wb.update.assert_called_once_with(labels=["lbl"], properties={"k": "v"})
         assert result is new_wb
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")

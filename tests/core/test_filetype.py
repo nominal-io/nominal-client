@@ -37,6 +37,11 @@ def test_from_path_infers_registered_type(path: str, expected: FileType) -> None
     assert FileType.from_path(path) == expected
 
 
+def test_from_path_defaults_unrecognized_extension_to_octet_stream() -> None:
+    """An extension unknown to both FileTypes and mimetypes is declared as generic binary data."""
+    assert FileType.from_path("readings.nominalraw") == FileType(".nominalraw", "application/octet-stream")
+
+
 @pytest.mark.parametrize(
     ("path", "expected"),
     [

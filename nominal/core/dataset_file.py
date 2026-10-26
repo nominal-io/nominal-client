@@ -7,11 +7,10 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Self, Sequence
 from urllib.parse import unquote, urlparse
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video
-from typing_extensions import Self
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
@@ -41,6 +40,8 @@ def filename_from_uri(uri: str) -> str:
 
 @dataclass(frozen=True)
 class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
+    """An uploaded dataset file and its ingestion status and time bounds."""
+
     id: str
     dataset_rid: str
     name: str
@@ -63,8 +64,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
-        # Used by the VideoDatasetFile subtype for video-channel timing updates (see
-        # DataSource._Clients for the same one-protocol-per-hierarchy convention).
+        # Used by the VideoDatasetFile subtype for video-channel timing updates.
         @property
         def video(self) -> scout_video.VideoService: ...
 
@@ -362,6 +362,8 @@ class IngestStatus(Enum):
 
 
 class IngestWaitType(Enum):
+    """The completion condition for `wait_for_files_to_ingest`."""
+
     FIRST_COMPLETED = "FIRST_COMPLETED"
     FIRST_EXCEPTION = "FIRST_EXCEPTION"
     ALL_COMPLETED = "ALL_COMPLETED"

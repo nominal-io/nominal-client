@@ -35,6 +35,7 @@ from nominal.core.dataset import Dataset
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from tests.e2e import POLL_INTERVAL
+from tests.e2e.credentials import with_temporary_api_key
 
 RegisterCleanup = Callable[[Callable[[], None]], None]
 
@@ -93,12 +94,12 @@ def pytest_runtest_makereport(item, call):
 
 
 @pytest.fixture(scope="session")
-def source_client(pytestconfig) -> NominalClient:
+def source_client(pytestconfig, request: pytest.FixtureRequest) -> NominalClient:
     """Build a NominalClient for the migration source environment (e.g. production)."""
     profile = pytestconfig.getoption("source_profile")
     if profile is not None:
         print(f"Using source NominalClient.from_profile({profile!r})")
-        return NominalClient.from_profile(profile)
+        return with_temporary_api_key(NominalClient.from_profile(profile), request)
     auth_token = pytestconfig.getoption("source_auth_token")
     if auth_token is None:
         raise pytest.UsageError(
@@ -106,11 +107,11 @@ def source_client(pytestconfig) -> NominalClient:
         )
     base_url = pytestconfig.getoption("source_base_url")
     print(f"Using source NominalClient.create(base_url={base_url!r})")
-    return NominalClient.create(base_url=base_url, token=auth_token)
+    return with_temporary_api_key(NominalClient.create(base_url=base_url, token=auth_token), request)
 
 
 @pytest.fixture(scope="session")
-def dest_client(pytestconfig) -> NominalClient:
+def dest_client(pytestconfig, request: pytest.FixtureRequest) -> NominalClient:
     """Build a NominalClient for the migration destination environment (e.g. staging).
 
     ``--dest-profile`` takes precedence; falls back to the global ``--profile`` for
@@ -119,7 +120,7 @@ def dest_client(pytestconfig) -> NominalClient:
     profile = pytestconfig.getoption("dest_profile") or pytestconfig.getoption("profile")
     if profile is not None:
         print(f"Using dest NominalClient.from_profile({profile!r})")
-        return NominalClient.from_profile(profile)
+        return with_temporary_api_key(NominalClient.from_profile(profile), request)
     auth_token = pytestconfig.getoption("dest_auth_token") or pytestconfig.getoption("auth_token")
     if auth_token is None:
         raise pytest.UsageError(
@@ -127,7 +128,7 @@ def dest_client(pytestconfig) -> NominalClient:
         )
     base_url = pytestconfig.getoption("dest_base_url") or pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")
-    return NominalClient.create(base_url=base_url, token=auth_token)
+    return with_temporary_api_key(NominalClient.create(base_url=base_url, token=auth_token), request)
 
 
 @pytest.fixture

@@ -70,8 +70,9 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
+# Docs builds: Sphinx output, and the MkDocs site that checkouts from before the Sphinx migration may still have
 docs/_build/
+docs/site/
 
 # PyBuilder
 .pybuilder/
@@ -182,6 +183,8 @@ uv.toml
 # A nested negation has no effect while its parent dir stays excluded, so re-include the
 # skills dir, re-exclude its contents, then re-include the specific skill.
 .claude/*
+# Shared project settings enable the nominal-docs plugin; settings.local.json stays ignored.
+!.claude/settings.json
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/thermo-nuclear-code-quality-review
@@ -194,3 +197,13 @@ uv.toml
 .agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review
 !.agents/skills/reviewing-nominal-api-bumps
+
+# Sphinx example pages are generated from scripts.
+docs/src/examples/
+# The quickstart sample is a downloadable archive.
+!docs/src/guides/data/racecar_dataset.csv.gz
+
+# Native Sphinx autosummary reference pages.
+docs/src/sdk/generated/
+docs/src/sdk/exceptions.rst
+docs/src/sdk/_summaries/

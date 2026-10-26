@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import io
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+import urllib3.exceptions
 
-if sys.version_info < (3, 13):
-    pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
-
-from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.migration_state import MigrationState, SkippedResource
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.protos.attachments.v2 import attachments_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,24 +43,22 @@ def _make_raw_attachment(
     description: str = "",
     properties: dict[str, str] | None = None,
     labels: list[str] | None = None,
-) -> MagicMock:
-    raw = MagicMock()
-    raw.rid = rid
-    raw.title = title
-    raw.file_type = file_type
-    raw.description = description
-    raw.properties = properties or {}
-    raw.labels = labels or []
-    raw.created_at = 1000000000  # 1 second in nanoseconds
-    return raw
+) -> attachments_pb2.Attachment:
+    return attachments_pb2.Attachment(
+        rid=rid,
+        title=title,
+        file_type=file_type,
+        description=description,
+        properties=properties,
+        labels=labels,
+    )
 
 
-def _make_source_clients(raw_attachment: MagicMock, content: bytes = b"image-bytes") -> MagicMock:
-    """Create mock source clients that return the given raw attachment and content."""
+def _make_source_clients(raw_attachment: attachments_pb2.Attachment) -> MagicMock:
+    """Create mock source clients that return the given raw attachment."""
     clients = MagicMock()
     clients.auth_header = "Bearer source"
-    clients.attachment.get.return_value = raw_attachment
-    clients.attachment.get_content.return_value = io.BytesIO(content)
+    clients.attachment.GetAttachment.return_value = attachments_pb2.GetAttachmentResponse(attachment=raw_attachment)
     return clients
 
 
@@ -91,11 +87,11 @@ class TestAttachmentMigrator:
         raw = _make_raw_attachment(old_rid)
         source_clients = _make_source_clients(raw)
 
-        # Stub Attachment._from_conjure to return a mock with the old RID
+        # Stub Attachment._from_proto to return a mock with the old RID
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
         mock_source_att.name = "image.png"
-        mock_attachment_cls._from_conjure.return_value = mock_source_att
+        mock_attachment_cls._from_proto.return_value = mock_source_att
 
         # Stub the destination upload
         new_att = MagicMock()
@@ -110,10 +106,12 @@ class TestAttachmentMigrator:
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
         # Raw attachment was fetched from source
-        source_clients.attachment.get.assert_called_with("Bearer source", old_rid)
+        source_clients.attachment.GetAttachment.assert_called_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
 
-        # Attachment._from_conjure was called to construct the source Attachment
-        mock_attachment_cls._from_conjure.assert_called_once_with(source_clients, raw)
+        # Attachment._from_proto was called to construct the source Attachment
+        mock_attachment_cls._from_proto.assert_called_once_with(source_clients, raw)
 
         # Destination upload occurred
         ctx.destination_client.create_attachment_from_io.assert_called_once()
@@ -143,7 +141,9 @@ class TestAttachmentMigrator:
         source_clients = _make_source_clients(raw)
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
-        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
+        source_clients.attachment.GetAttachment.assert_called_once_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
 
         # Returned the existing destination attachment
         assert result.rid == new_rid
@@ -164,7 +164,7 @@ class TestAttachmentMigrator:
         source_attachment = MagicMock()
         source_attachment.rid = old_rid
         source_attachment.name = "image.png"
-        mock_attachment_cls._from_conjure.return_value = source_attachment
+        mock_attachment_cls._from_proto.return_value = source_attachment
 
         resolved_client = MagicMock()
         resolved_client._clients.workspace_rid = "resolved-ws-rid"
@@ -180,8 +180,10 @@ class TestAttachmentMigrator:
 
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
-        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
-        mock_attachment_cls._from_conjure.assert_called_once_with(source_clients, raw)
+        source_clients.attachment.GetAttachment.assert_called_once_with(
+            attachments_pb2.GetAttachmentRequest(attachment_rid=old_rid)
+        )
+        mock_attachment_cls._from_proto.assert_called_once_with(source_clients, raw)
         resolved_client.get_attachment.assert_called_once_with(new_rid)
         ctx.destination_client.get_attachment.assert_not_called()
         assert result is resolved_attachment
@@ -195,10 +197,7 @@ class TestAttachmentMigrator:
         new_rid = _rid(100)
         raw = _make_raw_attachment(old_rid)
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw)
 
         # Create a mock source Attachment
         mock_source_att = MagicMock()
@@ -246,10 +245,7 @@ class TestAttachmentMigrator:
         old_rid = _rid(1)
         raw = _make_raw_attachment(old_rid, title="data.bin", file_type="")
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw)
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
@@ -272,10 +268,7 @@ class TestAttachmentMigrator:
         old_rid = _rid(1)
         raw = _make_raw_attachment(old_rid, title="photo.png", file_type="image/png")
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"bytes")
+        source_clients = _make_source_clients(raw)
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
@@ -305,15 +298,13 @@ class TestAttachmentMigrator:
             labels=["report", "monthly"],
         )
 
-        source_clients = MagicMock()
-        source_clients.auth_header = "Bearer source"
-        source_clients.attachment.get.return_value = raw
-        source_clients.attachment.get_content.return_value = io.BytesIO(b"pdf-bytes")
+        source_clients = _make_source_clients(raw)
 
         mock_source_att = MagicMock()
         mock_source_att.rid = old_rid
         mock_source_att.name = "report.pdf"
         mock_source_att._clients = source_clients
+        mock_source_att.get_contents.return_value = io.BytesIO(b"pdf-bytes")
 
         new_att = MagicMock(rid=_rid(100))
         ctx.destination_client.create_attachment_from_io.return_value = new_att
@@ -321,7 +312,118 @@ class TestAttachmentMigrator:
         migrator.copy_from(mock_source_att)
 
         call_args = ctx.destination_client.create_attachment_from_io.call_args
+        assert call_args[0][0] is mock_source_att.get_contents.return_value  # content
         assert call_args[0][1] == "report.pdf"  # title
         assert call_args[1]["description"] == "Monthly report"
         assert call_args[1]["properties"] == {"team": "eng"}
         assert call_args[1]["labels"] == ["report", "monthly"]
+
+
+# ---------------------------------------------------------------------------
+# copy_attachments: archived filtering and failure containment
+# ---------------------------------------------------------------------------
+
+
+def _make_source_attachment(n: int, is_archived: bool = False) -> MagicMock:
+    attachment = MagicMock()
+    attachment.rid = _rid(n)
+    attachment.name = f"file-{n}.png"
+    attachment.is_archived = is_archived
+    attachment._clients = _make_source_clients(_make_raw_attachment(attachment.rid, title=attachment.name))
+    return attachment
+
+
+def test_copy_attachments_skips_archived() -> None:
+    """Archived attachments are neither uploaded nor returned."""
+    ctx = _make_context()
+    active, archived = _make_source_attachment(1), _make_source_attachment(2, is_archived=True)
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    copied = AttachmentMigrator(ctx).copy_attachments([active, archived], "asset a")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
+
+
+def test_another_owners_copy_keeps_the_failed_owners_skip() -> None:
+    """An attachment shared by a run and an asset stays skipped for the run whose copy failed."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+    ctx.destination_client.create_attachment_from_io.side_effect = None
+    ctx.destination_client.create_attachment_from_io.return_value = MagicMock(rid=_rid(101))
+
+    migrator.copy_attachments([source], "asset a")
+
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
+
+
+@patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
+def test_workbook_copy_keeps_owner_skip_until_owner_copy_succeeds(mock_attachment_cls: MagicMock) -> None:
+    """A workbook's copy of a failed attachment leaves its skip; only the owner's own retry clears it."""
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    migrator = AttachmentMigrator(ctx)
+    ctx.destination_client.create_attachment_from_io.side_effect = ValueError("upload rejected")
+    migrator.copy_attachments([source], "run r")
+
+    destination = MagicMock(rid=_rid(101))
+    ctx.destination_client.create_attachment_from_io.reset_mock(side_effect=True)
+    ctx.destination_client.create_attachment_from_io.return_value = destination
+    ctx.destination_client.get_attachment.return_value = destination
+
+    mock_attachment_cls._from_proto.return_value = source
+    assert migrator.migrate_by_rid(source._clients, source.rid) is destination
+    assert [s.source_rid for s in ctx.migration_state.skipped_resources] == [f"{source.rid} on run r"]
+
+    assert migrator.copy_attachments([source], "run r") == [destination]
+    assert ctx.migration_state.skipped_resources == []
+    ctx.destination_client.create_attachment_from_io.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(ValueError("upload rejected"), id="permanent"),
+        pytest.param(urllib3.exceptions.ProtocolError("connection reset"), id="transient-exhausted"),
+    ],
+)
+def test_copy_attachments_contains_upload_failure(error: Exception, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed upload is recorded as a skip, left unmapped, and does not stop the next attachment."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    failing, healthy = _make_source_attachment(1), _make_source_attachment(2)
+
+    def upload(content: object, title: str, *args: object, **kwargs: object) -> MagicMock:
+        if title == failing.name:
+            raise error
+        return MagicMock(rid=f"dest-{title}")
+
+    ctx.destination_client.create_attachment_from_io.side_effect = upload
+
+    copied = AttachmentMigrator(ctx).copy_attachments([failing, healthy], "run r")
+
+    assert [a.rid for a in copied] == [f"dest-{healthy.name}"]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, failing.rid) is None
+    assert ctx.migration_state.skipped_resources == [
+        SkippedResource(ResourceType.ATTACHMENT.value, f"{failing.rid} on run r", f"copy failed: {error}")
+    ]
+
+
+def test_copy_attachments_retries_transient_upload_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient upload failure is retried in place, so the attachment copies without a skip."""
+    monkeypatch.setattr("nominal.experimental.migration.utils.retry_utils.time.sleep", lambda _delay: None)
+    ctx = _make_context()
+    source = _make_source_attachment(1)
+    ctx.destination_client.create_attachment_from_io.side_effect = [
+        urllib3.exceptions.ProtocolError("connection reset"),
+        MagicMock(rid=_rid(101)),
+    ]
+
+    copied = AttachmentMigrator(ctx).copy_attachments([source], "run r")
+
+    assert [a.rid for a in copied] == [_rid(101)]
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, source.rid) == _rid(101)
+    assert ctx.migration_state.skipped_resources == []

@@ -7,27 +7,23 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
-    api,
-    attachments_api,
-    authentication_api,
     ingest_api,
     scout_catalog,
     scout_checks_api,
-    scout_datasource_connection_api,
     scout_layout_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
-    storage_datasource_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._event_types import EventType
@@ -45,6 +41,7 @@ from nominal.core._utils.multipart import (
 )
 from nominal.core._utils.networking import HeaderProvider, normalize_header_provider
 from nominal.core._utils.pagination_tools import (
+    list_integrations_paginated,
     search_assets_paginated,
     search_checklists_paginated,
     search_datasets_paginated,
@@ -55,6 +52,7 @@ from nominal.core._utils.pagination_tools import (
     search_videos_paginated,
     search_workbook_templates_paginated,
 )
+from nominal.core._utils.properties import typed_properties_to_proto
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_assets_query,
@@ -68,9 +66,8 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
-from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.container_image import (
     ContainerImage,
     ContainerImageStatus,
@@ -92,11 +89,19 @@ from nominal.core.dataset import (
     _search_dataset_files,
 )
 from nominal.core.dataset_file import DatasetFile
-from nominal.core.datasource import DataSource
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.core.integration import (
+    Integration,
+    OpsgenieRegion,
+    _create_opsgenie_integration,
+    _create_pagerduty_integration,
+    _create_teams_integration,
+    _create_webhook_integration,
+    _get_integration,
+)
 from nominal.core.marking import (
     Marking,
     _create_marking,
@@ -110,18 +115,19 @@ from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
-from nominal.core.video import Video, _create_video
+from nominal.core.video import Video, _create_video, _get_videos
 from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalConfigError,
-    NominalError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
 )
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.attachments.v2 import attachments_pb2
+from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -137,6 +143,8 @@ MAX_ASSETS_SHOWN = 10
 
 
 class WorkspaceSearchType(enum.Enum):
+    """Workspace scope for searches: all accessible workspaces or the client's default workspace."""
+
     ALL = "ALL"
     DEFAULT = "DEFAULT"
 
@@ -146,6 +154,8 @@ WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 
 @dataclass(frozen=True)
 class NominalClient:
+    """A client for uploading data and managing resources on the Nominal platform."""
+
     _clients: ClientsBunch = field(repr=False)
     _profile: str | None = None
 
@@ -355,28 +365,36 @@ class NominalClient:
 
         Returns:
             Details on the requested user, or the current user if no user rid is provided.
+
+        Raises:
+            NominalError: If the user request fails, including when the user does not exist or is not a member or
+                guest of the caller's organization.
         """
-        if user_rid is None:
-            raw_user = self._clients.authentication.get_my_profile(self._clients.auth_header)
-        else:
-            raw_user = self._clients.authentication.get_user(self._clients.auth_header, user_rid)
+        with translate_grpc_errors():
+            if user_rid is None:
+                raw_user = self._clients.users.GetCurrentUser(users_pb2.GetCurrentUserRequest()).user
+            else:
+                raw_user = self._clients.users.GetUser(users_pb2.GetUserRequest(user_rid=user_rid)).user
 
-        return User._from_conjure(raw_user)
+        return User._from_proto(raw_user)
 
-    def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
-        for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
-            yield User._from_conjure(raw_user)
+    def _iter_search_users(self, query: users_pb2.SearchUsersQuery) -> Iterable[User]:
+        for raw_user in search_users_paginated(self._clients.users, query):
+            yield User._from_proto(raw_user)
 
     def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
         """Search for users meeting the specified filters.
         Filters are ANDed together, e.g., if exact_match and search_text are both provided, then both must match.
 
         Args:
-            exact_match: Searches for an exact substring across display name and email
+            exact_match: Searches for an exact (case-insensitive) substring of the user's email
             search_text: Searches for a (case-insensitive) substring across display name and email
 
         Returns:
             All users which match all of the provided conditions
+
+        Raises:
+            NominalError: If the user search request fails.
         """
         query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
@@ -413,7 +431,9 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a dataset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a dataset to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             before: Searches for datasets ingested before some time (inclusive).
             after: Searches for datasets ingested after some time (inclusive).
             workspace: Filters search to given workspace.
@@ -428,6 +448,9 @@ class NominalClient:
 
         Returns:
             All datasets which match all of the provided conditions
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         query = create_search_datasets_query(
             exact_match=exact_match,
@@ -484,7 +507,7 @@ class NominalClient:
         decrypted_value: str,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Secret:
         """Create a secret for the current user
 
@@ -529,7 +552,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Secret]:
@@ -655,7 +678,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Video]:
@@ -737,7 +760,8 @@ class NominalClient:
             start: Starting timestamp of the run to create
             end: Ending timestamp of the run to create, or None for an unbounded run.
             description: Optional description of the run to create
-            properties: Optional key-value pairs to use as properties on the created run
+            properties: String or numeric properties for the created run.
+                Integers are stored as floats.
             labels: Optional sequence of labels for the created run
             links: Link metadata to add to the created run
             attachments: Attachments to associate with the created run
@@ -747,6 +771,7 @@ class NominalClient:
             Reference to the created run object
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the run service request fails.
         """
@@ -787,6 +812,8 @@ class NominalClient:
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
         created_before: str | datetime | IntegralNanosecondsUTC | None,
+        asset_rid: str | None,
+        run_prefix: str | None,
         workspace_rid: str | None,
         archive_status: ArchiveStatusFilter,
     ) -> Iterable[Run]:
@@ -800,6 +827,8 @@ class NominalClient:
             search_text=search_text,
             created_after=created_after,
             created_before=created_before,
+            asset_rid=asset_rid,
+            run_prefix=run_prefix,
             workspace_rid=workspace_rid,
         )
         for run in search_runs_paginated(self._clients.run, query, archive_status):
@@ -811,6 +840,8 @@ class NominalClient:
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
         *,
+        asset: Asset | str | None = None,
+        run_prefix: str | None = None,
         labels: Sequence[str] | None = None,
         properties: NominalProperties | None = None,
         exact_match: str | None = None,
@@ -829,8 +860,12 @@ class NominalClient:
             name_substring: Alias for `exact_match`: despite the name, this matches a case-insensitive substring
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
+            asset: Filter runs associated with this asset or asset RID.
+            run_prefix: Filter by the stored run prefix, not a substring of the run name.
             labels: A sequence of labels that must ALL be present on a run to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             exact_match: Case-insensitive substring of the run's name, description, labels, or properties.
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
@@ -852,6 +887,7 @@ class NominalClient:
             All runs which match all of the provided conditions
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
@@ -866,6 +902,8 @@ class NominalClient:
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
+                asset_rid=None if asset is None else rid_from_instance_or_string(asset),
+                run_prefix=run_prefix,
                 workspace_rid=self._workspace_rid_for_search(workspace),
                 archive_status=archive_status,
             )
@@ -887,13 +925,17 @@ class NominalClient:
             name: Name of the dataset to create in Nominal.
             description: Human readable description of the dataset.
             labels: Text labels to apply to the created dataset
-            properties: Key-value properties to apply to the cleated dataset
+            properties: String or numeric properties for the created dataset.
+                Integers are stored as floats.
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
             markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
                 the creation request rather than applied in a follow-up call.
 
         Returns:
             Reference to the created dataset in Nominal.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         response = _create_dataset(
             self._clients.auth_header,
@@ -923,7 +965,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         markings: Sequence[Marking | str] | None = None,
     ) -> Video:
         """Create an empty video to append video files to.
@@ -964,8 +1006,7 @@ class NominalClient:
         return Video._from_conjure(self._clients, response)
 
     def _iter_get_videos(self, rids: Iterable[str]) -> Iterable[Video]:
-        request = scout_video_api.GetVideosRequest(video_rids=list(rids))
-        for response in self._clients.video.batch_get(self._clients.auth_header, request).responses:
+        for response in _get_videos(self._clients, list(rids)):
             yield Video._from_conjure(self._clients, response)
 
     @deprecated(
@@ -977,19 +1018,12 @@ class NominalClient:
         """Retrieve videos by their RID."""
         return list(self._iter_get_videos(rids))
 
-    def get_datasource(self, rid: str) -> DataSource:
-        """Retrieve a datasource (connection or dataset) by its RID.
-
-        Note:
-            If specific methods / properties of a dataset / connection are desired,
-            it is preferable to use `get_dataset` or `get_connection`.
-        """
+    @deprecated("`NominalClient.get_datasource` is deprecated; use `NominalClient.get_dataset` instead.")
+    def get_datasource(self, rid: str) -> Dataset:
+        """Retrieve a dataset by its RID. Prefer `get_dataset` for dataset operations."""
         if ".dataset." in rid:
             return self.get_dataset(rid)
-        elif ".connection." in rid:
-            return self.get_connection(rid)
-        else:
-            raise ValueError(f"Could not determine datasource type from RID: {rid}")
+        raise ValueError(f"Could not determine datasource type from RID: {rid}")
 
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
@@ -1022,7 +1056,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -1067,7 +1101,7 @@ class NominalClient:
         attachment_file: PathLike,
         *,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         attachment_path = Path(attachment_file)
@@ -1091,12 +1125,25 @@ class NominalClient:
         file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
     ) -> Attachment:
         """Upload an attachment.
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Args:
+            attachment: Binary stream to upload; the caller retains ownership.
+            name: Attachment title and upload filename. The title is kept as supplied. The upload
+                filename preserves any existing extension; otherwise it uses the default from ``file_type``.
+            file_type: Default extension and MIME type. The default binary type leaves the upload name unchanged.
+            description: Optional description of the attachment.
+            properties: Properties to apply to the attachment.
+            labels: Labels to apply to the attachment.
+
+        Raises:
+            ValueError: An applied default extension is malformed or the upload filename contains unsafe characters.
+            NominalError: If creating the attachment from the uploaded file fails.
         """
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
@@ -1112,28 +1159,37 @@ class NominalClient:
             self._clients.upload,
             header_provider=self._clients.header_provider,
         )
-        request = attachments_api.CreateAttachmentRequest(
-            description=description or "",
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            s3_path=s3_path,
-            title=name,
-            workspace=workspace_rid,
+        request = attachments_pb2.CreateAttachmentRequest(
+            attachment=attachments_pb2.Attachment(
+                s3_path=s3_path,
+                title=name,
+                description=description or "",
+                properties=properties,
+                labels=labels,
+            ),
+            workspace_rid=workspace_rid,
         )
-        response = self._clients.attachment.create(self._clients.auth_header, request)
-        return Attachment._from_conjure(self._clients, response)
+        with translate_grpc_errors():
+            response = self._clients.attachment.CreateAttachment(request)
+        return Attachment._from_proto(self._clients, response.attachment)
 
     def get_attachment(self, rid: str) -> Attachment:
-        """Retrieve an attachment by its RID."""
-        response = self._clients.attachment.get(self._clients.auth_header, rid)
-        return Attachment._from_conjure(self._clients, response)
+        """Retrieve an attachment by its RID.
+
+        Raises:
+            NominalNotFoundError: If no attachment with that RID is accessible.
+            NominalError: If the retrieval request fails.
+        """
+        return Attachment._from_proto(self._clients, _get_attachment(self._clients, rid))
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
-        """Retrive attachments by their RIDs."""
-        return [
-            Attachment._from_conjure(self._clients, a)
-            for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
-        ]
+        """Retrieve attachments by their RIDs.
+
+        Raises:
+            NominalNotFoundError: If any RID does not resolve to an accessible attachment.
+            NominalError: If a retrieval request fails.
+        """
+        return [Attachment._from_proto(self._clients, a) for a in _get_attachments(self._clients, rids)]
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
@@ -1179,63 +1235,6 @@ class NominalClient:
             )
         return [Unit._from_proto(unit) for unit in response.units]
 
-    def get_connection(self, rid: str) -> Connection:
-        """Retrieve a connection by its RID."""
-        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
-        return Connection._from_conjure(self._clients, response)
-
-    @deprecated(
-        "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
-        "Use `NominalClient.create_dataset` instead."
-    )
-    def create_streaming_connection(
-        self,
-        datasource_id: str,
-        connection_name: str,
-        datasource_description: str | None = None,
-        *,
-        required_tag_names: list[str] | None = None,
-        markings: Sequence[Marking | str] | None = None,
-    ) -> StreamingConnection:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
-        datasource_response = self._clients.storage.create(
-            self._clients.auth_header,
-            storage_datasource_api.CreateNominalDataSourceRequest(
-                id=datasource_id,
-                description=datasource_description,
-                workspace=workspace_rid,
-            ),
-        )
-        connection_response = self._clients.connection.create_connection(
-            self._clients.auth_header,
-            scout_datasource_connection_api.CreateConnection(
-                name=connection_name,
-                connection_details=scout_datasource_connection_api.ConnectionDetails(
-                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid,
-                    ),
-                ),
-                metadata={},
-                scraping=scout_datasource_connection_api.ScrapingConfig(
-                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
-                        channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
-                        ],
-                        separator=".",
-                    )
-                ),
-                required_tag_names=required_tag_names or [],
-                available_tag_values={},
-                should_scrape=True,
-                workspace=workspace_rid,
-                marking_rids=_marking_rids(markings),
-            ),
-        )
-        conn = Connection._from_conjure(self._clients, connection_response)
-        if isinstance(conn, StreamingConnection):
-            return conn
-        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
-
     def create_asset(
         self,
         name: str,
@@ -1246,14 +1245,22 @@ class NominalClient:
     ) -> Asset:
         """Create an asset.
 
+        Args:
+            name: Name of the asset.
+            description: Human readable description of the asset.
+            properties: String or numeric properties for the created asset.
+                Integers are stored as floats.
+            labels: Labels to apply to the asset.
+
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the creation request fails.
         """
         request = asset_pb2.CreateAssetRequest(
             description=description,
             labels=list(labels),
-            properties={} if properties is None else dict(properties),
+            typed_properties=typed_properties_to_proto(properties),
             title=name,
             workspace=self._clients.resolve_default_workspace_rid(),
         )
@@ -1278,7 +1285,8 @@ class NominalClient:
            If multiple assets returned, throw error.
 
         Args:
-            properties: key-value properties to use when searching for and creating assets.
+            properties: String or numeric properties used to search for or create the asset.
+                Integer values are converted to floats.
             name: Name of asset to be used if creation is necessary.
             description: Description of asset to be used if creation is necessary.
             labels: a sequence of labels to use when if creation is necessary.
@@ -1287,6 +1295,7 @@ class NominalClient:
             The existing or newly created asset.
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             ValueError: If multiple assets match the properties.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If searching for or creating the asset fails.
@@ -1332,7 +1341,9 @@ class NominalClient:
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             labels: A sequence of labels that must ALL be present on a asset to be included.
-            properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             exact_substring: Case-insensitive substring of the asset's name, description, labels, or properties.
                 Unlike `search_text`, results always contain the given text verbatim.
             workspace: Filters search to given workspace.
@@ -1349,6 +1360,7 @@ class NominalClient:
             All assets which match all of the provided conditions
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
@@ -1431,6 +1443,100 @@ class NominalClient:
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], [], _clients=self._clients)
 
+    def get_integration(self, rid: str) -> Integration:
+        """Retrieve a notification integration by RID.
+
+        Raises:
+            NominalNotFoundError: If the integration does not exist or is not accessible.
+        """
+        return Integration._from_proto(self._clients, _get_integration(self._clients, rid))
+
+    def list_integrations(self, *, workspace: WorkspaceSearchT | None = None) -> Sequence[Integration]:
+        """List available notification integrations across all result pages.
+
+        Args:
+            workspace: Workspace to search. None uses the client's default; `WorkspaceSearchType.ALL`
+                searches all accessible workspaces.
+
+        Returns:
+            Integrations visible in the selected workspace scope.
+        """
+        workspace_rid = self._workspace_rid_for_search(workspace)
+
+        return [
+            Integration._from_proto(self._clients, integration)
+            for integration in list_integrations_paginated(self._clients.integrations, workspace_rid)
+        ]
+
+    def create_webhook_integration(self, name: str, webhook_url: str, *, description: str | None = None) -> Integration:
+        """Create a generic webhook notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            webhook_url: Destination URL for notifications.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_webhook_integration(self._clients, name, webhook_url, description)
+
+    def create_opsgenie_integration(
+        self, name: str, api_key: str, region: OpsgenieRegion, *, description: str | None = None
+    ) -> Integration:
+        """Create an Opsgenie notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            api_key: Opsgenie API key.
+            region: Region hosting the Opsgenie integration.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_opsgenie_integration(self._clients, name, api_key, region, description)
+
+    def create_teams_integration(self, name: str, webhook_url: str, *, description: str | None = None) -> Integration:
+        """Create a Microsoft Teams notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            webhook_url: Teams webhook URL for notifications.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_teams_integration(self._clients, name, webhook_url, description)
+
+    def create_pagerduty_integration(
+        self, name: str, routing_key: str, *, description: str | None = None
+    ) -> Integration:
+        """Create a PagerDuty notification integration in the client's default workspace.
+
+        Args:
+            name: Display name of the integration.
+            routing_key: PagerDuty routing key.
+            description: Optional description.
+
+        Returns:
+            The created integration.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        return _create_pagerduty_integration(self._clients, name, routing_key, description)
+
     def get_data_review(self, rid: str) -> DataReview:
         """Retrieve a data review by its RID.
 
@@ -1452,6 +1558,22 @@ class NominalClient:
         properties: NominalProperties | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
+        """Create an event.
+
+        Args:
+            name: Name of the event.
+            type: Verbosity level of the event.
+            start: Starting timestamp of the event.
+            duration: Duration of the event, or zero for an event without duration.
+            description: Human readable description of the event.
+            assets: Assets or asset RIDs associated with the event.
+            properties: String or numeric properties for the created event.
+                Integers are stored as floats.
+            labels: Labels to apply to the event.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
+        """
         return _create_event(
             clients=self._clients,
             name=name,
@@ -1527,6 +1649,7 @@ class NominalClient:
         data_review: DataReview | str | None = None,
         assignee: User | str | None = None,
         event_type: EventType | None = None,
+        priority: Priority | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
@@ -1539,12 +1662,15 @@ class NominalClient:
             before: Filters to start times before this time, exclusive.
             assets: List of assets that must ALL be present on an event to be included.
             labels: A list of labels that must ALL be present on an event to be included.
-            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            properties: Property equalities that must ALL match. String values match string properties;
+                numeric values match numeric properties, without coercing strings to numbers.
+                Integer values are converted to floats.
             created_by: A User (or rid) of the author that must be present on an event to be included.
             workbook: Workbook to search for events on
             data_review: Search for events from the given data review
             assignee: Search for events with the given assignee
             event_type: Search for events based on level
+            priority: Filter events by disposition priority. None leaves priority unrestricted.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1557,6 +1683,9 @@ class NominalClient:
 
         Returns:
             All events which match all of the provided conditions
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _search_events(
             clients=self._clients,
@@ -1571,6 +1700,7 @@ class NominalClient:
             data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
+            priority=priority,
             workspace_rid=self._workspace_rid_for_search(workspace),
             archive_status=archive_status,
         )
@@ -1581,7 +1711,7 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> ContainerizedExtractor:
         """Create a containerized extractor for parsing custom data formats using Nominal-hosted docker images.
 
@@ -1622,7 +1752,7 @@ class NominalClient:
         include_archived: bool = False,
         file_extension: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> Sequence[ContainerizedExtractor]:
         """Search for containerized extractors meeting the specified filters.
@@ -1700,7 +1830,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         asset: Asset | str | None = None,
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
@@ -1775,7 +1905,7 @@ class NominalClient:
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
         published: bool | None = None,
@@ -1822,8 +1952,9 @@ class NominalClient:
         *,
         description: str | None = None,
         labels: list[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         commit_message: str | None = None,
+        is_published: bool = False,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
         """Create an empty workbook template.
@@ -1834,6 +1965,7 @@ class NominalClient:
             labels: Labels to attach to the workbook template
             properties: Properties to attach to the workbook template
             commit_message: An optional message to include with the creation of the template
+            is_published: Whether to publish the template so other users can view it. Defaults to False.
             workspace: Workspace to create the workbook template in. Pass `WorkspaceSearchType.DEFAULT` (or None)
                 to resolve a single workspace by preferring the client's configured `workspace_rid` and then falling
                 back to a client-side default-workspace lookup.
@@ -1852,7 +1984,7 @@ class NominalClient:
             description=description if description is not None else "",
             labels=labels if labels is not None else [],
             properties=dict(properties) if properties is not None else {},
-            is_published=False,
+            is_published=is_published,
             layout=scout_layout_api.WorkbookLayout(
                 v1=scout_layout_api.WorkbookLayoutV1(
                     root_panel=scout_layout_api.Panel(

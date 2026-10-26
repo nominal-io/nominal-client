@@ -4,17 +4,16 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
 from typing import BinaryIO, cast
 
 import requests
 
-from nominal.core._utils.filenames import sanitize_upload_filename
 from nominal.core._video_types import McapVideoDetails, TimestampOptions
-from nominal.core.filetype import FileTypes
+from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout, NominalVideoFileMetadataError
+from nominal.experimental.migration.utils.filename_utils import resolve_destination_filename
 from nominal.experimental.migration.utils.retry_utils import retry_transient
 
 logger = logging.getLogger(__name__)
@@ -192,19 +191,24 @@ def _upload_to_destination(
         response.raise_for_status()
         raw_video_stream = cast(BinaryIO, response.raw)
 
-        file_stem = sanitize_upload_filename(_resolve_destination_file_stem(source_video_file.name))
+        file_name = resolve_destination_filename(source_video_file.name)
         if timestamp_options is not None:
+            file_type = FileType.from_path(file_name)
+            # Keep the existing MP4 default when the source title does not identify a supported video format.
+            if not file_type.is_video():
+                file_type = FileTypes.MP4
             return destination_video_dataset.add_from_io(
                 video=raw_video_stream,
-                name=file_stem,
+                name=file_name,
                 start=timestamp_options.starting_timestamp,
                 description=source_video_file.description,
+                file_type=file_type,
             )
 
         if mcap_video_details is not None:
             return destination_video_dataset.add_mcap_from_io(
                 mcap=raw_video_stream,
-                name=file_stem,
+                name=file_name,
                 topic=mcap_video_details.mcap_channel_locator_topic,
                 description=source_video_file.description,
                 file_type=FileTypes.MCAP,
@@ -301,9 +305,3 @@ def _await_ingestion(new_file: VideoFile, poll_timeout: timedelta | None) -> Non
     # A transient error on a single status check (e.g. a 502 from a gateway) must not
     # abandon an upload that already succeeded — a rerun would duplicate the file.
     retry_transient(_poll, description=f"ingest status poll for video file {new_file.rid}")
-
-
-def _resolve_destination_file_stem(file_name: str) -> str:
-    file_stem = Path(file_name).stem
-    _, separator, suffix = file_stem.partition("Z_")
-    return suffix if separator else file_stem

@@ -3,17 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import reduce
-from types import MappingProxyType
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Self, Sequence
 
 from nominal_api import scout_catalog, scout_compute_api
-from typing_extensions import Self
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.properties import properties_from_conjure
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
-from nominal.core.datasource import DataSource
 from nominal.core.marking import Marking, _marking_rids
 from nominal.ts import IntegralNanosecondsDuration, _to_seconds_nanos_duration
 
@@ -102,7 +100,7 @@ class DerivedDatasetInput:
 
 
 def _edit_inputs(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     dataset_rid: str,
     edit: Callable[[Sequence[DerivedDatasetInput]], Sequence[DerivedDatasetInput]],
     message: str,
@@ -115,13 +113,13 @@ def _edit_inputs(
 
 
 def _get_definition(
-    clients: DataSource._Clients, dataset_rid: str, commit: str | None = None
+    clients: Dataset._Clients, dataset_rid: str, commit: str | None = None
 ) -> scout_catalog.DerivedDefinition:
     return clients.catalog.get_dataset_derived_definition(clients.auth_header, dataset_rid, commit)
 
 
 def _commit_definition(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     dataset_rid: str,
     spec: scout_compute_api.Dataset,
     message: str,
@@ -321,15 +319,15 @@ class DerivedDataset:
     properties: NominalProperties
     labels: Sequence[str]
     is_archived: bool
-    _clients: DataSource._Clients = field(repr=False)
+    _clients: Dataset._Clients = field(repr=False)
 
     @classmethod
-    def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
+    def _from_conjure(cls, clients: Dataset._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
+            properties=properties_from_conjure(dataset.typed_properties),
             labels=tuple(dataset.labels),
             is_archived=dataset.is_archived,
             _clients=clients,
@@ -477,7 +475,7 @@ class DerivedDataset:
 
 
 def _create_derived_dataset(
-    clients: DataSource._Clients,
+    clients: Dataset._Clients,
     name: str,
     spec: scout_compute_api.Dataset,
     *,
@@ -524,13 +522,17 @@ def create_derived_dataset(
             populated later with `DerivedDataset.add_input_dataset`.
         description: Human readable description of the dataset.
         labels: Text labels to apply to the created dataset.
-        properties: Key-value properties to apply to the created dataset.
+        properties: String or numeric properties for the created derived dataset.
+            Integers are stored as floats.
         markings: If present, markings (or marking RIDs) applied to the dataset. Sent as part of
             the creation request rather than applied in a follow-up call.
         message: Commit message for the initial definition.
 
     Returns:
         Reference to the created derived dataset in Nominal.
+
+    Raises:
+        TypeError: If a property value is a boolean or is not a string, integer, or float.
     """
     return _create_derived_dataset(
         client._clients,

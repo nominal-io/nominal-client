@@ -16,19 +16,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
-          version: "0.8.x"
+          # 0.13 is the first uv release that can download CPython 3.15.0.
+          version: "0.13.x"
           enable-cache: false
           cache-dependency-glob: "uv.lock"
           python-version: ${{ matrix.python-version }}
       - name: Install just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3.1.0
       - name: Install dependencies
         run: |
           just install
@@ -54,9 +55,9 @@ jobs:
   build-packages:
     runs-on: depot-ubuntu-24.04-small
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           version: "0.8.x"
           enable-cache: false
@@ -68,7 +69,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       # fetch-depth: 0 required — release-please walks the full commit history to compute version bumps
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Validate release config JSON

@@ -47,46 +47,56 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
         existing_run = self.get_existing_destination_resource(source)
         if existing_run is not None:
+            # In a dry run, existing_run is the source run itself, so adding attachments to it
+            # would write to the source.
+            if options.new_attachments is None and not self.ctx.dry_run:
+                self._add_missing_attachments(source, existing_run)
             if options.new_assets is not None:
                 return self._ensure_assets_added(existing_run, options.new_assets)
             return existing_run
 
-        destination_client = self.destination_client_for(source)
-
         attachments = options.new_attachments
         if attachments is None:
-            attachment_migrator = AttachmentMigrator(self.ctx)
-            migrated_attachments: list[Attachment] = []
-            for source_attachment in source.list_attachments():
-                if source_attachment.is_archived:
-                    logger.info(
-                        "Skipping archived attachment '%s' (rid: %s) on run %s",
-                        source_attachment.name,
-                        source_attachment.rid,
-                        source.rid,
-                    )
-                    continue
-                migrated_attachments.append(attachment_migrator.copy_from(source_attachment))
-            attachments = migrated_attachments
+            attachments = AttachmentMigrator(self.ctx).copy_attachments(source.list_attachments(), f"run {source.rid}")
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)
             self.ctx.migration_state.record_mapping(self.resource_type, source.rid, source.rid)
             return source
 
+        destination_client = self.destination_client_for(source)
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
             end=options.new_end if options.new_end is not None else source.end,
             description=options.new_description if options.new_description is not None else source.description,
             properties=options.new_properties if options.new_properties is not None else source.properties,
-            labels=options.new_labels if options.new_labels is not None else source.labels,
+            labels=self.ctx.destination_labels(source.labels, override=options.new_labels),
             assets=options.new_assets if options.new_assets is not None else source.assets,
             links=options.new_links if options.new_links is not None else source.links,
             attachments=attachments,
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_run.rid)
         return new_run
+
+    def _add_missing_attachments(self, source: Run, existing_run: Run) -> None:
+        """Copy and attach source attachments the destination run lacks.
+
+        A run is created even when some of its attachments fail to copy, so a rerun has to
+        retry those here rather than treat the already-migrated run as complete.
+        """
+        source_attachments = source.list_attachments()
+        if not source_attachments:
+            return
+        attached = set(existing_run._get_latest_api().attachments)
+        missing = [
+            a
+            for a in source_attachments
+            if self.ctx.migration_state.get_mapped_rid(ResourceType.ATTACHMENT, a.rid) not in attached
+        ]
+        new_attachments = AttachmentMigrator(self.ctx).copy_attachments(missing, f"run {source.rid}")
+        if new_attachments:
+            existing_run.add_attachments(new_attachments)
 
     def _ensure_assets_added(self, run: Run, new_assets: Sequence[Asset | str]) -> Run:
         """Add any assets from new_assets that are not already on run. Returns the (possibly updated) run.

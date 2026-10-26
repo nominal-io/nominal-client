@@ -3,17 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from time import sleep
-from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Protocol, Self, Sequence
 
 from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
 )
-from typing_extensions import Self
+from typing_extensions import deprecated
 
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
@@ -28,11 +28,14 @@ from nominal.ts import IntegralNanosecondsUTC
 if TYPE_CHECKING:
     from nominal.core.asset import Asset
     from nominal.core.checklist import Checklist
+    from nominal.core.integration import Integration
     from nominal.core.run import Run
 
 
 @dataclass(frozen=True)
-class DataReview(HasRid):
+class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
+    """The progress and results of a checklist execution."""
+
     rid: str
     run_rid: str
     checklist_rid: str
@@ -42,6 +45,8 @@ class DataReview(HasRid):
 
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
+    asset_rid: str | None = None
+    """Asset evaluated by this review, or None when no asset RID is available."""
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -71,7 +76,11 @@ class DataReview(HasRid):
             created_at=data_review.created_at.ToNanoseconds(),
             _clients=clients,
             created_by_rid=data_review.created_by or None,
+            asset_rid=data_review.asset_rid or None,
         )
+
+    def _get_latest_api(self) -> data_review_pb2.DataReview:
+        return _get_data_review(self._clients, self.rid)
 
     def get_checklist(self) -> "Checklist":
         from nominal.core.checklist import Checklist
@@ -94,28 +103,32 @@ class DataReview(HasRid):
             for data_review_event in _get_events(self._clients, all_event_rids)
         ]
 
-    def reload(self) -> DataReview:
-        """Reloads the data review from the server."""
-        return DataReview._from_proto(self._clients, _get_data_review(self._clients, self.rid))
+    @deprecated("DataReview.reload() is deprecated. Use DataReview.refresh() to update this instance in place.")
+    def reload(self) -> Self:
+        """Deprecated alias for `refresh`; updates and returns this instance rather than a separate snapshot."""
+        return self.refresh()
 
     def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
-        """Polls the data review until it is completed."""
-        review = self
-        while not review.completed:
+        """Refresh this instance until the review completes, then return it."""
+        while not self.completed:
             sleep(interval.total_seconds())
-            review = review.reload()
-        return review
+            self.refresh()
+        return self
 
     def archive(self) -> None:
         """Archive this data review.
         Archived data reviews are not deleted, but are hidden from the UI.
-
-        Note:
-            currently, it is not possible (yet) to unarchive a data review once archived.
         """
         with translate_grpc_errors():
             self._clients.datareview.ArchiveDataReview(
                 data_review_pb2.ArchiveDataReviewRequest(data_review_rid=self.rid)
+            )
+
+    def unarchive(self) -> None:
+        """Unarchive this review, allowing it to appear in the UI again."""
+        with translate_grpc_errors():
+            self._clients.datareview.UnarchiveDataReview(
+                data_review_pb2.UnarchiveDataReviewRequest(data_review_rid=self.rid)
             )
 
     @property
@@ -131,6 +144,8 @@ class DataReview(HasRid):
 
 @dataclass(frozen=True)
 class CheckViolation:
+    """A checklist violation with its affected time interval and priority."""
+
     rid: str
     check_rid: str
     name: str
@@ -141,13 +156,45 @@ class CheckViolation:
 
 @dataclass(frozen=True)
 class DataReviewBuilder:
+    """Collect checklist executions and notification destinations before initiating reviews.
+
+    Obtain a builder with `NominalClient.data_review_builder`.
+
+    Example:
+        Attach an existing Slack, Opsgenie, or webhook integration:
+
+        ```python
+        integration = client.get_integration("integration-rid")
+        reviews = (
+            client.data_review_builder()
+            .execute_checklist("run-rid", "checklist-rid")
+            .add_integration(integration)
+            .initiate()
+        )
+        ```
+    """
+
     _integration_rids: list[str]
     _requests: list[data_review_pb2.CreateDataReviewRequest]
     _tags: list[str]
     _clients: DataReview._Clients = field(repr=False)
 
-    def add_integration(self, integration_rid: str) -> DataReviewBuilder:
-        self._integration_rids.append(integration_rid)
+    def add_integration(self, integration_rid: str | Integration) -> DataReviewBuilder:
+        """Add a notification destination for the reviews initiated by this builder.
+
+        Args:
+            integration_rid: Integration RID or an `Integration` instance.
+
+        Returns:
+            This builder.
+
+        Note:
+            Data review notifications support Slack, Opsgenie, generic webhooks, and secure webhooks.
+            Teams and PagerDuty are unsupported. This method does not check whether the destination is supported.
+
+            Tags added with `add_tags` apply to every destination, including those already added.
+        """
+        self._integration_rids.append(rid_from_instance_or_string(integration_rid))
         return self
 
     def execute_checklist(
@@ -215,11 +262,12 @@ class DataReviewBuilder:
 
         Returns:
             The initiated reviews, which may still be running unless wait_for_completion is True.
+            Waiting for review completion does not wait for or confirm notification delivery.
         """
         request = data_review_pb2.BatchInitiateRequest(
             notification_configurations=[
-                data_review_pb2.NotificationConfiguration(integration_rid=c, tags=self._tags)
-                for c in self._integration_rids
+                data_review_pb2.NotificationConfiguration(integration_rid=integration_rid, tags=self._tags)
+                for integration_rid in self._integration_rids
             ],
             requests=self._requests,
         )

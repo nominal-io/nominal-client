@@ -6,6 +6,7 @@ from datetime import datetime
 from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence, cast
 
+from nominal_api import api, scout_compute_api, scout_dataexport_api
 from nominal_api.api import Timestamp
 
 import pandas as pd
@@ -16,8 +17,8 @@ from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
-from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ def upload_dataframe_to_dataset(
         timestamp_column: Column containing timestamps to use for their respective rows
         timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
         wait_until_complete: If true, block until data has been ingested
-        file_name: Manually override the name of the filename given to the uploaded data.
+        file_name: Upload filename for the generated CSV. An existing extension is preserved;
+            otherwise .csv.gz is appended.
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
@@ -103,12 +105,16 @@ def upload_dataframe(
         channel_name_delimiter: Delimiter to use for folding channel view to a tree view.
         wait_until_complete: If true, wait until all data has been ingested successfully before returning
         labels: String labels to apply to the created dataset
-        properties: String key-value pairs to apply to the created dataset
+        properties: String or numeric properties for the created dataset.
+            Integers are stored as floats.
         tag_columns: Mapping of column name => tag key to apply to the respective rows of data
         tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
 
     Returns:
         Created dataset
+
+    Raises:
+        TypeError: If a property value is a boolean or is not a string, integer, or float.
     """
     dataset = client.create_dataset(
         name=name,
@@ -250,7 +256,7 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
 
 
 def datasource_to_dataframe(
-    datasource: DataSource,
+    datasource: Dataset,
     channel_exact_match: Sequence[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -399,3 +405,39 @@ def datasource_to_dataframe(
         result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
+
+
+def _construct_export_request(
+    channels: Sequence[Channel],
+    start: api.Timestamp,
+    end: api.Timestamp,
+    tags: Mapping[str, str] | None,
+    enable_gzip: bool,
+    timestamp_type: _AnyExportableTimestampType = "iso_8601",
+) -> scout_dataexport_api.ExportDataRequest:
+    export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
+    request = scout_dataexport_api.ExportDataRequest(
+        channels=scout_dataexport_api.ExportChannels(
+            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                channels=export_channels,
+                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                    # only one series will be returned, so no need to merge
+                    none=scout_dataexport_api.NoneStrategy(),
+                ),
+                output_timestamp_format=_to_export_timestamp_format(timestamp_type),
+            )
+        ),
+        start_time=start,
+        end_time=end,
+        context=scout_compute_api.Context(
+            dataset_references={},
+            variables={},
+            function_variables={},
+        ),
+        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+        resolution=scout_dataexport_api.ResolutionOption(
+            undecimated=scout_dataexport_api.UndecimatedResolution(),
+        ),
+        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
+    )
+    return request

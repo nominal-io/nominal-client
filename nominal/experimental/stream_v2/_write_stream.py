@@ -10,9 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Any, Callable, Mapping, Protocol, Type
-
-from typing_extensions import Self
+from typing import Any, Callable, Mapping, Protocol, Self, Type
 
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
 from nominal.core._stream.batch_processor_proto import SerializedBatch
@@ -202,7 +200,7 @@ class WriteStreamV2(DataStream):
             channel_values: A dictionary mapping channel names to their scalar values.
             tags: Key-value tags associated with the data being uploaded.
 
-                **Note:** This *should* include all `required_tags` used when creating a `Connection` to Nominal.
+                **Note:** This *should* include all `required_tags` configured for the dataset.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
@@ -217,14 +215,18 @@ class WriteStreamV2(DataStream):
         self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff / 1e9)
 
     def close(self, wait: bool = True) -> None:
+        """Close the stream and wait for serialization and upload workers.
+
+        Args:
+            wait: Finish pending tasks instead of cancelling tasks that have not started.
+        """
         logger.debug("Closing write stream (wait=%s)", wait)
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
+        self._batch_serialize_thread.join()
 
         self._serializer.close(cancel_futures=not wait)
         self._write_pool.shutdown(cancel_futures=not wait)
-
-        self._batch_serialize_thread.join()
 
     def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
         """Add a metric using the configured implementation."""

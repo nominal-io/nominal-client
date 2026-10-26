@@ -3,8 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-
-from typing_extensions import Self, assert_never
+from typing import Self, assert_never
 
 from nominal.protos.scout.elements.v1 import elements_pb2
 

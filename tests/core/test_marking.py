@@ -7,7 +7,7 @@ import grpc
 import pytest
 
 from nominal.core.client import NominalClient
-from nominal.core.connection import StreamingConnection
+from nominal.core.dataset import Dataset
 from nominal.core.elements import Symbol
 from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.video import Video
@@ -73,13 +73,16 @@ def _build_video(clients: MagicMock, rid: str) -> Video:
     )
 
 
-def _build_streaming_connection(clients: MagicMock, rid: str) -> StreamingConnection:
-    return StreamingConnection(
+def _build_dataset(clients: MagicMock, rid: str) -> Dataset:
+    return Dataset(
         rid=rid,
         name="c",
         description=None,
         _clients=clients,
-        nominal_data_source_rid=rid,
+        properties={},
+        labels=[],
+        bounds=None,
+        is_archived=False,
     )
 
 
@@ -284,13 +287,13 @@ def test_markings_may_be_given_as_instances_or_rids(
 
 @pytest.mark.parametrize(
     "build_resource",
-    [_build_video, _build_streaming_connection],
-    ids=["video", "streaming_connection"],
+    [_build_video, _build_dataset],
+    ids=["video", "dataset"],
 )
 def test_every_data_source_type_exposes_its_markings(
     mock_clients: MagicMock, build_resource: Callable[[MagicMock, str], MarkableMixin]
 ) -> None:
-    """Pins the mixin onto the real classes: `Video` and `DataSource` each carry it independently."""
+    """Pins the mixin onto the real classes: `Video` and `Dataset` each carry it independently."""
     _apply_to(mock_clients, "ri.resource.a", "ri.marking.a")
 
     resource = build_resource(mock_clients, "ri.resource.a")
@@ -323,12 +326,3 @@ def test_create_dataset_accepts_marking_instances(client: NominalClient, mock_cl
 
     request = mock_clients.catalog.create_dataset.call_args.args[1]
     assert request.marking_rids == ["ri.marking.a", "ri.marking.b"]
-
-
-def test_create_streaming_connection_forwards_markings(client: NominalClient, mock_clients: MagicMock) -> None:
-    """Markings reach the connection create request even on the deprecated path."""
-    with pytest.warns(DeprecationWarning, match="create_streaming_connection"):
-        client.create_streaming_connection("ds-id", "conn", markings=["ri.marking.a"])
-
-    request = mock_clients.connection.create_connection.call_args.args[1]
-    assert request.marking_rids == ["ri.marking.a"]

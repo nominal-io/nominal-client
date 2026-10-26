@@ -4,7 +4,7 @@ import json
 import logging
 import pathlib
 from concurrent.futures import Future
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Callable, Iterator
 from unittest.mock import MagicMock, patch
 
@@ -114,7 +114,7 @@ class TestSubmit:
 
     def test_video_with_start_sends_a_starting_timestamp(self, write_file: WriteFile) -> None:
         """A start-timestamped video item carries its source, channel, and first-frame instant."""
-        start = datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 7, 26, 6, 0, tzinfo=UTC)
         client = MagicMock()
         builder = IngestBuilder(client, "ri.catalog.test.dataset")
         builder.add_video(write_file("cam.mp4", 1), channel="camera.front", start=start)

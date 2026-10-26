@@ -3,9 +3,9 @@ from __future__ import annotations
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Self
 
 from nominal_api import scout_compute_api
-from typing_extensions import Self
 
 from nominal.experimental.compute.dsl import params
 
@@ -19,6 +19,8 @@ ConjureSeriesT = typing.TypeVar("ConjureSeriesT")
 
 
 class ChannelExpr(Expr, typing.Generic[ConjureSeriesT]):
+    """Base interface for channel expressions scoped to a dataset, asset, or run."""
+
     @abstractmethod
     def _to_conjure(self) -> ConjureSeriesT: ...
 
@@ -54,6 +56,8 @@ class ChannelExpr(Expr, typing.Generic[ConjureSeriesT]):
 
 @dataclass(frozen=True)
 class EnumExpr(ChannelExpr[scout_compute_api.EnumSeries]):
+    """A compute expression for categorical channel data."""
+
     @abstractmethod
     def _to_conjure(self) -> scout_compute_api.EnumSeries:
         raise NotImplementedError()
@@ -106,6 +110,8 @@ class EnumExpr(ChannelExpr[scout_compute_api.EnumSeries]):
 
 @dataclass(frozen=True)
 class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
+    """A compute expression for numeric channel data and derived signals."""
+
     @abstractmethod
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         raise NotImplementedError()
@@ -252,6 +258,8 @@ class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
 
 @dataclass(frozen=True)
 class RangeExpr(Expr):
+    """A compute expression for time ranges that can be combined or inverted."""
+
     @abstractmethod
     def _to_conjure(self) -> scout_compute_api.RangeSeries:
         raise NotImplementedError()

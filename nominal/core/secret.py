@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence
-
-from typing_extensions import Self
+from typing import Mapping, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update, property_update
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, label_update
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.properties import property_update
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
 class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
+    """Metadata and lifecycle operations for a stored secret.
+
+    Secret values are supplied at creation and are not returned by this object.
+    """
+
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
@@ -32,7 +35,7 @@ class Secret(HasRid, RefreshableGrpcMixin[secrets_pb2.Secret]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Update the secret in-place.
