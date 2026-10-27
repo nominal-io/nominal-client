@@ -20,7 +20,7 @@ You need the [installed client](/guides/install.md) and a [profile](/guides/api-
 
 1. Save this script as `fsae_asset_upload.py`. It finds or creates the `FSAE CT8 Vehicle` [asset](/guides/assets.md), uploads the CSV to its dataset and sets the channels' units:
 
-    ```{literalinclude} /../examples/fsae_asset_upload.py
+    ```{literalinclude} /examples/fsae_asset_upload.py
     :language: python
     ```
 

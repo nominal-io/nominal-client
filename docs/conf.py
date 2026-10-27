@@ -15,6 +15,7 @@ from sphinx.util.typing import restify
 
 import nominal.core
 import nominal.exceptions
+from nominal.config import NominalConfig
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
@@ -23,7 +24,8 @@ project = "Python Client"
 copyright = "Nominal, Inc."
 
 extensions = [
-    "myst_parser",
+    "myst_nb",
+    "sphinx_codeautolink",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -122,6 +124,16 @@ for _module_name in _seed_modules:
 autosummary_context["module_data"]["nominal.core"]["canonical_names"] = {
     name: f"{module}.{name}" for module, names in core_module_exports.items() for name in names
 }
+# Code examples resolve members by defining module; link them to their nominal.core reference.
+codeautolink_inventory_map = {
+    f"{module}.{name}.{member}": f"nominal.core.{name}.{member}"
+    for module, names in core_module_exports.items()
+    for name in names
+    for member in dir(getattr(nominal.core, name))
+    if not member.startswith("_")
+}
+# A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
+codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
 
@@ -135,6 +147,18 @@ default_role = "py:obj"
 # -- MyST ---------------------------------------------------------------------
 myst_heading_anchors = 6
 myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
+
+# Run each example on build; the cache (in _build) re-runs only notebooks that changed.
+nb_execution_mode = "cache"
+nb_execution_cache_path = str(HERE / "_build" / ".jupyter_cache")
+nb_execution_raise_on_error = True
+nb_execution_show_tb = True  # print a failing cell's traceback, not only the log file's path
+nb_execution_timeout = 120
+# Examples connect with the "default" profile; without it, they render unexecuted.
+try:
+    NominalConfig.from_yaml().get_profile("default")
+except (FileNotFoundError, nominal.exceptions.NominalConfigError):
+    nb_execution_excludepatterns = ["examples/*.md"]
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
@@ -162,7 +186,11 @@ napoleon_numpy_docstring = False
 napoleon_use_rtype = False
 napoleon_use_param = True  # :param: fields, which autodoc adds the types to
 
-intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+}
 
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
