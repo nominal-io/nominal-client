@@ -99,7 +99,9 @@ docs = [
 docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "24fe6e0cc27b3f34b8c713c1daf5b270abcc2707" }
+# uv.lock pins the theme's commit. No rev here, so `uv lock --upgrade-package nominal-sphinx-theme`
+# can update it.
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme" }
 nominal = { workspace = true }
 nominal-ibis = { workspace = true }
 nominal-tdms = { workspace = true }
