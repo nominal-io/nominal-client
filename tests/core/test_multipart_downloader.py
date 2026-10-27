@@ -252,3 +252,17 @@ def test_fetch_range_bytes_invalidates_url_on_expired_response(
 
     mock_invalidate.assert_called_once()
     assert mock_downloader.get.call_count == 2
+
+
+def test_fetch_range_bytes_refuses_a_body_that_is_not_the_requested_range(
+    tmp_path: Path, downloader: MultipartFileDownloader, mock_downloader: MagicMock
+) -> None:
+    """A server that ignores Range sends the whole object, which must not be written at the part's offset."""
+    dest = tmp_path / "file.bin"
+    dest.write_bytes(b"\x00" * 8)
+    mock_downloader.get.return_value = _mock_response(200, content=b"abcdefgh")
+
+    with pytest.raises(RuntimeError, match="may not support ranged downloads"):
+        downloader._fetch_range_bytes(_provider(), 4, 7, None, dest)
+
+    assert dest.read_bytes() == b"\x00" * 8

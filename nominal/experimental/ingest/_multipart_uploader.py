@@ -609,11 +609,12 @@ class MultipartUploader:
             raise CancelledError("uploader is closing")
         safe_filename = pending.filename
         started = time.monotonic()
-        key, upload_id = self._gate.call(
+        initiated = self._gate.call(
             lambda: _initiate_multipart_upload(
                 self._upload_client, self._auth_header, safe_filename, pending.file_type.mimetype, self._workspace_rid
             )
         )
+        key, upload_id = initiated.key, initiated.upload_id
         logger.debug("initiated multipart upload for %s: key=%s upload_id=%s", safe_filename, key, upload_id)
         plan = _PlannedUpload(
             path=pending.path,
