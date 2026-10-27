@@ -103,8 +103,8 @@
   - Methods and attributes render on their class's detail page.
 - `_ext/reference_presentation.py`:
   - Uses Sphinx contents flags to leave attributes and aliases out of navigation, keeping their bodies and link targets.
-  - Shows unquoted dataclass annotations.
-  - Omits `repr=False` fields from constructors and reference bodies, using dataclass metadata.
+  - Shows unquoted dataclass annotations in constructor signatures when `autodoc_typehints` puts types there; with `"description"`, signatures show names and defaults only.
+  - Omits `repr=False` fields from constructors and reference bodies, using dataclass metadata, and `_`-prefixed fields from constructor signatures.
 
 ### Links
 

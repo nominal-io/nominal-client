@@ -45,7 +45,8 @@ guide owns reference layout, navigation, and build setup.
 - Document public constants with attribute docstrings immediately after their assignments,
   as in [nominal.ts](../../nominal/ts/__init__.py). Keep ordinary comments ordinary:
   do not turn them into `#:` documentation comments or add `:meta private:` markers.
-  Reference visibility already follows existing dataclass `repr=False` metadata.
+  Reference visibility already follows existing dataclass `repr=False` metadata, and
+  constructor signatures leave out `_`-prefixed fields.
 
 Example layout, using the behavior of [Channel.update](../../nominal/core/channel.py):
 
