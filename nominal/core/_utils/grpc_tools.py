@@ -6,7 +6,7 @@ generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
-- HTTP URLs allow plaintext gRPC only for literal loopback IP addresses; HTTPS URLs select TLS.
+- HTTP URLs use plaintext gRPC; HTTPS URLs select TLS.
 - For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
 - Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
@@ -254,15 +254,14 @@ def create_grpc_channel(
     auth_header: str,
     header_provider: HeaderProvider | None,
 ) -> grpc.Channel:
-    """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs.
+    """Build the shared gRPC channel, using plaintext for HTTP URLs.
 
     Configures gzip compression, native retry, lifted message-size limits, the SDK user-agent, and the
     auth-metadata + default-deadline interceptors. TLS channels use the union trust bundle; plaintext
     channels do not load TLS credentials. All of a client's gRPC stubs share this one channel.
 
     Raises:
-        NominalConfigError: If the API URL is malformed, contains user information, or uses HTTP
-            without a literal loopback address.
+        NominalConfigError: If the API URL is malformed or contains user information.
     """
     channel = _build_grpc_channel(api_base_url, service_config, user_agent)
     # The two interceptors are order-independent: one rewrites metadata, the other the deadline.
