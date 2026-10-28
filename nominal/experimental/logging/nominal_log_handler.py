@@ -41,6 +41,8 @@ class NominalLogHandler(logging.Handler):
             default_args: Default key-value pairs to use as arg in all log messages
         """
         super().__init__()
+        # Upload diagnostics must not feed back into the same stream or block handler shutdown.
+        self.addFilter(ModuleFilter({"nominal.core._stream.write_stream"}))
         self._log_stream = dataset.get_log_stream(
             batch_size=max_batch_size,
             max_wait=flush_interval,
@@ -69,15 +71,36 @@ class NominalLogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-    def close(self) -> None:
-        """Shutoff log handler from sending logs to Nominal"""
-        self._log_stream.close()
+    def close(self, *, raise_on_error: bool = False) -> None:
+        """Wait for log uploads and release the handler.
+
+        Upload failures are logged by the stream. The default does not raise them,
+        so ``logging.shutdown()`` can finish closing other handlers.
+
+        Args:
+            raise_on_error: Raise the first unreported upload exception after cleanup.
+                Use this for explicit completion when the caller can handle failures.
+
+        Raises:
+            Exception: The first unreported log-upload exception, if ``raise_on_error=True``.
+        """
+        try:
+            self._log_stream.close()
+        except Exception:
+            if raise_on_error:
+                raise
+        finally:
+            super().close()
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
     ) -> None:
-        """Exit the stream and close out any used system resources."""
-        self.close()
+        """Close the handler, preserving an exception raised by the context body."""
+        try:
+            self.close(raise_on_error=True)
+        except BaseException:
+            if exc_value is None:
+                raise
 
 
 class ModuleFilter(logging.Filter):
