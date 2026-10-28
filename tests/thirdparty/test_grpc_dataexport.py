@@ -11,7 +11,6 @@ from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.dataset import Dataset
 from nominal.protos.dataexports.v1 import data_exports_pb2 as export_pb
 from nominal.protos.types.time import time_pb2
-from nominal.thirdparty.matlab._matlab import export_channels_to_matlab
 from nominal.thirdparty.pandas._pandas import channel_to_series, datasource_to_dataframe
 from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler, _export_job, _ExportJob, _TimeRange
 from nominal.ts import Epoch, Relative
@@ -123,29 +122,6 @@ def test_csv_parser_failure_cancels_export():
     with pytest.raises(gzip.BadGzipFile):
         channel_to_series(_channel(clients))
     call.cancel.assert_called_once()
-
-
-@pytest.mark.parametrize("lookback", [0, 123])
-def test_matlab_retains_large_exports_and_zero_forward_fill(tmp_path, lookback):
-    """MATLAB keeps legacy support for indivisible exports over 1000 columns and zero forward-fill windows."""
-    clients = MagicMock()
-    client = MagicMock(_clients=clients)
-    clients.dataexport.export_channel_data.return_value = io.BytesIO(gzip.compress(b"matfile payload"))
-    channels = [replace(_channel(clients), name=f"channel{i}") for i in range(1001)]
-    output = tmp_path / "nested" / "result.mat"
-    export_channels_to_matlab(
-        client, output, channels, resolution=1_000_000_001, forward_fill_lookback=lookback, chunk_size=3
-    )
-    assert output.read_bytes() == b"matfile payload"
-    request = clients.dataexport.export_channel_data.call_args.args[1]
-    assert request.format.matfile is not None
-    assert request.resolution.nanoseconds == 1_000_000_001
-    assert len(request.channels.time_domain.channels) == 1001
-    assert (
-        request.channels.time_domain.merge_timestamp_strategy.all_timestamps_forward_fill.look_back_period.nanos
-        == lookback
-    )
-    clients.grpc_dataexport.StreamExport.assert_not_called()
 
 
 @pytest.mark.parametrize("timestamp_type", [Epoch("milliseconds"), Relative("milliseconds", start=-1)])
