@@ -442,7 +442,9 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
                     exact_values=source_selection_pb2.ExactTagValues(
                         values={k: constants_pb2.StringConstant(literal=v) for k, v in (tags or {}).items()}
                     )
-                ),
+                )
+                if tags
+                else None,
             )
         )
         if self.data_type is ChannelDataType.STRING:

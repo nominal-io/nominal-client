@@ -32,7 +32,9 @@ class EnumAssetChannelExpr(exprs.EnumExpr):
                                 k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
                             }
                         )
-                    ),
+                    )
+                    if self._additional_tags
+                    else None,
                 )
             )
         )
@@ -54,7 +56,9 @@ class EnumDatasourceChannelExpr(exprs.EnumExpr):
                         exact_values=source_selection_pb2.ExactTagValues(
                             values={k: constants_pb2.StringConstant(literal=v) for k, v in self._tags.items()}
                         )
-                    ),
+                    )
+                    if self._tags
+                    else None,
                 )
             )
         )
@@ -80,7 +84,9 @@ class EnumRunChannelExpr(exprs.EnumExpr):
                                 k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
                             }
                         )
-                    ),
+                    )
+                    if self._additional_tags
+                    else None,
                 )
             )
         )

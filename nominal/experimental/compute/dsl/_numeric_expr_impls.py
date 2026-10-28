@@ -303,7 +303,9 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
                                 k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
                             }
                         )
-                    ),
+                    )
+                    if self._additional_tags
+                    else None,
                 )
             )
         )
@@ -325,7 +327,9 @@ class NumericDatasourceChannelExpr(exprs.NumericExpr):
                         exact_values=source_selection_pb2.ExactTagValues(
                             values={k: constants_pb2.StringConstant(literal=v) for k, v in self._tags.items()}
                         )
-                    ),
+                    )
+                    if self._tags
+                    else None,
                 )
             )
         )
@@ -351,7 +355,9 @@ class NumericRunChannelExpr(exprs.NumericExpr):
                                 k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
                             }
                         )
-                    ),
+                    )
+                    if self._additional_tags
+                    else None,
                 )
             )
         )

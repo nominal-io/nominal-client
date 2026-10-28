@@ -112,3 +112,14 @@ def test_nested_dsl_preserves_mapping_bounds_threshold_and_rolling_unit():
     assert (
         mapping.input.rolling_aggregation.input.range_filter.ranges.complement.numeric_threshold.threshold.literal == 0
     )
+
+
+@pytest.mark.parametrize("expression_type", [NumericExpr, EnumExpr])
+def test_untagged_dsl_channels_omit_tag_constraints(expression_type):
+    """Untagged DSL channels omit tag constraints instead of sending an invalid empty map."""
+    asset = expression_type.asset_channel("asset", "scope", "value")._to_proto().channel_selection.asset
+    dataset = expression_type.datasource_channel("dataset", "value", {})._to_proto().channel_selection.data_source
+    run = expression_type.run_channel("run", "scope", "value", {})._to_proto().channel_selection.run
+    assert not asset.HasField("tags")
+    assert not dataset.HasField("tags")
+    assert not run.HasField("tags")

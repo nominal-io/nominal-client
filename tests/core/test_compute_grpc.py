@@ -104,3 +104,18 @@ def test_pandas_summary_preserves_shapes_and_absent_statistics(bucketed):
         assert frame.iloc[0]["min"] == 0
         assert frame.iloc[0]["count"] == 0
         assert pd.isna(frame.iloc[0]["mean"])
+
+
+@pytest.mark.parametrize("tags", [None, {}])
+def test_untagged_channel_omits_tag_constraints(tags):
+    """The channel serializer omits unspecified and explicitly empty tag maps."""
+    channel = Channel(
+        name="value",
+        data_source="dataset",
+        data_type=ChannelDataType.DOUBLE,
+        unit=None,
+        description=None,
+        _clients=MagicMock(),
+    )
+    selection = channel._to_proto_compute_series(tags).numeric.channel_selection.data_source
+    assert not selection.HasField("tags")
