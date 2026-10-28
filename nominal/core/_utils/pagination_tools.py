@@ -20,6 +20,7 @@ from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2, users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
+from nominal.protos.datasets.v1 import dataset_files_pb2, dataset_files_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2, integrations_pb2_grpc
@@ -76,25 +77,24 @@ def search_datasets_paginated(
 
 
 def search_dataset_files_paginated(
-    client: scout_catalog.CatalogService,
-    auth_header: str,
+    client: dataset_files_pb2_grpc.DatasetFileServiceStub,
     dataset_rid: str,
-    query: scout_catalog.SearchDatasetFilesQuery,
-) -> Iterable[scout_catalog.DatasetFile]:
-    def factory(page_token: str | None) -> scout_catalog.SearchDatasetFilesRequest:
-        return scout_catalog.SearchDatasetFilesRequest(
+    query: dataset_files_pb2.DatasetFileQuery,
+) -> Iterable[dataset_files_pb2.DatasetFile]:
+    def factory(page_token: str | None) -> dataset_files_pb2.SearchDatasetFilesRequest:
+        return dataset_files_pb2.SearchDatasetFilesRequest(
             dataset_rid=dataset_rid,
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort_options=scout_catalog.DatasetFileSortOptions(
-                field=scout_catalog.DatasetFileSortField.UPLOADED_AT,
-                is_descending=True,
+            sort=dataset_files_pb2.DatasetFileSort(
+                field=dataset_files_pb2.DATASET_FILE_SORT_FIELD_UPLOADED_AT,
+                descending=True,
             ),
-            token=page_token,
+            page_token=page_token or "",
         )
 
-    for response in paginate_rpc(client.search_dataset_files, auth_header, request_factory=factory):
-        yield from response.results
+    for response in paginate_grpc(client.SearchDatasetFiles, request_factory=factory):
+        yield from response.dataset_files
 
 
 def search_assets_paginated(

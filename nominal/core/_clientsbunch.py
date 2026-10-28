@@ -37,6 +37,7 @@ from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
+from nominal.protos.datasets.v1 import dataset_files_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
@@ -140,6 +141,7 @@ class ClientsBunch:
     # Conjure services
     authorization: authorization.AuthorizationService
     catalog: scout_catalog.CatalogService
+    grpc_dataset_files: dataset_files_pb2_grpc.DatasetFileServiceStub
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
@@ -313,6 +315,7 @@ class ClientsBunch:
             # Conjure Service Stubs
             authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
+            grpc_dataset_files=grpc_factory(dataset_files_pb2_grpc.DatasetFileServiceStub),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),

@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
+from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     api,
     ingest_api,
@@ -22,6 +23,7 @@ from nominal.core._utils.properties import check_property_value
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.markings.v1 import markings_pb2
+from nominal.protos.datasets.v1 import dataset_files_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -357,19 +359,30 @@ def create_search_dataset_files_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     file_tags: Mapping[str, str] | None = None,
-) -> scout_catalog.SearchDatasetFilesQuery:
+) -> dataset_files_pb2.DatasetFileQuery:
     queries = []
     if start is not None or end is not None:
-        range_start = None if start is None else _SecondsNanos.from_flexible(start).to_scout_catalog()
-        range_end = None if end is None else _SecondsNanos.from_flexible(end).to_scout_catalog()
+        # Preserve the public search contract: truncate sub-second precision and warn.
+        range_start = None if start is None else _SecondsNanos.from_flexible(start)
+        range_end = None if end is None else _SecondsNanos.from_flexible(end)
+        for bound in (range_start, range_end):
+            if bound is not None:
+                bound._warn_if_nanos_truncated()
         queries.append(
-            scout_catalog.SearchDatasetFilesQuery(
-                time_range=scout_catalog.TimeRangeFilter(start=range_start, end=range_end)
+            dataset_files_pb2.DatasetFileQuery(
+                data_time_range=dataset_files_pb2.TimeRangeFilter(
+                    start=None if range_start is None else Timestamp(seconds=range_start.seconds),
+                    end=None if range_end is None else Timestamp(seconds=range_end.seconds),
+                )
             )
         )
     if file_tags is not None:
-        queries.append(scout_catalog.SearchDatasetFilesQuery(file_tags=dict(file_tags)))
-    return scout_catalog.SearchDatasetFilesQuery(and_=queries)
+        queries.append(
+            dataset_files_pb2.DatasetFileQuery(additional_file_tags=dataset_files_pb2.FileTagFilter(tags=file_tags))
+        )
+    query = dataset_files_pb2.DatasetFileQuery()
+    getattr(query, "and").CopyFrom(dataset_files_pb2.DatasetFileQueryList(queries=queries))
+    return query
 
 
 def create_search_datasets_query(

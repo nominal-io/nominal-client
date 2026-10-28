@@ -10,14 +10,16 @@ from nominal_api import ingest_api
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
+from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.core.dataset_file import (
     DatasetFile,
-    _dataset_file_from_conjure,
+    _dataset_file_from_proto,
     _deadline_from,
     _poll_files_once,
     _sleep_until_next_poll,
 )
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
+from nominal.protos.datasets.v1 import dataset_files_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -197,14 +199,14 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         return self._refresh_from_api(job)
 
     def _iter_dataset_files(self) -> Iterable[DatasetFile]:
-        next_page_token = None
-        while True:
-            page = self._clients.catalog.get_dataset_files_for_job(self._clients.auth_header, self.rid, next_page_token)
-            for dataset_file in page.files:
-                yield _dataset_file_from_conjure(self._clients, dataset_file)
-            if page.next_page is None:
-                break
-            next_page_token = page.next_page
+        def request(page_token: str | None) -> dataset_files_pb2.ListIngestJobDatasetFilesRequest:
+            return dataset_files_pb2.ListIngestJobDatasetFilesRequest(
+                ingest_job_rid=self.rid, page_token=page_token or ""
+            )
+
+        for page in paginate_grpc(self._clients.grpc_dataset_files.ListIngestJobDatasetFiles, request_factory=request):
+            for dataset_file in page.dataset_files:
+                yield _dataset_file_from_proto(self._clients, dataset_file)
 
     def dataset_files(self) -> Sequence[DatasetFile]:
         """Return the dataset files this ingest job has produced so far.
