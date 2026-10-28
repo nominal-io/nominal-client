@@ -11,7 +11,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from nominal.core import NominalClient
+from nominal.core import ArchiveStatusFilter, NominalClient
 from nominal.experimental.migration import migration_cli
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
@@ -39,15 +39,20 @@ def _write_config(tmp_path: Path, **extra: object) -> Path:
 
 
 def test_config_loads_standalone_datasets_from_source(tmp_path: Path) -> None:
-    """Each standalone_dataset_rids entry is fetched from the source client into the migration resources."""
+    """Standalone datasets are fetched in one batch, kept in config order, and archived ones are skipped."""
     source_client = MagicMock()
-    source_client.get_dataset.side_effect = lambda rid: MagicMock(rid=rid)
-    config_path = _write_config(tmp_path, standalone_dataset_rids=["ds-a", "ds-b"])
+    source_client.get_datasets.return_value = [
+        MagicMock(rid="ds-b", is_archived=False),
+        MagicMock(rid="ds-archived", is_archived=True),
+        MagicMock(rid="ds-a", is_archived=False),
+    ]
+    config_path = _write_config(tmp_path, standalone_dataset_rids=["ds-a", "ds-archived", "ds-b"])
 
     _, resources, *_ = migration_cli._load_migration_config(source_client, config_path)
 
     assert [ds.rid for ds in resources.source_standalone_datasets] == ["ds-a", "ds-b"]
     assert resources.source_assets == {}
+    source_client.get_datasets.assert_called_once_with(["ds-a", "ds-archived", "ds-b"])
 
 
 @pytest.mark.parametrize("rids", ["ds-a", [""], [1]], ids=["string", "empty-string", "non-string"])
@@ -62,8 +67,8 @@ def test_config_rejects_malformed_standalone_dataset_rids(tmp_path: Path, rids: 
 def test_config_reports_missing_standalone_dataset(tmp_path: Path) -> None:
     """A standalone dataset RID the source cannot resolve is a usage error naming that RID."""
     source_client = MagicMock()
-    source_client.get_dataset.side_effect = RuntimeError("not found")
-    config_path = _write_config(tmp_path, standalone_dataset_rids=["ds-missing"])
+    source_client.get_datasets.return_value = [MagicMock(rid="ds-found", is_archived=False)]
+    config_path = _write_config(tmp_path, standalone_dataset_rids=["ds-found", "ds-missing"])
 
     with pytest.raises(click.UsageError, match="ds-missing"):
         migration_cli._load_migration_config(source_client, config_path)
@@ -103,17 +108,22 @@ def test_runners_copy_standalone_datasets_with_config_options(
 
 
 def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> None:
-    """`nom migrate prep` writes datasets without an asset data scope to standalone_dataset_rids."""
+    """`nom migrate prep` writes datasets with no data scope on any asset, archived or not, to standalone_dataset_rids."""
     scoped = MagicMock(rid="ds-scoped")
+    on_archived_asset = MagicMock(rid="ds-on-archived-asset")
     orphans = [MagicMock(rid="ds-orphan-b"), MagicMock(rid="ds-orphan-a")]
     asset = MagicMock(rid="asset")
     asset.list_datasets.return_value = [("scope", scoped)]
+    archived_asset = MagicMock(rid="archived-asset")
+    archived_asset.list_datasets.return_value = [("scope", on_archived_asset)]
     client = MagicMock()
     client.search_runs.return_value = []
     client.search_workbooks.return_value = []
-    client.search_assets.return_value = [asset]
+    client.search_assets.side_effect = lambda archive_status=ArchiveStatusFilter.NOT_ARCHIVED: (
+        [archived_asset] if archive_status is ArchiveStatusFilter.ARCHIVED else [asset]
+    )
     client.get_asset.return_value = asset
-    client.search_datasets.return_value = [scoped, *orphans]
+    client.search_datasets.return_value = [scoped, on_archived_asset, *orphans]
     client.search_videos.return_value = []
     client.search_workbook_templates.return_value = []
     client.list_streaming_checklists.return_value = []

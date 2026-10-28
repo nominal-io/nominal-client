@@ -193,12 +193,16 @@ def _load_standalone_datasets(source_client: NominalClient, dataset_rids: Any) -
     if not isinstance(dataset_rids, list) or not all(isinstance(d, str) and d.strip() for d in dataset_rids):
         raise click.UsageError("'migration.standalone_dataset_rids' must be a list of strings.")
 
+    datasets_by_rid = {dataset.rid: dataset for dataset in source_client.get_datasets(dataset_rids)}
     datasets = []
     for d in dataset_rids:
-        try:
-            dataset_resource = source_client.get_dataset(d)
-        except Exception as exc:
-            raise click.UsageError(f"Dataset with RID '{d}' not found in source client.") from exc
+        dataset_resource = datasets_by_rid.get(d)
+        if dataset_resource is None:
+            raise click.UsageError(f"Dataset with RID '{d}' not found in source client.")
+        # Matches the asset path, which skips archived datasets.
+        if dataset_resource.is_archived:
+            logger.info("Skipping archived standalone dataset '%s' (rid: %s)", dataset_resource.name, d)
+            continue
         datasets.append(dataset_resource)
     return datasets
 
@@ -742,6 +746,11 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     for asset_rid in all_assets:
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
+            datasets_with_assets.add(dataset.rid)
+    # A dataset attached only to an archived asset was excluded by archiving that asset,
+    # so it is not orphaned.
+    for archived_asset in client.search_assets(archive_status=ArchiveStatusFilter.ARCHIVED):
+        for _data_scope, dataset in archived_asset.list_datasets():
             datasets_with_assets.add(dataset.rid)
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
