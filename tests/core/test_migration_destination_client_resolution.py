@@ -84,9 +84,9 @@ def test_custom_destination_client_resolver_can_vary_per_source_resource() -> No
     ctx = MigrationContext(
         destination_client=default_client,
         migration_state=MigrationState(),
-        destination_client_resolver=lambda source_resource: run_client_a
-        if source_resource.rid == source_run_a.rid
-        else run_client_b,
+        destination_client_resolver=lambda source_resource: (
+            run_client_a if source_resource.rid == source_run_a.rid else run_client_b
+        ),
     )
     migrator = RunMigrator(ctx)
 
@@ -116,9 +116,9 @@ def test_nested_migrations_resolve_destination_client_per_child_resource() -> No
     ctx = MigrationContext(
         destination_client=default_client,
         migration_state=MigrationState(),
-        destination_client_resolver=lambda source_resource: asset_client
-        if source_resource.rid == source_asset.rid
-        else run_client,
+        destination_client_resolver=lambda source_resource: (
+            asset_client if source_resource.rid == source_asset.rid else run_client
+        ),
     )
 
     AssetMigrator(ctx).copy_from(
