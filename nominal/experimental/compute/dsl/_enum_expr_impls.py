@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nominal.core._utils.api_tools import create_compute_tag_constraints
 from nominal.experimental.compute.dsl import exprs, params
 from nominal.protos.compute.v1 import (
     categorical_parameters_pb2,
@@ -26,15 +27,7 @@ class EnumAssetChannelExpr(exprs.EnumExpr):
                     asset=source_selection_pb2.AssetReferenceExpression(literal=self._asset_rid),
                     channel=constants_pb2.StringConstant(literal=self._channel_name),
                     data_scope=constants_pb2.StringConstant(literal=self._data_scope_name),
-                    tags=source_selection_pb2.ChannelTagConstraints(
-                        exact_values=source_selection_pb2.ExactTagValues(
-                            values={
-                                k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
-                            }
-                        )
-                    )
-                    if self._additional_tags
-                    else None,
+                    tags=create_compute_tag_constraints(self._additional_tags),
                 )
             )
         )
@@ -52,13 +45,7 @@ class EnumDatasourceChannelExpr(exprs.EnumExpr):
                 data_source=source_selection_pb2.DataSourceChannelSelection(
                     data_source=source_selection_pb2.DataSourceReferenceExpression(literal=self._datasource_rid),
                     channel=constants_pb2.StringConstant(literal=self._channel_name),
-                    tags=source_selection_pb2.ChannelTagConstraints(
-                        exact_values=source_selection_pb2.ExactTagValues(
-                            values={k: constants_pb2.StringConstant(literal=v) for k, v in self._tags.items()}
-                        )
-                    )
-                    if self._tags
-                    else None,
+                    tags=create_compute_tag_constraints(self._tags),
                 )
             )
         )
@@ -78,15 +65,7 @@ class EnumRunChannelExpr(exprs.EnumExpr):
                     run=source_selection_pb2.RunReferenceExpression(literal=self._run_rid),
                     channel=constants_pb2.StringConstant(literal=self._channel_name),
                     data_scope=constants_pb2.StringConstant(literal=self._data_scope_name),
-                    tags=source_selection_pb2.ChannelTagConstraints(
-                        exact_values=source_selection_pb2.ExactTagValues(
-                            values={
-                                k: constants_pb2.StringConstant(literal=v) for k, v in self._additional_tags.items()
-                            }
-                        )
-                    )
-                    if self._additional_tags
-                    else None,
+                    tags=create_compute_tag_constraints(self._additional_tags),
                 )
             )
         )

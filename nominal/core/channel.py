@@ -19,7 +19,12 @@ from nominal_api import (
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.api_tools import (
+    RefreshableGrpcMixin,
+    build_compute_tag_filter,
+    create_api_tags,
+    create_compute_tag_constraints,
+)
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
@@ -279,12 +284,12 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
 
         api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_proto()
         api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_proto()
-        filtered_series = expressions_pb2.LogExpression(
-            filter=expressions_pb2.LogFilterExpression(
-                input=self._to_proto_compute_series(tags=tags).log,
-                predicate=_log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match),
+        log_series = self._to_proto_compute_series(tags=tags).log
+        predicate = _log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match)
+        if predicate is not None:
+            log_series = expressions_pb2.LogExpression(
+                filter=expressions_pb2.LogFilterExpression(input=log_series, predicate=predicate)
             )
-        )
 
         def request_factory(page_token: str | None) -> compute_pb2.ComputeRequest:
             return compute_pb2.ComputeRequest(
@@ -294,7 +299,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
                     end=api_end,
                     computation=computation_spec_pb2.ComputationSpec(
                         series_summary=computation_spec_pb2.SeriesSummarySpec(
-                            input=expressions_pb2.SeriesExpression(log=filtered_series),
+                            input=expressions_pb2.SeriesExpression(log=log_series),
                             summarization=execution_options_pb2.SeriesSummarization(
                                 point_page=execution_options_pb2.PointPageSummary(
                                     page_size=PAGE_SIZE,
@@ -438,13 +443,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             data_source=source_selection_pb2.DataSourceChannelSelection(
                 data_source=source_selection_pb2.DataSourceReferenceExpression(literal=self.data_source),
                 channel=constants_pb2.StringConstant(literal=self.name),
-                tags=source_selection_pb2.ChannelTagConstraints(
-                    exact_values=source_selection_pb2.ExactTagValues(
-                        values={k: constants_pb2.StringConstant(literal=v) for k, v in (tags or {}).items()}
-                    )
-                )
-                if tags
-                else None,
+                tags=create_compute_tag_constraints(tags),
             )
         )
         if self.data_type is ChannelDataType.STRING:

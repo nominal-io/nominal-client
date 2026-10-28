@@ -139,3 +139,52 @@ def test_untagged_channel_omits_tag_constraints(tags):
     )
     selection = channel._to_proto_compute_series(tags).numeric.channel_selection.data_source
     assert not selection.HasField("tags")
+
+
+@pytest.mark.parametrize("filters", [{}, {"regex_match": ""}, {"insensitive_match": ""}])
+def test_empty_log_filter_preserves_match_all_search(filters):
+    """Empty message filters match all logs while retaining tag and time constraints."""
+    clients = MagicMock()
+    channel = Channel(
+        name="logs", data_source="dataset", data_type=ChannelDataType.LOG, unit=None, description=None, _clients=clients
+    )
+    clients.compute.Compute.return_value = compute_pb2.ComputeResponse(
+        result=execution_results_pb2.ComputationResult(
+            log_samples=categorical_results_pb2.LogSamples(samples=[result_common_pb2.LogSample(message="anything")])
+        )
+    )
+
+    assert [point.message for point in channel.search_logs(**filters, tags={"host": "one"}, start=-1, end=2)] == [
+        "anything"
+    ]
+
+    request = clients.compute.Compute.call_args.args[0].input
+    series = request.computation.series_summary.input.log
+    assert not series.HasField("filter")
+    assert series.channel_selection.data_source.tags.exact_values.values["host"].literal == "one"
+    assert request.start == time_pb2.Timestamp(seconds=-1, nanos=999999999)
+    assert request.end == time_pb2.Timestamp(seconds=0, nanos=2)
+
+
+@pytest.mark.parametrize(
+    "filters,expected",
+    [
+        ({"regex_match": "", "insensitive_match": "needle"}, "message_contains_case_insensitive"),
+        ({"regex_match": "needle", "insensitive_match": ""}, "message_regex"),
+    ],
+)
+def test_empty_log_filter_does_not_discard_nonempty_filter(filters, expected):
+    """An empty filter argument does not suppress the other message constraint."""
+    clients = MagicMock()
+    channel = Channel(
+        name="logs", data_source="dataset", data_type=ChannelDataType.LOG, unit=None, description=None, _clients=clients
+    )
+    clients.compute.Compute.return_value = compute_pb2.ComputeResponse(
+        result=execution_results_pb2.ComputationResult(log_samples=categorical_results_pb2.LogSamples())
+    )
+
+    assert list(channel.search_logs(**filters)) == []
+
+    predicate = clients.compute.Compute.call_args.args[0].input.computation.series_summary.input.log.filter.predicate
+    assert predicate.WhichOneof("kind") == expected
+    assert getattr(predicate, expected) == "needle"
