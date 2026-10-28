@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from nominal.experimental.compute import batch_compute_buckets
+from nominal.experimental.compute._buckets import batch_compute_enum_buckets
 from nominal.experimental.compute.dsl import NumericExpr
 from nominal.protos.compute.v1 import compute_pb2, execution_results_pb2, result_common_pb2
 
@@ -32,3 +33,14 @@ def test_batch_compute_buckets_raises_exception_group_of_failures():
         "Failed to compute: TIMEOUT (504)",
         "Failed to compute: NOT_FOUND (404)",
     ]
+
+
+@pytest.mark.parametrize("compute", [batch_compute_buckets, batch_compute_enum_buckets])
+def test_empty_batch_returns_no_results_without_rpc(compute):
+    """Empty one-shot iterables keep returning no results without sending an invalid request."""
+    client = MagicMock()
+    client._clients.compute.BatchComputeWithUnits.side_effect = AssertionError("Empty batch sent to service")
+
+    assert compute(client, iter(()), start=0, end=1) == []
+
+    client._clients.compute.BatchComputeWithUnits.assert_not_called()
