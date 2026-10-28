@@ -36,6 +36,7 @@ from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.dataexports.v1 import data_exports_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
@@ -144,6 +145,7 @@ class ClientsBunch:
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
     dataexport: scout_dataexport_api.DataExportService
+    grpc_dataexport: data_exports_pb2_grpc.DataExportServiceStub
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
     ingest: ingest_api.IngestService
@@ -317,6 +319,7 @@ class ClientsBunch:
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
+            grpc_dataexport=grpc_factory(data_exports_pb2_grpc.DataExportServiceStub),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),
             ingest=client_factory(ingest_api.IngestService),

@@ -5,14 +5,19 @@ import datetime
 import logging
 from typing import Iterator, Mapping, Self, Sequence
 
-from nominal_api import api, scout_compute_api, scout_dataexport_api
+from google.protobuf.timestamp_pb2 import Timestamp
+from nominal_api import api, scout_compute_api
 
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.dataexport import export_timestamp_format, stream_export
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.protos.compute.v1 import expressions_pb2
+from nominal.protos.dataexports.v1 import data_exports_pb2
+from nominal.protos.types import common_pb2
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsDuration,
@@ -22,7 +27,6 @@ from nominal.ts import (
     _AnyExportableTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
-    _to_export_timestamp_format,
     _to_typed_timestamp_type,
 )
 
@@ -432,40 +436,45 @@ class _ExportJob:
     # Timestamp formatting
     timestamp_type: _AnyExportableTimestampType = "epoch_seconds"
 
-    def resolution_options(self) -> scout_dataexport_api.ResolutionOption:
+    def resolution_options(self) -> data_exports_pb2.ExportResolution:
         """Construct data export resolution options based on bucketing and resolution parameters."""
         if self.buckets is not None and self.resolution is not None:
             raise ValueError("Only one of buckets or resolution may be provided")
-        elif self.buckets is None and self.resolution is None:
-            return scout_dataexport_api.ResolutionOption(undecimated=scout_dataexport_api.UndecimatedResolution())
-        else:
-            return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution, buckets=self.buckets)
+        if self.buckets is not None:
+            return data_exports_pb2.ExportResolution(bucket_count=self.buckets)
+        if self.resolution is not None:
+            seconds, nanos = divmod(self.resolution, 1_000_000_000)
+            return data_exports_pb2.ExportResolution(step=common_pb2.Duration(seconds=seconds, nanos=nanos))
+        return data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution())
 
-    def export_channels(self, datasource: Dataset) -> scout_dataexport_api.ExportChannels:
+    def export_channels(self, datasource: Dataset) -> data_exports_pb2.TimeDomainColumns:
         """Construct data export channels for the configured channels and export options."""
         channels = datasource.get_channels(names=self.channel_names)
-        return scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=[channel._to_time_domain_channel(tags=self.tags) for channel in channels],
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    none=scout_dataexport_api.NoneStrategy()
-                ),
-                output_timestamp_format=_to_export_timestamp_format(self.timestamp_type),
-            )
+        return data_exports_pb2.TimeDomainColumns(
+            columns=[
+                data_exports_pb2.ExportColumn(
+                    name=channel.name, series=channel._to_proto_compute_series(tags=self.tags)
+                )
+                for channel in channels
+            ],
+            gap_fill=data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty()),
+            timestamp_format=export_timestamp_format(self.timestamp_type),
         )
 
-    def export_request(self, datasource: Dataset) -> scout_dataexport_api.ExportDataRequest:
-        """Construct conjure export request given the provided configuration options."""
-        return scout_dataexport_api.ExportDataRequest(
-            channels=self.export_channels(datasource),
-            context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
-            end_time=self.time_slice.end_api,
-            start_time=self.time_slice.start_api,
+    def export_request(self, datasource: Dataset) -> data_exports_pb2.ExportDefinition:
+        """Construct an export definition from the configured options."""
+        start = Timestamp()
+        start.FromNanoseconds(self.time_slice.start_time)
+        end = Timestamp()
+        end.FromNanoseconds(self.time_slice.end_time)
+        return data_exports_pb2.ExportDefinition(
+            time_domain=self.export_channels(datasource),
+            context=expressions_pb2.ComputeContext(),
+            end_time=end,
+            start_time=start,
             resolution=self.resolution_options(),
-            compression=scout_dataexport_api.CompressionFormat.GZIP,
-            format=scout_dataexport_api.ExportFormat(
-                csv=scout_dataexport_api.Csv(),
-            ),
+            compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP,
+            format=data_exports_pb2.ExportFileFormat(csv=data_exports_pb2.CsvFormat()),
         )
 
 
@@ -507,7 +516,6 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
 
     datasource = client.get_dataset(job.datasource_rid)
     req = job.export_request(datasource)
-    resp = client._clients.dataexport.export_channel_data(client._clients.auth_header, req)
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
     # that channel from loading as strings)
@@ -525,7 +533,8 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
                 continue
 
     # Read CSV via Polars
-    df = pl.read_csv(resp, schema_overrides=schema)
+    with stream_export(client._clients.grpc_dataexport, req) as resp:
+        df = pl.read_csv(resp, schema_overrides=schema)
     if df.is_empty():
         logger.warning("No data found for export for channels %s", job.channel_names)
         return pl.DataFrame({col: [] for col in [*job.channel_names, time_col]})

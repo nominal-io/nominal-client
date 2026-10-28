@@ -4,21 +4,24 @@ import concurrent.futures
 import logging
 from datetime import datetime
 from threading import Thread
-from typing import Any, BinaryIO, Mapping, Sequence, cast
+from typing import Any, BinaryIO, Mapping, Sequence
 
-from nominal_api import api, scout_compute_api, scout_dataexport_api
-from nominal_api.api import Timestamp
+from google.protobuf.timestamp_pb2 import Timestamp
+from nominal_api import api
 
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.dataexport import export_timestamp_format, stream_export
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileTypes
-from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
+from nominal.protos.compute.v1 import expressions_pb2
+from nominal.protos.dataexports.v1 import data_exports_pb2
+from nominal.ts import _AnyExportableTimestampType
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +176,10 @@ def channel_to_series(
         enable_gzip=enable_gzip,
         tags=tags,
     )
-    df = pd.read_csv(
-        body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
-    )
+    with body:
+        df = pd.read_csv(
+            body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
+        )
     return df[channel.name]
 
 
@@ -230,7 +234,7 @@ def channel_to_dataframe_decimated(
     return df
 
 
-def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+def _to_pandas_timestamp(timestamp: api.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
@@ -346,11 +350,8 @@ def datasource_to_dataframe(
             enable_gzip=enable_gzip,
             timestamp_type=ts._to_export_timestamp_type(relative_to, relative_resolution),
         )
-        export_response = cast(
-            BinaryIO,
-            datasource._clients.dataexport.export_channel_data(datasource._clients.auth_header, export_request),
-        )
-        batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
+        with stream_export(datasource._clients.grpc_dataexport, export_request) as export_response:
+            batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
         if batch_df.empty:
             channel_names = [ch.name for ch in channel_batch]
             logger.warning(
@@ -414,30 +415,22 @@ def _construct_export_request(
     tags: Mapping[str, str] | None,
     enable_gzip: bool,
     timestamp_type: _AnyExportableTimestampType = "iso_8601",
-) -> scout_dataexport_api.ExportDataRequest:
-    export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
-    request = scout_dataexport_api.ExportDataRequest(
-        channels=scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=export_channels,
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    # only one series will be returned, so no need to merge
-                    none=scout_dataexport_api.NoneStrategy(),
-                ),
-                output_timestamp_format=_to_export_timestamp_format(timestamp_type),
-            )
+) -> data_exports_pb2.ExportDefinition:
+    return data_exports_pb2.ExportDefinition(
+        time_domain=data_exports_pb2.TimeDomainColumns(
+            columns=[
+                data_exports_pb2.ExportColumn(name=channel.name, series=channel._to_proto_compute_series(tags=tags))
+                for channel in channels
+            ],
+            gap_fill=data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty()),
+            timestamp_format=export_timestamp_format(timestamp_type),
         ),
-        start_time=start,
-        end_time=end,
-        context=scout_compute_api.Context(
-            dataset_references={},
-            variables={},
-            function_variables={},
-        ),
-        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-        resolution=scout_dataexport_api.ResolutionOption(
-            undecimated=scout_dataexport_api.UndecimatedResolution(),
-        ),
-        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
+        start_time=Timestamp(seconds=start.seconds, nanos=start.nanos),
+        end_time=Timestamp(seconds=end.seconds, nanos=end.nanos),
+        context=expressions_pb2.ComputeContext(),
+        format=data_exports_pb2.ExportFileFormat(csv=data_exports_pb2.CsvFormat()),
+        resolution=data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution()),
+        compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP
+        if enable_gzip
+        else data_exports_pb2.EXPORT_COMPRESSION_UNSPECIFIED,
     )
-    return request

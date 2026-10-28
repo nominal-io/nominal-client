@@ -6,25 +6,28 @@ import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
+from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     api,
     datasource_api,
     scout_compute_api,
-    scout_dataexport_api,
     scout_datasource,
 )
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.dataexport import export_timestamp_format, stream_export
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
+from nominal.protos.compute.v1 import constants_pb2, expressions_pb2, source_selection_pb2
+from nominal.protos.dataexports.v1 import data_exports_pb2, data_exports_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
 from nominal.ts import (
@@ -34,7 +37,6 @@ from nominal.ts import (
     _InferrableTimestampType,
     _LiteralTimeUnit,
     _SecondsNanos,
-    _to_export_timestamp_format,
     _to_export_timestamp_type,
 )
 
@@ -152,7 +154,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
-        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
+        def grpc_dataexport(self) -> data_exports_pb2_grpc.DataExportServiceStub: ...
         @property
         def compute(self) -> scout_compute_api.ComputeService: ...
         @property
@@ -418,10 +420,29 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         channel_series = self._to_channel_series(tags=tags)
         return _create_series_from_channel(channel_series, self.data_type)
 
-    def _to_time_domain_channel(self, tags: Mapping[str, str] | None = None) -> scout_dataexport_api.TimeDomainChannel:
-        return scout_dataexport_api.TimeDomainChannel(
-            column_name=self.name, compute_node=self._to_compute_series(tags=tags)
+    def _to_proto_compute_series(self, tags: Mapping[str, str] | None = None) -> expressions_pb2.SeriesExpression:
+        channel = source_selection_pb2.ChannelSelection(
+            data_source=source_selection_pb2.DataSourceChannelSelection(
+                data_source=source_selection_pb2.DataSourceReferenceExpression(literal=self.data_source),
+                channel=constants_pb2.StringConstant(literal=self.name),
+                tags=source_selection_pb2.ChannelTagConstraints(
+                    exact_values=source_selection_pb2.ExactTagValues(
+                        values={k: constants_pb2.StringConstant(literal=v) for k, v in (tags or {}).items()}
+                    )
+                ),
+            )
         )
+        if self.data_type is ChannelDataType.STRING:
+            return expressions_pb2.SeriesExpression(
+                categorical=expressions_pb2.CategoricalExpression(channel_selection=channel)
+            )
+        if self.data_type in (ChannelDataType.DOUBLE, ChannelDataType.INT):
+            return expressions_pb2.SeriesExpression(
+                numeric=expressions_pb2.NumericExpression(channel_selection=channel)
+            )
+        if self.data_type is ChannelDataType.LOG:
+            return expressions_pb2.SeriesExpression(log=expressions_pb2.LogExpression(channel_selection=channel))
+        raise ValueError(f"Unsupported channel data type: {self.data_type}")
 
     def _decimate_request(
         self,
@@ -475,36 +496,24 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         Returns:
             A binary file-like object containing the CSV data
         """
-        request = scout_dataexport_api.ExportDataRequest(
-            channels=scout_dataexport_api.ExportChannels(
-                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                    channels=[self._to_time_domain_channel(tags=tags)],
-                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                        # only one series will be returned, so no need to merge
-                        none=scout_dataexport_api.NoneStrategy(),
-                    ),
-                    output_timestamp_format=_to_export_timestamp_format(
-                        _to_export_timestamp_type(relative_to, relative_resolution)
-                    ),
-                )
+        request = data_exports_pb2.ExportDefinition(
+            time_domain=data_exports_pb2.TimeDomainColumns(
+                columns=[
+                    data_exports_pb2.ExportColumn(name=self.name, series=self._to_proto_compute_series(tags=tags))
+                ],
+                gap_fill=data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty()),
+                timestamp_format=export_timestamp_format(_to_export_timestamp_type(relative_to, relative_resolution)),
             ),
-            start_time=start,
-            end_time=end,
-            context=scout_compute_api.Context(
-                dataset_references={},
-                variables={},
-                function_variables={},
-            ),
-            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-            resolution=scout_dataexport_api.ResolutionOption(
-                undecimated=scout_dataexport_api.UndecimatedResolution(),
-            ),
-            compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
+            start_time=Timestamp(seconds=start.seconds, nanos=start.nanos),
+            end_time=Timestamp(seconds=end.seconds, nanos=end.nanos),
+            context=expressions_pb2.ComputeContext(),
+            format=data_exports_pb2.ExportFileFormat(csv=data_exports_pb2.CsvFormat()),
+            resolution=data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution()),
+            compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP
+            if enable_gzip
+            else data_exports_pb2.EXPORT_COMPRESSION_UNSPECIFIED,
         )
-        response = self._clients.dataexport.export_channel_data(self._clients.auth_header, request)
-        # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
-        # this acts like a file-like object in binary-mode.
-        return cast(BinaryIO, response)
+        return stream_export(self._clients.grpc_dataexport, request)
 
 
 def _create_series_from_channel(
