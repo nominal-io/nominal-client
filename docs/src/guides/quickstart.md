@@ -25,8 +25,8 @@ client = NominalClient.from_profile("default") # replace if different
 
 ## Upload Data
 
-Next, we synthesize some sample data and upload it to nominal. An asset represents the system you test, such as a vehicle or a test stand.
-Its datasets hold the channels you record.
+Next, we synthesize some sample data and upload it to nominal. An {term}`asset` represents the system you test, such as a vehicle or a test stand.
+Its {term}`datasets <dataset>` hold the {term}`channels <channel>` you record.
 
 ### Synthesize Data 
 Generate one minute of sample engine data as a CSV:
@@ -70,7 +70,7 @@ For other formats, see [Datasets](/guides/datasets/overview.md).
 
 ## Stream live data
 
-A write stream sends values as your code produces them, batching them in the background.
+A {term}`write stream` sends values as your code produces them, batching them in the background.
 This block streams 10 seconds of values to the same dataset:
 
 ```python
@@ -84,13 +84,13 @@ with dataset.get_write_stream() as stream:  # the stream flushes when the block 
         time.sleep(0.1)
 ```
 
-To watch values arrive, open a workbook on the asset and click **Go Live**.
+To watch values arrive, open a {term}`workbook` on the asset and click **Go Live**.
 See [Streaming](/guides/streaming/overview.md) for the full set of options.
 
 ## Mark a run and an event
 
-A run names a span of time on an asset, such as one test.
-An event marks a moment or span inside it that a reviewer should see.
+A {term}`run` names a span of time on an asset, such as one test.
+An {term}`event` marks a moment or span inside it that a reviewer should see.
 
 ```python
 from nominal.core import EventType

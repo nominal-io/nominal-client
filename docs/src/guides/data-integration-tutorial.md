@@ -7,7 +7,7 @@ myst:
 # Data integration tutorial
 
 {.lead}
-Plan a script that uploads every test's telemetry, MCAP recordings, video and logs for a fleet of vehicles, and marks each test as a run.
+Plan a script that uploads every test's telemetry, MCAP recordings, video and logs for a fleet of vehicles, and marks each test as a {term}`run`.
 It applies the [asset](/guides/assets.md), [dataset](/guides/datasets/overview.md) and [run](/guides/runs.md) guides to one example.
 
 ```{include} /guides/_snippets/connect-the-client.md
@@ -27,7 +27,7 @@ The script runs after every flight, so each step finds what already exists rathe
 
 ## One asset per glider
 
-Properties that identify the physical glider let the script find its asset every time:
+{term}`Properties <property>` that identify the physical glider let the script find its asset every time:
 
 ```python
 asset = client.get_or_create_asset_by_properties(
@@ -40,7 +40,7 @@ Choose properties your organization already uses, such as a model and tail numbe
 
 ## One dataset per data source
 
-Each data source on the glider gets a dataset under a data scope name that's the same on every glider, such as `flight_data` or `front_camera`.
+Each data source on the glider gets a dataset under a {term}`data scope` name that's the same on every glider, such as `flight_data` or `front_camera`.
 {py:meth}`~nominal.core.Asset.get_or_create_dataset` returns the existing dataset after the first flight, so each upload adds to it:
 
 ```python
@@ -50,7 +50,7 @@ front_camera = asset.get_or_create_dataset("front_camera")
 logs = asset.get_or_create_dataset("flight_controller_logs")
 ```
 
-Matching data scope names let one workbook template or checklist work on every glider.
+Matching data scope names let one {term}`workbook template` or {term}`checklist` work on every glider.
 
 ## Convert each format
 
@@ -64,7 +64,7 @@ Convert anything Nominal can't read before uploading it:
 - **Logs:** export them with `journalctl --output json`, as in [Journal JSON](/guides/datasets/journal-json.md).
   Programs can log to `journald` with libraries such as [systemd-python](https://pypi.org/project/systemd-python/) for Python, [spdlog](https://github.com/gabime/spdlog) for C++ and [systemd-journal-logger](https://docs.rs/systemd-journal-logger/) for Rust.
 
-Splitting data across many files is fine. Every file uploaded to a dataset adds to the same channels, and new columns add new channels.
+Splitting data across many files is fine. Every file uploaded to a dataset adds to the same {term}`channels <channel>`, and new columns add new channels.
 Uploading the same channel and timestamp twice overwrites the earlier value.
 
 ## Upload the flight
@@ -103,7 +103,7 @@ run = asset.create_run(
 )
 ```
 
-The run's bounds decide what workbooks and checklists on it see.
+The run's bounds decide what {term}`workbooks <workbook>` and checklists on it see.
 If you only know them once the data is read, create the run with `end=None` first and set the bounds later with {py:meth}`~nominal.core.Run.update`.
 
 From here, create [workbooks](/guides/workbooks.md) from templates and run [data reviews](/guides/checklists/data-review.md) on each flight's run.

@@ -7,8 +7,8 @@ myst:
 # Video ingest
 
 {.lead}
-Upload a video file as a channel on a dataset with {py:meth}`~nominal.core.Dataset.add_video`.
-With the right start time, it plays in sync with the telemetry in the same run.
+Upload a video file as a {term}`channel` on a {term}`dataset` with {py:meth}`~nominal.core.Dataset.add_video`.
+With the right start time, it plays in sync with the telemetry in the same {term}`run`.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -62,7 +62,7 @@ run = client.create_run("Engine fire", start=file.bounds.start, end=file.bounds.
 run.add_dataset("engine_video", dataset)
 ```
 
-In a workbook on the run, add a video panel and select `engine_cam`. See [Runs](/guides/runs.md) for other ways to organize data.
+In a {term}`workbook` on the run, add a video panel and select `engine_cam`. See [Runs](/guides/runs.md) for other ways to organize data.
 
 ## Inspect and remove files
 

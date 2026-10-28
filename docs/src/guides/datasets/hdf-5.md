@@ -48,7 +48,7 @@ sensors/imu/time_s (10000,)
 ## Upload in batches
 
 Read a slice of each array into a pandas DataFrame and upload it with {py:func}`~nominal.thirdparty.pandas.upload_dataframe_to_dataset`.
-Each batch adds to the same dataset.
+Each batch adds to the same {term}`dataset`.
 
 ```python
 from datetime import datetime, timezone

@@ -7,7 +7,7 @@ myst:
 # PX4 ULog
 
 {.lead}
-Convert a [PX4](https://px4.io/) [ULog](https://docs.px4.io/main/en/dev_log/ulog_file_format.html) flight log into one CSV per topic, align their boot-relative clocks to UTC and upload them to a [run](/guides/runs.md).
+Convert a [PX4](https://px4.io/) [ULog](https://docs.px4.io/main/en/dev_log/ulog_file_format.html) flight log into one CSV per topic, align their boot-relative clocks to UTC and upload them to a {term}`run`.
 
 The examples also need `pip install pyulog polars huggingface_hub`.
 
@@ -60,7 +60,7 @@ Logs that span several boots need one clock per boot.
 
 ## Upload the topics to a run
 
-Create one dataset per topic, upload each instance's CSV to it, then attach the datasets to a run under the topic name:
+Create one {term}`dataset` per topic, upload each instance's CSV to it, then attach the datasets to a run under the topic name:
 
 ```python
 datasets = {}
@@ -86,6 +86,6 @@ print(run.nominal_url)
 ```
 
 The run spans every uploaded topic, from the earliest sample to the latest.
-Open the run in Nominal to chart topics side by side in a [workbook](/guides/workbooks.md).
+Open the run in Nominal to chart topics side by side in a {term}`workbook`.
 
 `ulog_info -v <log>.ulg`, also from pyulog, prints the log's start time, duration and flight computer details.

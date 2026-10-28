@@ -7,7 +7,7 @@ myst:
 # Authoring checklists as code
 
 {.lead}
-A checklist is a set of checks, each a condition on channel data that should never be true, such as a temperature over its limit.
+A checklist is a set of checks, each a condition on {term}`channel` data that should never be true, such as a temperature over its limit.
 {py:class}`~nominal.experimental.compute_as_code.ChecklistBuilder` lets you keep checklists in your repository and publish them from Python.
 
 The examples also need the [`compute` extra](/guides/install.md#extras).
@@ -41,7 +41,7 @@ print(checklist.rid)
 
 `add` compiles the expression and checks its inputs locally, without calling Nominal.
 `create` publishes a new {py:class}`~nominal.core.Checklist` every time, even with the same name.
-Save its RID to update it later.
+Save its {term}`RID` to update it later.
 
 ## Update a checklist
 
@@ -60,7 +60,7 @@ Copy any UI edits back to source before you deploy, because nothing merges them.
 
 ## Run a checklist
 
-Publishing doesn't run the checklist. To check a [run](/guides/runs.md), execute it and read the resulting events:
+Publishing doesn't run the checklist. To check a {term}`run`, execute it and read the resulting {term}`events <event>`:
 
 ```python
 review = checklist.execute(client.get_run("<RUN_RID>"), commit=checklist.commit_id).poll_for_completion()
@@ -84,7 +84,7 @@ For live data, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 | `description` | Longer explanation. | Empty |
 | `key` | Identity that stays the same across versions. | New identity on each `add` |
 | `event_type` | {py:class}`~nominal.core.EventType` of the events the check creates. `UNKNOWN` isn't allowed. | `ERROR` |
-| `event_labels` | Labels on the events the check creates. | None |
+| `event_labels` | {term}`Labels <label>` on the events the check creates. | None |
 
 Give each check a `key` and keep it when you change the limit or rename the check, so Nominal treats it as the same check.
 Keys are case-sensitive and must be unique within a builder.
@@ -92,7 +92,7 @@ Keys are case-sensitive and must be unique within a builder.
 ## Bind channels
 
 `inputs` maps each name in the expression to a {py:class}`~nominal.experimental.compute_as_code.ChannelBinding`.
-Its first argument is the ref name on a run or the data scope name on an asset. Its second is the channel name.
+Its first argument is the {term}`ref name` on a run or the {term}`data scope` name on an {term}`asset`. Its second is the channel name.
 Any run or asset with the same names can use the checklist.
 
 ```python
@@ -105,7 +105,7 @@ inputs = {
 
 - Use `series_type="categorical"` for string channels.
 - Use `tags` to select one series of a channel.
-- Values are compared in the channel's units, without conversion.
+- Values are compared in the channel's {term}`units <unit>`, without conversion.
 
 `add` fails if an input is missing and, with `strict=True`, if one is unused.
 Channels are resolved when the checklist runs.

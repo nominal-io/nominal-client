@@ -8,7 +8,7 @@ myst:
 
 {.lead}
 An asset represents a system you test, such as a vehicle, satellite or test stand.
-It collects that system's datasets, runs, events and attachments across every test.
+It collects that system's {term}`datasets <dataset>`, {term}`runs <run>`, {term}`events <event>` and attachments across every test.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -33,7 +33,7 @@ To always create a new asset, use {py:meth}`~nominal.core.NominalClient.create_a
 ## Add data with data scopes
 
 An asset holds each dataset under a data scope name, such as `"telemetry"`.
-Use the same data scope name for the same kind of data on every asset, so workbook templates and checklists work across them.
+Use the same data scope name for the same kind of data on every asset, so {term}`workbook templates <workbook template>` and {term}`checklists <checklist>` work across them.
 
 {py:meth}`~nominal.core.Asset.get_or_create_dataset` returns the dataset under a data scope name, creating it if needed.
 ```{include} /guides/_snippets/sample-flight-csv.md

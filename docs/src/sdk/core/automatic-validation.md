@@ -1,6 +1,6 @@
 # Automatic validation
 
-Execute checklists, review violations, and configure notification integrations.
+Execute {term}`checklists <checklist>`, review violations, and configure notification integrations.
 
 ## API Reference
 

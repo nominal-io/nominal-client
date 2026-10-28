@@ -1,6 +1,6 @@
 # Shared types
 
-Look up time bounds, resource links, archive filters, and property types.
+Look up time bounds, resource links, archive filters, and {term}`property` types.
 
 ## API Reference
 

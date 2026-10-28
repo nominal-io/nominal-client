@@ -42,6 +42,6 @@ client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
 ```
 
 gRPC then uses plaintext HTTP/2 on the same host and port, so the local deployment must serve both HTTP and gRPC there, as Desktop Core does.
-Plaintext still sends your API key and headers unencrypted.
+Plaintext still sends your {term}`API key` and headers unencrypted.
 
 Base URLs with a user name or password in them are rejected. Pass the API key separately.

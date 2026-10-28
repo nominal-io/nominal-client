@@ -8,7 +8,7 @@ myst:
 
 {.lead}
 Upload journald exports and other JSON Lines log files with {py:meth}`~nominal.core.Dataset.add_journal_json`.
-Each line becomes one entry in a log channel.
+Each line becomes one entry in a log {term}`channel`.
 
 To send logs from a running program instead, see [Stream logs](/guides/streaming/logs.md).
 
@@ -53,5 +53,5 @@ For ISO 8601 or relative times, convert them to epoch values first, or parse the
 
 ## View the logs
 
-Add the dataset to an [asset](/guides/assets.md#add-data-with-data-scopes) or a [run](/guides/runs.md).
-In a workbook on that asset or run, add a **Logs** panel and select the `engine_logs` channel.
+Add the {term}`dataset` to an [asset](/guides/assets.md#add-data-with-data-scopes) or a [run](/guides/runs.md).
+In a {term}`workbook` on that asset or run, add a **Logs** panel and select the `engine_logs` channel.

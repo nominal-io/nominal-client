@@ -8,14 +8,14 @@ myst:
 
 {.lead}
 An event marks a moment or interval in test data that someone should see, such as an engine start or an out-of-limit reading.
-Events can come from people reviewing data, from [checklists](/guides/checklists/authoring.md) or from your scripts.
+Events can come from people reviewing data, from {term}`checklists <checklist>` or from your scripts.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
 
 ## Create an event
 
-Create an event on an [asset](/guides/assets.md) with {py:meth}`~nominal.core.Asset.create_event`.
+Create an event on an {term}`asset` with {py:meth}`~nominal.core.Asset.create_event`.
 A zero `duration`, the default, marks a single moment.
 
 ```python
@@ -36,7 +36,7 @@ event = asset.create_event(
 
 {py:class}`~nominal.core.EventType` is the event's level: `INFO`, `FLAG`, `ERROR` or `SUCCESS`.
 To create an event on several assets, or on none, use {py:meth}`~nominal.core.NominalClient.create_event` with `assets=[...]`.
-{py:meth}`~nominal.core.Run.create_event` creates one on a [run](/guides/runs.md).
+{py:meth}`~nominal.core.Run.create_event` creates one on a {term}`run`.
 
 ## Find events
 
@@ -55,9 +55,9 @@ events = client.search_events(
 `after` and `before` find events that overlap the window.
 The reference lists the other filters, such as `event_type`, `created_by` and `workbook`.
 
-Retrieve events by RID with {py:meth}`~nominal.core.NominalClient.get_event`, which raises if the event doesn't exist.
+Retrieve events by {term}`RID` with {py:meth}`~nominal.core.NominalClient.get_event`, which raises if the event doesn't exist.
 {py:meth}`~nominal.core.NominalClient.get_events` takes several RIDs and leaves out any that don't resolve.
-To copy an event's RID in the UI, click the event in a workbook and select **Copy RID**.
+To copy an event's RID in the UI, click the event in a {term}`workbook` and select **Copy RID**.
 
 ## Update or archive an event
 

@@ -1,6 +1,6 @@
 # Events
 
-Create and classify events associated with Nominal resources.
+Create and classify {term}`events <event>` associated with Nominal resources.
 
 ## API Reference
 

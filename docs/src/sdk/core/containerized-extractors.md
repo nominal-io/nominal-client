@@ -1,6 +1,6 @@
 # Containerized extractors
 
-Register container images, configure extractors, and manage their secrets.
+Register container images, configure {term}`extractors <file extractor>`, and manage their secrets.
 
 ## API Reference
 
