@@ -24,6 +24,7 @@ from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc
+from nominal.protos.ingestjobs.v1 import ingest_jobs_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
@@ -285,6 +286,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
     assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
     assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
+    assert isinstance(clients.grpc_ingest_jobs, ingest_jobs_pb2_grpc.IngestJobServiceStub)
     assert isinstance(clients.roles, roles_pb2_grpc.RoleServiceStub)
     assert isinstance(
         clients.containerized_extractor, containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub

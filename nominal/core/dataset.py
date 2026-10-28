@@ -40,7 +40,7 @@ from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataTyp
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.ingestion_job import IngestionJob
+from nominal.core.ingestion_job import IngestionJob, _get_ingest_job
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol_from_unit_like
@@ -219,8 +219,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         # Fall back to the ingest job and require exactly one produced video file.
         if response.ingest_job_rid is None:
             raise NominalIngestError("video ingest returned neither a dataset-file id nor an ingest job to track")
-        job_conjure = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, response.ingest_job_rid)
-        job = IngestionJob._from_conjure(self._clients, job_conjure)
+        job_proto = _get_ingest_job(self._clients, response.ingest_job_rid)
+        job = IngestionJob._from_proto(self._clients, job_proto)
         video_files = [f for f in job.dataset_files() if isinstance(f, VideoDatasetFile)]
         if len(video_files) != 1:
             raise NominalIngestError(
@@ -1207,8 +1207,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         # handle (not a single dataset file). Return the job; callers pull outputs via `IngestionJob`.
         if resp.ingest_job_rid is None:
             raise NominalIngestError("Containerized ingest did not return an ingest job to track.")
-        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, resp.ingest_job_rid)
-        return IngestionJob._from_conjure(self._clients, job)
+        job_proto = _get_ingest_job(self._clients, resp.ingest_job_rid)
+        return IngestionJob._from_proto(self._clients, job_proto)
 
     def archive(self) -> None:
         """Archive this dataset.

@@ -8,8 +8,9 @@ from typing import AbstractSet, Collection, Iterable, Protocol, Self, Sequence
 
 from nominal_api import ingest_api
 
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.dataset_file import (
     DatasetFile,
     _dataset_file_from_conjure,
@@ -18,6 +19,7 @@ from nominal.core.dataset_file import (
     _sleep_until_next_poll,
 )
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
+from nominal.protos.ingestjobs.v1 import ingest_jobs_pb2, ingest_jobs_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,19 @@ class IngestionJobStatus(Enum):
     """The ingest job has been deleted."""
     UNKNOWN = "UNKNOWN"
     """Unknown or unrecognized status returned by a newer server."""
+
+    @classmethod
+    def _from_proto(cls, value: ingest_jobs_pb2.IngestJobStatus.ValueType) -> IngestionJobStatus:
+        return {
+            ingest_jobs_pb2.INGEST_JOB_STATUS_SUBMITTED: cls.SUBMITTED,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_QUEUED: cls.QUEUED,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_IN_PROGRESS: cls.IN_PROGRESS,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_COMPLETED: cls.COMPLETED,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_FAILED: cls.FAILED,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_CANCELLED: cls.CANCELLED,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_DELETION_IN_PROGRESS: cls.DELETION_IN_PROGRESS,
+            ingest_jobs_pb2.INGEST_JOB_STATUS_DELETED: cls.DELETED,
+        }.get(value, cls.UNKNOWN)
 
     @classmethod
     def _from_conjure(cls, status: ingest_api.IngestJobStatus) -> IngestionJobStatus:
@@ -111,6 +126,20 @@ class IngestType(Enum):
     """Unknown or unrecognized ingest type returned by a newer server."""
 
     @classmethod
+    def _from_proto(cls, value: ingest_jobs_pb2.IngestJobType.ValueType) -> IngestType:
+        return {
+            ingest_jobs_pb2.INGEST_JOB_TYPE_TABULAR: cls.TABULAR,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_MCAP: cls.MCAP,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_DATAFLASH: cls.DATAFLASH,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_JOURNAL_JSON: cls.JOURNAL_JSON,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_CONTAINERIZED: cls.CONTAINERIZED,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_VIDEO: cls.VIDEO,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_AVRO_STREAM: cls.AVRO_STREAM,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_POINT_CLOUD: cls.POINT_CLOUD,
+            ingest_jobs_pb2.INGEST_JOB_TYPE_MULTI: cls.MULTI,
+        }.get(value, cls.UNKNOWN)
+
+    @classmethod
     def _from_conjure(cls, ingest_type: ingest_api.IngestType) -> IngestType:
         match ingest_type.name:
             case "TABULAR":
@@ -143,7 +172,7 @@ def _optional_iso_to_nanos(value: str | None) -> IntegralNanosecondsUTC | None:
 
 
 @dataclass(frozen=True)
-class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
+class IngestionJob(HasRid, RefreshableGrpcMixin[ingest_jobs_pb2.IngestJob]):
     """A trackable record of one ingestion request moving through the async pipeline."""
 
     rid: str
@@ -161,6 +190,9 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
     class _Clients(DatasetFile._Clients, Protocol):
         @property
         def ingest_jobs(self) -> ingest_api.IngestJobService: ...
+
+        @property
+        def grpc_ingest_jobs(self) -> ingest_jobs_pb2_grpc.IngestJobServiceStub: ...
 
     @property
     def nominal_url(self) -> str:
@@ -183,18 +215,40 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
             _clients=clients,
         )
 
-    def _get_latest_api(self) -> ingest_api.IngestJob:
-        return self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, self.rid)
+    @classmethod
+    def _from_proto(cls, clients: _Clients, job: ingest_jobs_pb2.IngestJob) -> Self:
+        return cls(
+            rid=job.rid,
+            status=IngestionJobStatus._from_proto(job.status),
+            ingest_type=IngestType._from_proto(job.type),
+            dataset_rid=job.dataset_rid if job.HasField("dataset_rid") else None,
+            origin_files=tuple(job.origins.paths),
+            produced_file_count=job.produced_file_count,
+            created_by_rid=job.created_by or None,
+            created_at=job.create_time.ToNanoseconds() if job.HasField("create_time") else None,
+            start_time=job.start_time.ToNanoseconds() if job.HasField("start_time") else None,
+            end_time=job.end_time.ToNanoseconds() if job.HasField("end_time") else None,
+            _clients=clients,
+        )
+
+    def _get_latest_api(self) -> ingest_jobs_pb2.IngestJob:
+        return _get_ingest_job(self._clients, self.rid)
 
     def cancel(self) -> Self:
-        """Cancel this ingest job.
+        """Cancel this ingest job and refresh this instance from the response.
 
-        SUBMITTED/QUEUED jobs transition directly to CANCELLED; IN_PROGRESS jobs have their
-        underlying workflow cancelled. Cancelling a job already in a terminal state raises a
-        conjure IngestJobNotCancellable (CONFLICT) error from the server.
+        SUBMITTED/QUEUED jobs transition directly to CANCELLED. IN_PROGRESS jobs have their
+        underlying workflow cancelled.
+
+        Raises:
+            NominalError: The request fails, including when the job is already in a terminal state.
         """
-        job = self._clients.ingest_jobs.cancel_ingest_job(self._clients.auth_header, self.rid)
-        return self._refresh_from_api(job)
+        with translate_grpc_errors():
+            response = self._clients.grpc_ingest_jobs.CancelIngestJob(
+                ingest_jobs_pb2.CancelIngestJobRequest(ingest_job_rid=self.rid)
+            )
+        _populate_complete_origins(self._clients, response.ingest_job)
+        return self._refresh_from_api(response.ingest_job)
 
     def _iter_dataset_files(self) -> Iterable[DatasetFile]:
         next_page_token = None
@@ -348,3 +402,19 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
                 raise self._timeout_error(pending)
 
         self._report_terminal_state(seen_file_ids)
+
+
+def _get_ingest_job(clients: IngestionJob._Clients, rid: str) -> ingest_jobs_pb2.IngestJob:
+    """Fetch a job and restore complete origins when the gRPC response is truncated."""
+    with translate_grpc_errors():
+        response = clients.grpc_ingest_jobs.GetIngestJob(ingest_jobs_pb2.GetIngestJobRequest(ingest_job_rid=rid))
+    _populate_complete_origins(clients, response.ingest_job)
+    return response.ingest_job
+
+
+def _populate_complete_origins(clients: IngestionJob._Clients, job: ingest_jobs_pb2.IngestJob) -> None:
+    """Preserve the public origin list using the legacy endpoint only for truncated responses."""
+    if job.origins.truncated:
+        legacy_job = clients.ingest_jobs.get_ingest_job(clients.auth_header, job.rid)
+        job.origins.paths[:] = legacy_job.origin_files or ()
+        job.origins.truncated = False
