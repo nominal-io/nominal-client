@@ -11,7 +11,7 @@ import click
 import yaml
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import ArchiveStatusFilter, Asset, Checklist, Dataset, NominalClient, Workbook
+from nominal.core import ArchiveStatusFilter, Asset, Checklist, Dataset, NominalClient, Workbook, Workspace
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental import as_user
 from nominal.experimental.dataset_utils import get_dataset_owner_rid
@@ -375,6 +375,54 @@ def _get_dataset_owner_user_rid(source_resource: Any) -> str | None:
         return None
 
 
+def _require_pinned_workspace(client: NominalClient, profile_option: str) -> Workspace:
+    """Return the workspace pinned on the client's profile, failing when the profile pins none.
+
+    An unpinned client falls back to the tenant default workspace, which in an organization with
+    several workspaces may not be the workspace being migrated.
+    """
+    if client._clients.workspace_rid is None:
+        raise click.UsageError(
+            f"The {profile_option} profile must set a workspace RID so the migration covers exactly one workspace. "
+            "See `nom config profile add --help`."
+        )
+    workspace = client.get_workspace()
+    logger.info("Source workspace: %s (rid: %s)", workspace.id, workspace.rid)
+    return workspace
+
+
+def _require_resources_in_workspace(
+    source_client: NominalClient, workspace: Workspace, migration_resources: MigrationResources
+) -> None:
+    """Fail when the config names a source asset, template, or checklist outside the source workspace."""
+    asset_rids = set(migration_resources.source_assets)
+    template_rids = {template.rid for template in migration_resources.source_standalone_templates}
+    for asset_resources in migration_resources.source_assets.values():
+        template_rids.update(template.rid for template in asset_resources.source_workbook_templates)
+    checklist_rids = {checklist.rid for checklist in migration_resources.source_standalone_checklists}
+
+    outside: list[str] = []
+    if asset_rids:
+        workspace_asset_rids = {a.rid for a in source_client.search_assets(archive_status=ArchiveStatusFilter.ANY)}
+        # Assets created along with a run are not returned by asset search, so the workspace's runs vouch for them.
+        workspace_asset_rids.update(
+            rid for run in source_client.search_runs(archive_status=ArchiveStatusFilter.ANY) for rid in run.assets
+        )
+        outside.extend(sorted(asset_rids - workspace_asset_rids))
+    if template_rids:
+        workspace_templates = source_client.search_workbook_templates(archive_status=ArchiveStatusFilter.ANY)
+        outside.extend(sorted(template_rids - {template.rid for template in workspace_templates}))
+    if checklist_rids:
+        workspace_checklists = source_client.search_checklists(archive_status=ArchiveStatusFilter.ANY)
+        outside.extend(sorted(checklist_rids - {checklist.rid for checklist in workspace_checklists}))
+
+    if outside:
+        raise click.UsageError(
+            f"Migration config names resources outside source workspace '{workspace.id}' ({workspace.rid}): "
+            + ", ".join(outside)
+        )
+
+
 def _load_migration_config(
     source_client: NominalClient, config_path: Path
 ) -> tuple[
@@ -571,6 +619,7 @@ def copy(
     source_client, target_client = clients
     if target_client is None and not dry_run:
         raise click.UsageError("--destination-profile is required unless --dry-run is set.")
+    source_workspace = _require_pinned_workspace(source_client, "--source-profile")
     logger.info("Loading migration config from: %s", config_path)
     (
         name,
@@ -581,6 +630,7 @@ def copy(
         impersonation_config,
         added_labels,
     ) = _load_migration_config(source_client, config_path)
+    _require_resources_in_workspace(source_client, source_workspace, migration_resources)
 
     if set_to_demo_workbook:
         if target_client is None:
@@ -679,6 +729,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     """Count resources on a tenant to determine migration scope and generate a starter config."""
     if any(not label.strip() for label in added_labels):
         raise click.BadParameter("labels must be non-empty.", param_hint="'--add-label'")
+    _require_pinned_workspace(client, "--profile")
 
     logger.info("In-scope migration numbers:")
 
@@ -694,12 +745,13 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     logger.info("  Manually-created assets: %d", len(manually_created_assets))
 
     manually_created_asset_rids = {a.rid for a in manually_created_assets}
+    archived_asset_rids = {a.rid for a in client.search_assets(archive_status=ArchiveStatusFilter.ARCHIVED)}
     all_assets: set[str] = set(manually_created_asset_rids)
     auto_created_assets: set[str] = set()
 
     for run in runs:
         asset_rid = run.assets[0]
-        if asset_rid not in manually_created_asset_rids:
+        if asset_rid not in manually_created_asset_rids and asset_rid not in archived_asset_rids:
             auto_created_assets.add(asset_rid)
             all_assets.add(asset_rid)
 

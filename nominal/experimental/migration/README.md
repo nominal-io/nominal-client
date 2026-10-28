@@ -33,6 +33,10 @@ nom config profile add <profile-name> \
   --token <api-key>
 ```
 
+`prep` and `copy` scope the migration to the source profile's workspace, so the source profile must set
+`--workspace-rid`. `copy` also fails if the config names an asset, workbook template, or checklist outside
+that workspace.
+
 ## Commands
 
 **`nom migrate prep`** — count in-scope resources and generate a starter config:
