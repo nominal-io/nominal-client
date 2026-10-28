@@ -403,17 +403,21 @@ def _require_resources_in_workspace(
 
     outside: list[str] = []
     if asset_rids:
-        workspace_asset_rids = {a.rid for a in source_client.search_assets(archive_status=ArchiveStatusFilter.ANY)}
+        workspace_assets = source_client.search_assets(workspace=workspace, archive_status=ArchiveStatusFilter.ANY)
+        workspace_asset_rids = {asset.rid for asset in workspace_assets}
         # Assets created along with a run are not returned by asset search, so the workspace's runs vouch for them.
-        workspace_asset_rids.update(
-            rid for run in source_client.search_runs(archive_status=ArchiveStatusFilter.ANY) for rid in run.assets
-        )
+        workspace_runs = source_client.search_runs(workspace=workspace, archive_status=ArchiveStatusFilter.ANY)
+        workspace_asset_rids.update(rid for run in workspace_runs for rid in run.assets)
         outside.extend(sorted(asset_rids - workspace_asset_rids))
     if template_rids:
-        workspace_templates = source_client.search_workbook_templates(archive_status=ArchiveStatusFilter.ANY)
+        workspace_templates = source_client.search_workbook_templates(
+            workspace=workspace, archive_status=ArchiveStatusFilter.ANY
+        )
         outside.extend(sorted(template_rids - {template.rid for template in workspace_templates}))
     if checklist_rids:
-        workspace_checklists = source_client.search_checklists(archive_status=ArchiveStatusFilter.ANY)
+        workspace_checklists = source_client.search_checklists(
+            workspace=workspace, archive_status=ArchiveStatusFilter.ANY
+        )
         outside.extend(sorted(checklist_rids - {checklist.rid for checklist in workspace_checklists}))
 
     if outside:

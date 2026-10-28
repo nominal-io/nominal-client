@@ -38,13 +38,30 @@ def test_resources_in_workspace_accepts_assets_found_only_through_runs() -> None
 
 
 def test_resources_in_workspace_rejects_resources_outside_the_workspace() -> None:
-    """Config assets and templates that the source workspace does not contain are named in the error."""
+    """Each kind of config resource outside the source workspace is named, and every search is scoped to it."""
     client = _source_client(asset_rids=["ri.asset.in"], run_asset_rids=[], template_rids=[])
+    client.search_checklists.return_value = []
+    resources = MigrationResources(
+        source_assets={
+            "ri.asset.in": AssetResources(
+                asset=MagicMock(rid="ri.asset.in"), source_workbook_templates=[MagicMock(rid="ri.t.asset")]
+            ),
+            "ri.asset.other": AssetResources(asset=MagicMock(rid="ri.asset.other"), source_workbook_templates=[]),
+        },
+        source_standalone_templates=[MagicMock(rid="ri.t.other")],
+        source_standalone_checklists=[MagicMock(rid="ri.c.other")],
+    )
 
-    with pytest.raises(UsageError, match="ri.asset.other, ri.t.other"):
-        _require_resources_in_workspace(
-            client, WORKSPACE, _resources(["ri.asset.in", "ri.asset.other"], ["ri.t.other"])
-        )
+    with pytest.raises(UsageError, match="ri.asset.other, ri.t.asset, ri.t.other, ri.c.other"):
+        _require_resources_in_workspace(client, WORKSPACE, resources)
+
+    for search in (
+        client.search_assets,
+        client.search_runs,
+        client.search_workbook_templates,
+        client.search_checklists,
+    ):
+        assert search.call_args.kwargs["workspace"] is WORKSPACE
 
 
 def test_copy_requires_source_profile_pinned_to_a_workspace(tmp_path: Path) -> None:
