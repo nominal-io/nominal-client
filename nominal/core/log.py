@@ -64,12 +64,14 @@ class LogPoint:
 
 def _log_filter_operator(
     regex_match: str | None = None, insensitive_match: str | None = None
-) -> log_predicates_pb2.LogPredicate:
+) -> log_predicates_pb2.LogPredicate | None:
     if regex_match and insensitive_match:
         raise ValueError("Only one of `regex_match` or `insensitive_match` may be provided")
     if regex_match:
         return log_predicates_pb2.LogPredicate(message_regex=regex_match)
-    return log_predicates_pb2.LogPredicate(message_contains_case_insensitive=insensitive_match or "")
+    if insensitive_match:
+        return log_predicates_pb2.LogPredicate(message_contains_case_insensitive=insensitive_match)
+    return None
 
 
 def _write_logs(
