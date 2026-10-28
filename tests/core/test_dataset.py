@@ -149,7 +149,7 @@ def test_resolve_ingested_video_file_falls_back_to_ingest_job_single_video_file(
     job = MagicMock()
     # A non-video file (bare MagicMock) and the one video file; the handler must filter to the video.
     job.dataset_files.return_value = [MagicMock(), video_file]
-    with patch("nominal.core.dataset.IngestionJob._from_conjure", return_value=job):
+    with patch("nominal.core.dataset.IngestionJob._from_proto", return_value=job):
         result = Dataset._resolve_ingested_video_file(ds, _video_response(None))
     assert result is video_file
 
@@ -160,7 +160,7 @@ def test_resolve_ingested_video_file_fallback_zero_or_multiple_raises():
     job = MagicMock()
     job.dataset_files.return_value = []
     with (
-        patch("nominal.core.dataset.IngestionJob._from_conjure", return_value=job),
+        patch("nominal.core.dataset.IngestionJob._from_proto", return_value=job),
         pytest.raises(NominalIngestError, match="exactly one video file"),
     ):
         Dataset._resolve_ingested_video_file(ds, _video_response(None))

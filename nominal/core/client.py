@@ -92,7 +92,7 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.elements import Symbol
 from nominal.core.event import Event, _create_event, _get_event, _get_events, _search_events
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
+from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus, _get_ingest_job
 from nominal.core.integration import (
     Integration,
     OpsgenieRegion,
@@ -1374,9 +1374,15 @@ class NominalClient:
         return list(self._iter_search_assets(query, archive_status))
 
     def get_ingestion_job(self, rid: str) -> IngestionJob:
-        """Retrieve an ingest job by its RID."""
-        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, rid)
-        return IngestionJob._from_conjure(self._clients, job)
+        """Retrieve an ingest job by its RID.
+
+        Raises:
+            NominalNotFoundError: The job does not exist or is not accessible.
+            NominalError: The request fails.
+            conjure_python_client.ConjureHTTPError: The legacy lookup for a truncated origin list fails.
+        """
+        job_proto = _get_ingest_job(self._clients, rid)
+        return IngestionJob._from_proto(self._clients, job_proto)
 
     def _iter_search_ingestion_jobs(self, filter: ingest_api.IngestJobSearchFilter) -> Iterable[IngestionJob]:
         for job in search_ingest_jobs_paginated(self._clients.ingest_jobs, self._clients.auth_header, filter):
