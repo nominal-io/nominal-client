@@ -87,9 +87,9 @@ class DataScopes:
 def resolve_datasets(clients: Dataset._Clients, scopes: Mapping[str, DataScopeRef]) -> Mapping[str, Dataset]:
     """The readable datasets behind these scopes by scope name, fetched in one request."""
     rids = [scope.rid for scope in scopes.values()]
-    by_rid = {dataset.rid: dataset for dataset in _get_datasets(clients.auth_header, clients.catalog, rids)}
+    by_rid = {dataset.rid: dataset for dataset in _get_datasets(clients.grpc_datasets, rids)}
     return {
-        name: Dataset._from_conjure(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
+        name: Dataset._from_proto(clients, by_rid[scope.rid]) for name, scope in scopes.items() if scope.rid in by_rid
     }
 
 

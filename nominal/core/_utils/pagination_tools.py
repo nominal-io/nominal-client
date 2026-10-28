@@ -20,6 +20,7 @@ from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2, users_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2, markings_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2, data_review_pb2_grpc
+from nominal.protos.datasets.v1 import datasets_pb2, datasets_pb2_grpc
 from nominal.protos.event.v2 import event_pb2, event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2, integrations_pb2_grpc
@@ -56,23 +57,19 @@ def search_events_paginated(
 
 
 def search_datasets_paginated(
-    client: scout_catalog.CatalogService,
-    auth_header: str,
-    query: scout_catalog.SearchDatasetsQuery,
-) -> Iterable[scout_catalog.EnrichedDataset]:
-    def factory(page_token: str | None) -> scout_catalog.SearchDatasetsRequest:
-        return scout_catalog.SearchDatasetsRequest(
+    client: datasets_pb2_grpc.DatasetServiceStub,
+    query: datasets_pb2.DatasetQuery,
+) -> Iterable[datasets_pb2.Dataset]:
+    def factory(page_token: str | None) -> datasets_pb2.SearchDatasetsRequest:
+        return datasets_pb2.SearchDatasetsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
-            sort_options=scout_catalog.SortOptions(
-                field=scout_catalog.SortField.INGEST_DATE,
-                is_descending=True,
-            ),
-            token=page_token,
+            sort=datasets_pb2.DatasetSort(field=datasets_pb2.DATASET_SORT_FIELD_CREATED_AT, descending=True),
+            page_token=page_token or "",
         )
 
-    for response in paginate_rpc(client.search_datasets, auth_header, request_factory=factory):
-        yield from response.results
+    for response in paginate_grpc(client.SearchDatasets, request_factory=factory):
+        yield from response.datasets
 
 
 def search_dataset_files_paginated(

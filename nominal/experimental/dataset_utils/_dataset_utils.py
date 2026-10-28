@@ -1,11 +1,9 @@
 from collections.abc import Sequence
 
-from nominal_api import scout_catalog
-
 from nominal.core import Dataset, Marking, NominalClient, User
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.dataset import _create_dataset_request
+from nominal.core.dataset import _create_dataset
 from nominal.core.marking import _marking_rids
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.roles.v1 import roles_pb2
@@ -42,19 +40,17 @@ def create_dataset_with_uuid(
     Returns:
         Reference to the created dataset in Nominal.
     """
-    request = scout_catalog.CreateDatasetWithUuidRequest(
-        create_dataset=_create_dataset_request(
-            name,
-            description=description,
-            labels=labels,
-            properties=properties,
-            workspace_rid=client._clients.resolve_default_workspace_rid(),
-            marking_rids=_marking_rids(markings),
-        ),
-        uuid=dataset_uuid,
+    response = _create_dataset(
+        client._clients.grpc_datasets,
+        name,
+        description=description,
+        labels=labels,
+        properties=properties,
+        workspace_rid=client._clients.resolve_default_workspace_rid(),
+        marking_rids=_marking_rids(markings),
+        dataset_uuid=dataset_uuid,
     )
-    response = client._clients.catalog.create_dataset_with_uuid(client._clients.auth_header, request)
-    return Dataset._from_conjure(client._clients, response)
+    return Dataset._from_proto(client._clients, response)
 
 
 def get_dataset_owner_rid(dataset: Dataset) -> str:

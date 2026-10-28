@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
+from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     api,
     ingest_api,
@@ -22,6 +23,7 @@ from nominal.core._utils.properties import check_property_value
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.authorization.markings.v1 import markings_pb2
+from nominal.protos.datasets.v1 import datasets_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -81,26 +83,6 @@ class ArchiveStatusFilter(Enum):
 
 def _numeric_equality(name: str, value: float) -> types_pb2.NumericPropertyPredicate:
     return types_pb2.NumericPropertyPredicate(name=name, operator=types_pb2.EQ, value=value)
-
-
-def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> scout_catalog.SearchDatasetsQuery:
-    # TODO(drake): remove once search datasets endpoint takes modern archive status flag
-    # SearchDatasetsRequest has no archived_statuses field; filter via query.
-    # ANY uses an explicit OR to avoid relying on server defaults when no clause is present.
-    match archive_status:
-        case ArchiveStatusFilter.NOT_ARCHIVED:
-            return scout_catalog.SearchDatasetsQuery(archive_status=False)
-        case ArchiveStatusFilter.ARCHIVED:
-            return scout_catalog.SearchDatasetsQuery(archive_status=True)
-        case ArchiveStatusFilter.ANY:
-            return scout_catalog.SearchDatasetsQuery(
-                or_=[
-                    scout_catalog.SearchDatasetsQuery(archive_status=True),
-                    scout_catalog.SearchDatasetsQuery(archive_status=False),
-                ]
-            )
-
-    raise ValueError(f"Unexpected archive status for dataset search: {archive_status}")
 
 
 def _backfill_workbook_draft_query_clause(include_drafts: bool) -> scout_notebook_api.SearchNotebooksQuery:
@@ -372,7 +354,7 @@ def create_search_dataset_files_query(
     return scout_catalog.SearchDatasetFilesQuery(and_=queries)
 
 
-def create_search_datasets_query(
+def create_search_datasets_query(  # noqa: PLR0912
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -381,47 +363,54 @@ def create_search_datasets_query(
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> scout_catalog.SearchDatasetsQuery:
-    queries = [_backfill_dataset_archive_query_clause(archive_status)]
+) -> datasets_pb2.DatasetQuery:
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            archive_query = datasets_pb2.DatasetQuery(is_archived=False)
+        case ArchiveStatusFilter.ARCHIVED:
+            archive_query = datasets_pb2.DatasetQuery(is_archived=True)
+        case ArchiveStatusFilter.ANY:
+            archive_query = datasets_pb2.DatasetQuery()
+            getattr(archive_query, "or").CopyFrom(
+                datasets_pb2.DatasetQueryList(
+                    queries=[datasets_pb2.DatasetQuery(is_archived=True), datasets_pb2.DatasetQuery(is_archived=False)]
+                )
+            )
+        case _:
+            raise ValueError(f"Unexpected archive status for dataset search: {archive_status}")
+    queries = [archive_query]
     if search_text is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(search_text=search_text))
-
+        queries.append(datasets_pb2.DatasetQuery(search_text=search_text))
     if exact_match is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(exact_match=exact_match))
-
+        queries.append(datasets_pb2.DatasetQuery(exact_name=exact_match))
     if labels is not None:
-        for label in labels:
-            queries.append(scout_catalog.SearchDatasetsQuery(label=label))
-
+        queries.extend(datasets_pb2.DatasetQuery(label=label) for label in labels)
     if properties is not None:
         for name, value in properties.items():
             match check_property_value(value, name=name):
                 case str() as text:
-                    queries.append(scout_catalog.SearchDatasetsQuery(properties=api.Property(name=name, value=text)))
+                    queries.append(datasets_pb2.DatasetQuery(property=types_pb2.Property(name=name, value=text)))
                 case float() as number:
-                    predicate = api.NumericPropertyPredicate(
-                        name=name, operator=api.PropertyComparisonOperator.EQ, value=number
+                    queries.append(
+                        datasets_pb2.DatasetQuery(
+                            numeric_property=types_pb2.NumericPropertyPredicate(
+                                name=name, operator=types_pb2.EQ, value=number
+                            )
+                        )
                     )
-                    queries.append(scout_catalog.SearchDatasetsQuery(numeric_property=predicate))
-
     if ingested_before_inclusive is not None:
-        queries.append(
-            scout_catalog.SearchDatasetsQuery(
-                ingested_before_inclusive=_SecondsNanos.from_flexible(ingested_before_inclusive).to_iso8601()
-            )
-        )
-
+        timestamp = Timestamp()
+        timestamp.FromNanoseconds(_SecondsNanos.from_flexible(ingested_before_inclusive).to_nanoseconds())
+        queries.append(datasets_pb2.DatasetQuery(created_at_or_before=timestamp))
     if ingested_after_inclusive is not None:
-        queries.append(
-            scout_catalog.SearchDatasetsQuery(
-                ingested_after_inclusive=_SecondsNanos.from_flexible(ingested_after_inclusive).to_iso8601()
-            )
-        )
-
+        timestamp = Timestamp()
+        timestamp.FromNanoseconds(_SecondsNanos.from_flexible(ingested_after_inclusive).to_nanoseconds())
+        queries.append(datasets_pb2.DatasetQuery(created_at_or_after=timestamp))
     if workspace_rid is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace_rid))
-
-    return scout_catalog.SearchDatasetsQuery(and_=queries)
+        queries.append(datasets_pb2.DatasetQuery(workspace_rid=workspace_rid))
+    query = datasets_pb2.DatasetQuery()
+    getattr(query, "and").CopyFrom(datasets_pb2.DatasetQueryList(queries=queries))
+    return query
 
 
 def create_search_runs_query(  # noqa: PLR0912

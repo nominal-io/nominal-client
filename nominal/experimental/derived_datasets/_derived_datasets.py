@@ -9,10 +9,12 @@ from nominal_api import scout_catalog, scout_compute_api
 
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.properties import properties_from_conjure
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.properties import properties_from_conjure, typed_properties_to_conjure
 from nominal.core.client import NominalClient
-from nominal.core.dataset import Dataset, _create_dataset_request, _get_dataset
+from nominal.core.dataset import Dataset
 from nominal.core.marking import Marking, _marking_rids
+from nominal.protos.datasets.v1 import datasets_pb2
 from nominal.ts import IntegralNanosecondsDuration, _to_seconds_nanos_duration
 
 
@@ -335,7 +337,8 @@ class DerivedDataset:
 
     def archive(self) -> None:
         """Archive this dataset. Archived datasets are not deleted, but are hidden from the UI."""
-        self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.grpc_datasets.ArchiveDataset(datasets_pb2.ArchiveDatasetRequest(dataset_rid=self.rid))
 
     def get_definition(self, commit: str | None = None) -> scout_catalog.DerivedDefinition:
         """Fetch this dataset's derived definition: its compute spec and the commit that produced it.
@@ -490,13 +493,18 @@ def _create_derived_dataset(
     The single creation path behind both `create_derived_dataset` here and
     `nominal.experimental.compute_as_code.create_derived_dataset`, which differ only in how they build `spec`.
     """
-    request = _create_dataset_request(
-        name,
+    request = scout_catalog.CreateDataset(
+        name=name,
         description=description,
-        labels=labels,
-        properties=properties,
-        workspace_rid=clients.resolve_default_workspace_rid(),
+        labels=list(labels),
+        properties={},
+        typed_properties=typed_properties_to_conjure(properties) or {},
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=clients.resolve_default_workspace_rid(),
         marking_rids=_marking_rids(markings),
+        channel_search_split_tag_keys=[],
         derived_definition=scout_catalog.CreateDerivedDefinition(spec=spec, message=message),
     )
     return DerivedDataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
@@ -553,7 +561,14 @@ def get_derived_dataset(client: NominalClient, dataset: Dataset | str) -> Derive
         ValueError: If the dataset is not derived.
     """
     rid = rid_from_instance_or_string(dataset)
-    response = _get_dataset(client._clients.auth_header, client._clients.catalog, rid)
+    responses = client._clients.catalog.get_enriched_datasets(
+        client._clients.auth_header, scout_catalog.GetDatasetsRequest(dataset_rids=[rid])
+    )
+    if not responses:
+        raise ValueError(f"dataset {rid!r} not found")
+    if len(responses) > 1:
+        raise ValueError(f"expected exactly one dataset, got {len(responses)}")
+    response = responses[0]
     if response.derived_definition is None:
         raise ValueError(f"dataset {rid!r} is not a derived dataset")
     return DerivedDataset._from_conjure(client._clients, response)

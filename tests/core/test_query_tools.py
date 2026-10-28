@@ -1,7 +1,6 @@
 from typing import Callable
 
 import pytest
-from nominal_api import api, scout_catalog
 
 from nominal.core import Priority
 from nominal.core._event_types import EventType, SearchEventOriginTypes
@@ -13,6 +12,7 @@ from nominal.core._utils.query_tools import (
     create_search_runs_query,
 )
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.datasets.v1 import datasets_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.run.v1 import run_service_pb2
 from nominal.protos.types import types_pb2
@@ -153,16 +153,16 @@ def test_create_search_events_query_drops_an_empty_origin_types() -> None:
         ),
         pytest.param(
             create_search_datasets_query,
-            scout_catalog.SearchDatasetsQuery(
-                and_=[
-                    scout_catalog.SearchDatasetsQuery(archive_status=False),
-                    scout_catalog.SearchDatasetsQuery(properties=api.Property(name="serial", value="")),
-                    scout_catalog.SearchDatasetsQuery(
-                        numeric_property=api.NumericPropertyPredicate(
-                            name="count", operator=api.PropertyComparisonOperator.EQ, value=2.0
-                        )
-                    ),
-                ]
+            datasets_pb2.DatasetQuery(
+                **{
+                    "and": datasets_pb2.DatasetQueryList(
+                        queries=[
+                            datasets_pb2.DatasetQuery(is_archived=False),
+                            datasets_pb2.DatasetQuery(property=_STRING_PROPERTY),
+                            datasets_pb2.DatasetQuery(numeric_property=_NUMERIC_EQUALITY),
+                        ]
+                    )
+                }
             ),
             id="datasets",
         ),
