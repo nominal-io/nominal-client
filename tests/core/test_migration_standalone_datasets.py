@@ -108,7 +108,7 @@ def test_runners_copy_standalone_datasets_with_config_options(
 
 
 def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> None:
-    """`nom migrate prep` writes datasets with no data scope on any asset, archived or not, to standalone_dataset_rids."""
+    """`nom migrate prep` lists datasets with no scope on any asset, archived or not, as standalone datasets."""
     scoped = MagicMock(rid="ds-scoped")
     on_archived_asset = MagicMock(rid="ds-on-archived-asset")
     orphans = [MagicMock(rid="ds-orphan-b"), MagicMock(rid="ds-orphan-a")]
