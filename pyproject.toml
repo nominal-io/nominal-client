@@ -28,8 +28,8 @@ dependencies = [
     # Removes the emSign ECC Root CA - G3 trust anchor after intermediate key compromise.
     "certifi>=2026.10.18",
     "conjure-python-client>=3.1.0,<4",
-    "nominal-api==0.1495.1",
-    "nominal-api-protos==0.1495.1",
+    "nominal-api==0.1509.0",
+    "nominal-api-protos==0.1509.0",
     "truststore>=0.10.4",
     # Backports `override` (stdlib in 3.12) and `deprecated` (stdlib in 3.13, added here in 4.5)
     "typing-extensions>=4.5,<5",
@@ -112,7 +112,7 @@ tdms = ["nominal-tdms>=1.143.0"]
 ibis = ["nominal-ibis>=0.1.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 compute = [
-    "nominal-compute==0.1495.1; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
+    "nominal-compute==0.1509.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
 ]
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
