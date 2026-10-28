@@ -9,25 +9,25 @@ from datetime import datetime
 from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Self, Sequence, assert_never, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
-from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     api,
     datasource_api,
     scout_compute_api,
+    scout_dataexport_api,
     scout_datasource,
 )
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
-from nominal.core._utils.dataexport import export_timestamp_format, stream_export
+from nominal.core._utils.dataexport import stream_channel_csv
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
 from nominal.protos.compute.v1 import constants_pb2, expressions_pb2, source_selection_pb2
-from nominal.protos.dataexports.v1 import data_exports_pb2, data_exports_pb2_grpc
+from nominal.protos.dataexports.v1 import data_exports_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
 from nominal.ts import (
@@ -153,6 +153,8 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
+        @property
+        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
         def grpc_dataexport(self) -> data_exports_pb2_grpc.DataExportServiceStub: ...
         @property
@@ -420,6 +422,11 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         channel_series = self._to_channel_series(tags=tags)
         return _create_series_from_channel(channel_series, self.data_type)
 
+    def _to_time_domain_channel(self, tags: Mapping[str, str] | None = None) -> scout_dataexport_api.TimeDomainChannel:
+        return scout_dataexport_api.TimeDomainChannel(
+            column_name=self.name, compute_node=self._to_compute_series(tags=tags)
+        )
+
     def _to_proto_compute_series(self, tags: Mapping[str, str] | None = None) -> expressions_pb2.SeriesExpression:
         channel = source_selection_pb2.ChannelSelection(
             data_source=source_selection_pb2.DataSourceChannelSelection(
@@ -427,9 +434,11 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
                 channel=constants_pb2.StringConstant(literal=self.name),
                 tags=source_selection_pb2.ChannelTagConstraints(
                     exact_values=source_selection_pb2.ExactTagValues(
-                        values={k: constants_pb2.StringConstant(literal=v) for k, v in (tags or {}).items()}
+                        values={k: constants_pb2.StringConstant(literal=v) for k, v in tags.items()}
                     )
-                ),
+                )
+                if tags
+                else None,
             )
         )
         if self.data_type is ChannelDataType.STRING:
@@ -496,24 +505,15 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         Returns:
             A binary file-like object containing the CSV data
         """
-        request = data_exports_pb2.ExportDefinition(
-            time_domain=data_exports_pb2.TimeDomainColumns(
-                columns=[
-                    data_exports_pb2.ExportColumn(name=self.name, series=self._to_proto_compute_series(tags=tags))
-                ],
-                gap_fill=data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty()),
-                timestamp_format=export_timestamp_format(_to_export_timestamp_type(relative_to, relative_resolution)),
-            ),
-            start_time=Timestamp(seconds=start.seconds, nanos=start.nanos),
-            end_time=Timestamp(seconds=end.seconds, nanos=end.nanos),
-            context=expressions_pb2.ComputeContext(),
-            format=data_exports_pb2.ExportFileFormat(csv=data_exports_pb2.CsvFormat()),
-            resolution=data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution()),
-            compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP
-            if enable_gzip
-            else data_exports_pb2.EXPORT_COMPRESSION_UNSPECIFIED,
+        return stream_channel_csv(
+            self._clients,
+            [self],
+            _SecondsNanos.from_api(start),
+            _SecondsNanos.from_api(end),
+            timestamp_type=_to_export_timestamp_type(relative_to, relative_resolution),
+            tags=tags,
+            enable_gzip=enable_gzip,
         )
-        return stream_export(self._clients.grpc_dataexport, request)
 
 
 def _create_series_from_channel(

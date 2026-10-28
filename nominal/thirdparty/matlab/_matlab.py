@@ -4,16 +4,12 @@ import gzip
 import logging
 import pathlib
 import shutil
-from typing import Mapping, Sequence, overload
+from typing import BinaryIO, Mapping, Sequence, cast, overload
 
-from google.protobuf.timestamp_pb2 import Timestamp
+from nominal_api import scout_compute_api, scout_dataexport_api
 
-from nominal.core._utils.dataexport import export_timestamp_format, stream_export
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
-from nominal.protos.compute.v1 import expressions_pb2
-from nominal.protos.dataexports.v1 import data_exports_pb2
-from nominal.protos.types import common_pb2
 from nominal.ts import (
     _MAX_TIMESTAMP,
     _MIN_TIMESTAMP,
@@ -21,7 +17,8 @@ from nominal.ts import (
     _AnyExportableTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
-    _to_proto_duration,
+    _to_api_duration,
+    _to_export_timestamp_format,
 )
 
 logger = logging.getLogger(__name__)
@@ -221,45 +218,55 @@ def export_channels_to_matlab(
     elif output_path.suffix != ".mat":
         raise ValueError(f"Output path {output_path} must have a suffix of '.mat', detected {output_path.suffix}")
 
-    start = _MIN_TIMESTAMP if start_time is None else _SecondsNanos.from_flexible(start_time)
-    end = _MAX_TIMESTAMP if end_time is None else _SecondsNanos.from_flexible(end_time)
-    if resolution is not None:
-        seconds, nanos = divmod(resolution, 1_000_000_000)
-        export_resolution = data_exports_pb2.ExportResolution(step=common_pb2.Duration(seconds=seconds, nanos=nanos))
-    elif num_buckets is not None:
-        export_resolution = data_exports_pb2.ExportResolution(bucket_count=num_buckets)
-    else:
-        export_resolution = data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution())
+    api_start = (_MIN_TIMESTAMP if start_time is None else _SecondsNanos.from_flexible(start_time)).to_api()
+    api_end = (_MAX_TIMESTAMP if end_time is None else _SecondsNanos.from_flexible(end_time)).to_api()
 
-    gap_fill = (
-        data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty())
+    # Since we already restrict users to providing at most one of resolution or num buckets,
+    # we just have to use None for undecimated if one is provided or a empty struct if not
+    api_undecimated = (
+        None if (resolution is not None or num_buckets is not None) else scout_dataexport_api.UndecimatedResolution()
+    )
+    api_resolution = scout_dataexport_api.ResolutionOption(
+        undecimated=api_undecimated, nanoseconds=resolution, buckets=num_buckets
+    )
+
+    # If the user specified forward fill settings, set the timestamp merging strategy
+    merge_strategy = (
+        scout_dataexport_api.MergeTimestampStrategy(none=scout_dataexport_api.NoneStrategy())
         if forward_fill_lookback is None
-        else data_exports_pb2.GapFill(
-            forward_fill=data_exports_pb2.ForwardFill(
-                max_fill_duration=_to_proto_duration(forward_fill_lookback, common_pb2.Duration)
+        else scout_dataexport_api.MergeTimestampStrategy(
+            all_timestamps_forward_fill=scout_dataexport_api.AllTimestampsForwardFillStrategy(
+                _to_api_duration(forward_fill_lookback)
             )
         )
     )
-    request = data_exports_pb2.ExportDefinition(
-        format=data_exports_pb2.ExportFileFormat(matfile=data_exports_pb2.MatfileFormat()),
-        compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP,
-        start_time=Timestamp(seconds=start.seconds, nanos=start.nanos),
-        end_time=Timestamp(seconds=end.seconds, nanos=end.nanos),
-        resolution=export_resolution,
-        time_domain=data_exports_pb2.TimeDomainColumns(
-            columns=[
-                data_exports_pb2.ExportColumn(name=channel.name, series=channel._to_proto_compute_series(tags))
-                for channel in channels
-            ],
-            gap_fill=gap_fill,
-            timestamp_format=export_timestamp_format(export_timestamp_type),
-        ),
-        context=expressions_pb2.ComputeContext(),
+
+    # channels to export
+    export_channels = scout_dataexport_api.ExportChannels(
+        time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+            channels=[c._to_time_domain_channel(tags) for c in channels],
+            merge_timestamp_strategy=merge_strategy,
+            output_timestamp_format=_to_export_timestamp_format(export_timestamp_type),
+        )
     )
+
+    resp = client._clients.dataexport.export_channel_data(
+        client._clients.auth_header,
+        scout_dataexport_api.ExportDataRequest(
+            format=scout_dataexport_api.ExportFormat(matfile=scout_dataexport_api.Matfile()),
+            compression=scout_dataexport_api.CompressionFormat.GZIP,
+            start_time=api_start,
+            end_time=api_end,
+            resolution=api_resolution,
+            channels=export_channels,
+            context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
+        ),
+    )
+    bin_resp = cast(BinaryIO, resp)
+
     output_path.parent.mkdir(exist_ok=True, parents=True)
     with (
-        stream_export(client._clients.grpc_dataexport, request) as response,
-        gzip.GzipFile(fileobj=response, mode="rb") as gz,
+        gzip.GzipFile(fileobj=bin_resp, mode="rb") as gz,
         output_path.open(mode="wb") as wf,
     ):
         shutil.copyfileobj(gz, wf, length=chunk_size)

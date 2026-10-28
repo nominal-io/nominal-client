@@ -6,22 +6,18 @@ from datetime import datetime
 from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence
 
-from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import api
 
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.dataexport import export_timestamp_format, stream_export
+from nominal.core._utils.dataexport import MAX_EXPORT_COLUMNS, stream_channel_csv
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileTypes
-from nominal.protos.compute.v1 import expressions_pb2
-from nominal.protos.dataexports.v1 import data_exports_pb2
-from nominal.ts import _AnyExportableTimestampType
 
 logger = logging.getLogger(__name__)
 
@@ -342,15 +338,15 @@ def datasource_to_dataframe(
     renamed_timestamp_col = _get_renamed_timestamp_column(list(channels))
 
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
-        export_request = _construct_export_request(
+        with stream_channel_csv(
+            datasource._clients,
             channel_batch,
-            start_time,
-            end_time,
+            ts._SecondsNanos.from_api(start_time),
+            ts._SecondsNanos.from_api(end_time),
             tags=tags,
             enable_gzip=enable_gzip,
             timestamp_type=ts._to_export_timestamp_type(relative_to, relative_resolution),
-        )
-        with stream_export(datasource._clients.grpc_dataexport, export_request) as export_response:
+        ) as export_response:
             batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
         if batch_df.empty:
             channel_names = [ch.name for ch in channel_batch]
@@ -371,7 +367,7 @@ def datasource_to_dataframe(
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
         df_futures = {
             pool.submit(_export_channel_batch, channel_batch): channel_batch
-            for channel_batch in batched(channels, channel_batch_size)
+            for channel_batch in batched(channels, min(channel_batch_size, MAX_EXPORT_COLUMNS))
         }
 
         all_dataframes = []
@@ -406,31 +402,3 @@ def datasource_to_dataframe(
         result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
-
-
-def _construct_export_request(
-    channels: Sequence[Channel],
-    start: api.Timestamp,
-    end: api.Timestamp,
-    tags: Mapping[str, str] | None,
-    enable_gzip: bool,
-    timestamp_type: _AnyExportableTimestampType = "iso_8601",
-) -> data_exports_pb2.ExportDefinition:
-    return data_exports_pb2.ExportDefinition(
-        time_domain=data_exports_pb2.TimeDomainColumns(
-            columns=[
-                data_exports_pb2.ExportColumn(name=channel.name, series=channel._to_proto_compute_series(tags=tags))
-                for channel in channels
-            ],
-            gap_fill=data_exports_pb2.GapFill(leave_empty=data_exports_pb2.LeaveEmpty()),
-            timestamp_format=export_timestamp_format(timestamp_type),
-        ),
-        start_time=Timestamp(seconds=start.seconds, nanos=start.nanos),
-        end_time=Timestamp(seconds=end.seconds, nanos=end.nanos),
-        context=expressions_pb2.ComputeContext(),
-        format=data_exports_pb2.ExportFileFormat(csv=data_exports_pb2.CsvFormat()),
-        resolution=data_exports_pb2.ExportResolution(full=data_exports_pb2.FullResolution()),
-        compression=data_exports_pb2.EXPORT_COMPRESSION_GZIP
-        if enable_gzip
-        else data_exports_pb2.EXPORT_COMPRESSION_UNSPECIFIED,
-    )
