@@ -44,7 +44,10 @@ def test_file_metadata_preserves_bounds_timestamp_type_and_detaches_tags():
     """Conversion retains nanosecond bounds and parsing metadata without exposing mutable proto maps."""
     bounds = Bounds(start=-1, end=1_700_000_000_123_456_789)
     row = files_pb.DatasetFile(
-        bounds=bounds._to_proto(),
+        bounds=files_pb.DataBounds(
+            start=Timestamp(seconds=-1, nanos=999999999),
+            end=Timestamp(seconds=1_700_000_000, nanos=123456789),
+        ),
         timestamp_metadata=common_pb2.TimestampMetadata(column="time", type=Epoch("microseconds")._to_proto()),
         ingest_tag_metadata=files_pb.IngestTagMetadata(
             additional_file_tags={"vehicle": "a"}, tag_columns={"id": "vehicle"}
@@ -230,3 +233,11 @@ def test_dataset_file_search_without_filters_uses_unbounded_range(file_tags):
     assert query.WhichOneof("query") == "data_time_range"
     assert not query.data_time_range.HasField("start")
     assert not query.data_time_range.HasField("end")
+
+
+def test_unknown_ingest_phase_warning_identifies_wire_value(caplog):
+    """Future server phases stay nonblocking and leave enough detail to diagnose the wire value."""
+    status = files_pb.IngestStatus(in_progress=files_pb.IngestInProgress(phase=99))
+    assert IngestStatus._from_proto(status) is IngestStatus.UNKNOWN
+    assert "in_progress" in caplog.text
+    assert "99" in caplog.text

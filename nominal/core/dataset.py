@@ -38,7 +38,7 @@ from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
-from nominal.core.dataset_file import DatasetFile, _dataset_file_from_proto
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_proto, _get_dataset_file
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
@@ -195,13 +195,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 f"Unexpected multi-file ingest response type for dataset {response.details.dataset.dataset_rid}"
             )
 
-        with translate_grpc_errors():
-            file = self._clients.grpc_dataset_files.GetDatasetFile(
-                dataset_files_pb2.GetDatasetFileRequest(
-                    dataset_rid=response.details.dataset.dataset_rid,
-                    file_id=response.details.dataset.dataset_file_id,
-                )
-            ).dataset_file
+        file = _get_dataset_file(
+            self._clients, response.details.dataset.dataset_rid, response.details.dataset.dataset_file_id
+        )
         return DatasetFile._from_proto(self._clients, file)
 
     def _resolve_ingested_video_file(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
@@ -210,12 +206,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             # The backend writes `metadata.video` when it creates the dataset-file row, before segmentation is
             # dispatched — so a video ingest's row is video-typed from the moment it exists. A non-video result
             # here means the id points at a genuinely non-video file, not a not-yet-populated one.
-            with translate_grpc_errors():
-                raw = self._clients.grpc_dataset_files.GetDatasetFile(
-                    dataset_files_pb2.GetDatasetFileRequest(
-                        dataset_rid=details.dataset_rid, file_id=details.dataset_file_id
-                    )
-                ).dataset_file
+            raw = _get_dataset_file(self._clients, details.dataset_rid, details.dataset_file_id)
             file = _dataset_file_from_proto(self._clients, raw)
             if isinstance(file, VideoDatasetFile):
                 return file
@@ -1277,10 +1268,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             FileNotFoundError: Details about the requested file could not be found
         """
         try:
-            with translate_grpc_errors():
-                raw_file = self._clients.grpc_dataset_files.GetDatasetFile(
-                    dataset_files_pb2.GetDatasetFileRequest(dataset_rid=self.rid, file_id=dataset_file_id)
-                ).dataset_file
+            raw_file = _get_dataset_file(self._clients, self.rid, dataset_file_id)
             return _dataset_file_from_proto(self._clients, raw_file)
         except Exception as ex:
             raise FileNotFoundError(

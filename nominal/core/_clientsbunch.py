@@ -141,7 +141,6 @@ class ClientsBunch:
     # Conjure services
     authorization: authorization.AuthorizationService
     catalog: scout_catalog.CatalogService
-    grpc_dataset_files: dataset_files_pb2_grpc.DatasetFileServiceStub
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: scout_compute_api.ComputeService
@@ -159,6 +158,7 @@ class ClientsBunch:
     video: scout_video.VideoService
 
     # GRPC services
+    grpc_dataset_files: dataset_files_pb2_grpc.DatasetFileServiceStub
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
     channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
@@ -315,7 +315,6 @@ class ClientsBunch:
             # Conjure Service Stubs
             authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
-            grpc_dataset_files=grpc_factory(dataset_files_pb2_grpc.DatasetFileServiceStub),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=client_factory(scout_compute_api.ComputeService),
@@ -332,6 +331,7 @@ class ClientsBunch:
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            grpc_dataset_files=grpc_factory(dataset_files_pb2_grpc.DatasetFileServiceStub),
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),

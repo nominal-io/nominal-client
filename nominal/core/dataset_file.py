@@ -71,10 +71,7 @@ class DatasetFile(RefreshableGrpcMixin[dataset_files_pb2.DatasetFile]):
         def video(self) -> scout_video.VideoService: ...
 
     def _get_latest_api(self) -> dataset_files_pb2.DatasetFile:
-        with translate_grpc_errors():
-            return self._clients.grpc_dataset_files.GetDatasetFile(
-                dataset_files_pb2.GetDatasetFileRequest(dataset_rid=self.dataset_rid, file_id=self.id)
-            ).dataset_file
+        return _get_dataset_file(self._clients, self.dataset_rid, self.id)
 
     def delete(self) -> None:
         """Deletes the dataset file, removing its data permanently from Nominal.
@@ -299,6 +296,13 @@ class DatasetFile(RefreshableGrpcMixin[dataset_files_pb2.DatasetFile]):
         )
 
 
+def _get_dataset_file(clients: DatasetFile._Clients, dataset_rid: str, file_id: str) -> dataset_files_pb2.DatasetFile:
+    with translate_grpc_errors():
+        return clients.grpc_dataset_files.GetDatasetFile(
+            dataset_files_pb2.GetDatasetFileRequest(dataset_rid=dataset_rid, file_id=file_id)
+        ).dataset_file
+
+
 def _dataset_file_from_proto(clients: DatasetFile._Clients, dataset_file: dataset_files_pb2.DatasetFile) -> DatasetFile:
     """Build the correct DatasetFile subtype for a Catalog row.
 
@@ -350,7 +354,11 @@ class IngestStatus(Enum):
                     case dataset_files_pb2.INGEST_PHASE_INGESTING:
                         ingest_status = cls.INGESTING
         if ingest_status is cls.UNKNOWN:
-            logger.warning("Unrecognized ingest status; treating as UNKNOWN.")
+            logger.warning(
+                "Unrecognized ingest status %s (phase %s); treating as UNKNOWN.",
+                status.WhichOneof("status"),
+                status.in_progress.phase,
+            )
         return ingest_status
 
 
