@@ -173,7 +173,11 @@ def _optional_iso_to_nanos(value: str | None) -> IntegralNanosecondsUTC | None:
 
 @dataclass(frozen=True)
 class IngestionJob(HasRid, RefreshableGrpcMixin[ingest_jobs_pb2.IngestJob]):
-    """A trackable record of one ingestion request moving through the async pipeline."""
+    """A trackable record of one ingestion request moving through the async pipeline.
+
+    Reads and refreshes recover truncated origin lists through the legacy service. That
+    compatibility read can raise ``conjure_python_client.ConjureHTTPError``.
+    """
 
     rid: str
     status: IngestionJobStatus
@@ -242,12 +246,18 @@ class IngestionJob(HasRid, RefreshableGrpcMixin[ingest_jobs_pb2.IngestJob]):
 
         Raises:
             NominalError: The request fails, including when the job is already in a terminal state.
+            conjure_python_client.ConjureHTTPError: Cancellation succeeded, but recovery of the complete
+                origin list failed. This instance reflects the cancellation response, including its
+                possibly truncated origins. Call ``refresh()`` to retry the origin lookup.
         """
         with translate_grpc_errors():
             response = self._clients.grpc_ingest_jobs.CancelIngestJob(
                 ingest_jobs_pb2.CancelIngestJobRequest(ingest_job_rid=self.rid)
             )
-        _populate_complete_origins(self._clients, response.ingest_job)
+        if response.ingest_job.origins.truncated:
+            # Preserve the committed cancellation even if the subsequent compatibility read fails.
+            self._refresh_from_api(response.ingest_job)
+            _populate_complete_origins(self._clients, response.ingest_job)
         return self._refresh_from_api(response.ingest_job)
 
     def _iter_dataset_files(self) -> Iterable[DatasetFile]:

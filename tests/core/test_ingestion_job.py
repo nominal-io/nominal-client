@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 
 import grpc
 import pytest
+import requests
+from conjure_python_client import ConjureHTTPError
 from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import api, ingest_api, scout_catalog
 
@@ -484,3 +486,23 @@ def test_cancel_preserves_complete_origins(mock_clients) -> None:
     assert job.cancel() is job
     assert job.status is IngestionJobStatus.CANCELLED
     assert job.origin_files == ("first", "second")
+
+
+def test_cancel_updates_snapshot_when_origin_lookup_fails(mock_clients) -> None:
+    """A failed compatibility read cannot hide a cancellation that already succeeded."""
+    job = IngestionJob._from_proto(mock_clients, _job_proto())
+    raw = _job_proto(status=ingest_jobs_pb2.INGEST_JOB_STATUS_CANCELLED)
+    raw.origins.CopyFrom(ingest_jobs_pb2.IngestJobOrigins(paths=["first"], truncated=True))
+    mock_clients.grpc_ingest_jobs.CancelIngestJob.return_value = ingest_jobs_pb2.CancelIngestJobResponse(ingest_job=raw)
+    response = requests.Response()
+    response.status_code = 503
+    error = ConjureHTTPError(requests.HTTPError("Origin lookup unavailable", response=response))
+    mock_clients.ingest_jobs.get_ingest_job.side_effect = error
+
+    with pytest.raises(ConjureHTTPError) as raised:
+        job.cancel()
+
+    assert raised.value is error
+    assert job.status is IngestionJobStatus.CANCELLED
+    assert job.origin_files == ("first",)
+    mock_clients.grpc_ingest_jobs.CancelIngestJob.assert_called_once()

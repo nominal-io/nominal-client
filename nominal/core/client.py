@@ -1379,6 +1379,7 @@ class NominalClient:
         Raises:
             NominalNotFoundError: The job does not exist or is not accessible.
             NominalError: The request fails.
+            conjure_python_client.ConjureHTTPError: The legacy lookup for a truncated origin list fails.
         """
         job_proto = _get_ingest_job(self._clients, rid)
         return IngestionJob._from_proto(self._clients, job_proto)
