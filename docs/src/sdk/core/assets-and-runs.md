@@ -1,6 +1,6 @@
 # Assets and runs
 
-Organize datasets and runs, attach files, and add discussion comments.
+Organize {term}`datasets <dataset>` and {term}`runs <run>`, attach files, and add discussion comments.
 
 ## API Reference
 

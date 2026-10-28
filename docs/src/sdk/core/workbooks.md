@@ -1,6 +1,6 @@
 # Workbooks
 
-Manage workbooks and instantiate them from templates.
+Manage {term}`workbooks <workbook>` and instantiate them from templates.
 
 ## API Reference
 

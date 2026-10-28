@@ -12,20 +12,20 @@ kernelspec:
 # A Typical Experimental Run
 
 In this example, we demonstrate the typical lifecycle of an
-experimental [run](/guides/runs.md). Such a run involves a piece of test equipment,
-called an [asset](/guides/assets.md). Let's imagine, for example, that we fire up the
+experimental {term}`run`. Such a run involves a piece of test equipment,
+called an {term}`asset`. Let's imagine, for example, that we fire up the
 rotor of a helicopter to measure its angular velocity.
 
 Below, we show how to register the helicopter as an asset; this is only ever done once.
 
-Then, we measure rotor data, and upload a [dataset](/guides/datasets/overview.md) to the helicopter asset.
+Then, we measure rotor data, and upload a {term}`dataset` to the helicopter asset.
 
 The example needs the [installed Nominal Python client](/guides/install.md) and a `default` [profile](/guides/api-keys-setup.md).
 
 ## Registering the asset
 
 {py:meth}`~nominal.core.NominalClient.create_asset` registers the helicopter as an {py:class}`~nominal.core.Asset`.
-Properties identify the physical aircraft, such as its tail number:
+{term}`Properties <property>` identify the physical aircraft, such as its tail number:
 
 ```python
 from nominal.core import NominalClient
@@ -41,8 +41,8 @@ helicopter = client.create_asset(
 ## Adding a dataset to the asset
 
 The helicopter keeps its data in a {py:class}`~nominal.core.Dataset`.
-An asset holds each dataset under a name, its [data scope](/guides/assets.md#add-data-with-data-scopes).
-Workbook templates and checklists refer to data by this name.
+An asset holds each dataset under a name, its {term}`data scope`.
+{term}`Workbook templates <workbook template>` and {term}`checklists <checklist>` refer to data by this name.
 Give the same kind of data the same name on every asset, here `telemetry`, so one template works for every helicopter.
 {py:meth}`~nominal.core.NominalClient.create_dataset` creates an empty dataset, and {py:meth}`~nominal.core.Asset.add_dataset` attaches it under that name.
 This is also done only once:
@@ -148,12 +148,12 @@ print(run.nominal_url)
 
 ## Inspect the data
 
-We may now be curious to inspect the data we uploaded. This is perhaps easiest done using a [workbook](/guides/workbooks.md) in the Nominal platform, but we can also plot it using matplotlib.
+We may now be curious to inspect the data we uploaded. This is perhaps easiest done using a {term}`workbook` in the Nominal platform, but we can also plot it using matplotlib.
 
-An analysis usually starts from a run, retrieved by the RID on its page in Nominal.
+An analysis usually starts from a run, retrieved by the {term}`RID` on its page in Nominal.
 {py:meth}`~nominal.core.Run.list_assets` returns the run's asset, and {py:meth}`~nominal.core.Asset.get_dataset` returns its `telemetry` dataset.
 The dataset holds every test on the helicopter, so read it between the run's start and end to get this test only.
-{py:func}`~nominal.thirdparty.pandas.datasource_to_dataframe` downloads that slice of the `rotor_speed` channel into a pandas DataFrame:
+{py:func}`~nominal.thirdparty.pandas.datasource_to_dataframe` downloads that slice of the `rotor_speed` {term}`channel` into a pandas DataFrame:
 
 ```{code-cell} python
 from nominal.thirdparty.pandas import datasource_to_dataframe

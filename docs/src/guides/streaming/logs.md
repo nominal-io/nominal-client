@@ -7,7 +7,7 @@ myst:
 # Stream logs
 
 {.lead}
-A log stream sends timestamped messages with string arguments, such as a severity, to a log channel in a dataset.
+A log stream sends timestamped messages with string arguments, such as a severity, to a log {term}`channel` in a {term}`dataset`.
 Use it for logs your program produces or parses itself.
 
 For journald exports and other JSON Lines files, [upload them](/guides/datasets/journal-json.md) instead.
@@ -60,4 +60,4 @@ Both can send some batches before one fails, so a retry may duplicate entries.
 ## View the logs
 
 Add the dataset to an [asset](/guides/assets.md#add-data-with-data-scopes) or a [run](/guides/runs.md).
-In a workbook on that asset or run, add a **Logs** panel and select the `engine_logs` channel.
+In a {term}`workbook` on that asset or run, add a **Logs** panel and select the `engine_logs` channel.

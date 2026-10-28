@@ -7,15 +7,15 @@ myst:
 # Trigger alerts on live data
 
 {.lead}
-A streaming checklist evaluates a published [checklist](/guides/checklists/authoring.md) against an asset's live data.
-When a check fails, it can create an event and notify an integration such as Slack.
+A streaming checklist evaluates a published {term}`checklist` against an {term}`asset`'s live data.
+When a {term}`check` fails, it can create an {term}`event` and notify an integration such as Slack.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
 
 ## Stream sample data to an asset
 
-The checklist runs against an [asset](/guides/assets.md), so stream to a dataset on one.
+The checklist runs against an [asset](/guides/assets.md), so stream to a {term}`dataset` on one.
 This example sends a value that's `1` for 4 seconds of every 28:
 
 ```python
@@ -34,7 +34,7 @@ with dataset.get_write_stream() as stream:
 
 Author and publish the checklist [in Python](/guides/checklists/authoring.md), or in the UI:
 
-1. Create a run over the sample data, so the UI can preview the check:
+1. Create a {term}`run` over the sample data, so the UI can preview the check:
 
     ```python
     run = asset.create_run("Checklist preview", start=start, end=start + timedelta(hours=1))
@@ -43,7 +43,7 @@ Author and publish the checklist [in Python](/guides/checklists/authoring.md), o
 1. Go to [Checklists](https://app.gov.nominal.io/checklists) and click **New checklist**.
 1. Select the `Checklist preview` run.
 1. Add a check that fails when `pump_on` is `>` `0`. The chart shows where it fails.
-1. Click **Publish**, then copy the checklist's RID from the arrow (`⌄`) next to its name.
+1. Click **Publish**, then copy the checklist's {term}`RID` from the arrow (`⌄`) next to its name.
 
 ![Checklist preview](/guides/images/b4/checklist_preview_bwaqex.png)
 

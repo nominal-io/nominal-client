@@ -7,7 +7,7 @@ myst:
 # Workbooks
 
 {.lead}
-A workbook is a set of charts and panels for viewing a run's or an asset's data in Nominal.
+A workbook is a set of charts and panels for viewing a {term}`run`'s or an {term}`asset`'s data in Nominal.
 A workbook template defines the panels once, so you can create the same workbook for every test.
 
 ```{include} /guides/_snippets/connect-the-client.md
@@ -16,7 +16,7 @@ A workbook template defines the panels once, so you can create the same workbook
 ## Create a workbook from a template
 
 {py:meth}`~nominal.core.WorkbookTemplate.create_workbook` creates a workbook for a [run](/guides/runs.md) or an [asset](/guides/assets.md).
-The template's inputs must match the run's ref names or the asset's data scope names.
+The template's inputs must match the run's {term}`ref names <ref name>` or the asset's {term}`data scope` names.
 
 ```python
 template = client.get_workbook_template("<TEMPLATE_RID>")
@@ -24,8 +24,8 @@ workbook = template.create_workbook(run=client.get_run("<RUN_RID>"), title="Flig
 print(workbook.nominal_url)
 ```
 
-To copy a template's RID, open it from **Workbooks** → **Templates**, click the arrow next to its name and select **Copy RID**.
-To look templates up by name or label instead, use {py:meth}`~nominal.core.NominalClient.search_workbook_templates`.
+To copy a template's {term}`RID`, open it from **Workbooks** → **Templates**, click the arrow next to its name and select **Copy RID**.
+To look templates up by name or {term}`label` instead, use {py:meth}`~nominal.core.NominalClient.search_workbook_templates`.
 
 ## Find workbooks
 

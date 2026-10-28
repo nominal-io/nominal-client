@@ -63,7 +63,7 @@ if __name__ == "__main__":
 | `ctx.add_tabular` | Parquet or CSV | `timestamp_column`, `timestamp_type`, `tag_columns`, `channel_prefix` |
 | `ctx.add_journal_json` | [Journal JSON](/guides/datasets/journal-json.md) logs | `timestamp_column`, `timestamp_type` |
 | `ctx.add_avro_stream` | [Avro streams](/guides/datasets/avro-streams.md) | `channel_prefix`, `timestamp_type` |
-| `ctx.add_video` | A video channel | `start`, `frame_timestamps`, `true_frame_rate`, `scale_factor` |
+| `ctx.add_video` | A {term}`video channel` | `start`, `frame_timestamps`, `true_frame_rate`, `scale_factor` |
 
 `@single_file_extractor` is the older contract: one Parquet, CSV or Avro stream file, declared with `ctx.set_output(path)`.
 Use it only for images already registered that way.
@@ -95,7 +95,7 @@ print(ctx.build_manifest())
 `env` replaces the whole environment, so include `OUTPUT_DIR` and every required input and parameter.
 With `exit=False`, errors raise instead of exiting the process.
 
-Logs written to `stdout` and `stderr` go to a logs dataset for each ingest, up to 1 MiB per job.
+Logs written to `stdout` and `stderr` go to a logs {term}`dataset` for each ingest, up to 1 MiB per job.
 Check it first when an ingest fails.
 
 ## Build the image

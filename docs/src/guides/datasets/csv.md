@@ -8,9 +8,9 @@ myst:
 
 {.lead}
 Upload CSV and Parquet files with {py:meth}`~nominal.core.Dataset.add_tabular_data`.
-Each file needs one timestamp column. Every other column becomes a channel.
+Each file needs one timestamp column. Every other column becomes a {term}`channel`.
 
-For creating datasets and waiting for ingestion, see [Datasets](/guides/datasets/overview.md).
+For creating {term}`datasets <dataset>` and waiting for ingestion, see [Datasets](/guides/datasets/overview.md).
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -66,7 +66,7 @@ See [Timestamps](/sdk/ts/index.md) for all formats.
 
 ## Tag the data
 
-Tags label the points in a file so you can filter them later, such as by test or by sensor.
+{term}`Tags <tag>` label the points in a file so you can filter them later, such as by test or by sensor.
 `tags` applies the same tags to every row, and `tag_columns` reads a tag's value from a column:
 
 ```python

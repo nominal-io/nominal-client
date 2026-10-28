@@ -8,7 +8,7 @@ myst:
 
 {.lead}
 Upload a video with the objects a computer vision model found in each frame, such as counts and confidence scores.
-In a run, the detections chart in sync with the video, and [checklists](/guides/checklists/authoring.md) can flag frames that need review.
+In a {term}`run`, the detections chart in sync with the video, and {term}`checklists <checklist>` can flag frames that need review.
 
 The examples also need `pip install polars huggingface_hub`.
 
@@ -37,7 +37,7 @@ The first frame is at `2011-11-11T11:11:11` UTC.
 
 ## Upload the detections and the video
 
-Put both in one dataset so they share timestamps.
+Put both in one {term}`dataset` so they share timestamps.
 Convert the video first, as in [Video ingest](/guides/video/video-ingest.md#convert-the-video):
 
 ```python
@@ -72,7 +72,7 @@ run.add_dataset("rt_detr", dataset)
 print(run.nominal_url)
 ```
 
-In a workbook on the run, add a video panel for `rt_detr_video` and charts of the counts and scores.
+In a {term}`workbook` on the run, add a video panel for `rt_detr_video` and charts of the counts and scores.
 
 ```{video} /guides/images/b2/CleanShot_2024-09-25_at_18.35.32_nbtuko.mp4
 :loop:
