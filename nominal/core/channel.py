@@ -21,10 +21,20 @@ from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
+from nominal.protos.compute.v1 import (
+    computation_spec_pb2,
+    compute_pb2,
+    compute_pb2_grpc,
+    constants_pb2,
+    execution_inputs_pb2,
+    execution_options_pb2,
+    execution_results_pb2,
+    expressions_pb2,
+    source_selection_pb2,
+)
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
 from nominal.ts import (
@@ -154,7 +164,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
-        def compute(self) -> scout_compute_api.ComputeService: ...
+        def compute(self) -> compute_pb2_grpc.ComputeServiceStub: ...
         @property
         def channel_metadata(self) -> channel_metadata_pb2_grpc.ChannelMetadataServiceStub: ...
 
@@ -267,52 +277,52 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         if self.data_type is not ChannelDataType.LOG:
             raise TypeError(f"Not searching channel {self.name} for logs-- not a log channel!")
 
-        api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
-        api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
-
-        filtered_series = scout_compute_api.LogSeries(
-            filter=scout_compute_api.LogFilterSeries(
-                input=scout_compute_api.LogSeries(channel=self._to_channel_series(tags=tags)),
-                operator=_log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match),
+        api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_proto()
+        api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_proto()
+        filtered_series = expressions_pb2.LogExpression(
+            filter=expressions_pb2.LogFilterExpression(
+                input=self._to_proto_compute_series(tags=tags).log,
+                predicate=_log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match),
             )
         )
-        compute_series = scout_compute_api.Series(log=filtered_series)
 
-        def request_factory(page_token: scout_compute_api.PageToken | None) -> scout_compute_api.ComputeNodeRequest:
-            return scout_compute_api.ComputeNodeRequest(
-                context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
-                start=api_start,
-                end=api_end,
-                node=scout_compute_api.ComputableNode(
-                    series=scout_compute_api.SummarizeSeries(
-                        input=compute_series,
-                        numeric_aggregations={},
-                        summarization_strategy=scout_compute_api.SummarizationStrategy(
-                            page=scout_compute_api.PageStrategy(
-                                page_info=scout_compute_api.PageInfo(page_size=PAGE_SIZE, page_token=page_token)
-                            )
-                        ),
-                    )
-                ),
+        def request_factory(page_token: str | None) -> compute_pb2.ComputeRequest:
+            return compute_pb2.ComputeRequest(
+                input=execution_inputs_pb2.ExecutionInput(
+                    context=expressions_pb2.ComputeContext(),
+                    start=api_start,
+                    end=api_end,
+                    computation=computation_spec_pb2.ComputationSpec(
+                        series_summary=computation_spec_pb2.SeriesSummarySpec(
+                            input=expressions_pb2.SeriesExpression(log=filtered_series),
+                            summarization=execution_options_pb2.SeriesSummarization(
+                                point_page=execution_options_pb2.PointPageSummary(
+                                    page_size=PAGE_SIZE,
+                                    page_token=page_token or "",
+                                    direction=execution_options_pb2.COMPUTE_TIME_DIRECTION_ASCENDING,
+                                )
+                            ),
+                        )
+                    ),
+                )
             )
 
-        def token_factory(response: scout_compute_api.ComputeNodeResponse) -> scout_compute_api.PageToken | None:
-            if response.paged_log:
-                return response.paged_log.next_page_token
-            else:
-                raise RuntimeError(f"Expected response to support paging, received {response.type}")
+        def token_factory(response: compute_pb2.ComputeResponse) -> str | None:
+            if not response.result.HasField("log_samples"):
+                raise RuntimeError(
+                    f"Expected response to support paging, received {response.result.WhichOneof('kind')}"
+                )
+            return response.result.log_samples.next_page_token or None
 
-        for resp in paginate_rpc(
-            self._clients.compute.compute,
-            self._clients.auth_header,
-            request_factory=request_factory,
-            token_factory=token_factory,
-        ):
-            if resp.paged_log:
-                for timestamp, log in zip(resp.paged_log.timestamps, resp.paged_log.values):
-                    yield LogPoint._from_compute_api(log, timestamp)
-            else:
-                raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
+        page_token = None
+        while True:
+            with translate_grpc_errors():
+                response = self._clients.compute.Compute(request_factory(page_token))
+            page_token = token_factory(response)
+            for sample in response.result.log_samples.samples:
+                yield LogPoint._from_proto(sample)
+            if page_token is None:
+                return
 
     def get_available_tags(
         self,
@@ -423,6 +433,30 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             column_name=self.name, compute_node=self._to_compute_series(tags=tags)
         )
 
+    def _to_proto_compute_series(self, tags: Mapping[str, str] | None = None) -> expressions_pb2.SeriesExpression:
+        channel = source_selection_pb2.ChannelSelection(
+            data_source=source_selection_pb2.DataSourceChannelSelection(
+                data_source=source_selection_pb2.DataSourceReferenceExpression(literal=self.data_source),
+                channel=constants_pb2.StringConstant(literal=self.name),
+                tags=source_selection_pb2.ChannelTagConstraints(
+                    exact_values=source_selection_pb2.ExactTagValues(
+                        values={k: constants_pb2.StringConstant(literal=v) for k, v in (tags or {}).items()}
+                    )
+                ),
+            )
+        )
+        if self.data_type is ChannelDataType.STRING:
+            return expressions_pb2.SeriesExpression(
+                categorical=expressions_pb2.CategoricalExpression(channel_selection=channel)
+            )
+        if self.data_type in (ChannelDataType.DOUBLE, ChannelDataType.INT):
+            return expressions_pb2.SeriesExpression(
+                numeric=expressions_pb2.NumericExpression(channel_selection=channel)
+            )
+        if self.data_type is ChannelDataType.LOG:
+            return expressions_pb2.SeriesExpression(log=expressions_pb2.LogExpression(channel_selection=channel))
+        raise ValueError(f"Unsupported channel data type: {self.data_type}")
+
     def _decimate_request(
         self,
         start: str | datetime | IntegralNanosecondsUTC,
@@ -430,26 +464,30 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         tags: Mapping[str, str] | None = None,
         buckets: int | None = None,
         resolution: int | None = None,
-    ) -> scout_compute_api.ComputeNodeResponse:
-        request = scout_compute_api.ComputeNodeRequest(
-            start=_SecondsNanos.from_flexible(start).to_api(),
-            end=_SecondsNanos.from_flexible(end).to_api(),
-            node=scout_compute_api.ComputableNode(
-                series=scout_compute_api.SummarizeSeries(
-                    input=self._to_compute_series(tags=tags),
-                    numeric_aggregations={},
-                    buckets=buckets,
-                    resolution=resolution,
-                )
-            ),
-            context=scout_compute_api.Context(
-                dataset_references={},
-                variables={},
-                function_variables={},
-            ),
+    ) -> execution_results_pb2.ComputationResult:
+        summarization = None
+        if buckets is not None:
+            summarization = execution_options_pb2.SeriesSummarization(
+                bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=buckets)
+            )
+        elif resolution is not None:
+            summarization = execution_options_pb2.SeriesSummarization(
+                fixed_resolution=execution_options_pb2.FixedResolutionSummary(resolution_nanos=resolution)
+            )
+        request = compute_pb2.ComputeRequest(
+            input=execution_inputs_pb2.ExecutionInput(
+                start=_SecondsNanos.from_flexible(start).to_proto(),
+                end=_SecondsNanos.from_flexible(end).to_proto(),
+                computation=computation_spec_pb2.ComputationSpec(
+                    series_summary=computation_spec_pb2.SeriesSummarySpec(
+                        input=self._to_proto_compute_series(tags=tags), summarization=summarization
+                    )
+                ),
+                context=expressions_pb2.ComputeContext(),
+            )
         )
-        response = self._clients.compute.compute(self._clients.auth_header, request)
-        return response
+        with translate_grpc_errors():
+            return self._clients.compute.Compute(request).result
 
     def _get_series_values_csv(
         self,
