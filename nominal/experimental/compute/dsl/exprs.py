@@ -5,9 +5,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Self
 
-from nominal_api import scout_compute_api
-
 from nominal.experimental.compute.dsl import params
+from nominal.protos.compute.v1 import expressions_pb2
 
 
 @dataclass(frozen=True)
@@ -15,14 +14,8 @@ class Expr(ABC):
     """Base class for all compute expressions."""
 
 
-ConjureSeriesT = typing.TypeVar("ConjureSeriesT")
-
-
-class ChannelExpr(Expr, typing.Generic[ConjureSeriesT]):
+class ChannelExpr(Expr):
     """Base interface for channel expressions scoped to a dataset, asset, or run."""
-
-    @abstractmethod
-    def _to_conjure(self) -> ConjureSeriesT: ...
 
     @classmethod
     @abstractmethod
@@ -55,12 +48,12 @@ class ChannelExpr(Expr, typing.Generic[ConjureSeriesT]):
 
 
 @dataclass(frozen=True)
-class EnumExpr(ChannelExpr[scout_compute_api.EnumSeries]):
+class EnumExpr(ChannelExpr):
     """A compute expression for categorical channel data."""
 
     @abstractmethod
-    def _to_conjure(self) -> scout_compute_api.EnumSeries:
-        raise NotImplementedError()
+    def _to_proto(self) -> expressions_pb2.CategoricalExpression:
+        raise NotImplementedError
 
     @classmethod
     def datasource_channel(
@@ -109,12 +102,12 @@ class EnumExpr(ChannelExpr[scout_compute_api.EnumSeries]):
 
 
 @dataclass(frozen=True)
-class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
+class NumericExpr(ChannelExpr):
     """A compute expression for numeric channel data and derived signals."""
 
     @abstractmethod
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        raise NotImplementedError()
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        raise NotImplementedError
 
     @classmethod
     def datasource_channel(
@@ -261,8 +254,8 @@ class RangeExpr(Expr):
     """A compute expression for time ranges that can be combined or inverted."""
 
     @abstractmethod
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        raise NotImplementedError()
+    def _to_proto(self) -> expressions_pb2.RangeExpression:
+        raise NotImplementedError
 
     def intersect(self, ranges: typing.Sequence[RangeExpr], /) -> RangeExpr:
         return _range_expr_impls.IntersectRangesExpr(_nodes=[self, *ranges])

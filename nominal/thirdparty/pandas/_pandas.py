@@ -207,24 +207,36 @@ def channel_to_dataframe_decimated(
 
     # when there are less than 1000 points, the result is numeric
     # TODO(alkasm): why should this return differently shaped dataframes?
-    if result.numeric is not None:
+    if result.HasField("numeric_samples"):
         df = pd.DataFrame(
-            result.numeric.values,
+            [point.value for point in result.numeric_samples.samples],
             columns=["value"],
-            index=[_to_pandas_timestamp(timestamp) for timestamp in result.numeric.timestamps],
+            index=[
+                pd.Timestamp(ts._SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), unit="ns", tz="UTC")
+                for point in result.numeric_samples.samples
+            ],
         )
         df.index.name = "timestamp"
         return df
 
-    if result.bucketed_numeric is None:
+    if not result.HasField("numeric_buckets"):
         raise ValueError("Unexpected response from compute service, bucketed_numeric should not be None")
     df = pd.DataFrame(
         [
-            (bucket.min, bucket.max, bucket.mean, bucket.count, bucket.variance)
-            for bucket in result.bucketed_numeric.buckets
+            (
+                bucket.statistics.min if bucket.statistics.HasField("min") else None,
+                bucket.statistics.max if bucket.statistics.HasField("max") else None,
+                bucket.statistics.mean if bucket.statistics.HasField("mean") else None,
+                bucket.statistics.count if bucket.statistics.HasField("count") else None,
+                bucket.statistics.variance if bucket.statistics.HasField("variance") else None,
+            )
+            for bucket in result.numeric_buckets.buckets
         ],
         columns=["min", "max", "mean", "count", "variance"],
-        index=[_to_pandas_timestamp(timestamp) for timestamp in result.bucketed_numeric.timestamps],
+        index=[
+            pd.Timestamp(ts._SecondsNanos.from_proto(bucket.end).to_nanoseconds(), unit="ns", tz="UTC")
+            for bucket in result.numeric_buckets.buckets
+        ],
     )
     df.index.name = "timestamp"
     return df
