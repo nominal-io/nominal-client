@@ -44,6 +44,8 @@
 - `guides/glossary.md` defines each concept once, with a link to the guide that covers it in detail.
   Link a concept on first use in a page with the `{term}` role, for example ``{term}`datasets <dataset>` ``.
   Add a glossary entry for a new concept rather than define it in another page.
+  `_ext/glossary_tips.py` shows the first paragraph of each definition in a hover box on its `{term}` links,
+  so keep that paragraph self-contained and put the "See" link in a second paragraph.
 - Each guide runs from the top. Guides whose code needs a client include `_snippets/connect-the-client.md` before their first section, instead of repeating install, API key or connection steps.
 - Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the SDK reference.
 - Reusable prose goes in `src/guides/_snippets/`, code fragments in `src/guides/_snippets/code/`. Include them with MyST `{include}` and `{literalinclude}`. Partials are excluded from page discovery.
