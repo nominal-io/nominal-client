@@ -15,6 +15,7 @@ from nominal_api import (
     scout_video_api,
 )
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import rid_from_instance_or_string
@@ -83,6 +84,25 @@ class ArchiveStatusFilter(Enum):
 
 def _numeric_equality(name: str, value: float) -> types_pb2.NumericPropertyPredicate:
     return types_pb2.NumericPropertyPredicate(name=name, operator=types_pb2.EQ, value=value)
+
+
+def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> datasets_pb2.DatasetQuery:
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            archive_query = datasets_pb2.DatasetQuery(is_archived=False)
+        case ArchiveStatusFilter.ARCHIVED:
+            archive_query = datasets_pb2.DatasetQuery(is_archived=True)
+        case ArchiveStatusFilter.ANY:
+            # An explicit OR avoids relying on server defaults for an absent archive filter.
+            archive_query = datasets_pb2.DatasetQuery()
+            getattr(archive_query, "or").CopyFrom(
+                datasets_pb2.DatasetQueryList(
+                    queries=[datasets_pb2.DatasetQuery(is_archived=True), datasets_pb2.DatasetQuery(is_archived=False)]
+                )
+            )
+        case _:
+            raise ValueError(f"Unexpected archive status for dataset search: {archive_status}")
+    return archive_query
 
 
 def _backfill_workbook_draft_query_clause(include_drafts: bool) -> scout_notebook_api.SearchNotebooksQuery:
@@ -354,7 +374,7 @@ def create_search_dataset_files_query(
     return scout_catalog.SearchDatasetFilesQuery(and_=queries)
 
 
-def create_search_datasets_query(  # noqa: PLR0912
+def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -364,21 +384,7 @@ def create_search_datasets_query(  # noqa: PLR0912
     workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> datasets_pb2.DatasetQuery:
-    match archive_status:
-        case ArchiveStatusFilter.NOT_ARCHIVED:
-            archive_query = datasets_pb2.DatasetQuery(is_archived=False)
-        case ArchiveStatusFilter.ARCHIVED:
-            archive_query = datasets_pb2.DatasetQuery(is_archived=True)
-        case ArchiveStatusFilter.ANY:
-            archive_query = datasets_pb2.DatasetQuery()
-            getattr(archive_query, "or").CopyFrom(
-                datasets_pb2.DatasetQueryList(
-                    queries=[datasets_pb2.DatasetQuery(is_archived=True), datasets_pb2.DatasetQuery(is_archived=False)]
-                )
-            )
-        case _:
-            raise ValueError(f"Unexpected archive status for dataset search: {archive_status}")
-    queries = [archive_query]
+    queries = [_backfill_dataset_archive_query_clause(archive_status)]
     if search_text is not None:
         queries.append(datasets_pb2.DatasetQuery(search_text=search_text))
     if exact_match is not None:
@@ -408,6 +414,14 @@ def create_search_datasets_query(  # noqa: PLR0912
         queries.append(datasets_pb2.DatasetQuery(created_at_or_after=timestamp))
     if workspace_rid is not None:
         queries.append(datasets_pb2.DatasetQuery(workspace_rid=workspace_rid))
+    # DatasetQueryList accepts at most 100 children; nested conjunctions preserve all filters.
+    while len(queries) > 100:
+        groups = []
+        for batch in batched(queries, 100):
+            group = datasets_pb2.DatasetQuery()
+            getattr(group, "and").CopyFrom(datasets_pb2.DatasetQueryList(queries=batch))
+            groups.append(group)
+        queries = groups
     query = datasets_pb2.DatasetQuery()
     getattr(query, "and").CopyFrom(datasets_pb2.DatasetQueryList(queries=queries))
     return query

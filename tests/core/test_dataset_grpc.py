@@ -133,3 +133,27 @@ def test_update_collapses_duplicate_labels():
     )
     dataset.update(labels=["a", "b", "a"])
     assert clients.grpc_datasets.UpdateDataset.call_args.args[0].dataset.labels == ["a", "b"]
+
+
+def test_dataset_search_preserves_large_filter_conjunctions():
+    """Large filter sets retain every condition while each protobuf conjunction stays within its limit."""
+    clients = MagicMock()
+    clients.grpc_datasets.SearchDatasets.return_value = datasets_pb2.SearchDatasetsResponse()
+    client = NominalClient(_clients=clients)
+    labels = [f"label-{index}" for index in range(205)]
+    properties = {f"property-{index}": str(index) for index in range(105)}
+
+    assert client.search_datasets(labels=labels, properties=properties, workspace=WorkspaceSearchType.ALL) == []
+
+    def leaves(query):
+        if query.WhichOneof("query") == "and":
+            children = getattr(query, "and").queries
+            assert 1 <= len(children) <= 100
+            return [leaf for child in children for leaf in leaves(child)]
+        return [query]
+
+    clauses = leaves(clients.grpc_datasets.SearchDatasets.call_args.args[0].query)
+    assert clauses[0].WhichOneof("query") == "is_archived"
+    assert not clauses[0].is_archived
+    assert [clause.label for clause in clauses[1:206]] == labels
+    assert {clause.property.name: clause.property.value for clause in clauses[206:]} == properties

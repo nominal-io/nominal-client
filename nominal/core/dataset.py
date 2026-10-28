@@ -152,28 +152,26 @@ class Dataset(HasRid, MarkableMixin, RefreshableGrpcMixin[datasets_pb2.Dataset])
             TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalError: The request fails.
         """
-        dataset = datasets_pb2.Dataset(
-            rid=self.rid,
-            name=name or "",
-            description=description,
-            labels=None if labels is None else list(dict.fromkeys(labels)),
-            properties=typed_properties_to_proto(properties),
-        )
-        paths = [
-            key
-            for key, value in (
-                ("name", name),
-                ("description", description),
-                ("labels", labels),
-                ("properties", properties),
-            )
-            if value is not None
-        ]
-        if not paths:
+        dataset = datasets_pb2.Dataset(rid=self.rid)
+        update_mask = FieldMask()
+        if name is not None:
+            dataset.name = name
+            update_mask.paths.append("name")
+        if description is not None:
+            dataset.description = description
+            update_mask.paths.append("description")
+        if labels is not None:
+            dataset.labels.extend(dict.fromkeys(labels))
+            update_mask.paths.append("labels")
+        if properties is not None:
+            dataset.MergeFrom(datasets_pb2.Dataset(properties=typed_properties_to_proto(properties)))
+            update_mask.paths.append("properties")
+        if not update_mask.paths:
+            # An empty update mask is invalid; refresh to retain the no-argument update behavior.
             return self.refresh()
         with translate_grpc_errors():
             response = self._clients.grpc_datasets.UpdateDataset(
-                datasets_pb2.UpdateDatasetRequest(dataset=dataset, update_mask=FieldMask(paths=paths))
+                datasets_pb2.UpdateDatasetRequest(dataset=dataset, update_mask=update_mask)
             )
         return self._refresh_from_api(response.dataset)
 
