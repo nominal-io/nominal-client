@@ -197,6 +197,8 @@ def batch_compute_enum_buckets(
     request = compute_pb2.BatchComputeWithUnitsRequest(
         inputs=[_create_compute_request_buckets(expr, start, end, buckets) for expr in exprs]
     )
+    if not request.inputs:
+        return []
     with translate_grpc_errors():
         response = client._clients.compute.BatchComputeWithUnits(request)
     return [_enum_buckets_from_compute_response(result) for result in _batch_results(response)]
@@ -234,6 +236,8 @@ def batch_compute_buckets(
     request = compute_pb2.BatchComputeWithUnitsRequest(
         inputs=[_create_compute_request_buckets(expr, start, end, buckets) for expr in exprs]
     )
+    if not request.inputs:
+        return []
     with translate_grpc_errors():
         response = client._clients.compute.BatchComputeWithUnits(request)
     return [_numeric_buckets_from_compute_response(result) for result in _batch_results(response)]
