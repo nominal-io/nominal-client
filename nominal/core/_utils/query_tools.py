@@ -376,10 +376,13 @@ def create_search_dataset_files_query(
                 )
             )
         )
-    if file_tags is not None:
+    if file_tags:
         queries.append(
             dataset_files_pb2.DatasetFileQuery(additional_file_tags=dataset_files_pb2.FileTagFilter(tags=file_tags))
         )
+    if not queries:
+        # An unbounded range also matches files without bounds. Empty conjunctions are invalid.
+        return dataset_files_pb2.DatasetFileQuery(data_time_range=dataset_files_pb2.TimeRangeFilter())
     query = dataset_files_pb2.DatasetFileQuery()
     getattr(query, "and").CopyFrom(dataset_files_pb2.DatasetFileQueryList(queries=queries))
     return query

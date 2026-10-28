@@ -134,8 +134,8 @@ def test_origin_uri_lookup_follows_pages_and_matches_path():
     ]
 
 
-def test_dataset_file_search_preserves_truncation_empty_tags_and_pages(caplog):
-    """Search retains whole-second overlap bounds, explicit empty tags, ordering, and page cursors."""
+def test_dataset_file_search_preserves_truncation_and_pages(caplog):
+    """Search retains whole-second overlap bounds, empty-tag match-all semantics, ordering, and page cursors."""
     clients = MagicMock()
     dataset = Dataset(
         rid="dataset",
@@ -161,8 +161,7 @@ def test_dataset_file_search_preserves_truncation_empty_tags_and_pages(caplog):
         clauses = getattr(request.query, "and").queries
         assert clauses[0].data_time_range.start == Timestamp(seconds=-1)
         assert not clauses[0].data_time_range.HasField("end")
-        assert clauses[1].HasField("additional_file_tags")
-        assert dict(clauses[1].additional_file_tags.tags) == {}
+        assert len(clauses) == 1
     assert "Truncating sub-second precision" in caplog.text
 
 
@@ -207,3 +206,27 @@ def test_list_files_filters_success_across_pages_and_retains_video_subtype():
         "",
         "next",
     ]
+
+
+@pytest.mark.parametrize("file_tags", [None, {}])
+def test_dataset_file_search_without_filters_uses_unbounded_range(file_tags):
+    """No filters match all files using a valid query, including files without bounds."""
+    clients = MagicMock()
+    dataset = Dataset(
+        rid="dataset",
+        name="test",
+        description=None,
+        bounds=None,
+        properties={},
+        labels=[],
+        is_archived=False,
+        _clients=clients,
+    )
+    clients.grpc_dataset_files.SearchDatasetFiles.return_value = files_pb.SearchDatasetFilesResponse(
+        dataset_files=[files_pb.DatasetFile(id="without-bounds")]
+    )
+    assert [file.id for file in dataset.search_files(file_tags=file_tags)] == ["without-bounds"]
+    query = clients.grpc_dataset_files.SearchDatasetFiles.call_args.args[0].query
+    assert query.WhichOneof("query") == "data_time_range"
+    assert not query.data_time_range.HasField("start")
+    assert not query.data_time_range.HasField("end")
