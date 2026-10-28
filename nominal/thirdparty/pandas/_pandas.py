@@ -7,7 +7,6 @@ from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence, cast
 
 from nominal_api import api, scout_compute_api, scout_dataexport_api
-from nominal_api.api import Timestamp
 
 import pandas as pd
 from nominal import ts
@@ -18,6 +17,7 @@ from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileTypes
+from nominal.protos.types.time import time_pb2
 from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
 
 logger = logging.getLogger(__name__)
@@ -211,10 +211,7 @@ def channel_to_dataframe_decimated(
         df = pd.DataFrame(
             [point.value for point in result.numeric_samples.samples],
             columns=["value"],
-            index=[
-                pd.Timestamp(ts._SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), unit="ns", tz="UTC")
-                for point in result.numeric_samples.samples
-            ],
+            index=[_to_pandas_timestamp(point.timestamp) for point in result.numeric_samples.samples],
         )
         df.index.name = "timestamp"
         return df
@@ -233,16 +230,13 @@ def channel_to_dataframe_decimated(
             for bucket in result.numeric_buckets.buckets
         ],
         columns=["min", "max", "mean", "count", "variance"],
-        index=[
-            pd.Timestamp(ts._SecondsNanos.from_proto(bucket.end).to_nanoseconds(), unit="ns", tz="UTC")
-            for bucket in result.numeric_buckets.buckets
-        ],
+        index=[_to_pandas_timestamp(bucket.end) for bucket in result.numeric_buckets.buckets],
     )
     df.index.name = "timestamp"
     return df
 
 
-def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+def _to_pandas_timestamp(timestamp: time_pb2.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
