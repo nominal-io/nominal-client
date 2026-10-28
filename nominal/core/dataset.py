@@ -24,15 +24,15 @@ from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.factory import create_dataset_stream
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils.pagination_tools import search_dataset_files_paginated
 from nominal.core._utils.properties import (
-    properties_from_conjure,
-    typed_properties_to_conjure,
+    properties_from_proto,
+    typed_properties_to_proto,
 )
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
@@ -50,6 +50,7 @@ from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeErro
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
+from nominal.protos.datasets.v1 import datasets_pb2, datasets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
@@ -73,7 +74,7 @@ DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
-class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.EnrichedDataset]):
+class Dataset(HasRid, MarkableMixin, RefreshableGrpcMixin[datasets_pb2.Dataset]):
     """A collection of channels populated by uploaded files and streamed data."""
 
     rid: str
@@ -93,6 +94,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Protocol,
     ):
         @property
+        def grpc_datasets(self) -> datasets_pb2_grpc.DatasetServiceStub: ...
+        @property
         def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
@@ -111,8 +114,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """Returns a URL to the page in the nominal app containing this dataset"""
         return dataset_url(self._clients, self.rid)
 
-    def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
-        return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
+    def _get_latest_api(self) -> datasets_pb2.Dataset:
+        return _get_dataset(self._clients.grpc_datasets, self.rid)
 
     def update(
         self,
@@ -147,15 +150,30 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Raises:
             TypeError: If a property value is a boolean or is not a string, integer, or float.
+            NominalError: The request fails.
         """
-        request = scout_catalog.UpdateDatasetMetadata(
-            description=description,
-            labels=None if labels is None else list(labels),
-            name=name,
-            typed_properties=typed_properties_to_conjure(properties),
-        )
-        updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
-        return self._refresh_from_api(updated_dataset)
+        dataset = datasets_pb2.Dataset(rid=self.rid)
+        update_mask = FieldMask()
+        if name is not None:
+            dataset.name = name
+            update_mask.paths.append("name")
+        if description is not None:
+            dataset.description = description
+            update_mask.paths.append("description")
+        if labels is not None:
+            dataset.labels.extend(dict.fromkeys(labels))
+            update_mask.paths.append("labels")
+        if properties is not None:
+            dataset.MergeFrom(datasets_pb2.Dataset(properties=typed_properties_to_proto(properties)))
+            update_mask.paths.append("properties")
+        if not update_mask.paths:
+            # An empty update mask is invalid; refresh to retain the no-argument update behavior.
+            return self.refresh()
+        with translate_grpc_errors():
+            response = self._clients.grpc_datasets.UpdateDataset(
+                datasets_pb2.UpdateDatasetRequest(dataset=dataset, update_mask=update_mask)
+            )
+        return self._refresh_from_api(response.dataset)
 
     def update_bounds(
         self,
@@ -174,14 +192,19 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Returns:
             The updated Dataset instance with new bounds.
+
+        Raises:
+            NominalError: The request fails.
         """
         bounds = Bounds(
             start=_SecondsNanos.from_flexible(start).to_nanoseconds(),
             end=_SecondsNanos.from_flexible(end).to_nanoseconds(),
         )
-        request = scout_catalog.UpdateBoundsRequest(bounds=bounds._to_conjure())
-        self._clients.catalog.update_global_dataset_bounds(self._clients.auth_header, request, self.rid)
-        return self.refresh()
+        with translate_grpc_errors():
+            response = self._clients.grpc_datasets.UpdateDatasetBounds(
+                datasets_pb2.UpdateDatasetBoundsRequest(dataset_rid=self.rid, bounds=bounds._to_proto())
+            )
+        return self._refresh_from_api(response.dataset)
 
     def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
         if response.details.dataset is None:
@@ -1217,7 +1240,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
         """
-        self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.grpc_datasets.ArchiveDataset(datasets_pb2.ArchiveDatasetRequest(dataset_rid=self.rid))
 
     def unarchive(self) -> None:
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI.
@@ -1225,17 +1249,18 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.
         """
-        self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
+        with translate_grpc_errors():
+            self._clients.grpc_datasets.UnarchiveDataset(datasets_pb2.UnarchiveDatasetRequest(dataset_rid=self.rid))
 
     @classmethod
-    def _from_conjure(cls, clients: Dataset._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
+    def _from_proto(cls, clients: Dataset._Clients, dataset: datasets_pb2.Dataset) -> Self:
         return cls(
             rid=dataset.rid,
             name=dataset.name,
-            description=dataset.description,
-            properties=properties_from_conjure(dataset.typed_properties),
+            description=dataset.description if dataset.HasField("description") else None,
+            properties=properties_from_proto(dataset.properties),
             labels=tuple(dataset.labels),
-            bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
+            bounds=Bounds._from_proto(dataset.bounds) if dataset.HasField("bounds") else None,
             is_archived=dataset.is_archived,
             _clients=clients,
         )
@@ -1805,18 +1830,17 @@ def _search_dataset_files(
 
 
 def _get_datasets(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
-) -> Iterable[scout_catalog.EnrichedDataset]:
-    """The datasets with these RIDs, in one request. Missing or unreadable RIDs are left out."""
-    rids = list(dataset_rids)
-    if rids:
-        yield from client.get_enriched_datasets(auth_header, scout_catalog.GetDatasetsRequest(dataset_rids=rids))
+    client: datasets_pb2_grpc.DatasetServiceStub, dataset_rids: Iterable[str]
+) -> Iterable[datasets_pb2.Dataset]:
+    """Fetch unique datasets in bounded batches, omitting missing or unreadable RIDs."""
+    for rids in batched(dict.fromkeys(dataset_rids), 1000):
+        with translate_grpc_errors():
+            response = client.BatchGetDatasets(datasets_pb2.BatchGetDatasetsRequest(dataset_rids=rids))
+        yield from response.datasets
 
 
-def _get_dataset(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rid: str
-) -> scout_catalog.EnrichedDataset:
-    datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
+def _get_dataset(client: datasets_pb2_grpc.DatasetServiceStub, dataset_rid: str) -> datasets_pb2.Dataset:
+    datasets = list(_get_datasets(client, [dataset_rid]))
     if not datasets:
         raise ValueError(f"dataset {dataset_rid!r} not found")
     if len(datasets) > 1:
@@ -1824,44 +1848,8 @@ def _get_dataset(
     return datasets[0]
 
 
-def _create_dataset_request(
-    name: str,
-    *,
-    description: str | None = None,
-    labels: Sequence[str] = (),
-    properties: NominalProperties | None = None,
-    workspace_rid: str | None = None,
-    marking_rids: Sequence[str] = (),
-    derived_definition: scout_catalog.CreateDerivedDefinition | None = None,
-    dataset_type: scout_catalog.DatasetBackingType | None = None,
-) -> scout_catalog.CreateDataset:
-    """Build the CreateDataset request shared by every dataset creation path.
-
-    Callers pass only the fields that differ between them; the rest is the shape the catalog API
-    expects for a client-created dataset. `channel_search_split_tag_keys` is empty because the server
-    rejects split keys on a dataset with no derived definition, and empty is what it already stores
-    for datasets created before that field existed.
-    """
-    return scout_catalog.CreateDataset(
-        name=name,
-        description=description,
-        labels=list(labels),
-        properties={},
-        typed_properties=typed_properties_to_conjure(properties) or {},
-        is_v2_dataset=True,
-        metadata={},
-        origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=workspace_rid,
-        marking_rids=list(marking_rids),
-        channel_search_split_tag_keys=[],
-        derived_definition=derived_definition,
-        dataset_type=dataset_type,
-    )
-
-
 def _create_dataset(
-    auth_header: str,
-    client: scout_catalog.CatalogService,
+    client: datasets_pb2_grpc.DatasetServiceStub,
     name: str,
     *,
     description: str | None = None,
@@ -1869,16 +1857,21 @@ def _create_dataset(
     properties: NominalProperties | None = None,
     workspace_rid: str | None = None,
     marking_rids: Sequence[str] | None = None,
-) -> scout_catalog.EnrichedDataset:
-    request = _create_dataset_request(
-        name,
-        description=description,
-        labels=labels,
-        properties=properties,
+    dataset_uuid: str | None = None,
+) -> datasets_pb2.Dataset:
+    request = datasets_pb2.CreateDatasetRequest(
+        dataset=datasets_pb2.Dataset(
+            name=name,
+            description=description,
+            labels=list(dict.fromkeys(labels)),
+            properties=typed_properties_to_proto(properties),
+        ),
+        dataset_uuid=dataset_uuid,
         workspace_rid=workspace_rid,
-        marking_rids=marking_rids or (),
+        marking_rids=None if marking_rids is None else list(dict.fromkeys(marking_rids)),
     )
-    return client.create_dataset(auth_header, request)
+    with translate_grpc_errors():
+        return client.CreateDataset(request).dataset
 
 
 def _validate_journal_timestamps(

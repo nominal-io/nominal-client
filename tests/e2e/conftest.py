@@ -35,11 +35,12 @@ from typing import Iterator
 from uuid import uuid4
 
 import pytest
-from nominal_api import scout_catalog
 
 from nominal.core import NominalClient
-from nominal.core.dataset import Dataset, _create_dataset_request
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import IngestStatus
+from nominal.protos.datasets.v1 import datasets_pb2
 from tests.e2e import POLL_INTERVAL
 from tests.e2e.credentials import with_temporary_api_key
 
@@ -101,12 +102,17 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
     # Pin the backing type so export tests do not depend on environment defaults
     # or delayed read visibility after file ingestion reports success.
     clients = client._clients
-    request = _create_dataset_request(
-        f"dataset-e2e-readonly-{uuid4().hex[:8]}",
+    request = datasets_pb2.CreateDatasetRequest(
+        dataset=datasets_pb2.Dataset(
+            name=f"dataset-e2e-readonly-{uuid4().hex[:8]}",
+            backing_type=datasets_pb2.DATASET_BACKING_TYPE_LEGACY,
+        ),
         workspace_rid=clients.resolve_default_workspace_rid(),
-        dataset_type=scout_catalog.DatasetBackingType.LEGACY,
     )
-    ds = Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
+    with translate_grpc_errors():
+        response = clients.grpc_datasets.CreateDataset(request)
+    ds = Dataset._from_proto(clients, response.dataset)
+
     try:
         dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(
             interval=POLL_INTERVAL

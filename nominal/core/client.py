@@ -13,7 +13,6 @@ import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     ingest_api,
-    scout_catalog,
     scout_checks_api,
     scout_layout_api,
     scout_template_api,
@@ -128,6 +127,7 @@ from nominal.exceptions import (
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.attachments.v2 import attachments_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
+from nominal.protos.datasets.v1 import datasets_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
@@ -401,14 +401,13 @@ class NominalClient:
 
     def _iter_search_datasets(
         self,
-        query: scout_catalog.SearchDatasetsQuery,
+        query: datasets_pb2.DatasetQuery,
     ) -> Iterable[Dataset]:
         for raw_dataset in search_datasets_paginated(
-            self._clients.catalog,
-            self._clients.auth_header,
+            self._clients.grpc_datasets,
             query,
         ):
-            yield Dataset._from_conjure(self._clients, raw_dataset)
+            yield Dataset._from_proto(self._clients, raw_dataset)
 
     def search_datasets(
         self,
@@ -451,6 +450,7 @@ class NominalClient:
 
         Raises:
             TypeError: If a property value is a boolean or is not a string, integer, or float.
+            NominalError: The request fails.
         """
         query = create_search_datasets_query(
             exact_match=exact_match,
@@ -936,10 +936,10 @@ class NominalClient:
 
         Raises:
             TypeError: If a property value is a boolean or is not a string, integer, or float.
+            NominalError: The request fails.
         """
         response = _create_dataset(
-            self._clients.auth_header,
-            self._clients.catalog,
+            self._clients.grpc_datasets,
             name,
             description=description,
             labels=labels,
@@ -947,7 +947,7 @@ class NominalClient:
             workspace_rid=self._clients.resolve_default_workspace_rid(),
             marking_rids=_marking_rids(markings),
         )
-        dataset = Dataset._from_conjure(self._clients, response)
+        dataset = Dataset._from_proto(self._clients, response)
 
         if prefix_tree_delimiter:
             dataset.set_channel_prefix_tree(prefix_tree_delimiter)
@@ -1026,16 +1026,25 @@ class NominalClient:
         raise ValueError(f"Could not determine datasource type from RID: {rid}")
 
     def get_dataset(self, rid: str) -> Dataset:
-        """Retrieve a dataset by its RID."""
-        response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
-        return Dataset._from_conjure(self._clients, response)
+        """Retrieve a dataset by its RID.
+
+        Raises:
+            ValueError: The dataset does not exist or is not accessible.
+            NominalError: The request fails.
+        """
+        response = _get_dataset(self._clients.grpc_datasets, rid)
+        return Dataset._from_proto(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
-        for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, rids):
-            yield Dataset._from_conjure(self._clients, ds)
+        for ds in _get_datasets(self._clients.grpc_datasets, rids):
+            yield Dataset._from_proto(self._clients, ds)
 
     def get_datasets(self, rids: Iterable[str]) -> Sequence[Dataset]:
-        """Retrieve datasets by their RIDs."""
+        """Retrieve datasets by their RIDs, omitting missing or inaccessible datasets.
+
+        Raises:
+            NominalError: The request fails.
+        """
         return list(self._iter_get_datasets(rids))
 
     def get_checklist(self, rid: str) -> Checklist:

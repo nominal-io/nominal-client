@@ -13,6 +13,7 @@ from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.video import Video
 from nominal.exceptions import NominalError, NominalNotFoundError, NominalPermissionDeniedError
 from nominal.protos.authorization.markings.v1 import markings_pb2
+from nominal.protos.datasets.v1 import datasets_pb2
 
 
 def _marking(rid: str = "ri.marking.a", id: str = "itar") -> markings_pb2.Marking:
@@ -313,16 +314,24 @@ def test_create_dataset_forwards_markings(
     expected_rids: list[str],
 ) -> None:
     """Markings reach the create request, and omitting them sends an empty list rather than null."""
+    mock_clients.resolve_default_workspace_rid.return_value = "workspace"
+    mock_clients.grpc_datasets.CreateDataset.return_value = datasets_pb2.CreateDatasetResponse(
+        dataset=datasets_pb2.Dataset(rid="ds")
+    )
     client.create_dataset("ds", markings=markings)
 
-    assert mock_clients.catalog.create_dataset.call_args.args[1].marking_rids == expected_rids
+    assert mock_clients.grpc_datasets.CreateDataset.call_args.args[0].marking_rids == expected_rids
 
 
 def test_create_dataset_accepts_marking_instances(client: NominalClient, mock_clients: MagicMock) -> None:
     """A Marking instance is accepted at creation, not just its RID."""
     marking = Marking._from_proto(mock_clients, _marking(rid="ri.marking.a"))
 
+    mock_clients.resolve_default_workspace_rid.return_value = "workspace"
+    mock_clients.grpc_datasets.CreateDataset.return_value = datasets_pb2.CreateDatasetResponse(
+        dataset=datasets_pb2.Dataset(rid="ds")
+    )
     client.create_dataset("ds", markings=[marking, "ri.marking.b"])
 
-    request = mock_clients.catalog.create_dataset.call_args.args[1]
+    request = mock_clients.grpc_datasets.CreateDataset.call_args.args[0]
     assert request.marking_rids == ["ri.marking.a", "ri.marking.b"]

@@ -37,6 +37,7 @@ from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
+from nominal.protos.datasets.v1 import datasets_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
@@ -163,6 +164,7 @@ class ClientsBunch:
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
+    grpc_datasets: datasets_pb2_grpc.DatasetServiceStub
     event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     integrations: integrations_pb2_grpc.IntegrationsServiceStub
@@ -335,6 +337,7 @@ class ClientsBunch:
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
+            grpc_datasets=grpc_factory(datasets_pb2_grpc.DatasetServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),

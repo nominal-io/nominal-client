@@ -7,7 +7,7 @@ from typing import Any, Callable, cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from nominal_api import api, scout_catalog
+from nominal_api import scout_catalog
 
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core.dataset import Dataset, DatasetBounds
@@ -15,6 +15,8 @@ from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError
+from nominal.protos.datasets.v1 import datasets_pb2
+from nominal.protos.types import types_pb2
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),
@@ -56,16 +58,18 @@ def test_update_sends_typed_properties_and_reads_them_back(
     make_enriched_dataset: Callable[..., scout_catalog.EnrichedDataset],
 ) -> None:
     """Updates write the typed map, and an empty string and zero read back as a string and a float."""
-    wire = {"serial": api.TypedPropertyValue(string_value=""), "count": api.TypedPropertyValue(numeric_value=0.0)}
-    response = make_enriched_dataset(mock_dataset.rid)
-    response.typed_properties.update(wire)
-    mock_clients.catalog.update_dataset_metadata.return_value = response
+    wire = {
+        "serial": types_pb2.TypedPropertyValue(string_value=""),
+        "count": types_pb2.TypedPropertyValue(numeric_value=0.0),
+    }
+    response = datasets_pb2.Dataset(rid=mock_dataset.rid, properties=wire)
+    mock_clients.grpc_datasets.UpdateDataset.return_value = datasets_pb2.UpdateDatasetResponse(dataset=response)
 
     mock_dataset.update(properties={"serial": "", "count": 0})
 
-    request = mock_clients.catalog.update_dataset_metadata.call_args.args[2]
-    assert request.typed_properties == wire
-    assert request.properties is None
+    request = mock_clients.grpc_datasets.UpdateDataset.call_args.args[0]
+    assert request.dataset.properties == wire
+    assert request.update_mask.paths == ["properties"]
     assert mock_dataset.properties == {"serial": "", "count": 0.0}
     assert isinstance(mock_dataset.properties["count"], float)
 

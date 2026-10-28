@@ -387,15 +387,14 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
         # No such dataset exists! Create dataset
         enriched_dataset = _create_dataset(
-            self._clients.auth_header,
-            self._clients.catalog,
+            self._clients.grpc_datasets,
             name or data_scope_name,
             description=description,
             properties=properties,
             labels=labels,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
         )
-        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+        dataset = Dataset._from_proto(self._clients, enriched_dataset)
         if prefix_tree_delimiter is not None:
             dataset.set_channel_prefix_tree(prefix_tree_delimiter)
 

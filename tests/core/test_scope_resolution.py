@@ -8,13 +8,14 @@ from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.datasets.v1 import datasets_pb2
 from nominal.protos.run.v1 import run_service_pb2
 
 
 @pytest.fixture
 def clients():
     clients = MagicMock()
-    clients.catalog.get_enriched_datasets.return_value = []
+    clients.grpc_datasets.BatchGetDatasets.return_value = datasets_pb2.BatchGetDatasetsResponse()
     return clients
 
 
@@ -42,7 +43,7 @@ def _run(clients, **sources):
 
 
 def _dataset(rid):
-    return MagicMock(rid=rid, name=rid, description=None, labels=[], properties={}, bounds=None, is_archived=False)
+    return datasets_pb2.Dataset(rid=rid, name=rid)
 
 
 @pytest.mark.parametrize(
@@ -71,7 +72,7 @@ def test_scope_resolution_makes_one_request_per_needed_type(clients, resolve, re
 
     assert clients.assets.GetAssets.call_count == 1
     assert (
-        clients.catalog.get_enriched_datasets.call_count,
+        clients.grpc_datasets.BatchGetDatasets.call_count,
         clients.video.batch_get.call_count,
     ) == requests
     clients.video.get.assert_not_called()
@@ -94,9 +95,9 @@ def test_a_scope_that_does_not_resolve_is_left_out_of_lists_and_not_found_by_loo
 
 def test_a_run_reads_its_own_refs_not_the_scopes_it_inherits(clients):
     """A run's dataset methods see its own refs, not the asset scopes it inherits for scoped ingest."""
-    clients.catalog.get_enriched_datasets.side_effect = lambda auth, request: [
-        _dataset(rid) for rid in request.dataset_rids
-    ]
+    clients.grpc_datasets.BatchGetDatasets.side_effect = lambda request: datasets_pb2.BatchGetDatasetsResponse(
+        datasets=[_dataset(rid) for rid in request.dataset_rids]
+    )
     run = _run(clients, direct={"dataset": "direct"})
     clients.run.GetRun.return_value.run.asset_data_scopes.append(
         run_service_pb2.DataScope(data_scope_name="inherited", data_source=run_service_pb2.DataSource(dataset="other"))
