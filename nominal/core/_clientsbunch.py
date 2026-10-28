@@ -7,7 +7,6 @@ from typing import Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
-    authorization,
     ingest_api,
     scout,
     scout_catalog,
@@ -32,6 +31,7 @@ from nominal.exceptions import NominalConfigError
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.attachments.v2 import attachments_pb2_grpc
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
+from nominal.protos.authorization.apikeys.v1 import api_keys_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
@@ -138,7 +138,6 @@ class ClientsBunch:
     )
 
     # Conjure services
-    authorization: authorization.AuthorizationService
     catalog: scout_catalog.CatalogService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
@@ -157,6 +156,7 @@ class ClientsBunch:
     video: scout_video.VideoService
 
     # GRPC services
+    api_keys: api_keys_pb2_grpc.ApiKeyServiceStub
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
     channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
@@ -311,7 +311,6 @@ class ClientsBunch:
             _token=token,
             _service_config=cfg,
             # Conjure Service Stubs
-            authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
@@ -329,6 +328,7 @@ class ClientsBunch:
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            api_keys=grpc_factory(api_keys_pb2_grpc.ApiKeyServiceStub),
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),
