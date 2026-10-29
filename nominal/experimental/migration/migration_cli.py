@@ -186,6 +186,27 @@ def _load_standalone_checklists(source_client: NominalClient, checklist_rids: An
     return checklists
 
 
+def _load_standalone_datasets(source_client: NominalClient, dataset_rids: Any) -> list[Dataset]:
+    if dataset_rids is None:
+        return []
+
+    if not isinstance(dataset_rids, list) or not all(isinstance(d, str) and d.strip() for d in dataset_rids):
+        raise click.UsageError("'migration.standalone_dataset_rids' must be a list of strings.")
+
+    datasets_by_rid = {dataset.rid: dataset for dataset in source_client.get_datasets(dataset_rids)}
+    datasets = []
+    for d in dataset_rids:
+        dataset_resource = datasets_by_rid.get(d)
+        if dataset_resource is None:
+            raise click.UsageError(f"Dataset with RID '{d}' not found in source client.")
+        # Matches the asset path, which skips archived datasets.
+        if dataset_resource.is_archived:
+            logger.info("Skipping archived standalone dataset '%s' (rid: %s)", dataset_resource.name, d)
+            continue
+        datasets.append(dataset_resource)
+    return datasets
+
+
 def _load_added_labels(added_labels: Any) -> tuple[str, ...]:
     if added_labels is None:
         return ()
@@ -424,6 +445,10 @@ def _load_migration_config(
         source_client,
         m.get("standalone_checklist_rids"),
     )
+    standalone_datasets = _load_standalone_datasets(
+        source_client,
+        m.get("standalone_dataset_rids"),
+    )
     impersonation_config = load_impersonation_config(m.get("impersonation"))
 
     dataset_config = MigrationDatasetConfig(
@@ -437,6 +462,7 @@ def _load_migration_config(
             source_assets=asset_resources_by_rid,
             source_standalone_templates=standalone_workbook_templates,
             source_standalone_checklists=standalone_checklists,
+            source_standalone_datasets=standalone_datasets,
         ),
         dataset_config,
         asset_inclusion_config,
@@ -538,7 +564,7 @@ def migrate_cmd() -> None:
     default=1,
     show_default=True,
     type=click.IntRange(min=1),
-    help="Maximum number of top-level asset/template migrations to run concurrently.",
+    help="Maximum number of top-level asset/template/checklist/dataset migrations to run concurrently.",
 )
 @click.option(
     "--video-ingest-timeout-seconds",
@@ -603,11 +629,12 @@ def copy(
 
     logger.info(
         "Processing migration config: %s (source_assets=%d, source_standalone_templates=%d, "
-        "source_standalone_checklists=%d)",
+        "source_standalone_checklists=%d, source_standalone_datasets=%d)",
         name,
         len(migration_resources.source_assets),
         len(migration_resources.source_standalone_templates),
         len(migration_resources.source_standalone_checklists),
+        len(migration_resources.source_standalone_datasets),
     )
     destination_client_resolver = (
         None if target_client is None else build_destination_client_resolver(target_client, impersonation_config)
@@ -727,12 +754,14 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
     logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
 
+    # Datasets with no data scope on a non-archived asset are not reached through an asset,
+    # so the generated config lists them as standalone datasets.
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
-
-    logger.info("Out-of-scope migration numbers:")
-    logger.info("  Orphaned datasets: %d", len(orphaned_datasets))
+    logger.info("  Orphaned datasets (migrated as standalone datasets): %d", len(orphaned_datasets))
     for rid in sorted(orphaned_datasets)[:3]:
         logger.info("    e.g. %s", rid)
+
+    logger.info("Out-of-scope migration numbers:")
 
     streaming_checklists = client.list_streaming_checklists()
     logger.info("  Streaming checklists: %d", len(streaming_checklists))
@@ -756,6 +785,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
             "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
             "standalone_checklist_rids": [],
+            "standalone_dataset_rids": sorted(orphaned_datasets),
         }
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
