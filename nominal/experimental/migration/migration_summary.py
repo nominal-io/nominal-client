@@ -2,7 +2,7 @@
 
 Three modes, all fully offline (no profiles, no tokens, no network):
 
-* from a config YAML — static counts (assets, workbook templates, standalone checklists) for a
+* from a config YAML — static counts (assets, workbook templates, standalone checklists and datasets) for a
   quick size check before running a migration.
 * from a captured ``nom migrate copy --dry-run`` log — tallies the ``[DRY RUN] Would create``
   lines by resource type, using the same shared vocabulary the migrators log with
@@ -92,6 +92,10 @@ def summarize_config(path: Path) -> tuple[str, dict[str, int]]:
     standalone_checklists = migration.get("standalone_checklist_rids")
     if isinstance(standalone_checklists, list):
         counts["standalone checklists"] = len(standalone_checklists)
+
+    standalone_datasets = migration.get("standalone_dataset_rids")
+    if isinstance(standalone_datasets, list):
+        counts["standalone datasets"] = len(standalone_datasets)
 
     name = migration.get("name") or path.name
     return f"Config size check: {name} ({path.name})", counts
