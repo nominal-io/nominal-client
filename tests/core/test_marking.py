@@ -55,8 +55,8 @@ def _apply_to(clients: MagicMock, resource: str, *marking_rids: str) -> None:
     for marking_rid in marking_rids:
         response.resource_to_markings[resource].applied_markings.add(marking_rid=marking_rid)
     clients.markings.GetMarkingsForResources.return_value = response
-    clients.markings.BatchGetMarkingMetadata.side_effect = lambda request: (
-        markings_pb2.BatchGetMarkingMetadataResponse(marking_metadatas=[_metadata(rid) for rid in request.marking_rids])
+    clients.markings.BatchGetMarkingMetadata.side_effect = lambda request: markings_pb2.BatchGetMarkingMetadataResponse(
+        marking_metadatas=[_metadata(rid) for rid in request.marking_rids]
     )
 
 
