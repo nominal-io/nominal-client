@@ -330,3 +330,21 @@ def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
             )
 
     assert client.abort_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
+
+
+def test_upload_file_store_object_targets_file_store_and_returns_the_key() -> None:
+    """A File Store upload asks for the File Store destination and returns the upload's key, which a put names."""
+    client = MagicMock()
+    client.initiate_multipart_upload.return_value = MagicMock(key="objects/limits.md", upload_id="uid")
+    client.list_parts.return_value = [MagicMock(part_number=1, etag='"e"')]
+    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/objects/limits.md")
+
+    with patch.object(multipart, "_sign_and_put_part") as put_part:
+        key = multipart.upload_file_store_object(
+            "auth", "ri.workspace", b"Use the limits.\n", "limits.md", "text/plain", client
+        )
+
+    request = client.initiate_multipart_upload.call_args.args[1]
+    assert request.destination == multipart.ingest_api.UploadDestination.FILE_STORE
+    assert put_part.call_args.args[5:] == (1, b"Use the limits.\n")
+    assert key == "objects/limits.md"
