@@ -16,8 +16,8 @@ from nominal.exceptions import (
 
 
 def test_validate_token_url_reports_invalid_base_url() -> None:
-    with pytest.raises(click.ClickException, match="Invalid client configuration.*localhost") as exc:
-        validate_token_url("token", "http://localhost:20000/api", None)
+    with pytest.raises(click.ClickException, match="Invalid client configuration.*hostname and port") as exc:
+        validate_token_url("token", "http://localhost:invalid/api", None)
     assert isinstance(exc.value.__cause__, NominalConfigError)
 
 

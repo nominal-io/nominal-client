@@ -190,9 +190,9 @@ def test_create_grpc_channel_wires_credentials_options_and_interceptors(monkeypa
     assert len(intercept_channel.call_args.args[1:]) == 2
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "127.12.34.56", "[::1]"])
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.12.34.56", "[::1]", "10.0.0.1", "api.internal"])
 def test_http_grpc_channel_uses_plaintext_and_retains_call_policy(monkeypatch, host) -> None:
-    """Literal loopback HTTP URLs retain channel options, authentication, and deadlines."""
+    """HTTP URLs retain plaintext channel options, authentication, and deadlines."""
     secure, intercept, credentials = _patch_channel(monkeypatch)
     insecure = MagicMock(return_value="plaintext-channel")
     monkeypatch.setattr(grpc, "insecure_channel", insecure)
@@ -224,25 +224,12 @@ def test_http_grpc_channel_uses_plaintext_and_retains_call_policy(monkeypatch, h
 @pytest.mark.parametrize(
     "host",
     [
-        "api.gov.nominal.io",
-        "10.0.0.1",
-        "192.168.1.2",
-        "8.8.8.8",
-        "0.0.0.0",
-        "[::]",
-        "[2001:db8::1]",
-        "localhost",
-        "127.0.0.1.example.com",
-        "127.1",
-        "2130706433",
-        "[::ffff:127.0.0.1]",
-        "[::1%25eth0]",
         "user@127.0.0.1",
         "127.0.0.1@api.gov.nominal.io",
     ],
 )
-def test_http_grpc_channel_rejects_nonliteral_or_remote_hosts_before_channel_creation(monkeypatch, host):
-    """Remote addresses and ambiguous host forms cannot create a channel or attach credentials."""
+def test_http_grpc_channel_rejects_userinfo_before_channel_creation(monkeypatch, host):
+    """URLs with user information cannot create a channel or attach credentials."""
     secure, intercept, credentials = _patch_channel(monkeypatch)
     insecure = MagicMock()
     monkeypatch.setattr(grpc, "insecure_channel", insecure)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ipaddress
 import logging
 import ssl
 import threading
@@ -30,27 +29,12 @@ ZSTD_COMPRESSION_LEVEL = 1
 # threads each on this session, and parallel uploads must not discard them.
 SERVICE_SESSION_POOL_SIZE = 16
 
-_LOOPBACK_NETWORKS = (ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_network("::1/128"))
-
-
-def _is_loopback_address(host: str | None) -> bool:
-    if host is None or "%" in host:
-        # Network membership alone does not exclude IPv6 scope identifiers.
-        return False
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    # Explicit networks keep IPv4-mapped IPv6 excluded regardless of Python's is_loopback semantics.
-    return any(address in network for network in _LOOPBACK_NETWORKS)
-
 
 def validate_api_base_url(api_base_url: str) -> ParseResult:
-    """Validate the client-wide URL policy without resolving hostnames.
+    """Validate the client-wide URL structure without resolving hostnames.
 
     Raises:
-        NominalConfigError: If the URL is malformed, contains user information, or uses HTTP
-            without a literal loopback address.
+        NominalConfigError: If the URL is malformed or contains user information.
     """
     try:
         parsed = urlparse(api_base_url)
@@ -63,12 +47,6 @@ def validate_api_base_url(api_base_url: str) -> ParseResult:
     if parsed.username is not None or parsed.password is not None:
         raise NominalConfigError(
             f"API base URL for host {host!r} must not contain user information; pass the token separately."
-        )
-    if parsed.scheme == "http" and not _is_loopback_address(host):
-        raise NominalConfigError(
-            f"HTTP API base URL for host {host!r} requires a literal loopback IP address "
-            "(127.0.0.0/8 or [::1]). Hostnames are not resolved; use 127.0.0.1 instead of localhost. "
-            "Use an https:// API URL for remote deployments."
         )
     return parsed
 

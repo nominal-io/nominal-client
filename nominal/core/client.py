@@ -181,8 +181,7 @@ class NominalClient:
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
 
         Raises:
-            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+            NominalConfigError: If the base URL is malformed or contains user information.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -225,8 +224,7 @@ class NominalClient:
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
 
         Raises:
-            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+            NominalConfigError: If the base URL is malformed or contains user information.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -275,8 +273,7 @@ class NominalClient:
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
 
         Raises:
-            NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+            NominalConfigError: If the base URL is malformed or contains user information.
         """
         if token is None:
             token = _config.get_token(base_url)

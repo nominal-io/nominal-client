@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Connect through corporate TLS-inspecting proxies, and to local plaintext deployments."
+    description: "Connect through corporate TLS-inspecting proxies, and use plaintext HTTP deployments."
 ---
 
 # Networking and TLS
@@ -32,16 +32,15 @@ Or set `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/path/to/corp-ca.pem` in the environmen
 
 A missing CA shows up as a gRPC `UNAVAILABLE` error that mentions SSL, a handshake or a certificate.
 
-## Local plaintext deployments
+## Plaintext HTTP deployments
 
-An `http://` base URL works only for a loopback IP address: `127.0.0.1`, or another `127.x.x.x` address, or `[::1]`.
-Use the address, not `localhost`. Any other `http://` host raises `NominalConfigError`, and there's no fallback from TLS to plaintext.
+An `http://` base URL uses plaintext for both HTTP and gRPC, including when it points to a remote host. Use HTTPS for remote deployments when the network is not trusted.
 
 ```python
 client = NominalClient.from_token(token, base_url="http://127.0.0.1:20000/api")
 ```
 
-gRPC then uses plaintext HTTP/2 on the same host and port, so the local deployment must serve both HTTP and gRPC there, as Desktop Core does.
-Plaintext still sends your API key and headers unencrypted.
+gRPC uses plaintext HTTP/2 on the same host and port, so the deployment must serve both HTTP and gRPC there.
+Plaintext sends your API key and headers unencrypted.
 
 Base URLs with a user name or password in them are rejected. Pass the API key separately.
