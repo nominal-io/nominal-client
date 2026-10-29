@@ -11,7 +11,6 @@ from typing import Protocol, Self
 import grpc
 from google.protobuf import field_mask_pb2
 
-from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
@@ -24,6 +23,8 @@ from nominal.ts import IntegralNanosecondsUTC
 
 _ENTRY_FILE = "SKILL.md"
 _BATCH_GET_LIMIT = 50
+# BatchGetSkillFiles returns at most this much content per call.
+_BATCH_GET_MAX_BYTES = 3 * 1024 * 1024
 
 
 class SkillLoadStatus(Enum):
@@ -107,9 +108,10 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
         Raises:
             NominalNotFoundError: If the skill has no file at this path.
+            NominalInvalidArgumentError: If the file is larger than 3 MiB.
             NominalError: If the file is not UTF-8 text. The client reads and writes text files only.
         """
-        return _read_files(self._clients, self.rid, [path])[path]
+        return _read_files(self._clients, self.rid, [[path]])[path]
 
     def update(self, *, content: str | None = None, enabled: bool | None = None) -> Self:
         """Update the skill in place. Fields left as None are unchanged.
@@ -195,6 +197,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
         Raises:
             FileExistsError: If `path` already has an entry with the skill's name.
+            NominalInvalidArgumentError: If one of the skill's files is larger than 3 MiB.
             NominalError: If the skill has no valid name, one of its files is not UTF-8 text, or a file's path
                 leads outside the folder.
         """
@@ -204,7 +207,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         folder = Path(path) / latest.name
         if folder.exists():
             raise FileExistsError(f"{folder} already exists")
-        texts = _read_files(self._clients, self.rid, [file.path for file in latest.files])
+        texts = _read_files(self._clients, self.rid, _read_batches(latest.files))
         for file_path in texts:
             try:
                 (folder / file_path).resolve().relative_to(folder.resolve())
@@ -307,9 +310,23 @@ def _searched_states(
     return [state for state in states if (state == skills_pb2.SKILL_STATE_ENABLED) == enabled]
 
 
-def _read_files(clients: Skill._Clients, skill_rid: str, paths: Sequence[str]) -> dict[str, str]:
+def _read_batches(files: Iterable[skills_pb2.SkillFileInfo]) -> Iterator[list[str]]:
+    """Group file paths into reads that each stay within the service's file and byte limits per call."""
+    batch: list[str] = []
+    batch_bytes = 0
+    for file in files:
+        if batch and (len(batch) == _BATCH_GET_LIMIT or batch_bytes + file.size_bytes > _BATCH_GET_MAX_BYTES):
+            yield batch
+            batch, batch_bytes = [], 0
+        batch.append(file.path)
+        batch_bytes += file.size_bytes
+    if batch:
+        yield batch
+
+
+def _read_files(clients: Skill._Clients, skill_rid: str, batches: Iterable[Sequence[str]]) -> dict[str, str]:
     texts: dict[str, str] = {}
-    for path_batch in batched(paths, _BATCH_GET_LIMIT):
+    for path_batch in batches:
         request = skills_pb2.BatchGetSkillFilesRequest(skill_rid=skill_rid, paths=path_batch)
         with translate_grpc_errors():
             response = clients.skills.BatchGetSkillFiles(request)
