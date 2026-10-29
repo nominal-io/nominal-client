@@ -11,7 +11,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from nominal.core import ArchiveStatusFilter, NominalClient
+from nominal.core import NominalClient
 from nominal.experimental.migration import migration_cli
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
@@ -108,22 +108,17 @@ def test_runners_copy_standalone_datasets_with_config_options(
 
 
 def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> None:
-    """`nom migrate prep` lists datasets with no scope on any asset, archived or not, as standalone datasets."""
+    """`nom migrate prep` lists datasets with no scope on a non-archived asset as standalone datasets."""
     scoped = MagicMock(rid="ds-scoped")
-    on_archived_asset = MagicMock(rid="ds-on-archived-asset")
     orphans = [MagicMock(rid="ds-orphan-b"), MagicMock(rid="ds-orphan-a")]
     asset = MagicMock(rid="asset")
     asset.list_datasets.return_value = [("scope", scoped)]
-    archived_asset = MagicMock(rid="archived-asset")
-    archived_asset.list_datasets.return_value = [("scope", on_archived_asset)]
     client = MagicMock()
     client.search_runs.return_value = []
     client.search_workbooks.return_value = []
-    client.search_assets.side_effect = lambda archive_status=ArchiveStatusFilter.NOT_ARCHIVED: (
-        [archived_asset] if archive_status is ArchiveStatusFilter.ARCHIVED else [asset]
-    )
+    client.search_assets.return_value = [asset]
     client.get_asset.return_value = asset
-    client.search_datasets.return_value = [scoped, on_archived_asset, *orphans]
+    client.search_datasets.return_value = [scoped, *orphans]
     client.search_videos.return_value = []
     client.search_workbook_templates.return_value = []
     client.list_streaming_checklists.return_value = []
@@ -141,3 +136,5 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     migration = yaml.safe_load(output_path.read_text(encoding="utf-8"))["migration"]
     assert migration["source_asset_rids"] == [{"asset_rid": "asset"}]
     assert migration["standalone_dataset_rids"] == ["ds-orphan-a", "ds-orphan-b"]
+    # Only non-archived assets count, so a dataset whose only asset is archived is listed as orphaned.
+    client.search_assets.assert_called_once_with()

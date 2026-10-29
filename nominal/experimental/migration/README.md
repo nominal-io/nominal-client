@@ -47,8 +47,9 @@ nom migrate prep \
 Pass `--add-label` once for each label to be added, for example `--add-label migrated --add-label batch-1`.
 The labels are written to `add_labels` in the generated config.
 
-The generated config lists every non-archived dataset that has no data scope on any asset under
-`standalone_dataset_rids`, so those datasets migrate too. Remove any you don't want to migrate.
+The generated config lists every non-archived dataset that has no data scope on a non-archived asset
+under `standalone_dataset_rids`, so those datasets migrate too. This includes datasets whose only asset
+is archived. Remove any you don't want to migrate.
 
 **`nom migrate copy`** — copy resources from a source tenant to a destination tenant:
 

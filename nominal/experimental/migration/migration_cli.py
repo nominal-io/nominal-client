@@ -747,11 +747,6 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
             datasets_with_assets.add(dataset.rid)
-    # A dataset attached only to an archived asset was excluded by archiving that asset,
-    # so it is not orphaned.
-    for archived_asset in client.search_assets(archive_status=ArchiveStatusFilter.ARCHIVED):
-        for _data_scope, dataset in archived_asset.list_datasets():
-            datasets_with_assets.add(dataset.rid)
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
 
@@ -759,8 +754,8 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
     logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
 
-    # Datasets with no data scope on any asset are not reached through an asset, so the
-    # generated config lists them as standalone datasets.
+    # Datasets with no data scope on a non-archived asset are not reached through an asset,
+    # so the generated config lists them as standalone datasets.
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
     logger.info("  Orphaned datasets (migrated as standalone datasets): %d", len(orphaned_datasets))
     for rid in sorted(orphaned_datasets)[:3]:
