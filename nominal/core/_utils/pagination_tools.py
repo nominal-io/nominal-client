@@ -307,11 +307,9 @@ def search_skills_paginated(
         return skills_pb2.SearchSkillsRequest(
             workspace_rid=workspace_rid,
             filter=search_filter,
-            # Best match first; by name when the filter has no text.
-            sort=skills_pb2.SKILL_LIBRARY_SORT_RELEVANCE,
+            sort=skills_pb2.SKILL_LIBRARY_SORT_NAME_ASC,
             page_size=DEFAULT_PAGE_SIZE,
             page_token=page_token,
-            include_status=True,
         )
 
     for response in paginate_grpc(skills.SearchSkills, request_factory=factory):

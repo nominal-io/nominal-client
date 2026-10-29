@@ -598,19 +598,25 @@ class NominalClient:
     ) -> Skill:
         """Create a skill from its SKILL.md and any reference files.
 
-        An enabled skill reaches every Analyst user and connected agent in the workspace.
+        The files are saved as written to ``skills/<name>`` in the workspace's skills drive, where `name` is the
+        name in SKILL.md's frontmatter, and the skill is registered from that SKILL.md. An enabled skill reaches
+        every Analyst user and connected agent in the workspace.
+
+        If a file can't be saved, or the skill can't be registered, the files this call saved are removed. If the
+        skill can't be turned on, for example because SKILL.md isn't valid, it stays as a draft and the error's
+        notes give its RID.
 
         Args:
-            content: The skill's SKILL.md, frontmatter included. Its frontmatter names and describes the skill. The
-                skill stores it as written.
+            content: The skill's SKILL.md, frontmatter included. Its frontmatter names and describes the skill.
             files: Reference files as UTF-8 text, keyed by path relative to the skill's folder, such as
                 ``methods/limits.md``.
             enabled: Whether the skill starts turned on. Defaults to True.
             workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
-            NominalAlreadyExistsError: If the workspace already has a skill with this name.
-            NominalInvalidArgumentError: If SKILL.md or a file breaks the Agent Skills format or a limit.
+            ValueError: If SKILL.md has no frontmatter with a valid name, or a file's path is SKILL.md or leads
+                outside the skill's folder. Nothing is saved.
+            NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
         """
         return _create_skill(
             self._clients,
@@ -639,11 +645,12 @@ class NominalClient:
             enabled: Whether the skill starts turned on. Defaults to True.
             workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
+        The skill is created as :meth:`create_skill` creates it.
+
         Raises:
-            ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, or a file is
-                not UTF-8 text. Nothing is saved.
-            NominalAlreadyExistsError: If the workspace already has a skill with this name.
-            NominalInvalidArgumentError: If SKILL.md or a file breaks the Agent Skills format or a limit.
+            ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, a file is
+                not UTF-8 text, or SKILL.md has no frontmatter with a valid name. Nothing is saved.
+            NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
         """
         return _import_skill(
             self._clients,
@@ -670,11 +677,11 @@ class NominalClient:
         workspace: Workspace | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Skill]:
-        """Search a workspace's skills by task or name, best match first, or list them by name.
+        """Search a workspace's skills by name and description, in name order.
 
         Args:
-            search_text: Words to match against skill names and descriptions, weighting the name above the
-                description. Omit to list every skill by name.
+            search_text: Text that a skill's name or description contains, ignoring case. Omit to list every
+                skill.
             enabled: True for only skills that are turned on, False for only skills that are off. Omit for both.
             workspace: Workspace or workspace RID to search. Defaults to the client's default workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.

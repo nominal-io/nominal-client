@@ -38,6 +38,7 @@ from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
+from nominal.protos.file_store.v1 import files_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -165,6 +166,7 @@ class ClientsBunch:
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
     event: event_pb2_grpc.EventServiceStub
+    files: files_pb2_grpc.FilesServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     integrations: integrations_pb2_grpc.IntegrationsServiceStub
     markings: markings_pb2_grpc.MarkingServiceStub
@@ -338,6 +340,7 @@ class ClientsBunch:
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
+            files=grpc_factory(files_pb2_grpc.FilesServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),
             markings=grpc_factory(markings_pb2_grpc.MarkingServiceStub),
