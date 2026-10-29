@@ -47,6 +47,10 @@ nom migrate prep \
 Pass `--add-label` once for each label to be added, for example `--add-label migrated --add-label batch-1`.
 The labels are written to `add_labels` in the generated config.
 
+The generated config lists every non-archived dataset that has no data scope on a non-archived asset
+under `standalone_dataset_rids`, so those datasets migrate too. This includes datasets whose only asset
+is archived. Remove any you don't want to migrate.
+
 **`nom migrate copy`** — copy resources from a source tenant to a destination tenant:
 
 ```sh
@@ -102,7 +106,7 @@ Pass `--output <path>` to also append the markdown to a file (e.g. `$GITHUB_STEP
 
 ## Understanding the config YAML
 
-The config YAML determines what assets and standalone workbook templates to migrate. All boolean fields
+The config YAML determines what assets and standalone workbook templates, checklists, and datasets to migrate. All boolean fields
 use YAML `true`/`false` values.
 
 ```yaml
@@ -118,6 +122,8 @@ migration:
     - ri.scout.main.template.<uuid>
   standalone_checklist_rids:     # optional: clone checklist definitions, no asset/run required
     - ri.scout.main.checklist.<uuid>
+  standalone_dataset_rids:       # optional: copy datasets that are not attached to any asset
+    - ri.catalog.main.dataset.<uuid>
   impersonation:                 # optional: create resources as mapped destination users
     enabled: true
     unmapped_source_user_behavior: service_user
@@ -129,6 +135,7 @@ How it works:
 1. For each source asset RID in `source_asset_rids`, the script will copy the asset and all linked resources — runs, workbooks, datasets, events, videos, and checklists — into the destination tenant.
 2. For each workbook template RID in `standalone_workbook_template_rids`, the script will copy the workbook template into the destination tenant.
 3. For each checklist RID in `standalone_checklist_rids`, the script will clone the checklist definition into the destination tenant. No run or execution is involved — the checklist's channel references resolve at execution time against whatever run it is later run against (the run must expose matching data-source ref names and channel names, plus tags if any).
+4. For each dataset RID in `standalone_dataset_rids`, the script will copy the dataset into the destination tenant without attaching it to an asset. `include_dataset_files` and `preserve_dataset_uuid` apply to these datasets just as they do to datasets copied with an asset. A dataset listed here and also attached to a migrated asset is copied once.
 
 Misc. configs:
 1. `include_dataset_files` — if `true`, copies all dataset files attached to a dataset into the destination. Typically `true` for demo hydration and `false` for tenant migration (which relies on a separate Clickhouse backup).

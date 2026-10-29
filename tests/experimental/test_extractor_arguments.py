@@ -192,8 +192,8 @@ def test_mixed_arguments_warn_only_for_legacy_access(tmp_path, caplog):
 @pytest.mark.parametrize(
     "decorate",
     [
-        lambda fn: ex.parameter("missing")(fn),
-        lambda fn: ex.parameter("ctx")(fn),
+        ex.parameter("missing"),
+        ex.parameter("ctx"),
         lambda fn: ex.parameter("parts")(ex.parameter("parts")(fn)),
     ],
 )

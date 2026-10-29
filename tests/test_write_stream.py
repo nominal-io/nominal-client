@@ -642,7 +642,7 @@ def test_enqueue_batch_with_structs():
     stream: WriteStream[dict[str, object]] = WriteStream.create(
         batch_size=100,
         max_wait=timedelta(seconds=10),
-        process_batch=lambda batch: captured.extend(batch),
+        process_batch=captured.extend,
     )
 
     stream.enqueue_batch(
@@ -665,7 +665,7 @@ def test_enqueue_from_dict_with_struct():
     stream: WriteStream[dict[str, object]] = WriteStream.create(
         batch_size=100,
         max_wait=timedelta(seconds=10),
-        process_batch=lambda batch: captured.extend(batch),
+        process_batch=captured.extend,
     )
 
     stream.enqueue_from_dict(
