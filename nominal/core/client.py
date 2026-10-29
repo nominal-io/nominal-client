@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import Any, BinaryIO, Iterable, Mapping, Self, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -48,7 +48,6 @@ from nominal.core._utils.pagination_tools import (
     search_ingest_jobs_paginated,
     search_runs_paginated,
     search_secrets_paginated,
-    search_skills_paginated,
     search_users_paginated,
     search_videos_paginated,
     search_workbook_templates_paginated,
@@ -113,7 +112,7 @@ from nominal.core.marking import (
 )
 from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
-from nominal.core.skill import Skill, _searched_states, _SkillPackage
+from nominal.core.skill import Skill, _create_skill, _get_skill, _import_skill, _search_skills
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -131,7 +130,6 @@ from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.attachments.v2 import attachments_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.secrets.v1 import secrets_pb2
-from nominal.protos.skills.v1 import skills_pb2
 from nominal.protos.units.v1 import units_pb2
 from nominal.protos.workspaces.v1 import workspaces_pb2
 from nominal.ts import (
@@ -592,136 +590,107 @@ class NominalClient:
 
     def create_skill(
         self,
-        name: str,
-        description: str,
-        instructions: str,
+        content: str,
         *,
         files: Mapping[str, str] | None = None,
-        frontmatter: Mapping[str, Any] | None = None,
         enabled: bool = True,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+        workspace: Workspace | str | None = None,
     ) -> Skill:
-        """Create a skill in a workspace's skills library.
+        """Create a skill from its SKILL.md and any reference files.
 
-        The skills service writes the skill's SKILL.md from the name, description, frontmatter, and instructions,
-        and saves it with the reference files in one step. An enabled skill reaches every Analyst user and
-        connected agent in the workspace.
+        An enabled skill reaches every Analyst user and connected agent in the workspace.
 
         Args:
-            name: Lowercase letters, digits, and hyphens, up to 64 characters, unused in the workspace.
-            description: What the skill does and when to use it, up to 1,024 characters.
-            instructions: The body of SKILL.md, after its frontmatter.
+            content: The skill's SKILL.md, frontmatter included. Its frontmatter names and describes the skill. The
+                skill stores it as written.
             files: Reference files as UTF-8 text, keyed by path relative to the skill's folder, such as
-                ``methods/problem-definition.md``. Up to 100 files and 3 MiB of text.
-            frontmatter: SKILL.md frontmatter fields other than name and description.
+                ``methods/limits.md``.
             enabled: Whether the skill starts turned on. Defaults to True.
-            workspace: Workspace to create the skill in. ``WorkspaceSearchType.DEFAULT`` (or None) resolves the
-                client's default workspace.
+            workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
             NominalAlreadyExistsError: If the workspace already has a skill with this name.
-            NominalInvalidArgumentError: If the skill breaks the Agent Skills format or a limit.
+            NominalInvalidArgumentError: If SKILL.md or a file breaks the Agent Skills format or a limit.
         """
-        workspace_rid = self._workspace_rid_for_search(workspace)
-        if workspace_rid is None:
-            raise ValueError("Cannot create a skill in WorkspaceSearchType.ALL; specify one workspace.")
-        skill = skills_pb2.Skill(
-            workspace_rid=workspace_rid,
-            name=name,
-            description=description,
-            instructions=instructions,
-            state=skills_pb2.SKILL_STATE_ENABLED if enabled else skills_pb2.SKILL_STATE_DRAFT,
+        return _create_skill(
+            self._clients,
+            content=content,
+            files=files,
+            enabled=enabled,
+            workspace_rid=self._clients.resolve_default_workspace_rid()
+            if workspace is None
+            else rid_from_instance_or_string(workspace),
         )
-        if frontmatter is not None:
-            skill.frontmatter.update(frontmatter)
-        request = skills_pb2.CreateSkillRequest(
-            skill=skill,
-            files=[] if files is None else [skills_pb2.SkillFile(path=p, content=c) for p, c in files.items()],
-        )
-        with translate_grpc_errors():
-            response = self._clients.skills.CreateSkill(request)
-        return Skill._from_proto(self._clients, response.skill)
 
     def import_skill(
         self,
         path: PathLike,
         *,
         enabled: bool = True,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+        workspace: Workspace | str | None = None,
     ) -> Skill:
-        """Create a skill from a folder or .zip with SKILL.md at its top level or in its single top-level folder.
+        """Create a skill from a folder with SKILL.md at its top level, or a .zip holding one such folder.
 
-        Every file is read and checked before anything is saved. Hidden files and folders, such as ``.git``, are
-        skipped. The skills service rewrites SKILL.md from its parts, so its frontmatter formatting may change.
+        Files are read the way the app's Import Skills reads them, skipping paths with a part that starts with ".",
+        such as ``.git``. Every file is read before anything is saved.
 
         Args:
             path: The skill's folder, or a .zip of it.
             enabled: Whether the skill starts turned on. Defaults to True.
-            workspace: Workspace to create the skill in, as in :meth:`create_skill`.
+            workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
-            ValueError: If the folder has no SKILL.md, SKILL.md has no frontmatter with a name and description, or
-                a file is not UTF-8 text. Nothing is saved.
+            ValueError: If the folder has no SKILL.md, the .zip has more or fewer than one, or a file is not UTF-8
+                text. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name.
-            NominalInvalidArgumentError: If the skill breaks the Agent Skills format or a limit.
+            NominalInvalidArgumentError: If SKILL.md or a file breaks the Agent Skills format or a limit.
         """
-        package = _SkillPackage.read(Path(path))
-        return self.create_skill(
-            package.name,
-            package.description,
-            package.instructions,
-            files=package.files,
-            frontmatter=package.frontmatter,
+        return _import_skill(
+            self._clients,
+            Path(path),
             enabled=enabled,
-            workspace=workspace,
+            workspace_rid=self._clients.resolve_default_workspace_rid()
+            if workspace is None
+            else rid_from_instance_or_string(workspace),
         )
 
     def get_skill(self, rid: str) -> Skill:
-        """Retrieve a skill by RID, with its instructions and file list.
+        """Retrieve a skill by RID.
 
         Raises:
             NominalNotFoundError: If no skill with the given RID exists or it is not accessible to the user.
         """
-        request = skills_pb2.GetSkillRequest(skill_rid=rid, include_content=True)
-        with translate_grpc_errors():
-            response = self._clients.skills.GetSkill(request)
-        return Skill._from_proto(self._clients, response.skill)
+        return _get_skill(self._clients, rid)
 
     def search_skills(
         self,
         search_text: str | None = None,
         *,
         enabled: bool | None = None,
-        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+        workspace: Workspace | str | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Skill]:
         """Search a workspace's skills by task or name, best match first, or list them by name.
-
-        Results carry each skill's load status but not its instructions or files; see
-        :meth:`Skill.get_instructions`.
 
         Args:
             search_text: Words to match against skill names and descriptions, weighting the name above the
                 description. Omit to list every skill by name.
             enabled: True for only skills that are turned on, False for only skills that are off. Omit for both.
-            workspace: Workspace to search. Skills are searched one workspace at a time, so
-                ``WorkspaceSearchType.ALL`` is not accepted.
+            workspace: Workspace or workspace RID to search. Defaults to the client's default workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         Returns:
-            Every matching skill.
+            All skills matching all of the provided filters.
         """
-        workspace_rid = self._workspace_rid_for_search(workspace)
-        if workspace_rid is None:
-            raise ValueError("Skills are searched one workspace at a time; specify one workspace.")
-        states = _searched_states(enabled, archive_status)
-        if not states:
-            return []
-        search_filter = skills_pb2.SkillSearchFilter(text=search_text, states=states)
-        return [
-            Skill._from_proto(self._clients, skill)
-            for skill in search_skills_paginated(self._clients.skills, workspace_rid, search_filter)
-        ]
+        return _search_skills(
+            self._clients,
+            search_text=search_text,
+            enabled=enabled,
+            archive_status=archive_status,
+            workspace_rid=self._clients.resolve_default_workspace_rid()
+            if workspace is None
+            else rid_from_instance_or_string(workspace),
+        )
 
     def create_marking(
         self,

@@ -7,9 +7,8 @@ myst:
 # Skills
 
 {.lead}
-A skill is a way of working that Analyst and connected agents follow, such as a post-test review.
-It's a folder with a SKILL.md file of instructions and any reference files, such as methods and templates, in the [Agent Skills](https://agentskills.io/specification) format.
-Each workspace has a skills library; an enabled skill reaches every Analyst user and connected agent in the workspace.
+A skill is a folder with a SKILL.md of instructions, and any reference files, that Analyst and connected agents follow for a repeatable task, such as a post-test review.
+Skills use the [Agent Skills](https://agentskills.io/specification) format, and each workspace has a skills library that every Analyst user and connected agent in the workspace shares.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -28,27 +27,31 @@ for skill in skills:
 {py:attr}`~nominal.core.Skill.load_status` says whether Analyst can load the skill, and why not when it can't.
 Pass `enabled=True` for only the skills that are turned on, or `archive_status` to include archived skills.
 
-Read a skill's instructions and files:
+Read a skill's files, SKILL.md included:
 
 ```python
 skill = client.get_skill("<SKILL_RID>")
-print(skill.get_instructions())
 for file in skill.list_files():
     print(file.path, file.size_bytes)
-print(skill.read_file("methods/problem-definition.md"))
+print(skill.read_file("SKILL.md"))
 ```
-
-Search results don't include instructions, so {py:meth}`~nominal.core.Skill.get_instructions` and {py:meth}`~nominal.core.Skill.list_files` fetch them for a skill found by search.
 
 ## Create or import a skill
 
-{py:meth}`~nominal.core.NominalClient.create_skill` saves a skill from its parts and any reference files, keyed by path:
+{py:meth}`~nominal.core.NominalClient.create_skill` saves a skill from its SKILL.md and any reference files, keyed by path.
+SKILL.md's frontmatter names and describes the skill:
 
 ```python
+skill_md = """---
+name: post-test-review
+description: Review a test run against its test plan and flag anomalies.
+---
+
+1. Read the test plan.
+2. Compare each channel against its limits in methods/limits.md.
+"""
 skill = client.create_skill(
-    "post-test-review",
-    "Review a test run against its test plan and flag anomalies.",
-    "1. Read the test plan.\n2. Compare each channel against its limits.\n",
+    skill_md,
     files={"methods/limits.md": "Use the limits in the test plan's appendix.\n"},
 )
 ```
@@ -57,23 +60,23 @@ Names use lowercase letters, digits and hyphens, and must be unused in the works
 Skills hold UTF-8 text files only.
 Pass `enabled=False` to save a skill without turning it on.
 
-{py:meth}`~nominal.core.NominalClient.import_skill` creates a skill from a folder or .zip with SKILL.md at its top level:
+{py:meth}`~nominal.core.NominalClient.import_skill` creates a skill from a folder with SKILL.md at its top level, or a .zip holding one:
 
 ```python
 skill = client.import_skill("skills/post-test-review")
 ```
 
-Import reads and checks every file before saving any, and skips hidden files and folders such as `.git`.
-The service writes SKILL.md from its parts, so its frontmatter formatting may change.
+Import reads every file before saving any, and skips paths with a part that starts with ".", such as `.git`.
 
 ## Edit a skill
 
-{py:meth}`~nominal.core.Skill.update` changes the name, description or instructions, and turns the skill on or off.
+{py:meth}`~nominal.core.Skill.update` replaces SKILL.md and turns the skill on or off.
+A new name in SKILL.md's frontmatter renames the skill.
 {py:meth}`~nominal.core.Skill.write_files` adds or replaces reference files, and {py:meth}`~nominal.core.Skill.remove_files` removes them.
 Each saves all or nothing:
 
 ```python
-skill.update(description="Review a test run against its test plan, flag anomalies, and summarize them.")
+skill.update(content=skill_md.replace("flag anomalies", "flag and summarize anomalies"))
 skill.write_files({"templates/summary.md": "## Summary\n"})
 skill.remove_files(["methods/limits.md"])
 ```
@@ -85,10 +88,10 @@ When it has, they raise {py:class}`~nominal.exceptions.NominalConflictError`; re
 from nominal.exceptions import NominalConflictError
 
 try:
-    skill.update(instructions=new_instructions)
+    skill.update(content=new_skill_md)
 except NominalConflictError:
     skill.refresh()
-    skill.update(instructions=new_instructions)
+    skill.update(content=new_skill_md)
 ```
 
 Turning a skill on or off applies to its current version, without that check.
@@ -112,4 +115,4 @@ skill.update(enabled=True)
 folder = skill.export("exported-skills")
 ```
 
-The folder holds SKILL.md and every reference file, so you can keep it in git or import it into another workspace.
+The folder holds SKILL.md as stored and every reference file, so you can keep it in git or import it into another workspace.

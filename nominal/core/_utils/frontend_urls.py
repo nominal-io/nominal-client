@@ -3,10 +3,6 @@
 Frontend routes are workspace-scoped, so every URL is built under `/w/{workspace_rid}/`.
 """
 
-import base64
-import json
-from urllib.parse import quote
-
 from nominal.core._clientsbunch import HasScoutParams
 
 
@@ -57,12 +53,3 @@ def workbook_url(clients: HasScoutParams, workbook_rid: str) -> str:
 
 def workbook_template_url(clients: HasScoutParams, workbook_template_rid: str) -> str:
     return _resource_url(clients, f"/workbooks/templates/{workbook_template_rid}")
-
-
-def skill_url(clients: HasScoutParams, workspace_rid: str, skill_rid: str) -> str:
-    # The app addresses a skill by a versioned reference to its record, encoded as the app encodes it.
-    reference = json.dumps({"skillRid": skill_rid, "source": "record", "v": 2}, sort_keys=True, separators=(",", ":"))
-    encoded = base64.urlsafe_b64encode(reference.encode()).decode().rstrip("=")
-    return (
-        f"{clients.app_base_url.rstrip('/')}/w/{workspace_rid}/analyst/skills/{quote(f'skill:v2:{encoded}', safe='')}"
-    )
