@@ -45,6 +45,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.skills.v1 import skills_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
@@ -172,6 +173,7 @@ class ClientsBunch:
     run: run_service_pb2_grpc.RunServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
+    skills: skills_pb2_grpc.SkillsServiceStub
     spatial: spatial_pb2_grpc.SpatialServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
@@ -344,6 +346,7 @@ class ClientsBunch:
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            skills=grpc_factory(skills_pb2_grpc.SkillsServiceStub),
             spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),

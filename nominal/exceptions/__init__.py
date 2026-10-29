@@ -97,6 +97,10 @@ class NominalAlreadyExistsError(NominalError):
     """The resource being created already exists (e.g. a container image tag already registered)."""
 
 
+class NominalConflictError(NominalError):
+    """The resource changed after it was read, so the change was not saved. Refresh it and try again."""
+
+
 class NominalInvalidArgumentError(NominalError):
     """The server rejected the request as malformed or invalid."""
 
