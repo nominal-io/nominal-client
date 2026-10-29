@@ -76,10 +76,11 @@ jobs:
         run: |
           python3 -m json.tool release-please-config.json
           python3 -m json.tool .release-please-manifest.json
-      # Validates config structure only — targets the checked-out revision,
+      # Validates config structure only — targets the PR branch, not main,
       # so the computed version bump is not meaningful here.
       - name: Dry-run release-please
         run: |
+          TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           npx release-please release-pr \
             --dry-run \
             --local \
@@ -87,5 +88,5 @@ jobs:
             --repo-url nominal-io/nominal-client \
             --config-file release-please-config.json \
             --manifest-file .release-please-manifest.json \
-            --target-branch HEAD \
+            --target-branch "$TARGET" \
             --token ${{ github.token }}
