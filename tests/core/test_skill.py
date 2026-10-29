@@ -8,7 +8,7 @@ import grpc
 import pytest
 
 from nominal.core import ArchiveStatusFilter, SkillLoadStatus
-from nominal.core.client import NominalClient, WorkspaceSearchType
+from nominal.core.client import NominalClient
 from nominal.core.skill import Skill
 from nominal.exceptions import NominalConflictError, NominalError
 from nominal.protos.file_store.v1 import file_store_pb2
@@ -16,6 +16,7 @@ from nominal.protos.skills.v1 import skills_pb2
 
 _RID = "ri.file-store.main.skill.0b8f6c1e-0d3c-4c43-9a55-6f0d3c1e2b7a"
 _WORKSPACE = "ri.workspace.main.workspace.1"
+_SKILL_MD = "---\nname: post-test-review\ndescription: Review a test run.\nlicense: MIT\n---\n\nRead the run.\n"
 
 
 def _proto_skill(**kwargs) -> skills_pb2.Skill:
@@ -32,65 +33,55 @@ def _proto_skill(**kwargs) -> skills_pb2.Skill:
     return skills_pb2.Skill(**{**defaults, **kwargs})
 
 
-def _with_content(**kwargs) -> skills_pb2.Skill:
-    return _proto_skill(
-        instructions="Read the run.",
-        files=[skills_pb2.SkillFileInfo(path="SKILL.md"), skills_pb2.SkillFileInfo(path="methods/a.md")],
-        backing_status=skills_pb2.SKILL_BACKING_STATUS_AVAILABLE,
-        **kwargs,
-    )
-
-
 def _client() -> tuple[NominalClient, MagicMock]:
     clients = MagicMock()
     clients.resolve_default_workspace_rid.return_value = _WORKSPACE
+    clients.skills.CreateSkill.return_value = skills_pb2.CreateSkillResponse(skill=_proto_skill())
     return NominalClient(_clients=clients), clients
 
 
-def test_unnamed_skill_converts_absent_fields_to_none() -> None:
-    """A skill whose SKILL.md has no valid frontmatter has no name or description, not empty ones."""
-    skill = Skill._from_proto(
-        MagicMock(),
-        skills_pb2.Skill(
-            skill_rid=_RID,
-            state=skills_pb2.SKILL_STATE_DRAFT,
-            backing_status=skills_pb2.SKILL_BACKING_STATUS_INVALID,
-        ),
-    )
+def test_skill_without_valid_frontmatter_converts_absent_fields() -> None:
+    """A skill without valid frontmatter has no name or description, and an unset status is UNSPECIFIED."""
+    skill = Skill._from_proto(MagicMock(), skills_pb2.Skill(skill_rid=_RID, state=skills_pb2.SKILL_STATE_DRAFT))
 
     assert skill.name is None
     assert skill.description is None
     assert not skill.is_enabled and not skill.is_archived
-    assert skill.load_status is SkillLoadStatus.INVALID
+    assert skill.load_status is SkillLoadStatus.UNSPECIFIED
+
+
+def test_create_sends_skill_md_as_written() -> None:
+    """create_skill sends SKILL.md whole, and a skill created turned off starts as a draft."""
+    client, clients = _client()
+
+    client.create_skill(_SKILL_MD, files={"methods/limits.md": "Use the plan's limits.\n"}, enabled=False)
+
+    request = clients.skills.CreateSkill.call_args.args[0]
+    assert request.skill.content == _SKILL_MD
+    assert not request.skill.HasField("name")
+    assert request.skill.state == skills_pb2.SKILL_STATE_DRAFT
+    assert request.skill.workspace_rid == _WORKSPACE
+    assert [(file.path, file.content) for file in request.files] == [("methods/limits.md", "Use the plan's limits.\n")]
 
 
 def test_content_update_checks_the_version_and_state_update_does_not() -> None:
-    """New instructions are saved against this object's version; turning a skill off applies to the current one."""
+    """New SKILL.md content is saved against this object's version; turning a skill off applies to the current one."""
     clients = MagicMock()
     skill = Skill._from_proto(clients, _proto_skill())
     clients.skills.UpdateSkill.return_value = skills_pb2.UpdateSkillResponse(skill=_proto_skill(version=8))
 
-    skill.update(instructions="New steps.")
+    skill.update(content=_SKILL_MD)
     content_request = clients.skills.UpdateSkill.call_args.args[0]
     skill.update(enabled=False)
     state_request = clients.skills.UpdateSkill.call_args.args[0]
 
-    assert list(content_request.update_mask.paths) == ["instructions"]
+    assert list(content_request.update_mask.paths) == ["content"]
+    assert content_request.skill.content == _SKILL_MD
     assert content_request.expected_version == 7
-    assert not content_request.skill.HasField("name")
     assert list(state_request.update_mask.paths) == ["state"]
     assert state_request.skill.state == skills_pb2.SKILL_STATE_DISABLED
     assert state_request.expected_version == 0
     assert skill.version == 8
-
-
-def test_update_without_changes_sends_nothing() -> None:
-    """An update with every field left as None makes no call."""
-    clients = MagicMock()
-    skill = Skill._from_proto(clients, _proto_skill())
-
-    assert skill.update() is skill
-    clients.skills.UpdateSkill.assert_not_called()
 
 
 def test_stale_skill_write_raises_conflict(fake_rpc_error) -> None:
@@ -100,7 +91,7 @@ def test_stale_skill_write_raises_conflict(fake_rpc_error) -> None:
     clients.skills.BatchUpdateSkillFiles.side_effect = fake_rpc_error(grpc.StatusCode.ABORTED)
 
     with pytest.raises(NominalConflictError):
-        skill.write_files({"methods/a.md": "text"})
+        skill.write_files({"methods/limits.md": "text"})
 
 
 def test_aborted_errors_from_other_services_are_unchanged(fake_rpc_error) -> None:
@@ -112,20 +103,6 @@ def test_aborted_errors_from_other_services_are_unchanged(fake_rpc_error) -> Non
         client.get_secret("ri.secret.test")
 
     assert type(raised.value) is NominalError
-
-
-def test_get_instructions_fetches_content_for_a_search_result() -> None:
-    """A search result has no instructions, so reading them fetches the skill and refreshes the same object."""
-    clients = MagicMock()
-    skill = Skill._from_proto(clients, _proto_skill())
-    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_with_content(version=9))
-
-    assert skill.get_instructions() == "Read the run."
-
-    assert clients.skills.GetSkill.call_args.args[0].include_content
-    assert skill.version == 9
-    assert [file.path for file in skill.list_files()] == ["SKILL.md", "methods/a.md"]
-    assert clients.skills.GetSkill.call_count == 1
 
 
 def test_read_file_refuses_a_file_that_is_not_text() -> None:
@@ -202,7 +179,7 @@ def test_search_follows_pages_ranks_and_asks_for_status() -> None:
         skills_pb2.SearchSkillsResponse(skills=[_proto_skill(skill_rid="ri.file-store.main.skill.b")]),
     ]
 
-    results = client.search_skills("review")
+    results = client.search_skills("review", workspace="ri.workspace.main.workspace.2")
 
     first, second = (call.args[0] for call in clients.skills.SearchSkills.call_args_list)
     assert [skill.rid for skill in results] == [_RID, "ri.file-store.main.skill.b"]
@@ -210,48 +187,32 @@ def test_search_follows_pages_ranks_and_asks_for_status() -> None:
     assert first.filter.text == "review"
     assert first.sort == skills_pb2.SKILL_LIBRARY_SORT_RELEVANCE
     assert first.include_status
-    assert first.workspace_rid == _WORKSPACE
+    assert first.workspace_rid == "ri.workspace.main.workspace.2"
     assert second.page_token == "next"
-
-
-def test_search_refuses_all_workspaces() -> None:
-    """The service searches one workspace at a time."""
-    client, _ = _client()
-
-    with pytest.raises(ValueError):
-        client.search_skills(workspace=WorkspaceSearchType.ALL)
 
 
 def _write_skill_folder(folder: Path) -> None:
     (folder / "methods").mkdir(parents=True)
     (folder / ".git").mkdir()
     (folder / ".git" / "HEAD").write_bytes(b"\xff\xfe")
-    (folder / "SKILL.md").write_text(
-        "---\nname: post-test-review\ndescription: Review a test run.\nlicense: MIT\nreviewed: 2026-10-01\n---\n\n"
-        "Read the run.\n"
-    )
-    (folder / "methods" / "a.md").write_text("Method A.\n")
+    (folder / "SKILL.md").write_text(_SKILL_MD)
+    (folder / "methods" / "limits.md").write_text("Use the plan's limits.\n")
 
 
-def test_import_splits_skill_md_and_skips_hidden_files(tmp_path: Path) -> None:
-    """Importing a folder sends SKILL.md's parts, dates kept as text, and the text files outside hidden folders."""
+def test_import_sends_skill_md_unchanged_and_skips_hidden_paths(tmp_path: Path) -> None:
+    """Importing a folder sends SKILL.md as written and the other text files, skipping paths that start with '.'."""
     client, clients = _client()
     _write_skill_folder(tmp_path / "post-test-review")
-    clients.skills.CreateSkill.return_value = skills_pb2.CreateSkillResponse(skill=_proto_skill())
 
-    client.import_skill(tmp_path / "post-test-review", enabled=False)
+    client.import_skill(tmp_path / "post-test-review")
 
     request = clients.skills.CreateSkill.call_args.args[0]
-    assert request.skill.name == "post-test-review"
-    assert request.skill.description == "Review a test run."
-    assert request.skill.instructions == "\nRead the run.\n"
-    assert dict(request.skill.frontmatter) == {"license": "MIT", "reviewed": "2026-10-01"}
-    assert request.skill.state == skills_pb2.SKILL_STATE_DRAFT
-    assert [(file.path, file.content) for file in request.files] == [("methods/a.md", "Method A.\n")]
+    assert request.skill.content == _SKILL_MD
+    assert [(file.path, file.content) for file in request.files] == [("methods/limits.md", "Use the plan's limits.\n")]
 
 
-def test_import_reads_a_zip_with_one_top_level_folder(tmp_path: Path) -> None:
-    """A .zip whose files sit in one folder imports as if that folder were given."""
+def test_import_reads_the_folder_holding_a_zips_skill_md(tmp_path: Path) -> None:
+    """A .zip imports the folder that holds its SKILL.md."""
     client, clients = _client()
     _write_skill_folder(tmp_path / "post-test-review")
     archive_path = tmp_path / "skill.zip"
@@ -259,13 +220,12 @@ def test_import_reads_a_zip_with_one_top_level_folder(tmp_path: Path) -> None:
         for file in (tmp_path / "post-test-review").rglob("*"):
             if file.is_file():
                 archive.write(file, file.relative_to(tmp_path).as_posix())
-    clients.skills.CreateSkill.return_value = skills_pb2.CreateSkillResponse(skill=_proto_skill())
 
     client.import_skill(archive_path)
 
     request = clients.skills.CreateSkill.call_args.args[0]
-    assert request.skill.name == "post-test-review"
-    assert [file.path for file in request.files] == ["methods/a.md"]
+    assert request.skill.content == _SKILL_MD
+    assert [file.path for file in request.files] == ["methods/limits.md"]
 
 
 def test_import_refuses_binary_files_before_saving(tmp_path: Path) -> None:
@@ -283,31 +243,20 @@ def test_export_writes_every_file_under_the_skill_name(tmp_path: Path) -> None:
     """Export writes the current files, SKILL.md included, into a folder named after the skill."""
     clients = MagicMock()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_with_content())
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(
+        skill=_proto_skill(files=[skills_pb2.SkillFileInfo(path="SKILL.md"), skills_pb2.SkillFileInfo(path="m/a.md")])
+    )
     clients.skills.BatchGetSkillFiles.return_value = skills_pb2.BatchGetSkillFilesResponse(
         files=[
-            skills_pb2.SkillFile(path="SKILL.md", content="---\nname: post-test-review\n---\n"),
-            skills_pb2.SkillFile(path="methods/a.md", content="Method A.\r\n"),
+            skills_pb2.SkillFile(path="SKILL.md", content=_SKILL_MD),
+            skills_pb2.SkillFile(path="m/a.md", content="Method A.\r\n"),
         ]
     )
 
     folder = skill.export(tmp_path)
 
     assert folder == tmp_path / "post-test-review"
-    assert (folder / "SKILL.md").read_text() == "---\nname: post-test-review\n---\n"
-    assert (folder / "methods" / "a.md").read_bytes() == b"Method A.\r\n"
+    assert (folder / "SKILL.md").read_text() == _SKILL_MD
+    assert (folder / "m" / "a.md").read_bytes() == b"Method A.\r\n"
     with pytest.raises(FileExistsError):
         skill.export(tmp_path)
-
-
-def test_nominal_url_uses_the_apps_skill_reference() -> None:
-    """The link encodes the skill the way the app's skill page expects, under the skill's own workspace."""
-    clients = MagicMock()
-    clients.app_base_url = "https://app.example.com/"
-    skill = Skill._from_proto(clients, _proto_skill())
-
-    assert skill.nominal_url == (
-        "https://app.example.com/w/ri.workspace.main.workspace.1/analyst/skills/skill%3Av2%3AeyJza2lsbFJpZCI6InJpLm"
-        "ZpbGUtc3RvcmUubWFpbi5za2lsbC4wYjhmNmMxZS0wZDNjLTRjNDMtOWE1NS02ZjBkM2MxZTJiN2EiLCJzb3VyY2UiOiJyZWNvcmQiLC"
-        "J2IjoyfQ"
-    )

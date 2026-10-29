@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-import re
 import zipfile
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol, Self
+from typing import Protocol, Self
 
 import grpc
-import yaml
 from google.protobuf import field_mask_pb2
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
-from nominal.core._utils.frontend_urls import skill_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.pagination_tools import search_skills_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import NominalConflictError, NominalError, NominalNotFoundError
 from nominal.protos.skills.v1 import skills_pb2, skills_pb2_grpc
@@ -25,36 +24,37 @@ from nominal.ts import IntegralNanosecondsUTC
 _ENTRY_FILE = "SKILL.md"
 # BatchGetSkillFiles reads at most this many paths per call.
 _MAX_PATHS_PER_READ = 50
-# Matches the skills service's frontmatter delimiter line.
-_FRONTMATTER_DELIMITER = re.compile(r"---[ \t]*\r?")
 
 
 class SkillLoadStatus(Enum):
-    """Whether Analyst and connected agents can load a skill.
+    """Whether Analyst and connected agents can load a skill."""
 
-    AVAILABLE means its SKILL.md is readable and valid. INVALID means SKILL.md is readable but is not a valid
-    skill, for example because its frontmatter has no description. MISSING means the skill's folder or SKILL.md
-    is gone. UNAVAILABLE means SKILL.md could not be read for another reason, such as an unavailable source.
-    """
-
+    UNSPECIFIED = "UNSPECIFIED"
+    """Not reported, as after a change, or a status from a newer server."""
     AVAILABLE = "AVAILABLE"
+    """SKILL.md is readable and valid."""
     INVALID = "INVALID"
+    """SKILL.md is readable but is not a valid skill, for example because its frontmatter has no description."""
     MISSING = "MISSING"
+    """The skill's folder or SKILL.md no longer exists."""
     UNAVAILABLE = "UNAVAILABLE"
+    """SKILL.md could not be read for another reason, such as an unavailable source."""
 
     @classmethod
-    def _from_proto(cls, value: skills_pb2.SkillBackingStatus.ValueType) -> SkillLoadStatus | None:
+    def _from_proto(cls, value: skills_pb2.SkillBackingStatus.ValueType) -> SkillLoadStatus:
         match value:
             case skills_pb2.SKILL_BACKING_STATUS_AVAILABLE:
-                return cls.AVAILABLE
+                result = cls.AVAILABLE
             case skills_pb2.SKILL_BACKING_STATUS_INVALID:
-                return cls.INVALID
+                result = cls.INVALID
             case skills_pb2.SKILL_BACKING_STATUS_MISSING:
-                return cls.MISSING
+                result = cls.MISSING
             case skills_pb2.SKILL_BACKING_STATUS_UNAVAILABLE:
-                return cls.UNAVAILABLE
+                result = cls.UNAVAILABLE
             case _:
-                return None
+                # Unset, or a value a newer server sent that this SDK doesn't know.
+                result = cls.UNSPECIFIED
+        return result
 
 
 @dataclass(frozen=True)
@@ -67,18 +67,11 @@ class SkillFileInfo:
 
 
 @dataclass(frozen=True)
-class _SkillContent:
-    instructions: str
-    files: Sequence[SkillFileInfo]
-
-
-@dataclass(frozen=True)
 class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
-    """A skill in a workspace's skills library: instructions, and any reference files, that Analyst and connected
+    """A skill in a workspace's skills library: a SKILL.md, and any reference files, that Analyst and connected
     agents follow.
 
-    ``name`` and ``description`` are None while the skill's SKILL.md has no valid frontmatter. ``load_status`` is
-    None when the response that built this object did not report it, as after a change; refresh to read it.
+    `name` and `description` come from SKILL.md's frontmatter, and are None while it has no valid frontmatter.
     """
 
     rid: str
@@ -88,10 +81,9 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
     is_enabled: bool
     is_archived: bool
     version: int
-    load_status: SkillLoadStatus | None
+    load_status: SkillLoadStatus
     created_at: IntegralNanosecondsUTC
     updated_at: IntegralNanosecondsUTC
-    _content: _SkillContent | None = field(repr=False)
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -103,86 +95,58 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         with translate_grpc_errors():
             return self._clients.skills.GetSkill(request).skill
 
-    @property
-    def nominal_url(self) -> str:
-        """Returns a link to the skill in the Nominal app."""
-        return skill_url(self._clients, self.workspace_rid, self.rid)
-
-    def get_instructions(self) -> str:
-        """Return the skill's instructions: the body of its SKILL.md after the frontmatter.
-
-        Search results and changed skills don't carry instructions, so this may fetch the skill, refreshing this
-        object.
-
-        Raises:
-            NominalError: If the skill can't load; ``load_status`` says why.
-        """
-        return self._loaded_content().instructions
-
     def list_files(self) -> Sequence[SkillFileInfo]:
-        """Return every file in the skill's folder, SKILL.md included.
-
-        Like :meth:`get_instructions`, this may fetch the skill, refreshing this object.
-
-        Raises:
-            NominalError: If the skill can't load; ``load_status`` says why.
-        """
-        return self._loaded_content().files
+        """List every file in the skill's folder, SKILL.md included."""
+        return [
+            SkillFileInfo(path=file.path, size_bytes=file.size_bytes, sha256=file.sha256)
+            for file in self._get_latest_api().files
+        ]
 
     def read_file(self, path: str) -> str:
-        """Return the text of one file in the skill's folder, such as ``methods/problem-definition.md``.
+        """Read one file in the skill's folder, such as ``SKILL.md`` or ``methods/limits.md``.
 
         Raises:
             NominalNotFoundError: If the skill has no file at this path.
             NominalError: If the file is not UTF-8 text. The client reads and writes text files only.
         """
-        return self._read_files([path])[path]
+        return _read_files(self._clients, self.rid, [path])[path]
 
-    def update(
-        self,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        instructions: str | None = None,
-        enabled: bool | None = None,
-    ) -> Self:
+    def update(self, *, content: str | None = None, enabled: bool | None = None) -> Self:
         """Update the skill in place. Fields left as None are unchanged.
 
-        A new name, description, or instructions is saved only if the skill hasn't changed since this object was
-        fetched or last refreshed. Turning the skill on or off applies to its current version. Renaming keeps the
-        skill's RID. An archived skill must be restored with :meth:`unarchive` before it can be turned on.
+        Args:
+            content: The skill's new SKILL.md, frontmatter included. A new name in its frontmatter renames the skill
+                and keeps its RID. Saved only if the skill hasn't changed since this object was fetched or last
+                refreshed.
+            enabled: Whether the skill is turned on. Applies to the skill's current version. An archived skill must
+                be restored with :meth:`unarchive` before it can be turned on.
 
         Raises:
             NominalConflictError: If the skill changed since this object was fetched or last refreshed.
             NominalAlreadyExistsError: If another skill in the workspace has the new name.
-            NominalInvalidArgumentError: If a new value breaks the Agent Skills format or a limit.
+            NominalInvalidArgumentError: If SKILL.md breaks the Agent Skills format or a limit.
         """
-        skill = skills_pb2.Skill(skill_rid=self.rid, name=name, description=description, instructions=instructions)
-        content_paths = [
-            path
-            for path, value in (("name", name), ("description", description), ("instructions", instructions))
-            if value is not None
-        ]
-        state_paths = []
+        skill = skills_pb2.Skill(skill_rid=self.rid, content=content)
+        paths = []
+        if content is not None:
+            paths.append("content")
         if enabled is not None:
             skill.state = skills_pb2.SKILL_STATE_ENABLED if enabled else skills_pb2.SKILL_STATE_DISABLED
-            state_paths.append("state")
-        if not content_paths and not state_paths:
-            return self
+            paths.append("state")
         request = skills_pb2.UpdateSkillRequest(
             skill=skill,
-            update_mask=field_mask_pb2.FieldMask(paths=content_paths + state_paths),
+            update_mask=field_mask_pb2.FieldMask(paths=paths),
             # Zero leaves the version unchecked, which the service allows only for a state change.
-            expected_version=self.version if content_paths else 0,
+            expected_version=self.version if content is not None else 0,
         )
         return self._update(request)
 
     def write_files(self, files: Mapping[str, str]) -> Self:
-        """Add or replace reference files in one save, keyed by path relative to the skill's folder.
+        """Add or replace reference files in one save, all or nothing.
 
-        Files are UTF-8 text. SKILL.md is not a reference file; change it with :meth:`update`. One call saves up to
-        100 files and 3 MiB of text, all or nothing, and only if the skill hasn't changed since this object was
-        fetched or last refreshed.
+        Args:
+            files: UTF-8 text keyed by path relative to the skill's folder, such as ``methods/limits.md``. SKILL.md
+                is not a reference file; change it with :meth:`update`.
 
         Raises:
             NominalConflictError: If the skill changed since this object was fetched or last refreshed.
@@ -191,7 +155,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         request = skills_pb2.BatchUpdateSkillFilesRequest(
             skill_rid=self.rid,
             expected_version=self.version,
-            files=[skills_pb2.SkillFile(path=path, content=content) for path, content in files.items()],
+            files=[skills_pb2.SkillFile(path=path, content=text) for path, text in files.items()],
         )
         with _translate_skill_errors():
             response = self._clients.skills.BatchUpdateSkillFiles(request)
@@ -202,7 +166,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
         Raises:
             NominalConflictError: If the skill changed since this object was fetched or last refreshed.
-            NominalNotFoundError: If the skill has no file at one of the paths. Nothing is removed.
+            NominalNotFoundError: If the skill has no file at one of the paths.
             NominalInvalidArgumentError: If a path is SKILL.md.
         """
         request = skills_pb2.BatchDeleteSkillFilesRequest(
@@ -224,52 +188,27 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         if self.is_archived:
             self._update(_state_update(self.rid, skills_pb2.SKILL_STATE_DISABLED))
 
-    def export(self, path: Path | str) -> Path:
-        """Write the skill's folder, named after the skill, under ``path``, and return the folder.
+    def export(self, path: PathLike) -> Path:
+        """Write the skill's current folder, named after the skill, under `path`, and return the folder.
 
-        Refreshes this object first, so the folder matches the skill's current version. Every file is read before
-        any is written.
+        Every file is read before any is written.
 
         Raises:
-            FileExistsError: If ``path`` already has an entry with the skill's name.
-            NominalError: If the skill can't load, or one of its files is not UTF-8 text.
+            FileExistsError: If `path` already has an entry with the skill's name.
+            NominalError: If the skill has no valid name, or one of its files is not UTF-8 text.
         """
-        self.refresh()
-        content = self._loaded_content()
-        if self.name is None:
-            raise NominalError(f"Skill {self.rid} has no valid name for its folder ({self.load_status})")
-        folder = Path(path) / self.name
+        latest = self._get_latest_api()
+        if not latest.HasField("name"):
+            raise NominalError(f"Skill {self.rid} has no valid name in its SKILL.md to name its folder")
+        folder = Path(path) / latest.name
         if folder.exists():
             raise FileExistsError(f"{folder} already exists")
-        texts = self._read_files([file.path for file in content.files])
+        texts = _read_files(self._clients, self.rid, [file.path for file in latest.files])
         for file_path, text in texts.items():
             target = folder / file_path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(text.encode("utf-8"))
         return folder
-
-    def _loaded_content(self) -> _SkillContent:
-        if self._content is None:
-            self.refresh()
-        if self._content is None:
-            raise NominalError(f"Skill {self.rid} can't load ({self.load_status}), so it has no instructions or files")
-        return self._content
-
-    def _read_files(self, paths: Sequence[str]) -> dict[str, str]:
-        texts: dict[str, str] = {}
-        for start in range(0, len(paths), _MAX_PATHS_PER_READ):
-            request = skills_pb2.BatchGetSkillFilesRequest(
-                skill_rid=self.rid, paths=paths[start : start + _MAX_PATHS_PER_READ]
-            )
-            with translate_grpc_errors():
-                response = self._clients.skills.BatchGetSkillFiles(request)
-            if response.not_found_paths:
-                raise NominalNotFoundError(f"Skill {self.rid} has no file at {', '.join(response.not_found_paths)}")
-            binary = [file.path for file in response.files if not file.HasField("content")]
-            if binary:
-                raise NominalError(f"Not UTF-8 text, which the client can't read: {', '.join(binary)}")
-            texts.update((file.path, file.content) for file in response.files)
-        return texts
 
     def _update(self, request: skills_pb2.UpdateSkillRequest) -> Self:
         with _translate_skill_errors():
@@ -279,15 +218,6 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
     @classmethod
     def _from_proto(cls, clients: _Clients, raw_skill: skills_pb2.Skill) -> Self:
-        content = None
-        if raw_skill.HasField("instructions"):
-            content = _SkillContent(
-                instructions=raw_skill.instructions,
-                files=tuple(
-                    SkillFileInfo(path=file.path, size_bytes=file.size_bytes, sha256=file.sha256)
-                    for file in raw_skill.files
-                ),
-            )
         return cls(
             rid=raw_skill.skill_rid,
             workspace_rid=raw_skill.workspace_rid,
@@ -299,76 +229,140 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             load_status=SkillLoadStatus._from_proto(raw_skill.backing_status),
             created_at=raw_skill.created.time.ToNanoseconds(),
             updated_at=raw_skill.updated.time.ToNanoseconds(),
-            _content=content,
             _clients=clients,
         )
 
 
-@dataclass(frozen=True)
-class _SkillPackage:
-    """A skill folder read from disk, split the way the skills service splits SKILL.md."""
-
-    name: str
-    description: str
-    instructions: str
-    frontmatter: dict[str, Any]
-    files: dict[str, str]
-
-    @classmethod
-    def read(cls, path: Path) -> _SkillPackage:
-        """Read a skill folder or .zip with SKILL.md at its top level or in its single top-level folder.
-
-        Hidden files and folders, such as ``.git``, are skipped, as are macOS ``__MACOSX`` folders.
-        """
-        texts = _package_texts(path)
-        entry = texts.pop(_ENTRY_FILE, None)
-        if entry is None:
-            raise ValueError(f"{path} has no SKILL.md at its top level or in a single top-level folder")
-        split = _split_frontmatter(entry.removeprefix("﻿"))
-        if split is None:
-            raise ValueError("SKILL.md must start with YAML frontmatter between --- lines")
-        try:
-            frontmatter = yaml.load(split[0], Loader=_FrontmatterLoader)
-        except yaml.YAMLError as e:
-            raise ValueError(f"SKILL.md frontmatter is not valid YAML: {e}") from e
-        if not isinstance(frontmatter, dict):
-            raise ValueError("SKILL.md frontmatter must be a mapping with a name and a description")
-        name = frontmatter.pop("name", None)
-        description = frontmatter.pop("description", None)
-        if not isinstance(name, str) or not isinstance(description, str):
-            raise ValueError("SKILL.md frontmatter needs a name and a description")
-        return cls(name=name, description=description, instructions=split[1], frontmatter=frontmatter, files=texts)
+def _create_skill(
+    clients: Skill._Clients,
+    *,
+    content: str,
+    files: Mapping[str, str] | None,
+    enabled: bool,
+    workspace_rid: str,
+) -> Skill:
+    request = skills_pb2.CreateSkillRequest(
+        skill=skills_pb2.Skill(
+            workspace_rid=workspace_rid,
+            content=content,
+            state=skills_pb2.SKILL_STATE_ENABLED if enabled else skills_pb2.SKILL_STATE_DRAFT,
+        ),
+        files=[] if files is None else [skills_pb2.SkillFile(path=path, content=text) for path, text in files.items()],
+    )
+    with translate_grpc_errors():
+        response = clients.skills.CreateSkill(request)
+    return Skill._from_proto(clients, response.skill)
 
 
-class _FrontmatterLoader(yaml.SafeLoader):
-    """Safe YAML that reads dates and times as strings, as the skills service does."""
+def _import_skill(clients: Skill._Clients, path: Path, *, enabled: bool, workspace_rid: str) -> Skill:
+    files = _read_skill_folder(path)
+    content = files.pop(_ENTRY_FILE)
+    return _create_skill(clients, content=content, files=files, enabled=enabled, workspace_rid=workspace_rid)
 
 
-_FrontmatterLoader.yaml_implicit_resolvers = {
-    first: [(tag, pattern) for tag, pattern in resolvers if tag != "tag:yaml.org,2002:timestamp"]
-    for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
-}
+def _get_skill(clients: Skill._Clients, rid: str) -> Skill:
+    request = skills_pb2.GetSkillRequest(skill_rid=rid, include_content=True)
+    with translate_grpc_errors():
+        response = clients.skills.GetSkill(request)
+    return Skill._from_proto(clients, response.skill)
 
 
-def _package_texts(path: Path) -> dict[str, str]:
+def _iter_search_skills(
+    clients: Skill._Clients,
+    *,
+    search_text: str | None,
+    enabled: bool | None,
+    archive_status: ArchiveStatusFilter,
+    workspace_rid: str,
+) -> Iterable[Skill]:
+    states = _searched_states(enabled, archive_status)
+    # The service reads an empty state list as every unarchived state, so a filter that excludes every state
+    # searches nothing.
+    if not states:
+        return
+    search_filter = skills_pb2.SkillSearchFilter(text=search_text, states=states)
+    for skill in search_skills_paginated(clients.skills, workspace_rid, search_filter):
+        yield Skill._from_proto(clients, skill)
+
+
+def _search_skills(
+    clients: Skill._Clients,
+    *,
+    search_text: str | None,
+    enabled: bool | None,
+    archive_status: ArchiveStatusFilter,
+    workspace_rid: str,
+) -> Sequence[Skill]:
+    return list(
+        _iter_search_skills(
+            clients,
+            search_text=search_text,
+            enabled=enabled,
+            archive_status=archive_status,
+            workspace_rid=workspace_rid,
+        )
+    )
+
+
+def _searched_states(
+    enabled: bool | None, archive_status: ArchiveStatusFilter
+) -> list[skills_pb2.SkillState.ValueType]:
+    unarchived = [skills_pb2.SKILL_STATE_DRAFT, skills_pb2.SKILL_STATE_ENABLED, skills_pb2.SKILL_STATE_DISABLED]
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            states = unarchived
+        case ArchiveStatusFilter.ARCHIVED:
+            states = [skills_pb2.SKILL_STATE_ARCHIVED]
+        case ArchiveStatusFilter.ANY:
+            states = [*unarchived, skills_pb2.SKILL_STATE_ARCHIVED]
+    if enabled is None:
+        return states
+    return [state for state in states if (state == skills_pb2.SKILL_STATE_ENABLED) == enabled]
+
+
+def _read_files(clients: Skill._Clients, skill_rid: str, paths: Sequence[str]) -> dict[str, str]:
+    texts: dict[str, str] = {}
+    for start in range(0, len(paths), _MAX_PATHS_PER_READ):
+        request = skills_pb2.BatchGetSkillFilesRequest(
+            skill_rid=skill_rid, paths=paths[start : start + _MAX_PATHS_PER_READ]
+        )
+        with translate_grpc_errors():
+            response = clients.skills.BatchGetSkillFiles(request)
+        if response.not_found_paths:
+            raise NominalNotFoundError(f"Skill {skill_rid} has no file at {', '.join(response.not_found_paths)}")
+        binary = [file.path for file in response.files if not file.HasField("content")]
+        if binary:
+            raise NominalError(f"Not UTF-8 text, which the client can't read: {', '.join(binary)}")
+        texts.update((file.path, file.content) for file in response.files)
+    return texts
+
+
+def _read_skill_folder(path: Path) -> dict[str, str]:
+    """A skill folder's files as text, keyed by path inside the folder, as the app's Import Skills reads them.
+
+    The folder is `path` itself, or in a .zip the folder holding its one SKILL.md. Paths with a part that starts with
+    "." are skipped, such as `.git` and macOS's `._*` copies.
+    """
     if path.is_dir():
         contents = {
             file.relative_to(path).as_posix(): file.read_bytes()
             for file in sorted(path.rglob("*"))
-            if file.is_file() and not _is_skipped(file.relative_to(path).as_posix())
+            if file.is_file() and _is_importable(file.relative_to(path).as_posix())
         }
     else:
         with zipfile.ZipFile(path) as archive:
+            names = [info.filename for info in archive.infolist() if not info.is_dir()]
+            entries = [name for name in names if _is_importable(name) and name.split("/")[-1] == _ENTRY_FILE]
+            if len(entries) != 1:
+                raise ValueError(f"{path} must hold exactly one SKILL.md; it holds {len(entries)}")
+            prefix = entries[0].removesuffix(_ENTRY_FILE)
             contents = {
-                info.filename: archive.read(info)
-                for info in archive.infolist()
-                if not info.is_dir() and not _is_skipped(info.filename)
+                name.removeprefix(prefix): archive.read(name)
+                for name in names
+                if name.startswith(prefix) and _is_importable(name)
             }
     if _ENTRY_FILE not in contents:
-        folders = {name.split("/", 1)[0] for name in contents}
-        if len(folders) == 1 and f"{next(iter(folders))}/{_ENTRY_FILE}" in contents:
-            prefix = f"{next(iter(folders))}/"
-            contents = {name.removeprefix(prefix): data for name, data in contents.items()}
+        raise ValueError(f"{path} has no SKILL.md at its top level")
     texts: dict[str, str] = {}
     binary: list[str] = []
     for name, data in contents.items():
@@ -381,19 +375,8 @@ def _package_texts(path: Path) -> dict[str, str]:
     return texts
 
 
-def _is_skipped(path: str) -> bool:
-    return any(part.startswith(".") or part == "__MACOSX" for part in path.split("/"))
-
-
-def _split_frontmatter(markdown: str) -> tuple[str, str] | None:
-    """Split SKILL.md into its frontmatter and body, or None when it doesn't start with a frontmatter block."""
-    lines = markdown.split("\n")
-    if not _FRONTMATTER_DELIMITER.fullmatch(lines[0]):
-        return None
-    for index in range(1, len(lines)):
-        if _FRONTMATTER_DELIMITER.fullmatch(lines[index]):
-            return "\n".join(lines[1:index]), "\n".join(lines[index + 1 :])
-    return None
+def _is_importable(path: str) -> bool:
+    return all(part and not part.startswith(".") for part in path.split("/"))
 
 
 def _state_update(skill_rid: str, state: skills_pb2.SkillState.ValueType) -> skills_pb2.UpdateSkillRequest:
@@ -401,23 +384,6 @@ def _state_update(skill_rid: str, state: skills_pb2.SkillState.ValueType) -> ski
         skill=skills_pb2.Skill(skill_rid=skill_rid, state=state),
         update_mask=field_mask_pb2.FieldMask(paths=["state"]),
     )
-
-
-def _searched_states(
-    enabled: bool | None, archive_status: ArchiveStatusFilter
-) -> list[skills_pb2.SkillState.ValueType]:
-    """The skill states a search selects; empty when the filters exclude every skill."""
-    unarchived = [skills_pb2.SKILL_STATE_DRAFT, skills_pb2.SKILL_STATE_ENABLED, skills_pb2.SKILL_STATE_DISABLED]
-    match archive_status:
-        case ArchiveStatusFilter.NOT_ARCHIVED:
-            states = unarchived
-        case ArchiveStatusFilter.ARCHIVED:
-            states = [skills_pb2.SKILL_STATE_ARCHIVED]
-        case ArchiveStatusFilter.ANY:
-            states = [*unarchived, skills_pb2.SKILL_STATE_ARCHIVED]
-    if enabled is None:
-        return states
-    return [state for state in states if (state == skills_pb2.SKILL_STATE_ENABLED) == enabled]
 
 
 @contextmanager
