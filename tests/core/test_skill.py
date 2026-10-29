@@ -117,21 +117,23 @@ def test_read_file_refuses_a_file_that_is_not_text() -> None:
         skill.read_file("diagram.png")
 
 
-def test_unarchive_restores_turned_off_and_skips_unarchived_skills() -> None:
-    """Restoring brings an archived skill back turned off; a skill shown as unarchived is left alone."""
+def test_unarchive_checks_the_current_state_before_restoring() -> None:
+    """Restoring reads the skill's current state, so a stale snapshot neither blocks a restore nor turns a skill off."""
     clients = MagicMock()
-    archived = Skill._from_proto(clients, _proto_skill(state=skills_pb2.SKILL_STATE_ARCHIVED))
-    enabled = Skill._from_proto(clients, _proto_skill())
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(
+        skill=_proto_skill(state=skills_pb2.SKILL_STATE_ARCHIVED)
+    )
     clients.skills.UpdateSkill.return_value = skills_pb2.UpdateSkillResponse(
         skill=_proto_skill(state=skills_pb2.SKILL_STATE_DISABLED)
     )
 
-    archived.unarchive()
-    enabled.unarchive()
+    skill.unarchive()
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_proto_skill())
+    skill.unarchive()
 
     assert clients.skills.UpdateSkill.call_count == 1
     assert clients.skills.UpdateSkill.call_args.args[0].skill.state == skills_pb2.SKILL_STATE_DISABLED
-    assert not archived.is_archived and not archived.is_enabled
 
 
 @pytest.mark.parametrize(
@@ -260,3 +262,22 @@ def test_export_writes_every_file_under_the_skill_name(tmp_path: Path) -> None:
     assert (folder / "m" / "a.md").read_bytes() == b"Method A.\r\n"
     with pytest.raises(FileExistsError):
         skill.export(tmp_path)
+
+
+def test_export_refuses_a_path_outside_the_folder_before_writing(tmp_path: Path) -> None:
+    """A file path that leads outside the skill's folder stops the export before anything is written."""
+    clients = MagicMock()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(
+        skill=_proto_skill(files=[skills_pb2.SkillFileInfo(path="SKILL.md"), skills_pb2.SkillFileInfo(path="../x.md")])
+    )
+    clients.skills.BatchGetSkillFiles.return_value = skills_pb2.BatchGetSkillFilesResponse(
+        files=[
+            skills_pb2.SkillFile(path="SKILL.md", content=_SKILL_MD),
+            skills_pb2.SkillFile(path="../x.md", content="Outside.\n"),
+        ]
+    )
+
+    with pytest.raises(NominalError, match="x.md"):
+        skill.export(tmp_path)
+    assert list(tmp_path.iterdir()) == []

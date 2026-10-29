@@ -183,9 +183,9 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
     def unarchive(self) -> None:
         """Restore an archived skill. It comes back turned off; turn it on with ``update(enabled=True)``.
 
-        Does nothing when this object shows the skill as not archived.
+        Refreshes this object first, and does nothing when the skill is not archived.
         """
-        if self.is_archived:
+        if self.refresh().is_archived:
             self._update(_state_update(self.rid, skills_pb2.SKILL_STATE_DISABLED))
 
     def export(self, path: PathLike) -> Path:
@@ -195,7 +195,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
         Raises:
             FileExistsError: If `path` already has an entry with the skill's name.
-            NominalError: If the skill has no valid name, or one of its files is not UTF-8 text.
+            NominalError: If the skill has no valid name, one of its files is not UTF-8 text, or a file's path
+                leads outside the folder.
         """
         latest = self._get_latest_api()
         if not latest.HasField("name"):
@@ -204,6 +205,11 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         if folder.exists():
             raise FileExistsError(f"{folder} already exists")
         texts = _read_files(self._clients, self.rid, [file.path for file in latest.files])
+        for file_path in texts:
+            try:
+                (folder / file_path).resolve().relative_to(folder.resolve())
+            except ValueError as ex:
+                raise NominalError(f"Skill {self.rid} has a file outside its folder: {file_path}") from ex
         for file_path, text in texts.items():
             target = folder / file_path
             target.parent.mkdir(parents=True, exist_ok=True)
