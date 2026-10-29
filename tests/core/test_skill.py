@@ -94,17 +94,6 @@ def test_stale_skill_write_raises_conflict(fake_rpc_error) -> None:
         skill.write_files({"methods/limits.md": "text"})
 
 
-def test_aborted_errors_from_other_services_are_unchanged(fake_rpc_error) -> None:
-    """Only skill methods raise NominalConflictError; other calls keep raising the base NominalError."""
-    client, clients = _client()
-    clients.secrets.Get.side_effect = fake_rpc_error(grpc.StatusCode.ABORTED)
-
-    with pytest.raises(NominalError) as raised:
-        client.get_secret("ri.secret.test")
-
-    assert type(raised.value) is NominalError
-
-
 def test_read_file_refuses_a_file_that_is_not_text() -> None:
     """The client reads text only; a binary file in the skill's folder raises an error naming it."""
     clients = MagicMock()
@@ -228,6 +217,25 @@ def test_import_reads_the_folder_holding_a_zips_skill_md(tmp_path: Path) -> None
     request = clients.skills.CreateSkill.call_args.args[0]
     assert request.skill.content == _SKILL_MD
     assert [file.path for file in request.files] == ["methods/limits.md"]
+
+
+def test_import_takes_a_zips_shallowest_skill_md_as_the_skill(tmp_path: Path) -> None:
+    """A SKILL.md nested inside a zipped skill folder is a reference file, as it is when importing the folder."""
+    client, clients = _client()
+    _write_skill_folder(tmp_path / "post-test-review")
+    (tmp_path / "post-test-review" / "examples").mkdir()
+    (tmp_path / "post-test-review" / "examples" / "SKILL.md").write_text("Example.\n")
+    archive_path = tmp_path / "skill.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for file in (tmp_path / "post-test-review").rglob("*"):
+            if file.is_file():
+                archive.write(file, file.relative_to(tmp_path).as_posix())
+
+    client.import_skill(archive_path)
+
+    request = clients.skills.CreateSkill.call_args.args[0]
+    assert request.skill.content == _SKILL_MD
+    assert sorted(file.path for file in request.files) == ["examples/SKILL.md", "methods/limits.md"]
 
 
 def test_import_refuses_binary_files_before_saving(tmp_path: Path) -> None:

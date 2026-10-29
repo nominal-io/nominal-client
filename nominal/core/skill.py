@@ -291,25 +291,6 @@ def _iter_search_skills(
         yield Skill._from_proto(clients, skill)
 
 
-def _search_skills(
-    clients: Skill._Clients,
-    *,
-    search_text: str | None,
-    enabled: bool | None,
-    archive_status: ArchiveStatusFilter,
-    workspace_rid: str,
-) -> Sequence[Skill]:
-    return list(
-        _iter_search_skills(
-            clients,
-            search_text=search_text,
-            enabled=enabled,
-            archive_status=archive_status,
-            workspace_rid=workspace_rid,
-        )
-    )
-
-
 def _searched_states(
     enabled: bool | None, archive_status: ArchiveStatusFilter
 ) -> list[skills_pb2.SkillState.ValueType]:
@@ -344,8 +325,8 @@ def _read_files(clients: Skill._Clients, skill_rid: str, paths: Sequence[str]) -
 def _read_skill_folder(path: Path) -> dict[str, str]:
     """A skill folder's files as text, keyed by path inside the folder, as the app's Import Skills reads them.
 
-    The folder is `path` itself, or in a .zip the folder holding its one SKILL.md. Paths with a part that starts with
-    "." are skipped, such as `.git` and macOS's `._*` copies.
+    The folder is `path` itself, or in a .zip the folder holding its shallowest SKILL.md. Paths with a part that
+    starts with "." are skipped, such as `.git` and macOS's `._*` copies.
     """
     if path.is_dir():
         contents = {
@@ -357,9 +338,14 @@ def _read_skill_folder(path: Path) -> dict[str, str]:
         with zipfile.ZipFile(path) as archive:
             names = [info.filename for info in archive.infolist() if not info.is_dir()]
             entries = [name for name in names if _is_importable(name) and name.split("/")[-1] == _ENTRY_FILE]
-            if len(entries) != 1:
-                raise ValueError(f"{path} must hold exactly one SKILL.md; it holds {len(entries)}")
-            prefix = entries[0].removesuffix(_ENTRY_FILE)
+            if not entries:
+                raise ValueError(f"{path} has no SKILL.md")
+            # The skill's SKILL.md is the shallowest one, as a folder's is the one at its top level.
+            depth = min(entry.count("/") for entry in entries)
+            shallowest = [entry for entry in entries if entry.count("/") == depth]
+            if len(shallowest) > 1:
+                raise ValueError(f"{path} holds {len(shallowest)} skill folders; import one at a time")
+            prefix = shallowest[0].removesuffix(_ENTRY_FILE)
             contents = {
                 name.removeprefix(prefix): archive.read(name)
                 for name in names
