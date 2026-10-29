@@ -13,9 +13,8 @@ jobs:
     uses: nominal-io/nominal-sphinx-theme/.github/workflows/bump-theme.yml@c896bcaf874bf1cd873e19e879f8861e46912bc3 # main, 2026-10-28
     with:
       uv-version: "0.13.x"
-      # main's required checks don't include the docs build (Build github pages), so a
-      # bump that breaks the docs would merge. Turn this on once they do.
-      auto-merge: false
+      # auto-merge waits for main's required checks, which include the docs
+      # build (Build github pages)
     secrets:
       NOMBOT_APP_ID: ${{ secrets.NOMBOT_APP_ID }}
       NOMBOT_PRIVATE_KEY: ${{ secrets.NOMBOT_PRIVATE_KEY }}
