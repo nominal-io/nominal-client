@@ -11,6 +11,7 @@ from typing import Protocol, Self
 import grpc
 from google.protobuf import field_mask_pb2
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
@@ -22,8 +23,7 @@ from nominal.protos.skills.v1 import skills_pb2, skills_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 _ENTRY_FILE = "SKILL.md"
-# BatchGetSkillFiles reads at most this many paths per call.
-_MAX_PATHS_PER_READ = 50
+_BATCH_GET_LIMIT = 50
 
 
 class SkillLoadStatus(Enum):
@@ -322,10 +322,8 @@ def _searched_states(
 
 def _read_files(clients: Skill._Clients, skill_rid: str, paths: Sequence[str]) -> dict[str, str]:
     texts: dict[str, str] = {}
-    for start in range(0, len(paths), _MAX_PATHS_PER_READ):
-        request = skills_pb2.BatchGetSkillFilesRequest(
-            skill_rid=skill_rid, paths=paths[start : start + _MAX_PATHS_PER_READ]
-        )
+    for path_batch in batched(paths, _BATCH_GET_LIMIT):
+        request = skills_pb2.BatchGetSkillFilesRequest(skill_rid=skill_rid, paths=path_batch)
         with translate_grpc_errors():
             response = clients.skills.BatchGetSkillFiles(request)
         if response.not_found_paths:
