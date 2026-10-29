@@ -40,12 +40,13 @@ file.poll_until_ingestion_completed()
 Pass both `timestamp_column` and `timestamp_type` for a different field or epoch unit:
 
 ```python
-dataset.add_journal_json(
+file = dataset.add_journal_json(
     "engine-ms.jsonl",
     channel="engine_logs",
     timestamp_column="timestamp_ms",
     timestamp_type="epoch_milliseconds",
 )
+file.poll_until_ingestion_completed()
 ```
 
 `timestamp_type` takes epoch units only.

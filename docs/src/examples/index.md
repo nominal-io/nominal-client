@@ -6,9 +6,3 @@ Runnable notebooks, shown here as executed by the docs build.
 
 ```{example-gallery}
 ```
-
-```{toctree}
-:hidden:
-
-running
-```

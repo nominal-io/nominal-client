@@ -66,11 +66,12 @@ dataset = client.create_dataset(
 )
 
 # Repeat this for each CSV file of the same type
-dataset.add_tabular_data(
+file = dataset.add_tabular_data(
     path='my_data.csv',
     timestamp_column='time',
     timestamp_type='epoch_seconds'
 )
+file.poll_until_ingestion_completed()  # raises NominalIngestError if the ingest fails
 ```
 
 See also [Timestamp reference](/sdk/ts/index.md).
@@ -89,11 +90,12 @@ dataset = client.create_dataset(
 for df in my_dataframes:
     with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
         df.to_parquet(f.name)
-        dataset.add_tabular_data(
+        file = dataset.add_tabular_data(
             f.name,
             timestamp_column='source_time',
             timestamp_type='iso_8601'
         )
+        file.poll_until_ingestion_completed()
 ```
 
 Note that, if your timestamp column is the index, but the index is
@@ -144,11 +146,12 @@ the Dataset, then add video files to a named channel on it:
 ```python
 dataset = client.create_dataset(name='Engine Cam 6')
 
-dataset.add_video(
+file = dataset.add_video(
     path='myfile.mp4',
     channel='engine_cam_6',
     start=dataframe['source_time'].min()
 )
+file.poll_until_ingestion_completed()
 ```
 
 :::{note}

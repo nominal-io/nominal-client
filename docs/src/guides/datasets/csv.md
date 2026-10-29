@@ -54,11 +54,12 @@ from datetime import datetime, timezone
 from nominal import ts
 
 recording_start = datetime(2026, 9, 10, 14, 38, 19, tzinfo=timezone.utc)
-dataset.add_tabular_data(
+file = dataset.add_tabular_data(
     "bench.csv",
     timestamp_column="elapsed_s",
     timestamp_type=ts.Relative("seconds", start=recording_start),
 )
+file.poll_until_ingestion_completed()
 ```
 
 A value of `1.0` in `elapsed_s` then means `2026-09-10T14:38:20Z`.
@@ -70,13 +71,14 @@ Tags label the points in a file so you can filter them later, such as by test or
 `tags` applies the same tags to every row, and `tag_columns` reads a tag's value from a column:
 
 ```python
-dataset.add_tabular_data(
+file = dataset.add_tabular_data(
     "flight.csv",
     timestamp_column="time",
     timestamp_type="iso_8601",
     tags={"test_id": "flight-042"},
     tag_columns={"aircraft": "tail_number"},  # tag key: column name
 )
+file.poll_until_ingestion_completed()
 ```
 
 See [tags](/guides/streaming/overview.md#add-tags-to-filter-data-in-a-run-or-asset) for filtering by them.

@@ -18,7 +18,8 @@ from nominal.core import NominalClient
 client  = NominalClient.from_profile("default")
 asset   = client.get_or_create_asset_by_properties({"serial": "SN42"}, name="Test stand SN42")
 dataset = asset.get_or_create_dataset("primary")
-dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")  # your CSV
+file    = dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")  # your CSV
+file.poll_until_ingestion_completed()  # raises NominalIngestError if the ingest fails
 print(asset.nominal_url)
 ```
 
@@ -148,13 +149,15 @@ Networking and TLS <networking-tls>
 ```
 
 
-<!-- Examples section: notebooks in examples/, listed by its example-gallery -->
+<!-- Examples section: the gallery page, then every page in examples/ except that index -->
 
 ```{toctree}
 :hidden:
 :caption: Examples
+:glob:
 
-examples/index
+Gallery <examples/index>
+examples/[!i]*
 ```
 
 ```{toctree}

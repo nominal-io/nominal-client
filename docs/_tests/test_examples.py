@@ -15,7 +15,7 @@ kernelspec:
 
 
 def test_gallery_lists_notebooks_beside_the_index(tmp_path, build_docs):
-    """Notebooks get a card and toctree entry; other pages in the folder do not."""
+    """Notebooks get a card; other pages in the folder do not. The root toctree lists them all."""
     docs = tmp_path / "docs"
     source = docs / "src"
     examples = source / "examples"
@@ -27,10 +27,10 @@ def test_gallery_lists_notebooks_beside_the_index(tmp_path, build_docs):
         "myst_enable_extensions = ['colon_fence']\n",
         encoding="utf-8",
     )
-    (source / "index.rst").write_text("Home\n====\n\n.. toctree::\n\n   examples/index\n", encoding="utf-8")
-    (examples / "index.md").write_text(
-        "# Examples\n\n```{example-gallery}\n```\n\n```{toctree}\n:hidden:\n\nrunning\n```\n", encoding="utf-8"
+    (source / "index.rst").write_text(
+        "Home\n====\n\n.. toctree::\n   :glob:\n\n   examples/index\n   examples/[!i]*\n", encoding="utf-8"
     )
+    (examples / "index.md").write_text("# Examples\n\n```{example-gallery}\n```\n", encoding="utf-8")
     (examples / "running.md").write_text("# Running the examples\n", encoding="utf-8")
     (examples / "upload.md").write_text(NOTEBOOK.format(icon="icon: pulse\n", title="Upload a dataset"), "utf-8")
     (examples / "plain.md").write_text(NOTEBOOK.format(icon="", title="Plain card"), "utf-8")
