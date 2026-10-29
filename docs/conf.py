@@ -213,8 +213,8 @@ html_context = {
     "source_docs_path": "/docs/src/",
 }
 
-# Right sidebar: on-page contents and edit link, no GitHub repo-stats box.
-html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"]}
+# Right sidebar: on-page contents and a link to CONTRIBUTING.md, no GitHub repo-stats box.
+html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/contribute.html"]}
 
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
