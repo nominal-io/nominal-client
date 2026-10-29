@@ -112,7 +112,7 @@ from nominal.core.marking import (
 )
 from nominal.core.run import Run, _create_run, _get_run
 from nominal.core.secret import Secret
-from nominal.core.skill import Skill, _create_skill, _get_skill, _import_skill, _search_skills
+from nominal.core.skill import Skill, _create_skill, _get_skill, _import_skill, _iter_search_skills
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -640,8 +640,8 @@ class NominalClient:
             workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
-            ValueError: If the folder has no SKILL.md, the .zip has more or fewer than one, or a file is not UTF-8
-                text. Nothing is saved.
+            ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, or a file is
+                not UTF-8 text. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name.
             NominalInvalidArgumentError: If SKILL.md or a file breaks the Agent Skills format or a limit.
         """
@@ -682,14 +682,16 @@ class NominalClient:
         Returns:
             All skills matching all of the provided filters.
         """
-        return _search_skills(
-            self._clients,
-            search_text=search_text,
-            enabled=enabled,
-            archive_status=archive_status,
-            workspace_rid=self._clients.resolve_default_workspace_rid()
-            if workspace is None
-            else rid_from_instance_or_string(workspace),
+        return list(
+            _iter_search_skills(
+                self._clients,
+                search_text=search_text,
+                enabled=enabled,
+                archive_status=archive_status,
+                workspace_rid=self._clients.resolve_default_workspace_rid()
+                if workspace is None
+                else rid_from_instance_or_string(workspace),
+            )
         )
 
     def create_marking(
