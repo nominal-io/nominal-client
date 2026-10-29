@@ -89,3 +89,12 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+  # The check main's ruleset requires: a theme bump PR needs a passing docs build, and every other
+  # PR passes. See nominal-sphinx-theme's README, "CI".
+  docs-gate:
+    needs: build
+    if: always()
+    uses: nominal-io/nominal-sphinx-theme/.github/workflows/docs-gate.yml@c2e3280c9eba544212d52b3920aabf41713cc0cb # main, 2026-10-29
+    with:
+      docs-result: ${{ needs.build.result }}
