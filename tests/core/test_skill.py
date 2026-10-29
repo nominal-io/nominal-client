@@ -272,6 +272,24 @@ def test_export_writes_every_file_under_the_skill_name(tmp_path: Path) -> None:
         skill.export(tmp_path)
 
 
+def test_export_reads_files_in_batches_within_the_byte_limit(tmp_path: Path) -> None:
+    """Export splits its reads so no call asks for more than the service's 3 MiB of content."""
+    clients = MagicMock()
+    skill = Skill._from_proto(clients, _proto_skill())
+    sizes = {"SKILL.md": 100, "a.md": 2 * 1024 * 1024, "b.md": 2 * 1024 * 1024}
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(
+        skill=_proto_skill(files=[skills_pb2.SkillFileInfo(path=p, size_bytes=n) for p, n in sizes.items()])
+    )
+    clients.skills.BatchGetSkillFiles.side_effect = lambda request: skills_pb2.BatchGetSkillFilesResponse(
+        files=[skills_pb2.SkillFile(path=path, content="text") for path in request.paths]
+    )
+
+    skill.export(tmp_path)
+
+    batches = [list(call.args[0].paths) for call in clients.skills.BatchGetSkillFiles.call_args_list]
+    assert batches == [["SKILL.md", "a.md"], ["b.md"]]
+
+
 def test_export_refuses_a_path_outside_the_folder_before_writing(tmp_path: Path) -> None:
     """A file path that leads outside the skill's folder stops the export before anything is written."""
     clients = MagicMock()
