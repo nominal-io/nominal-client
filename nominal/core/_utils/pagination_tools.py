@@ -26,6 +26,7 @@ from nominal.protos.integrations.v1 import integrations_pb2, integrations_pb2_gr
 from nominal.protos.registry.v2 import registry_pb2, registry_pb2_grpc
 from nominal.protos.run.v1 import run_service_pb2, run_service_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2, secrets_pb2_grpc
+from nominal.protos.skills.v1 import skills_pb2, skills_pb2_grpc
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -295,6 +296,26 @@ def search_secrets_paginated(
 
     for response in paginate_grpc(secrets.Search, request_factory=factory):
         yield from response.results
+
+
+def search_skills_paginated(
+    skills: skills_pb2_grpc.SkillsServiceStub,
+    workspace_rid: str,
+    search_filter: skills_pb2.SkillSearchFilter,
+) -> Iterable[skills_pb2.Skill]:
+    def factory(page_token: str | None) -> skills_pb2.SearchSkillsRequest:
+        return skills_pb2.SearchSkillsRequest(
+            workspace_rid=workspace_rid,
+            filter=search_filter,
+            # Best match first; by name when the filter has no text.
+            sort=skills_pb2.SKILL_LIBRARY_SORT_RELEVANCE,
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+            include_status=True,
+        )
+
+    for response in paginate_grpc(skills.SearchSkills, request_factory=factory):
+        yield from response.skills
 
 
 def search_videos_paginated(
