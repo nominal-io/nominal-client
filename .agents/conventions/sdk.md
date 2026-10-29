@@ -57,6 +57,43 @@ asynchronous operations. Test meaningful SDK decisions rather than forwarding al
 error translation, and pagination. Follow the [test](testing.md) and
 [documentation](documentation.md) guides, and use the validation commands in `AGENTS.md`.
 
+## Focused operations and clear results
+
+Each public SDK operation must have one coherent caller-facing responsibility and be
+usable as a building block. Keep independently useful operations independently callable.
+Do not add optional arguments that turn a focused operation into a multi-resource workflow
+when composing the existing calls is just as clear. One responsibility can require several
+requests, such as pagination or upload finalization; request count alone is not the test.
+
+Define the result alongside the signature. Return a clear, typed SDK resource or value
+that lets callers use the operation's outcome. Do not silently discard an independently
+useful resource created as a side effect or require callers to search for it afterward.
+Avoid mode-dependent return shapes introduced to accommodate unrelated work. A command
+may return `None` when there is no useful result to expose, provided its mutation and
+completion semantics are clear; asynchronous work needs a clear completion contract.
+
+For example, keep `NominalClient.create_run(...) -> Run` separate from
+`WorkbookTemplate.create_workbook(run=run, ...) -> Workbook`. Adding a workbook-template
+argument to `create_run` expands its responsibilities and configuration while hiding the
+workbook if it still returns only the run. Callers can instead retain both results:
+
+```python
+run = client.create_run(name="Test run", start=start, end=end)
+workbook = template.create_workbook(run=run)
+```
+
+Returning both objects from an overloaded `create_run` would fix access to the workbook,
+but would not justify coupling the operations. If a higher-level workflow provides a
+demonstrated benefit beyond saving these calls, propose it separately with a name that
+describes the workflow, an explicit typed result exposing its useful outputs, and a
+partial-failure contract. Keep the constituent operations reusable. Arguments configuring
+the resource being created, or associating existing resources with it, do not by themselves
+constitute unrelated responsibilities.
+
+Apply this standard to new and changed APIs. Preserve established signatures and behavior;
+existing combined operations need an explicit migration or reviewed exception, not
+unrelated cleanup as a condition of another change.
+
 ## Deprecating code
 
 Give callers a working migration path before removing a public API. Explain the replacement

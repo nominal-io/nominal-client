@@ -54,7 +54,15 @@ For each meaningful change:
    contracts can be clearer than a generic helper with unions, modes, and casts. Ordinary
    branches are appropriate for genuinely different behavior. Extract only when the result
    reduces the reader's work and preserves those differences.
-5. Trace state and resource ownership through orchestration. Account for partial failure,
+5. Check public API composition and results against
+   [focused operations and clear results](../../conventions/sdk.md#focused-operations-and-clear-results).
+   Identify each independently useful operation and what the caller receives. Flag optional
+   workflow arguments, discarded created resources, and mode-dependent return shapes that
+   couple unrelated work. Show the equivalent sequence of focused calls and which arguments
+   or branches it removes; returning more objects alone does not justify the coupling.
+   Distinguish necessary multi-request implementation from multiple caller responsibilities,
+   and respect documented no-result commands and justified workflow contracts.
+6. Trace state and resource ownership through orchestration. Account for partial failure,
    cancellation, queued work, and shutdown. Parallel execution needs a demonstrated benefit
    and safe ordering, bounded resources, and shared-state handling; it is not inherently a
    simplification. Do not promise atomicity that the underlying service cannot provide.
