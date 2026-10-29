@@ -54,6 +54,7 @@ def test_client_rejects_invalid_url_before_building_transports(base_url: str, me
 
 
 def test_client_accepts_remote_http_url_before_building_transports() -> None:
+    """Remote HTTP URLs reach both transport factories during client construction."""
     with (
         patch("nominal.core._clientsbunch.create_grpc_channel") as grpc_channel,
         patch("nominal.core._clientsbunch.create_conjure_client_factory") as conjure_factory,

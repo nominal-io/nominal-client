@@ -16,6 +16,7 @@ from nominal.exceptions import (
 
 
 def test_validate_token_url_reports_invalid_base_url() -> None:
+    """Malformed API URLs become CLI errors with the configuration error as their cause."""
     with pytest.raises(click.ClickException, match="Invalid client configuration.*hostname and port") as exc:
         validate_token_url("token", "http://localhost:invalid/api", None)
     assert isinstance(exc.value.__cause__, NominalConfigError)
