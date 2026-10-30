@@ -122,6 +122,20 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             response = self._clients.skills.GetSkillBackingStatus(request)
         return SkillLoadStatus._from_proto(response.status)
 
+    def get_content(self) -> str:
+        """Read the skill's SKILL.md, frontmatter included: the content that `update(content=...)` replaces.
+
+        Raises:
+            NominalError: If SKILL.md is not UTF-8 text.
+            requests.RequestException: If downloading the file fails.
+        """
+        request = files_pb2.GetFileByIdentityRequest(
+            identity=self._get_latest_api().backing.file_store.entry_file_identity
+        )
+        with translate_grpc_errors():
+            entry = self._clients.files.GetFileByIdentity(request).file
+        return _read_text(self._clients, entry)
+
     def list_files(self) -> Sequence[SkillFileInfo]:
         """List every file in the skill's folder, SKILL.md included, by path.
 

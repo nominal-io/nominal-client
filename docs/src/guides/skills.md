@@ -28,13 +28,14 @@ for skill in skills:
 {py:meth}`~nominal.core.Skill.get_load_status` reads SKILL.md and says whether Analyst can load the skill, and why not when it can't.
 Pass `enabled=True` for only the skills that are turned on, or `archive_status` to include archived skills.
 
-Read a skill's files, SKILL.md included:
+Read a skill's SKILL.md, and its reference files:
 
 ```python
 skill = client.get_skill("<SKILL_RID>")
+print(skill.get_content())
 for file in skill.list_files():
     print(file.path, file.size_bytes)
-print(skill.read_file("SKILL.md"))
+print(skill.read_file("methods/limits.md"))
 ```
 
 ## Create or import a skill
