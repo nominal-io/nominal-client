@@ -248,3 +248,26 @@ def test_put_part_makes_exactly_one_request() -> None:
     with pytest.raises(requests.ConnectionError):
         _put_part(session, _sign_response(), b"chunk", verify=False, timeout=9.0)
     assert session.put.call_count == 1  # exactly one PUT; retrying is the caller's job
+
+
+def test_upload_file_store_object_targets_file_store_and_returns_the_key() -> None:
+    """A File Store upload names its bucket on every call after starting, and returns the key a put change names."""
+    client = MagicMock()
+    client.initiate_multipart_upload.return_value = MagicMock(
+        key="objects/limits.md", upload_id="uid", bucket="file-store-bucket"
+    )
+    client.list_parts.return_value = [MagicMock(part_number=1, etag='"e"')]
+    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/objects/limits.md")
+
+    with patch.object(multipart, "_sign_and_put_part") as put_part:
+        key = multipart.upload_file_store_object(
+            "auth", "ri.workspace", b"Use the limits.\n", "limits.md", "text/plain", client
+        )
+
+    request = client.initiate_multipart_upload.call_args.args[1]
+    assert request.destination == multipart.ingest_api.UploadDestination.FILE_STORE
+    assert put_part.call_args.args[5:] == (1, b"Use the limits.\n")
+    # The upload's bucket is not the default one, so signing and completing must name it.
+    assert put_part.call_args.kwargs["bucket"] == "file-store-bucket"
+    assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "file-store-bucket"
+    assert key == "objects/limits.md"

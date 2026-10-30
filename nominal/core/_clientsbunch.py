@@ -38,6 +38,7 @@ from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
+from nominal.protos.file_store.v1 import files_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2_grpc
@@ -45,6 +46,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.skills.v1 import skills_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
@@ -164,6 +166,7 @@ class ClientsBunch:
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
     event: event_pb2_grpc.EventServiceStub
+    files: files_pb2_grpc.FilesServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     integrations: integrations_pb2_grpc.IntegrationsServiceStub
     markings: markings_pb2_grpc.MarkingServiceStub
@@ -172,6 +175,7 @@ class ClientsBunch:
     run: run_service_pb2_grpc.RunServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
+    skills: skills_pb2_grpc.SkillsServiceStub
     spatial: spatial_pb2_grpc.SpatialServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
@@ -336,6 +340,7 @@ class ClientsBunch:
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
+            files=grpc_factory(files_pb2_grpc.FilesServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),
             markings=grpc_factory(markings_pb2_grpc.MarkingServiceStub),
@@ -344,6 +349,7 @@ class ClientsBunch:
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            skills=grpc_factory(skills_pb2_grpc.SkillsServiceStub),
             spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
