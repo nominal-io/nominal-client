@@ -13,7 +13,6 @@ from nominal_api import (
     scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     scout_video,
@@ -36,6 +35,7 @@ from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
+from nominal.protos.compute.v1 import compute_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
@@ -142,7 +142,7 @@ class ClientsBunch:
     catalog: scout_catalog.CatalogService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
-    compute: scout_compute_api.ComputeService
+    compute: compute_pb2_grpc.ComputeServiceStub
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
@@ -315,7 +315,7 @@ class ClientsBunch:
             catalog=client_factory(scout_catalog.CatalogService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
-            compute=client_factory(scout_compute_api.ComputeService),
+            compute=grpc_factory(compute_pb2_grpc.ComputeServiceStub),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),

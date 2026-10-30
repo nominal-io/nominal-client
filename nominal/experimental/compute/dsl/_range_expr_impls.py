@@ -3,9 +3,10 @@ from __future__ import annotations
 import typing
 from dataclasses import dataclass
 
-from nominal_api import scout_compute_api
-
 from nominal.experimental.compute.dsl import exprs, params
+from nominal.protos.compute.v1 import (
+    expressions_pb2,
+)
 
 
 @dataclass(frozen=True)
@@ -14,12 +15,12 @@ class ThresholdExpr(exprs.RangeExpr):
     _threshold: float
     _operator: params.ThresholdOperatorLiteral
 
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            threshold=scout_compute_api.ThresholdingRanges(
-                input=self._node._to_conjure(),
-                threshold=params._float_to_conjure(self._threshold),
-                operator=params._threshold_operator_to_conjure(self._operator),
+    def _to_proto(self) -> expressions_pb2.RangeExpression:
+        return expressions_pb2.RangeExpression(
+            numeric_threshold=expressions_pb2.NumericThresholdRanges(
+                input=self._node._to_proto(),
+                threshold=params._float_to_proto(self._threshold),
+                comparison=params._threshold_operator_to_proto(self._operator),
             )
         )
 
@@ -28,10 +29,10 @@ class ThresholdExpr(exprs.RangeExpr):
 class IntersectRangesExpr(exprs.RangeExpr):
     _nodes: typing.Sequence[exprs.RangeExpr]
 
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            intersect_range=scout_compute_api.IntersectRanges(
-                inputs=[range_node._to_conjure() for range_node in self._nodes]
+    def _to_proto(self) -> expressions_pb2.RangeExpression:
+        return expressions_pb2.RangeExpression(
+            intersection=expressions_pb2.RangeExpressionCollection(
+                inputs=[range_node._to_proto() for range_node in self._nodes]
             )
         )
 
@@ -40,15 +41,17 @@ class IntersectRangesExpr(exprs.RangeExpr):
 class InvertRangesExpr(exprs.RangeExpr):
     _nodes: exprs.RangeExpr
 
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(not_=scout_compute_api.NotRanges(input=self._nodes._to_conjure()))
+    def _to_proto(self) -> expressions_pb2.RangeExpression:
+        return expressions_pb2.RangeExpression(complement=self._nodes._to_proto())
 
 
 @dataclass(frozen=True)
 class UnionRangesExpr(exprs.RangeExpr):
     _nodes: typing.Sequence[exprs.RangeExpr]
 
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            union_range=scout_compute_api.UnionRanges(inputs=[range_node._to_conjure() for range_node in self._nodes])
+    def _to_proto(self) -> expressions_pb2.RangeExpression:
+        return expressions_pb2.RangeExpression(
+            union=expressions_pb2.RangeExpressionCollection(
+                inputs=[range_node._to_proto() for range_node in self._nodes]
+            )
         )

@@ -24,6 +24,7 @@ from typing import (
 from nominal_api import scout_compute_api
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.protos.compute.v1 import constants_pb2, source_selection_pb2
 from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,17 @@ def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_co
         return {}
 
     return {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}
+
+
+def create_compute_tag_constraints(tags: Mapping[str, str] | None) -> source_selection_pb2.ChannelTagConstraints | None:
+    """Omit empty tag filters; exact-value constraints require at least one entry."""
+    if not tags:
+        return None
+    return source_selection_pb2.ChannelTagConstraints(
+        exact_values=source_selection_pb2.ExactTagValues(
+            values={key: constants_pb2.StringConstant(literal=value) for key, value in tags.items()}
+        )
+    )
 
 
 def build_compute_tag_filter(tags: Mapping[str, str] | None) -> scout_compute_api.TagFilters | None:
