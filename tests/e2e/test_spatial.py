@@ -200,9 +200,10 @@ def test_ingest_into_archived_spatial_is_accepted(
 def test_spatial_as_run_data_scope(client: NominalClient, spatial: Spatial) -> None:
     """add_spatial / get_spatial / list_spatials round-trip on a Run."""
     start = datetime.now(UTC)
-    run = client.create_run(f"e2e-spatial-run-{uuid4().hex[:8]}", start=start, end=start + timedelta(hours=1))
+    run = client.create_run(f"e2e-spatial-run-{uuid4().hex[:8]}", start=start, end=None)
     try:
         add_spatial_to_run(run, "cloud", spatial)
+        run.update(end=start + timedelta(hours=1))
         assert get_spatial_from_run(run, "cloud").rid == spatial.rid
         assert [(name, a.rid) for name, a in list_spatials_in_run(run)] == [("cloud", spatial.rid)]
     finally:

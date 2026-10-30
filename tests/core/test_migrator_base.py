@@ -132,7 +132,22 @@ def test_copy_from_logs_found_for_already_mapped_resource(caplog: pytest.LogCapt
     assert any("Found asset" in record.message for record in caplog.records)
 
 
-def test_copy_from_singleflight_deduplicates_concurrent_calls() -> None:
+def _observe_singleflight_waiter(ctx: MigrationContext, monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    """Signal when the second caller waits on the owner's result, rather than merely starting a thread."""
+    future = next(iter(ctx._singleflight_futures.values()))
+    original_result = future.result
+    waiting = threading.Event()
+
+    def result(timeout: float | None = None) -> _FakeResource:
+        waiting.set()
+        return original_result(timeout=timeout)
+
+    monkeypatch.setattr(future, "result", result)
+    return waiting
+
+
+def test_copy_from_singleflight_deduplicates_concurrent_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Concurrent callers share one in-flight migration."""
     ctx = _make_context()
     source = _FakeResource(rid="src-1", name="MyAsset")
     started = threading.Event()
@@ -142,7 +157,9 @@ def test_copy_from_singleflight_deduplicates_concurrent_calls() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_a = executor.submit(migrator.copy_from, source)
         assert started.wait(timeout=5)
+        waiting = _observe_singleflight_waiter(ctx, monkeypatch)
         future_b = executor.submit(migrator.copy_from, source)
+        assert waiting.wait(timeout=5)
         release.set()
         result_a = future_a.result(timeout=5)
         result_b = future_b.result(timeout=5)
@@ -153,7 +170,8 @@ def test_copy_from_singleflight_deduplicates_concurrent_calls() -> None:
     assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "new-src-1"
 
 
-def test_copy_from_singleflight_retries_after_failure() -> None:
+def test_copy_from_singleflight_retries_after_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both waiters see the failure and a later call can retry."""
     ctx = _make_context()
     source = _FakeResource(rid="src-1", name="MyAsset")
     started = threading.Event()
@@ -165,7 +183,9 @@ def test_copy_from_singleflight_retries_after_failure() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_a = executor.submit(migrator.copy_from, source)
         assert started.wait(timeout=5)
+        waiting = _observe_singleflight_waiter(ctx, monkeypatch)
         future_b = executor.submit(migrator.copy_from, source)
+        assert waiting.wait(timeout=5)
         release.set()
         with pytest.raises(RuntimeError, match="boom"):
             future_a.result(timeout=5)
@@ -182,7 +202,8 @@ def test_copy_from_singleflight_retries_after_failure() -> None:
     assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "new-src-1"
 
 
-def test_copy_from_singleflight_propagates_base_exception_to_waiters() -> None:
+def test_copy_from_singleflight_propagates_base_exception_to_waiters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Base exceptions reach both the owner and its waiting caller."""
     ctx = _make_context()
     source = _FakeResource(rid="src-1", name="MyAsset")
     started = threading.Event()
@@ -201,7 +222,9 @@ def test_copy_from_singleflight_propagates_base_exception_to_waiters() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_a = executor.submit(migrator.copy_from, source)
         assert started.wait(timeout=5)
+        waiting = _observe_singleflight_waiter(ctx, monkeypatch)
         future_b = executor.submit(migrator.copy_from, source)
+        assert waiting.wait(timeout=5)
         release.set()
         with pytest.raises(KeyboardInterrupt, match="stop"):
             future_a.result(timeout=5)

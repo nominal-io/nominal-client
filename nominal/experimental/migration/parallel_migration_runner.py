@@ -18,6 +18,7 @@ from nominal.experimental.migration.migration_runner import MigrationRunner, log
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
+from nominal.experimental.migration.migrator.run_migrator import RunMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.parallel_migration_executor import (
     MigrationTask,
@@ -167,6 +168,9 @@ def _flush_state_on_termination(runner: MigrationRunner) -> Iterator[None]:
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     """Run resource migration with a shared thread pool.
 
+    Run end times are restored only after all asset tasks succeed. Failed migrations can
+    be resumed from their saved mappings without recreating open runs.
+
     Migration state is persisted incrementally (debounced) as tasks settle and mappings are
     recorded, flushed by a SIGINT/SIGTERM handler, and saved one final time in a `finally`
     that is reachable even while copies are still in flight: on interruption the executor
@@ -255,6 +259,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
             # many small template/checklist tasks settle in a burst.
             run_concurrent(executor, tasks, on_task_complete=debounced_save)
         executor.shutdown(wait=True)
+        RunMigrator(ctx).finalize_runs()
     except BaseException:
         # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight
         # copies — cancel queued tasks, leave running ones behind, and reach the final
