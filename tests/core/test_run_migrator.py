@@ -434,3 +434,20 @@ def test_finalization_preserves_an_existing_completed_run() -> None:
     migrator.copy_from(source)
     migrator.finalize_runs()
     destination.update.assert_not_called()
+
+
+def test_finalization_preserves_completed_end_when_adding_an_asset() -> None:
+    """Adding a selected asset on an unlocked completed run must retain its edited end time."""
+    ctx = _make_context()
+    ctx.source_asset_rids = frozenset([_asset_rid(1)])
+    ctx.migration_state.record_mapping(ResourceType.ASSET, _asset_rid(1), _asset_rid(10))
+    source = _make_run(_run_rid(1), asset_rids=[_asset_rid(1)])
+    source.end = 100
+    destination = _make_run(_run_rid(100))
+    destination.end = 200
+    destination.refresh.return_value = destination
+    ctx.pending_run_finalizations.put((source, destination, source.end))
+
+    RunMigrator(ctx).finalize_runs()
+
+    destination.update.assert_called_once_with(assets=[_asset_rid(10)], end=None)

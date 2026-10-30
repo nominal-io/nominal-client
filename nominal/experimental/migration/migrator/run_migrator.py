@@ -110,7 +110,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
                 if mapped not in assets:
                     assets.append(mapped)
             if set(assets) != set(destination.assets):
-                destination.update(assets=assets, end=end)
+                destination.update(assets=assets, end=end if destination.end is None else None)
             elif end is not None and destination.end is None:
                 destination.update(end=end)
 
