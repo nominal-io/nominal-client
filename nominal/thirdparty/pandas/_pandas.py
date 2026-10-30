@@ -4,21 +4,20 @@ import concurrent.futures
 import logging
 from datetime import datetime
 from threading import Thread
-from typing import Any, BinaryIO, Mapping, Sequence, cast
+from typing import Any, BinaryIO, Mapping, Sequence
 
-from nominal_api import api, scout_compute_api, scout_dataexport_api
-from nominal_api.api import Timestamp
+from nominal_api import api
 
 import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.dataexport import MAX_EXPORT_COLUMNS, stream_channel_csv
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileTypes
-from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +172,10 @@ def channel_to_series(
         enable_gzip=enable_gzip,
         tags=tags,
     )
-    df = pd.read_csv(
-        body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
-    )
+    with body:
+        df = pd.read_csv(
+            body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
+        )
     return df[channel.name]
 
 
@@ -230,7 +230,7 @@ def channel_to_dataframe_decimated(
     return df
 
 
-def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+def _to_pandas_timestamp(timestamp: api.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
@@ -338,19 +338,16 @@ def datasource_to_dataframe(
     renamed_timestamp_col = _get_renamed_timestamp_column(list(channels))
 
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
-        export_request = _construct_export_request(
+        with stream_channel_csv(
+            datasource._clients,
             channel_batch,
-            start_time,
-            end_time,
+            ts._SecondsNanos.from_api(start_time),
+            ts._SecondsNanos.from_api(end_time),
             tags=tags,
             enable_gzip=enable_gzip,
             timestamp_type=ts._to_export_timestamp_type(relative_to, relative_resolution),
-        )
-        export_response = cast(
-            BinaryIO,
-            datasource._clients.dataexport.export_channel_data(datasource._clients.auth_header, export_request),
-        )
-        batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
+        ) as export_response:
+            batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
         if batch_df.empty:
             channel_names = [ch.name for ch in channel_batch]
             logger.warning(
@@ -370,7 +367,7 @@ def datasource_to_dataframe(
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
         df_futures = {
             pool.submit(_export_channel_batch, channel_batch): channel_batch
-            for channel_batch in batched(channels, channel_batch_size)
+            for channel_batch in batched(channels, min(channel_batch_size, MAX_EXPORT_COLUMNS))
         }
 
         all_dataframes = []
@@ -405,39 +402,3 @@ def datasource_to_dataframe(
         result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
-
-
-def _construct_export_request(
-    channels: Sequence[Channel],
-    start: api.Timestamp,
-    end: api.Timestamp,
-    tags: Mapping[str, str] | None,
-    enable_gzip: bool,
-    timestamp_type: _AnyExportableTimestampType = "iso_8601",
-) -> scout_dataexport_api.ExportDataRequest:
-    export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
-    request = scout_dataexport_api.ExportDataRequest(
-        channels=scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=export_channels,
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    # only one series will be returned, so no need to merge
-                    none=scout_dataexport_api.NoneStrategy(),
-                ),
-                output_timestamp_format=_to_export_timestamp_format(timestamp_type),
-            )
-        ),
-        start_time=start,
-        end_time=end,
-        context=scout_compute_api.Context(
-            dataset_references={},
-            variables={},
-            function_variables={},
-        ),
-        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-        resolution=scout_dataexport_api.ResolutionOption(
-            undecimated=scout_dataexport_api.UndecimatedResolution(),
-        ),
-        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
-    )
-    return request

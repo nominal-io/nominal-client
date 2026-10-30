@@ -5,14 +5,14 @@ import datetime
 import logging
 from typing import Iterator, Mapping, Self, Sequence
 
-from nominal_api import api, scout_compute_api, scout_dataexport_api
+from nominal_api import api, scout_compute_api
 
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.dataexport import MAX_EXPORT_COLUMNS, stream_channel_csv
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
-from nominal.core.dataset import Dataset
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsDuration,
@@ -22,7 +22,6 @@ from nominal.ts import (
     _AnyExportableTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
-    _to_export_timestamp_format,
     _to_typed_timestamp_type,
 )
 
@@ -432,42 +431,6 @@ class _ExportJob:
     # Timestamp formatting
     timestamp_type: _AnyExportableTimestampType = "epoch_seconds"
 
-    def resolution_options(self) -> scout_dataexport_api.ResolutionOption:
-        """Construct data export resolution options based on bucketing and resolution parameters."""
-        if self.buckets is not None and self.resolution is not None:
-            raise ValueError("Only one of buckets or resolution may be provided")
-        elif self.buckets is None and self.resolution is None:
-            return scout_dataexport_api.ResolutionOption(undecimated=scout_dataexport_api.UndecimatedResolution())
-        else:
-            return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution, buckets=self.buckets)
-
-    def export_channels(self, datasource: Dataset) -> scout_dataexport_api.ExportChannels:
-        """Construct data export channels for the configured channels and export options."""
-        channels = datasource.get_channels(names=self.channel_names)
-        return scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=[channel._to_time_domain_channel(tags=self.tags) for channel in channels],
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    none=scout_dataexport_api.NoneStrategy()
-                ),
-                output_timestamp_format=_to_export_timestamp_format(self.timestamp_type),
-            )
-        )
-
-    def export_request(self, datasource: Dataset) -> scout_dataexport_api.ExportDataRequest:
-        """Construct conjure export request given the provided configuration options."""
-        return scout_dataexport_api.ExportDataRequest(
-            channels=self.export_channels(datasource),
-            context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
-            end_time=self.time_slice.end_api,
-            start_time=self.time_slice.start_api,
-            resolution=self.resolution_options(),
-            compression=scout_dataexport_api.CompressionFormat.GZIP,
-            format=scout_dataexport_api.ExportFormat(
-                csv=scout_dataexport_api.Csv(),
-            ),
-        )
-
 
 def _format_time_col(df: pl.DataFrame, time_col: str, job: _ExportJob) -> pl.DataFrame:
     typed_timestamp_type = _to_typed_timestamp_type(job.timestamp_type)
@@ -506,8 +469,7 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
     time_col = _get_exported_timestamp_channel(job.channel_names)
 
     datasource = client.get_dataset(job.datasource_rid)
-    req = job.export_request(datasource)
-    resp = client._clients.dataexport.export_channel_data(client._clients.auth_header, req)
+    channels = list(datasource.get_channels(names=job.channel_names))
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
     # that channel from loading as strings)
@@ -525,7 +487,17 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
                 continue
 
     # Read CSV via Polars
-    df = pl.read_csv(resp, schema_overrides=schema)
+    with stream_channel_csv(
+        client._clients,
+        channels,
+        _SecondsNanos.from_nanoseconds(job.time_slice.start_time),
+        _SecondsNanos.from_nanoseconds(job.time_slice.end_time),
+        timestamp_type=job.timestamp_type,
+        tags=job.tags,
+        buckets=job.buckets,
+        resolution=job.resolution,
+    ) as resp:
+        df = pl.read_csv(resp, schema_overrides=schema)
     if df.is_empty():
         logger.warning("No data found for export for channels %s", job.channel_names)
         return pl.DataFrame({col: [] for col in [*job.channel_names, time_col]})
@@ -626,7 +598,7 @@ class PolarsExportHandler:
         self._client = client
         self._points_per_request = points_per_request
         self._points_per_dataframe = points_per_dataframe
-        self._channels_per_request = channels_per_request
+        self._channels_per_request = min(channels_per_request, MAX_EXPORT_COLUMNS)
 
         self._num_workers = num_workers
 
