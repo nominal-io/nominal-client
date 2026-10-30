@@ -4,13 +4,15 @@ import concurrent.futures
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
+from queue import SimpleQueue
 from typing import Any, Callable, Iterable, Mapping, TypeVar, cast
 
-from nominal.core import NominalClient
+from nominal.core import NominalClient, Run
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
+from nominal.ts import IntegralNanosecondsUTC
 
 DestinationClientResolver = Callable[[Any], NominalClient]
 Resource = TypeVar("Resource")
@@ -35,6 +37,11 @@ class MigrationContext:
     """How long to wait for a copied video to finish ingesting before moving on. `None` waits forever."""
     added_labels: tuple[str, ...] = ()
     """Labels added to every resource the migration creates, alongside the source resource's own labels."""
+    defer_run_finalization: bool = False
+    """Runners finalize runs after all asset work, before setting end times that may lock them."""
+    pending_run_finalizations: SimpleQueue[tuple[Run, Run, datetime | IntegralNanosecondsUTC | None]] = field(
+        default_factory=SimpleQueue, init=False, repr=False
+    )
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _singleflight_futures: dict[tuple[str, str | None], concurrent.futures.Future[Any]] = field(
         default_factory=dict,

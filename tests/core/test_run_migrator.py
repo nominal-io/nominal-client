@@ -346,3 +346,91 @@ class TestRunMigratorAttachments:
         RunMigrator(ctx).copy_from(source_run, RunCopyOptions())
 
         source_run.add_attachments.assert_not_called()
+
+
+@pytest.mark.parametrize("end", [None, 0, 123456789])
+def test_runner_defers_end_until_all_selected_assets_are_attached(end: int | None) -> None:
+    """Finalization retains both selected assets even when only one copy call won singleflight."""
+    ctx = _make_context()
+    ctx.defer_run_finalization = True
+    ctx.source_asset_rids = frozenset([_asset_rid(1), _asset_rid(2)])
+    source = _make_run(_run_rid(1), asset_rids=[_asset_rid(1), _asset_rid(2)])
+    source.end = end
+    destination = _make_run(_run_rid(100), asset_rids=[_asset_rid(10)])
+    ctx.destination_client.create_run.return_value = destination
+    ctx.migration_state.record_mapping(ResourceType.ASSET, _asset_rid(1), _asset_rid(10))
+    migrator = RunMigrator(ctx)
+
+    migrator.copy_from(source, RunCopyOptions(new_assets=[_asset_rid(10)]))
+
+    assert ctx.destination_client.create_run.call_args.kwargs["end"] is None
+    destination.update.assert_not_called()
+    ctx.migration_state.record_mapping(ResourceType.ASSET, _asset_rid(2), _asset_rid(20))
+    destination.refresh.return_value = destination
+    migrator.finalize_runs()
+
+    assert set(destination.update.call_args.kwargs["assets"]) == {_asset_rid(10), _asset_rid(20)}
+    assert destination.update.call_args.kwargs.get("end") == end
+
+
+def test_run_finalization_failure_resumes_without_creating_another_run() -> None:
+    """A failed final update is retried on the mapped destination when migration resumes."""
+    ctx = _make_context()
+    ctx.defer_run_finalization = True
+    source = _make_run(_run_rid(1), asset_rids=[_asset_rid(1)])
+    source.end = 100
+    destination = _make_run(_run_rid(100), asset_rids=[_asset_rid(10)])
+    destination.refresh.return_value = destination
+    ctx.destination_client.create_run.return_value = destination
+    ctx.destination_client.get_run.return_value = destination
+    ctx.migration_state.record_mapping(ResourceType.ASSET, _asset_rid(1), _asset_rid(10))
+    ctx.source_asset_rids = frozenset([_asset_rid(1)])
+    migrator = RunMigrator(ctx)
+    migrator.copy_from(source, RunCopyOptions(new_assets=[_asset_rid(10)]))
+    destination.update.side_effect = RuntimeError("finalization failed")
+    with pytest.raises(RuntimeError, match="finalization failed"):
+        migrator.finalize_runs()
+
+    resumed = _make_context()
+    resumed.defer_run_finalization = True
+    resumed.source_asset_rids = ctx.source_asset_rids
+    resumed.migration_state = MigrationState.from_json(ctx.migration_state.to_json())
+    resumed.destination_client.get_run.return_value = destination
+    destination.update.side_effect = None
+    resumed_migrator = RunMigrator(resumed)
+    resumed_migrator.copy_from(source, RunCopyOptions(new_assets=[_asset_rid(10)]))
+    resumed_migrator.finalize_runs()
+
+    resumed.destination_client.create_run.assert_not_called()
+    assert destination.update.call_args.kwargs["end"] == 100
+
+
+def test_dry_run_does_not_finalize_source_runs() -> None:
+    """Runner deferral must not turn dry-run source stand-ins into update targets."""
+    ctx = _make_context(dry_run=True)
+    ctx.defer_run_finalization = True
+    source = _make_run(_run_rid(1))
+    source.end = 100
+    migrator = RunMigrator(ctx)
+    migrator.copy_from(source)
+    migrator.finalize_runs()
+    source.refresh.assert_not_called()
+    source.update.assert_not_called()
+    ctx.destination_client.create_run.assert_not_called()
+
+
+def test_finalization_preserves_an_existing_completed_run() -> None:
+    """Resuming a completed migration does not replace an end time edited at the destination."""
+    ctx = _make_context()
+    ctx.defer_run_finalization = True
+    source = _make_run(_run_rid(1))
+    source.end = 100
+    destination = _make_run(_run_rid(100))
+    destination.end = 200
+    destination.refresh.return_value = destination
+    ctx.migration_state.record_mapping(ResourceType.RUN, source.rid, destination.rid)
+    ctx.destination_client.get_run.return_value = destination
+    migrator = RunMigrator(ctx)
+    migrator.copy_from(source)
+    migrator.finalize_runs()
+    destination.update.assert_not_called()
