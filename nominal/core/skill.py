@@ -129,10 +129,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             NominalError: If the skill's SKILL.md is not at ``skills/<name>/SKILL.md``, so it has no folder.
         """
         folder = _SkillFolder.of(self._get_latest_api())
-        return [
-            SkillFileInfo(path=path, size_bytes=file.size_bytes)
-            for path, file in _list_folder(self._clients, folder).items()
-        ]
+        files = _list_folder(self._clients, folder)
+        return [SkillFileInfo(path=path, size_bytes=files[path].size_bytes) for path in sorted(files)]
 
     def read_file(self, path: str) -> str:
         """Read one file in the skill's folder, such as ``SKILL.md`` or ``methods/limits.md``.

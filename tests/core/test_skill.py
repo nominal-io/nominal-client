@@ -415,12 +415,12 @@ def test_remove_files_removes_each_file_at_its_current_revision() -> None:
 
 
 def test_list_files_follows_pages_and_gives_paths_inside_the_folder() -> None:
-    """Listing reads every page of the folder and gives each path relative to it."""
+    """Listing reads every page of the folder and gives each path relative to it, in path order."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
     clients.files.ListFiles.side_effect = [
-        _listing(_file(f"{_FOLDER}/SKILL.md", "r1", 120), next_page_token="next"),
-        _listing(_file(f"{_FOLDER}/methods/a.md", "r2", 9)),
+        _listing(_file(f"{_FOLDER}/methods/a.md", "r2", 9), next_page_token="next"),
+        _listing(_file(f"{_FOLDER}/SKILL.md", "r1", 120)),
     ]
 
     files = skill.list_files()
