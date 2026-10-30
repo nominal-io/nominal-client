@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/nominal-io/nominal-client/compare/nominal-ibis-v0.1.1...nominal-ibis-v0.1.2) (2026-10-30)
+
+
+### Documentation
+
+* build examples from MyST notebooks ([#1226](https://github.com/nominal-io/nominal-client/issues/1226)) ([607434e](https://github.com/nominal-io/nominal-client/commit/607434e0810b82f0c515ab80c7b1f8023856b0fd))
+
 ## [0.1.1](https://github.com/nominal-io/nominal-client/compare/nominal-ibis-v0.1.0...nominal-ibis-v0.1.1) (2026-10-19)
 
 
