@@ -347,21 +347,24 @@ def upload_file_store_object(
 
     Returns: The object key to name in a File Store put change
     """
-    key, upload_id = _initiate_multipart_upload(
-        upload_client,
-        auth_header,
-        sanitize_upload_filename(filename),
-        mimetype,
-        workspace_rid,
+    request = ingest_api.InitiateMultipartUploadRequest(
+        filename=sanitize_upload_filename(filename),
+        filetype=mimetype,
+        workspace=workspace_rid,
         destination=ingest_api.UploadDestination.FILE_STORE,
     )
+    response = upload_client.initiate_multipart_upload(auth_header, request)
+    # File Store uploads go to their own bucket, which every later call on the upload must name.
+    key, upload_id, bucket = response.key, response.upload_id, response.bucket
     session = create_multipart_request_session(pool_size=1, header_provider=header_provider)
     try:
-        _sign_and_put_part(upload_client, session, auth_header, key, upload_id, 1, data)
-        parts = upload_client.list_parts(auth_header, key, upload_id)
-        _complete_multipart_upload(upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts})
+        _sign_and_put_part(upload_client, session, auth_header, key, upload_id, 1, data, bucket=bucket)
+        parts = upload_client.list_parts(auth_header, key, upload_id, bucket=bucket)
+        _complete_multipart_upload(
+            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts}, bucket=bucket
+        )
     except Exception as e:
-        _abort(upload_client, auth_header, key, upload_id, e)
+        _abort(upload_client, auth_header, key, upload_id, e, bucket=bucket)
         raise e
     return key
 
