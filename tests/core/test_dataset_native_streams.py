@@ -6,12 +6,13 @@ import io
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api
 from urllib3.response import HTTPResponse
 
 from nominal import ts
 from nominal.core import Dataset, FileTypes
 from nominal.core.dataset_file import IngestStatus
+from nominal.protos.datasets.v1 import dataset_files_pb2 as files_pb
 
 LOCATION = "s3://backend-selected-bucket/workspace/opaque%2Fkey+name"
 
@@ -27,13 +28,13 @@ def dataset() -> Dataset:
             dataset=ingest_api.IngestDatasetFileDetails(dataset_rid="dataset", dataset_file_id="native-file")
         )
     )
-    clients.catalog.get_dataset_file.return_value = scout_catalog.DatasetFile(
-        dataset_rid="dataset",
-        id="native-file",
-        name="native-file",
-        uploaded_at="2026-01-01T00:00:00Z",
-        handle=scout_catalog.Handle(s3=scout_catalog.S3Handle(bucket="backend-selected-bucket", key="native-file")),
-        ingest_status=api.IngestStatusV2(in_progress=api.InProgressResult()),
+    clients.grpc_dataset_files.GetDatasetFile.return_value = files_pb.GetDatasetFileResponse(
+        dataset_file=files_pb.DatasetFile(
+            dataset_rid="dataset",
+            id="native-file",
+            name="native-file",
+            ingest_status=files_pb.IngestStatus(in_progress=files_pb.IngestInProgress()),
+        )
     )
     return Dataset(
         rid="dataset",

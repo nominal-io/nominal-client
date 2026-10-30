@@ -29,7 +29,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
-from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.pagination_tools import paginate_grpc, search_dataset_files_paginated
 from nominal.core._utils.properties import (
     properties_from_conjure,
     typed_properties_to_conjure,
@@ -38,7 +38,7 @@ from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
-from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
+from nominal.core.dataset_file import DatasetFile, _dataset_file_from_proto, _get_dataset_file
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
@@ -50,6 +50,7 @@ from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeErro
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
+from nominal.protos.datasets.v1 import dataset_files_pb2
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
@@ -92,6 +93,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Marking._Clients,
         Protocol,
     ):
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
@@ -192,14 +195,10 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 f"Unexpected multi-file ingest response type for dataset {response.details.dataset.dataset_rid}"
             )
 
-        return DatasetFile._from_conjure(
-            self._clients,
-            self._clients.catalog.get_dataset_file(
-                self._clients.auth_header,
-                response.details.dataset.dataset_rid,
-                response.details.dataset.dataset_file_id,
-            ),
+        file = _get_dataset_file(
+            self._clients, response.details.dataset.dataset_rid, response.details.dataset.dataset_file_id
         )
+        return DatasetFile._from_proto(self._clients, file)
 
     def _resolve_ingested_video_file(self, response: ingest_api.IngestResponse) -> VideoDatasetFile:
         details = response.details.dataset
@@ -207,10 +206,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             # The backend writes `metadata.video` when it creates the dataset-file row, before segmentation is
             # dispatched — so a video ingest's row is video-typed from the moment it exists. A non-video result
             # here means the id points at a genuinely non-video file, not a not-yet-populated one.
-            raw = self._clients.catalog.get_dataset_file(
-                self._clients.auth_header, details.dataset_rid, details.dataset_file_id
-            )
-            file = _dataset_file_from_conjure(self._clients, raw)
+            raw = _get_dataset_file(self._clients, details.dataset_rid, details.dataset_file_id)
+            file = _dataset_file_from_proto(self._clients, raw)
             if isinstance(file, VideoDatasetFile):
                 return file
             raise NominalIngestError(f"ingested file {details.dataset_file_id!r} is not a video dataset file")
@@ -1240,14 +1237,12 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             _clients=clients,
         )
 
-    def _list_files(self) -> Iterable[scout_catalog.DatasetFile]:
-        next_page_token = None
-        while True:
-            files_page = self._clients.catalog.list_dataset_files(self._clients.auth_header, self.rid, next_page_token)
-            yield from files_page.files
-            if files_page.next_page is None:
-                break
-            next_page_token = files_page.next_page
+    def _list_files(self) -> Iterable[dataset_files_pb2.DatasetFile]:
+        def request(page_token: str | None) -> dataset_files_pb2.ListDatasetFilesRequest:
+            return dataset_files_pb2.ListDatasetFilesRequest(dataset_rid=self.rid, page_token=page_token or "")
+
+        for page in paginate_grpc(self._clients.grpc_dataset_files.ListDatasetFiles, request_factory=request):
+            yield from page.dataset_files
 
     def list_files(self, *, successful_only: bool = True) -> Iterable[DatasetFile]:
         """List files ingested to this dataset.
@@ -1256,9 +1251,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """
         files = self._list_files()
         if successful_only:
-            files = filter(lambda f: f.ingest_status.type == "success", files)
+            files = filter(lambda f: f.ingest_status.HasField("succeeded"), files)
         for file in files:
-            yield _dataset_file_from_conjure(self._clients, file)
+            yield _dataset_file_from_proto(self._clients, file)
 
     def get_dataset_file(self, dataset_file_id: str) -> DatasetFile:
         """Retrieve the given dataset file by ID
@@ -1273,8 +1268,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             FileNotFoundError: Details about the requested file could not be found
         """
         try:
-            raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.rid, dataset_file_id)
-            return _dataset_file_from_conjure(self._clients, raw_file)
+            raw_file = _get_dataset_file(self._clients, self.rid, dataset_file_id)
+            return _dataset_file_from_proto(self._clients, raw_file)
         except Exception as ex:
             raise FileNotFoundError(
                 f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
@@ -1786,10 +1781,10 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 def _iter_search_dataset_files(
     clients: Dataset._Clients,
     dataset_rid: str,
-    query: scout_catalog.SearchDatasetFilesQuery,
+    query: dataset_files_pb2.DatasetFileQuery,
 ) -> Iterable[DatasetFile]:
-    for raw_file in search_dataset_files_paginated(clients.catalog, clients.auth_header, dataset_rid, query):
-        yield _dataset_file_from_conjure(clients, raw_file)
+    for raw_file in search_dataset_files_paginated(clients.grpc_dataset_files, dataset_rid, query):
+        yield _dataset_file_from_proto(clients, raw_file)
 
 
 def _search_dataset_files(

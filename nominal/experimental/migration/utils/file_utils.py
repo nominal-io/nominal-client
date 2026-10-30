@@ -19,10 +19,8 @@ def copy_file_to_dataset(
     log_extras = {"destination_client_workspace": destination_dataset._clients.workspace_rid}
     logger.debug("Copying dataset file: %s", source_file.name, extra=log_extras)
     source_api_file = source_file._get_latest_api()
-    if source_api_file.handle.s3 is not None:
-        old_file_uri = source_file._clients.catalog.get_dataset_file_uri(
-            source_file._clients.auth_header, source_file.dataset_rid, source_file.id
-        ).uri
+    if source_api_file.HasField("handle"):
+        old_file_uri = source_file._get_download_uri()
 
         response = requests.get(old_file_uri, stream=True)
         response.raise_for_status()
@@ -33,7 +31,7 @@ def copy_file_to_dataset(
         # the old encoder was quote_plus, which maps space -> "+", so a plain unquote would leave
         # "my+file" instead of "my file". Then sanitize any genuinely-unsafe characters (migration
         # replaces rather than raises, so one bad source filename never blocks a bulk migration).
-        raw_name = source_api_file.handle.s3.key.split("/")[-1]
+        raw_name = source_api_file.handle.key.split("/")[-1]
         file_name = unquote_plus(raw_name)
         file_type = FileType.from_path(file_name)
         file_name = resolve_destination_filename(file_name)

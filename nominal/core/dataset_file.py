@@ -10,25 +10,27 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog, scout_video
+from nominal_api import ingest_api, scout_video
 
 from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
-from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.api_tools import RefreshableGrpcMixin
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
     MultipartFileDownloader,
     PresignedURLProvider,
 )
+from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.core.bounds import Bounds
 from nominal.exceptions import NominalIngestError
+from nominal.protos.datasets.v1 import dataset_files_pb2, dataset_files_pb2_grpc
 from nominal.ts import (
     IntegralNanosecondsUTC,
     TypedTimestampType,
-    _catalog_timestamp_type_to_typed_timestamp_type,
-    _SecondsNanos,
+    _proto_timestamp_type_to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ def filename_from_uri(uri: str) -> str:
 
 
 @dataclass(frozen=True)
-class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
+class DatasetFile(RefreshableGrpcMixin[dataset_files_pb2.DatasetFile]):
     """An uploaded dataset file and its ingestion status and time bounds."""
 
     id: str
@@ -61,15 +63,15 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
     class _Clients(HasScoutParams, Protocol):
         @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
+        def grpc_dataset_files(self) -> dataset_files_pb2_grpc.DatasetFileServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         # Used by the VideoDatasetFile subtype for video-channel timing updates.
         @property
         def video(self) -> scout_video.VideoService: ...
 
-    def _get_latest_api(self) -> scout_catalog.DatasetFile:
-        return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
+    def _get_latest_api(self) -> dataset_files_pb2.DatasetFile:
+        return _get_dataset_file(self._clients, self.dataset_rid, self.id)
 
     def delete(self) -> None:
         """Deletes the dataset file, removing its data permanently from Nominal.
@@ -130,17 +132,29 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
         return self
 
-    def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
-        def fetch() -> str:
-            return self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+    def _get_download_uri(self) -> str:
+        with translate_grpc_errors():
+            return self._clients.grpc_dataset_files.GetDatasetFileDownloadUri(
+                dataset_files_pb2.GetDatasetFileDownloadUriRequest(dataset_rid=self.dataset_rid, file_id=self.id)
+            ).uri
 
-        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
+    def _iter_origin_uris(self) -> Iterable[dataset_files_pb2.OriginFileUri]:
+        def request(page_token: str | None) -> dataset_files_pb2.ListDatasetFileOriginUrisRequest:
+            return dataset_files_pb2.ListDatasetFileOriginUrisRequest(
+                dataset_rid=self.dataset_rid, file_id=self.id, page_token=page_token or ""
+            )
+
+        for page in paginate_grpc(self._clients.grpc_dataset_files.ListDatasetFileOriginUris, request_factory=request):
+            yield from page.origin_file_uris
+
+    def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
+        return PresignedURLProvider(fetch_fn=self._get_download_uri, ttl_secs=ttl_secs, skew_secs=skew_secs)
 
     def _origin_presigned_url_provider(
         self, origin_path: str, ttl_secs: float = 60.0, skew_secs: float = 15.0
     ) -> PresignedURLProvider:
         def fetch() -> str:
-            for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id):
+            for uri in self._iter_origin_uris():
                 if uri.path == origin_path:
                     return uri.uri
 
@@ -175,7 +189,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
         logger.info("Getting initial presigned ")
-        file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+        file_uri = self._get_download_uri()
         destination = output_directory / filename_from_uri(file_uri)
         item = DownloadItem(provider=self._presigned_url_provider(), destination=destination, part_size=part_size)
         with MultipartFileDownloader.create(
@@ -214,7 +228,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         if output_directory.exists() and not output_directory.is_dir():
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
-        origin_uris = self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
+        origin_uris = self._iter_origin_uris()
         items = []
         for uri in origin_uris:
             dest = output_directory / filename_from_uri(uri.uri)
@@ -258,55 +272,38 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             return size
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
-        upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
-        ingest_time = (
-            None
-            if dataset_file.ingested_at is None
-            else _SecondsNanos.from_flexible(dataset_file.ingested_at).to_nanoseconds()
-        )
-        delete_time = (
-            None
-            if dataset_file.deleted_at is None
-            else _SecondsNanos.from_flexible(dataset_file.deleted_at).to_nanoseconds()
-        )
-
-        file_tags = None
-        tag_columns = None
-        if dataset_file.ingest_tag_metadata is not None:
-            file_tags = dataset_file.ingest_tag_metadata.additional_file_tags
-            tag_columns = dataset_file.ingest_tag_metadata.tag_columns
-
-        timestamp_column = None
-        timestamp_type = None
-        if dataset_file.timestamp_metadata is not None:
-            timestamp_column = dataset_file.timestamp_metadata.series_name
-            timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(
-                dataset_file.timestamp_metadata.timestamp_type
-            )
-
-        ingest_error = dataset_file.ingest_status.error
-        ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
-
+    def _from_proto(cls, clients: _Clients, dataset_file: dataset_files_pb2.DatasetFile) -> Self:
+        timestamp_metadata = dataset_file.timestamp_metadata if dataset_file.HasField("timestamp_metadata") else None
+        tags = dataset_file.ingest_tag_metadata if dataset_file.HasField("ingest_tag_metadata") else None
+        error = dataset_file.ingest_status.failed if dataset_file.ingest_status.HasField("failed") else None
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
             name=dataset_file.name,
-            bounds=None if dataset_file.bounds is None else Bounds._from_conjure(dataset_file.bounds),
-            uploaded_at=upload_time,
-            ingested_at=ingest_time,
-            deleted_at=delete_time,
-            ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
-            timestamp_channel=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_tags=file_tags,
-            tag_columns=tag_columns,
+            bounds=Bounds._from_proto(dataset_file.bounds) if dataset_file.HasField("bounds") else None,
+            uploaded_at=dataset_file.uploaded_at.ToNanoseconds(),
+            ingested_at=dataset_file.ingested_at.ToNanoseconds() if dataset_file.HasField("ingested_at") else None,
+            deleted_at=dataset_file.deleted_at.ToNanoseconds() if dataset_file.HasField("deleted_at") else None,
+            ingest_status=IngestStatus._from_proto(dataset_file.ingest_status),
+            timestamp_channel=None if timestamp_metadata is None else timestamp_metadata.column,
+            timestamp_type=None
+            if timestamp_metadata is None
+            else _proto_timestamp_type_to_typed_timestamp_type(timestamp_metadata.type),
+            file_tags=None if tags is None else dict(tags.additional_file_tags),
+            tag_columns=None if tags is None else dict(tags.tag_columns),
             _clients=clients,
-            _ingest_error_message=ingest_error_message,
+            _ingest_error_message=None if error is None else f"{error.message} ({error.error_type})",
         )
 
 
-def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> DatasetFile:
+def _get_dataset_file(clients: DatasetFile._Clients, dataset_rid: str, file_id: str) -> dataset_files_pb2.DatasetFile:
+    with translate_grpc_errors():
+        return clients.grpc_dataset_files.GetDatasetFile(
+            dataset_files_pb2.GetDatasetFileRequest(dataset_rid=dataset_rid, file_id=file_id)
+        ).dataset_file
+
+
+def _dataset_file_from_proto(clients: DatasetFile._Clients, dataset_file: dataset_files_pb2.DatasetFile) -> DatasetFile:
     """Build the correct DatasetFile subtype for a Catalog row.
 
     Returns a VideoDatasetFile when the row carries video metadata, otherwise a plain DatasetFile.
@@ -316,9 +313,9 @@ def _dataset_file_from_conjure(clients: DatasetFile._Clients, dataset_file: scou
     from nominal.core.video_dataset_file import VideoDatasetFile
 
     metadata = dataset_file.metadata
-    if metadata is not None and metadata.video is not None:
-        return VideoDatasetFile._from_conjure(clients, dataset_file)
-    return DatasetFile._from_conjure(clients, dataset_file)
+    if metadata.HasField("video"):
+        return VideoDatasetFile._from_proto(clients, dataset_file)
+    return DatasetFile._from_proto(clients, dataset_file)
 
 
 # TODO(drake): rename to something more dataset-file specific, expose in nominal.core __init__.py
@@ -335,29 +332,33 @@ class IngestStatus(Enum):
     """Unknown or unrecognized status returned by a newer server."""
 
     @classmethod
-    def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
-        match status.type:
-            case "success":
+    def _from_proto(cls, status: dataset_files_pb2.IngestStatus) -> IngestStatus:
+        ingest_status = cls.UNKNOWN
+        match status.WhichOneof("status"):
+            case "succeeded":
                 ingest_status = cls.SUCCESS
-            case "inProgress":
-                ingest_status = cls.IN_PROGRESS
-            case "error":
+            case "failed":
                 ingest_status = cls.FAILED
-            case "deletionInProgress":
+            case "deletion_in_progress":
                 ingest_status = cls.DELETION_IN_PROGRESS
             case "deleted":
                 ingest_status = cls.DELETED
-            case "queued":
-                ingest_status = cls.QUEUED
-            case "parsing":
-                ingest_status = cls.PARSING
-            case "ingesting":
-                ingest_status = cls.INGESTING
-            case _:
-                # Mirrors IngestionJobStatus: a status a newer server adds must not break a wait that
-                # is only asking whether the file is still in flight.
-                logger.warning("Unrecognized ingest status %s; treating as UNKNOWN.", status.type)
-                ingest_status = cls.UNKNOWN
+            case "in_progress":
+                match status.in_progress.phase:
+                    case dataset_files_pb2.INGEST_PHASE_UNSPECIFIED:
+                        ingest_status = cls.IN_PROGRESS
+                    case dataset_files_pb2.INGEST_PHASE_QUEUED:
+                        ingest_status = cls.QUEUED
+                    case dataset_files_pb2.INGEST_PHASE_PARSING:
+                        ingest_status = cls.PARSING
+                    case dataset_files_pb2.INGEST_PHASE_INGESTING:
+                        ingest_status = cls.INGESTING
+        if ingest_status is cls.UNKNOWN:
+            logger.warning(
+                "Unrecognized ingest status %s (phase %s); treating as UNKNOWN.",
+                status.WhichOneof("status"),
+                status.in_progress.phase,
+            )
         return ingest_status
 
 
@@ -381,11 +382,13 @@ def _batch_refresh_files(files: Sequence[DatasetFile], *, batch_size: int = 100)
     for dataset_rid, dataset_files in by_dataset.items():
         clients = dataset_files[0]._clients
         for chunk in batched(dataset_files, batch_size):
-            request = scout_catalog.BatchGetDatasetFilesRequest(
+            request = dataset_files_pb2.BatchGetDatasetFilesRequest(
                 dataset_rid=dataset_rid,
                 file_ids=[f.id for f in chunk],
             )
-            results = clients.catalog.batch_get_dataset_files(clients.auth_header, request)
+            with translate_grpc_errors():
+                response = clients.grpc_dataset_files.BatchGetDatasetFiles(request)
+            results = {file.id: file for file in response.dataset_files}
             for file in chunk:
                 if (latest_api := results.get(file.id)) is not None:
                     file._refresh_from_api(latest_api)
