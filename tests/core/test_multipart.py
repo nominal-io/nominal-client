@@ -251,9 +251,11 @@ def test_put_part_makes_exactly_one_request() -> None:
 
 
 def test_upload_file_store_object_targets_file_store_and_returns_the_key() -> None:
-    """A File Store upload asks for the File Store destination and returns the upload's key, which a put names."""
+    """A File Store upload names its bucket on every call after starting, and returns the key a put change names."""
     client = MagicMock()
-    client.initiate_multipart_upload.return_value = MagicMock(key="objects/limits.md", upload_id="uid")
+    client.initiate_multipart_upload.return_value = MagicMock(
+        key="objects/limits.md", upload_id="uid", bucket="file-store-bucket"
+    )
     client.list_parts.return_value = [MagicMock(part_number=1, etag='"e"')]
     client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/objects/limits.md")
 
@@ -265,4 +267,7 @@ def test_upload_file_store_object_targets_file_store_and_returns_the_key() -> No
     request = client.initiate_multipart_upload.call_args.args[1]
     assert request.destination == multipart.ingest_api.UploadDestination.FILE_STORE
     assert put_part.call_args.args[5:] == (1, b"Use the limits.\n")
+    # The upload's bucket is not the default one, so signing and completing must name it.
+    assert put_part.call_args.kwargs["bucket"] == "file-store-bucket"
+    assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "file-store-bucket"
     assert key == "objects/limits.md"
