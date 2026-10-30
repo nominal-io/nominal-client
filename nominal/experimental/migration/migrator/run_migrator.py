@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from queue import Empty
 from typing import Iterable, Sequence
 
 from nominal.core import NominalClient
@@ -45,12 +46,15 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         return destination_client.get_run(mapped_rid)
 
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
+        end = options.new_end if options.new_end is not None else source.end
         existing_run = self.get_existing_destination_resource(source)
         if existing_run is not None:
             # In a dry run, existing_run is the source run itself, so adding attachments to it
             # would write to the source.
             if options.new_attachments is None and not self.ctx.dry_run:
                 self._add_missing_attachments(source, existing_run)
+            if self.ctx.defer_run_finalization and not self.ctx.dry_run:
+                self.ctx.pending_run_finalizations.put((source, existing_run, end))
             if options.new_assets is not None:
                 return self._ensure_assets_added(existing_run, options.new_assets)
             return existing_run
@@ -68,7 +72,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
-            end=options.new_end if options.new_end is not None else source.end,
+            end=None if self.ctx.defer_run_finalization else end,
             description=options.new_description if options.new_description is not None else source.description,
             properties=options.new_properties if options.new_properties is not None else source.properties,
             labels=self.ctx.destination_labels(source.labels, override=options.new_labels),
@@ -77,7 +81,38 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             attachments=attachments,
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_run.rid)
+        if self.ctx.defer_run_finalization:
+            self.ctx.pending_run_finalizations.put((source, new_run, end))
         return new_run
+
+    def finalize_runs(self) -> None:
+        """Attach all selected assets and restore run end times after asset workers finish.
+
+        A failure leaves the destination mapping intact. Repeating the migration queues
+        the mapped run again and retries finalization without creating another run.
+        Existing locked runs are never automatically unlocked.
+        """
+        pending: dict[str, tuple[Run, Run, datetime | IntegralNanosecondsUTC | None]] = {}
+        while True:
+            try:
+                source, destination, end = self.ctx.pending_run_finalizations.get_nowait()
+            except Empty:
+                break
+            pending[destination.rid] = (source, destination, end)
+        for source, destination, end in pending.values():
+            assets = list(destination.refresh().assets)
+            for source_asset_rid in source.assets:
+                if source_asset_rid not in self.ctx.source_asset_rids:
+                    continue
+                mapped = self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET, source_asset_rid)
+                if mapped is None:
+                    raise ValueError(f"Cannot finalize run {source.rid}: asset {source_asset_rid} has not migrated")
+                if mapped not in assets:
+                    assets.append(mapped)
+            if set(assets) != set(destination.assets):
+                destination.update(assets=assets, end=end if destination.end is None else None)
+            elif end is not None and destination.end is None:
+                destination.update(end=end)
 
     def _add_missing_attachments(self, source: Run, existing_run: Run) -> None:
         """Copy and attach source attachments the destination run lacks.

@@ -19,6 +19,7 @@ from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOpti
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
+from nominal.experimental.migration.migrator.run_migrator import RunMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
@@ -129,12 +130,17 @@ class MigrationRunner:
             dry_run=self.dry_run,
             video_ingest_timeout=self.video_ingest_timeout,
             added_labels=self.added_labels,
+            defer_run_finalization=True,
         )
 
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
         new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
         creating workbooks, and standalone datasets are copied without attaching them to any asset.
+
+        Runs remain open while assets are copied, then receive their end times after all assets
+        finish. If migration fails, repeating it resumes mapped open runs. Existing completed
+        runs retain their end times and are never automatically unlocked.
 
         Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
@@ -163,6 +169,8 @@ class MigrationRunner:
                     ),
                 )
                 self.save_state()
+
+            RunMigrator(migration_context).finalize_runs()
 
             for source_template in self.migration_resources.source_standalone_templates:
                 template_migrator.clone(source_template)
