@@ -71,6 +71,14 @@ Quickstart <guides/quickstart>
 
 ```{toctree}
 :hidden:
+:caption: Tutorials
+
+Upload and stream tutorial <guides/longstart>
+Data integration tutorial <guides/data-integration-tutorial>
+```
+
+```{toctree}
+:hidden:
 :caption: Command line interface
 
 Overview <guides/cli/overview>
@@ -137,15 +145,6 @@ Object identification <guides/video/object-identification>
 
 Ingest jobs <guides/ingest/ingestion-jobs>
 File extractors <guides/extractors/overview>
-```
-
-```{toctree}
-:hidden:
-:caption: Advanced Usage
-
-Upload and stream tutorial <guides/longstart>
-Data integration tutorial <guides/data-integration-tutorial>
-Networking and TLS <networking-tls>
 ```
 
 
