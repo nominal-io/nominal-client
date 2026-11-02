@@ -7,7 +7,8 @@ Tests cover:
   - Full migration of an asset with datasets, events, a run, a checklist, a video, and a workbook
   - Dataset file upload and channel verification
   - Standalone workbook template migration
-  - The `nom migrate copy` command, run from a config with `add_labels`
+  - Standalone dataset migration (a dataset not attached to any asset)
+  - The `nom migrate copy` command, run from a config with `add_labels` and `standalone_dataset_rids`
   - Idempotency: running the same runner twice produces no duplicates
   - Resumption from a partial state: missing resources are created, existing ones reused
   - Resumption from a complete state: a fully-recorded state causes the runner to do nothing
@@ -136,6 +137,18 @@ def _create_source_dataset(
     )
     register_cleanup(ds.archive)
     source_asset.add_dataset("primary", ds, series_tags={"scope-tag": "scope-val"})
+    return ds
+
+
+def _create_source_standalone_dataset(source_client: NominalClient, register_cleanup: RegisterCleanup) -> Dataset:
+    """A source dataset with metadata that no asset's data scope references."""
+    ds = source_client.create_dataset(
+        f"migration-e2e-standalone-ds-{uuid4()}",
+        description="standalone dataset description",
+        properties={"ds-prop": "ds-val"},
+        labels=["migration-e2e"],
+    )
+    register_cleanup(ds.archive)
     return ds
 
 
@@ -363,14 +376,18 @@ def _assert_dataset_migrated(
     dest_asset: Asset,
     added_labels: Sequence[str] = (),
 ) -> None:
-    assert dest.name == source.name
-    assert dest.description == source.description
-    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
-    assert dest.properties == source.properties
+    _assert_dataset_metadata_migrated(source, dest, added_labels)
     # Linkage: dataset is accessible under the expected scope on the destination asset.
     dest_datasets = dict(dest_asset.list_datasets())
     assert scope_name in dest_datasets
     assert dest_datasets[scope_name].rid == dest.rid
+
+
+def _assert_dataset_metadata_migrated(source: Dataset, dest: Dataset, added_labels: Sequence[str] = ()) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
+    assert dest.properties == source.properties
 
 
 def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset, added_labels: Sequence[str] = ()) -> None:
@@ -730,15 +747,47 @@ def test_migrate_standalone_template(
     assert dest_template.properties == source_template.properties
 
 
-def test_migrate_copy_command_adds_config_labels(
+@pytest.mark.parametrize("added_labels", [(), ADDED_LABELS], ids=["no-added-labels", "added-labels"])
+def test_migrate_standalone_dataset(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+    added_labels: Sequence[str],
+):
+    """A standalone dataset is copied to the destination, with any added labels, without creating an asset."""
+    source_ds = _create_source_standalone_dataset(source_client, register_cleanup)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[],
+        source_standalone_datasets=[source_ds],
+    )
+    runner = _make_runner(
+        resources, _no_files_config(), dest_client, tmp_path / "state.json", added_labels=added_labels
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    assert dest_ds_rid is not None
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_dataset_metadata_migrated(source_ds, dest_ds, added_labels)
+    assert ResourceType.ASSET.value not in state.rid_mapping
+    assert ResourceType.ASSET_DATA_SCOPE.value not in state.rid_mapping
+
+
+def test_migrate_copy_command_from_config(
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
-    """`nom migrate copy` reads add_labels from its config and adds them to the resources it creates."""
+    """`nom migrate copy` migrates its config's assets and standalone datasets, adding the config's add_labels."""
     source_asset = _create_source_asset(source_client, register_cleanup)
     source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_standalone_ds = _create_source_standalone_dataset(source_client, register_cleanup)
     config_path = tmp_path / "migration.yml"
     config_path.write_text(
         yaml.safe_dump(
@@ -749,6 +798,7 @@ def test_migrate_copy_command_adds_config_labels(
                     "preserve_dataset_uuid": False,
                     "add_labels": list(ADDED_LABELS),
                     "source_asset_rids": [{"asset_rid": source_asset.rid}],
+                    "standalone_dataset_rids": [source_standalone_ds.rid],
                 }
             }
         ),
@@ -781,6 +831,10 @@ def test_migrate_copy_command_adds_config_labels(
     register_cleanup(dest_ds.archive)
     _assert_asset_migrated(source_asset, dest_asset, added_labels=ADDED_LABELS)
     _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, added_labels=ADDED_LABELS)
+    assert (dest_standalone_ds_rid := state.get_mapped_rid(ResourceType.DATASET, source_standalone_ds.rid)) is not None
+    dest_standalone_ds = dest_client.get_dataset(dest_standalone_ds_rid)
+    register_cleanup(dest_standalone_ds.archive)
+    _assert_dataset_metadata_migrated(source_standalone_ds, dest_standalone_ds, added_labels=ADDED_LABELS)
 
 
 def test_migrate_standalone_checklist(

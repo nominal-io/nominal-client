@@ -18,6 +18,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
+from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
@@ -133,7 +134,7 @@ class MigrationRunner:
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
         new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
-        creating workbooks.
+        creating workbooks, and standalone datasets are copied without attaching them to any asset.
 
         Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
@@ -145,6 +146,7 @@ class MigrationRunner:
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
             checklist_migrator = ChecklistMigrator(migration_context)
+            dataset_migrator = DatasetMigrator(migration_context)
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
                 asset_migrator.copy_from(
@@ -171,6 +173,16 @@ class MigrationRunner:
                 # checklist definition. No run/execution is involved — series resolve at execution time
                 # against whatever run the checklist is later run against.
                 checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
+                self.save_state()
+
+            for source_dataset in self.migration_resources.source_standalone_datasets:
+                dataset_migrator.copy_from(
+                    source_dataset,
+                    DatasetCopyOptions(
+                        include_files=self.dataset_config.include_dataset_files,
+                        preserve_uuid=self.dataset_config.preserve_dataset_uuid,
+                    ),
+                )
                 self.save_state()
 
             source_clients_by_asset_rid: dict[str, ClientsBunch] = {

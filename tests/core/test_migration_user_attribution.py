@@ -164,9 +164,9 @@ def test_data_review_is_executed_via_client_resolved_from_source_data_review() -
     ctx = MigrationContext(
         destination_client=default_client,
         migration_state=MigrationState(),
-        destination_client_resolver=lambda source_resource: review_client
-        if source_resource.rid == source_data_review.rid
-        else default_client,
+        destination_client_resolver=lambda source_resource: (
+            review_client if source_resource.rid == source_data_review.rid else default_client
+        ),
     )
     ctx.migration_state.record_mapping(ResourceType.RUN, source_data_review.run_rid, "dest-run-rid")
 

@@ -12,10 +12,12 @@ from types import FrameType
 from typing import Callable, Iterator
 
 from nominal.core.checklist import Checklist
+from nominal.core.dataset import Dataset
 from nominal.experimental.migration.config.migration_resources import AssetResources
 from nominal.experimental.migration.migration_runner import MigrationRunner, log_skipped_resources
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
+from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.parallel_migration_executor import (
     MigrationTask,
@@ -47,6 +49,15 @@ def _make_checklist_fn(checklist: Checklist, checklist_migrator: ChecklistMigrat
     def fn() -> None:
         # ChecklistMigrator.clone() raises NotImplementedError; use copy_from() to clone the definition.
         checklist_migrator.copy_from(checklist, ChecklistCopyOptions())
+
+    return fn
+
+
+def _make_dataset_fn(
+    dataset: Dataset, dataset_migrator: DatasetMigrator, dataset_copy_options: DatasetCopyOptions
+) -> Callable[[], None]:
+    def fn() -> None:
+        dataset_migrator.copy_from(dataset, dataset_copy_options)
 
     return fn
 
@@ -175,6 +186,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     asset_migrator = AssetMigrator(ctx)
     template_migrator = WorkbookTemplateMigrator(ctx)
     checklist_migrator = ChecklistMigrator(ctx)
+    dataset_migrator = DatasetMigrator(ctx)
     asset_tasks = [
         MigrationTask(
             rid=rid,
@@ -212,14 +224,27 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         )
         for checklist in runner.migration_resources.source_standalone_checklists
     ]
-    tasks = asset_tasks + template_tasks + checklist_tasks
+    dataset_copy_options = DatasetCopyOptions(
+        include_files=runner.dataset_config.include_dataset_files,
+        preserve_uuid=runner.dataset_config.preserve_dataset_uuid,
+    )
+    dataset_tasks = [
+        MigrationTask(
+            rid=dataset.rid,
+            label="dataset",
+            fn=_make_dataset_fn(dataset, dataset_migrator, dataset_copy_options),
+        )
+        for dataset in runner.migration_resources.source_standalone_datasets
+    ]
+    tasks = asset_tasks + template_tasks + checklist_tasks + dataset_tasks
 
     logger.info(
-        "Running migration with %d worker(s) across %d asset(s), %d template(s), and %d checklist(s)",
+        "Running migration with %d worker(s) across %d asset(s), %d template(s), %d checklist(s), and %d dataset(s)",
         max_workers,
         len(asset_tasks),
         len(template_tasks),
         len(checklist_tasks),
+        len(dataset_tasks),
     )
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     try:

@@ -86,6 +86,16 @@ migration:
   #   - "ri.scout.gov-staging.checklist.bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
   # -------------------------------------------------------------------------
+  # Standalone datasets (optional)
+  # Datasets listed here are copied to the destination without being attached
+  # to any asset — use this for datasets that no asset's data scope references.
+  # include_dataset_files and preserve_dataset_uuid above apply to them too.
+  # `nom migrate prep` fills this list with every such dataset on the source.
+  # -------------------------------------------------------------------------
+  # standalone_dataset_rids:
+  #   - "ri.catalog.gov-staging.dataset.cccccccc-cccc-cccc-cccc-cccccccccccc"
+
+  # -------------------------------------------------------------------------
   # Impersonation (optional)
   # When enabled, resources are created on the destination under the mapped
   # destination user rather than the service account running the migration.
