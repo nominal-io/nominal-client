@@ -1,0 +1,348 @@
+{
+  "checked_at": "2026-11-02T17:10:47.687865+00:00",
+  "source": "nominal-streaming/.github/workflows/wheels.yml",
+  "streaming_commit": "f1153fa26970dd4f0a7476fa085b33cc02a0ff1d",
+  "note": "Availability probe only. current_repodata is not a full historical channel inventory. musl and armv7 have no supported Conda runtime mapping in this prototype. Python 3.15 is experimental.",
+  "rows": [
+    {
+      "platform": "windows-x64",
+      "python": "3.11",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "WARN Fixing invalid version specifier by removing trailing comma (before: `>=3.6,`; after: `>=3.6`)\nResolved 124 packages in 5.87s\n"
+    },
+    {
+      "platform": "windows-x64",
+      "python": "3.12",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "WARN Fixing invalid version specifier by removing trailing comma (before: `>=3.6,`; after: `>=3.6`)\nResolved 123 packages in 6.76s\n"
+    },
+    {
+      "platform": "windows-x64",
+      "python": "3.13",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "WARN Fixing invalid version specifier by removing trailing comma (before: `>=3.6,`; after: `>=3.6`)\nResolved 123 packages in 6.34s\n"
+    },
+    {
+      "platform": "windows-x64",
+      "python": "3.14",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 123 packages in 6.34s\n"
+    },
+    {
+      "platform": "windows-x64",
+      "python": "3.15",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Downloading cpython-3.15.0rc2-macos-aarch64-none (download) (26.2MiB)\n Downloaded cpython-3.15.0rc2-macos-aarch64-none (download)\nResolved 91 packages in 16.02s\n"
+    },
+    {
+      "platform": "macos-aarch64",
+      "python": "3.11",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 126 packages in 2.42s\n"
+    },
+    {
+      "platform": "macos-aarch64",
+      "python": "3.12",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 125 packages in 2.19s\n"
+    },
+    {
+      "platform": "macos-aarch64",
+      "python": "3.13",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 125 packages in 1.53s\n"
+    },
+    {
+      "platform": "macos-aarch64",
+      "python": "3.14",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 125 packages in 2.33s\n"
+    },
+    {
+      "platform": "macos-aarch64",
+      "python": "3.15",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 92 packages in 15.89s\n"
+    },
+    {
+      "platform": "linux-x86_64",
+      "python": "3.11",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 125 packages in 2.55s\n"
+    },
+    {
+      "platform": "linux-x86_64",
+      "python": "3.12",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 2.18s\n"
+    },
+    {
+      "platform": "linux-x86_64",
+      "python": "3.13",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 1.66s\n"
+    },
+    {
+      "platform": "linux-x86_64",
+      "python": "3.14",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 5.27s\n"
+    },
+    {
+      "platform": "linux-x86_64",
+      "python": "3.15",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 91 packages in 15.91s\n"
+    },
+    {
+      "platform": "linux-aarch64",
+      "python": "3.11",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 125 packages in 5.70s\n"
+    },
+    {
+      "platform": "linux-aarch64",
+      "python": "3.12",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 3.98s\n"
+    },
+    {
+      "platform": "linux-aarch64",
+      "python": "3.13",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 2.92s\n"
+    },
+    {
+      "platform": "linux-aarch64",
+      "python": "3.14",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 124 packages in 3.10s\n"
+    },
+    {
+      "platform": "linux-aarch64",
+      "python": "3.15",
+      "runtime": "available",
+      "binary_resolution": "passed",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested",
+      "detail": "Resolved 91 packages in 1.81s\n"
+    },
+    {
+      "platform": "linux-armv7",
+      "python": "3.11",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "linux-armv7",
+      "python": "3.12",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "linux-armv7",
+      "python": "3.13",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "linux-armv7",
+      "python": "3.14",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "linux-armv7",
+      "python": "3.15",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-x86_64",
+      "python": "3.11",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-x86_64",
+      "python": "3.12",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-x86_64",
+      "python": "3.13",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-x86_64",
+      "python": "3.14",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-x86_64",
+      "python": "3.15",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-aarch64",
+      "python": "3.11",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-aarch64",
+      "python": "3.12",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-aarch64",
+      "python": "3.13",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-aarch64",
+      "python": "3.14",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-aarch64",
+      "python": "3.15",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-armv7",
+      "python": "3.11",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-armv7",
+      "python": "3.12",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-armv7",
+      "python": "3.13",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-armv7",
+      "python": "3.14",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    },
+    {
+      "platform": "musllinux-armv7",
+      "python": "3.15",
+      "runtime": "unavailable",
+      "binary_resolution": "not tested",
+      "offline_execution": "not tested",
+      "staging_e2e": "not tested"
+    }
+  ]
+}

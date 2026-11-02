@@ -1,0 +1,170 @@
+name: Offline Conda prototype
+run-name: ${{ inputs.request_id || 'Windows offline prototype' }}
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options: [win-64, linux-64, osx-arm64, osx-64]
+        default: win-64
+      python:
+        type: choice
+        options: ['3.11', '3.12', '3.13', '3.14', '3.15']
+        default: '3.12'
+      sdk_version:
+        description: Stable SDK version, blank for latest
+        type: string
+      request_id:
+        type: string
+        default: manual-conda-build
+      staging_e2e:
+        description: Run SDK staging e2e (requires repository secrets)
+        type: boolean
+        default: false
+  # Bootstrap validation without merging an untested prototype into main.
+  push:
+    branches: [codex/conda-pack-prototype]
+    paths: ['tools/conda-pack/**', '.github/workflows/conda-pack.yml']
+permissions:
+  contents: read
+concurrency:
+  group: conda-${{ github.ref }}-${{ inputs.platform || 'win-64' }}-${{ inputs.python || '3.12' }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ${{ inputs.platform == 'linux-64' && 'ubuntu-24.04' || inputs.platform == 'osx-arm64' && 'macos-14' || inputs.platform == 'osx-64' && 'macos-15-intel' || 'windows-2022' }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          activate-environment: ''
+          miniforge-version: latest
+      - name: Unit tests
+        run: uv run --project tools/conda-pack --locked pytest -c tools/conda-pack/pyproject.toml tools/conda-pack/tests -q
+      - name: Build
+        env:
+          BUNDLE_PYTHON: ${{ inputs.python || '3.12' }}
+          SDK_VERSION: ${{ inputs.sdk_version }}
+        run: |
+          $arguments = @('run', '--project', 'tools/conda-pack', '--locked', 'nominal-bundle', 'build', '--python', $env:BUNDLE_PYTHON)
+          if ($env:SDK_VERSION) { $arguments += @('--sdk-version', $env:SDK_VERSION) }
+          & uv @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conda-pack-${{ inputs.platform || 'win-64' }}-py${{ inputs.python || '3.12' }}
+          path: dist/conda-pack/*
+          retention-days: 14
+          if-no-files-found: error
+  windows-offline:
+    needs: build
+    if: ${{ !inputs.platform || inputs.platform == 'win-64' }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-pack-win-64-py${{ inputs.python || '3.12' }}
+          path: payload
+      - name: Verify from read-only media with outbound traffic blocked
+        run: |
+          # Seal downloaded payload into a read-only VHD, then validate on this fresh host.
+          $bundle = (Get-ChildItem payload -Filter manifest.json -Recurse | Select-Object -First 1).Directory.FullName
+          $vhd = Join-Path $env:RUNNER_TEMP 'source.vhd'
+          $size = [math]::Ceiling(((Get-ChildItem $bundle -Recurse | Measure-Object Length -Sum).Sum / 1MB) * 1.3) + 256
+          @("create vdisk file=`"$vhd`" maximum=$size type=expandable", "select vdisk file=`"$vhd`"", 'attach vdisk', 'create partition primary', 'format fs=ntfs quick', 'assign letter=R') | Set-Content "$env:RUNNER_TEMP/create.txt"
+          diskpart /s "$env:RUNNER_TEMP/create.txt"
+          if (!(Test-Path R:\)) { throw 'Read-only media setup failed' }
+          Copy-Item "$bundle/*" R:\ -Recurse
+          @("select vdisk file=`"$vhd`"", 'detach vdisk', 'attach vdisk readonly') | Set-Content "$env:RUNNER_TEMP/readonly.txt"
+          diskpart /s "$env:RUNNER_TEMP/readonly.txt"
+          $probe = 'R:\write-probe'
+          $wrote = $false
+          try { [IO.File]::WriteAllText($probe, 'must fail'); $wrote = $true } catch {}
+          if ($wrote) { throw 'Source is writable' }
+          $before = Get-ChildItem R:\ -File -Recurse | Get-FileHash | Select-Object Path,Hash | ConvertTo-Json
+          $bootstrap = (Get-Command python).Source
+          $destination = Join-Path $env:RUNNER_TEMP 'relocated offline environment'
+          # Block all outbound traffic, including pre-existing allow rules. Loopback remains local.
+          New-NetFirewallRule -DisplayName 'Nominal offline verification' -Direction Outbound -Action Block -RemoteAddress Internet -Profile Any | Out-Null
+          try {
+            & $bootstrap R:\install.py --bundle R:\ --destination $destination
+            if ($LASTEXITCODE -ne 0) { throw 'Offline verification failed' }
+            $after = Get-ChildItem R:\ -File -Recurse | Get-FileHash | Select-Object Path,Hash | ConvertTo-Json
+            if ($before -ne $after) { throw 'Source contents changed' }
+            @{ source_read_only = 'passed'; network = 'Windows firewall Internet egress blocked'; offline_install = 'passed' } | ConvertTo-Json | Set-Content "$destination/media-verification.json"
+          } finally {
+            Remove-NetFirewallRule -DisplayName 'Nominal offline verification'
+            # The offline interval can negatively cache runner-service DNS lookups.
+            Clear-DnsClientCache
+            $restored = $false
+            for ($attempt = 0; $attempt -lt 12; $attempt++) {
+              try {
+                Resolve-DnsName api.github.com -ErrorAction Stop | Out-Null
+                $restored = $true
+                break
+              } catch {
+                Start-Sleep -Seconds 5
+                Clear-DnsClientCache
+              }
+            }
+            if (!$restored) { throw 'Runner DNS did not recover after removing the offline firewall rule' }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-offline-evidence
+          path: |
+            ${{ runner.temp }}/relocated offline environment/verification.json
+            ${{ runner.temp }}/relocated offline environment/media-verification.json
+            ${{ runner.temp }}/relocated offline environment/work/smoke-result.json
+            ${{ runner.temp }}/relocated offline environment/work/executed.ipynb
+            ${{ runner.temp }}/relocated offline environment/work/*.png
+          if-no-files-found: warn
+  staging-e2e:
+    needs: [build, windows-offline]
+    if: ${{ inputs.staging_e2e && inputs.platform == 'win-64' }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: conda-pack-win-64-py${{ inputs.python }}
+          path: payload
+      - name: Run published SDK e2e suite against unpacked environment
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
+        run: |
+          if (!$env:NOMINAL_E2E_TOKEN -or !$env:NOMINAL_E2E_WORKSPACE_RID) { throw 'Staging secrets are missing' }
+          $bundle = (Get-ChildItem payload -Filter manifest.json -Recurse | Select-Object -First 1).Directory.FullName
+          $destination = Join-Path $env:RUNNER_TEMP 'staging-bundle'
+          uv run --project tools/conda-pack nominal-bundle verify $bundle --destination $destination
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle installation failed' }
+          $env:BUNDLE_ROOT = $destination
+          $env:BUNDLE_SOURCE = $bundle
+          uv run --project tools/conda-pack python tools/conda-pack/scripts/e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Staging e2e failed' }

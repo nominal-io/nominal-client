@@ -63,6 +63,7 @@ default-groups = ["dev"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
+exclude = ["tools/conda-pack"]
 
 [dependency-groups]
 dev = [
