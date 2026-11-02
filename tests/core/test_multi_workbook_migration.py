@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
+from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
 
 # ---------------------------------------------------------------------------
@@ -527,3 +534,58 @@ class TestMigrateDeferredWorkbooks:
         migrator.migrate_deferred_workbooks({})
 
         mock_from_conjure.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Runners flush deferred workbooks after every asset has migrated
+# ---------------------------------------------------------------------------
+
+
+def _run_serial(runner: MigrationRunner) -> None:
+    runner.run_migration()
+
+
+def _run_parallel(runner: MigrationRunner) -> None:
+    run_parallel_migration(runner, max_workers=2)
+
+
+@pytest.mark.parametrize("run", [_run_serial, _run_parallel], ids=["serial", "parallel"])
+@patch.object(WorkbookMigrator, "copy_from")
+@patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+def test_runner_migrates_deferred_workbooks(
+    mock_from_conjure: MagicMock,
+    mock_copy_from: MagicMock,
+    run: Callable[[MigrationRunner], None],
+    tmp_path: Path,
+) -> None:
+    """Workbooks deferred during asset migration are copied before the runner returns, on both runners."""
+    asset_rid = _asset_rid(1)
+    wb_asset, wb_run = _wb_rid(1), _wb_rid(2)
+    source_asset = MagicMock(rid=asset_rid)
+    source_asset._clients.notebook.get.return_value = _stub_raw_notebook()
+
+    def queue_deferred_workbooks(self: AssetMigrator, source: Any, options: Any) -> None:
+        self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(wb_asset, [asset_rid])
+        self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(wb_run, [_run_rid(1), _run_rid(2)])
+
+    state_path = tmp_path / "state.json"
+    runner = MigrationRunner(
+        migration_resources=MigrationResources(
+            source_assets={asset_rid: AssetResources(asset=source_asset, source_workbook_templates=[])},
+            source_standalone_templates=[],
+            source_standalone_checklists=[],
+        ),
+        dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+        destination_client=MagicMock(),
+        migration_state_path=state_path,
+    )
+
+    with patch.object(AssetMigrator, "copy_from", autospec=True, side_effect=queue_deferred_workbooks):
+        run(runner)
+
+    fetched_rids = {call.args[1] for call in source_asset._clients.notebook.get.call_args_list}
+    assert fetched_rids == {wb_asset, wb_run}
+    assert mock_copy_from.call_count == 2
+    saved_state = json.loads(state_path.read_text())
+    assert saved_state["pending_multi_asset_workbooks"] == {}
+    assert saved_state["pending_multi_run_workbooks"] == {}
