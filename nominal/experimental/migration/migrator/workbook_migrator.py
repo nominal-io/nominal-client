@@ -20,6 +20,7 @@ from nominal.experimental.migration.migrator.attachment_migrator import Attachme
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.conjure_clone_utils import clone_conjure_objects_with_rid_overrides
+from nominal.experimental.migration.utils.retry_utils import retry_transient
 
 logger = logging.getLogger(__name__)
 
@@ -257,13 +258,13 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 )
                 if source_clients is None:
                     continue
-                raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
-                source_workbook = Workbook._from_conjure(source_clients, raw_notebook)
-                self.copy_from(
-                    source_workbook, WorkbookCopyOptions(source_to_destination_asset_rid_mapping=asset_rid_map)
-                )
-                self.ctx.migration_state.clear_pending_multi_asset_workbook(workbook_rid)
-                logger.info("Migrated multi-asset workbook %s", workbook_rid)
+                if self._copy_deferred_workbook(
+                    workbook_rid,
+                    source_clients,
+                    WorkbookCopyOptions(source_to_destination_asset_rid_mapping=asset_rid_map),
+                ):
+                    self.ctx.migration_state.clear_pending_multi_asset_workbook(workbook_rid)
+                    logger.info("Migrated multi-asset workbook %s", workbook_rid)
 
         if pending_multi_run:
             logger.info("Migrating %d deferred multi-run workbook(s)", len(pending_multi_run))
@@ -279,18 +280,39 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 if source_clients is None:
                     logger.warning("No source assets available to fetch multi-run workbook %s — skipping", workbook_rid)
                     continue
-                raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
-                source_workbook = Workbook._from_conjure(source_clients, raw_notebook)
-                self.copy_from(
-                    source_workbook,
+                if self._copy_deferred_workbook(
+                    workbook_rid,
+                    source_clients,
                     WorkbookCopyOptions(
                         source_to_destination_asset_rid_mapping=asset_rid_map,
                         source_to_destination_run_rid_mapping=run_rid_map,
                         archived_run_rids=archived_run_rids,
                     ),
-                )
-                self.ctx.migration_state.clear_pending_multi_run_workbook(workbook_rid)
-                logger.info("Migrated multi-run workbook %s", workbook_rid)
+                ):
+                    self.ctx.migration_state.clear_pending_multi_run_workbook(workbook_rid)
+                    logger.info("Migrated multi-run workbook %s", workbook_rid)
+
+    def _copy_deferred_workbook(
+        self, workbook_rid: str, source_clients: ClientsBunch, options: WorkbookCopyOptions
+    ) -> bool:
+        """Copy one deferred workbook, returning whether it succeeded.
+
+        A failure is recorded as a skip so the remaining workbooks still copy. The caller keeps the
+        pending entry, so a rerun retries the workbook.
+        """
+
+        def copy() -> None:
+            raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
+            self.copy_from(Workbook._from_conjure(source_clients, raw_notebook), options)
+
+        try:
+            retry_transient(copy, description=f"copy of deferred workbook {workbook_rid}")
+        except Exception as error:
+            logger.exception("Failed to copy deferred workbook (rid: %s)", workbook_rid)
+            self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook_rid, f"copy failed: {error}")
+            return False
+        self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook_rid, None)
+        return True
 
     def _resolve_source_clients(
         self,

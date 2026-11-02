@@ -9,6 +9,7 @@ from typing import Any, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -521,6 +522,42 @@ class TestMigrateDeferredWorkbooks:
         assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_failed_workbook_is_skipped_and_later_workbooks_still_copy(self, _mock_from_conjure: MagicMock) -> None:
+        """A permanent copy failure records a skip and keeps that workbook pending without blocking the next one."""
+        wb_bad, wb_good = _wb_rid(1), _wb_rid(2)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_bad, [_run_rid(1), _run_rid(2)])
+        ctx.migration_state.record_pending_multi_run_workbook(wb_good, [_run_rid(3), _run_rid(4)])
+        source_clients = MagicMock()
+
+        migrator = WorkbookMigrator(ctx)
+        with patch.object(WorkbookMigrator, "copy_from", side_effect=[ValueError("Run RIDs not provided"), None]):
+            migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        assert list(ctx.migration_state.pending_multi_run_workbooks) == [wb_bad]
+        assert ctx.migration_state.workbook_was_skipped(wb_bad)
+        assert not ctx.migration_state.workbook_was_skipped(wb_good)
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_transient_read_failure_is_retried(
+        self, mock_from_conjure: MagicMock, mock_copy_from: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A transient failure reading a deferred workbook is retried rather than skipping the workbook."""
+        monkeypatch.setattr("time.sleep", lambda _seconds: None)
+        wb_run = _wb_rid(1)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        source_clients = MagicMock()
+        source_clients.notebook.get.side_effect = [requests.exceptions.ConnectionError("reset"), _stub_raw_notebook()]
+
+        WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        mock_copy_from.assert_called_once()
+        assert ctx.migration_state.pending_multi_run_workbooks == {}
+        assert not ctx.migration_state.workbook_was_skipped(wb_run)
+
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_missing_source_client_for_asset_workbook_skips_gracefully(self, mock_from_conjure: MagicMock) -> None:
         """If none of a multi-asset workbook's asset RIDs are in source_clients_by_asset_rid,
         the workbook is skipped with a warning and no exception is raised.
@@ -541,7 +578,7 @@ class TestMigrateDeferredWorkbooks:
 # ---------------------------------------------------------------------------
 
 
-def _run_serial(runner: MigrationRunner) -> None:
+def _run_sequential(runner: MigrationRunner) -> None:
     runner.run_migration()
 
 
@@ -549,7 +586,7 @@ def _run_parallel(runner: MigrationRunner) -> None:
     run_parallel_migration(runner, max_workers=2)
 
 
-@pytest.mark.parametrize("run", [_run_serial, _run_parallel], ids=["serial", "parallel"])
+@pytest.mark.parametrize("run", [_run_sequential, _run_parallel], ids=["sequential", "parallel"])
 @patch.object(WorkbookMigrator, "copy_from")
 @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
 def test_runner_migrates_deferred_workbooks(
