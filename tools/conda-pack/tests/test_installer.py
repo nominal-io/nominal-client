@@ -4,6 +4,7 @@ import io
 import tarfile
 
 import pytest
+
 from nominal_conda_pack.cli import RESOURCES
 
 spec = importlib.util.spec_from_file_location("installer", RESOURCES / "install.py")
