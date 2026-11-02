@@ -69,8 +69,9 @@ Tags tell apart points in the same channel, such as the two motors above.
 A [run](/guides/runs.md) or [asset](/guides/assets.md) can select one tag value with `series_tags`:
 
 ```python
-run = client.create_run("Left motor test", start=start, end=end)
-run.add_dataset("motor", dataset, series_tags={"motor_id": "left"})
+asset = client.get_or_create_asset_by_properties({"serial": "<serial number>"}, name="Left motor")
+asset.add_dataset("motor", dataset, series_tags={"motor_id": "left"})
+run = asset.create_run("Left motor test", start=start, end=end)
 ```
 
 Use tags for a small set of values, such as component, vehicle or test configuration.

@@ -82,12 +82,12 @@ The frame rate matches the simulation's time step, so the video lasts as long as
 Upload both to one dataset. The video starts at the simulation's first timestamp:
 
 ```python
-dataset = client.create_dataset("Double pendulum")
+asset = client.get_or_create_asset_by_properties({"model": "double-pendulum"}, name="Double pendulum")
+dataset = asset.get_or_create_dataset("simulation")
 dataset.add_tabular_data("pendulum.csv", timestamp_column="time", timestamp_type="epoch_seconds").poll_until_ingestion_completed()
 dataset.add_video("pendulum.mp4", channel="pendulum_video", start=start).poll_until_ingestion_completed()
 
-run = client.create_run("Double pendulum", start=start, end=start + timedelta(seconds=25))
-run.add_dataset("simulation", dataset)
+run = asset.create_run("Double pendulum", start=start, end=start + timedelta(seconds=25))
 print(run.nominal_url)
 ```
 

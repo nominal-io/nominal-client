@@ -60,9 +60,10 @@ Logs that span several boots need one clock per boot.
 
 ## Upload the topics to a run
 
-Create one dataset per topic, upload each instance's CSV to it, then attach the datasets to a run under the topic name:
+Get or create one dataset per topic on the vehicle's asset, upload each instance's CSV to it, then create a run on the asset:
 
 ```python
+asset = client.get_or_create_asset_by_properties({"serial": "<serial number>"}, name="PX4 quadrotor")
 datasets = {}
 first_us, last_us = [], []
 for path in csv_files:
@@ -73,15 +74,12 @@ for path in csv_files:
     last_us.append(stamps.max())
     topic = path.stem.removeprefix(f"{ulog_path.stem}_").rsplit("_", 1)[0]  # drop the instance number
     if topic not in datasets:
-        datasets[topic] = client.create_dataset(topic)
+        datasets[topic] = asset.get_or_create_dataset(topic)
     datasets[topic].add_tabular_data(path, timestamp_column="timestamp", timestamp_type=boot_clock)
 
 start_us = boot_us + min(first_us)
 end_us = boot_us + max(last_us)
-run = client.create_run("PX4 quadrotor flight", start=start_us * 1000, end=end_us * 1000)
-for topic, dataset in datasets.items():
-    run.add_dataset(topic, dataset)
-
+run = asset.create_run("PX4 quadrotor flight", start=start_us * 1000, end=end_us * 1000)
 print(run.nominal_url)
 ```
 
