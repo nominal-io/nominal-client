@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Self, Sequence
 
+from nominal.core import _display
 from nominal.core._utils.api_tools import HasRid
 from nominal.protos.workspaces.v1 import workspaces_pb2
 
@@ -22,6 +23,18 @@ class Workspace(HasRid):
 
     preferred_procedure_rids: Sequence[str] = ()
     """Procedure RIDs offered on the application home page; empty when unconfigured."""
+
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Workspace",
+            title=self.display_name or self.id,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("ID", _display.identifier(self.id)),
+                ("Organization", _display.identifier(self.org)),
+            ],
+        )
 
     @classmethod
     def _from_proto(cls, workspace: workspaces_pb2.Workspace) -> Self:

@@ -12,16 +12,20 @@ from google.protobuf.field_mask_pb2 import FieldMask
 from nominal_api import (
     api,
     datasource_api,
+    scout_catalog,
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
 )
 
 from nominal._utils.iterator_tools import batched
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableGrpcMixin, build_compute_tag_filter, create_api_tags
+from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import paginate_rpc
+from nominal.core.bounds import Bounds
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
@@ -157,9 +161,73 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         def compute(self) -> scout_compute_api.ComputeService: ...
         @property
         def channel_metadata(self) -> channel_metadata_pb2_grpc.ChannelMetadataServiceStub: ...
+        # Reads the dataset's time span for the channel's notebook display.
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
 
     class _NotProvided:
         """Sentinel class for detecting when a user has or has not provided a value during updates"""
+
+    def _repr_html_(self) -> str | None:
+        is_numeric = self.data_type in (ChannelDataType.DOUBLE, ChannelDataType.INT)
+        return _display.render(
+            kind="Channel",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                (
+                    "Dataset",
+                    _display.identifier(
+                        self.data_source, functools.partial(dataset_url, self._clients, self.data_source)
+                    ),
+                ),
+                ("Type", _display.escape(self.data_type.value.lower() if self.data_type else "unknown")),
+                *([("Unit", _display.escape(self.unit))] if self.unit else []),
+                *([("Description", _display.escape(self.description))] if self.description else []),
+            ],
+            sections=[_display.fetched("Data", self._data_section) if is_numeric else None],
+        )
+
+    def _data_section(self) -> _display.Section:
+        """Summary statistics and a chart of the channel's values over its dataset's time span."""
+        datasets = self._clients.catalog.get_enriched_datasets(
+            self._clients.auth_header, scout_catalog.GetDatasetsRequest(dataset_rids=[self.data_source])
+        )
+        if not datasets or datasets[0].bounds is None:
+            return _display.Section("Data", note="The dataset has no data yet.")
+        bounds = Bounds._from_conjure(datasets[0].bounds)
+        # One request returns 60 buckets: enough for the chart, and they combine into whole-channel statistics.
+        # A channel with few points comes back as the points themselves, which are their own buckets.
+        response = self._decimate_request(bounds.start, bounds.end + 1, buckets=60)
+        buckets: list[tuple[int, float, float, float] | None] = []
+        times: list[api.Timestamp] = []
+        if response.bucketed_numeric is not None:
+            for bucket in response.bucketed_numeric.buckets:
+                if bucket.count and bucket.min is not None and bucket.max is not None and bucket.mean is not None:
+                    buckets.append((bucket.count, bucket.min, bucket.max, bucket.mean))
+                    times.extend(point.timestamp for point in (bucket.first_point, bucket.last_point) if point)
+                else:
+                    buckets.append(None)
+        elif response.numeric is not None:
+            buckets = [(1, value, value, value) for value in response.numeric.values]
+            times = list(response.numeric.timestamps)
+        filled = [bucket for bucket in buckets if bucket is not None]
+        if not filled:
+            return _display.Section("Data", note="No values in the dataset's time span.")
+
+        count = sum(bucket[0] for bucket in filled)
+        rows = [
+            ["Samples", _display.escape(f"{count:,}")],
+            ["Min", _display.number(min(bucket[1] for bucket in filled), self.unit)],
+            ["Max", _display.number(max(bucket[2] for bucket in filled), self.unit)],
+            ["Mean", _display.number(sum(bucket[0] * bucket[3] for bucket in filled) / count, self.unit)],
+        ]
+        if times:
+            nanoseconds = [_SecondsNanos.from_api(time).to_nanoseconds() for time in times]
+            rows.append(["First", _display.timestamp(min(nanoseconds))])
+            rows.append(["Last", _display.timestamp(max(nanoseconds))])
+        chart = _display.sparkline([bucket[1:] if bucket is not None else None for bucket in buckets])
+        return _display.Section("Data", rows, body=chart, counted=False)
 
     def _channel_identifier(self) -> channel_metadata_pb2.ChannelIdentifier:
         return channel_metadata_pb2.ChannelIdentifier(

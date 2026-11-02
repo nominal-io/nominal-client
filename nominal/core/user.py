@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Self
 
+from nominal.core import _display
 from nominal.core._utils.api_tools import HasRid
 from nominal.protos.authentication.users.v1 import users_pb2
 
@@ -14,6 +15,14 @@ class User(HasRid):
     rid: str
     display_name: str
     email: str
+
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="User",
+            title=self.display_name,
+            fallback=repr(self),
+            fields=[("RID", _display.identifier(self.rid)), ("Email", _display.escape(self.email))],
+        )
 
     @classmethod
     def _from_proto(cls, raw_user: users_pb2.User) -> Self:

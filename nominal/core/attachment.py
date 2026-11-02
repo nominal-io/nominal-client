@@ -9,6 +9,7 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Self, Sequence, cast
 from google.protobuf import field_mask_pb2
 
 from nominal._utils.iterator_tools import batched
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
@@ -42,6 +43,21 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def attachment(self) -> attachments_pb2_grpc.AttachmentServiceStub: ...
+
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Attachment",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Created", _display.timestamp(self.created_at)),
+                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+            ],
+            sections=[_display.properties_section(self.properties)],
+            archived=self.is_archived,
+        )
 
     def _get_latest_api(self) -> attachments_pb2.Attachment:
         return _get_attachment(self._clients, self.rid)

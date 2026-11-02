@@ -7,7 +7,7 @@ from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from typing_extensions import deprecated
 
-from nominal.core import data_review, streaming_checklist
+from nominal.core import _display, data_review, streaming_checklist
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
@@ -29,7 +29,7 @@ from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _get_accessible_attachments
-from nominal.core.dataset import Dataset, _create_dataset
+from nominal.core.dataset import Dataset, _create_dataset, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -86,6 +86,26 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
+
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Asset",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Created", _display.timestamp(self.created_at)),
+                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+            ],
+            sections=[
+                _display.properties_section(self.properties),
+                _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
+                _display.fetched("Runs", lambda: _runs_section(self.list_runs())),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+        )
 
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
@@ -831,4 +851,4 @@ def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> Mapping[str,
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.run import Run, _create_run  # noqa: E402
+from nominal.core.run import Run, _create_run, _runs_section  # noqa: E402

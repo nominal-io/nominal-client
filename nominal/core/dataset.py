@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Literal, Mapping, Protocol, Self, Sequence, TypeAlias, overload
@@ -19,6 +20,7 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
+from nominal.core import _display
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.factory import create_dataset_stream
@@ -110,6 +112,66 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
         return dataset_url(self._clients, self.rid)
+
+    def _repr_html_(self) -> str | None:
+        if self.bounds is None:
+            bounds_fields = [("Data", "none yet")]
+        else:
+            bounds_fields = [
+                ("Start", _display.timestamp(self.bounds.start)),
+                ("End", _display.timestamp(self.bounds.end)),
+                ("Duration", _display.duration(self.bounds.end - self.bounds.start)),
+            ]
+        return _display.render(
+            kind="Dataset",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                *([("Description", _display.escape(self.description))] if self.description else []),
+                *bounds_fields,
+                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+            ],
+            sections=[
+                _display.properties_section(self.properties),
+                _display.fetched("Files", self._files_section),
+                _display.fetched("Channels", self._channels_section),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+        )
+
+    def _files_section(self) -> _display.Section:
+        files, has_more = _display.first(self.list_files(successful_only=False))
+        return _display.Section(
+            "Files",
+            [
+                [
+                    _display.escape(file.name),
+                    _display.escape(file.ingest_status.value.lower().replace("_", " ")),
+                    _display.timestamp(file.uploaded_at),
+                ]
+                for file in files
+            ],
+            columns=("File", "Status", "Uploaded"),
+            has_more=has_more,
+        )
+
+    def _channels_section(self) -> _display.Section:
+        channels, has_more = _display.first(self.search_channels())
+        return _display.Section(
+            "Channels",
+            [
+                [
+                    _display.escape(channel.name),
+                    _display.escape(channel.data_type.value.lower() if channel.data_type else ""),
+                    _display.escape(channel.unit or ""),
+                ]
+                for channel in channels
+            ],
+            columns=("Channel", "Type", "Unit"),
+            has_more=has_more,
+        )
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
@@ -1998,3 +2060,20 @@ def _construct_existing_ingest_options(
                 channel_name_overrides={},
             )
         )
+
+
+def _data_scopes_section(scopes: Sequence[tuple[str, Dataset]]) -> _display.Section:
+    """A card section listing the datasets an asset or run holds, by data scope."""
+    rows = []
+    for scope, dataset in scopes:
+        url = partial(dataset_url, dataset._clients, dataset.rid)
+        bounds = dataset.bounds
+        rows.append(
+            [
+                _display.code(scope),
+                _display.named(dataset.name, dataset.rid, url),
+                _display.timestamp(bounds.start) if bounds else "no data yet",
+                _display.timestamp(bounds.end) if bounds else "",
+            ]
+        )
+    return _display.Section("Datasets", rows, columns=("Data scope", "Dataset", "Start", "End"))
