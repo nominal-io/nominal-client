@@ -10,7 +10,7 @@ pip install "nominal[ibis]"
 
 ## Query data
 
-Use an existing Nominal profile, or create one with
+Use an existing Nominal {term}`profile`, or create one with
 `nom config profile add`.
 
 ```python

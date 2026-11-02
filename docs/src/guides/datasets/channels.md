@@ -7,7 +7,7 @@ myst:
 # Channels and data types
 
 {.lead}
-A channel is one named signal in a dataset, such as `altitude` or `fault_code`.
+A channel is one named signal in a {term}`dataset`, such as `altitude` or `fault_code`.
 Nominal sets a channel's data type from the first values it receives, unless you register the channel first.
 
 ```{include} /guides/_snippets/connect-the-client.md
@@ -67,7 +67,7 @@ dataset.set_channel_units({"altitude": "m", "airspeed": "m/s"}, validate_schema=
 
 `validate_schema=True` raises on names that aren't channels in the dataset. By default they're ignored.
 
-Units are [UCUM](https://ucum.org/) symbols, such as `Cel` for degrees Celsius, so workbooks can convert between them.
+Units are [UCUM](https://ucum.org/) symbols, such as `Cel` for degrees Celsius, so {term}`workbooks <workbook>` can convert between them.
 Pass `allow_display_only_units=True` for labels outside UCUM, such as `encoder_ticks`. Those aren't converted.
 To check a symbol, use {py:meth}`~nominal.core.NominalClient.get_unit` or {py:meth}`~nominal.core.NominalClient.get_commensurable_units`.
 

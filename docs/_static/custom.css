@@ -7,3 +7,17 @@
   height: auto;
   margin: 1rem 0;
 }
+
+/* Glossary term links ({term} role): dashed underline and a help cursor, like abbreviations. */
+.yue a.reference.internal:has(> .std-term) {
+  text-decoration-style: dashed;
+  cursor: help;
+}
+
+/* Glossary hover boxes (_static/glossary-tips.js). */
+.tippy-box[data-theme~="glossary"] {
+  border: 1px solid var(--sy-c-border);
+}
+.tippy-box[data-theme~="glossary"] > .tippy-content {
+  padding: 0.6rem 0.8rem;
+}

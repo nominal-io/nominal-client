@@ -7,7 +7,7 @@ myst:
 # Upload and stream tutorial
 
 {.lead}
-Upload a race car's recorded telemetry to a vehicle asset, stream live data to the same asset, and watch it arrive in a workbook.
+Upload a race car's recorded telemetry to a vehicle {term}`asset`, stream live data to the same asset, and watch it arrive in a {term}`workbook`.
 It uses two complete scripts, run from the terminal.
 
 You need the [installed client](/guides/install.md) and a [profile](/guides/api-keys-setup.md). The scripts take the profile name with `--profile`.
@@ -18,7 +18,7 @@ You need the [installed client](/guides/install.md) and a [profile](/guides/api-
 
     {download}`Download racecar_dataset.csv.gz </guides/data/racecar_dataset.csv.gz>`
 
-1. Save this script as `fsae_asset_upload.py`. It finds or creates the `FSAE CT8 Vehicle` [asset](/guides/assets.md), uploads the CSV to its dataset and sets the channels' units:
+1. Save this script as `fsae_asset_upload.py`. It finds or creates the `FSAE CT8 Vehicle` [asset](/guides/assets.md), uploads the CSV to its {term}`dataset` and sets the {term}`channels <channel>`' {term}`units <unit>`:
 
     ```{literalinclude} /examples/fsae_asset_upload.py
     :language: python
@@ -51,7 +51,7 @@ You need the [installed client](/guides/install.md) and a [profile](/guides/api-
     python stream_data_to_dataset.py --profile <PROFILE>
     ```
 
-    It prints a session ID and tags every point with it as `tutorial_session_id`.
+    It prints a session ID and {term}`tags <tag>` every point with it as `tutorial_session_id`.
 
 ## Watch the data arrive
 
@@ -67,7 +67,7 @@ You need the [installed client](/guides/install.md) and a [profile](/guides/api-
 `cpu_info` is a struct, so a time series chart can't plot it directly.
 Drag it onto a **Value grid** panel, or [transform it](https://docs.nominal.io/core/documentation/platform/workbooks/manipulating-time-series#transforming-variables) to a numeric field such as `frequency_ghz`.
 
-If other people are running this tutorial in your workspace, show only your points with a tag filter:
+If other people are running this tutorial in your {term}`workspace`, show only your points with a tag filter:
 
 1. In the workbook's **Inputs** panel, click **+** and set **Type** to **Tag filter**.
 1. Set **Tag key** to `tutorial_session_id`, paste your session ID into **Tag values** and click **Save input**.

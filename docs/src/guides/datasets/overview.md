@@ -7,7 +7,7 @@ myst:
 # Datasets
 
 {.lead}
-A dataset holds timestamped data as named channels, such as `altitude` or `temperature`.
+A dataset holds timestamped data as named {term}`channels <channel>`, such as `altitude` or `temperature`.
 Files you upload and points you stream add to the same dataset over time.
 
 ```{include} /guides/_snippets/connect-the-client.md
@@ -15,7 +15,7 @@ Files you upload and points you stream add to the same dataset over time.
 
 ## Create a dataset and upload a file
 
-Create a dataset with {py:meth}`~nominal.core.NominalClient.create_dataset`, or on an asset with {py:meth}`~nominal.core.Asset.get_or_create_dataset` (see [Assets](/guides/assets.md#add-data-with-data-scopes)).
+Create a dataset with {py:meth}`~nominal.core.NominalClient.create_dataset`, or on an {term}`asset` with {py:meth}`~nominal.core.Asset.get_or_create_dataset` (see [Assets](/guides/assets.md#add-data-with-data-scopes)).
 Then upload a file to it.
 ```{include} /guides/_snippets/sample-flight-csv.md
 ```
@@ -34,7 +34,7 @@ Upload methods return a {py:class}`~nominal.core.DatasetFile` before ingestion f
 Wait for it before you read the new channels or the file's bounds.
 
 Uploading another file adds to the dataset rather than replacing its data.
-Keep channel names, types and units the same across files.
+Keep channel names, types and {term}`units <unit>` the same across files.
 
 ## File formats
 
@@ -70,7 +70,7 @@ To set channel types and units, see [Channels and data types](/guides/datasets/c
 
 ## Retrieve a dataset
 
-Retrieve a dataset by the RID on its page in Nominal, or search by name and labels with {py:meth}`~nominal.core.NominalClient.search_datasets`:
+Retrieve a dataset by the {term}`RID` on its page in Nominal, or search by name and {term}`labels <label>` with {py:meth}`~nominal.core.NominalClient.search_datasets`:
 
 ```python
 dataset = client.get_dataset("<DATASET_RID>")
@@ -81,7 +81,7 @@ This returns the dataset's metadata, not its data. To download data, see [Export
 ## Update metadata
 
 {py:meth}`~nominal.core.Dataset.update` replaces each field you pass and leaves the others unchanged.
-To add a property, merge it with the existing ones:
+To add a {term}`property`, merge it with the existing ones:
 
 ```python
 dataset.update(labels=["flight-test"], properties={**dataset.properties, "campaign": "2026-09"})

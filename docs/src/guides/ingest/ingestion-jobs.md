@@ -10,7 +10,7 @@ myst:
 An ingest job tracks a batch of files as one unit, with one status and one entry on the [Ingestion page](https://app.gov.nominal.io/ingestion).
 You get one from {py:class}`~nominal.experimental.ingest.IngestBuilder` or from a [file extractor](/guides/extractors/overview.md).
 
-To upload a single file, use the dataset's own methods, as in [Datasets](/guides/datasets/overview.md).
+To upload a single file, use the {term}`dataset`'s own methods, as in [Datasets](/guides/datasets/overview.md).
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -49,8 +49,8 @@ A builder submits once. Make a new one for the next batch.
 
 - If an upload fails, `submit` raises `NominalIngestUploadFailed` and starts no job.
   `submit(allow_partial=True)` starts the job with the files that uploaded and logs the rest.
-- `submit(runs_to_expand=["<RUN_RID>"])` widens those runs to cover the new data.
-- Files in one job share a single `nominal_ingest` tag. To tell them apart later, pass your own `tags` to each `add_*` call.
+- `submit(runs_to_expand=["<RUN_RID>"])` widens those {term}`runs <run>` to cover the new data.
+- Files in one job share a single `nominal_ingest` {term}`tag`. To tell them apart later, pass your own `tags` to each `add_*` call.
 
 If `submit` raises after sending its request, the job may still have started.
 [Search for it](#find-jobs) before you retry, so you don't ingest the files twice.

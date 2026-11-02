@@ -7,8 +7,8 @@ myst:
 # Data review
 
 {.lead}
-A data review runs a published [checklist](/guides/checklists/authoring.md) against a [run](/guides/runs.md).
-Each place a check fails becomes an [event](/guides/events.md) for an engineer to review.
+A data review runs a published {term}`checklist` against a {term}`run`.
+Each place a {term}`check` fails becomes an {term}`event` for an engineer to review.
 
 For checking live data as it arrives, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 
@@ -30,8 +30,8 @@ for review in builder.initiate():
     print(review.nominal_url, len(review.get_events()))
 ```
 
-Copy checklist RIDs and commit SHAs from the [Checklists page](https://app.gov.nominal.io/checklists).
-For a run with several assets, pass `asset=` to choose the one to review.
+Copy checklist {term}`RIDs <RID>` and commit SHAs from the [Checklists page](https://app.gov.nominal.io/checklists).
+For a run with several {term}`assets <asset>`, pass `asset=` to choose the one to review.
 
 `initiate` waits for the reviews to finish by default, but doesn't wait for notifications.
 Pass `wait_for_completion=False` to return immediately, then call {py:meth}`~nominal.core.DataReview.poll_for_completion` on each review.

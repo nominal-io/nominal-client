@@ -7,7 +7,7 @@ myst:
 # Stream data
 
 {.lead}
-A write stream sends values to a dataset as your program produces them, batching them in the background.
+A write stream sends values to a {term}`dataset` as your program produces them, batching them in the background.
 Use it for live telemetry. For files, see [Datasets](/guides/datasets/overview.md).
 
 For log messages, see [Stream logs](/guides/streaming/logs.md).
@@ -40,7 +40,7 @@ with dataset.get_write_stream() as stream:
 end = datetime.now(timezone.utc)
 ```
 
-Registering channels first sets their types. See [Channels and data types](/guides/datasets/channels.md).
+Registering {term}`channels <channel>` first sets their types. See [Channels and data types](/guides/datasets/channels.md).
 Timestamps can be timezone-aware datetimes, ISO 8601 strings or epoch nanoseconds.
 Use the time each value was measured, not the time you enqueue it.
 
@@ -66,7 +66,7 @@ After streaming, check that the channels cover the expected time range.
 ## Add tags to filter data in a run or asset
 
 Tags tell apart points in the same channel, such as the two motors above.
-A [run](/guides/runs.md) or [asset](/guides/assets.md) can select one tag value with `series_tags`:
+A {term}`run` or {term}`asset` can select one tag value with `series_tags`:
 
 ```python
 run = client.create_run("Left motor test", start=start, end=end)
@@ -78,7 +78,7 @@ Don't tag with values that change every point, such as a counter or a UUID per s
 
 ## View streamed data
 
-Open the dataset's asset or run in a workbook and click **Go Live** to follow new points.
+Open the dataset's asset or run in a {term}`workbook` and click **Go Live** to follow new points.
 For a full walkthrough, see the [upload and stream tutorial](/guides/longstart.md#stream-data-to-the-asset).
 
 ```{video} /guides/images/b5/stream-gif.mp4
@@ -96,6 +96,6 @@ with dataset.get_write_stream() as stream:
     stream.enqueue("temperature", "2026-01-01T00:00:00Z", 42.0)
 ```
 
-Get a migrated connection's dataset RID from Nominal. A connection RID passed to `get_dataset` doesn't resolve.
+Get a migrated connection's dataset {term}`RID` from Nominal. A connection RID passed to `get_dataset` doesn't resolve.
 External datasets read from their provider and don't accept streamed writes.
 `nominal.experimental.stream_v2.create_write_stream()` now takes a `Dataset` as its first argument.

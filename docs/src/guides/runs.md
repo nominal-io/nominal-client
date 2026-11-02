@@ -15,8 +15,8 @@ It references data rather than copying it.
 
 ## Create a run on an asset
 
-When the data already belongs to an [asset](/guides/assets.md), create the run from the asset with the test's time window.
-The run sees the asset's datasets through their data scopes, so you don't attach them again.
+When the data already belongs to an {term}`asset`, create the run from the asset with the test's time window.
+The run sees the asset's {term}`datasets <dataset>` through their {term}`data scopes <data scope>`, so you don't attach them again.
 
 ```python
 from datetime import datetime, timezone
@@ -51,7 +51,7 @@ run.add_dataset("telemetry", dataset)
 ```
 
 The ref name, here `"telemetry"`, is the dataset's name within the run.
-Use the same ref name for the same kind of data on every run, so workbook templates and checklists work across runs.
+Use the same ref name for the same kind of data on every run, so {term}`workbook templates <workbook template>` and {term}`checklists <checklist>` work across runs.
 `add_dataset` also takes `series_tags`, to select [tagged data](/guides/streaming/overview.md#add-tags-to-filter-data-in-a-run-or-asset), and a time `offset`.
 
 {py:meth}`~nominal.core.Run.get_dataset` and {py:meth}`~nominal.core.Run.list_datasets` return only datasets attached this way.
@@ -65,14 +65,14 @@ run.remove_data_sources(ref_names=["telemetry"])
 
 ## Find runs
 
-Retrieve one run by the RID on its page in Nominal, or search with {py:meth}`~nominal.core.NominalClient.search_runs`:
+Retrieve one run by the {term}`RID` on its page in Nominal, or search with {py:meth}`~nominal.core.NominalClient.search_runs`:
 
 ```python
 run = client.get_run("<RUN_RID>")
 review_runs = client.search_runs(labels=["needs-review"], asset=asset)
 ```
 
-`name_substring` matches names, descriptions, labels and properties, so results may not contain the text in their name.
+`name_substring` matches names, descriptions, {term}`labels <label>` and {term}`properties <property>`, so results may not contain the text in their name.
 
 ## Update a run
 
@@ -99,7 +99,7 @@ Attach files about this test to the run, and files about the system to its [asse
 run.add_attachments([client.create_attachment("flight_report.pdf")])
 ```
 
-Create a workbook for the run from a template whose inputs match the run's ref names or data scope names. See [Workbooks](/guides/workbooks.md).
+Create a {term}`workbook` for the run from a template whose inputs match the run's ref names or data scope names. See [Workbooks](/guides/workbooks.md).
 
 Mark moments inside the run with [events](/guides/events.md).
 

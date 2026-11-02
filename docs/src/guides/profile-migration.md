@@ -12,8 +12,8 @@ There are two recent API changes that work in tandem:
    {py:obj}`NominalClient <nominal.core.NominalClient>`,
    and to call methods on the client.
 2. Instead of creating a client from token, Nominal recommends creating the
-   client from a *profile* stored on disk, that encapsulates the root
-   URL, token, and workspace.
+   client from a *{term}`profile`* stored on disk, that encapsulates the root
+   URL, token, and {term}`workspace`.
 
 ## Migrating existing credentials
 
@@ -77,7 +77,7 @@ See also [Timestamp reference](/sdk/ts/index.md).
 
 ### Uploading Pandas dataframes
 
-If you want to upload *multiple* dataframes into a single dataset, do so as follows:
+If you want to upload *multiple* dataframes into a single {term}`dataset`, do so as follows:
 
 ```python
 
@@ -105,7 +105,7 @@ df.index.name = 'source_time'
 
 ### Creating runs from data
 
-Previously, it was possible to create a run directly from a CSV
+Previously, it was possible to create a {term}`run` directly from a CSV
 dataset. Our concept of a run has since evolved: whereas before a run
 was seen as a *container* of data, now it is seen as a time bounded
 *view* onto data.
@@ -138,7 +138,7 @@ run.add_dataset("engine", dataset)
 
 ### Uploading videos
 
-Video is stored as a channel on a Dataset, alongside your other test data. Create
+Video is stored as a {term}`channel` on a Dataset, alongside your other test data. Create
 the Dataset, then add video files to a named channel on it:
 
 ```python
@@ -153,7 +153,7 @@ dataset.add_video(
 
 :::{note}
 
-Standalone `Video` objects are deprecated in favor of video channels. `client.create_video()`,
+Standalone `Video` objects are deprecated in favor of {term}`video channels <video channel>`. `client.create_video()`,
 `Video.add_file()`, `Asset.add_video()`, `Run.add_video()` and the rest of the `Video` API emit a
 `LegacyVideoDeprecationWarning`. Use {py:obj}`Dataset.add_video() <nominal.core.Dataset.add_video>`
 and attach the backing Dataset instead.

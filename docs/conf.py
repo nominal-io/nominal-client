@@ -38,6 +38,7 @@ extensions = [
     "video",
     "docstring_fences",
     "reference_presentation",
+    "glossary_tips",
     "nominal_sphinx_theme",
 ]
 

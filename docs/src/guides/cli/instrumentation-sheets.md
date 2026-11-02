@@ -7,9 +7,9 @@ myst:
 # Instrumentation sheets
 
 {.lead}
-`nom mis` reads an instrumentation sheet, also called a signal or channel list, and sets the description and unit of each matching channel in a dataset.
+`nom mis` reads an instrumentation sheet, also called a signal or {term}`channel` list, and sets the description and {term}`unit` of each matching channel in a {term}`dataset`.
 
-You need a profile from [API keys setup](/guides/api-keys-setup.md).
+You need a {term}`profile` from [API keys setup](/guides/api-keys-setup.md).
 Excel files need the [`mis` extra](/guides/install.md#extras), and `.xls` files also need `pip install xlrd`.
 To set units from Python instead, see [Channels and data types](/guides/datasets/channels.md#set-units).
 
@@ -42,7 +42,7 @@ nom mis validate --profile default mis.csv
 ```
 
 It lists units that Nominal doesn't recognize.
-Those still display in Nominal, but workbooks can't convert them.
+Those still display in Nominal, but {term}`workbooks <workbook>` can't convert them.
 
 ## Apply the sheet
 

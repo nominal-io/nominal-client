@@ -1,6 +1,6 @@
 # Polars
 
-Export channel data in batches of Polars DataFrames with
+Export {term}`channel` data in batches of Polars DataFrames with
 {py:class}`~nominal.thirdparty.polars.polars_export_handler.PolarsExportHandler`.
 Polars is installed with `nominal`.
 

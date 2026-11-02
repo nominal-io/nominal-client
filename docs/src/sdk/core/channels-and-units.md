@@ -1,6 +1,6 @@
 # Channels and units
 
-Inspect channel metadata, search tagged logs, and manage measurement units.
+Inspect {term}`channel` metadata, search tagged logs, and manage measurement {term}`units <unit>`.
 
 ## API Reference
 

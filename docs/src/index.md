@@ -100,6 +100,7 @@ Runs <guides/runs>
 Assets <guides/assets>
 Workbooks <guides/workbooks>
 Events <guides/events>
+Glossary <guides/glossary>
 ```
 
 ```{toctree}

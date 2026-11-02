@@ -7,7 +7,7 @@ myst:
 # Live video streaming
 
 {.lead}
-{py:class}`~nominal.experimental.video.VideoStream` sends live video to a video channel on a dataset, from a camera, a file, a network stream or your own code.
+{py:class}`~nominal.experimental.video.VideoStream` sends live video to a {term}`video channel` on a {term}`dataset`, from a camera, a file, a network stream or your own code.
 Each frame carries its capture time, so the video plays in sync with telemetry in [workbooks](https://docs.nominal.io/core/documentation/platform/workbooks/live-video-streaming).
 
 The examples also need the [`video` extra](/guides/install.md#extras).
@@ -111,4 +111,4 @@ For encoded sources, set `transcode=True` to decode and encode them again so the
 
 ## View the stream
 
-To watch the stream in a workbook, see [Live video in workbooks](https://docs.nominal.io/core/documentation/platform/workbooks/live-video-streaming).
+To watch the stream in a {term}`workbook`, see [Live video in workbooks](https://docs.nominal.io/core/documentation/platform/workbooks/live-video-streaming).

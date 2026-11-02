@@ -43,5 +43,5 @@ file = dataset.add_mcap_video(path, channel="cockpit_cam", topic="video")
 file.poll_until_ingestion_completed()
 ```
 
-To review it, attach the dataset to a run as in [Video ingest](/guides/video/video-ingest.md#review-it-in-a-run).
+To review it, attach the {term}`dataset` to a {term}`run` as in [Video ingest](/guides/video/video-ingest.md#review-it-in-a-run).
 For the file's protobuf-encoded topics, use {py:meth}`~nominal.core.Dataset.add_mcap`.

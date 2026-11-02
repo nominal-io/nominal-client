@@ -55,7 +55,7 @@ df = channel_to_dataframe_decimated(channel, start, end, buckets=2000)
 
 The columns are `min`, `max`, `mean`, `count` and `variance`.
 When the range has fewer than 1,000 points, it returns them unchanged, in one `value` column.
-It works for `DOUBLE` and `INT` channels.
+It works for `DOUBLE` and `INT` {term}`channels <channel>`.
 
 ## Chart it and zoom in
 

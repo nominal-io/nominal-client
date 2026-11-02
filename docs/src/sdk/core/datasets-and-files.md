@@ -1,6 +1,6 @@
 # Datasets and files
 
-Upload files, monitor ingestion, and work with dataset channels and exports.
+Upload files, monitor ingestion, and work with {term}`dataset` {term}`channels <channel>` and exports.
 
 ## API Reference
 

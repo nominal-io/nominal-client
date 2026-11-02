@@ -7,7 +7,7 @@ myst:
 # Chart animations
 
 {.lead}
-Render an animated chart of a simulation as a video, then upload it next to the simulation's channels so you can replay them together.
+Render an animated chart of a simulation as a video, then upload it next to the simulation's {term}`channels <channel>` so you can replay them together.
 This example simulates a double pendulum.
 
 The examples also need `pip install scipy matplotlib "imageio[ffmpeg]"`.
@@ -79,7 +79,7 @@ The frame rate matches the simulation's time step, so the video lasts as long as
 
 ## Upload the channels and the video
 
-Upload both to one dataset. The video starts at the simulation's first timestamp:
+Upload both to one {term}`dataset`. The video starts at the simulation's first timestamp:
 
 ```python
 dataset = client.create_dataset("Double pendulum")
@@ -96,7 +96,7 @@ See [Video ingest](/guides/video/video-ingest.md) for other options.
 
 ## Replay it in a workbook
 
-In a workbook on the run, add a video panel for `pendulum_video` and a chart of `height_1` and `height_2`.
+In a {term}`workbook` on the {term}`run`, add a video panel for `pendulum_video` and a chart of `height_1` and `height_2`.
 Playing the video moves the chart's cursor with it.
 
 ```{video} /guides/images/b2/CleanShot_2024-10-17_at_09.12.40_hoivoh.mp4

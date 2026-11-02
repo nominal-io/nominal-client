@@ -7,7 +7,7 @@ myst:
 # Export data
 
 {.lead}
-Read channel data into a DataFrame, export long time ranges in batches, or download the files a dataset was built from.
+Read {term}`channel` data into a DataFrame, export long time ranges in batches, or download the files a {term}`dataset` was built from.
 
 To download data from the terminal instead, see [Download data](/guides/cli/downloading-data.md).
 
@@ -31,7 +31,7 @@ For charts of long recordings, read fewer points with [Decimate data](/guides/da
 ## Export in batches
 
 {py:class}`~nominal.thirdparty.polars.polars_export_handler.PolarsExportHandler` yields Polars DataFrames one time window at a time, so long exports don't need to fit in memory.
-This example writes a run's `temperature` and `speed` channels to Parquet:
+This example writes a {term}`run`'s `temperature` and `speed` channels to Parquet:
 
 ```python
 import time
@@ -54,7 +54,7 @@ for i, df in enumerate(
 ```
 
 `start` and `end` are integer epoch nanoseconds.
-For data on the run's asset, get the dataset with {py:meth}`~nominal.core.Asset.get_dataset` instead, as in [Runs](/guides/runs.md#create-a-run-from-datasets).
+For data on the run's {term}`asset`, get the dataset with {py:meth}`~nominal.core.Asset.get_dataset` instead, as in [Runs](/guides/runs.md#create-a-run-from-datasets).
 
 Some behavior to check before you rely on an export:
 
@@ -85,6 +85,6 @@ for file in dataset.search_files(start=run.start, end=run.end):
 ```
 
 Downloads include samples outside the interval.
-For the inputs an [extractor](/guides/extractors/overview.md) processed, use {py:meth}`~nominal.core.DatasetFile.download_original_files`.
+For the inputs an {term}`extractor <file extractor>` processed, use {py:meth}`~nominal.core.DatasetFile.download_original_files`.
 
 To query data with SQL, see the [SQL interface](https://docs.nominal.io/developers/sql/overview).

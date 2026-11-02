@@ -7,7 +7,7 @@ myst:
 # Avro streams
 
 {.lead}
-An Avro stream file holds records shaped like [streamed data](/guides/streaming/overview.md): each record names one channel, with its own timestamps, values and tags.
+An Avro stream file holds records shaped like [streamed data](/guides/streaming/overview.md): each record names one {term}`channel`, with its own timestamps, values and {term}`tags <tag>`.
 Upload one with {py:meth}`~nominal.core.Dataset.add_avro_stream`.
 
 ```{include} /guides/_snippets/connect-the-client.md
@@ -30,7 +30,7 @@ Because the records match the streaming format, a program that streams can also 
 ## Write a file
 
 `nominal_streaming`, installed with `nominal` on [supported platforms](/guides/install.md#extras), writes Avro streams with the same `enqueue` calls used to stream.
-Writing to a file needs no API key:
+Writing to a file needs no {term}`API key`:
 
 ```python
 from datetime import datetime, timezone
@@ -69,7 +69,7 @@ file.poll_until_ingestion_completed()
 It takes numeric types only: another epoch unit, or {py:class}`ts.Relative <nominal.ts.Relative>`.
 `tags` fill in keys that a record doesn't set. Tags in the records take precedence.
 
-{py:class}`~nominal.core.Asset` and {py:class}`~nominal.core.Run` also have `add_avro_stream`, which uploads to a dataset by data scope name or ref name.
+{py:class}`~nominal.core.Asset` and {py:class}`~nominal.core.Run` also have `add_avro_stream`, which uploads to a {term}`dataset` by {term}`data scope` name or {term}`ref name`.
 To include an Avro stream in a batch, see [Ingest jobs](/guides/ingest/ingestion-jobs.md).
 
 ## Value types
