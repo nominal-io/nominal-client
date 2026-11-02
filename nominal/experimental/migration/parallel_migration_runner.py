@@ -254,6 +254,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
             # would serialize the full O(state size) tree once per task — quadratic when
             # many small template/checklist tasks settle in a burst.
             run_concurrent(executor, tasks, on_task_complete=debounced_save)
+            runner.migrate_deferred_workbooks(ctx)
         executor.shutdown(wait=True)
     except BaseException:
         # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight
