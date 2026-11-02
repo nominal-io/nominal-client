@@ -297,8 +297,9 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
     ) -> bool:
         """Copy one deferred workbook, returning whether it succeeded.
 
-        A failure is recorded as a skip so the remaining workbooks still copy. The caller keeps the
-        pending entry, so a rerun retries the workbook.
+        This runs after the task executor, so transient failures are retried here instead of
+        propagating. A remaining failure is recorded as a skip so the other workbooks still copy.
+        The caller keeps the pending entry, so a rerun retries the workbook.
         """
 
         def copy() -> None:

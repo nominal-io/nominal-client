@@ -540,6 +540,22 @@ class TestMigrateDeferredWorkbooks:
 
     @patch.object(WorkbookMigrator, "copy_from")
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_successful_copy_clears_earlier_copy_failure(
+        self, _mock_from_conjure: MagicMock, _mock_copy_from: MagicMock
+    ) -> None:
+        """A workbook that failed on an earlier run drops out of the skip summary once it copies."""
+        wb_run = _wb_rid(1)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        ctx.migration_state.set_skip(ResourceType.WORKBOOK, wb_run, "copy failed: earlier run")
+
+        WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): MagicMock()})
+
+        assert not ctx.migration_state.workbook_was_skipped(wb_run)
+        assert ctx.migration_state.pending_multi_run_workbooks == {}
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_transient_read_failure_is_retried(
         self, mock_from_conjure: MagicMock, mock_copy_from: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
