@@ -77,6 +77,10 @@ check-format-notebooks:
 fix-format-notebooks:
     uv run --group docs jupytext --from myst --pipe-fmt ipynb --pipe "ruff format --line-length 85 --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
 
+# open the docs notebooks in JupyterLab; open one with Open With → Jupytext Notebook
+notebook *args:
+    uv run --all-packages --all-extras --group docs --with jupyterlab jupyter lab docs/src/examples "$@"
+
 # run all tests and checks, except e2e tests
 verify: install test check
 
