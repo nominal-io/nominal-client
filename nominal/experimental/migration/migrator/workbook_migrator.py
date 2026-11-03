@@ -276,6 +276,12 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                     logger.warning("Skipping multi-run workbook %s: %s", workbook_rid, reason)
                     self.ctx.migration_state.record_workbook_skip_and_clear_pending(workbook_rid, reason)
                     continue
+                out_of_scope_runs = sorted(set(source_run_rids) - archived_run_rids - run_rid_map.keys())
+                if out_of_scope_runs:
+                    reason = f"runs not in migration scope: {out_of_scope_runs}"
+                    logger.warning("Skipping multi-run workbook %s: %s", workbook_rid, reason)
+                    self.ctx.migration_state.record_workbook_skip_and_clear_pending(workbook_rid, reason)
+                    continue
                 source_clients = next(iter(source_clients_by_asset_rid.values()), None)
                 if source_clients is None:
                     logger.warning("No source assets available to fetch multi-run workbook %s — skipping", workbook_rid)

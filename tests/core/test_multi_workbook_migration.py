@@ -14,7 +14,7 @@ import requests
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_runner import MigrationRunner
-from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.migration_state import MigrationState, SkippedResource
 from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
@@ -424,11 +424,13 @@ class TestMigrateDeferredWorkbooks:
         asset_rid_1 = _asset_rid(1)
         wb_asset = _wb_rid(1)
         wb_run = _wb_rid(2)
-        run_rids = [_run_rid(1), _run_rid(2)]
+        run_rid_map = {_run_rid(1): _run_rid(101), _run_rid(2): _run_rid(102)}
 
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_asset_workbook(wb_asset, [asset_rid_1])
-        ctx.migration_state.record_pending_multi_run_workbook(wb_run, run_rids)
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, list(run_rid_map))
+        for old_rid, new_rid in run_rid_map.items():
+            ctx.migration_state.record_mapping(ResourceType.RUN, old_rid, new_rid)
 
         source_clients = MagicMock()
         source_clients.auth_header = "Bearer src"
@@ -453,7 +455,9 @@ class TestMigrateDeferredWorkbooks:
         mock_copy_from.assert_any_call(source_wb_asset, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}))
         mock_copy_from.assert_any_call(
             source_wb_run,
-            WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping={}),
+            WorkbookCopyOptions(
+                source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping=run_rid_map
+            ),
         )
 
     @patch.object(WorkbookMigrator, "copy_from")
@@ -521,6 +525,25 @@ class TestMigrateDeferredWorkbooks:
         assert ctx.migration_state.workbook_was_skipped(wb_run)
         assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
 
+    def test_multi_run_workbook_with_run_outside_slice_is_skipped(self) -> None:
+        """A pending multi-run workbook referencing an unmapped, unarchived run is skipped as out of scope."""
+        wb_run = _wb_rid(1)
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [old_r1, old_r2])
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, _run_rid(101))
+        source_clients = MagicMock()
+
+        WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        source_clients.notebook.get.assert_not_called()
+        assert ctx.migration_state.skipped_resources == [
+            SkippedResource(ResourceType.WORKBOOK.value, wb_run, f"runs not in migration scope: {[old_r2]}")
+        ]
+        assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
+
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_failed_workbook_is_skipped_and_later_workbooks_still_copy(self, _mock_from_conjure: MagicMock) -> None:
         """A permanent copy failure records a skip and keeps that workbook pending without blocking the next one."""
@@ -528,10 +551,12 @@ class TestMigrateDeferredWorkbooks:
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_bad, [_run_rid(1), _run_rid(2)])
         ctx.migration_state.record_pending_multi_run_workbook(wb_good, [_run_rid(3), _run_rid(4)])
+        for n in range(1, 5):
+            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         source_clients = MagicMock()
 
         migrator = WorkbookMigrator(ctx)
-        with patch.object(WorkbookMigrator, "copy_from", side_effect=[ValueError("Run RIDs not provided"), None]):
+        with patch.object(WorkbookMigrator, "copy_from", side_effect=[RuntimeError("copy failed"), None]):
             migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
 
         assert list(ctx.migration_state.pending_multi_run_workbooks) == [wb_bad]
@@ -547,6 +572,8 @@ class TestMigrateDeferredWorkbooks:
         wb_run = _wb_rid(1)
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        for n in (1, 2):
+            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         ctx.migration_state.set_skip(ResourceType.WORKBOOK, wb_run, "copy failed: earlier run")
 
         WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): MagicMock()})
@@ -564,6 +591,8 @@ class TestMigrateDeferredWorkbooks:
         wb_run = _wb_rid(1)
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        for n in (1, 2):
+            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         source_clients = MagicMock()
         source_clients.notebook.get.side_effect = [requests.exceptions.ConnectionError("reset"), _stub_raw_notebook()]
 
@@ -620,6 +649,8 @@ def test_runner_migrates_deferred_workbooks(
     def queue_deferred_workbooks(self: AssetMigrator, source: Any, options: Any) -> None:
         self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(wb_asset, [asset_rid])
         self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(wb_run, [_run_rid(1), _run_rid(2)])
+        for n in (1, 2):
+            self.ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
 
     state_path = tmp_path / "state.json"
     runner = MigrationRunner(
