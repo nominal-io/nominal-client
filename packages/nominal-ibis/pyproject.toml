@@ -1,6 +1,6 @@
 [project]
 name = "nominal-ibis"
-version = "0.1.1"
+version = "0.1.2"
 description = "Ibis backend for the Nominal SQL API"
 authors = [
     { name = "Sahil Gupta", email = "sahil.gupta@nominal.io" },
