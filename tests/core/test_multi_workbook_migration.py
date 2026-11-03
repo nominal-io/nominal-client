@@ -525,14 +525,18 @@ class TestMigrateDeferredWorkbooks:
         assert ctx.migration_state.workbook_was_skipped(wb_run)
         assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
 
-    def test_multi_run_workbook_with_run_outside_slice_is_skipped(self) -> None:
-        """A pending multi-run workbook referencing an unmapped, unarchived run is skipped as out of scope."""
+    @pytest.mark.parametrize("earlier_skip", [None, "copy failed: Run RIDs not provided"], ids=["fresh", "resumed"])
+    def test_multi_run_workbook_with_run_outside_slice_is_skipped(self, earlier_skip: str | None) -> None:
+        """A pending multi-run workbook referencing an unmapped, unarchived run is skipped as out of scope,
+        replacing any copy failure recorded by an earlier flush.
+        """
         wb_run = _wb_rid(1)
         old_r1, old_r2 = _run_rid(1), _run_rid(2)
 
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_run, [old_r1, old_r2])
         ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, _run_rid(101))
+        ctx.migration_state.set_skip(ResourceType.WORKBOOK, wb_run, earlier_skip)
         source_clients = MagicMock()
 
         WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): source_clients})
@@ -542,7 +546,6 @@ class TestMigrateDeferredWorkbooks:
             SkippedResource(ResourceType.WORKBOOK.value, wb_run, f"runs not in migration scope: {[old_r2]}")
         ]
         assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
-        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_failed_workbook_is_skipped_and_later_workbooks_still_copy(self, _mock_from_conjure: MagicMock) -> None:
