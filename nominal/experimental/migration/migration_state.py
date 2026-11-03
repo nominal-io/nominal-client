@@ -138,7 +138,7 @@ class MigrationState:
         self.pending_multi_run_workbooks.pop(workbook_rid, None)
         if not was_pending and self.workbook_was_skipped(workbook_rid):
             return False
-        # Base method: ThreadSafeMigrationState's override already holds the lock and persists once.
+        # Not self.set_skip: the thread-safe override of this method holds the lock and saves once after releasing it.
         MigrationState.set_skip(self, ResourceType.WORKBOOK, workbook_rid, reason)
         return True
 
