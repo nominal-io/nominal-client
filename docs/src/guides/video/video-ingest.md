@@ -35,7 +35,8 @@ Normalizing can change the number of frames, and logs a warning when it does.
 ```python
 from datetime import datetime, timezone
 
-dataset = client.create_dataset("Engine fire tests")
+asset = client.get_or_create_asset_by_properties({"serial": "<serial number>"}, name="Test engine")
+dataset = asset.get_or_create_dataset("engine_video")
 file = dataset.add_video(
     "engine_fire.mp4",
     channel="engine_cam",
@@ -54,12 +55,11 @@ The standalone `Video` APIs, such as `client.create_video()`, are deprecated in 
 
 ## Review it in a run
 
-Create a run over the file's time range and attach the dataset:
+Create a run on the asset over the file's time range. The run sees the asset's datasets, so you don't attach the dataset again:
 
 ```python
 assert file.bounds is not None  # set once ingestion succeeds
-run = client.create_run("Engine fire", start=file.bounds.start, end=file.bounds.end)
-run.add_dataset("engine_video", dataset)
+run = asset.create_run("Engine fire", start=file.bounds.start, end=file.bounds.end)
 ```
 
 In a workbook on the run, add a video panel and select `engine_cam`. See [Runs](/guides/runs.md) for other ways to organize data.
