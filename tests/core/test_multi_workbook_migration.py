@@ -539,10 +539,9 @@ class TestMigrateDeferredWorkbooks:
     def _source_clients_serving(wb_rid: str, run_rids: list[str], mock_from_conjure: MagicMock) -> MagicMock:
         raw_nb = _stub_raw_notebook()
         raw_nb.metadata.data_scope.run_rids = run_rids
-        raw_nb.metadata.data_scope.asset_rids = []
         source_clients = MagicMock()
         source_clients.notebook.get.return_value = raw_nb
-        source = _stub_source_workbook(wb_rid, run_rids=run_rids)
+        source = _stub_source_workbook(wb_rid)
         source._clients = source_clients
         mock_from_conjure.return_value = source
         return source_clients
