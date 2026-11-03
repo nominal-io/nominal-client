@@ -438,13 +438,11 @@ class TestMigrateDeferredWorkbooks:
         asset_rid_1 = _asset_rid(1)
         wb_asset = _wb_rid(1)
         wb_run = _wb_rid(2)
-        run_rid_map = {_run_rid(1): _run_rid(101), _run_rid(2): _run_rid(102)}
+        run_rids = [_run_rid(1), _run_rid(2)]
 
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_asset_workbook(wb_asset, [asset_rid_1])
-        ctx.migration_state.record_pending_multi_run_workbook(wb_run, list(run_rid_map))
-        for old_rid, new_rid in run_rid_map.items():
-            ctx.migration_state.record_mapping(ResourceType.RUN, old_rid, new_rid)
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, run_rids)
 
         source_clients = MagicMock()
         source_clients.auth_header = "Bearer src"
@@ -469,9 +467,7 @@ class TestMigrateDeferredWorkbooks:
         mock_copy_from.assert_any_call(source_wb_asset, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}))
         mock_copy_from.assert_any_call(
             source_wb_run,
-            WorkbookCopyOptions(
-                source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping=run_rid_map
-            ),
+            WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping={}),
         )
 
     @patch.object(WorkbookMigrator, "copy_from")
@@ -613,12 +609,10 @@ class TestMigrateDeferredWorkbooks:
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_bad, [_run_rid(1), _run_rid(2)])
         ctx.migration_state.record_pending_multi_run_workbook(wb_good, [_run_rid(3), _run_rid(4)])
-        for n in range(1, 5):
-            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         source_clients = MagicMock()
 
         migrator = WorkbookMigrator(ctx)
-        with patch.object(WorkbookMigrator, "copy_from", side_effect=[RuntimeError("copy failed"), None]):
+        with patch.object(WorkbookMigrator, "copy_from", side_effect=[ValueError("Run RIDs not provided"), None]):
             migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
 
         assert list(ctx.migration_state.pending_multi_run_workbooks) == [wb_bad]
@@ -634,8 +628,6 @@ class TestMigrateDeferredWorkbooks:
         wb_run = _wb_rid(1)
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
-        for n in (1, 2):
-            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         ctx.migration_state.set_skip(ResourceType.WORKBOOK, wb_run, "copy failed: earlier run")
 
         WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): MagicMock()})
@@ -653,8 +645,6 @@ class TestMigrateDeferredWorkbooks:
         wb_run = _wb_rid(1)
         ctx = _make_context()
         ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
-        for n in (1, 2):
-            ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
         source_clients = MagicMock()
         source_clients.notebook.get.side_effect = [requests.exceptions.ConnectionError("reset"), _stub_raw_notebook()]
 
@@ -711,8 +701,6 @@ def test_runner_migrates_deferred_workbooks(
     def queue_deferred_workbooks(self: AssetMigrator, source: Any, options: Any) -> None:
         self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(wb_asset, [asset_rid])
         self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(wb_run, [_run_rid(1), _run_rid(2)])
-        for n in (1, 2):
-            self.ctx.migration_state.record_mapping(ResourceType.RUN, _run_rid(n), _run_rid(100 + n))
 
     state_path = tmp_path / "state.json"
     runner = MigrationRunner(
