@@ -128,9 +128,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Description", _display.escape(self.description) if self.description else None),
                 *bounds_fields,
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[
                 _display.properties_section(self.properties),

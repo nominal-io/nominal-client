@@ -72,11 +72,6 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         def video(self) -> scout_video.VideoService: ...
 
     def _repr_html_(self) -> str | None:
-        bounds_fields = (
-            [("Start", _display.timestamp(self.bounds.start)), ("End", _display.timestamp(self.bounds.end))]
-            if self.bounds is not None
-            else []
-        )
         return _display.render(
             kind="Dataset file",
             title=self.name,
@@ -88,11 +83,12 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
                     _display.identifier(self.dataset_rid, partial(dataset_url, self._clients, self.dataset_rid)),
                 ),
                 ("Status", _display.escape(self.ingest_status.value.lower().replace("_", " "))),
-                *([("Error", _display.escape(self._ingest_error_message))] if self._ingest_error_message else []),
+                ("Error", _display.escape(self._ingest_error_message) if self._ingest_error_message else None),
                 ("Uploaded", _display.timestamp(self.uploaded_at)),
-                *([("Ingested", _display.timestamp(self.ingested_at))] if self.ingested_at is not None else []),
-                *bounds_fields,
-                *([("Timestamp column", _display.code(self.timestamp_channel))] if self.timestamp_channel else []),
+                ("Ingested", _display.timestamp(self.ingested_at) if self.ingested_at is not None else None),
+                ("Start", _display.timestamp(self.bounds.start) if self.bounds is not None else None),
+                ("End", _display.timestamp(self.bounds.end) if self.bounds is not None else None),
+                ("Timestamp column", _display.code(self.timestamp_channel) if self.timestamp_channel else None),
             ],
             sections=[
                 _display.properties_section(self.file_tags or {}, "File tags"),

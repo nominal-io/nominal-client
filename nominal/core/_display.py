@@ -217,7 +217,9 @@ def duration(value: IntegralNanosecondsDuration) -> str:
     days, hours = divmod(hours, 24)
     parts = [f"{amount} {unit}" for amount, unit in ((days, "d"), (hours, "h"), (minutes, "min")) if amount]
     if nanos or not parts:
-        parts.append(f"{nanos / 1e9:.9g} s")
+        # Integer arithmetic, so a fraction such as 59.999999999 s doesn't round up to a whole minute.
+        seconds, fraction = divmod(nanos, 1_000_000_000)
+        parts.append(f"{seconds}{f'.{fraction:09d}'.rstrip('0') if fraction else ''} s")
     return escape(sign + " ".join(parts))
 
 
@@ -227,19 +229,33 @@ def number(value: float, unit: str | None = None) -> str:
 
 def link(url: str, text: str) -> str:
     """An external link, or plain text when the URL isn't http(s), so a stored value can't run script."""
-    if not url.startswith(("https://", "http://")):
+    if not _is_web_url(url):
         return escape(text)
     return f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer">{escape(text)}</a>'
 
 
 def resource_link(text: str, url: Callable[[], str]) -> str:
     """Link text to a resource's page in the Nominal app, when links are on and the workspace resolves."""
-    if _options.show_link:
-        try:
-            return link(url(), text)
-        except NominalError:
-            pass
-    return escape(text)
+    resolved = _resolved_url(url)
+    return escape(text) if resolved is None else link(resolved, text)
+
+
+def _is_web_url(url: str) -> bool:
+    return url.startswith(("https://", "http://"))
+
+
+def _resolved_url(url: Callable[[], str]) -> str | None:
+    """A resource's page in the Nominal app, or `None` when links are off or the page can't be linked.
+
+    Resolving the workspace can make a request, so the text style, which builds no card, never resolves one.
+    """
+    if _options.style == "text" or not _options.show_link:
+        return None
+    try:
+        resolved = url()
+    except NominalError:
+        return None
+    return resolved if _is_web_url(resolved) else None
 
 
 def copy_button(value: str) -> str:
@@ -282,11 +298,11 @@ def first(items: Iterable[T]) -> tuple[list[T], bool]:
 
 
 def fetched(title: str, load: Callable[[], Section]) -> Section | None:
-    """A section loaded from Nominal, or `None` when loading is off.
+    """A section loaded from Nominal, or `None` when loading is off or the text style builds no card.
 
     A failure becomes a note in the section, so the rest of the card still displays.
     """
-    if not _options.fetch_details:
+    if _options.style == "text" or not _options.fetch_details:
         return None
     try:
         return load()
@@ -330,7 +346,7 @@ def render(
     kind: str,
     title: str,
     fallback: str,
-    fields: Sequence[tuple[str, str]],
+    fields: Sequence[tuple[str, str | None]],
     sections: Sequence[Section | None] = (),
     archived: bool = False,
     url: Callable[[], str] | None = None,
@@ -341,7 +357,8 @@ def render(
         kind: The resource type, such as ``"Run"``.
         title: The resource's display name, unescaped.
         fallback: Plain text shown where the notebook strips styles, such as on GitHub.
-        fields: Label and value HTML for the card's table. Values must already be escaped.
+        fields: Label and value HTML for the card's table. Values must already be escaped. Fields whose value is
+            `None` are left out.
         sections: Collapsible parts after the table. Empty sections and `None` are left out.
         archived: Whether to mark the resource as archived.
         url: Returns the resource's page in the Nominal app.
@@ -352,12 +369,10 @@ def render(
     header = [f'<span class="nominal-repr-kind">{escape(kind)}</span>', f"<strong>{escape(title)}</strong>"]
     if archived:
         header.append('<span class="nominal-repr-archived">archived</span>')
-    if url is not None:
-        page = resource_link("Open in Nominal ↗", url)
-        if page.startswith("<a "):
-            header.append(f'<span class="nominal-repr-link">{page}</span>')
+    if url is not None and (page := _resolved_url(url)) is not None:
+        header.append(f'<span class="nominal-repr-link">{link(page, "Open in Nominal ↗")}</span>')
 
-    rows = "".join(f"<tr><th>{escape(label)}</th><td>{value}</td></tr>" for label, value in fields)
+    rows = "".join(f"<tr><th>{escape(label)}</th><td>{value}</td></tr>" for label, value in fields if value is not None)
     body = [f'<div class="nominal-repr-header">{" ".join(header)}</div>', f"<table>{rows}</table>"]
     body.extend(
         _render_section(section)

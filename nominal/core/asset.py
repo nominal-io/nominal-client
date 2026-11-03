@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from typing_extensions import deprecated
@@ -23,11 +24,11 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.frontend_urls import asset_url
+from nominal.core._utils.frontend_urls import asset_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated, search_runs_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
-from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_runs_query
 from nominal.core.attachment import Attachment, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
@@ -94,18 +95,36 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Description", _display.escape(self.description) if self.description else None),
                 ("Created", _display.timestamp(self.created_at)),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[
                 _display.properties_section(self.properties),
                 _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
-                _display.fetched("Runs", lambda: _runs_section(self.list_runs())),
+                _display.fetched("Runs", self._runs_section),
             ],
             archived=self.is_archived,
             url=lambda: self.nominal_url,
         )
+
+    def _runs_section(self) -> _display.Section:
+        # The search returns active runs newest first, so the card loads only the runs it lists.
+        protos, has_more = _display.first(
+            search_runs_paginated(self._clients.run, create_search_runs_query(asset_rid=self.rid))
+        )
+        rows = []
+        for proto in protos:
+            run = Run._from_proto(self._clients, proto)
+            rows.append(
+                [
+                    _display.escape(f"#{run.run_number}"),
+                    _display.named(run.name, run.rid, partial(run_url, self._clients, run.rid)),
+                    _display.timestamp(run.start),
+                    _display.duration(run.end - run.start) if run.end is not None else "ongoing",
+                ]
+            )
+        return _display.Section("Runs", rows, columns=("Run", "Name", "Start", "Duration"), has_more=has_more)
 
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
@@ -851,4 +870,4 @@ def _resolve_scopes(clients: Asset._Clients, scopes: DataScopes) -> Mapping[str,
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.run import Run, _create_run, _runs_section  # noqa: E402
+from nominal.core.run import Run, _create_run  # noqa: E402

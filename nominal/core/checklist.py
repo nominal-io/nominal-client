@@ -77,9 +77,9 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
-                *([("Commit", _display.identifier(self.commit_id))] if self.commit_id else []),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Commit", _display.identifier(self.commit_id) if self.commit_id else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[_display.properties_section(self.properties)],
             url=lambda: self.nominal_url,

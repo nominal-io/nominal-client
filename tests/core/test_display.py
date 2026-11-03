@@ -17,10 +17,11 @@ from nominal.core import (
     get_display_options,
     set_display_options,
 )
-from nominal.core.run import _runs_section
 from nominal.exceptions import NominalConfigError
+from nominal.protos.run.v1 import run_service_pb2
 
 START = 1_767_225_600_000_000_000  # 2026-01-01T00:00:00Z
+SECOND = api.Timestamp(seconds=START // 1_000_000_000, nanos=0)
 
 
 def _offline_clients() -> NonCallableMock:
@@ -125,25 +126,43 @@ def test_failed_section_becomes_a_note():
     assert section is not None and section.note == "Couldn't load: RuntimeError service unavailable"
 
 
-def test_runs_section_leaves_out_archived_runs():
-    """Archived runs are counted but not listed."""
-    clients = _offline_clients()
-    runs = [_run(clients, rid="ri.scout.run.1"), _run(clients, rid="ri.scout.run.2", is_archived=True)]
-    with set_display_options(show_link=False):
-        section = _runs_section(runs)
-    assert len(section.rows) == 1 and section.note == "1 archived run not shown."
+def test_asset_runs_stop_loading_past_max_items():
+    """An asset card asks for runs newest first and loads only the pages it lists."""
+    clients = _linked_clients()
+    page = [run_service_pb2.Run(rid=f"ri.scout.run.{i}", title=f"Run {i}", run_number=i) for i in range(3)]
+    clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse(results=page, next_page_token="more")
+    asset = Asset(
+        rid="ri.scout.asset.1",
+        name="Helicopter",
+        description=None,
+        properties={},
+        labels=[],
+        created_at=START,
+        is_archived=False,
+        _clients=clients,
+    )
+    with set_display_options(show_link=False, max_items=4):
+        section = asset._runs_section()
+    assert clients.run.SearchRuns.call_count == 2
+    assert [row[0] for row in section.rows] == ["#0", "#1", "#2", "#0"] and section.has_more
+
+
+def _channel_with_response(response: scout_compute_api.ComputeNodeResponse) -> Channel:
+    clients = MagicMock()
+    clients.catalog.get_enriched_datasets.return_value = [
+        MagicMock(bounds=scout_catalog.Bounds(start=SECOND, end=SECOND, type=datasource.TimestampType.ABSOLUTE))
+    ]
+    clients.compute.compute.return_value = response
+    return Channel("rotor_speed", "ri.catalog.dataset.1", ChannelDataType.DOUBLE, "rad/s", None, clients)
 
 
 def test_channel_statistics_combine_buckets():
     """A numeric channel's card combines its buckets into whole-channel statistics and a chart."""
-    clients = MagicMock()
-    second = api.Timestamp(seconds=START // 1_000_000_000, nanos=0)
-    clients.catalog.get_enriched_datasets.return_value = [
-        MagicMock(bounds=scout_catalog.Bounds(start=second, end=second, type=datasource.TimestampType.ABSOLUTE))
-    ]
-    clients.compute.compute.return_value = scout_compute_api.ComputeNodeResponse(
+    later = api.Timestamp(seconds=START // 1_000_000_000 + 2, nanos=0)
+    response = scout_compute_api.ComputeNodeResponse(
         bucketed_numeric=scout_compute_api.BucketedNumericPlot(
-            timestamps=[second, second, second],
+            # Buckets without first and last points fall back to their own timestamps.
+            timestamps=[SECOND, SECOND, later],
             buckets=[
                 scout_compute_api.NumericBucket(aggregations={}, count=3, min=1.0, max=4.0, mean=2.0),
                 scout_compute_api.NumericBucket(aggregations={}, count=0),
@@ -151,10 +170,20 @@ def test_channel_statistics_combine_buckets():
             ],
         )
     )
-    channel = Channel("rotor_speed", "ri.catalog.dataset.1", ChannelDataType.DOUBLE, "rad/s", None, clients)
-    section = channel._data_section()
-    assert section.rows == [["Samples", "4"], ["Min", "1 rad/s"], ["Max", "6 rad/s"], ["Mean", "3 rad/s"]]
+    section = _channel_with_response(response)._data_section()
+    assert section.rows[:4] == [["Samples", "4"], ["Min", "1 rad/s"], ["Max", "6 rad/s"], ["Mean", "3 rad/s"]]
+    assert [row[0] for row in section.rows[4:]] == ["First", "Last"]
+    assert "2026-01-01T00:00:00Z" in section.rows[4][1] and "2026-01-01T00:00:02Z" in section.rows[5][1]
     assert section.body.startswith("<svg")
+
+
+def test_channel_statistics_of_a_single_point():
+    """A channel with one sample comes back as a single point, which is its own statistics."""
+    response = scout_compute_api.ComputeNodeResponse(
+        numeric_point=scout_compute_api.NumericPoint(timestamp=SECOND, value=2.5)
+    )
+    section = _channel_with_response(response)._data_section()
+    assert section.rows[:4] == [["Samples", "1"], ["Min", "2.5 rad/s"], ["Max", "2.5 rad/s"], ["Mean", "2.5 rad/s"]]
 
 
 def test_user_values_are_escaped():
@@ -215,18 +244,30 @@ def test_timestamp_uses_configured_timezone_and_format():
 
 @pytest.mark.parametrize(
     ("nanoseconds", "expected"),
-    [(0, "0 s"), (1_500_000_000, "1.5 s"), (3_723_000_000_000, "1 h 2 min 3 s"), (86_400_000_000_000, "1 d")],
+    [
+        (0, "0 s"),
+        (1_500_000_000, "1.5 s"),
+        (1_000_000_001, "1.000000001 s"),
+        (59_999_999_999, "59.999999999 s"),
+        (3_723_000_000_000, "1 h 2 min 3 s"),
+        (86_400_000_000_000, "1 d"),
+    ],
 )
 def test_duration(nanoseconds, expected):
-    """Durations read in days, hours, minutes and seconds."""
+    """Durations read in days, hours, minutes and seconds, with exact fractions of a second."""
     assert _display.duration(nanoseconds) == expected
 
 
-def test_text_style_falls_back_to_repr():
-    """The text style returns None, so the notebook shows the plain repr, until the block ends."""
-    dataset = _dataset(_offline_clients())
+def test_text_style_falls_back_to_repr_without_requests():
+    """The text style returns None, so the notebook shows the plain repr, until the block ends.
+
+    With links and loading on, it still makes no requests, since no card is built.
+    """
+    clients = _offline_clients()
+    channel = Channel("rotor_speed", "ri.catalog.dataset.1", ChannelDataType.DOUBLE, "rad/s", None, clients)
     with set_display_options(style="text"):
-        assert dataset._repr_html_() is None
+        for resource in (_dataset(clients), _run(clients), channel):
+            assert resource._repr_html_() is None
     assert get_display_options().style == "html"
 
 

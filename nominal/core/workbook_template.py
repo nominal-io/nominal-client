@@ -106,8 +106,8 @@ class WorkbookTemplate(
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[_display.properties_section(self.properties)],
             url=lambda: self.nominal_url,

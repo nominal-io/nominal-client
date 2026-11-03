@@ -89,10 +89,11 @@ class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
             fields=[
                 ("RID", _display.identifier(self.rid)),
                 ("Run", _display.identifier(self.run_rid, partial(run_url, self._clients, self.run_rid))),
-                *(
-                    [("Asset", _display.identifier(self.asset_rid, partial(asset_url, self._clients, self.asset_rid)))]
+                (
+                    "Asset",
+                    _display.identifier(self.asset_rid, partial(asset_url, self._clients, self.asset_rid))
                     if self.asset_rid
-                    else []
+                    else None,
                 ),
                 (
                     "Checklist",

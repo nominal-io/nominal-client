@@ -182,8 +182,8 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
                     ),
                 ),
                 ("Type", _display.escape(self.data_type.value.lower() if self.data_type else "unknown")),
-                *([("Unit", _display.escape(self.unit))] if self.unit else []),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Unit", _display.escape(self.unit) if self.unit else None),
+                ("Description", _display.escape(self.description) if self.description else None),
             ],
             sections=[_display.fetched("Data", self._data_section) if is_numeric else None],
         )
@@ -202,15 +202,22 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         buckets: list[tuple[int, float, float, float] | None] = []
         times: list[api.Timestamp] = []
         if response.bucketed_numeric is not None:
-            for bucket in response.bucketed_numeric.buckets:
+            for time, bucket in zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets):
                 if bucket.count and bucket.min is not None and bucket.max is not None and bucket.mean is not None:
                     buckets.append((bucket.count, bucket.min, bucket.max, bucket.mean))
-                    times.extend(point.timestamp for point in (bucket.first_point, bucket.last_point) if point)
+                    # A bucket's first and last points give exact bounds; without them, its timestamp is the best
+                    # available.
+                    points = [point.timestamp for point in (bucket.first_point, bucket.last_point) if point]
+                    times.extend(points or [time])
                 else:
                     buckets.append(None)
         elif response.numeric is not None:
             buckets = [(1, value, value, value) for value in response.numeric.values]
             times = list(response.numeric.timestamps)
+        elif response.numeric_point is not None:
+            point = response.numeric_point
+            buckets = [(1, point.value, point.value, point.value)]
+            times = [point.timestamp]
         filled = [bucket for bucket in buckets if bucket is not None]
         if not filled:
             return _display.Section("Data", note="No values in the dataset's time span.")

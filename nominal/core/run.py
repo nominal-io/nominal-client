@@ -104,10 +104,10 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Description", _display.escape(self.description) if self.description else None),
                 *time_fields,
                 ("Created", _display.timestamp(self.created_at)),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[
                 _display.properties_section(self.properties),
@@ -721,23 +721,3 @@ def _get_run(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_serv
     """
     with translate_grpc_errors():
         return service.GetRun(run_service_pb2.GetRunRequest(rid=rid)).run
-
-
-def _runs_section(runs: Sequence[Run]) -> _display.Section:
-    """A card section listing active runs, newest first."""
-    archived = sum(run.is_archived for run in runs)
-    return _display.Section(
-        "Runs",
-        [
-            [
-                _display.escape(f"#{run.run_number}"),
-                _display.named(run.name, run.rid, partial(run_url, run._clients, run.rid)),
-                _display.timestamp(run.start),
-                _display.duration(run.end - run.start) if run.end is not None else "ongoing",
-            ]
-            for run in sorted(runs, key=lambda run: run.start, reverse=True)
-            if not run.is_archived
-        ],
-        columns=("Run", "Name", "Start", "Duration"),
-        note=f"{archived} archived {'run' if archived == 1 else 'runs'} not shown." if archived else "",
-    )

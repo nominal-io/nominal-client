@@ -30,7 +30,9 @@ rotor of a helicopter to measure its angular velocity.
 :tags: [remove-cell]
 
 # Start each execution with the rig registered, no runs or events, and two ingested datasets.
-# The client cannot delete, so old resources are archived. The page does not show this cell.
+# The client cannot delete, so old resources are archived. The `example` property matches only the
+# rig this example created, so the cleanup never touches another RTR-02 asset or its data.
+# The page does not show this cell.
 import tempfile
 from pathlib import Path
 
@@ -41,7 +43,7 @@ from nominal.core import EventType, NominalClient
 
 client = NominalClient.from_profile("default")
 rig = client.get_or_create_asset_by_properties(
-    {"rig_id": "RTR-02"},
+    {"rig_id": "RTR-02", "example": "notebook_display"},
     name="Rotor test rig RTR-02",
     description="Tail rotor gearbox test stand",
     labels=["test-stand"],
@@ -130,7 +132,9 @@ A {py:class}`~nominal.core.NominalClient` provides the link to the Nominal Platf
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
-rig = client.search_assets(properties={"rig_id": "RTR-02"})[0]
+rig = client.search_assets(
+    properties={"rig_id": "RTR-02", "example": "notebook_display"}
+)[0]
 ```
 
 ## An asset

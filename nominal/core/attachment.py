@@ -51,9 +51,9 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
             fallback=repr(self),
             fields=[
                 ("RID", _display.identifier(self.rid)),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Description", _display.escape(self.description) if self.description else None),
                 ("Created", _display.timestamp(self.created_at)),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[_display.properties_section(self.properties)],
             archived=self.is_archived,

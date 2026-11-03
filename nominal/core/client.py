@@ -311,7 +311,7 @@ class NominalClient:
             title=self._profile or "",
             fallback=repr(self),
             fields=[
-                *([("Profile", _display.escape(self._profile))] if self._profile else []),
+                ("Profile", _display.escape(self._profile) if self._profile else None),
                 ("App", _display.link(app, app)),
                 ("API", _display.code(self._clients.api_base_url)),
                 ("Workspace", workspace_html),

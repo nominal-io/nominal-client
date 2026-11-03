@@ -86,12 +86,12 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
             fields=[
                 ("RID", _display.identifier(self.rid)),
                 ("Type", _display.escape(self.type.value.lower())),
-                *([("Priority", _display.escape(priority.name))] if priority is not None else []),
-                *([("Description", _display.escape(self.description))] if self.description else []),
+                ("Priority", _display.escape(priority.name) if priority is not None else None),
+                ("Description", _display.escape(self.description) if self.description else None),
                 ("Start", _display.timestamp(self.start)),
                 ("End", _display.timestamp(self.start + self.duration)),
                 ("Duration", _display.duration(self.duration)),
-                *([("Labels", _display.labels(self.labels))] if self.labels else []),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             sections=[
                 _display.properties_section(self.properties),
