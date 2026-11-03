@@ -126,13 +126,20 @@ class MigrationState:
         return changed
 
     def record_workbook_skip_and_clear_pending(self, workbook_rid: str, reason: str) -> bool:
-        """Record a workbook skip as a terminal state and clear any stale pending entries."""
-        changed = workbook_rid in self.pending_multi_asset_workbooks or workbook_rid in self.pending_multi_run_workbooks
+        """Record a workbook skip as a terminal state and clear any stale pending entries.
+
+        A still-pending workbook's earlier skip was retryable (a copy failure or a wait for runs),
+        so this reason replaces it; an earlier terminal skip is kept.
+        """
+        was_pending = (
+            workbook_rid in self.pending_multi_asset_workbooks or workbook_rid in self.pending_multi_run_workbooks
+        )
         self.pending_multi_asset_workbooks.pop(workbook_rid, None)
         self.pending_multi_run_workbooks.pop(workbook_rid, None)
-        if self.workbook_was_skipped(workbook_rid):
-            return changed
-        self.skipped_resources.append(SkippedResource(ResourceType.WORKBOOK.value, workbook_rid, reason))
+        if not was_pending and self.workbook_was_skipped(workbook_rid):
+            return False
+        # Base method: ThreadSafeMigrationState's override already holds the lock and persists once.
+        MigrationState.set_skip(self, ResourceType.WORKBOOK, workbook_rid, reason)
         return True
 
     def workbook_was_skipped(self, workbook_rid: str) -> bool:

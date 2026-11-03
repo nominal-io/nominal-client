@@ -139,6 +139,20 @@ class TestMigrationStatePendingAndSkips:
         assert len(state.skipped_resources) == 1
         assert state.skipped_resources[0].reason == "assets not in migration scope"
 
+    def test_workbook_skip_replaces_retryable_reason_of_pending_workbook(self) -> None:
+        """A terminal skip of a still-pending workbook replaces its waiting reason instead of keeping it."""
+        state = MigrationState()
+        wb = _wb_rid(1)
+        state.record_pending_multi_run_workbook(wb, [_run_rid(1), _run_rid(2)])
+        state.set_skip(ResourceType.WORKBOOK, wb, "waiting for runs not yet migrated")
+
+        assert state.record_workbook_skip_and_clear_pending(wb, "assets not in migration scope") is True
+
+        assert state.skipped_resources == [
+            SkippedResource(ResourceType.WORKBOOK.value, wb, "assets not in migration scope")
+        ]
+        assert wb not in state.pending_multi_run_workbooks
+
 
 # ---------------------------------------------------------------------------
 # WorkbookMigrator._copy_from_impl (via copy_from)
