@@ -37,3 +37,6 @@ guides/events/overview.md guides/events.md
 # Example scripts that became notebooks or guide downloads.
 examples/deploy_checklist.py.md guides/checklists/authoring.md
 examples/fsae_asset_upload.py.md guides/longstart.md
+
+# The TLS and plaintext connection options are documented on NominalClient.
+networking-tls.md sdk/generated/nominal.core.NominalClient.rst

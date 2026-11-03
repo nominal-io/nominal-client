@@ -41,7 +41,8 @@ Use the same data scope name for the same kind of data on every asset, so workbo
 
 ```python
 dataset = asset.get_or_create_dataset("telemetry", name="Quadcopter 456 telemetry")
-dataset.add_tabular_data("flight.csv", timestamp_column="time", timestamp_type="iso_8601")
+file = dataset.add_tabular_data("flight.csv", timestamp_column="time", timestamp_type="iso_8601")
+file.poll_until_ingestion_completed()  # raises NominalIngestError if the ingest fails
 ```
 
 Running the upload again adds another file to the same dataset.

@@ -1,7 +1,8 @@
-"""The ``example-gallery`` directive: a card grid and hidden toctree for the notebooks beside the page.
+"""The ``example-gallery`` directive: a card grid for the notebooks beside the page.
 
 A notebook is a MyST Markdown file with ``kernelspec`` in its front matter. Its card shows the
-first ``#`` heading as the title and the optional front-matter ``icon`` as an octicon.
+first ``#`` heading as the title and the optional front-matter ``icon`` as an octicon. The
+notebooks are listed in the sidebar by the root page's toctree, not here.
 """
 
 from pathlib import Path
@@ -20,12 +21,6 @@ GALLERY = """\
 
 {cards}
 ::::
-
-```{{toctree}}
-:hidden:
-
-{toc}
-```
 """
 
 CARD = """\
@@ -52,7 +47,7 @@ def _notebook_card(path: Path) -> tuple[str, str] | None:
 class ExampleGallery(SphinxDirective):
     def run(self) -> list[nodes.Node]:
         folder = Path(self.env.doc2path(self.env.docname)).parent
-        cards, toc = [], []
+        cards = []
         for path in sorted(folder.glob("*.md")):
             card = _notebook_card(path)
             if card is None:
@@ -61,10 +56,9 @@ class ExampleGallery(SphinxDirective):
             title, icon = card
             label = f"{{octicon}}`{icon}` {title}" if icon else title
             cards.append(CARD.format(label=label, name=path.stem))
-            toc.append(path.stem)
         self.env.example_galleries = getattr(self.env, "example_galleries", set()) | {self.env.docname}
 
-        markup = GALLERY.format(cards="\n".join(cards), toc="\n".join(toc))
+        markup = GALLERY.format(cards="\n".join(cards))
         container = nodes.Element()
         source = self.get_source_info()[0]
         self.state.nested_parse(StringList(markup.splitlines(), source), self.content_offset, container)

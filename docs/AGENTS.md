@@ -54,7 +54,7 @@
 
 - Examples are MyST Markdown notebooks in `src/examples/`. The build runs them; `nb_execution_mode = "cache"` re-runs only changed notebooks.
 - A notebook has `kernelspec` and a Jupytext `format_name: myst` header in its front matter. The optional `icon` key names an octicon for its card.
-- The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading, and adds it to a hidden toctree. Other pages in the folder need their own toctree entry.
+- The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading. The `examples/*` glob in the root `src/index.md` toctree lists every page in the folder in the sidebar.
 - `just notebook` opens `src/examples/` in JupyterLab with the client and the `docs` group installed. Open a notebook with **Open With → Jupytext Notebook**; saving writes back to its `.md` file.
 - `just fix-format-notebooks` formats notebook code with ruff, through Jupytext, at 85 columns so it fits the page. CI runs `just check-format-notebooks`.
 - `src/examples/jupytext.toml` keeps the `icon` key and drops version stamps when Jupytext rewrites a notebook's front matter.

@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
+from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
+from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
+from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
+from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
 
 # ---------------------------------------------------------------------------
@@ -514,6 +522,58 @@ class TestMigrateDeferredWorkbooks:
         assert wb_run not in ctx.migration_state.pending_multi_run_workbooks
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_failed_workbook_is_skipped_and_later_workbooks_still_copy(self, _mock_from_conjure: MagicMock) -> None:
+        """A permanent copy failure records a skip and keeps that workbook pending without blocking the next one."""
+        wb_bad, wb_good = _wb_rid(1), _wb_rid(2)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_bad, [_run_rid(1), _run_rid(2)])
+        ctx.migration_state.record_pending_multi_run_workbook(wb_good, [_run_rid(3), _run_rid(4)])
+        source_clients = MagicMock()
+
+        migrator = WorkbookMigrator(ctx)
+        with patch.object(WorkbookMigrator, "copy_from", side_effect=[ValueError("Run RIDs not provided"), None]):
+            migrator.migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        assert list(ctx.migration_state.pending_multi_run_workbooks) == [wb_bad]
+        assert ctx.migration_state.workbook_was_skipped(wb_bad)
+        assert not ctx.migration_state.workbook_was_skipped(wb_good)
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_successful_copy_clears_earlier_copy_failure(
+        self, _mock_from_conjure: MagicMock, _mock_copy_from: MagicMock
+    ) -> None:
+        """A workbook that failed on an earlier run drops out of the skip summary once it copies."""
+        wb_run = _wb_rid(1)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        ctx.migration_state.set_skip(ResourceType.WORKBOOK, wb_run, "copy failed: earlier run")
+
+        WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): MagicMock()})
+
+        assert not ctx.migration_state.workbook_was_skipped(wb_run)
+        assert ctx.migration_state.pending_multi_run_workbooks == {}
+
+    @patch.object(WorkbookMigrator, "copy_from")
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+    def test_transient_read_failure_is_retried(
+        self, mock_from_conjure: MagicMock, mock_copy_from: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A transient failure reading a deferred workbook is retried rather than skipping the workbook."""
+        monkeypatch.setattr("time.sleep", lambda _seconds: None)
+        wb_run = _wb_rid(1)
+        ctx = _make_context()
+        ctx.migration_state.record_pending_multi_run_workbook(wb_run, [_run_rid(1), _run_rid(2)])
+        source_clients = MagicMock()
+        source_clients.notebook.get.side_effect = [requests.exceptions.ConnectionError("reset"), _stub_raw_notebook()]
+
+        WorkbookMigrator(ctx).migrate_deferred_workbooks({_asset_rid(1): source_clients})
+
+        mock_copy_from.assert_called_once()
+        assert ctx.migration_state.pending_multi_run_workbooks == {}
+        assert not ctx.migration_state.workbook_was_skipped(wb_run)
+
+    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_missing_source_client_for_asset_workbook_skips_gracefully(self, mock_from_conjure: MagicMock) -> None:
         """If none of a multi-asset workbook's asset RIDs are in source_clients_by_asset_rid,
         the workbook is skipped with a warning and no exception is raised.
@@ -527,3 +587,58 @@ class TestMigrateDeferredWorkbooks:
         migrator.migrate_deferred_workbooks({})
 
         mock_from_conjure.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Runners flush deferred workbooks after every asset has migrated
+# ---------------------------------------------------------------------------
+
+
+def _run_sequential(runner: MigrationRunner) -> None:
+    runner.run_migration()
+
+
+def _run_parallel(runner: MigrationRunner) -> None:
+    run_parallel_migration(runner, max_workers=2)
+
+
+@pytest.mark.parametrize("run", [_run_sequential, _run_parallel], ids=["sequential", "parallel"])
+@patch.object(WorkbookMigrator, "copy_from")
+@patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
+def test_runner_migrates_deferred_workbooks(
+    mock_from_conjure: MagicMock,
+    mock_copy_from: MagicMock,
+    run: Callable[[MigrationRunner], None],
+    tmp_path: Path,
+) -> None:
+    """Workbooks deferred during asset migration are copied before the runner returns, on both runners."""
+    asset_rid = _asset_rid(1)
+    wb_asset, wb_run = _wb_rid(1), _wb_rid(2)
+    source_asset = MagicMock(rid=asset_rid)
+    source_asset._clients.notebook.get.return_value = _stub_raw_notebook()
+
+    def queue_deferred_workbooks(self: AssetMigrator, source: Any, options: Any) -> None:
+        self.ctx.migration_state.record_pending_multi_asset_workbook_unless_skipped(wb_asset, [asset_rid])
+        self.ctx.migration_state.record_pending_multi_run_workbook_unless_skipped(wb_run, [_run_rid(1), _run_rid(2)])
+
+    state_path = tmp_path / "state.json"
+    runner = MigrationRunner(
+        migration_resources=MigrationResources(
+            source_assets={asset_rid: AssetResources(asset=source_asset, source_workbook_templates=[])},
+            source_standalone_templates=[],
+            source_standalone_checklists=[],
+        ),
+        dataset_config=MigrationDatasetConfig(include_dataset_files=False, preserve_dataset_uuid=True),
+        destination_client=MagicMock(),
+        migration_state_path=state_path,
+    )
+
+    with patch.object(AssetMigrator, "copy_from", autospec=True, side_effect=queue_deferred_workbooks):
+        run(runner)
+
+    fetched_rids = {call.args[1] for call in source_asset._clients.notebook.get.call_args_list}
+    assert fetched_rids == {wb_asset, wb_run}
+    assert mock_copy_from.call_count == 2
+    saved_state = json.loads(state_path.read_text())
+    assert saved_state["pending_multi_asset_workbooks"] == {}
+    assert saved_state["pending_multi_run_workbooks"] == {}
