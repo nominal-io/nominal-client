@@ -11,10 +11,10 @@ kernelspec:
 
 # Notebook Display
 
-This notebook demonstrates the rich display available to Nominals core objects when used with Jupyter notebook, VS Code, or Colab. 
+This notebook demonstrates the html display of Nominals core objects when used with Jupyter notebook, VS Code, or Colab. 
 
 
-Sample data related to a helicopter is generated and used to propagate the model. 
+A ficticous dataset of a helicopter spin up test is used for demonstration.
 
 The example needs the [installed Nominal Python client](/guides/install.md) and a `default` [profile](/guides/api-keys-setup.md).
 
