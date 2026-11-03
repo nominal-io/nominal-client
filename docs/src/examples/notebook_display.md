@@ -9,8 +9,6 @@ kernelspec:
   language: python
 ---
 
-+++ {"editable": true, "deletable": true, "slideshow": {"slide_type": ""}}
-
 # Notebook Display
 
 This notebook demonstrates the rich display available to Nominals core objects when used with Jupyter notebook, VS Code, or Colab. 
@@ -20,7 +18,7 @@ Sample data related to a helicopter is generated and used to propagate the model
 
 The example needs the [installed Nominal Python client](/guides/install.md) and a `default` [profile](/guides/api-keys-setup.md).
 
-+++ {"editable": true, "deletable": true, "slideshow": {"slide_type": ""}}
++++
 
 ## Generate Sample Data
 
@@ -29,16 +27,12 @@ called an [asset](/guides/assets.md). Let's imagine, for example, that we fire u
 rotor of a helicopter to measure its angular velocity.
 
 ```{code-cell} ipython3
----
-editable: true
-deletable: true
-slideshow:
-  slide_type: ''
----
+:tags: [hide-input]
+
 # Start each execution with the rig registered, no runs or events, and two ingested datasets.
 # The client cannot delete, so old resources are archived. The `example` property matches only the
 # rig this example created, so the cleanup never touches another RTR-02 asset or its data.
-# The page does not show this cell.
+# The page shows this cell collapsed.
 import tempfile
 from pathlib import Path
 
