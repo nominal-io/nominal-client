@@ -28,7 +28,7 @@ def test_gallery_lists_notebooks_beside_the_index(tmp_path, build_docs):
         encoding="utf-8",
     )
     (source / "index.rst").write_text(
-        "Home\n====\n\n.. toctree::\n   :glob:\n\n   examples/index\n   examples/[!i]*\n", encoding="utf-8"
+        "Home\n====\n\n.. toctree::\n   :glob:\n\n   examples/index\n   examples/*\n", encoding="utf-8"
     )
     (examples / "index.md").write_text("# Examples\n\n```{example-gallery}\n```\n", encoding="utf-8")
     (examples / "running.md").write_text("# Running the examples\n", encoding="utf-8")

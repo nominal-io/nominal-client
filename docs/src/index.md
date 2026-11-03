@@ -156,7 +156,7 @@ File extractors <guides/extractors/overview>
 :glob:
 
 Gallery <examples/index>
-examples/[!i]*
+examples/*
 ```
 
 ```{toctree}
