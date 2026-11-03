@@ -10,7 +10,6 @@ import pytest
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_runner import MigrationRunner
-from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 
 _MODULE = "nominal.experimental.migration.parallel_migration_runner"
 
@@ -32,15 +31,8 @@ def _runner(tmp_path: Path) -> MigrationRunner:
     )
 
 
-def _run_sequential(runner: MigrationRunner) -> None:
-    runner.run_migration()
-
-
-def _run_parallel(runner: MigrationRunner) -> None:
-    run_parallel_migration(runner, max_workers=1)
-
-
 def test_sequential_runner_copies_in_order_then_deferred_workbooks(tmp_path: Path) -> None:
+    """Sequential runs keep the queue order and finish with the deferred-workbook step."""
     calls: list[str] = []
     with (
         patch(f"{_MODULE}.AssetMigrator.copy_from", lambda _self, asset, _options: calls.append(asset.rid)),
@@ -49,13 +41,13 @@ def test_sequential_runner_copies_in_order_then_deferred_workbooks(tmp_path: Pat
         patch(f"{_MODULE}.DatasetMigrator.copy_from", lambda _self, dataset, _options: calls.append(dataset.rid)),
         patch.object(MigrationRunner, "migrate_deferred_workbooks", lambda _self, _ctx: calls.append("deferred")),
     ):
-        _run_sequential(_runner(tmp_path))
+        _runner(tmp_path).run_migration()
 
     assert calls == ["asset-1", "asset-2", "template", "checklist", "dataset", "deferred"]
 
 
-@pytest.mark.parametrize("run", [_run_sequential, _run_parallel], ids=["sequential", "parallel"])
-def test_runner_continues_past_failed_asset_and_raises_once(tmp_path: Path, run) -> None:  # type: ignore[no-untyped-def]
+def test_sequential_runner_continues_past_failed_asset_and_raises_once(tmp_path: Path) -> None:
+    """A failed asset does not stop later resources; one error naming it is raised at the end."""
     copied: list[str] = []
 
     def copy_asset(_self: object, asset: MagicMock, _options: object) -> None:
@@ -72,7 +64,8 @@ def test_runner_continues_past_failed_asset_and_raises_once(tmp_path: Path, run)
         patch(f"{_MODULE}.DatasetMigrator.copy_from", lambda _self, dataset, _options: copied.append(dataset.rid)),
         patch.object(MigrationRunner, "migrate_deferred_workbooks"),
     ):
-        with pytest.raises(RuntimeError, match=r"1 failure\(s\).*boom"):
-            run(_runner(tmp_path))
+        with pytest.raises(RuntimeError, match=r"1 failure\(s\).*boom") as exc_info:
+            _runner(tmp_path).run_migration()
 
+    assert isinstance(exc_info.value.__cause__, ValueError)
     assert copied == ["asset-2", "template", "checklist", "dataset"]

@@ -136,8 +136,12 @@ class MigrationRunner:
         handling, state saving, and deferred-workbook step of the parallel runner. Tasks run in the
         order assets, templates, checklists, datasets.
 
+        The runner's `migration_state` is replaced by a thread-safe copy for the run, so read it from the
+        runner afterwards rather than holding the earlier object.
+
         Raises:
             RuntimeError: If any resource failed to migrate, after every other resource was attempted.
+                It is chained from the first failure.
         """
         # Imported here because the parallel runner imports this module.
         from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
