@@ -71,6 +71,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         @property
         def video(self) -> scout_video.VideoService: ...
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Dataset file",

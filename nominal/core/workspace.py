@@ -24,6 +24,7 @@ class Workspace(HasRid):
     preferred_procedure_rids: Sequence[str] = ()
     """Procedure RIDs offered on the application home page; empty when unconfigured."""
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Workspace",

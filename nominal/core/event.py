@@ -77,6 +77,7 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
         @property
         def event(self) -> event_pb2_grpc.EventServiceStub: ...
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         priority = self.disposition.priority if self.disposition is not None else None
         return _display.render(

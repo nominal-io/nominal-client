@@ -135,6 +135,7 @@ class Workbook(
         """Returns a link to the page for this Workbook in the Nominal app"""
         return workbook_url(self._clients, self.rid)
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         kind = "Comparison workbook" if self.workbook_type == WorkbookType.COMPARISON_WORKBOOK else "Workbook"
         return _display.render(

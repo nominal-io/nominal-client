@@ -298,6 +298,7 @@ class NominalClient:
         out += ">"
         return out
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         # Only configuration the client already holds, so displaying it never makes a request.
         app = self._clients.app_base_url

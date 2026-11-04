@@ -70,6 +70,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             commit_id=checklist.commit.id,
         )
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Checklist",

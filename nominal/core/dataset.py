@@ -113,6 +113,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """Returns a URL to the page in the nominal app containing this dataset"""
         return dataset_url(self._clients, self.rid)
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         if self.bounds is None:
             bounds_fields = [("Data", "none yet")]

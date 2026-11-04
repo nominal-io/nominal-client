@@ -81,6 +81,7 @@ class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
             asset_rid=data_review.asset_rid or None,
         )
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Data review",

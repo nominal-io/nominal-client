@@ -88,6 +88,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Asset",

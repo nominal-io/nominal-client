@@ -44,6 +44,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         @property
         def attachment(self) -> attachments_pb2_grpc.AttachmentServiceStub: ...
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Attachment",

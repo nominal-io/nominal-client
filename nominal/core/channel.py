@@ -168,6 +168,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
     class _NotProvided:
         """Sentinel class for detecting when a user has or has not provided a value during updates"""
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         is_numeric = self.data_type in (ChannelDataType.DOUBLE, ChannelDataType.INT)
         return _display.render(

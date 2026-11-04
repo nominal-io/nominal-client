@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from unittest.mock import MagicMock, NonCallableMock
 
 import pytest
@@ -122,8 +124,65 @@ def test_failed_section_becomes_a_note():
     def load() -> _display.Section:
         raise RuntimeError("service unavailable\nstack details")
 
-    section = _display.fetched("Runs", load)
-    assert section is not None and section.note == "Couldn't load: RuntimeError service unavailable"
+    loading = _display.fetched("Runs", load)
+    assert loading is not None
+    assert loading.result().note == "Couldn't load: RuntimeError service unavailable"
+
+
+def test_slow_section_stops_the_card_waiting_at_its_deadline():
+    """A section still loading at the deadline says so, and the card displays without it."""
+    release = threading.Event()
+
+    def slow() -> _display.Section:
+        release.wait(10)
+        return _display.Section("Runs", [["late"]])
+
+    @_display.card
+    def build(_: object) -> str | None:
+        return _display.render(
+            kind="Test",
+            title="",
+            fallback="",
+            fields=[],
+            sections=[
+                _display.fetched("Runs", slow),
+                _display.fetched("Quick", lambda: _display.Section("Quick", [["ok"]])),
+            ],
+        )
+
+    try:
+        with set_display_options(show_link=False, fetch_timeout=0.2):
+            started = time.monotonic()
+            card = build(None)
+            elapsed = time.monotonic() - started
+    finally:
+        release.set()
+    assert card is not None and "load within 0.2 s." in card and "late" not in card
+    assert "<td>ok</td>" in card
+    assert elapsed < 2
+
+
+def test_slow_workspace_leaves_links_out_at_the_deadline():
+    """A workspace that doesn't resolve in time shows the card's names and IDs without links."""
+    release = threading.Event()
+    clients = _linked_clients()
+    clients.resolve_default_workspace_rid.side_effect = lambda: release.wait(10) and "ri.workspace.1"
+    try:
+        with set_display_options(fetch_details=False, fetch_timeout=0.2):
+            started = time.monotonic()
+            card = _run(clients)._repr_html_()
+            elapsed = time.monotonic() - started
+    finally:
+        release.set()
+    assert card is not None and "<a " not in card and "ri.scout.asset.1" in card
+    assert elapsed < 2
+
+
+def test_card_that_fails_to_build_falls_back_to_repr():
+    """An error while building a card returns None, so the notebook shows the plain repr, not a traceback."""
+    with set_display_options(show_link=False, fetch_details=False):
+        card = _run(_offline_clients(), start="not a timestamp")._repr_html_()
+    assert card is None
 
 
 def test_asset_runs_stop_loading_past_max_items():
@@ -271,11 +330,24 @@ def test_text_style_falls_back_to_repr_without_requests():
     assert get_display_options().style == "html"
 
 
+def test_set_display_options_lasts_without_a_with_block():
+    """Called on its own, the change stays; restoring it is the caller's to do."""
+    before = get_display_options()
+    set_display_options(fetch_timeout=2)
+    try:
+        assert get_display_options().fetch_timeout == 2
+    finally:
+        set_display_options(fetch_timeout=before.fetch_timeout)
+    assert get_display_options() == before
+
+
 def test_invalid_option_raises_and_keeps_current_options():
     """An invalid value is rejected before it changes anything."""
     before = get_display_options()
     with pytest.raises(ValueError, match="unknown time zone"):
         set_display_options(timezone="Mars/Olympus_Mons")
+    with pytest.raises(ValueError, match="fetch_timeout"):
+        set_display_options(fetch_timeout=0)
     assert get_display_options() == before
 
 

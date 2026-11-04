@@ -84,6 +84,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         """Returns a link to the page for this Run in the Nominal app"""
         return run_url(self._clients, self.rid)
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         if self.end is None:
             time_fields = [("Start", _display.timestamp(self.start)), ("End", "ongoing")]

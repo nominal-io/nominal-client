@@ -16,6 +16,7 @@ class User(HasRid):
     display_name: str
     email: str
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="User",

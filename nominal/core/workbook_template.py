@@ -99,6 +99,7 @@ class WorkbookTemplate(
         """Returns a link to the page for this Workbook Template in the Nominal app"""
         return workbook_template_url(self._clients, self.rid)
 
+    @_display.card
     def _repr_html_(self) -> str | None:
         return _display.render(
             kind="Workbook template",

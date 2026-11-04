@@ -1,21 +1,33 @@
 """Rich notebook display for SDK resources.
 
 Jupyter, VS Code and Colab call `_repr_html_` to display an object at the end of a cell. The resources that
-implement it build their HTML from the helpers here, and `set_display_options` configures how it looks.
+implement it decorate it with `card` and build their HTML from the helpers here, and `set_display_options`
+configures how it looks.
+
+A card never fails and never waits long: the sections it loads from Nominal run in parallel under one time limit,
+`fetch_timeout`, and a section that misses it says so. If building the card fails anyway, the notebook shows the
+plain ``repr`` instead.
 """
 
 from __future__ import annotations
 
+import functools
 import html
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+import logging
+import re
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from contextlib import AbstractContextManager, contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone, tzinfo
+from importlib import resources
 from itertools import islice
-from types import TracebackType
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from nominal.exceptions import NominalError
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
 
 DisplayStyle = Literal["html", "text"]
@@ -23,6 +35,7 @@ TimeFormat = Literal["iso", "readable"]
 TimePrecision = Literal["s", "ms", "us", "ns"]
 _FRACTION_DIGITS: dict[str, int] = {"s": 0, "ms": 3, "us": 6, "ns": 9}
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 def _resolve_timezone(name: str) -> tzinfo | None:
@@ -71,6 +84,9 @@ class DisplayOptions:
     """Sections with more items than this, such as properties, start collapsed."""
     max_items: int = 50
     """The most items a section lists, and loads where it can. The section says how many more were left out."""
+    fetch_timeout: float = 5.0
+    """Seconds a card waits for what it loads from Nominal, in total. Sections still loading then say so, and
+    links that need the workspace show as plain text."""
 
     def __post_init__(self) -> None:
         if self.style not in ("html", "text"):
@@ -83,6 +99,8 @@ class DisplayOptions:
             raise ValueError(f"collapse_threshold must be at least 0, not {self.collapse_threshold}")
         if self.max_items < 1:
             raise ValueError(f"max_items must be at least 1, not {self.max_items}")
+        if self.fetch_timeout <= 0:
+            raise ValueError(f"fetch_timeout must be more than 0, not {self.fetch_timeout}")
         _resolve_timezone(self.timezone)
 
 
@@ -94,11 +112,22 @@ def get_display_options() -> DisplayOptions:
     return _options
 
 
-class set_display_options:  # noqa: N801 - named like a function because it's called like one, as in xarray
+def set_display_options(
+    *,
+    style: DisplayStyle | None = None,
+    timezone: str | None = None,
+    time_format: TimeFormat | None = None,
+    time_precision: TimePrecision | None = None,
+    show_link: bool | None = None,
+    fetch_details: bool | None = None,
+    collapse_threshold: int | None = None,
+    max_items: int | None = None,
+    fetch_timeout: float | None = None,
+) -> AbstractContextManager[DisplayOptions]:
     """Change how Nominal resources display in notebooks.
 
-    Options left out keep their current values. The change applies to the whole Python process. Used as a context
-    manager, it lasts until the ``with`` block ends.
+    Options left out keep their current values. Called on its own, the change lasts for the rest of the Python
+    process. Used in a ``with`` block, it lasts until the block ends.
 
     Args:
         style: ``"html"`` shows resources as formatted cards. ``"text"`` shows their plain ``repr``.
@@ -109,6 +138,10 @@ class set_display_options:  # noqa: N801 - named like a function because it's ca
         fetch_details: Whether cards load related resources and channel statistics from Nominal.
         collapse_threshold: Sections with more items than this start collapsed.
         max_items: The most items a section lists.
+        fetch_timeout: Seconds a card waits for what it loads from Nominal, in total.
+
+    Returns:
+        A context manager that restores the previous options when its ``with`` block ends.
 
     Raises:
         ValueError: If an option has an invalid value, such as an unknown time zone.
@@ -123,43 +156,87 @@ class set_display_options:  # noqa: N801 - named like a function because it's ca
             run  # shows only the run's own fields
         ```
     """
+    global _options
+    changes: dict[str, Any] = dict(
+        style=style,
+        timezone=timezone,
+        time_format=time_format,
+        time_precision=time_precision,
+        show_link=show_link,
+        fetch_details=fetch_details,
+        collapse_threshold=collapse_threshold,
+        max_items=max_items,
+        fetch_timeout=fetch_timeout,
+    )
+    previous = _options
+    # Applied now, not on entering a `with` block, so a plain call changes the options too.
+    _options = replace(_options, **{name: value for name, value in changes.items() if value is not None})
+    return _restoring(previous)
 
-    def __init__(
-        self,
-        *,
-        style: DisplayStyle | None = None,
-        timezone: str | None = None,
-        time_format: TimeFormat | None = None,
-        time_precision: TimePrecision | None = None,
-        show_link: bool | None = None,
-        fetch_details: bool | None = None,
-        collapse_threshold: int | None = None,
-        max_items: int | None = None,
-    ) -> None:
-        global _options
-        self._previous = _options
-        _options = DisplayOptions(
-            style=_options.style if style is None else style,
-            timezone=_options.timezone if timezone is None else timezone,
-            time_format=_options.time_format if time_format is None else time_format,
-            time_precision=_options.time_precision if time_precision is None else time_precision,
-            show_link=_options.show_link if show_link is None else show_link,
-            fetch_details=_options.fetch_details if fetch_details is None else fetch_details,
-            collapse_threshold=_options.collapse_threshold if collapse_threshold is None else collapse_threshold,
-            max_items=_options.max_items if max_items is None else max_items,
-        )
 
-    def __enter__(self) -> DisplayOptions:
-        return _options
+@contextmanager
+def _restoring(previous: DisplayOptions) -> Iterator[DisplayOptions]:
+    global _options
+    try:
+        yield _options
+    finally:
+        _options = previous
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        global _options
-        _options = self._previous
+
+# When the current card's loads must finish, by `time.monotonic()`. Unset outside a card and in loading threads.
+_deadline: ContextVar[float | None] = ContextVar("nominal_display_deadline", default=None)
+_executor: ThreadPoolExecutor | None = None
+
+
+def _pool() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="nominal-display")
+    return _executor
+
+
+def card(build: Callable[[T], str | None]) -> Callable[[T], str | None]:
+    """Decorate a resource's `_repr_html_`, so its card loads within `fetch_timeout` and never fails to display.
+
+    The loads the card makes share one deadline. If building the card raises, it returns `None`, and the notebook
+    shows the plain ``repr`` instead of a traceback.
+    """
+
+    @functools.wraps(build)
+    def wrapper(resource: T) -> str | None:
+        if _options.style == "text":
+            return None
+        token = _deadline.set(time.monotonic() + _options.fetch_timeout)
+        try:
+            return build(resource)
+        except Exception:  # noqa: BLE001 - a display falls back to the plain repr rather than fail
+            logger.debug("couldn't build the notebook card for %s", type(resource).__name__, exc_info=True)
+            return None
+        finally:
+            _deadline.reset(token)
+
+    return wrapper
+
+
+def _wait(future: Future[T]) -> T:
+    """The future's result, waiting until the card's deadline, or for `fetch_timeout` outside a card."""
+    deadline = _deadline.get()
+    remaining = _options.fetch_timeout if deadline is None else deadline - time.monotonic()
+    return future.result(timeout=max(remaining, 0))
+
+
+def _within_deadline(load: Callable[[], T]) -> T:
+    """Run `load` in a loading thread, so the card stops waiting for it at its deadline.
+
+    Outside a card, as inside a loading thread, `load` runs directly: the card already waits for that thread.
+
+    Raises:
+        concurrent.futures.TimeoutError: If `load` hasn't finished by the deadline. It keeps running in the
+            background, and its result is dropped.
+    """
+    if _deadline.get() is None:
+        return load()
+    return _wait(_pool().submit(load))
 
 
 @dataclass(frozen=True)
@@ -247,13 +324,14 @@ def _is_web_url(url: str) -> bool:
 def _resolved_url(url: Callable[[], str]) -> str | None:
     """A resource's page in the Nominal app, or `None` when links are off or the page can't be linked.
 
-    Resolving the workspace can make a request, so the text style, which builds no card, never resolves one.
+    Resolving the workspace can make a request, so the text style, which builds no card, never resolves one, and
+    a card stops waiting for it at its deadline.
     """
     if _options.style == "text" or not _options.show_link:
         return None
     try:
-        resolved = url()
-    except NominalError:
+        resolved = _within_deadline(url)
+    except Exception:  # noqa: BLE001 - an unresolved link, including one past the deadline, shows as plain text
         return None
     return resolved if _is_web_url(resolved) else None
 
@@ -297,18 +375,33 @@ def first(items: Iterable[T]) -> tuple[list[T], bool]:
     return taken[: _options.max_items], len(taken) > _options.max_items
 
 
-def fetched(title: str, load: Callable[[], Section]) -> Section | None:
-    """A section loaded from Nominal, or `None` when loading is off or the text style builds no card.
+@dataclass(frozen=True)
+class Loading:
+    """A section loading from Nominal in the background. `render` waits for it until the card's deadline."""
 
-    A failure becomes a note in the section, so the rest of the card still displays.
+    title: str
+    future: Future[Section]
+
+    def result(self) -> Section:
+        """The loaded section, or one whose note says why it didn't load."""
+        try:
+            return _wait(self.future)
+        except FutureTimeoutError:
+            return Section(self.title, note=f"Didn't load within {_options.fetch_timeout:g} s.")
+        except Exception as e:  # noqa: BLE001 - a display shows what it can; the error is reported in the card
+            message = str(e).splitlines()[0] if str(e) else ""
+            return Section(self.title, note=f"Couldn't load: {type(e).__name__} {message}"[:300])
+
+
+def fetched(title: str, load: Callable[[], Section]) -> Loading | None:
+    """Start loading a section from Nominal, or return `None` when loading is off or the text style builds no card.
+
+    Sections load in parallel. A failure or a load past the card's deadline becomes a note in the section, so the
+    rest of the card still displays.
     """
     if _options.style == "text" or not _options.fetch_details:
         return None
-    try:
-        return load()
-    except Exception as e:  # noqa: BLE001 - a display shows what it can; the error is reported in the card
-        message = str(e).splitlines()[0] if str(e) else ""
-        return Section(title, note=f"Couldn't load: {type(e).__name__} {message}"[:300])
+    return Loading(title, _pool().submit(load))
 
 
 def sparkline(points: Sequence[tuple[float, float, float] | None]) -> str:
@@ -347,7 +440,7 @@ def render(
     title: str,
     fallback: str,
     fields: Sequence[tuple[str, str | None]],
-    sections: Sequence[Section | None] = (),
+    sections: Sequence[Section | Loading | None] = (),
     archived: bool = False,
     url: Callable[[], str] | None = None,
 ) -> str | None:
@@ -359,7 +452,8 @@ def render(
         fallback: Plain text shown where the notebook strips styles, such as on GitHub.
         fields: Label and value HTML for the card's table. Values must already be escaped. Fields whose value is
             `None` are left out.
-        sections: Collapsible parts after the table. Empty sections and `None` are left out.
+        sections: Collapsible parts after the table. Empty sections and `None` are left out. Sections still
+            loading are waited for until the card's deadline.
         archived: Whether to mark the resource as archived.
         url: Returns the resource's page in the Nominal app.
     """
@@ -374,13 +468,14 @@ def render(
 
     rows = "".join(f"<tr><th>{escape(label)}</th><td>{value}</td></tr>" for label, value in fields if value is not None)
     body = [f'<div class="nominal-repr-header">{" ".join(header)}</div>', f"<table>{rows}</table>"]
+    loaded = [section.result() if isinstance(section, Loading) else section for section in sections]
     body.extend(
         _render_section(section)
-        for section in sections
+        for section in loaded
         if section is not None and (section.rows or section.body or section.note)
     )
     return (
-        f"<style>{_CSS}</style>"
+        f"<style>{_css()}</style>"
         f'<pre class="nominal-repr-fallback">{escape(fallback)}</pre>'
         f'<div class="nominal-repr" style="display: none">{"".join(body)}</div>'
     )
@@ -412,68 +507,8 @@ def _render_section(section: Section) -> str:
     return f"<details{is_open}><summary>{summary}</summary>{content}</details>"
 
 
-# Colors come from the notebook's theme where it sets them (JupyterLab, then VS Code), so cards follow light and
-# dark themes. Where styles are stripped, the hidden card stays hidden and the plain-text fallback shows instead.
-_CSS = """
-.nominal-repr-fallback { display: none; }
-.nominal-repr { display: block !important; }
-.nominal-repr {
-  --nominal-repr-border: var(--jp-border-color2, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.4)));
-  --nominal-repr-tint: var(--jp-layout-color2, rgba(128, 128, 128, 0.12));
-  color: var(--jp-content-font-color0, var(--vscode-editor-foreground, inherit));
-  font-family: var(--jp-ui-font-family, var(--vscode-font-family, sans-serif));
-  font-size: 13px;
-  line-height: 1.5;
-  max-width: 900px;
-  border: 1px solid var(--nominal-repr-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-}
-.nominal-repr-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
-.nominal-repr-kind, .nominal-repr-archived, .nominal-repr-label {
-  background: var(--nominal-repr-tint);
-  border: 1px solid var(--nominal-repr-border);
-  border-radius: 4px;
-  padding: 0 6px;
-  font-size: 12px;
-}
-.nominal-repr-archived { font-weight: 600; }
-.nominal-repr-link { margin-left: auto; }
-.nominal-repr a { color: var(--jp-content-link-color, var(--vscode-textLink-foreground, inherit)); }
-.nominal-repr-label { display: inline-block; margin: 1px 0; }
-.nominal-repr table { border-collapse: collapse; margin: 0; width: auto; }
-.nominal-repr th, .nominal-repr td {
-  text-align: left !important;
-  vertical-align: top;
-  padding: 2px 16px 2px 0 !important;
-  border: none !important;
-  background: none !important;
-  white-space: normal;
-  overflow-wrap: break-word;
-}
-.nominal-repr th { font-weight: 600; white-space: nowrap; }
-.nominal-repr code, .nominal-repr time { font-family: var(--jp-code-font-family, monospace); font-size: 12px; }
-.nominal-repr time { white-space: nowrap; }
-.nominal-repr-id { user-select: all; word-break: break-all; }
-.nominal-repr-id-group { display: inline-flex; align-items: flex-start; max-width: 100%; }
-.nominal-repr-copy { flex: none; }
-.nominal-repr-copy {
-  min-width: 20px;
-  min-height: 20px;
-  margin-left: 4px;
-  padding: 0 4px;
-  border: 1px solid var(--nominal-repr-border);
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  vertical-align: middle;
-}
-.nominal-repr-copy:hover { background: var(--nominal-repr-tint); }
-.nominal-repr details { border-top: 1px solid var(--nominal-repr-border); margin-top: 6px; padding-top: 4px; }
-.nominal-repr summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
-.nominal-repr-chart { display: block; margin: 4px 0; max-width: 100%; height: auto; }
-.nominal-repr-more { font-style: italic; margin: 2px 0; }
-"""
+@functools.cache
+def _css() -> str:
+    """The cards' styles, from `_display.css` next to this module, without its comments, which every card repeats."""
+    text = resources.files(__package__).joinpath("_display.css").read_text(encoding="utf-8")
+    return re.sub(r"/\*.*?\*/\s*", "", text, flags=re.DOTALL)
