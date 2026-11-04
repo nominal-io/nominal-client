@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import io
 from collections.abc import Iterator
 from typing import Any, Callable, cast
@@ -126,17 +125,17 @@ def test_resolve_ingested_video_file_prefers_direct_dataset_file_id():
     """A response carrying a dataset-file id is resolved through the catalog, not the ingest job."""
     ds = MagicMock()
     video_file = MagicMock(spec=VideoDatasetFile)
-    with patch("nominal.core.dataset._dataset_file_from_conjure", return_value=video_file):
+    with patch("nominal.core.dataset._dataset_file_from_proto", return_value=video_file):
         result = Dataset._resolve_ingested_video_file(ds, _video_response("file-1"))
     assert result is video_file
-    ds._clients.catalog.get_dataset_file.assert_called_once()
+    ds._clients.grpc_dataset_files.GetDatasetFile.assert_called_once()
 
 
 def test_resolve_ingested_video_file_direct_id_non_video_raises():
     """A direct file id pointing at a non-video row is an error, not a silent base-type return."""
     ds = MagicMock()
     with (
-        patch("nominal.core.dataset._dataset_file_from_conjure", return_value=MagicMock()),  # not a VideoDatasetFile
+        patch("nominal.core.dataset._dataset_file_from_proto", return_value=MagicMock()),  # not a VideoDatasetFile
         pytest.raises(NominalIngestError, match="not a video dataset file"),
     ):
         Dataset._resolve_ingested_video_file(ds, _video_response("file-1"))
@@ -204,12 +203,12 @@ def test_video_from_io_entry_points_reject_text_streams(method, kwargs):
 
 def test_add_video_from_io_submits_video_v2_ingest(mock_dataset: Dataset):
     """The real IngestRequest handed to ingest carries the manifest arm, channel, tags, source, and target."""
-    ingest_endpoint = Mock()
+    ingest_endpoint = Mock(return_value=_video_response("file-1"))
     cast(Any, mock_dataset._clients.ingest).ingest = ingest_endpoint
     video_file = MagicMock(spec=VideoDatasetFile)
     with (
         patch("nominal.core.dataset.upload_multipart_io", return_value="s3://bucket/front.mp4"),
-        patch("nominal.core.dataset._dataset_file_from_conjure", return_value=video_file),
+        patch("nominal.core.dataset._dataset_file_from_proto", return_value=video_file),
     ):
         result = mock_dataset.add_video_from_io(
             io.BytesIO(b"data"),
@@ -283,9 +282,8 @@ def test_add_avro_stream_uploads_with_the_resolved_file_type(
     path = tmp_path / filename
     path.write_bytes(b"avro")
 
-    # The mocked ingest response cannot build a DatasetFile; what is under test is the upload itself.
     with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path") as upload:
-        with contextlib.suppress(ValueError):
+        with patch.object(Dataset, "_handle_ingest_response"):
             mock_dataset.add_avro_stream(path)
 
     assert upload.call_args.kwargs["file_type"].extension == expected_extension
@@ -297,7 +295,7 @@ def test_add_avro_stream_accepts_tags_and_an_epoch_string_literal(mock_dataset: 
     path.write_bytes(b"avro")
 
     with patch("nominal.core.dataset.upload_multipart_file", return_value="s3://path"):
-        with contextlib.suppress(ValueError):
+        with patch.object(Dataset, "_handle_ingest_response"):
             mock_dataset.add_avro_stream(path, timestamp_type="epoch_microseconds", tags={"vehicle": "v1"})
 
     # ingest() is called positionally as (auth_header, request).

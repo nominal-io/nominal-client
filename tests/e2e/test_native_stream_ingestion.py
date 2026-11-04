@@ -47,9 +47,9 @@ def test_journal_stream_with_explicit_suffix_matches_path_ingestion(
     stream_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
     assert stream_file.name == "journal.weird"
 
-    path_handle = path_file._get_latest_api().handle.s3
-    stream_handle = stream_file._get_latest_api().handle.s3
-    assert path_handle is not None and stream_handle is not None
+    path_handle = path_file._get_latest_api().handle
+    stream_handle = stream_file._get_latest_api().handle
+    assert path_handle.bucket and stream_handle.bucket
     assert stream_handle.bucket == path_handle.bucket
     assert stream_handle.key != path_handle.key
     assert stream_file.timestamp_channel == path_file.timestamp_channel == "source_ts"

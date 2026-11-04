@@ -4,10 +4,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Self, overload
 
-from nominal_api import scout_catalog, scout_video_api
+from nominal_api import scout_video_api
 
 from nominal.core._video_types import _scale_parameter
 from nominal.core.dataset_file import DatasetFile
+from nominal.protos.datasets.v1 import dataset_files_pb2
+from nominal.protos.ingest.v2 import video_ingest_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -21,7 +23,7 @@ class VideoDatasetFile(DatasetFile):
     """
 
     # Private, unsupported ingest provenance. Excluded from repr and equality.
-    _timestamp_manifest: scout_video_api.VideoFileTimestampManifest = field(repr=False, compare=False)
+    _timestamp_manifest: video_ingest_pb2.VideoTimestampManifest = field(repr=False, compare=False)
 
     num_frames: int | None = None
     num_segments: int | None = None
@@ -129,12 +131,12 @@ class VideoDatasetFile(DatasetFile):
         return self.refresh()
 
     @classmethod
-    def _from_conjure(cls, clients: DatasetFile._Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
-        if dataset_file.metadata is None or dataset_file.metadata.video is None:
+    def _from_proto(cls, clients: DatasetFile._Clients, dataset_file: dataset_files_pb2.DatasetFile) -> Self:
+        if not dataset_file.metadata.HasField("video"):
             raise ValueError(f"dataset file {dataset_file.id!r} has no video metadata")
         video_meta = dataset_file.metadata.video
-        segment = video_meta.segment_metadata
-        base = DatasetFile._from_conjure(clients, dataset_file)
+        segment = video_meta.segments_summary if video_meta.HasField("segments_summary") else None
+        base = DatasetFile._from_proto(clients, dataset_file)
         return cls(
             id=base.id,
             dataset_rid=base.dataset_rid,
@@ -151,8 +153,8 @@ class VideoDatasetFile(DatasetFile):
             _clients=base._clients,
             _ingest_error_message=base._ingest_error_message,
             _timestamp_manifest=video_meta.timestamp_manifest,
-            num_frames=None if segment is None else segment.num_frames,
-            num_segments=None if segment is None else segment.num_segments,
+            num_frames=None if segment is None else segment.frame_count,
+            num_segments=None if segment is None else segment.segment_count,
             media_duration_seconds=None if segment is None else segment.media_duration_seconds,
             media_frame_rate=None if segment is None else segment.media_frame_rate,
             scale_factor=None if segment is None else segment.scale_factor,

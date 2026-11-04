@@ -17,12 +17,17 @@ from nominal.core.dataset_file import (
     wait_for_files_to_ingest,
 )
 from nominal.exceptions import NominalIngestError
+from nominal.protos.datasets.v1 import dataset_files_pb2 as files_pb
 
 
 def _make_file(file_id: str, statuses: list[IngestStatus]) -> DatasetFile:
     """Create a mock DatasetFile whose ingest_status advances through statuses on each poll."""
     mock = MagicMock()
     mock.id = file_id
+    mock.dataset_rid = f"dataset-{file_id}"
+    mock._clients.grpc_dataset_files.BatchGetDatasetFiles.return_value = files_pb.BatchGetDatasetFilesResponse(
+        dataset_files=[files_pb.DatasetFile(id=file_id)]
+    )
     mock.ingest_status = statuses[0]
 
     status_iter = iter(statuses)
@@ -156,7 +161,9 @@ def test_wait_for_files_to_ingest_returns_not_done_when_timeout_expires():
 def test_batch_refresh_reports_files_missing_from_response():
     """Files omitted from the batch API response are reported as absent by their IDs."""
     clients = MagicMock()
-    clients.catalog.batch_get_dataset_files.return_value = {"present": MagicMock()}
+    clients.grpc_dataset_files.BatchGetDatasetFiles.return_value = files_pb.BatchGetDatasetFilesResponse(
+        dataset_files=[files_pb.DatasetFile(id="present")]
+    )
 
     present = _make_batch_file("present", "ds-1", IngestStatus.IN_PROGRESS, clients)
     absent = _make_batch_file("absent", "ds-1", IngestStatus.IN_PROGRESS, clients)
@@ -169,10 +176,9 @@ def test_batch_refresh_reports_files_missing_from_response():
 def test_batch_refresh_reports_no_missing_files_when_all_present():
     """When every requested file appears in the batch response, no absent IDs are reported."""
     clients = MagicMock()
-    clients.catalog.batch_get_dataset_files.return_value = {
-        "file-1": MagicMock(),
-        "file-2": MagicMock(),
-    }
+    clients.grpc_dataset_files.BatchGetDatasetFiles.return_value = files_pb.BatchGetDatasetFilesResponse(
+        dataset_files=[files_pb.DatasetFile(id="file-1"), files_pb.DatasetFile(id="file-2")]
+    )
 
     file1 = _make_batch_file("file-1", "ds-1", IngestStatus.IN_PROGRESS, clients)
     file2 = _make_batch_file("file-2", "ds-1", IngestStatus.IN_PROGRESS, clients)

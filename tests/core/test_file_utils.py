@@ -11,6 +11,8 @@ from urllib3.response import HTTPResponse
 
 from nominal.core import Dataset, FileType, FileTypes
 from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
+from nominal.protos.datasets.v1 import dataset_files_pb2
+from nominal.protos.types.object_storage import handle_pb2
 
 SOURCE_URI = "https://source-bucket.s3.example.com/opaque%2Fkey+name?signature=preserved"
 
@@ -25,13 +27,11 @@ def _make_source_file(s3_key: str, timestamp_channel: str | None, timestamp_type
     source_file.tag_columns = None
     source_file.file_tags = None
 
-    api_file = MagicMock()
-    api_file.handle.s3.key = s3_key
-    source_file._get_latest_api.return_value = api_file
+    source_file._get_latest_api.return_value = dataset_files_pb2.DatasetFile(
+        handle=handle_pb2.Handle(key=s3_key, bucket="source")
+    )
 
-    uri_response = MagicMock()
-    uri_response.uri = SOURCE_URI
-    source_file._clients.catalog.get_dataset_file_uri.return_value = uri_response
+    source_file._get_download_uri.return_value = SOURCE_URI
     source_file._clients.auth_header = "Bearer token"
 
     return source_file
@@ -163,15 +163,13 @@ class TestCopyFileToDataset:
         with pytest.raises(ValueError, match="missing timestamp information"):
             copy_file_to_dataset(source_file, destination_dataset)
 
-    def test_non_s3_handle_raises(self) -> None:
-        """Files without an S3 handle raise ValueError."""
+    def test_missing_handle_raises(self) -> None:
+        """Files without a storage handle raise ValueError before downloading."""
         source_file = MagicMock()
         source_file.timestamp_channel = "ts"
         source_file.timestamp_type = "iso_8601"
 
-        api_file = MagicMock()
-        api_file.handle.s3 = None
-        source_file._get_latest_api.return_value = api_file
+        source_file._get_latest_api.return_value = dataset_files_pb2.DatasetFile()
 
         destination_dataset = MagicMock()
 

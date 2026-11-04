@@ -7,19 +7,20 @@ from typing import Callable, Mapping, Sequence
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import ingest_api
 
 from nominal.core.dataset_file import DatasetFile, IngestStatus
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
+from nominal.protos.datasets.v1 import dataset_files_pb2 as files_pb
 
 DATASET_RID = "ri.catalog.test.dataset.def"
 
-IN_PROGRESS = api.IngestStatusV2(in_progress=api.InProgressResult())
-SUCCESS = api.IngestStatusV2(success=api.SuccessResult())
-FAILED = api.IngestStatusV2(error=api.ErrorResult(error_type="INTERNAL", message="boom"))
+IN_PROGRESS = files_pb.IngestStatus(in_progress=files_pb.IngestInProgress())
+SUCCESS = files_pb.IngestStatus(succeeded=files_pb.IngestStatus.Succeeded())
+FAILED = files_pb.IngestStatus(failed=files_pb.IngestFailed(error_type="INTERNAL", message="boom"))
 
-# These tests drive the job through the conjure clients and assert on what the caller receives, so the
+# These tests drive the job through its service clients and assert on what the caller receives, so the
 # poll interval only sets how fast the loop spins. Nothing here patches time or module internals.
 FAST = timedelta(0)
 
@@ -44,21 +45,19 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
     return ingest_api.IngestJob(**kwargs)
 
 
-def _file_bean(file_id: str, ingest_status: api.IngestStatusV2) -> scout_catalog.DatasetFile:
-    """Build a conjure DatasetFile bean as the catalog service would return it."""
-    return scout_catalog.DatasetFile(
+def _file_bean(file_id: str, ingest_status: files_pb.IngestStatus) -> files_pb.DatasetFile:
+    """Build a dataset-file response with the specified ingestion state."""
+    return files_pb.DatasetFile(
         dataset_rid=DATASET_RID,
-        handle=scout_catalog.Handle(s3=scout_catalog.S3Handle(bucket="test-bucket", key=file_id)),
         id=file_id,
         ingest_status=ingest_status,
         name=f"{file_id}.csv",
-        uploaded_at="2026-01-01T00:00:00Z",
     )
 
 
-def _page(*files: scout_catalog.DatasetFile, next_page: str | None = None) -> scout_catalog.DatasetFilesPage:
-    """Build one page of a get_dataset_files_for_job response."""
-    return scout_catalog.DatasetFilesPage(files=list(files), next_page=next_page)
+def _page(*files: files_pb.DatasetFile, next_page: str | None = None) -> files_pb.ListIngestJobDatasetFilesResponse:
+    """Build one page of the job's dataset-file listing."""
+    return files_pb.ListIngestJobDatasetFilesResponse(dataset_files=files, next_page_token=next_page or "")
 
 
 def _responses(*values: object) -> Callable[..., object]:
@@ -76,19 +75,24 @@ def _serve_job(mock_clients: MagicMock, *statuses: ingest_api.IngestJobStatus) -
     mock_clients.ingest_jobs.get_ingest_job.side_effect = _responses(*(_job_bean(status=s) for s in statuses))
 
 
-def _serve_listing(mock_clients: MagicMock, *pages: scout_catalog.DatasetFilesPage) -> None:
+def _serve_listing(mock_clients: MagicMock, *pages: files_pb.ListIngestJobDatasetFilesResponse) -> None:
     """Serve successive file listings for the job, repeating the last."""
-    mock_clients.catalog.get_dataset_files_for_job.side_effect = _responses(*pages)
+    mock_clients.grpc_dataset_files.ListIngestJobDatasetFiles.side_effect = _responses(*pages)
 
 
-def _serve_refreshes(mock_clients: MagicMock, *states: Mapping[str, api.IngestStatusV2]) -> None:
+def _serve_refreshes(mock_clients: MagicMock, *states: Mapping[str, files_pb.IngestStatus]) -> None:
     """Serve successive batch refreshes, each mapping a file id to the status it now reports.
 
     A file left out of a state is absent from that batch response, which is how the service reports one
     that has been deleted.
     """
-    mock_clients.catalog.batch_get_dataset_files.side_effect = _responses(
-        *({file_id: _file_bean(file_id, status) for file_id, status in state.items()} for state in states)
+    mock_clients.grpc_dataset_files.BatchGetDatasetFiles.side_effect = _responses(
+        *(
+            files_pb.BatchGetDatasetFilesResponse(
+                dataset_files=[_file_bean(file_id, status) for file_id, status in state.items()]
+            )
+            for state in states
+        )
     )
 
 
@@ -200,7 +204,7 @@ def test_as_files_ingested_skips_relisting_files_while_the_produced_count_is_unc
     _serve_refreshes(mock_clients, {"only": IN_PROGRESS}, {"only": SUCCESS})
 
     assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["only"]
-    assert mock_clients.catalog.get_dataset_files_for_job.call_count == 2
+    assert mock_clients.grpc_dataset_files.ListIngestJobDatasetFiles.call_count == 2
 
 
 def test_as_files_ingested_warns_when_fewer_files_listed_than_the_job_reports(

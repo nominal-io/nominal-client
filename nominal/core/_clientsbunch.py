@@ -37,6 +37,7 @@ from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
+from nominal.protos.datasets.v1 import dataset_files_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
@@ -157,6 +158,7 @@ class ClientsBunch:
     video: scout_video.VideoService
 
     # GRPC services
+    grpc_dataset_files: dataset_files_pb2_grpc.DatasetFileServiceStub
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
     channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
@@ -329,6 +331,7 @@ class ClientsBunch:
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            grpc_dataset_files=grpc_factory(dataset_files_pb2_grpc.DatasetFileServiceStub),
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),

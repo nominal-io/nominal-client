@@ -5,6 +5,7 @@ from typing import Self
 
 from nominal_api import datasource, scout_catalog
 
+from nominal.protos.datasets.v1 import dataset_files_pb2
 from nominal.ts import (
     IntegralNanosecondsUTC,
     _SecondsNanos,
@@ -31,3 +32,7 @@ class Bounds:
             start=_SecondsNanos.from_nanoseconds(self.start).to_api(),
             end=_SecondsNanos.from_nanoseconds(self.end).to_api(),
         )
+
+    @classmethod
+    def _from_proto(cls, bounds: dataset_files_pb2.DataBounds) -> Self:
+        return cls(start=bounds.start.ToNanoseconds(), end=bounds.end.ToNanoseconds())
