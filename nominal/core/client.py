@@ -759,6 +759,10 @@ class NominalClient:
             name: Name of the run to create
             start: Starting timestamp of the run to create
             end: Ending timestamp of the run to create, or None for an unbounded run.
+
+                **Note:** With data retention enabled, setting an end time locks the run's
+                assets and data sources. To add data sources after creation, pass ``None``,
+                attach the data, then call `Run.update` with the desired end time.
             description: Optional description of the run to create
             properties: String or numeric properties for the created run.
                 Integers are stored as floats.
