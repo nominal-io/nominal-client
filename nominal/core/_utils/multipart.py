@@ -10,7 +10,7 @@ from typing import BinaryIO, Iterable, Mapping
 import requests
 from nominal_api import ingest_api, upload_api
 
-from nominal.core._utils.filenames import resolve_upload_filename
+from nominal.core._utils.filenames import resolve_upload_filename, sanitize_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
@@ -80,6 +80,7 @@ def _sign_and_put_part(
     part: int,
     data: bytes,
     num_retries: int = 3,
+    bucket: str | None = None,
 ) -> requests.Response:
     """Sign and PUT a single in-memory part to S3, retrying transient failures.
 
@@ -91,7 +92,7 @@ def _sign_and_put_part(
         log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
         try:
             logger.debug("Signing part %d for upload", part, extra=log_extras)
-            sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+            sign_response = upload_client.sign_part(auth_header, key, part, upload_id, bucket=bucket)
             logger.debug(
                 "Successfully signed part %d for upload",
                 part,
@@ -160,6 +161,7 @@ def _complete_multipart_upload(
     key: str,
     upload_id: str,
     etags: Mapping[int, str],
+    bucket: str | None = None,
 ) -> str:
     """Complete an upload from a caller-supplied {part_number: etag} mapping.
 
@@ -167,7 +169,7 @@ def _complete_multipart_upload(
     Returns the object location, or raises if the response carries none.
     """
     parts = [ingest_api.Part(etag=etags[number], part_number=number) for number in sorted(etags)]
-    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
+    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts, bucket=bucket)
     if response.location is None:
         raise NominalMultipartUploadFailed(
             "completing multipart upload failed: no location on response",
@@ -268,6 +270,53 @@ def put_multipart_upload(
         raise e
 
 
+def upload_file_store_object(
+    auth_header: str,
+    workspace_rid: str,
+    data: bytes,
+    filename: str,
+    mimetype: str,
+    upload_client: upload_api.UploadService,
+    header_provider: HeaderProvider | None = None,
+) -> str:
+    """Upload bytes in one part for File Store to commit as a file revision.
+
+    Unlike `put_multipart_upload`, this returns the upload's key, which is what a File Store put change names, rather
+    than the object's storage location.
+
+    Args:
+        auth_header: Nominal authorization token
+        workspace_rid: Workspace the file's drive belongs to
+        data: The file's bytes
+        filename: Name for the uploaded object; characters unsafe for storage are replaced
+        mimetype: Type of the file's contents
+        upload_client: Conjure upload client
+        header_provider: Optional provider for headers to include in requests to the object store
+
+    Returns: The object key to name in a File Store put change
+    """
+    request = ingest_api.InitiateMultipartUploadRequest(
+        filename=sanitize_upload_filename(filename),
+        filetype=mimetype,
+        workspace=workspace_rid,
+        destination=ingest_api.UploadDestination.FILE_STORE,
+    )
+    response = upload_client.initiate_multipart_upload(auth_header, request)
+    # File Store uploads go to their own bucket, which every later call on the upload must name.
+    key, upload_id, bucket = response.key, response.upload_id, response.bucket
+    session = create_multipart_request_session(pool_size=1, header_provider=header_provider)
+    try:
+        _sign_and_put_part(upload_client, session, auth_header, key, upload_id, 1, data, bucket=bucket)
+        parts = upload_client.list_parts(auth_header, key, upload_id, bucket=bucket)
+        _complete_multipart_upload(
+            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts}, bucket=bucket
+        )
+    except Exception as e:
+        _abort(upload_client, auth_header, key, upload_id, e, bucket=bucket)
+        raise e
+    return key
+
+
 def upload_multipart_io(
     auth_header: str,
     workspace_rid: str | None,
@@ -359,13 +408,18 @@ def upload_multipart_file(
 
 
 def _abort(
-    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: BaseException
+    upload_client: upload_api.UploadService,
+    auth_header: str,
+    key: str,
+    upload_id: str,
+    e: BaseException,
+    bucket: str | None = None,
 ) -> None:
     logger.error(
         "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}
     )
     try:
-        upload_client.abort_multipart_upload(auth_header, key, upload_id)
+        upload_client.abort_multipart_upload(auth_header, key, upload_id, bucket=bucket)
     except Exception as exc:
         logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
         raise exc from e
