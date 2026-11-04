@@ -58,9 +58,11 @@ The two implementations report failures differently:
 
 - **Rust**, the default where `nominal-streaming` is installed, can save failed batches to an `.avro` file with `file_fallback` for [later upload](/guides/datasets/avro-streams.md).
   It also supports `num_workers` and `track_metrics`.
-- **Python** logs failed uploads and doesn't raise them when the stream closes.
+- **Python** waits for outstanding uploads on close and raises the first unreported upload exception.
+  A blocking `flush(wait=True)` does the same without closing the stream. Other failures are logged.
 
 Choose one with `implementation="rust"` or `implementation="python"`.
+Stop enqueueing before a blocking flush or close. Upload completion does not guarantee immediate query visibility.
 After streaming, check that the channels cover the expected time range.
 
 ## Add tags to filter data in a run or asset
