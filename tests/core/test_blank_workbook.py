@@ -224,3 +224,21 @@ def test_client_rejects_a_missing_mixed_or_empty_scope(clients: MagicMock, kwarg
 )
 def test_default_title_names_the_scope(names: list[str], expected: str) -> None:
     assert _workbook_title(names) == expected
+
+
+def test_client_creates_a_blank_comparison_workbook_only_when_asked(clients: MagicMock) -> None:
+    """`comparison=True` sends the comparison type and content; otherwise the type is left to the server."""
+    client = NominalClient(_clients=clients)
+
+    client.create_workbook(runs=["run-rid-1", "run-rid-2"], title="Compare", comparison=True)
+    request = _request(clients)
+    assert request.notebook_type == scout_notebook_api.NotebookType.COMPARISON_WORKBOOK
+    assert request.content_v2.workbook is None
+    assert request.content_v2.comparison_workbook.charts == {}
+    assert request.data_scope.run_rids == ["run-rid-1", "run-rid-2"]
+
+    clients.notebook.create.reset_mock()
+    client.create_workbook(runs=["run-rid-1", "run-rid-2"], title="Standard")
+    request = _request(clients)
+    assert request.notebook_type is None
+    assert request.content_v2.comparison_workbook is None

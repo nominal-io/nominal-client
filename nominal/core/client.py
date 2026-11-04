@@ -1840,6 +1840,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         is_draft: bool = False,
         workspace: Workspace | str | None = None,
+        comparison: bool = False,
     ) -> Workbook:
         """Create a blank workbook scoped to one or more runs, or to one or more assets.
 
@@ -1858,6 +1859,8 @@ class NominalClient:
             properties: Properties to attach to the workbook.
             is_draft: Whether to create the workbook as a draft. Defaults to False.
             workspace: Workspace or workspace RID for the workbook. Defaults to the client's default workspace.
+            comparison: Whether to create a comparison workbook, which views the runs or assets side by side.
+                Defaults to False, which creates a standard workbook.
 
         Returns:
             The created workbook.
@@ -1893,6 +1896,7 @@ class NominalClient:
             properties=properties,
             is_draft=is_draft,
             workspace=workspace,
+            comparison=comparison,
         )
 
     def search_workbooks(
