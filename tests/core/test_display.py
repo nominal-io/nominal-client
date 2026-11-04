@@ -541,6 +541,18 @@ def test_diagram_counts_runs_past_those_loaded(asset_loads):
     assert card is not None and ">+1 or more runs</text>" in _diagram(card)
 
 
+@pytest.mark.parametrize("cap", range(3, 12))
+def test_diagram_draws_at_most_graph_max_nodes(asset_loads, cap):
+    """A diagram never draws more nodes than graph_max_nodes when there's room for one node of each group."""
+    clients = _offline_clients()
+    asset_loads["datasets"] = [(f"scope{i}", _dataset(clients, rid=f"ri.catalog.dataset.{i}")) for i in range(2)]
+    asset_loads["runs"] = ([_run(clients, rid=f"ri.scout.run.{i}") for i in range(3)], False)
+    with set_display_options(show_link=False, graph_max_nodes=cap):
+        card = _asset(clients)._repr_html_()
+    assert card is not None
+    assert _diagram(card).count("<title>") == min(cap, 6)
+
+
 def test_every_group_keeps_a_node_under_a_small_cap(asset_loads):
     """However small graph_max_nodes is, the card's own node and one node of every group stay visible."""
     clients = _offline_clients()
@@ -550,8 +562,30 @@ def test_every_group_keeps_a_node_under_a_small_cap(asset_loads):
         card = _asset(clients)._repr_html_()
     assert card is not None
     diagram = _diagram(card)
-    assert diagram.count("<title>Dataset:") == 1 and diagram.count("<title>Run:") == 1
-    assert ">+4 more datasets</text>" in diagram and ">+4 more runs</text>" in diagram
+    assert diagram.count("<title>") == 3 and diagram.count("<title>Asset:") == 1
+    assert ">+5 more datasets</text>" in diagram and ">+5 more runs</text>" in diagram
+
+
+@pytest.mark.parametrize("asset_count, datasets_to", [(1, "ri.scout.asset.0"), (2, "ri.scout.run.1")])
+def test_run_diagram_joins_datasets_to_its_only_asset(asset_count, datasets_to):
+    """A run's datasets join its asset, or the run itself when it has several, as which holds each isn't loaded."""
+    clients = _offline_clients()
+    assets = [
+        Asset(
+            rid=f"ri.scout.asset.{i}",
+            name=f"Rig {i}",
+            description=None,
+            properties={},
+            labels=[],
+            created_at=START,
+            is_archived=False,
+            _clients=clients,
+        )
+        for i in range(asset_count)
+    ]
+    graph = _run(clients)._graph(assets, [("telemetry", _dataset(clients))])
+    datasets = next(group for group in graph.groups if group.section == "Datasets")
+    assert datasets.to.rid == datasets_to
 
 
 @pytest.mark.parametrize("options", [dict(show_graph=False), dict(fetch_details=False)])
@@ -626,6 +660,7 @@ def test_workbook_pointing_at_one_run_at_a_time_has_dashed_edges():
 
 
 def test_graph_max_nodes_must_be_positive():
+    """A diagram can't be capped below the card's own node."""
     with pytest.raises(ValueError, match="graph_max_nodes"):
         set_display_options(graph_max_nodes=0)
 

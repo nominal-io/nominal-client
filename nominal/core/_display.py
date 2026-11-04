@@ -83,7 +83,8 @@ class DisplayOptions:
     """
     collapse_threshold: int = 0
     """Sections with more items than this start collapsed, and a diagram with more nodes than this does too. With
-    the default, 0, every section starts collapsed, so a card shows its fields and the titles of its sections."""
+    the default, 0, every section with items starts collapsed, so a card shows its fields and the titles of its
+    sections. A section that holds only a note, such as a load that failed, stays open so the note shows."""
     max_items: int = 50
     """The most items a section lists, and loads where it can. The section says how many more were left out."""
     fetch_timeout: float = 5.0
@@ -98,7 +99,8 @@ class DisplayOptions:
     """
     graph_max_nodes: int = 20
     """The most nodes a diagram draws. Past it, each group of related resources shows its first few and a node
-    counting the rest, which links to the card's section listing them."""
+    counting the rest, which links to the card's section listing them. The card's own node and one node of each
+    group always show, so a cap below one more than the number of groups is exceeded."""
 
     def __post_init__(self) -> None:
         if self.style not in ("html", "text"):
@@ -156,7 +158,8 @@ def set_display_options(
         max_items: The most items a section lists.
         fetch_timeout: Seconds a card waits for what it loads from Nominal, in total.
         show_graph: Whether cards draw a diagram of the resource and the resources around it.
-        graph_max_nodes: The most nodes a diagram draws.
+        graph_max_nodes: The most nodes a diagram draws. The card's own node and one node of each group of
+            related resources always show, so a cap below one more than the number of groups is exceeded.
 
     Returns:
         A context manager that restores the previous options when its ``with`` block ends.
@@ -583,17 +586,23 @@ def _shown_counts(groups: Sequence[Group]) -> list[int]:
     """How many nodes of each group to draw, within `graph_max_nodes` with the card's own node.
 
     Each group gets an even share of what's left after smaller groups take what they need, and a group that's cut
-    gives one of its share to the node counting the rest. Every group draws at least one node.
+    gives one of its share to the node counting the rest. With a share of one, a group draws only that counting node.
+    Every group with resources draws at least one node, so the cap is exceeded only when it's below one more than the
+    number of groups.
     """
     budget = _options.graph_max_nodes - 1
     shown = [0] * len(groups)
-    order = sorted(range(len(groups)), key=lambda i: len(groups[i].nodes))
+    order = sorted((i for i in range(len(groups)) if groups[i].nodes), key=lambda i: len(groups[i].nodes))
     for position, index in enumerate(order):
         group = groups[index]
-        share = budget // (len(order) - position)
+        share = max(budget // (len(order) - position), 1)
         needed = len(group.nodes) + (1 if group.has_more else 0)
-        shown[index] = len(group.nodes) if needed <= share else min(len(group.nodes), max(share - 1, 1))
-        budget -= shown[index] + (1 if shown[index] < len(group.nodes) or group.has_more else 0)
+        if needed <= share:
+            shown[index] = len(group.nodes)
+            budget -= needed
+        else:
+            shown[index] = share - 1
+            budget -= share
     return shown
 
 

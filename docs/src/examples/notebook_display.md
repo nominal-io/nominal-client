@@ -188,6 +188,7 @@ and it needs no JavaScript, so it also displays in untrusted and saved notebooks
 An asset with hundreds of runs would make a diagram too large to read, so a diagram draws at most
 `graph_max_nodes` nodes, 20 by default. Past that, each group shows its first few nodes and a
 node counting the rest. That node links to the section of the card that lists them all.
+The card's own node and one node of each group always show, so a cap smaller than that is exceeded.
 For example, with room for five nodes, the rig's diagram draws one run and counts the other two.
 Here `collapse_threshold=10` also opens the sections with up to 10 items, so the diagram shows open:
 
