@@ -63,7 +63,7 @@ from nominal.core._utils.query_tools import (
     create_search_videos_query,
     create_search_workbook_templates_query,
 )
-from nominal.core.asset import Asset, _get_asset
+from nominal.core.asset import Asset, _get_asset, _get_assets
 from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.container_image import (
@@ -1883,8 +1883,7 @@ class NominalClient:
         if not scope:
             raise ValueError("At least one run or asset must be given to create a workbook")
         if title is None:
-            get = self.get_run if runs is not None else self.get_asset
-            title = _workbook_title([item.name if isinstance(item, (Run, Asset)) else get(item).name for item in scope])
+            title = _workbook_title(self._scope_names(scope, is_runs=runs is not None))
         rids = [rid_from_instance_or_string(item) for item in scope]
         return _create_blank_workbook(
             self._clients,
@@ -1898,6 +1897,31 @@ class NominalClient:
             workspace=workspace,
             comparison=comparison,
         )
+
+    def _scope_names(self, scope: Sequence[Run | Asset | str], *, is_runs: bool) -> list[str]:
+        """The names of the runs or assets in the scope, in order, fetching the given RIDs.
+
+        Asset RIDs are fetched together in one request; run RIDs are fetched one at a time.
+
+        Raises:
+            NominalNotFoundError: If an asset RID does not resolve.
+        """
+        if is_runs:
+            return [
+                item.name if isinstance(item, Run) else self.get_run(rid_from_instance_or_string(item)).name
+                for item in scope
+            ]
+        asset_rids = [item for item in scope if isinstance(item, str)]
+        fetched = _get_assets(self._clients, asset_rids) if asset_rids else {}
+        names = []
+        for item in scope:
+            if isinstance(item, str):
+                if item not in fetched:
+                    raise NominalNotFoundError(f"no asset found with RID {item!r}")
+                names.append(fetched[item].title)
+            else:
+                names.append(item.name)
+        return names
 
     def search_workbooks(
         self,

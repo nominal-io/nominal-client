@@ -10,6 +10,7 @@ from nominal.core.client import NominalClient
 from nominal.core.run import Run
 from nominal.core.workbook import WorkbookType, _workbook_title
 from nominal.core.workspace import Workspace
+from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from tests.core._workbook_fixtures import notebook_response
 
@@ -193,6 +194,30 @@ def test_client_fetches_names_for_rids_only_for_the_default_title(clients: Magic
     client.create_workbook(assets="asset-rid-2", title="Given")
     assert _request(clients).data_scope.asset_rids == ["asset-rid-2"]
     clients.assets.GetAssets.assert_not_called()
+
+
+def test_client_fetches_several_asset_rids_in_one_request(clients: MagicMock) -> None:
+    """Asset RIDs are looked up in a single batch, and the title keeps the input order."""
+    clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(
+        responses={
+            "asset-rid-3": asset_pb2.Asset(rid="asset-rid-3", title="Pump rig"),
+            "asset-rid-2": asset_pb2.Asset(rid="asset-rid-2", title="Gearbox rig"),
+        }
+    )
+
+    NominalClient(_clients=clients).create_workbook(assets=["asset-rid-2", _asset(clients), "asset-rid-3"])
+
+    clients.assets.GetAssets.assert_called_once()
+    assert list(clients.assets.GetAssets.call_args.args[0].rids) == ["asset-rid-2", "asset-rid-3"]
+    assert _request(clients).title == "Workbook for Gearbox rig, Rotor rig and 1 more"
+
+
+def test_client_raises_for_an_unknown_asset_rid_before_creating(clients: MagicMock) -> None:
+    clients.assets.GetAssets.return_value = asset_pb2.GetAssetsResponse(responses={})
+
+    with pytest.raises(NominalNotFoundError):
+        NominalClient(_clients=clients).create_workbook(assets=["missing-rid"])
+    clients.notebook.create.assert_not_called()
 
 
 @pytest.mark.parametrize(
