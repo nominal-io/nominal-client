@@ -1615,7 +1615,7 @@ requires-dist = [
 [[package]]
 name = "nominal-sphinx-theme"
 version = "0.1.0"
-source = { git = "https://github.com/nominal-io/nominal-sphinx-theme#2a51f774c2f7f6d0813edcb34f77d9d4ff0ccc8e" }
+source = { git = "https://github.com/nominal-io/nominal-sphinx-theme#25ad6b5ad535989e6ac0e09eec6793edd2fd45c7" }
 dependencies = [
     { name = "myst-parser" },
     { name = "shibuya" },
