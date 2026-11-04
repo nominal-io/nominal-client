@@ -61,3 +61,12 @@
 .nominal-repr summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
 .nominal-repr-chart { display: block; margin: 4px 0; max-width: 100%; height: auto; }
 .nominal-repr-more { font-style: italic; margin: 2px 0; }
+/* Diagrams keep their drawn size: a wide or tall one scrolls inside the card instead of shrinking its text or
+   stretching the output cell. Nodes carry their own colors, light with dark text, so they read on any theme;
+   edges take the card's text color. */
+.nominal-repr-graph { overflow: auto; max-height: 420px; margin: 4px 0; }
+.nominal-repr-graph-canvas { position: relative; }
+.nominal-repr-graph svg { display: block; max-width: none !important; height: auto; }
+/* Links lie over their nodes, since notebooks can't handle links inside SVG. */
+.nominal-repr-graph-link { position: absolute; display: block; border-radius: 4px; }
+.nominal-repr-graph-link:hover { background: rgba(0, 0, 0, 0.06); }

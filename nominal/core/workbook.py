@@ -147,8 +147,8 @@ class Workbook(
                 ("Description", _display.escape(self.description) if self.description else None),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
+            properties=self.properties,
             sections=[
-                _display.properties_section(self.properties),
                 _display.Section(
                     "Runs",
                     [[_display.identifier(rid, partial(run_url, self._clients, rid))] for rid in self.run_rids or ()],
@@ -162,6 +162,24 @@ class Workbook(
                 ),
             ],
             url=lambda: self.nominal_url,
+            graph=self._graph,
+        )
+
+    def _graph(self) -> _display.Graph:
+        """The runs or assets the workbook points at, below it.
+
+        A comparison workbook compares its runs. Any other workbook points at one run at a time, so its run edges
+        are dashed, as in the Nominal docs.
+        """
+        node = _display.Node("Workbook", self.title, self.rid, lambda: self.nominal_url)
+        runs = [_display.Node("Run", rid, rid, partial(run_url, self._clients, rid)) for rid in self.run_rids or ()]
+        assets = [
+            _display.Node("Asset", rid, rid, partial(asset_url, self._clients, rid)) for rid in self.asset_rids or ()
+        ]
+        one_at_a_time = self.workbook_type != WorkbookType.COMPARISON_WORKBOOK
+        return _display.Graph(
+            node,
+            [_display.Group("Runs", runs, node, dashed=one_at_a_time), _display.Group("Assets", assets, node)],
         )
 
     def _get_latest_api(self) -> scout_notebook_api.Notebook:

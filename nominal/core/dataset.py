@@ -123,6 +123,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 ("End", _display.timestamp(self.bounds.end)),
                 ("Duration", _display.duration(self.bounds.end - self.bounds.start)),
             ]
+        # The files load once, for their section and for the diagram.
+        files = _display.start(self._first_files)
         return _display.render(
             kind="Dataset",
             title=self.name,
@@ -133,17 +135,22 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 *bounds_fields,
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
+            properties=self.properties,
             sections=[
-                _display.properties_section(self.properties),
-                _display.fetched("Files", self._files_section),
+                _display.fetched_from("Files", files, self._files_section),
                 _display.fetched("Channels", self._channels_section),
             ],
             archived=self.is_archived,
             url=lambda: self.nominal_url,
+            graph=None if files is None else lambda: self._graph(_display.wait(files)),
         )
 
-    def _files_section(self) -> _display.Section:
-        files, has_more = _display.first(self.list_files(successful_only=False))
+    def _first_files(self) -> tuple[list[DatasetFile], bool]:
+        """The dataset's files, up to `max_items`, and whether it has more."""
+        return _display.first(self.list_files(successful_only=False))
+
+    def _files_section(self, loaded: tuple[list[DatasetFile], bool]) -> _display.Section:
+        files, has_more = loaded
         return _display.Section(
             "Files",
             [
@@ -157,6 +164,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             columns=("File", "Status", "Uploaded"),
             has_more=has_more,
         )
+
+    def _graph(self, loaded: tuple[list[DatasetFile], bool]) -> _display.Graph:
+        """The dataset's files below it. Files have no page in the app, so their nodes aren't links."""
+        node = _display.Node("Dataset", self.name, self.rid, lambda: self.nominal_url)
+        files, has_more = loaded
+        nodes = [_display.Node("File", file.name, file.id) for file in files]
+        return _display.Graph(node, [_display.Group("Files", nodes, node, has_more=has_more)])
 
     def _channels_section(self) -> _display.Section:
         channels, has_more = _display.first(self.search_channels())
@@ -2061,6 +2075,20 @@ def _construct_existing_ingest_options(
                 channel_name_overrides={},
             )
         )
+
+
+def _data_scope_nodes(scopes: Sequence[tuple[str, Dataset]]) -> list[_display.Node]:
+    """Diagram nodes for the datasets an asset or run holds, each edge labeled with its ref name."""
+    return [
+        _display.Node(
+            "Dataset",
+            dataset.name,
+            dataset.rid,
+            partial(dataset_url, dataset._clients, dataset.rid),
+            f"ref name={scope}",
+        )
+        for scope, dataset in scopes
+    ]
 
 
 def _data_scopes_section(scopes: Sequence[tuple[str, Dataset]]) -> _display.Section:

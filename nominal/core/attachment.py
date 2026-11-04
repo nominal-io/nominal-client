@@ -58,7 +58,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
                 ("Created", _display.timestamp(self.created_at)),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
-            sections=[_display.properties_section(self.properties)],
+            properties=self.properties,
             archived=self.is_archived,
         )
 

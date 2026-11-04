@@ -94,15 +94,22 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
                 ("Duration", _display.duration(self.duration)),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
+            properties=self.properties,
             sections=[
-                _display.properties_section(self.properties),
                 _display.Section(
                     "Assets",
                     [[_display.identifier(rid, partial(asset_url, self._clients, rid))] for rid in self.asset_rids],
                 ),
             ],
             archived=self.is_archived,
+            graph=self._graph,
         )
+
+    def _graph(self) -> _display.Graph:
+        """The assets the event is on, below it. Events have no page in the app, so the event's node isn't a link."""
+        node = _display.Node("Event", self.name, self.rid)
+        assets = [_display.Node("Asset", rid, rid, partial(asset_url, self._clients, rid)) for rid in self.asset_rids]
+        return _display.Graph(node, [_display.Group("Assets", assets, node)])
 
     def _get_latest_api(self) -> event_pb2.Event:
         return _get_event(self._clients, self.rid)

@@ -27,7 +27,7 @@ from nominal.core._utils.properties import properties_from_proto, typed_properti
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
 from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
 from nominal.core.comment import Comment
-from nominal.core.dataset import Dataset, _data_scopes_section
+from nominal.core.dataset import Dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -94,8 +94,11 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
                 ("End", _display.timestamp(self.end)),
                 ("Duration", _display.duration(self.end - self.start)),
             ]
+        # The assets and datasets load once, for their sections and for the diagram.
+        assets = _display.start(self.list_assets)
+        datasets = _display.start(self.list_datasets)
         # With loading off, the asset RIDs the run already holds still link to their pages.
-        assets = _display.fetched("Assets", self._assets_section) or _display.Section(
+        assets_section = _display.fetched_from("Assets", assets, self._assets_section) or _display.Section(
             "Assets",
             [[_display.identifier(rid, partial(asset_url, self._clients, rid))] for rid in self.assets],
         )
@@ -110,10 +113,10 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
                 ("Created", _display.timestamp(self.created_at)),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
+            properties=self.properties,
             sections=[
-                _display.properties_section(self.properties),
-                assets,
-                _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
+                assets_section,
+                _display.fetched_from("Datasets", datasets, _data_scopes_section),
                 _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
                 _display.Section(
                     "Links",
@@ -122,14 +125,35 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             ],
             archived=self.is_archived,
             url=lambda: self.nominal_url,
+            graph=lambda: (
+                self._graph(_display.wait(assets), _display.wait(datasets))
+                if assets is not None and datasets is not None
+                else None
+            ),
         )
 
-    def _assets_section(self) -> _display.Section:
+    def _assets_section(self, assets: Sequence[Asset]) -> _display.Section:
         return _display.Section(
             "Assets",
+            [[_display.named(asset.name, asset.rid, partial(asset_url, self._clients, asset.rid))] for asset in assets],
+        )
+
+    def _graph(self, assets: Sequence[Asset], datasets: Sequence[tuple[str, Dataset]]) -> _display.Graph:
+        """The run's assets below it, and its datasets below its asset.
+
+        With several assets, which asset each dataset belongs to isn't loaded, so the datasets join the run.
+        """
+        node = _display.Node("Run", self.name, self.rid, lambda: self.nominal_url)
+        asset_nodes = [
+            _display.Node("Asset", asset.name, asset.rid, partial(asset_url, self._clients, asset.rid))
+            for asset in assets
+        ]
+        datasets_to = asset_nodes[0] if len(asset_nodes) == 1 else node
+        return _display.Graph(
+            node,
             [
-                [_display.named(asset.name, asset.rid, partial(asset_url, self._clients, asset.rid))]
-                for asset in self.list_assets()
+                _display.Group("Assets", asset_nodes, node),
+                _display.Group("Datasets", _data_scope_nodes(datasets), datasets_to),
             ],
         )
 
