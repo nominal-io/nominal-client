@@ -27,19 +27,13 @@ called an [asset](/guides/assets.md). Let's imagine, for example, that we fire u
 rotor of a helicopter to measure its angular velocity.
 
 ```{code-cell} ipython3
-:tags: [hide-input]
+:tags: [remove-cell]
 
-# Start each execution with the rig registered, no runs or events, and two ingested datasets.
+# Start each execution with the rig registered and no runs, events or datasets.
 # The client cannot delete, so old resources are archived. The `example` property matches only the
 # rig this example created, so the cleanup never touches another RTR-02 asset or its data.
-# The page shows this cell collapsed.
-import tempfile
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-
-from nominal.core import EventType, NominalClient
+# The page does not show this cell.
+from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
 rig = client.get_or_create_asset_by_properties(
@@ -57,8 +51,17 @@ old_datasets = rig.list_datasets()
 rig.remove_data_scopes(names=[name for name, _ in old_datasets])
 for _, old_dataset in old_datasets:
     old_dataset.archive()
+```
 
-# Three minutes at 10 Hz: spin up, hold near 31 rad/s (about 300 rpm), spin down.
+The test records three minutes of data at 10 Hz: the rotor spins up, holds near 31 rad/s
+(about 300 rpm), and spins down. Telemetry and vibration go in separate tables:
+
+```{code-cell} ipython3
+:tags: [hide-input]
+
+import numpy as np
+import pandas as pd
+
 t = np.arange(1800) / 10
 speed = np.interp(t, [0, 30, 120, 150, 180], [0, 31.4, 31.4, 0, 0])
 test_start = pd.Timestamp.now(tz="UTC").floor("s") - pd.Timedelta(minutes=10)
@@ -82,19 +85,40 @@ tables = {
         }
     ),
 }
+tables["telemetry"].head()
+```
+
+Each table becomes a [dataset](/guides/datasets/overview.md) on the rig, under its own data scope:
+
+```{code-cell} ipython3
+:tags: [hide-input]
+
+from nominal.thirdparty.pandas import upload_dataframe
+
 units = {"rotor_speed": "rad/s", "gearbox_temp": "°C", "accel_rms": "g"}
 for scope, table in tables.items():
-    data_file = Path(tempfile.mkdtemp()) / f"rtr02_{scope}.csv"
-    table.to_csv(data_file, index=False, date_format="%Y-%m-%dT%H:%M:%S.%fZ")
-    dataset = client.create_dataset(
-        f"RTR-02 {scope}", labels=[scope], properties={"sample_rate_hz": "10"}
+    # The upload writes the index as the first column, so the timestamps go there.
+    dataset = upload_dataframe(
+        client,
+        table.set_index("time"),
+        f"RTR-02 {scope}",
+        "time",
+        timestamp_type="iso_8601",
+        labels=[scope],
+        properties={"sample_rate_hz": "10"},
     )
     rig.add_dataset(scope, dataset)
-    dataset.add_tabular_data(
-        data_file, timestamp_column="time", timestamp_type="iso_8601"
-    ).poll_until_ingestion_completed()
     for channel in dataset.get_channels():
         channel.update(unit=units[channel.name])
+```
+
+Each phase of the test becomes a run on the rig, and the gearbox overheating late in the hold
+becomes an event:
+
+```{code-cell} ipython3
+:tags: [hide-input]
+
+from nominal.core import EventType
 
 seconds = pd.Timedelta(seconds=1)
 for name, begin, end in [
@@ -170,7 +194,13 @@ set_display_options(
 rig
 ```
 
-Each card loads its related resources from Nominal, with a few requests.
+Called on its own like this, a change lasts until the kernel restarts.
+To use the same options in every notebook, put the call in an
+[IPython startup file](https://ipython.readthedocs.io/en/stable/interactive/tutorial.html#startup-files),
+such as `~/.ipython/profile_default/startup/nominal.py`.
+
+Each card loads its related resources from Nominal, with a few requests, and waits at most
+`fetch_timeout` seconds, 5 by default, for them. A section that hasn't loaded by then says so.
 To display cards faster, or offline, `fetch_details=False` shows only the fields
 the resource already holds.
 Used in a `with` block, the change lasts only until the block ends:
