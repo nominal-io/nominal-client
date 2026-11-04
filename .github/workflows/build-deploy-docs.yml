@@ -81,7 +81,7 @@ jobs:
           gh api "repos/$REPO/statuses/$SHA" \
             -f state=success \
             -f context="docs preview" \
-            -f description="Rendered docs of this pull request" \
+            -f description="↗ Open the rendered docs" \
             -f target_url="https://renderdoc.cloudflare-admins.workers.dev/$REPO/pull/$PR/"
       # PRs aren't deployed and preview from docs-site, so only other builds keep a Pages upload
       - name: Upload pages artifact
