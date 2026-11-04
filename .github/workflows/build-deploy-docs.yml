@@ -23,23 +23,7 @@ jobs:
   build:
     name: Build github pages
     runs-on: depot-ubuntu-24.04
-    env:
-      PREVIEW_SHA: ${{ github.event.pull_request.head.sha }}
-      PREVIEW_URL: https://renderdoc.cloudflare-admins.workers.dev/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/
     steps:
-      # Each run resets the preview status, so a failed rerun can't keep an older success.
-      # Fork PRs get a read-only token, and the preview does not serve them.
-      - name: Mark the docs preview pending
-        if: >-
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$PREVIEW_SHA" \
-            -f state=pending \
-            -f context="docs preview" \
-            -f description="Building the docs preview"
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install uv
@@ -75,40 +59,14 @@ jobs:
       - name: Build docs (warnings fail the build)
         run: |
           just build-docs
-      # The renderdoc Worker serves this artifact as the PR's docs preview
-      - name: Upload built site
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      # Uploads the site as the PR's docs-site artifact, which the renderdoc Worker serves,
+      # and links the preview, or the failed run, as the "docs preview" commit status
+      - name: "Built docs: upload and preview"
+        if: always() && github.event_name == 'pull_request'
+        uses: nominal-io/nominal-sphinx-theme/.github/actions/docs-preview@3c82e356cb791063fb5bd09bfaf64be1c03ce383 # main, 2026-11-04
         with:
-          name: docs-site
           path: ./docs/_build/dirhtml
-          # matches the Pages artifact below, so the preview link stays live for longer-running PRs
-          retention-days: 30
-      - name: Link the docs preview
-        if: >-
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$PREVIEW_SHA" \
-            -f state=success \
-            -f context="docs preview" \
-            -f description="↗ Open the rendered docs" \
-            -f target_url="$PREVIEW_URL"
-      - name: Mark the docs preview failed
-        if: >-
-          failure() &&
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$PREVIEW_SHA" \
-            -f state=failure \
-            -f context="docs preview" \
-            -f description="Docs build failed, so there is no preview" \
-            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          job-status: ${{ job.status }}
       # PRs aren't deployed and preview from docs-site, so only other builds keep a Pages upload
       - name: Upload pages artifact
         if: github.event_name != 'pull_request'
