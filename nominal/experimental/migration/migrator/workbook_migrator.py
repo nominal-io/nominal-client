@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID_RE}")
 
 
+class _RunsNotMigratedError(ValueError):
+    def __init__(self, workbook_rid: str, run_rids: list[str]) -> None:
+        super().__init__(f"Run RIDs not provided for workbook {workbook_rid}: {run_rids}")
+        self.run_rids = run_rids
+
+
 @dataclass(frozen=True)
 class WorkbookCopyOptions(ResourceCopyOptions):
     source_to_destination_asset_rid_mapping: Mapping[str, str] = field(default_factory=dict)
@@ -84,7 +90,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         if source_run_rids:
             missing = [r for r in source_run_rids if r not in options.source_to_destination_run_rid_mapping]
             if missing:
-                raise ValueError(f"Run RIDs not provided for workbook {source.rid}: {missing}")
+                raise _RunsNotMigratedError(source.rid, missing)
             data_scope = scout_notebook_api.NotebookDataScope(
                 run_rids=[options.source_to_destination_run_rid_mapping[r] for r in source_run_rids], asset_rids=None
             )
@@ -299,7 +305,8 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         This runs after the task executor, so transient failures are retried here instead of
         propagating. A remaining failure is recorded as a skip so the other workbooks still copy.
-        The caller keeps the pending entry, so a rerun retries the workbook.
+        The caller keeps the pending entry, so a rerun retries the workbook; one that uses runs not
+        yet migrated waits for the migration that copies them.
         """
 
         def copy() -> None:
@@ -308,6 +315,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         try:
             retry_transient(copy, description=f"copy of deferred workbook {workbook_rid}")
+        except _RunsNotMigratedError as error:
+            reason = f"waiting for runs not yet migrated: {error.run_rids}"
+            logger.warning("Deferring workbook %s: %s", workbook_rid, reason)
+            self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook_rid, reason)
+            return False
         except Exception as error:
             logger.exception("Failed to copy deferred workbook (rid: %s)", workbook_rid)
             self.ctx.migration_state.set_skip(ResourceType.WORKBOOK, workbook_rid, f"copy failed: {error}")
