@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import enum
 import logging
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -15,10 +14,8 @@ from nominal_api import (
     ingest_api,
     scout_catalog,
     scout_checks_api,
-    scout_layout_api,
     scout_template_api,
     scout_video_api,
-    scout_workbookcommon_api,
 )
 from typing_extensions import deprecated
 
@@ -29,6 +26,7 @@ from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._event_types import EventType
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import (
+    HasRid,
     Link,
     LinkDict,
     construct_user_agent_string,
@@ -116,7 +114,14 @@ from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video, _get_videos
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import (
+    Workbook,
+    _blank_workbook_content,
+    _blank_workbook_layout,
+    _create_blank_workbook,
+    _search_workbooks,
+    _workbook_title,
+)
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 from nominal.exceptions import (
@@ -1824,6 +1829,72 @@ class NominalClient:
         raw_workbook = self._clients.notebook.get(self._clients.auth_header, rid)
         return Workbook._from_conjure(self._clients, raw_workbook)
 
+    def create_workbook(
+        self,
+        *,
+        runs: Run | str | Sequence[Run | str] | None = None,
+        assets: Asset | str | Sequence[Asset | str] | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_draft: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Workbook:
+        """Create a blank workbook scoped to one or more runs, or to one or more assets.
+
+        The workbook has no panels yet: open its `Workbook.nominal_url` to add them in the Nominal app. To start from
+        existing panels instead, use `WorkbookTemplate.create_workbook` or `Workbook.clone`.
+
+        Args:
+            runs: A run, a run RID, or a sequence of them, to scope the workbook to.
+                **Note:** May not be provided alongside `assets`.
+            assets: An asset, an asset RID, or a sequence of them, to scope the workbook to.
+                **Note:** May not be provided alongside `runs`.
+            title: Title of the workbook. Defaults to "Workbook for {name}", with the names of the runs or assets.
+                Given only RIDs, the default title fetches each run or asset to find its name.
+            description: Description of the workbook. Defaults to no description.
+            labels: Labels to attach to the workbook.
+            properties: Properties to attach to the workbook.
+            is_draft: Whether to create the workbook as a draft. Defaults to False.
+            workspace: Workspace or workspace RID for the workbook. Defaults to the client's default workspace.
+
+        Returns:
+            The created workbook.
+
+        Raises:
+            ValueError: If both or neither of `runs` and `assets` are given, or if either is empty.
+
+        Example:
+            ```python
+            workbook = client.create_workbook(runs=[run_a, run_b], title="Spin-up comparison")
+            print(workbook.nominal_url)
+            ```
+        """
+        if runs is not None and assets is not None:
+            raise ValueError("Only one of `runs` and `assets` may be used to create a workbook")
+        selected = runs if runs is not None else assets
+        if selected is None:
+            raise ValueError("One of `runs` or `assets` must be given to create a workbook")
+        scope = _one_or_many(selected)
+        if not scope:
+            raise ValueError("At least one run or asset must be given to create a workbook")
+        if title is None:
+            get = self.get_run if runs is not None else self.get_asset
+            title = _workbook_title([item.name if isinstance(item, (Run, Asset)) else get(item).name for item in scope])
+        rids = [rid_from_instance_or_string(item) for item in scope]
+        return _create_blank_workbook(
+            self._clients,
+            title=title,
+            run_rids=rids if runs is not None else None,
+            asset_rids=rids if assets is not None else None,
+            description=description,
+            labels=labels,
+            properties=properties,
+            is_draft=is_draft,
+            workspace=workspace,
+        )
+
     def search_workbooks(
         self,
         *,
@@ -1985,22 +2056,18 @@ class NominalClient:
             labels=labels if labels is not None else [],
             properties=dict(properties) if properties is not None else {},
             is_published=is_published,
-            layout=scout_layout_api.WorkbookLayout(
-                v1=scout_layout_api.WorkbookLayoutV1(
-                    root_panel=scout_layout_api.Panel(
-                        tabbed=scout_layout_api.TabbedPanel(
-                            v1=scout_layout_api.TabbedPanelV1(
-                                id=str(uuid.uuid4()),
-                                tabs=[],
-                            )
-                        )
-                    )
-                )
-            ),
-            content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
+            layout=_blank_workbook_layout(),
+            content=_blank_workbook_content(),
             message=commit_message if commit_message is not None else "Initial blank workbook template",
             workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT),
         )
 
         template = self._clients.template.create(self._clients.auth_header, request)
         return WorkbookTemplate._from_conjure(self._clients, template)
+
+
+def _one_or_many(value: Run | Asset | str | Sequence[Run | Asset | str]) -> list[Run | Asset | str]:
+    """A single resource or RID as a one-item list, or a sequence of them as a list."""
+    if isinstance(value, (str, HasRid)):
+        return [value]
+    return [*value]

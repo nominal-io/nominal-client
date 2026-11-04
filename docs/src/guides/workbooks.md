@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Create workbooks from templates for a run or an asset, and find existing workbooks."
+    description: "Create workbooks for runs or assets, blank or from templates, and find existing workbooks."
 ---
 
 # Workbooks
@@ -26,6 +26,24 @@ print(workbook.nominal_url)
 
 To copy a template's RID, open it from **Workbooks** → **Templates**, click the arrow next to its name and select **Copy RID**.
 To look templates up by name or label instead, use {py:meth}`~nominal.core.NominalClient.search_workbook_templates`.
+
+## Create a blank workbook
+
+{py:meth}`Run.create_workbook <nominal.core.Run.create_workbook>` and {py:meth}`Asset.create_workbook <nominal.core.Asset.create_workbook>` create a workbook with no panels, scoped to that run or asset.
+Open its link to add panels in Nominal:
+
+```python
+workbook = run.create_workbook()
+print(workbook.nominal_url)
+```
+
+The title defaults to "Workbook for" and the run's or asset's name; pass `title=` to choose another.
+To view several runs or several assets in one workbook, use {py:meth}`NominalClient.create_workbook <nominal.core.NominalClient.create_workbook>`.
+It takes objects or RIDs:
+
+```python
+workbook = client.create_workbook(runs=[run_a, "<RUN_RID>"], title="Spin-up review")
+```
 
 ## Find workbooks
 
