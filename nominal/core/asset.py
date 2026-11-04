@@ -29,7 +29,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated, search_runs_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_runs_query
-from nominal.core.attachment import Attachment, _get_accessible_attachments
+from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
@@ -104,6 +104,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
                 _display.properties_section(self.properties),
                 _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
                 _display.fetched("Runs", self._runs_section),
+                _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
             ],
             archived=self.is_archived,
             url=lambda: self.nominal_url,

@@ -9,6 +9,7 @@ from nominal_api import api, datasource, scout_catalog, scout_compute_api
 
 from nominal.core import (
     Asset,
+    Attachment,
     Bounds,
     Channel,
     ChannelDataType,
@@ -19,6 +20,7 @@ from nominal.core import (
     get_display_options,
     set_display_options,
 )
+from nominal.core.attachment import _attachments_section
 from nominal.exceptions import NominalConfigError
 from nominal.protos.run.v1 import run_service_pb2
 
@@ -51,6 +53,19 @@ def _dataset(clients: object, **overrides: object) -> Dataset:
     )
     fields.update(overrides)
     return Dataset(**fields)  # type: ignore[arg-type]
+
+
+def _attachment(clients: object, rid: str, name: str) -> Attachment:
+    return Attachment(
+        rid=rid,
+        name=name,
+        description="",
+        properties={},
+        labels=["touchstone"],
+        created_at=START,
+        is_archived=False,
+        _clients=clients,  # type: ignore[arg-type]
+    )
 
 
 def _run(clients: object, **overrides: object) -> Run:
@@ -87,7 +102,15 @@ def test_cards_make_no_requests_with_links_and_loading_off():
         _clients=clients,
     )
     channel = Channel("rotor_speed", "ri.catalog.dataset.1", ChannelDataType.DOUBLE, "rad/s", None, clients)
-    resources = (_dataset(clients), _dataset(clients, bounds=None), asset, _run(clients, end=None), channel)
+    attachment = _attachment(clients, "ri.attachments.attachment.1", "amplifier.s2p")
+    resources = (
+        _dataset(clients),
+        _dataset(clients, bounds=None),
+        asset,
+        _run(clients, end=None),
+        channel,
+        attachment,
+    )
     with set_display_options(show_link=False, fetch_details=False):
         for resource in resources:
             card = resource._repr_html_()
@@ -204,6 +227,22 @@ def test_asset_runs_stop_loading_past_max_items():
         section = asset._runs_section()
     assert clients.run.SearchRuns.call_count == 2
     assert [row[0] for row in section.rows] == ["#0", "#1", "#2", "#0"] and section.has_more
+
+
+def test_attachments_link_to_their_downloads_by_name():
+    """Attachments list by name, up to max_items, each linked to download its file outside any workspace."""
+    clients = _linked_clients()
+    attachments = [
+        _attachment(clients, f"ri.attachments.attachment.{i}", name)
+        for i, name in enumerate(["coupler.s4p", "amplifier.s2p", "antenna.s1p"])
+    ]
+    with set_display_options(max_items=2):
+        section = _attachments_section(attachments)
+    expected = [("ri.attachments.attachment.1", "amplifier.s2p"), ("ri.attachments.attachment.2", "antenna.s1p")]
+    assert len(section.rows) == len(expected)
+    for row, (rid, name) in zip(section.rows, expected, strict=True):
+        assert f'href="https://app.example.com/api/downloadAttachment/{rid}"' in row[0] and f">{name}</a>" in row[0]
+    assert section.has_more
 
 
 def _channel_with_response(response: scout_compute_api.ComputeNodeResponse) -> Channel:

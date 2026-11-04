@@ -25,7 +25,7 @@ from nominal.core._utils.frontend_urls import asset_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
-from nominal.core.attachment import Attachment, _get_accessible_attachments
+from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
 from nominal.core.comment import Comment
 from nominal.core.dataset import Dataset, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
@@ -114,6 +114,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
                 _display.properties_section(self.properties),
                 assets,
                 _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
+                _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
                 _display.Section(
                     "Links",
                     [[_display.link(link["url"], link.get("title") or link["url"])] for link in self.links],
