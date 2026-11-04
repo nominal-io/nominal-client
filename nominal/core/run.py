@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, cast
 
 from typing_extensions import deprecated
 
+from nominal.core import _display
 from nominal.core._checklist_types import Priority
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -19,13 +21,13 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.frontend_urls import run_url
+from nominal.core._utils.frontend_urls import asset_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter, AssetMatch
-from nominal.core.attachment import Attachment, _get_accessible_attachments
+from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
 from nominal.core.comment import Comment
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -81,6 +83,55 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
         return run_url(self._clients, self.rid)
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        if self.end is None:
+            time_fields = [("Start", _display.timestamp(self.start)), ("End", "ongoing")]
+        else:
+            time_fields = [
+                ("Start", _display.timestamp(self.start)),
+                ("End", _display.timestamp(self.end)),
+                ("Duration", _display.duration(self.end - self.start)),
+            ]
+        # With loading off, the asset RIDs the run already holds still link to their pages.
+        assets = _display.fetched("Assets", self._assets_section) or _display.Section(
+            "Assets",
+            [[_display.identifier(rid, partial(asset_url, self._clients, rid))] for rid in self.assets],
+        )
+        return _display.render(
+            kind="Run",
+            title=f"#{self.run_number} {self.name}",
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                *time_fields,
+                ("Created", _display.timestamp(self.created_at)),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            sections=[
+                _display.properties_section(self.properties),
+                assets,
+                _display.fetched("Datasets", lambda: _data_scopes_section(self.list_datasets())),
+                _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
+                _display.Section(
+                    "Links",
+                    [[_display.link(link["url"], link.get("title") or link["url"])] for link in self.links],
+                ),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+        )
+
+    def _assets_section(self) -> _display.Section:
+        return _display.Section(
+            "Assets",
+            [
+                [_display.named(asset.name, asset.rid, partial(asset_url, self._clients, asset.rid))]
+                for asset in self.list_assets()
+            ],
+        )
 
     def _get_latest_api(self) -> run_service_pb2.Run:
         return _get_run(self._clients.run, self.rid)

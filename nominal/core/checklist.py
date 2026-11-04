@@ -11,6 +11,7 @@ from nominal_api import (
 )
 
 from nominal._utils.iterator_tools import batched
+from nominal.core import _display
 from nominal.core import run as core_run
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import checklist_preview_url, checklist_url
@@ -67,6 +68,22 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             _clients=clients,
             author_rid=checklist.metadata.author_rid,
             commit_id=checklist.commit.id,
+        )
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Checklist",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Commit", _display.identifier(self.commit_id) if self.commit_id else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            sections=[_display.properties_section(self.properties)],
+            url=lambda: self.nominal_url,
         )
 
     def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:

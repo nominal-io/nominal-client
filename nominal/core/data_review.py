@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import partial
 from time import sleep
 from typing import TYPE_CHECKING, Iterable, Protocol, Self, Sequence
 
@@ -11,10 +12,11 @@ from nominal_api import (
 )
 from typing_extensions import deprecated
 
+from nominal.core import _display
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
-from nominal.core._utils.frontend_urls import data_review_events_url, data_review_url
+from nominal.core._utils.frontend_urls import asset_url, checklist_url, data_review_events_url, data_review_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
@@ -77,6 +79,31 @@ class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
             _clients=clients,
             created_by_rid=data_review.created_by or None,
             asset_rid=data_review.asset_rid or None,
+        )
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Data review",
+            title="Completed" if self.completed else "In progress",
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Run", _display.identifier(self.run_rid, partial(run_url, self._clients, self.run_rid))),
+                (
+                    "Asset",
+                    _display.identifier(self.asset_rid, partial(asset_url, self._clients, self.asset_rid))
+                    if self.asset_rid
+                    else None,
+                ),
+                (
+                    "Checklist",
+                    _display.identifier(self.checklist_rid, partial(checklist_url, self._clients, self.checklist_rid)),
+                ),
+                ("Checklist commit", _display.identifier(self.checklist_commit)),
+                ("Created", _display.timestamp(self.created_at)),
+            ],
+            url=lambda: self.nominal_url,
         )
 
     def _get_latest_api(self) -> data_review_pb2.DataReview:

@@ -3,14 +3,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, overload
 
 from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
-from nominal.core._utils.frontend_urls import workbook_url
+from nominal.core._utils.frontend_urls import asset_url, run_url, workbook_url
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
 from nominal.protos.run.v1 import run_service_pb2_grpc
@@ -132,6 +134,35 @@ class Workbook(
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
         return workbook_url(self._clients, self.rid)
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        kind = "Comparison workbook" if self.workbook_type == WorkbookType.COMPARISON_WORKBOOK else "Workbook"
+        return _display.render(
+            kind=kind,
+            title=self.title,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            sections=[
+                _display.properties_section(self.properties),
+                _display.Section(
+                    "Runs",
+                    [[_display.identifier(rid, partial(run_url, self._clients, rid))] for rid in self.run_rids or ()],
+                ),
+                _display.Section(
+                    "Assets",
+                    [
+                        [_display.identifier(rid, partial(asset_url, self._clients, rid))]
+                        for rid in self.asset_rids or ()
+                    ],
+                ),
+            ],
+            url=lambda: self.nominal_url,
+        )
 
     def _get_latest_api(self) -> scout_notebook_api.Notebook:
         return self._clients.notebook.get(self._clients.auth_header, self.rid)

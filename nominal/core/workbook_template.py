@@ -12,6 +12,7 @@ from nominal_api import (
     scout_workbookcommon_api,
 )
 
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
 from nominal.core._utils.frontend_urls import workbook_template_url
@@ -97,6 +98,21 @@ class WorkbookTemplate(
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook Template in the Nominal app"""
         return workbook_template_url(self._clients, self.rid)
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Workbook template",
+            title=self.title,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            sections=[_display.properties_section(self.properties)],
+            url=lambda: self.nominal_url,
+        )
 
     def _get_latest_api(self) -> scout_template_api.Template:
         return self._clients.template.get(self._clients.auth_header, self.rid)
