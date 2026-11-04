@@ -10,11 +10,13 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages,
+# and to post the docs preview status on PRs
 permissions:
   contents: read
   pages: write
   id-token: write
+  statuses: write
 
 jobs:
   # Build job
@@ -57,8 +59,7 @@ jobs:
       - name: Build docs (warnings fail the build)
         run: |
           just build-docs
-      # Download from the run's Artifacts to preview a PR's docs: unzip, then
-      # `uv run python -m http.server -d <dir>` (the folder-style URLs need a server).
+      # The renderdoc Worker serves this artifact as the PR's docs preview
       - name: Upload built site
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -66,6 +67,22 @@ jobs:
           name: docs-site
           path: ./docs/_build/dirhtml
           retention-days: 7
+      # Fork PRs get a read-only token, and the preview does not serve them
+      - name: Link the docs preview
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/statuses/$SHA" \
+            -f state=success \
+            -f context="docs preview" \
+            -f description="Rendered docs of this pull request" \
+            -f target_url="https://renderdoc.cloudflare-admins.workers.dev/$REPO/pull/$PR/"
       # PRs aren't deployed and preview from docs-site, so only other builds keep a Pages upload
       - name: Upload pages artifact
         if: github.event_name != 'pull_request'
