@@ -29,7 +29,7 @@ pip install nominal
 :::
 ::::
 
-This includes the {py:class}`~nominal.core.NominalClient` and the [`nom` CLI](/sdk/cli.md).
+This includes the {py:class}`~nominal.core.NominalClient` and the [`nom` CLI](/ref/cli.md).
 
 ## Extras
 
@@ -57,10 +57,10 @@ pip install "nominal[tdms,video]"
 
 | Extra | For |
 | --- | --- |
-| `tdms` | [Uploading TDMS files](/sdk/thirdparty/tdms.md) |
-| `ibis` | [Querying data with Ibis](/sdk/ibis/index.md) |
+| `tdms` | [Uploading TDMS files](/ref/thirdparty/tdms.md) |
+| `ibis` | [Querying data with Ibis](/ref/ibis/index.md) |
 | `mis` | [Excel instrumentation sheets](/guides/cli/instrumentation-sheets.md) |
-| `compute` | [Compute as code](/sdk/experimental/compute-as-code.md) and [authoring checklists](/guides/checklists/authoring.md) |
+| `compute` | [Compute as code](/ref/experimental/compute-as-code.md) and [authoring checklists](/guides/checklists/authoring.md) |
 | `video` | [Live video streaming](/guides/video/live-video-streaming.md). Also needs GStreamer 1.20+ installed on your system. |
 
 `compute` and `video` install only on CPython for Windows (x86-64), macOS (Apple silicon) and
