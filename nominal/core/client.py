@@ -20,6 +20,7 @@ from nominal_api import (
 from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
+from nominal.core import _display
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
@@ -301,6 +302,27 @@ class NominalClient:
             out += f' profile="{self._profile}"'
         out += ">"
         return out
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        # Only configuration the client already holds, so displaying it never makes a request.
+        app = self._clients.app_base_url
+        workspace = self._clients.workspace_rid
+        if workspace:
+            workspace_html = _display.identifier(workspace, lambda: f"{app.rstrip('/')}/w/{workspace}")
+        else:
+            workspace_html = "the organization's default"
+        return _display.render(
+            kind="NominalClient",
+            title=self._profile or "",
+            fallback=repr(self),
+            fields=[
+                ("Profile", _display.escape(self._profile) if self._profile else None),
+                ("App", _display.link(app, app)),
+                ("API", _display.code(self._clients.api_base_url)),
+                ("Workspace", workspace_html),
+            ],
+        )
 
     def _workspace_rid_for_search(self, workspace: WorkspaceSearchT | None) -> str | None:
         """Resolve a workspace argument for search-like methods.

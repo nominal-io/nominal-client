@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Iterable, Protocol, Self, Sequence
 
+from nominal.core import _display
 from nominal.core import asset as core_asset
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
@@ -16,6 +18,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.frontend_urls import asset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_properties_to_proto, typed_property_update
@@ -73,6 +76,40 @@ class Event(HasRid, RefreshableGrpcMixin[event_pb2.Event]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def event(self) -> event_pb2_grpc.EventServiceStub: ...
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        priority = self.disposition.priority if self.disposition is not None else None
+        return _display.render(
+            kind="Event",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Type", _display.escape(self.type.value.lower())),
+                ("Priority", _display.escape(priority.name) if priority is not None else None),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Start", _display.timestamp(self.start)),
+                ("End", _display.timestamp(self.start + self.duration)),
+                ("Duration", _display.duration(self.duration)),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            sections=[
+                _display.Section(
+                    "Assets",
+                    [[_display.identifier(rid, partial(asset_url, self._clients, rid))] for rid in self.asset_rids],
+                ),
+            ],
+            archived=self.is_archived,
+            graph=self._graph,
+        )
+
+    def _graph(self) -> _display.Graph:
+        """The assets the event is on, below it. Events have no page in the app, so the event's node isn't a link."""
+        node = _display.Node("Event", self.name, self.rid)
+        assets = [_display.Node("Asset", rid, rid, partial(asset_url, self._clients, rid)) for rid in self.asset_rids]
+        return _display.Graph(node, [_display.Group("Assets", assets, node)])
 
     def _get_latest_api(self) -> event_pb2.Event:
         return _get_event(self._clients, self.rid)
