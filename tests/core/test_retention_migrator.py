@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from nominal.core.retention import KeepForever, KeepUntilExpiry, RetentionExemption
+from nominal.core.retention import KeepForever, KeepUntilExpiry, RetentionExemption, _time_range_to_proto
 from nominal.exceptions import NominalError, NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.experimental.migration import migration_cli
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
@@ -19,7 +19,11 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetMigrator
-from nominal.experimental.migration.migrator.retention_migrator import RetentionMigrator
+from nominal.experimental.migration.migrator.retention_migrator import (
+    _ALL_TIME_END,
+    _ALL_TIME_START,
+    RetentionMigrator,
+)
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -208,6 +212,40 @@ def test_other_failures_skip_the_resource_and_continue() -> None:
     assert [(s.source_rid, s.resource_type) for s in state.skipped_resources] == [("ds-a", "DATASET")]
 
 
+def test_source_read_failure_skips_the_dataset_instead_of_blaming_the_destination() -> None:
+    """A source-side permission failure is only a skip: it must not abort the copy as a destination problem."""
+    destination = _Destination()
+    unreadable = _dataset("ds-a")
+    unreadable.list_retention_exemptions.side_effect = NominalPermissionDeniedError("source denied")
+    readable = _dataset("ds-b", exemptions=[_exemption("ds-b", "manual")])
+    migrator, state = _migrator(destination, datasets=[unreadable, readable])
+
+    migrator.copy_retention([unreadable, readable], [])
+
+    assert destination.events == [("exemption", "dest-ds-b", "manual")]
+    assert [(s.source_rid, s.resource_type) for s in state.skipped_resources] == [("ds-a", "DATASET")]
+
+
+def test_exemption_from_a_locked_run_outside_the_migration_is_copied() -> None:
+    """Only runs being re-locked at the destination replace their exemptions; any other run's must be copied."""
+    destination = _Destination()
+    datasets = [_dataset("ds-a", exemptions=[_exemption("ds-a", "run-elsewhere")])]
+    migrator, _ = _migrator(destination, datasets=datasets)
+
+    migrator.copy_retention(datasets, [])
+
+    assert destination.events == [("exemption", "dest-ds-a", "run-elsewhere")]
+
+
+@pytest.mark.parametrize("bound", [_ALL_TIME_START, _ALL_TIME_END], ids=["start", "end"])
+def test_all_time_bounds_fit_the_servers_nanosecond_conversion(bound: int) -> None:
+    """The server multiplies whole seconds by 1e9 in int64, so a bound whose seconds overflow is rejected."""
+    seconds_and_nanos = _time_range_to_proto(bound, bound).start
+
+    assert -(2**63) <= seconds_and_nanos.seconds * 10**9 <= 2**63 - 1
+    assert -(2**63) <= seconds_and_nanos.seconds * 10**9 + seconds_and_nanos.nanos <= 2**63 - 1
+
+
 def test_dry_run_reads_the_source_and_writes_nothing() -> None:
     """A dry run, which may have no destination client at all, only reports what it would copy."""
     datasets = [_dataset("ds-a", policy=KeepUntilExpiry(30), exemptions=[_exemption("ds-a", "manual")])]
@@ -271,6 +309,20 @@ def test_runners_copy_retention_for_every_migrated_dataset_and_run(
     (datasets, runs), _ = copy_retention.call_args
     assert sorted(dataset.rid for dataset in datasets) == ["ds-scoped", "ds-standalone"]
     assert [r.rid for r in runs] == ["run-1"]
+
+
+def test_runners_leave_runs_out_when_runs_are_not_migrated(tmp_path: Path) -> None:
+    """Runs that were not migrated have no destination run to lock, so they are not offered to the retention pass."""
+    runner, *_ = _runner(tmp_path, include_retention=True)
+    runner.asset_inclusion_config = AssetInclusionConfig(
+        include_workbooks=False, include_runs=False, include_retention=True
+    )
+
+    with patch.object(RetentionMigrator, "copy_retention") as copy_retention:
+        runner.migrate_retention(MagicMock())
+
+    (_, runs), _ = copy_retention.call_args
+    assert runs == []
 
 
 @pytest.mark.parametrize("run_migration", [_run_sequential, _run_parallel], ids=["sequential", "parallel"])

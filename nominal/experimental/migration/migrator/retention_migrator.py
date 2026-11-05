@@ -15,8 +15,10 @@ from nominal.experimental.migration.resource_type import ResourceType
 
 logger = logging.getLogger(__name__)
 
-# The server treats an unset bound as the Unix epoch, so listing "every exemption" needs explicit extremes.
-_ALL_TIME_START = -(2**63)
+# The server treats an unset bound as the Unix epoch, so listing "every exemption" needs explicit extremes. It
+# converts bounds to int64 nanoseconds with an exact multiply of the whole seconds, so the start sits one second
+# above the int64 minimum: the minimum itself splits into seconds that overflow that multiply.
+_ALL_TIME_START = -(2**63) + 10**9
 _ALL_TIME_END = 2**63 - 1
 
 
@@ -62,25 +64,29 @@ class RetentionMigrator:
             self._copy_policy(dataset)
 
     def _copy_exemptions(self, source: Dataset, locked_run_rids: Collection[str]) -> None:
+        try:
+            source_exemptions = source.list_retention_exemptions(_ALL_TIME_START, _ALL_TIME_END)
+        except NominalError as error:
+            # A failure reading the source says nothing about the destination, so it is only a skip.
+            self._record_skip(
+                ResourceType.DATASET, source.rid, f"retention: failed to read exemptions from the source: {error}"
+            )
+            return
+        # A locked run's exemptions are named after the source run, so re-locking the run on the destination
+        # recreates them under the destination run's RID. Copying them as well would leave a duplicate that
+        # unlocking the run could never remove.
+        exemptions = [exemption for exemption in source_exemptions if exemption.source_id not in locked_run_rids]
+        if not exemptions:
+            return
+        if self.ctx.dry_run:
+            logger.info(
+                "%s Would copy %d retention exemption(s) of dataset %s", DRY_RUN_PREFIX, len(exemptions), source.rid
+            )
+            return
+        destination = self._destination_dataset(source)
+        if destination is None:
+            return
         with self._attempting(ResourceType.DATASET, source.rid, f"copy retention exemptions of dataset {source.rid}"):
-            # A locked run's exemptions are named after the source run, so re-locking the run on the
-            # destination recreates them under the destination run's RID. Copying them as well would leave
-            # a duplicate that unlocking the run could never remove.
-            exemptions = [
-                exemption
-                for exemption in source.list_retention_exemptions(_ALL_TIME_START, _ALL_TIME_END)
-                if exemption.source_id not in locked_run_rids
-            ]
-            if not exemptions:
-                return
-            if self.ctx.dry_run:
-                logger.info(
-                    "%s Would copy %d retention exemption(s) of dataset %s", DRY_RUN_PREFIX, len(exemptions), source.rid
-                )
-                return
-            destination = self._destination_dataset(source)
-            if destination is None:
-                return
             for exemption in exemptions:
                 destination.upsert_retention_exemption(
                     exemption.source_id, exemption.start, exemption.end, description=exemption.description

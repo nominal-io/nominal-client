@@ -1334,7 +1334,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Raises:
             NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
             NominalInvalidArgumentError: If this is a derived dataset.
-            NominalError: If dataset retention is not enabled for your organization, or the request fails.
+            NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
+            NominalError: If the request fails.
         """
         request = dataset_retention_pb2.UpdateRetentionPolicyRequest(dataset_rid=self.rid)
         if policy is not None:
@@ -1401,7 +1402,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Raises:
             NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
-            NominalError: If dataset retention is not enabled for your organization, or the request fails.
+            NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
+            NominalError: If the request fails.
         """
         request = dataset_retention_pb2.UpsertDatasetRetentionExemptionRequest(
             dataset_rid=self.rid,
