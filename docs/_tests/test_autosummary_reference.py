@@ -78,16 +78,16 @@ MAX_BATCH = 10
         "'sample_local': {'enums': [], 'exports': [], 'type_aliases': {},\n"
         "'constants': {'MAX_BATCH': '``10``', 'MAX_RETRIES': '``3``'}}}}\n"
         "autodoc_default_options = {'members': True}\n"
-        "exclude_patterns = ['sdk/_summaries']\n",
+        "exclude_patterns = ['ref/_summaries']\n",
         encoding="utf-8",
     )
     (docs / "autosummary.rst").write_text(
-        ".. autosummary::\n   :toctree: src/sdk/_summaries\n"
+        ".. autosummary::\n   :toctree: src/ref/_summaries\n"
         "   :template: autosummary/module-summary.rst\n\n   sample_api\n   sample_local\n",
         encoding="utf-8",
     )
-    (source / "index.rst").write_text("SDK\n===\n\n.. toctree::\n\n   sdk/experimental/sample\n", encoding="utf-8")
-    page = source / "sdk/experimental/sample.md"
+    (source / "index.rst").write_text("SDK\n===\n\n.. toctree::\n\n   ref/experimental/sample\n", encoding="utf-8")
+    page = source / "ref/experimental/sample.md"
     page.parent.mkdir(parents=True)
     page.write_text(
         "# Sample API\n\nAn authored walkthrough.\n\n## API reference\n\n"
@@ -99,7 +99,7 @@ MAX_BATCH = 10
     result = build_docs()
     assert result.returncode == 0, result.stdout + result.stderr
     output = docs / "_build/dirhtml"
-    tree = pickle.loads((output / ".doctrees/sdk/experimental/sample.doctree").read_bytes())
+    tree = pickle.loads((output / ".doctrees/ref/experimental/sample.doctree").read_bytes())
     tables = list(tree.findall(nodes.table))
     assert [{row[0].astext().strip() for row in table.findall(nodes.row)} for table in tables] == [
         {"Resource"},
@@ -123,7 +123,7 @@ MAX_BATCH = 10
     assert aliases["ResourceOrLabel"].astext() == "Resource | Literal['fast', 'safe']"
     assert aliases["RESOURCE_TYPE"].astext() == "Resource | None"
     assert aliases["ItemCount"].astext() == "int"
-    html = (output / "sdk/experimental/sample/index.html").read_text()
+    html = (output / "ref/experimental/sample/index.html").read_text()
     for name in ["ResourceOrLabel", "RESOURCE_TYPE"]:
         row_html = html.split(f'id="sample_api.{name}"', 1)[1].split("</tr>", 1)[0]
         assert 'href="../../generated/sample_api.Resource/#sample_api.Resource"' in row_html
@@ -133,16 +133,16 @@ MAX_BATCH = 10
     inventory = InventoryFile.loads((output / "objects.inv").read_bytes(), uri="").data
     for kind, name in [("class", "Resource"), ("class", "Mode"), ("function", "create")]:
         entry = inventory[f"py:{kind}"][f"sample_api.{name}"]
-        assert entry.uri.startswith(f"sdk/generated/sample_api.{name}/")
-        assert (output / f"sdk/generated/sample_api.{name}/index.html").is_file()
-    assert inventory["py:data"]["sample_api.MAX_BATCH"].uri.startswith("sdk/experimental/sample/")
-    assert not (output / "sdk/generated/sample_api.MAX_BATCH/index.html").exists()
+        assert entry.uri.startswith(f"ref/generated/sample_api.{name}/")
+        assert (output / f"ref/generated/sample_api.{name}/index.html").is_file()
+    assert inventory["py:data"]["sample_api.MAX_BATCH"].uri.startswith("ref/experimental/sample/")
+    assert not (output / "ref/generated/sample_api.MAX_BATCH/index.html").exists()
     for name in aliases:
         entry = inventory["py:data"][f"sample_api.{name}"]
-        assert entry.uri == f"sdk/experimental/sample/#sample_api.{name}"
-        assert not (output / f"sdk/generated/sample_api.{name}/index.html").exists()
-    assert inventory["py:method"]["sample_api.Resource.read"].uri.startswith("sdk/generated/sample_api.Resource/")
-    assert not (output / "sdk/_summaries/sample_api/index.html").exists()
+        assert entry.uri == f"ref/experimental/sample/#sample_api.{name}"
+        assert not (output / f"ref/generated/sample_api.{name}/index.html").exists()
+    assert inventory["py:method"]["sample_api.Resource.read"].uri.startswith("ref/generated/sample_api.Resource/")
+    assert not (output / "ref/_summaries/sample_api/index.html").exists()
     assert "sample_local.MAX_BATCH" not in inventory.get("py:data", {})
     assert "sample_local.MAX_RETRIES" in inventory["py:data"]
     assert "sample_api.T" not in inventory.get("py:data", {})
@@ -204,13 +204,13 @@ def test_core_topics_combine_modules_into_public_reference_tables(
         "'constants': {'MAX_BATCH': '``10``'}, 'type_aliases': {'Alias': "
         "':py:class:`~sample_core.Resource` | :py:class:`str`'}, "
         "'canonical_names': {'Alias': 'sample_core._values.Alias'}}}}\n"
-        "autodoc_default_options = {'members': True}\nexclude_patterns = ['sdk/_summaries']\n"
+        "autodoc_default_options = {'members': True}\nexclude_patterns = ['ref/_summaries']\n"
     )
     (docs / "autosummary.rst").write_text(
-        ".. autosummary::\n   :toctree: src/sdk/_summaries\n"
+        ".. autosummary::\n   :toctree: src/ref/_summaries\n"
         "   :template: autosummary/core-summary.rst\n\n   sample_core\n"
     )
-    directory = source / "sdk/core"
+    directory = source / "ref/core"
     directory.mkdir(parents=True)
     (directory / "index.md").write_text(
         "# Core\n\n```{eval-rst}\n.. include:: ../_summaries/sample_core.rst\n"
@@ -224,13 +224,13 @@ def test_core_topics_combine_modules_into_public_reference_tables(
         ".. include:: ../_summaries/sample_core.rst\n"
         "   :start-after: .. core-resources-start\n   :end-before: .. core-resources-end\n```\n"
     )
-    (source / "index.rst").write_text("SDK\n===\n\n.. toctree::\n\n   sdk/core/index\n")
+    (source / "index.rst").write_text("SDK\n===\n\n.. toctree::\n\n   ref/core/index\n")
 
     result = build_docs(builder)
     assert result.returncode == 0, result.stdout + result.stderr
     output = docs / "_build" / builder
     suffix = "/" if builder == "dirhtml" else ".html"
-    switchboard = pickle.loads((output / ".doctrees/sdk/core/index.doctree").read_bytes())
+    switchboard = pickle.loads((output / ".doctrees/ref/core/index.doctree").read_bytes())
     tables = list(switchboard.findall(nodes.table))
     assert {row[0].astext().strip() for row in tables[0].findall(nodes.row)} == {
         "Resource",
@@ -242,15 +242,15 @@ def test_core_topics_combine_modules_into_public_reference_tables(
         "LegacyResource",
     }
     assert [row[0].astext() for row in tables[1].findall(nodes.row)] == ["resources"]
-    html = (output / "sdk/core/index.html").read_text()
+    html = (output / "ref/core/index.html").read_text()
     hidden = html.split("<div hidden>", 1)[1].split("</div>", 1)[0]
     for name in ["Resource", "create", "LegacyResource"]:
         assert f'href="../generated/sample_core.{name}{suffix}#sample_core.{name}"' in hidden
     for name in ["Alias", "MAX_BATCH"]:
         assert f'href="resources{suffix}#sample_core.{name}"' in hidden
     assert all("LegacyResource" not in str(node["entries"]) for node in switchboard.findall(addnodes.toctree))
-    assert 'id="module-sample_core"' in (output / "sdk/core/index.html").read_text()
-    topic = pickle.loads((output / ".doctrees/sdk/core/resources.doctree").read_bytes())
+    assert 'id="module-sample_core"' in (output / "ref/core/index.html").read_text()
+    topic = pickle.loads((output / ".doctrees/ref/core/resources.doctree").read_bytes())
     assert [rubric.astext() for rubric in topic.findall(nodes.rubric)] == [
         "Classes",
         "Enumerations",
@@ -272,11 +272,11 @@ def test_core_topics_combine_modules_into_public_reference_tables(
     assert "Import from sample_core" in topic.astext()
     inventory = InventoryFile.loads((output / "objects.inv").read_bytes(), uri="").data
     public_class = inventory["py:class"]["sample_core.Resource"]
-    assert public_class.uri.startswith(f"sdk/generated/sample_core.Resource{suffix}")
+    assert public_class.uri.startswith(f"ref/generated/sample_core.Resource{suffix}")
     assert inventory["py:class"]["sample_core.resources.Resource"].uri == public_class.uri
     assert inventory["py:class"]["sample_core.LegacyResource"].uri.startswith(
-        f"sdk/generated/sample_core.LegacyResource{suffix}"
+        f"ref/generated/sample_core.LegacyResource{suffix}"
     )
-    assert inventory["py:data"]["sample_core.Alias"].uri == f"sdk/core/resources{suffix}#sample_core.Alias"
+    assert inventory["py:data"]["sample_core.Alias"].uri == f"ref/core/resources{suffix}#sample_core.Alias"
     assert inventory["py:data"]["sample_core._values.Alias"].uri == inventory["py:data"]["sample_core.Alias"].uri
     assert "sample_core._values" not in inventory["py:module"]

@@ -2,7 +2,7 @@
 
 - Writing rules for pages and docstrings come from the `nominal-docs` skill. See the root [AGENTS.md](../AGENTS.md).
 - This file covers this site's folders, build commands and layout.
-- Call the library the "Nominal Python Client", or "the client" after first use. Call the section under `sdk/` "Reference", the name of its tab, not "SDK reference".
+- Call the library the "Nominal Python Client", or "the client" after first use. Call the section under `ref/` "Reference", the name of its tab, not "SDK reference".
 
 ## Contents
 
@@ -33,7 +33,7 @@
 - Pages are Markdown in `src/`, parsed by MyST. Sphinx config is `conf.py`; `nominal-sphinx-theme` supplies the styling.
 - `src/index.md` declares guide, example, reference and project navigation.
 - Header tabs: Guides, Examples and Reference. The sidebar shows only the active tab.
-  - `examples/` pages belong to Examples, `sdk/` pages to Reference, everything else to Guides.
+  - `examples/` pages belong to Examples, `ref/` pages to Reference, everything else to Guides.
   - Keep each captioned root toctree within one section.
 - Keep retired public URLs in `src/redirects.txt`. `sphinxext.rediraffe` builds the redirects, keeping query strings and section anchors. The entries record moved URLs, not an API inventory.
 - `_static/custom.css` keeps recordings within the content column. The shared theme owns all other styling.
@@ -64,9 +64,9 @@
 
 ### Pages and navigation
 
-- Reference pages live in `src/sdk/` and use native `autosummary`, with templates in `_templates/autosummary/`.
+- Reference pages live in `src/ref/` and use native `autosummary`, with templates in `_templates/autosummary/`.
 - Members come from Python exports. Don't maintain member lists or generated source pages.
-- Generated files are ignored by Git and the preview watcher: the exceptions overview (`src/sdk/exceptions.rst`), detail pages (`src/sdk/generated/`) and summary fragments (`src/sdk/_summaries/`).
+- Generated files are ignored by Git and the preview watcher: the exceptions overview (`src/ref/exceptions.rst`), detail pages (`src/ref/generated/`) and summary fragments (`src/ref/_summaries/`).
   - The sidebar shows only the exceptions overview. Its template splits errors and warnings, without a member list.
   - Summary fragments are excluded from page discovery. Only the Markdown landing page belongs in the sidebar.
 - New reference pages need an entry in the root `index.md` toctree.
@@ -76,7 +76,7 @@
 
 ### Core topics
 
-- Core, timestamp, experiment and integration pages include native module summaries from `src/sdk/_summaries/`.
+- Core, timestamp, experiment and integration pages include native module summaries from `src/ref/_summaries/`.
   - Their module entries live in `autosummary.rst`.
   - Sphinx finds members from `__all__` when present, otherwise from public local definitions.
   - Packages with `__all__` need no `:imported-members:` option.

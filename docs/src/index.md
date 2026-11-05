@@ -51,7 +51,7 @@ Full, runnable scripts.
 :::
 
 :::{grid-item-card} {octicon}`book` Reference
-:link: sdk/index
+:link: ref/index
 :link-type: doc
 
 Every class, function and `nom` command.
@@ -164,10 +164,10 @@ examples/*
 :caption: Reference
 :maxdepth: 2
 
-Overview <sdk/index>
-Core <sdk/core/index>
-Timestamps <sdk/ts/index>
-Exceptions <sdk/exceptions>
+Overview <ref/index>
+Core <ref/core/index>
+Timestamps <ref/ts/index>
+Exceptions <ref/exceptions>
 ```
 
 ```{toctree}
@@ -175,7 +175,7 @@ Exceptions <sdk/exceptions>
 :caption: Command Line
 :maxdepth: 1
 
-nom CLI <sdk/cli>
+nom CLI <ref/cli>
 ```
 
 ```{toctree}
@@ -183,15 +183,15 @@ nom CLI <sdk/cli>
 :caption: Experiments
 :maxdepth: 1
 
-sdk/experimental/compute
-sdk/experimental/compute-as-code
-sdk/experimental/derived_datasets
-sdk/experimental/extractors
-sdk/experimental/ingest
-sdk/experimental/migration
-sdk/experimental/spatial
-sdk/experimental/video
-sdk/experimental/video_processing
+ref/experimental/compute
+ref/experimental/compute-as-code
+ref/experimental/derived_datasets
+ref/experimental/extractors
+ref/experimental/ingest
+ref/experimental/migration
+ref/experimental/spatial
+ref/experimental/video
+ref/experimental/video_processing
 ```
 
 ```{toctree}
@@ -199,18 +199,18 @@ sdk/experimental/video_processing
 :caption: Third-Party Integrations
 :maxdepth: 1
 
-sdk/ibis/index
-sdk/thirdparty/matlab
-sdk/thirdparty/pandas
-sdk/thirdparty/polars
-sdk/thirdparty/tdms
+ref/ibis/index
+ref/thirdparty/matlab
+ref/thirdparty/pandas
+ref/thirdparty/polars
+ref/thirdparty/tdms
 ```
 
 ```{toctree}
 :hidden:
 :caption: Releases
 
-sdk/changelog
+ref/changelog
 ```
 
 ```{toctree}

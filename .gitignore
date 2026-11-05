@@ -202,6 +202,6 @@ uv.toml
 !docs/src/guides/data/racecar_dataset.csv.gz
 
 # Native Sphinx autosummary reference pages.
-docs/src/sdk/generated/
-docs/src/sdk/exceptions.rst
-docs/src/sdk/_summaries/
+docs/src/ref/generated/
+docs/src/ref/exceptions.rst
+docs/src/ref/_summaries/
