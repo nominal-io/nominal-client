@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Guides, examples and SDK reference for the Nominal Python Client."
+    description: "Guides, examples and reference for the Nominal Python Client."
 ---
 
 # Nominal Python Client
@@ -50,7 +50,7 @@ Upload a file, stream data, mark a run and read it back.
 Full, runnable scripts.
 :::
 
-:::{grid-item-card} {octicon}`book` SDK reference
+:::{grid-item-card} {octicon}`book` Reference
 :link: sdk/index
 :link-type: doc
 
@@ -161,7 +161,7 @@ examples/*
 
 ```{toctree}
 :hidden:
-:caption: SDK
+:caption: Reference
 :maxdepth: 2
 
 Overview <sdk/index>
