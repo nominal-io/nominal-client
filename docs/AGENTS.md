@@ -2,7 +2,7 @@
 
 - Writing rules for pages and docstrings come from the `nominal-docs` skill. See the root [AGENTS.md](../AGENTS.md).
 - This file covers this site's folders, build commands and layout.
-- Call the library the "Nominal Python Client", or "the client" after first use. "SDK" means only the reference section under `sdk/`, as in "SDK reference".
+- Call the library the "Nominal Python Client", or "the client" after first use. Call the section under `sdk/` "Reference", the name of its tab, not "SDK reference".
 
 ## Contents
 
@@ -32,8 +32,8 @@
 
 - Pages are Markdown in `src/`, parsed by MyST. Sphinx config is `conf.py`; `nominal-sphinx-theme` supplies the styling.
 - `src/index.md` declares guide, example, reference and project navigation.
-- Header tabs: Guides, Examples and SDK. The sidebar shows only the active tab.
-  - `examples/` pages belong to Examples, `sdk/` pages to SDK, everything else to Guides.
+- Header tabs: Guides, Examples and Reference. The sidebar shows only the active tab.
+  - `examples/` pages belong to Examples, `sdk/` pages to Reference, everything else to Guides.
   - Keep each captioned root toctree within one section.
 - Keep retired public URLs in `src/redirects.txt`. `sphinxext.rediraffe` builds the redirects, keeping query strings and section anchors. The entries record moved URLs, not an API inventory.
 - `_static/custom.css` keeps recordings within the content column. The shared theme owns all other styling.
@@ -43,7 +43,7 @@
 - Guides live in `src/guides/`. Keep their images, recordings and downloadable data there too.
 - Assets, datasets, runs, events, workbooks and channels are each defined on their own guide. Other guides link there rather than define them again.
 - Each guide runs from the top. Guides whose code needs a client include `_snippets/connect-the-client.md` before their first section, instead of repeating install, API key or connection steps.
-- Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the SDK reference.
+- Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the reference.
 - Reusable prose goes in `src/guides/_snippets/`, code fragments in `src/guides/_snippets/code/`. Include them with MyST `{include}` and `{literalinclude}`. Partials are excluded from page discovery.
 - MyST colon fences support nested admonitions and Sphinx Design tabs, dropdowns and cards. Outer directives need more colons than nested ones.
 - `{video}` embeds local recordings or remote URLs.
@@ -92,7 +92,7 @@
 
 ### Members and tables
 
-- Classes, enums and functions get detail pages. All SDK references share one table template.
+- Classes, enums and functions get detail pages. All reference pages share one table template.
 - Constants and type aliases get compact tables with values and linked type definitions.
   - `conf.py` reads the native module seed to supply enum names, constant values and type aliases as template data.
   - Alias discovery includes explicit `TypeAlias` annotations, including aliases of concrete types. Sphinx formats definitions with `restify`.

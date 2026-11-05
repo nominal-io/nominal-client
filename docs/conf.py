@@ -1,4 +1,4 @@
-"""Sphinx config for the Nominal Python Client guides, examples, and SDK reference."""
+"""Sphinx config for the Nominal Python Client guides, examples, and reference."""
 
 import sys
 from collections import Counter
@@ -222,6 +222,6 @@ html_theme_options = theme_options(
     nav_links=[
         {"title": "Guides", "url": "index"},
         {"title": "Examples", "url": "examples/index"},
-        {"title": "SDK", "url": "sdk/index"},
+        {"title": "Reference", "url": "sdk/index"},
     ],
 )
