@@ -63,7 +63,7 @@ file.poll_until_ingestion_completed()
 ```
 
 A value of `1.0` in `elapsed_s` then means `2026-09-10T14:38:20Z`.
-See [Timestamps](/sdk/ts/index.md) for all formats.
+See [Timestamps](/ref/ts/index.md) for all formats.
 
 ## Tag the data
 

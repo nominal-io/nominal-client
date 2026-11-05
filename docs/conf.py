@@ -135,7 +135,7 @@ codeautolink_inventory_map = {
 # A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
 codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
-exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
+exclude_patterns = ["guides/_snippets", "ref/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
@@ -222,6 +222,6 @@ html_theme_options = theme_options(
     nav_links=[
         {"title": "Guides", "url": "index"},
         {"title": "Examples", "url": "examples/index"},
-        {"title": "Reference", "url": "sdk/index"},
+        {"title": "Reference", "url": "ref/index"},
     ],
 )

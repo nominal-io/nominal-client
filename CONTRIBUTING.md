@@ -30,7 +30,7 @@ or with `just test-e2e-token <token>`.
 
 ## Docs
 
-The docs site is built from `docs/src/` with Sphinx. Guides are MyST Markdown pages under `docs/src/guides/`, examples are MyST notebooks under `docs/src/examples/`, and the reference under `docs/src/sdk/` is generated from docstrings, so a reference fix is a docstring fix.
+The docs site is built from `docs/src/` with Sphinx. Guides are MyST Markdown pages under `docs/src/guides/`, examples are MyST notebooks under `docs/src/examples/`, and the reference under `docs/src/ref/` is generated from docstrings, so a reference fix is a docstring fix.
 
 `just serve-docs` serves a live preview at http://127.0.0.1:8000 that rebuilds as you edit. `just build-docs` builds the site as CI does, with warnings as errors; run it before opening a PR.
 
