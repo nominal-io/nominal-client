@@ -477,3 +477,27 @@ def test_add_parquet_rejects_csv(empty_builder: tuple[MagicMock, IngestBuilder])
     with pytest.raises(ValueError, match="Parquet") as exc:
         builder.add_parquet("data.csv", "time", "epoch_seconds")
     assert ".parquet.zip" in str(exc.value)
+
+
+def test_containerized_arguments_are_normalized_and_copied(
+    write_file: WriteFile, empty_builder: tuple[MagicMock, IngestBuilder]
+) -> None:
+    """Typed arguments are snapshotted as wire strings when the containerized run is registered."""
+    client, builder = empty_builder
+    arguments: dict[str, str | bool | int | float] = {
+        "text": " FALSE 001 ",
+        "enabled": False,
+        "count": 0,
+        "scale": 1.25,
+    }
+    builder.add_containerized(extractor="extractor", sources={"input": write_file("data.bin", 1)}, arguments=arguments)
+    arguments.clear()
+    builder.submit()
+
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    assert dict(request.items[0].containerized.arguments) == {
+        "text": " FALSE 001 ",
+        "enabled": "false",
+        "count": "0",
+        "scale": "1.25",
+    }

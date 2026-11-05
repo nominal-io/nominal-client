@@ -15,7 +15,7 @@ from nominal.core.container_image import (
     FileOutputFormat,
 )
 from nominal.experimental.extractor._arguments import _Input, _Parameter
-from nominal.experimental.extractor._definition import _Definition
+from nominal.experimental.extractor._definition import _MISSING, _Definition
 from nominal.experimental.extractor._errors import _ErrorMapping
 
 
@@ -60,6 +60,27 @@ def _environment(variable: str) -> str:
     if re.fullmatch(r"[A-Z][A-Z0-9_]*", variable) is None or variable.startswith("_NOMINAL_"):
         raise ValueError(f"invalid catalog environment variable {variable!r}")
     return variable
+
+
+def _catalog_type_and_default(declaration: _Parameter) -> dict[str, str]:
+    """Map built-in converters to catalog types and their defaults to wire strings."""
+    fields: dict[str, str] = {}
+    default = None if declaration.default is _MISSING else declaration.default
+    if declaration.declared_type is bool:
+        fields["type"] = "boolean"
+        if default is not None:
+            fields["default"] = "true" if default else "false"
+    elif declaration.declared_type is int:
+        fields["type"] = "integer"
+        if default is not None:
+            fields["default"] = str(default)
+    elif declaration.declared_type is float:
+        fields["type"] = "double"
+        if default is not None:
+            fields["default"] = repr(default)
+    elif isinstance(default, str):
+        fields["default"] = default
+    return fields
 
 
 def _catalog_manifest(
@@ -110,7 +131,8 @@ def _catalog_manifest(
             }
         )
     parameters = []
-    for parameter_spec in registration["parameters"]:
+    for declaration in (argument for argument in definition.arguments if isinstance(argument, _Parameter)):
+        parameter_spec = declaration.spec
         parameter: dict[str, Any] = {
             "environment_variable": _environment(parameter_spec.environment_variable),
             "name": parameter_spec.name,
@@ -120,6 +142,7 @@ def _catalog_manifest(
             if len(parameter_spec.description) > 512:
                 raise ValueError(f"catalog parameter {parameter_spec.name!r} description exceeds 512 characters")
             parameter["description"] = parameter_spec.description
+        parameter.update(_catalog_type_and_default(declaration))
         parameters.append(parameter)
 
     return {

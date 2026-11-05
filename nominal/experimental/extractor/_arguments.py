@@ -54,6 +54,7 @@ class _Parameter:
     spec: FileExtractionParameter
     converter: Callable[[str], object]
     default: object
+    declared_type: Callable[[str], object]
 
     def resolve(self, ctx: ExtractorContext) -> object:
         raw = ctx._resolve_param(self.spec.environment_variable, envvar_only=True)

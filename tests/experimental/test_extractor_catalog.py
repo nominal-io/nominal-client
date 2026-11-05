@@ -39,7 +39,14 @@ def test_catalog_export_is_pure_serializable_and_independent():
         **IDENTITY,
         "inputs": [{"environment_variable": "SOURCE", "file_filters": [{"suffix": "csv"}], "required": True}],
         "parameters": [
-            {"environment_variable": "STRIDE", "name": "stride", "description": "Sample stride", "required": False}
+            {
+                "environment_variable": "STRIDE",
+                "name": "stride",
+                "description": "Sample stride",
+                "required": False,
+                "type": "integer",
+                "default": "1",
+            }
         ],
         "output_file_format": "MANIFEST",
         "default_timestamp_metadata": {
@@ -58,6 +65,31 @@ def test_catalog_export_is_pure_serializable_and_independent():
     actual["inputs"].clear()
     assert convert.catalog_manifest(**IDENTITY) == expected
     assert convert.registration_kwargs()["inputs"][0].environment_variable == "SOURCE"
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    [
+        ({"type": str, "default": "text"}, {"required": False, "default": "text"}),
+        ({"type": bool, "default": False}, {"required": False, "type": "boolean", "default": "false"}),
+        ({"type": int, "default": 0}, {"required": False, "type": "integer", "default": "0"}),
+        ({"type": float, "default": 1.25}, {"required": False, "type": "double", "default": "1.25"}),
+        ({"type": len, "default": 0}, {"required": False}),
+        ({"default": None}, {"required": False}),
+    ],
+)
+def test_catalog_parameter_types_and_defaults(options, expected):
+    """Export built-in types and wire defaults without guessing custom converter result types."""
+
+    @ex.manifest_extractor(default_timestamp_column="time", default_timestamp_type="epoch_seconds")
+    @ex.input("recording", file_suffixes=["csv"])
+    @ex.parameter("value", **options)
+    def convert(ctx, recording, value):
+        raise AssertionError("export must not invoke the callback")
+
+    assert convert.catalog_manifest(**IDENTITY)["parameters"] == [
+        {"environment_variable": "VALUE", "name": "value", **expected}
+    ]
 
 
 @pytest.mark.parametrize(

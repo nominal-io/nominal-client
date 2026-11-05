@@ -11,6 +11,12 @@ names to unit symbols. Each declaration copies its map into that output's manife
 units are output metadata, not image-registration settings. For direct file uploads, use
 the [ingestion builder](ingest.md#channel-units-and-csv-rows).
 
+## Typed arguments
+
+{py:meth}`nominal.core.Dataset.add_containerized` and the ingestion builder accept string,
+boolean, integer, and finite float arguments. Booleans become `"true"`/`"false"`; numbers
+use `str`/`repr`, and strings are unchanged. Non-finite floats raise `ValueError` before upload.
+
 ## API Reference
 
 ### Decorators
