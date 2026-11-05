@@ -1293,7 +1293,7 @@ class PolarsExportHandler:
         """Build one :class:`DownloadItem` per export job -- a 1:1 file:job (and thus file:dataframe) map."""
         # Resolve each datasource once (cached) since many jobs share a datasource.
         datasource_rids = {job.datasource_rid for jobs in export_jobs.values() for job in jobs}
-        datasources = {rid: self._client.get_datasource(rid) for rid in datasource_rids}
+        datasources = {rid: self._client.get_dataset(rid) for rid in datasource_rids}
 
         items: list[DownloadItem] = []
         for slice_idx, time_slice in enumerate(sorted(export_jobs.keys())):
@@ -1311,7 +1311,7 @@ class PolarsExportHandler:
     def _presigned_url_provider(
         self,
         job: _ExportJob,
-        datasource: DataSource,
+        datasource: Dataset,
         link_semaphore: threading.BoundedSemaphore,
         profile: _PlanningProfile,
     ) -> PresignedURLProvider:
