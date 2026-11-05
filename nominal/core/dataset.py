@@ -31,7 +31,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
-from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.pagination_tools import paginate_grpc, search_dataset_files_paginated
 from nominal.core._utils.properties import (
     properties_from_conjure,
     typed_properties_to_conjure,
@@ -1361,18 +1361,16 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             NominalError: If the request fails.
         """
         bounds = _time_range_to_proto(start, end)
-        exemptions: list[RetentionExemption] = []
-        page_token: str | None = None
-        while True:
-            request = dataset_retention_pb2.ListDatasetRetentionExemptionsRequest(
+
+        def request_for_page(page_token: str | None) -> dataset_retention_pb2.ListDatasetRetentionExemptionsRequest:
+            return dataset_retention_pb2.ListDatasetRetentionExemptionsRequest(
                 dataset_rid=self.rid, bounds=bounds, next_page_token=page_token
             )
-            with translate_grpc_errors():
-                response = self._clients.dataset_retention.ListDatasetRetentionExemptions(request)
-            exemptions.extend(RetentionExemption._from_proto(e) for e in response.exemptions)
-            if not response.HasField("next_page_token"):
-                return exemptions
-            page_token = response.next_page_token
+
+        pages = paginate_grpc(
+            self._clients.dataset_retention.ListDatasetRetentionExemptions, request_factory=request_for_page
+        )
+        return [RetentionExemption._from_proto(exemption) for page in pages for exemption in page.exemptions]
 
     def upsert_retention_exemption(
         self,
