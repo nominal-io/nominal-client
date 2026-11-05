@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import ArchiveStatusFilter, EventType, NominalClient
+from nominal.core import ArchiveStatusFilter, EventType, NominalClient, NominalProperties
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
@@ -52,7 +52,9 @@ class SearchContext:
     """Asset with search-test label and property; all baseline test events are attached here."""
 
     event_info: Event
+    """Carries string property `search-tag` and numeric property `mass_kg` = 12.5."""
     event_error: Event
+    """Carries numeric property `mass_kg` = 3.0, so numeric search must distinguish values."""
     event_flag: Event
 
     video: Video
@@ -141,8 +143,12 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         properties={"search-tag": tag, "prop-only": f"proponly{tag}"},
     )
 
-    event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
-    event_error = client.create_event(f"event-error-{tag}", EventType.ERROR, start, assets=[asset])
+    event_info = client.create_event(
+        f"event-info-{tag}", EventType.INFO, start, assets=[asset], properties={"search-tag": tag, "mass_kg": 12.5}
+    )
+    event_error = client.create_event(
+        f"event-error-{tag}", EventType.ERROR, start, assets=[asset], properties={"mass_kg": 3}
+    )
     event_flag = client.create_event(f"event-flag-{tag}", EventType.FLAG, start, assets=[asset])
 
     video = client.create_video(f"video-{tag}")
@@ -459,6 +465,28 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     results = client.search_events(event_type=EventType.INFO, assets=[search_context.asset])
     rids = {e.rid for e in results}
     assert rids == {search_context.event_info.rid}
+
+
+def test_create_event_reads_back_typed_properties(search_context: SearchContext) -> None:
+    """Event properties read back with their string and numeric types intact."""
+    assert search_context.event_info.properties == {"search-tag": search_context.tag, "mass_kg": 12.5}
+
+
+@pytest.mark.parametrize(
+    "properties_for",
+    [
+        pytest.param(lambda context: {"search-tag": context.tag}, id="string"),
+        pytest.param(lambda context: {"mass_kg": 12.5}, id="numeric"),
+    ],
+)
+def test_search_events_by_typed_properties(
+    client: NominalClient,
+    search_context: SearchContext,
+    properties_for: Callable[[SearchContext], NominalProperties],
+) -> None:
+    """A string or numeric property equality returns only the event carrying that value."""
+    results = client.search_events(assets=[search_context.asset], properties=properties_for(search_context))
+    assert {e.rid for e in results} == {search_context.event_info.rid}
 
 
 def test_search_events_archive_status(

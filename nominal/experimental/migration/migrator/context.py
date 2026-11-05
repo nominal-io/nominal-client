@@ -5,7 +5,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any, Callable, Mapping, TypeVar, cast
+from typing import Any, Callable, Iterable, Mapping, TypeVar, cast
 
 from nominal.core import NominalClient
 from nominal.experimental.migration.migration_state import MigrationState
@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 class MigrationContext:
     """Shared context injected into migrators."""
 
-    destination_client: NominalClient
+    destination_client: NominalClient | None
+    """None only in a dry run that reads just the source tenant."""
     migration_state: MigrationState
     destination_client_resolver: DestinationClientResolver | None = None
     user_rid_mapping: Mapping[str, str] = field(default_factory=dict)
@@ -32,17 +33,28 @@ class MigrationContext:
     dry_run: bool = False
     video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT
     """How long to wait for a copied video to finish ingesting before moving on. `None` waits forever."""
+    added_labels: tuple[str, ...] = ()
+    """Labels added to every resource the migration creates, alongside the source resource's own labels."""
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
-    _singleflight_futures: dict[tuple[str, str], concurrent.futures.Future[Any]] = field(
+    _singleflight_futures: dict[tuple[str, str | None], concurrent.futures.Future[Any]] = field(
         default_factory=dict,
         init=False,
         repr=False,
     )
 
     def destination_client_for(self, source_resource: Any) -> NominalClient:
+        if self.destination_client is None:
+            raise RuntimeError("This migration has no destination client; only a dry run may omit it.")
         if self.destination_client_resolver is None:
             return self.destination_client
         return self.destination_client_resolver(source_resource)
+
+    def destination_workspace_rid_for(self, source_resource: Any) -> str | None:
+        """Fetch the destination workspace RID for a source resource, or None without a destination client."""
+        if self.destination_client is None:
+            return None
+        destination_client = self.destination_client_for(source_resource)
+        return destination_client.get_workspace(destination_client._clients.workspace_rid).rid
 
     def map_user_rid(self, source_user_rid: str | None) -> str | None:
         """Translate a source user RID to its destination equivalent, or None if unmapped."""
@@ -54,6 +66,11 @@ class MigrationContext:
         if destination_user_rid is None and self.user_rid_mapping:
             logger.warning("No mapped destination user RID for source user %s.", source_user_rid)
         return destination_user_rid
+
+    def destination_labels(self, source_labels: Iterable[str], override: Iterable[str] | None = None) -> list[str]:
+        """`override` if given, else the source labels, followed by `added_labels`, without duplicates."""
+        labels = source_labels if override is None else override
+        return list(dict.fromkeys([*labels, *self.added_labels]))
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.migration_state.record_mapping(resource_type=resource_type, old_rid=old_rid, new_rid=new_rid)
@@ -68,13 +85,16 @@ class MigrationContext:
         """Run migration work once per resource/workspace pair.
 
         Concurrent callers for the same source RID and destination workspace wait on
-        the first in-flight migration and reuse its result.
+        the first in-flight migration and reuse its result. A dry run without a destination
+        client keys on the source RID alone.
         """
-        destination_client = self.destination_client_for(source_resource)
-        workspace_rid = destination_client._clients.workspace_rid
-        if workspace_rid is None:
-            raise ValueError("Destination client workspace RID is required for singleflight migrations.")
-        key: tuple[str, str] = (source_rid, workspace_rid)
+        workspace_rid = None
+        if self.destination_client is not None:
+            destination_client = self.destination_client_for(source_resource)
+            workspace_rid = destination_client._clients.workspace_rid
+            if workspace_rid is None:
+                raise ValueError("Destination client workspace RID is required for singleflight migrations.")
+        key: tuple[str, str | None] = (source_rid, workspace_rid)
 
         with self._singleflight_lock:
             future = self._singleflight_futures.get(key)

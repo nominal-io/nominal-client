@@ -272,6 +272,21 @@ def test_as_files_ingested_yields_without_raising_when_the_job_is_cancelled(mock
     assert _ids(list(job.as_files_ingested(poll_interval=FAST))) == ["landed"]
 
 
+@pytest.mark.parametrize("status", ["DELETION_IN_PROGRESS", "DELETED"])
+def test_as_files_ingested_stops_on_job_deletion(mock_clients: MagicMock, status: str) -> None:
+    """Deletion preserves the job status and stops job polling after yielding listed files."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean())
+    api_status = ingest_api.IngestJobStatus(status)
+    _serve_job(mock_clients, api_status)
+    _serve_listing(mock_clients, _page(_file_bean("landed", SUCCESS)))
+    _serve_refreshes(mock_clients, {"landed": SUCCESS})
+
+    assert _ids(list(job.as_files_ingested(poll_interval=FAST, timeout=timedelta(seconds=1)))) == ["landed"]
+    assert job.status.value == status
+    assert job.status._to_conjure() == api_status
+    mock_clients.ingest_jobs.get_ingest_job.assert_called_once()
+
+
 def test_as_files_ingested_stops_on_an_unrecognized_job_status(mock_clients: MagicMock) -> None:
     """A job status this client does not recognize ends the wait instead of looping on it forever.
 

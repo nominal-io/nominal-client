@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import logging
-import shutil
-import tempfile
-from pathlib import Path
 from typing import BinaryIO, cast
 from urllib.parse import unquote_plus
 
 import requests
 
-from nominal.core import Dataset, DatasetFile, FileType
-from nominal.core._utils.filenames import sanitize_upload_filename
+from nominal.core import Dataset, DatasetFile, FileType, FileTypes
+from nominal.experimental.migration.utils.filename_utils import resolve_destination_filename
 
 logger = logging.getLogger(__name__)
 
@@ -39,33 +36,29 @@ def copy_file_to_dataset(
         raw_name = source_api_file.handle.s3.key.split("/")[-1]
         file_name = unquote_plus(raw_name)
         file_type = FileType.from_path(file_name)
-        file_stem = sanitize_upload_filename(_resolve_destination_file_stem(file_name))
+        file_name = resolve_destination_filename(file_name)
 
-        if file_type.is_journal():
-            tmp_path = None
-            try:
-                with tempfile.NamedTemporaryFile(suffix=file_type.extension, delete=False) as tmp:
-                    tmp_path = Path(tmp.name)
-                    with response:
-                        shutil.copyfileobj(response.raw, tmp)
-                new_file = destination_dataset.add_journal_json(tmp_path)
-                new_file.poll_until_ingestion_completed()
-            finally:
-                if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
-        elif source_file.timestamp_channel is not None and source_file.timestamp_type is not None:
-            new_file = destination_dataset.add_from_io(
-                dataset=cast(BinaryIO, response.raw),
-                timestamp_column=source_file.timestamp_channel,
-                timestamp_type=source_file.timestamp_type,
-                file_type=file_type,
-                file_name=f"{file_stem}{file_type.extension}",
-                tag_columns=source_file.tag_columns,
-                tags=source_file.file_tags,
-            )
-            new_file.poll_until_ingestion_completed()
-        else:
-            raise ValueError("Unsupported file handle type or missing timestamp information.")
+        with response:
+            match file_type:
+                case FileTypes.JOURNAL_JSONL | FileTypes.JOURNAL_JSONL_GZ:
+                    new_file = destination_dataset.add_journal_json_from_io(
+                        cast(BinaryIO, response.raw),
+                        file_type=file_type,
+                        file_name=file_name,
+                    )
+                case _ if source_file.timestamp_channel is not None and source_file.timestamp_type is not None:
+                    new_file = destination_dataset.add_from_io(
+                        dataset=cast(BinaryIO, response.raw),
+                        timestamp_column=source_file.timestamp_channel,
+                        timestamp_type=source_file.timestamp_type,
+                        file_type=file_type,
+                        file_name=file_name,
+                        tag_columns=source_file.tag_columns,
+                        tags=source_file.file_tags,
+                    )
+                case _:
+                    raise ValueError("Unsupported file handle type or missing timestamp information.")
+        new_file.poll_until_ingestion_completed()
         logger.debug(
             "New file created %s in dataset: %s (rid: %s)",
             new_file.name,
@@ -74,9 +67,3 @@ def copy_file_to_dataset(
         )
         return new_file
     raise ValueError("Unsupported file handle type or missing timestamp information.")
-
-
-def _resolve_destination_file_stem(file_name: str) -> str:
-    file_stem = Path(file_name).stem
-    _, separator, suffix = file_stem.partition("Z_")
-    return suffix if separator else file_stem

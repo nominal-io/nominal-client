@@ -4,15 +4,16 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Protocol, Self, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Protocol, Self, Sequence, cast
 
 from google.protobuf import field_mask_pb2
 
 from nominal._utils.iterator_tools import batched
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
-from nominal.core._utils.api_types import NominalProperties
+from nominal.core._utils.frontend_urls import attachment_download_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.exceptions import NominalNotFoundError
@@ -32,7 +33,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
     rid: str
     name: str
     description: str
-    properties: NominalProperties
+    properties: Mapping[str, str]
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     is_archived: bool
@@ -44,6 +45,26 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         @property
         def attachment(self) -> attachments_pb2_grpc.AttachmentServiceStub: ...
 
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Attachment",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("File", _display.resource_link("Download ↓", self._download_url)),
+                ("Created", _display.timestamp(self.created_at)),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            archived=self.is_archived,
+        )
+
+    def _download_url(self) -> str:
+        return attachment_download_url(self._clients, self.rid)
+
     def _get_latest_api(self) -> attachments_pb2.Attachment:
         return _get_attachment(self._clients, self.rid)
 
@@ -52,7 +73,7 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
         *,
         name: str | None = None,
         description: str | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         is_archived: bool | None = None,
     ) -> Self:
@@ -177,6 +198,24 @@ class Attachment(HasRid, RefreshableGrpcMixin[attachments_pb2.Attachment]):
             # proto3 reports an unset creator as an empty string.
             created_by_rid=attachment.created_by or None,
         )
+
+
+def _attachments_section(attachments: Iterable[Attachment]) -> _display.Section:
+    """An asset's or run's attachments, by name, each linked to download its file."""
+    shown, has_more = _display.first(sorted(attachments, key=lambda attachment: attachment.name))
+    return _display.Section(
+        "Attachments",
+        [
+            [
+                _display.named(attachment.name, attachment.rid, attachment._download_url),
+                _display.escape(attachment.description),
+                _display.labels(attachment.labels),
+            ]
+            for attachment in shown
+        ],
+        columns=("Name", "Description", "Labels"),
+        has_more=has_more,
+    )
 
 
 def _get_attachments(clients: Attachment._Clients, rids: Iterable[str]) -> Sequence[attachments_pb2.Attachment]:

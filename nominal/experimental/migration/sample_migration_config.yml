@@ -20,6 +20,14 @@ migration:
   preserve_dataset_uuid: true
 
   # -------------------------------------------------------------------------
+  # Labels (optional)
+  # Added to every resource the migration creates, alongside the resource's own
+  # source labels. Resources created by an earlier run are not relabeled.
+  # -------------------------------------------------------------------------
+  # add_labels:
+  #   - "migrated"
+
+  # -------------------------------------------------------------------------
   # Asset child-resource inclusion
   # All fields below default to true when omitted.
   # Set any to false to skip that resource type entirely.
@@ -76,6 +84,16 @@ migration:
   # -------------------------------------------------------------------------
   # standalone_checklist_rids:
   #   - "ri.scout.gov-staging.checklist.bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+  # -------------------------------------------------------------------------
+  # Standalone datasets (optional)
+  # Datasets listed here are copied to the destination without being attached
+  # to any asset — use this for datasets that no asset's data scope references.
+  # include_dataset_files and preserve_dataset_uuid above apply to them too.
+  # `nom migrate prep` fills this list with every such dataset on the source.
+  # -------------------------------------------------------------------------
+  # standalone_dataset_rids:
+  #   - "ri.catalog.gov-staging.dataset.cccccccc-cccc-cccc-cccc-cccccccccccc"
 
   # -------------------------------------------------------------------------
   # Impersonation (optional)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Mapping, Sequence
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +11,7 @@ from nominal.core.client import NominalClient
 from nominal.core.event import Event, EventDisposition
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.event.v2 import event_pb2
-from nominal.protos.types import common_pb2
+from nominal.protos.types import common_pb2, types_pb2
 from nominal.protos.types.time import time_pb2
 
 
@@ -25,6 +25,7 @@ def _proto_event(
     seconds: int = 2,
     nanos: int = 3,
     priority: event_pb2.Priority.ValueType | None = None,
+    typed_properties: Mapping[str, types_pb2.TypedPropertyValue] | None = None,
 ) -> event_pb2.Event:
     disposition = event_pb2.EventDisposition(priority=priority) if priority is not None else None
     return event_pb2.Event(
@@ -37,6 +38,7 @@ def _proto_event(
         timestamp=time_pb2.Timestamp(seconds=seconds, nanos=nanos),
         duration=common_pb2.Duration(seconds=1, nanos=500),
         disposition=disposition,
+        typed_properties=typed_properties,
     )
 
 
@@ -57,7 +59,8 @@ def test_update_omits_absent_fields_so_the_backend_leaves_them_unchanged() -> No
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert update.rid == event.rid
     assert update.name == "renamed"
-    for field in ("description", "labels", "properties", "asset_rids", "timestamp", "duration", "type"):
+    omitted = ("description", "labels", "properties", "typed_properties", "asset_rids", "timestamp", "duration", "type")
+    for field in omitted:
         assert not update.HasField(field), f"{field} should be absent when omitted"
     assert event.name == "renamed"
 
@@ -73,7 +76,8 @@ def test_update_sends_empty_collections_as_explicit_clears() -> None:
     update = clients.event.BatchUpdateEvent.call_args.args[0].updates[0]
     assert (update.HasField("asset_rids"), list(update.asset_rids.asset_rids)) == (True, [])
     assert (update.HasField("labels"), list(update.labels.labels)) == (True, [])
-    assert (update.HasField("properties"), dict(update.properties.properties)) == (True, {})
+    assert (update.HasField("typed_properties"), dict(update.typed_properties.typed_properties)) == (True, {})
+    assert not update.HasField("properties")
 
 
 def test_from_proto_decodes_seconds_and_nanos() -> None:
@@ -171,6 +175,36 @@ def test_create_event_puts_the_domain_values_on_the_wire() -> None:
     assert (request.duration.seconds, request.duration.nanos) == (3, 4)
     assert list(request.asset_rids) == ["ri.asset.1"]
     assert not request.HasField("description")
+
+
+def test_event_properties_travel_as_typed_values() -> None:
+    """Creation writes the typed map, and an empty string and zero read back as a string and a float."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    wire = {
+        "serial": types_pb2.TypedPropertyValue(string_value=""),
+        "count": types_pb2.TypedPropertyValue(numeric_value=0.0),
+    }
+    clients.event.CreateEvent.return_value = event_pb2.CreateEventResponse(event=_proto_event(typed_properties=wire))
+
+    event = client.create_event("launch", EventType.FLAG, start=0, properties={"serial": "", "count": 0})
+
+    request = clients.event.CreateEvent.call_args.args[0]
+    assert request.typed_properties == wire
+    assert not request.properties
+    assert event.properties == {"serial": "", "count": 0.0}
+    assert isinstance(event.properties["count"], float)
+
+
+def test_create_event_rejects_boolean_properties_before_sending() -> None:
+    """A boolean is rejected rather than stored as 1.0, since bool subclasses int."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+
+    with pytest.raises(TypeError, match="'armed' must be str, int, or float"):
+        client.create_event("launch", EventType.FLAG, start=0, properties={"armed": True})
+
+    clients.event.CreateEvent.assert_not_called()
 
 
 @pytest.mark.parametrize(

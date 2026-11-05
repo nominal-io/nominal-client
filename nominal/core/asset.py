@@ -3,12 +3,13 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
-from types import MappingProxyType
+from functools import partial
 from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from typing_extensions import deprecated
 
-from nominal.core import data_review, streaming_checklist
+from nominal.core import _display, data_review, streaming_checklist
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -20,16 +21,16 @@ from nominal.core._utils.api_tools import (
     RefreshableGrpcMixin,
     create_proto_links,
     label_update,
-    property_update,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.frontend_urls import asset_url
+from nominal.core._utils.frontend_urls import asset_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
-from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.attachment import Attachment, _get_accessible_attachments
-from nominal.core.dataset import Dataset, _create_dataset
+from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated, search_runs_paginated
+from nominal.core._utils.properties import properties_from_proto, typed_property_update
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_runs_query
+from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
+from nominal.core.dataset import Dataset, _create_dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -87,6 +88,70 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
 
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        # The datasets and runs load once, for their sections and for the diagram.
+        datasets = _display.start(self.list_datasets)
+        runs = _display.start(self._first_runs)
+        return _display.render(
+            kind="Asset",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Created", _display.timestamp(self.created_at)),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            sections=[
+                _display.fetched_from("Datasets", datasets, _data_scopes_section),
+                _display.fetched_from("Runs", runs, self._runs_section),
+                _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+            graph=lambda: (
+                self._graph(_display.wait(datasets), _display.wait(runs))
+                if datasets is not None and runs is not None
+                else None
+            ),
+        )
+
+    def _first_runs(self) -> tuple[list[Run], bool]:
+        """The asset's newest runs, up to `max_items`, and whether it has more."""
+        # The search returns active runs newest first, so the card loads only the runs it lists.
+        protos, has_more = _display.first(
+            search_runs_paginated(self._clients.run, create_search_runs_query(asset_rid=self.rid))
+        )
+        return [Run._from_proto(self._clients, proto) for proto in protos], has_more
+
+    def _runs_section(self, runs: tuple[list[Run], bool]) -> _display.Section:
+        shown, has_more = runs
+        rows = [
+            [
+                _display.escape(f"#{run.run_number}"),
+                _display.named(run.name, run.rid, partial(run_url, self._clients, run.rid)),
+                _display.timestamp(run.start),
+                _display.duration(run.end - run.start) if run.end is not None else "ongoing",
+            ]
+            for run in shown
+        ]
+        return _display.Section("Runs", rows, columns=("Run", "Name", "Start", "Duration"), has_more=has_more)
+
+    def _graph(self, datasets: Sequence[tuple[str, Dataset]], runs: tuple[list[Run], bool]) -> _display.Graph:
+        """The asset's datasets, labeled with their ref names, below it, and its runs above it."""
+        node = _display.Node("Asset", self.name, self.rid, lambda: self.nominal_url)
+        shown, has_more = runs
+        run_nodes = [_display.Node("Run", run.name, run.rid, partial(run_url, self._clients, run.rid)) for run in shown]
+        return _display.Graph(
+            node,
+            [
+                _display.Group("Datasets", _data_scope_nodes(datasets), node),
+                _display.Group("Runs", run_nodes, node, below=False, has_more=has_more),
+            ],
+        )
+
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
 
@@ -116,6 +181,14 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
         Links can be URLs or tuples of (URL, name).
 
+        Args:
+            name: Replacement name.
+            description: Replacement description.
+            properties: String or numeric properties. Integers are stored as floats.
+                None leaves properties unchanged; an empty mapping clears them.
+            labels: Replacement labels.
+            links: Replacement links.
+
         Note:
             This replaces the metadata rather than appending it. To append to labels or properties, merge them before
             calling this method. E.g.:
@@ -128,6 +201,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             ```
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalError: If the update request fails.
         """
         updated_links = None if links is None else asset_pb2.LinkList(links=create_proto_links(links, asset_pb2.Link))
@@ -135,7 +209,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             asset_rid=self.rid,
             description=description,
             labels=label_update(labels),
-            properties=property_update(properties),
+            typed_properties=typed_property_update(properties),
             title=name,
             links=updated_links,
         )
@@ -340,7 +414,8 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             name: Name of the dataset to create, if one is not found.
             description: Human readable description of the dataset to create, if one is not found.
             labels: Labels of the dataset to create, if one is not found.
-            properties: Key-value properties of the dataset to create, if one is not found.
+            properties: String or numeric properties for a newly created dataset.
+                Integers are stored as floats.
             prefix_tree_delimiter: The prefix tree delimiter to use with the created dataset, if one is not found.
             series_tags: Tags to filter the created dataset by in the datascope, if one is not found.
 
@@ -348,6 +423,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             The retrieved or created dataset.
 
         Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
             NominalNotFoundError: If a dataset data scope with this name exists but its dataset is not readable.
             ValueError: If a dataset data scope with this name exists with different series tags, or a data scope
                 of another type has this name.
@@ -411,7 +487,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         name: str | None = None,
         description: str | None = None,
         labels: Sequence[str] = (),
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Video:
         """Retrieve a video by data scope name, or create a new one if it does not exist.
 
@@ -465,11 +541,15 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             start: Starting timestamp of the event
             duration: Duration of the event, or 0 for an event without duration.
             description: Optionally, a human readable description of the event to create
-            properties: Key-value pairs to use as properties on the created event
+            properties: String or numeric properties for the created event.
+                Integers are stored as floats.
             labels: Sequence of labels to use on the created event.
 
         Returns:
             The created event that is associated with the asset.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _create_event(
             self._clients,
@@ -502,13 +582,17 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             start: Starting timestamp of the run.
             end: Ending timestamp of the run, or None for an unbounded run.
             description: Optionally, a human readable description of the run to create.
-            properties: Key-value pairs to use as properties on the created run.
+            properties: String or numeric properties for the created run.
+                Integers are stored as floats.
             labels: Sequence of labels to use on the created run.
             links: Link metadata to add to the created run.
             attachments: Attachments to associate with the created run.
 
         Returns:
             Returns the created run
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
         """
         return _create_run(
             self._clients,
@@ -619,10 +703,31 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         data_review_rid: str | None = None,
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
+        priority: Priority | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
-        """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
+        """Search for events associated with this Asset. See nominal.core.event._search_events for details.
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: Labels that must all be present on an event.
+            properties: Property equalities that must all match. Strings and numbers match their
+                respective types. Integer values are converted to floats.
+            created_by_rid: Search for events created by this author.
+            workbook_rid: Search for events on this workbook.
+            data_review_rid: Search for events from this data review.
+            assignee_rid: Search for events assigned to this user.
+            event_type: Search for events of this verbosity level.
+            priority: Filter events by disposition priority. None leaves priority unrestricted.
+            origin_types: Search for events created by these origin types.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
+
+        Raises:
+            TypeError: If a property value is a boolean or is not a string, integer, or float.
+        """
         return _search_events(
             self._clients,
             search_text=search_text,
@@ -636,6 +741,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             data_review_rid=data_review_rid,
             assignee_rid=assignee_rid,
             event_type=event_type,
+            priority=priority,
             origin_types=origin_types,
             archive_status=archive_status,
         )
@@ -664,7 +770,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
@@ -745,7 +851,7 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             rid=asset.rid,
             name=asset.title,
             description=asset.description if asset.HasField("description") else None,
-            properties=MappingProxyType(dict(asset.properties)),
+            properties=properties_from_proto(asset.typed_properties),
             labels=tuple(asset.labels),
             created_at=asset.created_at.ToNanoseconds(),
             is_archived=asset.is_archived,

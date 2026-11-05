@@ -123,8 +123,8 @@ def test_checklist_assignee_option_overrides_mapping() -> None:
 
 
 def test_parallel_migration_passes_user_rid_mapping_to_context(tmp_path) -> None:
-    # The CLI always runs through run_parallel_migration, which builds its own MigrationContext —
-    # the mapping must survive that path, not just MigrationRunner.run_migration.
+    # The CLI always runs through run_parallel_migration, so the mapping must survive
+    # that path, not just MigrationRunner.run_migration.
     source_checklist = _make_source_checklist(assignee_rid="source-user-rid")
     runner = MigrationRunner(
         migration_resources=MigrationResources(
@@ -164,9 +164,9 @@ def test_data_review_is_executed_via_client_resolved_from_source_data_review() -
     ctx = MigrationContext(
         destination_client=default_client,
         migration_state=MigrationState(),
-        destination_client_resolver=lambda source_resource: review_client
-        if source_resource.rid == source_data_review.rid
-        else default_client,
+        destination_client_resolver=lambda source_resource: (
+            review_client if source_resource.rid == source_data_review.rid else default_client
+        ),
     )
     ctx.migration_state.record_mapping(ResourceType.RUN, source_data_review.run_rid, "dest-run-rid")
 

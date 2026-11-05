@@ -34,6 +34,18 @@ def test_from_config(runner: CliRunner, tmp_path: Path) -> None:
     assert "| assets | 1 |" in result.output
 
 
+def test_from_config_counts_standalone_datasets(runner: CliRunner, tmp_path: Path) -> None:
+    """The config size check counts standalone_dataset_rids."""
+    config = tmp_path / "cfg.yml"
+    config.write_text(
+        "migration:\n  name: cfg\n  standalone_dataset_rids:\n    - ri.d.1\n    - ri.d.2\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(migrate_cmd, ["summary", "--from-config", str(config)])
+    assert result.exit_code == 0, result.output
+    assert "| standalone datasets | 2 |" in result.output
+
+
 def test_from_config_repeatable(runner: CliRunner, tmp_path: Path) -> None:
     configs = [_write_config(tmp_path, f"cfg{i}") for i in range(2)]
     args = ["summary"]

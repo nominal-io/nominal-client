@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 
 import click
+
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, NominalClient
 

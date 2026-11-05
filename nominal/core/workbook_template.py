@@ -12,9 +12,9 @@ from nominal_api import (
     scout_workbookcommon_api,
 )
 
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin, rid_from_instance_or_string
-from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import workbook_template_url
 from nominal.core.asset import Asset
 from nominal.core.run import Run, _get_run
@@ -81,7 +81,7 @@ class WorkbookTemplate(
     title: str
     description: str
     labels: Sequence[str]
-    properties: NominalProperties
+    properties: Mapping[str, str]
     workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
     created_by_rid: str | None = field(default=None, repr=False)
@@ -99,6 +99,21 @@ class WorkbookTemplate(
         """Returns a link to the page for this Workbook Template in the Nominal app"""
         return workbook_template_url(self._clients, self.rid)
 
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Workbook template",
+            title=self.title,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            url=lambda: self.nominal_url,
+        )
+
     def _get_latest_api(self) -> scout_template_api.Template:
         return self._clients.template.get(self._clients.auth_header, self.rid)
 
@@ -108,7 +123,7 @@ class WorkbookTemplate(
         description: str | None = None,
         title: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         is_published: bool | None = None,
         is_archived: bool | None = None,
     ) -> Self:
@@ -166,7 +181,7 @@ class WorkbookTemplate(
         *,
         title_suffix: str | None = None,
         labels: Sequence[str] | None = None,
-        properties: NominalProperties | None = None,
+        properties: Mapping[str, str] | None = None,
         is_published: bool = True,
         workspace: Workspace | str | None = None,
     ) -> Self:
@@ -369,7 +384,7 @@ def _create_workbook_template_with_content_and_layout(
     *,
     description: str | None = None,
     labels: Sequence[str] | None = None,
-    properties: NominalProperties | None = None,
+    properties: Mapping[str, str] | None = None,
     commit_message: str | None = None,
     is_published: bool = False,
 ) -> WorkbookTemplate:

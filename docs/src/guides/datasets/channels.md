@@ -1,132 +1,93 @@
 ---
 myst:
   html_meta:
-    description: "Pre-register channels to pin their data type, units, and descriptions before data arrives"
+    description: "Register channels to set their data type, unit and description before data arrives."
 ---
 
 # Channels and data types
 
 {.lead}
-Pre-register channels to pin their data type, units, and descriptions before data arrives
+A channel is one named signal in a dataset, such as `altitude` or `fault_code`.
+Nominal sets a channel's data type from the first values it receives, unless you register the channel first.
 
-A {abbr}`channel (A named signal for a series of measurements or computed values (example: voltage, pressure, system state).)` gets its data
-type from the first data Nominal sees for it. That inference is usually right, and usually
-invisible. It fails when the values are ambiguous, and by then the channel already has the wrong
-type.
+```{include} /guides/_snippets/connect-the-client.md
+```
 
-Pre-registering a channel fixes its type up front, before any data arrives.
+## When to register channels
 
-## When inference gets it wrong
+Register a channel when its first values could give it the wrong type:
 
-**Whole numbers that are floats.** A channel whose first batch happens to be `0`, `1`, `2` is
-inferred as an integer channel. Fractional values arriving later do not fit the type it already has.
-This bites hardest on values that are usually round: a setpoint that sits at `0` until the test
-starts, a percentage that reads `100` while idle, a rate that is whole until it is not.
+- **Whole numbers that will become fractional.** A setpoint that reads `0` at start-up becomes an integer channel, and later values such as `0.5` don't fit it.
+- **Codes that look like numbers.** Fault codes, modes and serial numbers become numeric channels, which lose leading zeros and chart as quantities.
 
-**Numbers that are categories.** Fault codes, mode enumerations, part numbers and serial
-numbers all look numeric. Inferred as numeric, they get plotted and interpolated as quantities, and
-leading zeros are lost.
+Streams are more exposed than files, because their first values are whatever the system sends at start-up.
 
-Both are more likely when streaming than when uploading a file, because a stream's first values are
-whatever the system happened to emit at start-up, and a CSV at least shows a whole column at once.
-Neither format inspects your intent.
+## Register channels
 
-## Pre-registering a channel
-
-`add_channel()` creates the channel's metadata without uploading any data:
+{py:meth}`~nominal.core.Dataset.add_channel` creates a channel without any data:
 
 ```python
-from nominal.core import ChannelDataType, NominalClient
+from nominal.core import ChannelDataType
 
-client = NominalClient.from_profile("default")
-dataset = client.create_dataset("Frosty Flight")
-
-# Pin the type before any data arrives. A channel whose first values happen to
-# be whole numbers would otherwise be inferred as INT, and later fractional
-# values would not fit it.
-dataset.add_channel(
-    "altitude",
-    ChannelDataType.DOUBLE,
-    unit="m",
-    description="Barometric altitude above mean sea level",
-)
-
-# A numeric-looking status code that must stay categorical
+dataset = client.create_dataset("Frosty flight")
+dataset.add_channel("altitude", ChannelDataType.DOUBLE, unit="m", description="Barometric altitude")
 dataset.add_channel("fault_code", ChannelDataType.STRING)
 ```
 
-The data types are `DOUBLE`, `INT`, `UINT`, `STRING`, `LOG`, `DOUBLE_ARRAY`, `STRING_ARRAY`,
-`STRUCT`, and `VIDEO`.
+If the channel already exists, `add_channel` returns it unchanged, even when the type, unit or description differ.
 
-Pick `DOUBLE` for anything that could ever be fractional, even if today's values are whole. Pick
-`STRING` for identifiers and codes you will filter and group by rather than do arithmetic on.
+Use `DOUBLE` for any value that could be fractional, and `STRING` for codes you filter and group by.
+{py:class}`~nominal.core.ChannelDataType` lists all types, including `LOG`, `STRUCT`, arrays and `VIDEO`.
 
-`add_channel()` returns the existing channel unchanged if its name already exists, even if the
-requested type, unit, or description differs.
-
-## Registering many channels at once
-
-For a known instrumentation list, `batch_update_or_create_channels()` upserts in bulk. Channels that
-already exist are updated rather than duplicated, so this is safe to re-run from a setup script:
+To register many channels, such as from an instrumentation list, use {py:meth}`~nominal.core.Dataset.batch_update_or_create_channels`.
+It updates channels that exist, so a setup script can run again:
 
 ```python
-from nominal.core import ChannelDataType, CreateChannelRequest
+from nominal.core import CreateChannelRequest
 
-# One request per channel. Existing channels are updated rather than
-# duplicated, so this is safe to re-run as part of a setup script.
 dataset.batch_update_or_create_channels(
     [
-        CreateChannelRequest("altitude", ChannelDataType.DOUBLE, unit="m"),
         CreateChannelRequest("airspeed", ChannelDataType.DOUBLE, unit="m/s"),
-        CreateChannelRequest("motor_rpm", ChannelDataType.INT, unit="1/min"),
-        CreateChannelRequest("fault_code", ChannelDataType.STRING),
+        CreateChannelRequest("motor_rpm", ChannelDataType.INT, unit="/min"),
     ]
 )
-
-# A repeated channel name fails the whole batch, so deduplicate first.
 ```
 
-One caveat: a channel name repeated within a single batch fails the whole batch. Deduplicate before
-calling.
+A name that appears twice fails the whole batch.
+The result lists the requests the server dropped, so check it.
 
-The result reports which requests were upserted and which the server dropped, so check it rather
-than assuming every request landed.
+## Set units
 
-## Units and descriptions
-
-Both can be set at registration, and changed later without touching the data.
-
-`set_channel_units()` takes a mapping of channel name to unit symbol, and clears a unit when given
-`None`. Pass `validate_schema=True` to raise on channel names that do not exist, so that a typo in
-a mapping drawn from an instrumentation sheet fails instead of passing silently:
+{py:meth}`~nominal.core.Dataset.set_channel_units` sets units by channel name, and `None` clears a unit.
+It changes the label, not the stored values.
 
 ```python
 dataset.set_channel_units({"altitude": "m", "airspeed": "m/s"}, validate_schema=True)
 ```
 
-Units must come from Nominal's UCUM catalog unless you pass `allow_display_only_units=True`, which
-accepts an arbitrary label that is displayed but not used for conversion.
+`validate_schema=True` raises on names that aren't channels in the dataset. By default they're ignored.
 
-## Inspecting what exists
+Units are [UCUM](https://ucum.org/) symbols, such as `Cel` for degrees Celsius, so workbooks can convert between them.
+Pass `allow_display_only_units=True` for labels outside UCUM, such as `encoder_ticks`. Those aren't converted.
+To check a symbol, use {py:meth}`~nominal.core.NominalClient.get_unit` or {py:meth}`~nominal.core.NominalClient.get_commensurable_units`.
 
-`get_channels()` lists the channels on a data source, optionally filtered to specific names, and
-`search_channels()` does exact or fuzzy matching and can filter by data type:
+To change one channel, use {py:meth}`~nominal.core.Channel.update`.
+
+## Find channels
+
+{py:meth}`~nominal.core.Dataset.search_channels` matches names exactly or fuzzily:
 
 ```python
 for channel in dataset.search_channels(fuzzy_search_text="temp"):
     print(channel.name, channel.data_type, channel.unit)
 ```
 
-Use these to confirm a type landed the way you intended before streaming production data into it.
+## Group channels by prefix
 
-## Grouping channels by prefix
-
-`set_channel_prefix_tree()` tells the UI to group a data source's channels into a tree on a
-delimiter, which makes a flat namespace of a few thousand channels navigable:
+{py:meth}`~nominal.core.Dataset.set_channel_prefix_tree` groups channels in the UI by a delimiter in their names:
 
 ```python
 dataset.set_channel_prefix_tree(delimiter=".")
 ```
 
-Channels named `propulsion.motor.rpm` and `propulsion.motor.temp` then nest under `propulsion` and
-`motor`. Several ingest paths accept a `channel_prefix` argument that writes names in this shape.
+`propulsion.motor.rpm` and `propulsion.motor.temp` then appear under `propulsion` → `motor`.

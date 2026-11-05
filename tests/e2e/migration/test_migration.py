@@ -7,6 +7,8 @@ Tests cover:
   - Full migration of an asset with datasets, events, a run, a checklist, a video, and a workbook
   - Dataset file upload and channel verification
   - Standalone workbook template migration
+  - Standalone dataset migration (a dataset not attached to any asset)
+  - The `nom migrate copy` command, run from a config with `add_labels` and `standalone_dataset_rids`
   - Idempotency: running the same runner twice produces no duplicates
   - Resumption from a partial state: missing resources are created, existing ones reused
   - Resumption from a complete state: a fully-recorded state causes the runner to do nothing
@@ -28,10 +30,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import yaml
+from click.testing import CliRunner
 from nominal_api import scout_notebook_api
 
 from nominal.core import NominalClient
@@ -52,6 +57,7 @@ from nominal.experimental.migration.config.migration_resources import AssetResou
 from nominal.experimental.migration.migration_cli import (
     ImpersonationConfig,
     build_destination_client_resolver,
+    migrate_cmd,
 )
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
@@ -59,6 +65,9 @@ from nominal.experimental.migration.resource_type import ResourceType
 from tests.e2e import POLL_INTERVAL
 
 RegisterCleanup = Callable[[Callable[[], None]], None]
+
+# Includes the source resources' own label, so the migration must not add it a second time.
+ADDED_LABELS = ("migration-e2e", "migration-e2e-added")
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +97,7 @@ def _make_runner(
     dest_client: NominalClient,
     state_path: Path,
     asset_inclusion_config: AssetInclusionConfig | None = None,
+    added_labels: Sequence[str] = (),
 ) -> MigrationRunner:
     return MigrationRunner(
         migration_resources=resources,
@@ -95,6 +105,7 @@ def _make_runner(
         destination_client=dest_client,
         asset_inclusion_config=asset_inclusion_config,
         migration_state_path=state_path,
+        added_labels=added_labels,
     )
 
 
@@ -126,6 +137,18 @@ def _create_source_dataset(
     )
     register_cleanup(ds.archive)
     source_asset.add_dataset("primary", ds, series_tags={"scope-tag": "scope-val"})
+    return ds
+
+
+def _create_source_standalone_dataset(source_client: NominalClient, register_cleanup: RegisterCleanup) -> Dataset:
+    """A source dataset with metadata that no asset's data scope references."""
+    ds = source_client.create_dataset(
+        f"migration-e2e-standalone-ds-{uuid4()}",
+        description="standalone dataset description",
+        properties={"ds-prop": "ds-val"},
+        labels=["migration-e2e"],
+    )
+    register_cleanup(ds.archive)
     return ds
 
 
@@ -204,7 +227,7 @@ def _create_source_checklist_and_review(
     source_run: Run,
 ) -> tuple[Checklist, DataReview]:
     checklist = _create_checklist_with_content(
-        source_client, title=f"migration-e2e-checklist-{uuid4()}", is_published=True
+        source_client, title=f"migration-e2e-checklist-{uuid4()}", labels=["migration-e2e"], is_published=True
     )
     register_cleanup(checklist.archive)
     data_review = checklist.execute(source_run)
@@ -249,6 +272,7 @@ def _create_source_workbook(
     )
     workbook = template.create_workbook(asset=source_asset, title=f"migration-e2e-workbook-{uuid4()}")
     register_cleanup(workbook.archive)
+    workbook.update(labels=["migration-e2e"], properties={"wb-prop": "wb-val"})
     template.archive()
     return workbook
 
@@ -281,6 +305,8 @@ def _create_multi_run_workbook(
         layout=raw.layout,
         content_v2=raw.content_v2,
         event_refs=[],
+        labels=["migration-e2e"],
+        properties={"wb-prop": "wb-val"},
         workspace=clients.resolve_default_workspace_rid(),
     )
     raw_multi = clients.notebook.create(clients.auth_header, request)
@@ -319,6 +345,8 @@ def _create_multi_asset_workbook(
         layout=raw.layout,
         content_v2=raw.content_v2,
         event_refs=[],
+        labels=["migration-e2e"],
+        properties={"wb-prop": "wb-val"},
         workspace=clients.resolve_default_workspace_rid(),
     )
     raw_multi = clients.notebook.create(clients.auth_header, request)
@@ -334,10 +362,10 @@ def _create_multi_asset_workbook(
 # ---------------------------------------------------------------------------
 
 
-def _assert_asset_migrated(source: Asset, dest: Asset) -> None:
+def _assert_asset_migrated(source: Asset, dest: Asset, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
 
 
@@ -346,34 +374,39 @@ def _assert_dataset_migrated(
     dest: Dataset,
     scope_name: str,
     dest_asset: Asset,
+    added_labels: Sequence[str] = (),
 ) -> None:
-    assert dest.name == source.name
-    assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
-    assert dest.properties == source.properties
+    _assert_dataset_metadata_migrated(source, dest, added_labels)
     # Linkage: dataset is accessible under the expected scope on the destination asset.
     dest_datasets = dict(dest_asset.list_datasets())
     assert scope_name in dest_datasets
     assert dest_datasets[scope_name].rid == dest.rid
 
 
-def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset) -> None:
+def _assert_dataset_metadata_migrated(source: Dataset, dest: Dataset, added_labels: Sequence[str] = ()) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
+    assert dest.properties == source.properties
+
+
+def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.type == source.type
     assert dest.start == source.start
     assert dest.duration == source.duration
     assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: event is associated with exactly the destination asset (no others).
     assert dest.rid in {e.rid for e in dest_asset.search_events()}
     assert set(dest.asset_rids) == {dest_asset.rid}
 
 
-def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset) -> None:
+def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     assert dest.start == source.start
     assert dest.end == source.end
@@ -382,17 +415,19 @@ def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset) -> None:
     assert set(dest.assets) == {dest_asset.rid}
 
 
-def _assert_checklist_migrated(source: Checklist, dest: Checklist) -> None:
+def _assert_checklist_migrated(source: Checklist, dest: Checklist, added_labels: Sequence[str] = ()) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
 
 
-def _assert_video_migrated(source: Video, dest: Video, scope_name: str, dest_asset: Asset) -> None:
+def _assert_video_migrated(
+    source: Video, dest: Video, scope_name: str, dest_asset: Asset, added_labels: Sequence[str] = ()
+) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
-    assert set(dest.labels) == set(source.labels)
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
     assert dest.properties == source.properties
     # Linkage: video is accessible under the expected scope on the destination asset.
     dest_videos = dict(dest_asset.list_videos())
@@ -404,22 +439,32 @@ def _assert_video_migrated(source: Video, dest: Video, scope_name: str, dest_ass
     dest_files[0].poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
 
-def _assert_workbook_migrated(source: Workbook, dest: Workbook, dest_asset: Asset) -> None:
+def _assert_workbook_migrated(
+    source: Workbook, dest: Workbook, dest_asset: Asset, added_labels: Sequence[str] = ()
+) -> None:
     assert dest.title == source.title
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
+    assert dest.properties == source.properties
     # Linkage: workbook appears on the destination asset and references exactly it.
     assert dest.rid in {w.rid for w in dest_asset.search_workbooks(include_drafts=True)}
     assert dest.asset_rids is not None
     assert set(dest.asset_rids) == {dest_asset.rid}
 
 
-def _assert_workbook_migrated_multi_run(source: Workbook, dest: Workbook, dest_runs: list[Run]) -> None:
+def _assert_workbook_migrated_multi_run(
+    source: Workbook, dest: Workbook, dest_runs: list[Run], added_labels: Sequence[str] = ()
+) -> None:
     assert dest.title == source.title
+    assert sorted(dest.labels) == sorted({*source.labels, *added_labels})
+    assert dest.properties == source.properties
     assert dest.run_rids is not None
     assert set(dest.run_rids) == {r.rid for r in dest_runs}
 
 
 def _assert_workbook_migrated_multi_asset(source: Workbook, dest: Workbook, dest_assets: list[Asset]) -> None:
     assert dest.title == source.title
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
     assert dest.asset_rids is not None
     assert set(dest.asset_rids) == {a.rid for a in dest_assets}
 
@@ -448,11 +493,12 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
 ):
     """Full (maximal) migration of an asset covering all resource types.
 
-    Resource types covered: dataset, events, run, checklist, video, and workbook.
+    Resource types covered: dataset, events, run, checklist, video, workbook, and attachment.
 
     Verifies:
     - All child resources exist on the destination with RID mappings in state
     - Metadata (name, description, labels, properties) is preserved for each resource
+    - Every migrated resource carries the runner's added labels alongside its source labels
     - Resources are correctly linked to the migrated destination asset
     - Workbooks not in source_workbook_rids are excluded from migration
     """
@@ -485,7 +531,9 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
         },
         source_standalone_templates=[],
     )
-    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner = _make_runner(
+        resources, _no_files_config(), dest_client, tmp_path / "state.json", added_labels=ADDED_LABELS
+    )
     runner.run_migration()
     state = runner.migration_state
 
@@ -493,14 +541,14 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     register_cleanup(dest_asset.archive)
 
     # --- asset ---
-    _assert_asset_migrated(source_asset, dest_asset)
+    _assert_asset_migrated(source_asset, dest_asset, added_labels=ADDED_LABELS)
 
     # --- dataset ---
     dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_ds_rid is not None
     dest_ds = dest_client.get_dataset(dest_ds_rid)
     register_cleanup(dest_ds.archive)
-    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, added_labels=ADDED_LABELS)
     # Verify series_tags are preserved: get_or_create_dataset raises on tag mismatch.
     matched = dest_asset.get_or_create_dataset("primary", series_tags={"scope-tag": "scope-val"})
     assert matched.rid == dest_ds.rid
@@ -510,22 +558,22 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     assert (dest_event_b_rid := state.get_mapped_rid(ResourceType.EVENT, event_b.rid)) is not None
     dest_event_a = dest_client.get_event(dest_event_a_rid)
     dest_event_b = dest_client.get_event(dest_event_b_rid)
-    _assert_event_migrated(event_a, dest_event_a, dest_asset)
-    _assert_event_migrated(event_b, dest_event_b, dest_asset)
+    _assert_event_migrated(event_a, dest_event_a, dest_asset, added_labels=ADDED_LABELS)
+    _assert_event_migrated(event_b, dest_event_b, dest_asset, added_labels=ADDED_LABELS)
 
     # --- run ---
     dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
     assert dest_run_rid is not None
     dest_run = dest_client.get_run(dest_run_rid)
     register_cleanup(dest_run.archive)
-    _assert_run_migrated(source_run, dest_run, dest_asset)
+    _assert_run_migrated(source_run, dest_run, dest_asset, added_labels=ADDED_LABELS)
 
     # --- checklist + data review ---
     dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
     assert dest_checklist_rid is not None
     dest_checklist = dest_client.get_checklist(dest_checklist_rid)
     register_cleanup(dest_checklist.archive)
-    _assert_checklist_migrated(source_checklist, dest_checklist)
+    _assert_checklist_migrated(source_checklist, dest_checklist, added_labels=ADDED_LABELS)
     assert state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is not None
 
     # --- video ---
@@ -533,14 +581,14 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     assert dest_video_rid is not None
     dest_video = dest_client.get_video(dest_video_rid)
     register_cleanup(dest_video.archive)
-    _assert_video_migrated(source_video, dest_video, "camera", dest_asset)
+    _assert_video_migrated(source_video, dest_video, "camera", dest_asset, added_labels=ADDED_LABELS)
 
     # --- workbook ---
     dest_workbook_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid)
     assert dest_workbook_rid is not None
     dest_workbook = dest_client.get_workbook(dest_workbook_rid)
     register_cleanup(dest_workbook.archive)
-    _assert_workbook_migrated(source_workbook, dest_workbook, dest_asset)
+    _assert_workbook_migrated(source_workbook, dest_workbook, dest_asset, added_labels=ADDED_LABELS)
 
     # --- run attachment ---
     dest_att_rid = state.get_mapped_rid(ResourceType.ATTACHMENT, source_att.rid)
@@ -548,20 +596,23 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     dest_att = dest_client.get_attachment(dest_att_rid)
     register_cleanup(dest_att.archive)
     assert dest_att.name == source_att.name
+    assert sorted(dest_att.labels) == sorted({*source_att.labels, *ADDED_LABELS})
 
     # --- second run ---
     dest_run_b_rid = state.get_mapped_rid(ResourceType.RUN, source_run_b.rid)
     assert dest_run_b_rid is not None
     dest_run_b = dest_client.get_run(dest_run_b_rid)
     register_cleanup(dest_run_b.archive)
-    _assert_run_migrated(source_run_b, dest_run_b, dest_asset)
+    _assert_run_migrated(source_run_b, dest_run_b, dest_asset, added_labels=ADDED_LABELS)
 
     # --- multi-run workbook ---
     dest_multi_run_wb_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_multi_run_wb.rid)
     assert dest_multi_run_wb_rid is not None
     dest_multi_run_wb = dest_client.get_workbook(dest_multi_run_wb_rid)
     register_cleanup(dest_multi_run_wb.archive)
-    _assert_workbook_migrated_multi_run(source_multi_run_wb, dest_multi_run_wb, [dest_run, dest_run_b])
+    _assert_workbook_migrated_multi_run(
+        source_multi_run_wb, dest_multi_run_wb, [dest_run, dest_run_b], added_labels=ADDED_LABELS
+    )
 
     # --- workbook allowlist: excluded workbook is absent from migration state ---
     assert state.get_mapped_rid(ResourceType.WORKBOOK, wb_excluded.rid) is None
@@ -660,13 +711,15 @@ def test_migrate_asset_with_dataset_files(
     )
 
 
+@pytest.mark.parametrize("added_labels", [(), ADDED_LABELS], ids=["no-added-labels", "added-labels"])
 def test_migrate_standalone_template(
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     tmp_path: Path,
+    added_labels: Sequence[str],
 ):
-    """Standalone workbook templates are cloned to the destination client."""
+    """Standalone workbook templates are cloned to the destination client, with any added labels."""
     source_template = source_client.create_workbook_template(
         f"migration-e2e-standalone-template-{uuid4()}",
         description="standalone template description",
@@ -679,7 +732,9 @@ def test_migrate_standalone_template(
         source_assets={},
         source_standalone_templates=[source_template],
     )
-    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner = _make_runner(
+        resources, _no_files_config(), dest_client, tmp_path / "state.json", added_labels=added_labels
+    )
     runner.run_migration()
 
     dest_template_rid = runner.migration_state.get_mapped_rid(ResourceType.WORKBOOK_TEMPLATE, source_template.rid)
@@ -688,8 +743,98 @@ def test_migrate_standalone_template(
     register_cleanup(dest_template.archive)
     assert dest_template.title == source_template.title
     assert dest_template.description == source_template.description
-    assert set(dest_template.labels) == set(source_template.labels)
+    assert sorted(dest_template.labels) == sorted({*source_template.labels, *added_labels})
     assert dest_template.properties == source_template.properties
+
+
+@pytest.mark.parametrize("added_labels", [(), ADDED_LABELS], ids=["no-added-labels", "added-labels"])
+def test_migrate_standalone_dataset(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+    added_labels: Sequence[str],
+):
+    """A standalone dataset is copied to the destination, with any added labels, without creating an asset."""
+    source_ds = _create_source_standalone_dataset(source_client, register_cleanup)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[],
+        source_standalone_datasets=[source_ds],
+    )
+    runner = _make_runner(
+        resources, _no_files_config(), dest_client, tmp_path / "state.json", added_labels=added_labels
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    assert dest_ds_rid is not None
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_dataset_metadata_migrated(source_ds, dest_ds, added_labels)
+    assert ResourceType.ASSET.value not in state.rid_mapping
+    assert ResourceType.ASSET_DATA_SCOPE.value not in state.rid_mapping
+
+
+def test_migrate_copy_command_from_config(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """`nom migrate copy` migrates its config's assets and standalone datasets, adding the config's add_labels."""
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_standalone_ds = _create_source_standalone_dataset(source_client, register_cleanup)
+    config_path = tmp_path / "migration.yml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "migration": {
+                    "name": f"migration-e2e-copy-{uuid4()}",
+                    "include_dataset_files": False,
+                    "preserve_dataset_uuid": False,
+                    "add_labels": list(ADDED_LABELS),
+                    "source_asset_rids": [{"asset_rid": source_asset.rid}],
+                    "standalone_dataset_rids": [source_standalone_ds.rid],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "state.json"
+    args = [
+        "copy",
+        "--source-profile",
+        "source",
+        "--destination-profile",
+        "destination",
+        "--config",
+        str(config_path),
+        "--migration-state-path",
+        str(state_path),
+    ]
+
+    # Hand the command the suite's clients instead of loading profiles, so it uses their temporary API keys.
+    with patch.object(NominalClient, "from_profile", side_effect=[source_client, dest_client]):
+        result = CliRunner().invoke(migrate_cmd, args, catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+
+    state = MigrationState.from_json(state_path.read_text(encoding="utf-8"))
+    assert (dest_asset_rid := state.get_mapped_rid(ResourceType.ASSET, source_asset.rid)) is not None
+    assert (dest_ds_rid := state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)) is not None
+    dest_asset = dest_client.get_asset(dest_asset_rid)
+    register_cleanup(dest_asset.archive)
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_asset_migrated(source_asset, dest_asset, added_labels=ADDED_LABELS)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, added_labels=ADDED_LABELS)
+    assert (dest_standalone_ds_rid := state.get_mapped_rid(ResourceType.DATASET, source_standalone_ds.rid)) is not None
+    dest_standalone_ds = dest_client.get_dataset(dest_standalone_ds_rid)
+    register_cleanup(dest_standalone_ds.archive)
+    _assert_dataset_metadata_migrated(source_standalone_ds, dest_standalone_ds, added_labels=ADDED_LABELS)
 
 
 def test_migrate_standalone_checklist(
@@ -918,6 +1063,56 @@ def test_migrate_multi_asset_scenario(
     register_cleanup(dest_wb.archive)
     _assert_workbook_migrated_multi_asset(source_multi_asset_wb, dest_wb, [dest_asset_a, dest_asset_b])
     assert source_multi_asset_wb.rid not in state.pending_multi_asset_workbooks
+
+
+def test_multi_run_workbook_waits_for_run_migrated_later(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """A workbook spanning runs on two assets waits through a migration of one asset, then copies
+    when a second migration with the same state file migrates the other.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+
+    source_asset_a = _create_source_asset(source_client, register_cleanup)
+    source_asset_b = _create_source_asset(source_client, register_cleanup)
+    source_run_a = _create_source_run(source_client, register_cleanup, source_asset_a, start, end)
+    source_run_b = _create_source_run(source_client, register_cleanup, source_asset_b, start, end)
+    source_wb = _create_multi_run_workbook(source_client, register_cleanup, source_run_a, source_run_b)
+    state_file = tmp_path / "state.json"
+
+    first_runner = _make_runner(_make_resources(source_asset_a), _no_files_config(), dest_client, state_file)
+    first_runner.run_migration()
+    first_state = first_runner.migration_state
+    register_cleanup(_dest_asset(first_runner, source_asset_a, dest_client).archive)
+
+    assert first_state.get_mapped_rid(ResourceType.WORKBOOK, source_wb.rid) is None
+    assert source_wb.rid in first_state.pending_multi_run_workbooks
+    assert [(s.source_rid, s.reason) for s in first_state.skipped_resources] == [
+        (source_wb.rid, f"waiting for runs not yet migrated: {[source_run_b.rid]}")
+    ]
+
+    second_runner = _make_runner(_make_resources(source_asset_b), _no_files_config(), dest_client, state_file)
+    second_runner.run_migration()
+    state = second_runner.migration_state
+    register_cleanup(_dest_asset(second_runner, source_asset_b, dest_client).archive)
+
+    dest_runs = []
+    for source_run in (source_run_a, source_run_b):
+        dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+        assert dest_run_rid is not None
+        dest_runs.append(dest_client.get_run(dest_run_rid))
+        register_cleanup(dest_runs[-1].archive)
+    dest_wb_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_wb.rid)
+    assert dest_wb_rid is not None
+    dest_wb = dest_client.get_workbook(dest_wb_rid)
+    register_cleanup(dest_wb.archive)
+    _assert_workbook_migrated_multi_run(source_wb, dest_wb, dest_runs)
+    assert state.pending_multi_run_workbooks == {}
+    assert state.skipped_resources == []
 
 
 def test_dry_run_creates_nothing(

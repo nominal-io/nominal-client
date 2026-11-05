@@ -98,7 +98,7 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
                 file_type,
                 description=raw.description,
                 properties=raw.properties,
-                labels=raw.labels,
+                labels=self.ctx.destination_labels(raw.labels),
             )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_attachment.rid)
         return new_attachment

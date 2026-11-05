@@ -1,194 +1,132 @@
 ---
 myst:
   html_meta:
-    description: "Overview and recipes for working with Nominal streaming checklists in"
+    description: "Run a published checklist against an asset's live data and send alerts when checks fail."
 ---
 
 # Trigger alerts on live data
 
 {.lead}
-Overview and recipes for working with Nominal streaming checklists in
+A streaming checklist evaluates a published [checklist](/guides/checklists/authoring.md) against an asset's live data.
+When a check fails, it can create an event and notify an integration such as Slack.
 
-## Overview
-
-Nominal's streaming checklists allow you to continuously monitor real-time data on an asset and trigger alerts
-whenever certain conditions are met. This guide walks you through the process of setting up and running a streaming
-checklist in Python using the Nominal client.
-
-To run a streaming checklist, you need the following:
-- A Dataset.
-- An asset.
-- A Run off the asset (needed to create a Checklist in the web GUI as a preview)
-- A Checklist.
-- (Optional) An integration for sending notifications.
-
-### Prerequisites
-
-Make sure you have the Nominal Python packages installed. You can install it using:
-```shell
-pip3 install nominal
+```{include} /guides/_snippets/connect-the-client.md
 ```
 
-#### Connect to Nominal
+## Stream sample data to an asset
 
-```{include} /guides/_snippets/python/auth.md
-```
+The checklist runs against an [asset](/guides/assets.md), so stream to a dataset on one.
+This example sends a value that's `1` for 4 seconds of every 28:
 
-### Create a Nominal Dataset
-
-:::{warning}
-
-You only need to run the code below to create a dataset once!
-
-Moreover, you may not even need to create a new dataset if you or a
-colleague has already set one up. Check the [Datasets page](https://app.gov.nominal.io/data-sources?sidebar=allDatasets)
-for existing Datasets.
-:::
-
-To stream data, first create a Dataset in Nominal:
 ```python
-dataset = client.create_dataset(
-    name="my-unique-dataset-name",
-)
-```
+from datetime import datetime, timedelta, timezone
 
-:::{note}
-
-You can access this dataset later using its `rid`. You can find the `rid` in `dataset.rid` of the code above
-or look it up on the Nominal platform in the "Dataset" section and use it in the client.get_dataset(<dataset_rid />) function
-:::
-
-### Create an asset for Streaming Test Data
-
-Create an asset, associate it with the dataset, and then stream some initial data:
-```python
-from datetime import datetime, timedelta
+asset = client.create_asset("Streaming checklist demo")
+dataset = asset.get_or_create_dataset("telemetry")
 
 values = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] * 3
-interval = timedelta(seconds=2)
-start = datetime.now() - len(values) * interval
-timestamps = [start + i * interval for i in range(len(values))]
-
-asset = client.create_asset(
-    name = 'streaming_checklist_asset'
-)
-asset.add_dataset("my_refname", dataset)
-
-with dataset.get_write_stream(batch_size=len(values)) as stream:
-    stream.enqueue_batch(channel_name="my_channel_name", timestamps=timestamps, values=values)
+start = datetime.now(timezone.utc) - len(values) * timedelta(seconds=2)
+with dataset.get_write_stream() as stream:
+    stream.enqueue_batch("pump_on", [start + i * timedelta(seconds=2) for i in range(len(values))], values)
 ```
 
-### Create run to preview in Checklist
+## Create the checklist
 
-Use {py:meth}`~nominal.core.Asset.create_run` to create a temporary run around the data
-just streamed to the asset and preview it in a checklist:
-```python
-temp_run = asset.create_run(
-    name = 'temporary_run',
-    start = start,
-    end = start + timedelta(hours=1),
-)
-```
+Author and publish the checklist [in Python](/guides/checklists/authoring.md), or in the UI:
 
-### Create the checklist in the Nominal web UI
+1. Create a run over the sample data, so the UI can preview the check:
+
+    ```python
+    run = asset.create_run("Checklist preview", start=start, end=start + timedelta(hours=1))
+    ```
+
+1. Go to [Checklists](https://app.gov.nominal.io/checklists) and click **New checklist**.
+1. Select the `Checklist preview` run.
+1. Add a check that fails when `pump_on` is `>` `0`. The chart shows where it fails.
+1. Click **Publish**, then copy the checklist's RID from the arrow (`⌄`) next to its name.
 
 ![Checklist preview](/guides/images/b4/checklist_preview_bwaqex.png)
 
-1. Go to the [Checklist Page](https://app.gov.nominal.io/checklists).
-2. Click on `New checklist`.
-3. Select the 'temporary_run' you created above.
-4. Enter a name for the first check and a priority and click `Add check`
-5. Define a check:
-    - In the field next to `when`, select `my_channel_name`.
-    - in the next field select `>`.
-6. you should now see the violations in the chart. Zoom in if necessary.
-7. click on `Publish` in the top-right corner.
-8. From the dropdown next to the checklist name (`⌄`), copy the rid of the checklist.
-9. Paste the rid in the code below.
+## Start the checklist
+
+{py:meth}`~nominal.core.Checklist.execute_streaming` starts the checklist on the asset.
+Get an integration from the [Integrations page](https://app.gov.nominal.io/settings/org/integrations), or create one with a method such as {py:meth}`~nominal.core.NominalClient.create_webhook_integration`.
 
 ```python
-checklist_rid = "paste_rid_here"
-```
-
-### Select an integration for notifications (optional)
-
-Notification integrations are optional. You can run a streaming checklist without configuring any notification integrations to track checklist status and generate events without sending alerts.
-
-This is useful when you want to:
-
-- Monitor check results through the workbook event panel without triggering external alerts.
-- Run checklists in observation mode during early testing before configuring production notification channels.
-- Create events from streaming checklists for historical analysis without real-time notifications.
-
-To skip notifications, pass an empty list for `integration_rids` when calling `execute_streaming` (see the code example below).
-
-If you want to receive alerts through Slack, Teams, PagerDuty, or other channels, find available integrations in the [Integrations Page](https://app.gov.nominal.io/settings/org/integrations), copy the RID, and paste it in the code below.
-
-```python
-integration_rid = "paste_rid_here"
-```
-
-![integrations](/guides/images/b4/integrations_nn0y0c.png)
-
-### Execute the streaming checklist
-
-With the checklist and asset ready, you can now execute the streaming checklist.
-
-With notifications:
-```python
-checklist = client.get_checklist(checklist_rid)
-
+checklist = client.get_checklist("<CHECKLIST_RID>")
 checklist.execute_streaming(
-    assets=[asset],
-    integration_rids=[integration_rid],
+    [asset],
+    notifications=[client.get_integration("<INTEGRATION_RID>")],
+    auto_create_events=True,  # create an event when a check fails, and update it on recovery
 )
 ```
 
-Without notifications (status tracking only):
-```python
-checklist = client.get_checklist(checklist_rid)
+Returning means the request was accepted, not that evaluation started or a notification arrived.
+Pass `notifications=[]` to evaluate without notifying.
 
-checklist.execute_streaming(
-    assets=[asset],
-    integration_rids=[],
+:::{warning}
+Calling `execute_streaming` again replaces all streaming settings for those assets, including notifications.
+:::
+
+{py:class}`~nominal.core.StreamingNotificationConfig` sets per-destination options:
+
+```python
+from nominal.core import StreamingNotificationConfig
+
+notification = StreamingNotificationConfig(
+    "<INTEGRATION_RID>",
+    tags=["test-stand"],
+    workbook="<WORKBOOK_RID>",  # link a workbook in the notification
+    mute_execution_errors=True,
 )
 ```
 
-## Monitoring and managing streaming checklists
+`mute_until` takes a timezone-aware datetime and silences that destination until then.
+`integration_rids=[...]` is deprecated. Pass the same RIDs as `notifications=[...]`.
 
-- List running streaming checklists:
-```python
-list(client.list_streaming_checklists())
-```
+## Trigger alerts
 
-- Stop a running streaming checklist:
-```python
-checklist.stop_streaming()
-```
-
-### Stream more data to trigger notifications
-
-Now that your streaming checklist is active, send more data to trigger notifications. The following code continuously
-sends data points every 2 seconds. When conditions are met, notifications will be sent to the configured integration.
+Keep streaming, and each `1` fails the check:
 
 ```python
-from datetime import datetime, timedelta
-from time import sleep
-
-from datetime import datetime, timedelta
-from time import sleep
-
-values = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-interval = timedelta(seconds=2)
+import time
 
 with dataset.get_write_stream() as stream:
     for value in values * 100:
-        now = datetime.now()
-        print(f"Sending data point at {now}: {value}")
-        stream.enqueue(channel_name="my_channel_name", timestamp=now, value=value)
-        sleep(2)
+        stream.enqueue("pump_on", datetime.now(timezone.utc), value)
+        time.sleep(2)
 ```
 
-Example Alert (Slack):
-You should now receive real-time notifications through your chosen integration. For Slack, the messages might look like this:
-![slack integration](/guides/images/b4/Slack_Live_Alert_Example.png)
+![Slack alert](/guides/images/b4/Slack_Live_Alert_Example.png)
+
+## Monitor and change settings
+
+{py:meth}`~nominal.core.Checklist.get_streaming_status` returns each check's state per asset:
+
+```python
+status = checklist.get_streaming_status([asset])[asset.rid]
+print(status.state, status.commit_id)
+for check in status.checks:
+    print(check.check_rid, check.parameter_index, check.state)
+```
+
+A running checklist can have failing, invalid or skipped checks.
+A parameterized check has a result per parameter, by `parameter_index`.
+
+To change one setting, read the current ones with {py:meth}`~nominal.core.Checklist.get_streaming_configurations` and pass them back:
+
+```python
+config = checklist.get_streaming_configurations()[asset.rid]
+checklist.execute_streaming(
+    [asset],
+    notifications=config.notifications,
+    evaluation_delay=timedelta(seconds=5),
+    recovery_delay=config.recovery_delay,
+    auto_create_events=config.auto_create_events,
+)
+```
+
+This isn't atomic, so coordinate with anyone else changing the asset's settings.
+
+To stop, use {py:meth}`~nominal.core.Checklist.stop_streaming_for_assets`, or {py:meth}`~nominal.core.Checklist.stop_streaming` for every asset.
+{py:meth}`~nominal.core.NominalClient.list_streaming_checklists` lists the checklists streaming on an asset.

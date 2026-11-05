@@ -122,6 +122,47 @@ def test_native_streams_preserve_storage_location_and_caller_owned_stream(
     stream.close()
 
 
+@pytest.mark.parametrize("file_type", [FileTypes.CSV_GZ, FileTypes.PARQUET, FileTypes.PARQUET_TAR_GZ])
+def test_tabular_stream_preserves_storage_routing_and_ingest_metadata(dataset, file_type) -> None:
+    """Tabular uploads preserve destination storage, timestamp/tag metadata, and archive mode."""
+    stream = HTTPResponse(body=io.BytesIO(b"tabular-bytes"), preload_content=False)
+    filename = f"telemetry{file_type.extension}"
+    with patch("nominal.core._utils.multipart.put_multipart_upload", return_value=LOCATION) as upload:
+        result = dataset.add_from_io(
+            stream,
+            timestamp_column="timestamp",
+            timestamp_type="epoch_seconds",
+            file_type=file_type,
+            file_name=filename,
+            tag_columns={"vehicle": "vehicle_id"},
+            tags={"campaign": "test"},
+        )
+
+    assert upload.call_args.args == (
+        dataset._clients.auth_header,
+        "workspace",
+        stream,
+        filename,
+        file_type.mimetype,
+        dataset._clients.upload,
+    )
+    assert upload.call_args.kwargs["header_provider"] is dataset._clients.header_provider
+    _, request = dataset._clients.ingest.ingest.call_args.args
+    options = request.options.parquet if file_type.is_parquet() else request.options.csv
+    assert options.source.s3.path == LOCATION
+    assert options.target.existing.dataset_rid == dataset.rid
+    assert options.timestamp_metadata.series_name == "timestamp"
+    assert options.timestamp_metadata.timestamp_type.absolute.epoch_of_time_unit.time_unit == api.TimeUnit.SECONDS
+    assert options.tag_columns == {"vehicle": "vehicle_id"}
+    assert options.additional_file_tags == {"campaign": "test"}
+    if file_type.is_parquet():
+        assert options.is_archive == file_type.is_parquet_archive()
+    assert result.ingest_status is IngestStatus.IN_PROGRESS
+    assert stream.read() == b"tabular-bytes"
+    assert not stream.closed
+    stream.close()
+
+
 @pytest.mark.parametrize(
     "file_type",
     [FileTypes.JOURNAL_JSONL_GZ, tuple(FileTypes.JOURNAL_JSONL_GZ)],

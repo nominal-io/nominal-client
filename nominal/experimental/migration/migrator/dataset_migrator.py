@@ -54,12 +54,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         if existing_dataset is not None:
             return existing_dataset
 
-        destination_client = self.destination_client_for(source)
-        log_extras = {
-            "destination_client_workspace": destination_client.get_workspace(
-                destination_client._clients.workspace_rid
-            ).rid
-        }
+        log_extras = {"destination_client_workspace": self.ctx.destination_workspace_rid_for(source)}
         dataset_name = options.new_dataset_name if options.new_dataset_name is not None else source.name
         dataset_description = (
             options.new_dataset_description if options.new_dataset_description is not None else source.description
@@ -67,7 +62,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         dataset_properties = (
             options.new_dataset_properties if options.new_dataset_properties is not None else source.properties
         )
-        dataset_labels = options.new_dataset_labels if options.new_dataset_labels is not None else source.labels
+        dataset_labels = self.ctx.destination_labels(source.labels, override=options.new_dataset_labels)
 
         if self.ctx.dry_run:
             logger.info(would_create_message(self.resource_type), source.name, source.rid)

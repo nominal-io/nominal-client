@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.178.0"
+version = "1.181.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -25,9 +25,11 @@ classifiers = [
 
 requires-python = ">=3.11,<4"
 dependencies = [
+    # Removes the emSign ECC Root CA - G3 trust anchor after intermediate key compromise.
+    "certifi>=2026.10.18",
     "conjure-python-client>=3.1.0,<4",
-    "nominal-api==0.1484.0",
-    "nominal-api-protos==0.1484.0",
+    "nominal-api==0.1509.0",
+    "nominal-api-protos==0.1509.0",
     "truststore>=0.10.4",
     # Backports `override` (stdlib in 3.12) and `deprecated` (stdlib in 3.13, added here in 4.5)
     "typing-extensions>=4.5,<5",
@@ -70,7 +72,7 @@ dev = [
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
-    "ruff==0.12.1",
+    "ruff==0.17.3",
     "types-grpcio>=1.0.0.20260614,<2",
     "types-protobuf>=4.24.0.20240311,<5",
     "types-python-dateutil>=2.9.0.20250822",
@@ -81,18 +83,25 @@ dev = [
 docs = [
     "sphinx>=9.1.0",
     "nominal-sphinx-theme",
-    "myst-parser>=5.1.0",
     "sphinx-design>=0.7.0",
     "sphinx-copybutton>=0.5.2",
     "sphinx-click>=6.0.0",
     "sphinxext-rediraffe>=0.3.0",
+    "myst-nb>=1.4.0",
+    "sphinx-autobuild>=2025.8.25",
+    "matplotlib>=3.11.2",
+    "numpy>=2.4.6",
+    "sphinx-codeautolink>=0.19.0",
+    "jupytext>=1.19.6",
 ]
 
 [tool.uv.dependency-groups]
 docs = { requires-python = ">=3.12" }
 
 [tool.uv.sources]
-nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme", rev = "95a37f535ce2e6d93f064a31fca8b7d3223ac63c" }
+# uv.lock pins the theme's commit. No rev here, so `uv lock --upgrade-package nominal-sphinx-theme`
+# can update it.
+nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-theme" }
 nominal = { workspace = true }
 nominal-ibis = { workspace = true }
 nominal-tdms = { workspace = true }
@@ -103,7 +112,7 @@ tdms = ["nominal-tdms>=1.143.0"]
 ibis = ["nominal-ibis>=0.1.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 compute = [
-    "nominal-compute==0.1480.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
+    "nominal-compute==0.1509.0; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
 ]
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
@@ -128,9 +137,11 @@ exclude = ["packages/**"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py", "docs/src/examples/**/*.py", "docs/src/guides/_snippets/code/**/*.py", "docs/conf.py", "docs/_ext/*.py", "docs/_tests/*.py"]
 
 [tool.ruff.lint.isort]
+# Group every nominal.* import as first party, including those from other distributions.
+known-first-party = ["nominal"]
 # The nominal.ibis package root is a directory named "ibis", which ruff would otherwise
 # mistake for the ibis library and sort it as first-party.
 known-third-party = ["ibis"]
@@ -171,6 +182,9 @@ ignore = [
     "PLC0414", # allow explicit re-exports with same-name aliases
     "PLC0415", # import should be at top-level of a file
     "PLR0913", # too many arguments
+    # Public APIs accept more than five positional arguments; making optional
+    # parameters keyword-only needs deprecations. Enforce it once they have them.
+    "PLR0917", # too many positional arguments
     "PLR2004", # magic values
     "PLW0603", # globals
 ]

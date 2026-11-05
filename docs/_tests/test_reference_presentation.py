@@ -137,6 +137,61 @@ class Container:
     assert "fixture_api.Alias" in signatures
 
 
+def test_signatures_leave_types_to_descriptions_and_private_fields_out(tmp_path: Path) -> None:
+    """With types in descriptions, signatures show names only, without private fields, and keep return types."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    extensions = Path(__file__).resolve().parents[1] / "_ext"
+    (docs / "conf.py").write_text(
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'reference_presentation']\n"
+        "autodoc_default_options = {'members': True}\n"
+        "autodoc_typehints = 'description'\n"
+        "autodoc_typehints_description_target = 'documented_params'\n"
+        "napoleon_use_param = True\n",
+        encoding="utf-8",
+    )
+    (docs / "index.rst").write_text("Settings\n========\n\n.. automodule:: fixture_api\n", encoding="utf-8")
+    (tmp_path / "fixture_api.py").write_text(
+        '''from __future__ import annotations
+from dataclasses import dataclass
+
+@dataclass
+class Settings:
+    """Connection settings.
+
+    Args:
+        value: How many connections to open.
+    """
+    value: int
+    _profile: str | None = None
+
+    def read(self) -> int:
+        """Read the value."""
+        return self.value
+''',
+        encoding="utf-8",
+    )
+    output = tmp_path / "html"
+    result = subprocess.run(
+        [sys.executable, "-m", "sphinx", "-W", "-E", "-b", "html", str(docs), str(output)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    doctree = pickle.loads((output / ".doctrees/index.doctree").read_bytes())
+    descs = {node[0]["ids"][0]: node for node in doctree.findall(addnodes.desc) if node[0].get("ids")}
+    settings = descs["fixture_api.Settings"]
+    assert settings[0].astext().endswith("Settings(value)")
+    fields = settings[-1].next_node(nodes.field_list).astext()
+    assert "value (int)" in fields
+    assert "How many connections to open." in fields
+    # a method without a Returns: section still lists its return type
+    assert "Return type" in descs["fixture_api.Settings.read"][-1].astext()
+    assert "int" in descs["fixture_api.Settings.read"][-1].astext()
+
+
 @pytest.mark.parametrize("module", [None, "fixture_api", "not_installed"])
 def test_handwritten_class_references_need_no_importable_object(tmp_path: Path, module: str | None) -> None:
     """Preserve authored class references with no module, a missing class, or an unavailable module."""

@@ -769,6 +769,10 @@ def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout
     return scout_run_api.Duration(seconds=seconds, nanos=nanos)
 
 
+def _from_api_duration(duration: scout_run_api.Duration) -> IntegralNanosecondsDuration:
+    return duration.seconds * 1_000_000_000 + duration.nanos
+
+
 def _to_proto_duration(
     duration: timedelta | IntegralNanosecondsDuration, duration_type: Callable[..., _DurationT]
 ) -> _DurationT:

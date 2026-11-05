@@ -5,7 +5,7 @@ from typing import Callable
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import scout_catalog, scout_compute_api
+from nominal_api import api, scout_catalog, scout_compute_api
 
 from nominal.core.client import NominalClient
 from nominal.experimental.derived_datasets import (
@@ -751,7 +751,8 @@ def test_create_derived_dataset_sets_the_definition_on_the_create_request(
     assert request.derived_definition.message == "Initial derived definition"
     assert request.workspace == "ri.workspace.w"
     assert request.labels == ["a"]
-    assert request.properties == {"k": "v"}
+    assert request.properties == {}
+    assert request.typed_properties == {"k": api.TypedPropertyValue(string_value="v")}
 
 
 def test_create_derived_dataset_defaults_to_no_inputs(

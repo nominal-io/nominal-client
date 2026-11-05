@@ -168,10 +168,8 @@ def test_from_proto_keeps_nanosecond_created_at_and_detaches_properties() -> Non
 def test_get_attachments_splits_requests_at_the_batch_limit() -> None:
     """More RIDs than one BatchGetAttachments request accepts are fetched in successive batches."""
     clients = MagicMock()
-    clients.attachment.BatchGetAttachments.side_effect = lambda request: (
-        attachments_pb2.BatchGetAttachmentsResponse(
-            attachments=[_proto_attachment(rid) for rid in request.attachment_rids]
-        )
+    clients.attachment.BatchGetAttachments.side_effect = lambda request: attachments_pb2.BatchGetAttachmentsResponse(
+        attachments=[_proto_attachment(rid) for rid in request.attachment_rids]
     )
     rids = [f"ri.attachments.test.attachment.{i}" for i in range(1001)]
 

@@ -1,14 +1,15 @@
 .. autosummary::
-   :toctree: src/sdk
+   :toctree: src/ref
    :template: autosummary/exceptions.rst
 
    nominal.exceptions
 
 .. autosummary::
-   :toctree: src/sdk/_summaries
+   :toctree: src/ref/_summaries
    :template: autosummary/module-summary.rst
 
    nominal.experimental.compute
+   nominal.experimental.compute_as_code
    nominal.experimental.compute.dsl.exprs
    nominal.experimental.derived_datasets
    nominal.experimental.spatial
@@ -26,14 +27,14 @@
    nominal.tdms
 
 .. autosummary::
-   :toctree: src/sdk/_summaries
+   :toctree: src/ref/_summaries
    :template: autosummary/module-summary-no-prose.rst
 
    nominal.ibis
    nominal.ts
 
 .. autosummary::
-   :toctree: src/sdk/_summaries
+   :toctree: src/ref/_summaries
    :template: autosummary/core-summary.rst
 
    nominal.core

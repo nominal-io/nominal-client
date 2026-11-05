@@ -15,11 +15,18 @@ def _dataclass_signature(
     if what != "class" or not isinstance(obj, type) or not is_dataclass(obj):
         return None
     # Dataclasses generate docstring signatures with quoted annotations; format the
-    # declared signature instead, keeping repr-hidden implementation fields out.
-    hidden = {field.name for field in fields(obj) if not field.repr}
+    # declared signature instead, keeping repr-hidden and private implementation fields out.
+    hidden = {field.name for field in fields(obj) if not field.repr or field.name.startswith("_")}
     sig = signature(obj)
     sig = sig.replace(parameters=[param for param in sig.parameters.values() if param.name not in hidden])
-    return stringify_signature(sig, show_return_annotation=False, unqualified_typehints=True), retann
+    # Types go in the signature or in the parameter descriptions, as autodoc_typehints says.
+    show_annotation = app.config.autodoc_typehints not in {"none", "description"}
+    return (
+        stringify_signature(
+            sig, show_annotation=show_annotation, show_return_annotation=False, unqualified_typehints=True
+        ),
+        retann,
+    )
 
 
 def _api_layout(app: Sphinx, domain: str, objtype: str, content: addnodes.desc_content) -> None:

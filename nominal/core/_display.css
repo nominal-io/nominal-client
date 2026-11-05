@@ -1,0 +1,72 @@
+/* Colors come from the notebook's theme where it sets them (JupyterLab, then VS Code), so cards follow light and
+   dark themes. Where styles are stripped, the hidden card stays hidden and the plain-text fallback shows instead. */
+.nominal-repr-fallback { display: none; }
+.nominal-repr { display: block !important; }
+.nominal-repr {
+  --nominal-repr-border: var(--jp-border-color2, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.4)));
+  --nominal-repr-tint: var(--jp-layout-color2, rgba(128, 128, 128, 0.12));
+  color: var(--jp-content-font-color0, var(--vscode-editor-foreground, inherit));
+  font-family: var(--jp-ui-font-family, var(--vscode-font-family, sans-serif));
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 900px;
+  border: 1px solid var(--nominal-repr-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.nominal-repr-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.nominal-repr-kind, .nominal-repr-archived, .nominal-repr-label {
+  background: var(--nominal-repr-tint);
+  border: 1px solid var(--nominal-repr-border);
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.nominal-repr-archived { font-weight: 600; }
+.nominal-repr-link { margin-left: auto; }
+.nominal-repr a { color: var(--jp-content-link-color, var(--vscode-textLink-foreground, inherit)); }
+.nominal-repr-label { display: inline-block; margin: 1px 0; }
+.nominal-repr table { border-collapse: collapse; margin: 0; width: auto; }
+.nominal-repr th, .nominal-repr td {
+  text-align: left !important;
+  vertical-align: top;
+  padding: 2px 16px 2px 0 !important;
+  border: none !important;
+  background: none !important;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.nominal-repr th { font-weight: 600; white-space: nowrap; }
+.nominal-repr code, .nominal-repr time { font-family: var(--jp-code-font-family, monospace); font-size: 12px; }
+.nominal-repr time { white-space: nowrap; }
+.nominal-repr-id { user-select: all; word-break: break-all; }
+.nominal-repr-id-group { display: inline-flex; align-items: flex-start; max-width: 100%; }
+.nominal-repr-copy { flex: none; }
+.nominal-repr-copy {
+  min-width: 20px;
+  min-height: 20px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--nominal-repr-border);
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.nominal-repr-copy:hover { background: var(--nominal-repr-tint); }
+.nominal-repr details { border-top: 1px solid var(--nominal-repr-border); margin-top: 6px; padding-top: 4px; }
+.nominal-repr summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.nominal-repr-chart { display: block; margin: 4px 0; max-width: 100%; height: auto; }
+.nominal-repr-more { font-style: italic; margin: 2px 0; }
+/* Diagrams keep their drawn size: a wide or tall one scrolls inside the card instead of shrinking its text or
+   stretching the output cell. Nodes carry their own colors, light with dark text, so they read on any theme;
+   edges take the card's text color. */
+.nominal-repr-graph { overflow: auto; max-height: 420px; margin: 4px 0; }
+.nominal-repr-graph-canvas { position: relative; }
+.nominal-repr-graph svg { display: block; max-width: none !important; height: auto; }
+/* Links lie over their nodes, since notebooks can't handle links inside SVG. */
+.nominal-repr-graph-link { position: absolute; display: block; border-radius: 4px; }
+.nominal-repr-graph-link:hover { background: rgba(0, 0, 0, 0.06); }

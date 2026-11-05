@@ -1,5 +1,83 @@
 # Changelog
 
+## [1.181.0](https://github.com/nominal-io/nominal-client/compare/v1.180.1...v1.181.0) (2026-11-03)
+
+
+### Features
+
+* **migration:** add labels to every resource a migration creates ([#1210](https://github.com/nominal-io/nominal-client/issues/1210)) ([c863433](https://github.com/nominal-io/nominal-client/commit/c8634336828dd3a87bf560fcaaf12da07da770fe))
+* **migration:** allow dry runs without a destination profile ([#1223](https://github.com/nominal-io/nominal-client/issues/1223)) ([0a308ec](https://github.com/nominal-io/nominal-client/commit/0a308eccbcc938f20c9af1a8cd58bda48a8c6dae))
+* **migration:** migrate datasets that are not attached to any asset ([#1241](https://github.com/nominal-io/nominal-client/issues/1241)) ([d033f6b](https://github.com/nominal-io/nominal-client/commit/d033f6b15708b720c5f2fe3fb7ba3452fb5a5111))
+
+
+### Bug Fixes
+
+* **migration:** migrate deferred workbooks in the parallel runner ([#1261](https://github.com/nominal-io/nominal-client/issues/1261)) ([576cab2](https://github.com/nominal-io/nominal-client/commit/576cab2c20d0ebe7e4c0ef1b989fb83b3a8f1970))
+* **streaming:** drain experimental batches before shutdown ([#1227](https://github.com/nominal-io/nominal-client/issues/1227)) ([825234e](https://github.com/nominal-io/nominal-client/commit/825234e21e052ad10338c589edd5af03246092b9))
+* **video:** distinguish missing extra from native loader errors ([#1228](https://github.com/nominal-io/nominal-client/issues/1228)) ([493b210](https://github.com/nominal-io/nominal-client/commit/493b210a914617d586de9ddbf433ae3f4537eb96))
+
+
+### Documentation
+
+* build examples from MyST notebooks ([#1226](https://github.com/nominal-io/nominal-client/issues/1226)) ([607434e](https://github.com/nominal-io/nominal-client/commit/607434e0810b82f0c515ab80c7b1f8023856b0fd))
+* bump nominal-sphinx-theme so sidebar groups unfold on click ([#1222](https://github.com/nominal-io/nominal-client/issues/1222)) ([71fb015](https://github.com/nominal-io/nominal-client/commit/71fb0151283c582d0909434bc8366552886ef619))
+* bump nominal-sphinx-theme to 1101d9b ([#1240](https://github.com/nominal-io/nominal-client/issues/1240)) ([4c18fb3](https://github.com/nominal-io/nominal-client/commit/4c18fb39e0d5b3e3255824ff1716f67c1120f831))
+* bump nominal-sphinx-theme to 2c17e21; pin it in uv.lock only ([#1234](https://github.com/nominal-io/nominal-client/issues/1234)) ([212eee7](https://github.com/nominal-io/nominal-client/commit/212eee7f1e4702102157de77d01fe461a870ece3))
+* DEVELOPERS in the header links to the developer docs hub ([#1258](https://github.com/nominal-io/nominal-client/issues/1258)) ([bb57f02](https://github.com/nominal-io/nominal-client/commit/bb57f02d64336896a2d81e62ca0fe5d792a58fef))
+* explain checklist authoring with practical recipes and a test-stand example ([#1215](https://github.com/nominal-io/nominal-client/issues/1215)) ([ea93d69](https://github.com/nominal-io/nominal-client/commit/ea93d69e26b57bb21c148d38e49ac1057a89e7cb))
+* public docs golive feedback fixes ([#1259](https://github.com/nominal-io/nominal-client/issues/1259)) ([da398dd](https://github.com/nominal-io/nominal-client/commit/da398ddb6c4650aabea8721bbc4fc4793e9c1b9b))
+* rename to the Nominal Python Client, rewrite the quickstart, and tighten the guides ([#1221](https://github.com/nominal-io/nominal-client/issues/1221)) ([b3a3e54](https://github.com/nominal-io/nominal-client/commit/b3a3e543934c6f68026fe62bb6242981527d6279))
+* replace the authentication page with the shared API keys setup page ([#1217](https://github.com/nominal-io/nominal-client/issues/1217)) ([91456ce](https://github.com/nominal-io/nominal-client/commit/91456ce16a5fb66673ab270a34c604b81edf19c4))
+* require focused API operations and clear results ([#1253](https://github.com/nominal-io/nominal-client/issues/1253)) ([e386194](https://github.com/nominal-io/nominal-client/commit/e386194bc12c467296de81f6e2a74d156e79ec10))
+* show API signatures as calls, with each parameter's type beside its description ([#1232](https://github.com/nominal-io/nominal-client/issues/1232)) ([f51bbbc](https://github.com/nominal-io/nominal-client/commit/f51bbbc8eb4fae86282c81b974491fa6d5f61a3f))
+
+## [1.180.1](https://github.com/nominal-io/nominal-client/compare/v1.180.0...v1.180.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* require certifi without compromised emSign trust anchor ([#1214](https://github.com/nominal-io/nominal-client/issues/1214)) ([11cd1d2](https://github.com/nominal-io/nominal-client/commit/11cd1d28d9a497c623ab6c763c719ac54da03746))
+
+
+### Documentation
+
+* fix numeric band checklist recipe formatting ([#1212](https://github.com/nominal-io/nominal-client/issues/1212)) ([9ecbef4](https://github.com/nominal-io/nominal-client/commit/9ecbef4d5964d480ec3020c2b80e0e00a16cc493))
+
+## [1.180.0](https://github.com/nominal-io/nominal-client/compare/v1.179.0...v1.180.0) (2026-10-20)
+
+
+### Features
+
+* add run asset/prefix and event priority search filters ([#1209](https://github.com/nominal-io/nominal-client/issues/1209)) ([c983ee9](https://github.com/nominal-io/nominal-client/commit/c983ee9241b4227fb7d59ff0569e519137c1d82c))
+* author reusable source checks and deploy checklist revisions ([#1138](https://github.com/nominal-io/nominal-client/issues/1138)) ([0e349b1](https://github.com/nominal-io/nominal-client/commit/0e349b1d442eaea3b94cda26bf63169cc48a8077))
+* expose streaming checklist settings and status ([#1199](https://github.com/nominal-io/nominal-client/issues/1199)) ([3a9fe9c](https://github.com/nominal-io/nominal-client/commit/3a9fe9ca26718f75c7ab9402ecc256dcb3cba6a8))
+
+
+### Bug Fixes
+
+* derive extractor registration fallback messages ([#1001](https://github.com/nominal-io/nominal-client/issues/1001)) ([2934b32](https://github.com/nominal-io/nominal-client/commit/2934b32191cd6aa95d4774fa575620e71ef61da3))
+
+## [1.179.0](https://github.com/nominal-io/nominal-client/compare/v1.178.0...v1.179.0) (2026-10-20)
+
+
+### Features
+
+* expose consistent workbook and template state controls ([#1033](https://github.com/nominal-io/nominal-client/issues/1033)) ([e2fcd72](https://github.com/nominal-io/nominal-client/commit/e2fcd7272ff6338b08ea88edf8b4968ee0480e69))
+* expose workspace preferences for retrieval ([#801](https://github.com/nominal-io/nominal-client/issues/801)) ([7fc80f9](https://github.com/nominal-io/nominal-client/commit/7fc80f9ab8a70151c3e08a64b1bc7c4a14645aca))
+* support typed properties on assets, runs, datasets, and events ([1b383ea](https://github.com/nominal-io/nominal-client/commit/1b383ea8d479f78526c4bb0d978fd930ff8b6887))
+* unify attachment and template archive updates ([#1203](https://github.com/nominal-io/nominal-client/issues/1203)) ([bf55733](https://github.com/nominal-io/nominal-client/commit/bf55733b7fd1d11794971dde03cbdcb2a3ba9f63))
+
+
+### Bug Fixes
+
+* default upload extensions only when missing ([#1189](https://github.com/nominal-io/nominal-client/issues/1189)) ([a916bc4](https://github.com/nominal-io/nominal-client/commit/a916bc4c42c970505c8c88f7b4b33439af256e72))
+* **migration:** preserve filenames and stream journal uploads ([#1206](https://github.com/nominal-io/nominal-client/issues/1206)) ([fee094b](https://github.com/nominal-io/nominal-client/commit/fee094b0fb8f7f9effd050a7c8e6dc8bba3d536b))
+
+
+### Documentation
+
+* add concise descriptions for public SDK classes ([#1201](https://github.com/nominal-io/nominal-client/issues/1201)) ([26d9206](https://github.com/nominal-io/nominal-client/commit/26d92066c884fdb50f395297f539a6e4a25a0892))
+
 ## [1.178.0](https://github.com/nominal-io/nominal-client/compare/v1.177.0...v1.178.0) (2026-10-19)
 
 

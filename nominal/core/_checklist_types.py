@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import assert_never
 
 from nominal.protos.event.v2 import event_pb2
 
 
 class Priority(IntEnum):
-    """Check priority, P0 most severe. P0 is 0, so check against None rather than truthiness."""
+    """Check or event disposition priority, P0 most severe. P0 is 0, so check against None rather than truthiness."""
 
     P0 = 0
     P1 = 1
@@ -30,3 +31,18 @@ class Priority(IntEnum):
             case _:
                 # Open proto enum: a value this client does not know reads as None rather than raising.
                 return None
+
+    def _to_proto(self) -> event_pb2.Priority.ValueType:
+        match self:
+            case Priority.P0:
+                return event_pb2.P0
+            case Priority.P1:
+                return event_pb2.P1
+            case Priority.P2:
+                return event_pb2.P2
+            case Priority.P3:
+                return event_pb2.P3
+            case Priority.P4:
+                return event_pb2.P4
+            case _:
+                assert_never(self)

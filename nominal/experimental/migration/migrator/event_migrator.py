@@ -60,7 +60,7 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
             description=options.new_description if options.new_description is not None else source.description,
             assets=options.new_assets if options.new_assets is not None else source.asset_rids,
             properties=options.new_properties if options.new_properties is not None else source.properties,
-            labels=options.new_labels if options.new_labels is not None else source.labels,
+            labels=self.ctx.destination_labels(source.labels, override=options.new_labels),
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_event.rid)
         return new_event

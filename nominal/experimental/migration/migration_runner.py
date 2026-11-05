@@ -7,7 +7,7 @@ import re
 import threading
 from datetime import timedelta
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Iterable, Mapping, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
@@ -18,6 +18,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
+from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
@@ -46,7 +47,7 @@ class MigrationRunner:
     migration_resources: MigrationResources
     dataset_config: MigrationDatasetConfig
     asset_inclusion_config: AssetInclusionConfig
-    destination_client: NominalClient
+    destination_client: NominalClient | None
     destination_client_resolver: DestinationClientResolver | None
     user_rid_mapping: dict[str, str]
 
@@ -54,20 +55,22 @@ class MigrationRunner:
         self,
         migration_resources: MigrationResources,
         dataset_config: MigrationDatasetConfig,
-        destination_client: NominalClient,
+        destination_client: NominalClient | None,
         asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
         user_rid_mapping: Mapping[str, str] | None = None,
         migration_state_path: Path | str | None = None,
         dry_run: bool = False,
         video_ingest_timeout: timedelta | None = DEFAULT_INGEST_POLL_TIMEOUT,
+        added_labels: Iterable[str] = (),
     ) -> None:
         """Create a migration runner state.
 
         Args:
             migration_resources (MigrationResources): _description_
             dataset_config (MigrationDatasetConfig): _description_
-            destination_client (NominalClient): _description_
+            destination_client (NominalClient | None): Client for the destination tenant. May be None only
+                for a dry run, which then reads only the source tenant.
             asset_inclusion_config (AssetInclusionConfig | None): Controls which resource types are copied per
                 asset. Defaults to including all resource types.
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
@@ -78,6 +81,12 @@ class MigrationRunner:
             dry_run (bool): If True, read source resources but skip all destination writes and state saves.
             video_ingest_timeout (timedelta | None): How long to wait for a copied video to finish
                 ingesting before recording it as incomplete and moving on. None waits indefinitely.
+            added_labels (Iterable[str]): Labels added to every resource the migration creates, alongside the
+                source resource's own labels. The labels are copied when the runner is created, so later changes
+                to the passed collection have no effect. Resources created by an earlier run are not relabeled.
+
+        Raises:
+            TypeError: If added_labels is a single string rather than a collection of strings.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
@@ -89,6 +98,9 @@ class MigrationRunner:
         self.user_rid_mapping = dict(user_rid_mapping) if user_rid_mapping is not None else {}
         self.dry_run = dry_run
         self.video_ingest_timeout = video_ingest_timeout
+        if isinstance(added_labels, str):
+            raise TypeError("added_labels must be a collection of strings, not a single string")
+        self.added_labels = tuple(added_labels)
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
@@ -106,10 +118,23 @@ class MigrationRunner:
         # the signal handler may re-enter save_state on a main thread already mid-save.
         self._save_lock = threading.RLock()
 
+    def build_context(self) -> MigrationContext:
+        """Build the context shared by every migrator in this run, over the runner's current migration state."""
+        return MigrationContext(
+            destination_client=self.destination_client,
+            migration_state=self.migration_state,
+            destination_client_resolver=self.destination_client_resolver,
+            user_rid_mapping=self.user_rid_mapping,
+            source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
+            dry_run=self.dry_run,
+            video_ingest_timeout=self.video_ingest_timeout,
+            added_labels=self.added_labels,
+        )
+
     def run_migration(self) -> None:
         """Based on a list of assets and workbook templates, copy resources to destination client, creating
         new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
-        creating workbooks.
+        creating workbooks, and standalone datasets are copied without attaching them to any asset.
 
         Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
@@ -117,18 +142,11 @@ class MigrationRunner:
         dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
         """
         try:
-            migration_context = MigrationContext(
-                destination_client=self.destination_client,
-                migration_state=self.migration_state,
-                destination_client_resolver=self.destination_client_resolver,
-                user_rid_mapping=self.user_rid_mapping,
-                source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
-                dry_run=self.dry_run,
-                video_ingest_timeout=self.video_ingest_timeout,
-            )
+            migration_context = self.build_context()
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
             checklist_migrator = ChecklistMigrator(migration_context)
+            dataset_migrator = DatasetMigrator(migration_context)
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
                 asset_migrator.copy_from(
@@ -157,16 +175,34 @@ class MigrationRunner:
                 checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
                 self.save_state()
 
-            source_clients_by_asset_rid: dict[str, ClientsBunch] = {
-                asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
-                for asset_rid, asset_resources in self.migration_resources.source_assets.items()
-            }
-            if self.asset_inclusion_config.include_workbooks:
-                WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
+            for source_dataset in self.migration_resources.source_standalone_datasets:
+                dataset_migrator.copy_from(
+                    source_dataset,
+                    DatasetCopyOptions(
+                        include_files=self.dataset_config.include_dataset_files,
+                        preserve_uuid=self.dataset_config.preserve_dataset_uuid,
+                    ),
+                )
+                self.save_state()
+
+            self.migrate_deferred_workbooks(migration_context)
         finally:
             self.save_state()
             log_skipped_resources(self.migration_state)
         logger.info("Completed migration")
+
+    def migrate_deferred_workbooks(self, migration_context: MigrationContext) -> None:
+        """Copy the multi-asset and multi-run workbooks queued while assets migrated.
+
+        Call only after every asset has migrated, so the asset and run RID mappings are complete.
+        """
+        if not self.asset_inclusion_config.include_workbooks:
+            return
+        source_clients_by_asset_rid: dict[str, ClientsBunch] = {
+            asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
+            for asset_rid, asset_resources in self.migration_resources.source_assets.items()
+        }
+        WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
 
     def save_state(self) -> None:
         if self.dry_run:

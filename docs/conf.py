@@ -1,4 +1,4 @@
-"""Sphinx config for the Nominal Python SDK guides, examples, and API reference."""
+"""Sphinx config for the Nominal Python Client guides, examples, and reference."""
 
 import sys
 from collections import Counter
@@ -15,15 +15,17 @@ from sphinx.util.typing import restify
 
 import nominal.core
 import nominal.exceptions
+from nominal.config import NominalConfig
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "_ext"))
 
-project = "Nominal Python SDK"
+project = "Python Client"
 copyright = "Nominal, Inc."
 
 extensions = [
-    "myst_parser",
+    "myst_nb",
+    "sphinx_codeautolink",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -52,7 +54,7 @@ autosummary_context = {
 
 # Curate topic ownership by module; names still come from nominal.core.__all__.
 core_topic_modules = {
-    "client": ("client", "workspace", "user", "_utils.networking"),
+    "client": ("client", "workspace", "user", "_utils.networking", "_display"),
     "assets-and-runs": ("asset", "run", "attachment", "comment"),
     "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job"),
     "channels-and-units": ("channel", "unit"),
@@ -60,7 +62,7 @@ core_topic_modules = {
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
     "drives": ("fs.drive", "fs.file", "fs.enums", "fs.errors"),
     "events": ("event", "_event_types"),
-    "automatic-validation": ("checklist", "_checklist_types", "data_review", "integration"),
+    "automatic-validation": ("checklist", "_checklist_types", "streaming_checklist", "data_review", "integration"),
     "workbooks": ("workbook", "workbook_template"),
     "markings": ("marking", "elements"),
     "shared-types": ("bounds", "_utils.api_tools", "_utils.query_tools", "_utils.api_types"),
@@ -123,8 +125,18 @@ for _module_name in _seed_modules:
 autosummary_context["module_data"]["nominal.core"]["canonical_names"] = {
     name: f"{module}.{name}" for module, names in core_module_exports.items() for name in names
 }
+# Code examples resolve members by defining module; link them to their nominal.core reference.
+codeautolink_inventory_map = {
+    f"{module}.{name}.{member}": f"nominal.core.{name}.{member}"
+    for module, names in core_module_exports.items()
+    for name in names
+    for member in dir(getattr(nominal.core, name))
+    if not member.startswith("_")
+}
+# A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
+codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
-exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
+exclude_patterns = ["guides/_snippets", "ref/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
@@ -136,6 +148,18 @@ default_role = "py:obj"
 # -- MyST ---------------------------------------------------------------------
 myst_heading_anchors = 6
 myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline", "attrs_block", "fieldlist"]
+
+# Run each example on build; the cache (in _build) re-runs only notebooks that changed.
+nb_execution_mode = "cache"
+nb_execution_cache_path = str(HERE / "_build" / ".jupyter_cache")
+nb_execution_raise_on_error = True
+nb_execution_show_tb = True  # print a failing cell's traceback, not only the log file's path
+nb_execution_timeout = 120
+# Examples connect with the "default" profile; without it, they render unexecuted.
+try:
+    NominalConfig.from_yaml().get_profile("default")
+except (FileNotFoundError, nominal.exceptions.NominalConfigError):
+    nb_execution_excludepatterns = ["examples/*.md"]
 
 # -- autodoc -------------------------------------------------------------------
 autodoc_default_options = {
@@ -150,7 +174,10 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 autoclass_content = "both"  # merge_init_into_class
-autodoc_typehints = "signature"
+# Signatures read as calls (names and defaults); each parameter's type sits with its description,
+# and the return type is always listed, with or without a Returns: section.
+autodoc_typehints = "description"
+autodoc_typehints_description_target = "documented_params"
 autodoc_preserve_defaults = True
 python_use_unqualified_type_names = True  # show_root_full_path: false
 toc_object_entries_show_parents = "hide"
@@ -158,20 +185,25 @@ toc_object_entries_show_parents = "hide"
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_rtype = False
-napoleon_use_param = False
+napoleon_use_param = True  # :param: fields, which autodoc adds the types to
 
-intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+}
 
 # -- HTML: nominal-sphinx-theme (Shibuya, styled like the other Nominal docs) ----
 html_theme = "shibuya"
-html_title = "Nominal Python SDK"
+html_title = "Nominal Python Client"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_js_files = ["reference-links.js"]
 html_copy_source = False
 
-nominal_hub_url = "https://docs.nominal.io/"
 nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
+# Left sidebar groups fold; only "Get started" (and the current page's group) start open.
+nominal_sidebar_open = ["Get started"]
 
 html_context = {
     "source_type": "github",
@@ -181,8 +213,8 @@ html_context = {
     "source_docs_path": "/docs/src/",
 }
 
-# Right sidebar: on-page contents and edit link, no GitHub repo-stats box.
-html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"]}
+# Right sidebar: on-page contents and a link to CONTRIBUTING.md, no GitHub repo-stats box.
+html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/contribute.html"]}
 
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
@@ -191,6 +223,6 @@ html_theme_options = theme_options(
     nav_links=[
         {"title": "Guides", "url": "index"},
         {"title": "Examples", "url": "examples/index"},
-        {"title": "SDK", "url": "sdk/index"},
+        {"title": "Reference", "url": "ref/index"},
     ],
 )

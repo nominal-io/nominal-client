@@ -120,3 +120,9 @@ def test_to_api_duration_encodes_the_same_split_for_both_input_types(duration, e
     api_duration = _to_api_duration(duration)
 
     assert (api_duration.seconds, api_duration.nanos) == expected
+
+
+@pytest.mark.parametrize("nanoseconds", [0, 1, -1, 1_500_000_001, -1_500_000_001, 9_007_199_254_740_993])
+def test_api_duration_round_trip_preserves_signed_nanoseconds(nanoseconds: int) -> None:
+    """Conjure duration decoding preserves signs and nanoseconds beyond float's exact integer range."""
+    assert ts._from_api_duration(_to_api_duration(nanoseconds)) == nanoseconds
