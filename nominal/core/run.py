@@ -696,9 +696,10 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             This does not update the instance in place; call `refresh()` to see the change reflected.
 
         Raises:
-            NominalPermissionDeniedError: If you lack permission to delete data from the run's datasets.
-            NominalError: If the run has no end time, dataset retention is not enabled for your organization, or
-                the request fails.
+            NominalPermissionDeniedError: If you lack permission to delete data from every dataset of the run's assets.
+            NominalFailedPreconditionError: If the run has no end time, or dataset retention is not enabled for
+                your organization.
+            NominalError: If the request fails.
         """
         self._update_lock_status(run_service_pb2.LOCK_STATUS_LOCKED)
 
@@ -712,9 +713,10 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             This does not update the instance in place; call `refresh()` to see the change reflected.
 
         Raises:
-            NominalPermissionDeniedError: If you lack permission to delete data from the run's datasets.
-            NominalError: If the run has no end time, dataset retention is not enabled for your organization, or
-                the request fails.
+            NominalPermissionDeniedError: If you lack permission to delete data from every dataset of the run's assets.
+            NominalFailedPreconditionError: If the run has no end time, or dataset retention is not enabled for
+                your organization.
+            NominalError: If the request fails.
         """
         self._update_lock_status(run_service_pb2.LOCK_STATUS_UNLOCKED)
 
