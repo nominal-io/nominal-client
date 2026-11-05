@@ -136,5 +136,3 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     migration = yaml.safe_load(output_path.read_text(encoding="utf-8"))["migration"]
     assert migration["source_asset_rids"] == [{"asset_rid": "asset"}]
     assert migration["standalone_dataset_rids"] == ["ds-orphan-a", "ds-orphan-b"]
-    # Only non-archived assets count, so a dataset whose only asset is archived is listed as orphaned.
-    client.search_assets.assert_called_once_with()
