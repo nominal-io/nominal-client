@@ -11,7 +11,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from nominal.core import NominalClient
+from nominal.core import ArchiveStatusFilter, NominalClient
 from nominal.experimental.migration import migration_cli
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
@@ -116,7 +116,9 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     client = MagicMock()
     client.search_runs.return_value = []
     client.search_workbooks.return_value = []
-    client.search_assets.return_value = [asset]
+    client.search_assets.side_effect = lambda archive_status=ArchiveStatusFilter.NOT_ARCHIVED: (
+        [asset] if archive_status == ArchiveStatusFilter.NOT_ARCHIVED else []
+    )
     client.get_asset.return_value = asset
     client.search_datasets.return_value = [scoped, *orphans]
     client.search_videos.return_value = []
