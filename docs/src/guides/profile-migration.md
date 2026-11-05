@@ -74,7 +74,7 @@ file = dataset.add_tabular_data(
 file.poll_until_ingestion_completed()  # raises NominalIngestError if the ingest fails
 ```
 
-See also [Timestamp reference](/sdk/ts/index.md).
+See also [Timestamp reference](/ref/ts/index.md).
 
 ### Uploading Pandas dataframes
 

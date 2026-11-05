@@ -1,24 +1,60 @@
-# Published URLs retained after moving the API reference under sdk/.
-reference/core.md sdk/core/index.md
-reference/exceptions.md sdk/exceptions.rst
-reference/experimental/compute.md sdk/experimental/compute.md
-reference/experimental/derived_datasets.md sdk/experimental/derived_datasets.md
-reference/experimental/extractors.md sdk/experimental/extractors.md
-reference/experimental/index.md sdk/experimental/index.md
-reference/experimental/ingest.md sdk/experimental/ingest.md
-reference/experimental/migration.md sdk/experimental/migration.md
-reference/experimental/spatial.md sdk/experimental/spatial.md
-reference/experimental/video.md sdk/experimental/video.md
-reference/experimental/video_processing.md sdk/experimental/video_processing.md
-reference/nom-cli.md sdk/cli.md
-reference/thirdparty/index.md sdk/thirdparty/index.md
-reference/thirdparty/matlab.md sdk/thirdparty/matlab.md
-reference/thirdparty/pandas.md sdk/thirdparty/pandas.md
-reference/thirdparty/polars.md sdk/thirdparty/polars.md
-reference/thirdparty/tdms.md sdk/thirdparty/tdms.md
-reference/toplevel.md sdk/index.md
-reference/ts.md sdk/ts/index.md
-changelog.md sdk/changelog.md
+# Published URLs retained after moving the API reference out of reference/ (it is now under ref/).
+reference/core.md ref/core/index.md
+reference/exceptions.md ref/exceptions.rst
+reference/experimental/compute.md ref/experimental/compute.md
+reference/experimental/derived_datasets.md ref/experimental/derived_datasets.md
+reference/experimental/extractors.md ref/experimental/extractors.md
+reference/experimental/index.md ref/experimental/index.md
+reference/experimental/ingest.md ref/experimental/ingest.md
+reference/experimental/migration.md ref/experimental/migration.md
+reference/experimental/spatial.md ref/experimental/spatial.md
+reference/experimental/video.md ref/experimental/video.md
+reference/experimental/video_processing.md ref/experimental/video_processing.md
+reference/nom-cli.md ref/cli.md
+reference/thirdparty/index.md ref/thirdparty/index.md
+reference/thirdparty/matlab.md ref/thirdparty/matlab.md
+reference/thirdparty/pandas.md ref/thirdparty/pandas.md
+reference/thirdparty/polars.md ref/thirdparty/polars.md
+reference/thirdparty/tdms.md ref/thirdparty/tdms.md
+reference/toplevel.md ref/index.md
+reference/ts.md ref/ts/index.md
+changelog.md ref/changelog.md
+
+# The API reference moved from sdk/ to ref/, to match its tab. Generated class and function pages
+# (ref/generated/) aren't listed; dev.nominal.io forwards /python/sdk/ to /python/ref/ for those.
+sdk/changelog.md ref/changelog.md
+sdk/cli.md ref/cli.md
+sdk/core/assets-and-runs.md ref/core/assets-and-runs.md
+sdk/core/automatic-validation.md ref/core/automatic-validation.md
+sdk/core/channels-and-units.md ref/core/channels-and-units.md
+sdk/core/client.md ref/core/client.md
+sdk/core/containerized-extractors.md ref/core/containerized-extractors.md
+sdk/core/datasets-and-files.md ref/core/datasets-and-files.md
+sdk/core/events.md ref/core/events.md
+sdk/core/index.md ref/core/index.md
+sdk/core/markings.md ref/core/markings.md
+sdk/core/shared-types.md ref/core/shared-types.md
+sdk/core/streaming.md ref/core/streaming.md
+sdk/core/workbooks.md ref/core/workbooks.md
+sdk/exceptions.rst ref/exceptions.rst
+sdk/experimental/compute-as-code.md ref/experimental/compute-as-code.md
+sdk/experimental/compute.md ref/experimental/compute.md
+sdk/experimental/derived_datasets.md ref/experimental/derived_datasets.md
+sdk/experimental/extractors.md ref/experimental/extractors.md
+sdk/experimental/index.md ref/experimental/index.md
+sdk/experimental/ingest.md ref/experimental/ingest.md
+sdk/experimental/migration.md ref/experimental/migration.md
+sdk/experimental/spatial.md ref/experimental/spatial.md
+sdk/experimental/video.md ref/experimental/video.md
+sdk/experimental/video_processing.md ref/experimental/video_processing.md
+sdk/ibis/index.md ref/ibis/index.md
+sdk/index.md ref/index.md
+sdk/thirdparty/index.md ref/thirdparty/index.md
+sdk/thirdparty/matlab.md ref/thirdparty/matlab.md
+sdk/thirdparty/pandas.md ref/thirdparty/pandas.md
+sdk/thirdparty/polars.md ref/thirdparty/polars.md
+sdk/thirdparty/tdms.md ref/thirdparty/tdms.md
+sdk/ts/index.md ref/ts/index.md
 
 # The old asset/run guides wrote log points; retain their URLs under Stream.
 guides/runs/log-files.md guides/streaming/logs.md
@@ -39,4 +75,4 @@ examples/deploy_checklist.py.md guides/checklists/authoring.md
 examples/fsae_asset_upload.py.md guides/longstart.md
 
 # The TLS and plaintext connection options are documented on NominalClient.
-networking-tls.md sdk/generated/nominal.core.NominalClient.rst
+networking-tls.md ref/generated/nominal.core.NominalClient.rst
