@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TypeAlias
+
+from nominal_api import scout_catalog
+
+from nominal.protos.storage.v1 import dataset_retention_pb2
+from nominal.protos.types.time import time_pb2
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+@dataclass(frozen=True)
+class KeepForever:
+    """Retain a dataset's data indefinitely. This is the behavior of a dataset with no policy set."""
+
+
+@dataclass(frozen=True)
+class KeepUntilExpiry:
+    """Delete a dataset's data once it is older than `expiry_days`, unless covered by an exemption."""
+
+    expiry_days: int
+    """Age in days after which data becomes eligible for deletion."""
+
+
+RetentionPolicy: TypeAlias = KeepForever | KeepUntilExpiry
+"""How long a dataset's data is retained."""
+
+
+@dataclass(frozen=True)
+class RetentionExemption:
+    """A time range of a dataset's data that retention must not delete."""
+
+    dataset_rid: str
+    source_id: str
+    """Identifies what owns the exemption. Locking a run creates exemptions whose source ID is the run's RID."""
+    start: IntegralNanosecondsUTC
+    end: IntegralNanosecondsUTC
+    description: str | None
+
+    @classmethod
+    def _from_proto(cls, exemption: dataset_retention_pb2.DatasetRetentionExemption) -> RetentionExemption:
+        return cls(
+            dataset_rid=exemption.dataset_rid,
+            source_id=exemption.source_id,
+            start=_SecondsNanos.from_proto(exemption.bounds.start).to_nanoseconds(),
+            end=_SecondsNanos.from_proto(exemption.bounds.end).to_nanoseconds(),
+            description=exemption.description if exemption.HasField("description") else None,
+        )
+
+
+def _policy_to_proto(policy: RetentionPolicy) -> dataset_retention_pb2.RetentionPolicy:
+    if isinstance(policy, KeepUntilExpiry):
+        return dataset_retention_pb2.RetentionPolicy(
+            keep_until_expiry=dataset_retention_pb2.KeepUntilExpiry(expiry_days=policy.expiry_days)
+        )
+    return dataset_retention_pb2.RetentionPolicy(keep_forever=dataset_retention_pb2.KeepForever())
+
+
+def _policy_from_conjure(policy: scout_catalog.RetentionPolicy) -> RetentionPolicy | None:
+    """Convert a catalog policy, or None when it is a type this client version does not recognize."""
+    if policy.type == scout_catalog.RetentionPolicyType.KEEP_FOREVER:
+        return KeepForever()
+    if policy.type == scout_catalog.RetentionPolicyType.KEEP_UNTIL_EXPIRY and policy.expiry_days is not None:
+        return KeepUntilExpiry(expiry_days=policy.expiry_days)
+    return None
+
+
+def _time_range_to_proto(
+    start: datetime | IntegralNanosecondsUTC, end: datetime | IntegralNanosecondsUTC
+) -> time_pb2.Range:
+    return time_pb2.Range(
+        start=_SecondsNanos.from_flexible(start).to_proto(),
+        end=_SecondsNanos.from_flexible(end).to_proto(),
+    )

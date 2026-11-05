@@ -45,6 +45,13 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
+from nominal.core.retention import (
+    RetentionExemption,
+    RetentionPolicy,
+    _policy_from_conjure,
+    _policy_to_proto,
+    _time_range_to_proto,
+)
 from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol_from_unit_like
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -53,6 +60,7 @@ from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
+from nominal.protos.storage.v1 import dataset_retention_pb2, dataset_retention_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     Epoch,
@@ -86,6 +94,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
+    retention_policy: RetentionPolicy | None = None
+    """How long this dataset's data is retained. None if the server reported a policy type this client version does
+    not recognize."""
 
     class _Clients(
         Channel._Clients,
@@ -94,6 +105,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Marking._Clients,
         Protocol,
     ):
+        @property
+        def dataset_retention(self) -> dataset_retention_pb2_grpc.DatasetRetentionServiceStub: ...
         @property
         def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
@@ -1304,6 +1317,123 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
+    def set_retention_policy(self, policy: RetentionPolicy | None) -> None:
+        """Set how long this dataset's data is retained.
+
+        Args:
+            policy: The policy to apply. Passing ``None`` removes the dataset's policy, which retains data
+                indefinitely, the same as `KeepForever`.
+
+        Note:
+            Requires organization admin access, and, unless clearing the policy, dataset retention to be
+            enabled for your organization. Derived datasets cannot have a retention policy.
+
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalInvalidArgumentError: If this is a derived dataset.
+            NominalError: If dataset retention is not enabled for your organization, or the request fails.
+        """
+        request = dataset_retention_pb2.UpdateRetentionPolicyRequest(dataset_rid=self.rid)
+        if policy is not None:
+            request.retention_policy.CopyFrom(_policy_to_proto(policy))
+        with translate_grpc_errors():
+            self._clients.dataset_retention.UpdateRetentionPolicy(request)
+
+    def list_retention_exemptions(
+        self, start: datetime | IntegralNanosecondsUTC, end: datetime | IntegralNanosecondsUTC
+    ) -> Sequence[RetentionExemption]:
+        """List retention exemptions that overlap a time range.
+
+        Args:
+            start: Start of the time range to search.
+            end: End of the time range to search.
+
+        Note:
+            Both bounds are required. The server treats an unset bound as the Unix epoch, not as unbounded.
+
+        Returns:
+            Every exemption overlapping the range, across all pages.
+
+        Raises:
+            NominalError: If the request fails.
+        """
+        bounds = _time_range_to_proto(start, end)
+        exemptions: list[RetentionExemption] = []
+        page_token: str | None = None
+        while True:
+            request = dataset_retention_pb2.ListDatasetRetentionExemptionsRequest(
+                dataset_rid=self.rid, bounds=bounds, next_page_token=page_token
+            )
+            with translate_grpc_errors():
+                response = self._clients.dataset_retention.ListDatasetRetentionExemptions(request)
+            exemptions.extend(RetentionExemption._from_proto(e) for e in response.exemptions)
+            if not response.HasField("next_page_token"):
+                return exemptions
+            page_token = response.next_page_token
+
+    def upsert_retention_exemption(
+        self,
+        source_id: str,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC,
+        *,
+        description: str | None = None,
+    ) -> RetentionExemption:
+        """Exempt a time range of this dataset's data from retention.
+
+        An exemption is identified by its ``source_id``; upserting an existing ``source_id`` replaces its range.
+
+        Args:
+            source_id: Identifies what owns the exemption.
+
+                **Note:** Locking a run creates exemptions whose ``source_id`` is the run's RID. Changing or deleting
+                one of those exemptions makes it disagree with the run's lock status.
+            start: Start of the exempt range.
+            end: End of the exempt range.
+            description: Optional explanation of why the range is exempt.
+
+        Note:
+            Requires organization admin access and dataset retention to be enabled for your organization.
+
+        Returns:
+            The stored exemption.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalError: If dataset retention is not enabled for your organization, or the request fails.
+        """
+        request = dataset_retention_pb2.UpsertDatasetRetentionExemptionRequest(
+            dataset_rid=self.rid,
+            source_id=source_id,
+            bounds=_time_range_to_proto(start, end),
+            description=description,
+        )
+        with translate_grpc_errors():
+            response = self._clients.dataset_retention.UpsertDatasetRetentionExemption(request)
+        return RetentionExemption._from_proto(response.exemption)
+
+    def delete_retention_exemption(self, source_id: str) -> None:
+        """Delete the retention exemption with the given source ID.
+
+        Args:
+            source_id: Source ID of the exemption to delete.
+
+        Note:
+            Requires organization admin access.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalError: If the request fails.
+        """
+        request = dataset_retention_pb2.DeleteDatasetRetentionExemptionRequest(
+            dataset_rid=self.rid, source_id=source_id
+        )
+        with translate_grpc_errors():
+            self._clients.dataset_retention.DeleteDatasetRetentionExemption(request)
+
     @classmethod
     def _from_conjure(cls, clients: Dataset._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
@@ -1314,6 +1444,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
+            retention_policy=_policy_from_conjure(dataset.retention_policy),
             _clients=clients,
         )
 
