@@ -104,6 +104,33 @@ class DataReview(HasRid, RefreshableGrpcMixin[data_review_pb2.DataReview]):
                 ("Created", _display.timestamp(self.created_at)),
             ],
             url=lambda: self.nominal_url,
+            graph=self._graph,
+        )
+
+    def _graph(self) -> _display.Graph:
+        """The run and checklist the review checks, below it, and the run's asset below the run."""
+        node = _display.Node(
+            "Data review", "Completed" if self.completed else "In progress", self.rid, lambda: self.nominal_url
+        )
+        run = _display.Node("Run", self.run_rid, self.run_rid, partial(run_url, self._clients, self.run_rid))
+        checklist = _display.Node(
+            "Checklist",
+            self.checklist_rid,
+            self.checklist_rid,
+            partial(checklist_url, self._clients, self.checklist_rid),
+        )
+        assets = (
+            [_display.Node("Asset", self.asset_rid, self.asset_rid, partial(asset_url, self._clients, self.asset_rid))]
+            if self.asset_rid
+            else []
+        )
+        return _display.Graph(
+            node,
+            [
+                _display.Group("Run", [run], node),
+                _display.Group("Checklist", [checklist], node),
+                _display.Group("Asset", assets, run),
+            ],
         )
 
     def _get_latest_api(self) -> data_review_pb2.DataReview:

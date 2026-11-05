@@ -82,7 +82,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
                 ("Commit", _display.identifier(self.commit_id) if self.commit_id else None),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
-            sections=[_display.properties_section(self.properties)],
+            properties=self.properties,
             url=lambda: self.nominal_url,
         )
 

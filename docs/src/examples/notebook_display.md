@@ -163,14 +163,45 @@ rig = client.search_assets(
 
 ## An asset
 
-The rig's {py:class}`~nominal.core.Asset` card lists its datasets, by [data scope](/guides/assets.md#add-data-with-data-scopes),
-and its runs, newest first.
+The rig's {py:class}`~nominal.core.Asset` card lists its properties, its datasets, by [data scope](/guides/assets.md#add-data-with-data-scopes),
+and its runs, newest first. Each section starts folded; click its title to open it.
 Each name links to its page in Nominal, and its copy button copies its RID.
 **Open in Nominal** opens the asset's own page:
 
 ```{code-cell} ipython3
 rig
 ```
+
+## Relationship diagrams
+
+The card above has a **Relationships** section, after the properties, with a diagram of the rig and
+the resources around it, drawn like the diagrams in
+[Per-asset organization](https://dev.nominal.io/quickstart/fundamentals/organization/per-asset/).
+Data flows from the bottom up: each dataset feeds the rig under its data scope's ref name, and the
+rig's runs sit above it. The rig's own node has the thicker border.
+Each node links to its page in Nominal, and hovering over a node shows its full name.
+
+Run, dataset, workbook, event and data review cards draw diagrams too.
+A diagram uses only what its card already loads, so it makes no requests of its own,
+and it needs no JavaScript, so it also displays in untrusted and saved notebooks.
+
+An asset with hundreds of runs would make a diagram too large to read, so a diagram draws at most
+`graph_max_nodes` nodes, 20 by default. Past that, each group shows its first few nodes and a
+node counting the rest. That node links to the section of the card that lists them all.
+The card's own node and one node of each group always show, so a cap smaller than that is exceeded.
+For example, with room for five nodes, the rig's diagram draws one run and counts the other two.
+Here `collapse_threshold=10` also opens the sections with up to 10 items, so the diagram shows open:
+
+```{code-cell} ipython3
+from IPython.display import display
+
+from nominal.core import set_display_options
+
+with set_display_options(graph_max_nodes=5, collapse_threshold=10):
+    display(rig)
+```
+
+`show_graph=False` leaves diagrams out of the cards.
 
 ## Configuring the display
 

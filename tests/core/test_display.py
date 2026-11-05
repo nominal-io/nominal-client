@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import time
 from unittest.mock import MagicMock, NonCallableMock
@@ -224,7 +225,7 @@ def test_asset_runs_stop_loading_past_max_items():
         _clients=clients,
     )
     with set_display_options(show_link=False, max_items=4):
-        section = asset._runs_section()
+        section = asset._runs_section(asset._first_runs())
     assert clients.run.SearchRuns.call_count == 2
     assert [row[0] for row in section.rows] == ["#0", "#1", "#2", "#0"] and section.has_more
 
@@ -397,12 +398,12 @@ def test_large_sections_collapse_and_truncate():
     with set_display_options(show_link=False, fetch_details=False, collapse_threshold=5, max_items=20):
         card = dataset._repr_html_()
     assert card is not None
-    assert "<details><summary>Properties (30)</summary>" in card
+    assert re.search(r'<details id="[^"]+"><summary>Properties \(30\)</summary>', card)
     assert "<th>key19</th>" in card and "<th>key20</th>" not in card and "… and 10 more" in card
 
-    with set_display_options(show_link=False, fetch_details=False):
+    with set_display_options(show_link=False, fetch_details=False, collapse_threshold=5):
         card = _dataset(_offline_clients(), properties={"a": "1"})._repr_html_()
-    assert card is not None and "<details open><summary>Properties (1)</summary>" in card
+    assert card is not None and re.search(r'<details id="[^"]+" open><summary>Properties \(1\)</summary>', card)
 
 
 def test_first_stops_loading_past_max_items():
@@ -431,3 +432,244 @@ def test_client_card_shows_configuration_without_requests():
     card = NominalClient(_clients=clients, _profile="staging")._repr_html_()
     assert card is not None
     assert "staging" in card and 'href="https://app.example.com"' in card and "the organization's default" in card
+
+
+def _asset(clients: object, name: str = "Helicopter", properties: dict[str, str] | None = None) -> Asset:
+    return Asset(
+        rid="ri.scout.asset.1",
+        name=name,
+        description=None,
+        properties=properties or {},
+        labels=[],
+        created_at=START,
+        is_archived=False,
+        _clients=clients,  # type: ignore[arg-type]
+    )
+
+
+@pytest.fixture
+def asset_loads(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace the asset card's loads with fixed results, counting how often each runs.
+
+    Set ``loads["datasets"]`` and ``loads["runs"]`` to change what they return.
+    """
+    clients = _offline_clients()
+    loads: dict[str, object] = {
+        "datasets": [("telemetry", _dataset(clients))],
+        "runs": ([_run(clients)], False),
+        "calls": [],
+    }
+
+    def load(name: str) -> object:
+        loads["calls"].append(name)  # type: ignore[union-attr]
+        return loads[name]
+
+    monkeypatch.setattr(Asset, "list_datasets", lambda self: load("datasets"))
+    monkeypatch.setattr(Asset, "_first_runs", lambda self: load("runs"))
+    monkeypatch.setattr(Asset, "_iter_list_attachments", lambda self: iter(()))
+    return loads
+
+
+def _diagram(card: str) -> str:
+    start = card.index('<div class="nominal-repr-graph">')
+    return card[start : card.index("</details>", start)]
+
+
+def test_asset_diagram_reuses_the_card_loads(asset_loads):
+    """The diagram draws the datasets and runs the card's sections load, without loading them again."""
+    with set_display_options(show_link=False):
+        card = _asset(_offline_clients())._repr_html_()
+    assert card is not None
+    assert sorted(asset_loads["calls"]) == ["datasets", "runs"]  # type: ignore[arg-type]
+    diagram = _diagram(card)
+    assert "<title>Asset: Helicopter</title>" in diagram and 'stroke-width="3"' in diagram
+    assert "Dataset</text>" in diagram and ">Rotor telemetry</text>" in diagram
+    assert ">ref name=telemetry</text>" in diagram and ">Run: Spin-up</text>" in diagram
+    assert "<a " not in diagram
+
+
+def test_diagram_nodes_link_to_their_pages():
+    """Each node links to its resource's page; a node whose URL isn't http(s) isn't a link."""
+    node = _display.Node("Asset", "Rig", "ri.scout.asset.1", lambda: "https://app.example.com/assets/1")
+    bad = _display.Node("Run", "Bad", "ri.scout.run.1", lambda: "javascript:alert(1)")
+    graph = _display.Graph(node, [_display.Group("Runs", [bad], node, below=False)])
+    html, count = _display.diagram(graph, "card")
+    assert count == 2
+    assert 'href="https://app.example.com/assets/1" target="_blank" rel="noopener noreferrer"' in html
+    assert html.count("<a ") == 1 and "javascript" not in html
+    # Notebooks such as JupyterLab can't handle links inside SVG, so the links lie over it instead.
+    assert "<a " not in html[: html.index("</svg>")]
+
+
+def test_diagram_escapes_user_values(asset_loads):
+    """Names and ref names can't inject markup, links or styles into the diagram."""
+    hostile = '"]:::self <script>alert(1)</script> | ; %% `x` <a href="javascript:x">'
+    clients = _offline_clients()
+    asset_loads["datasets"] = [(hostile, _dataset(clients, name=hostile))]
+    asset_loads["runs"] = ([_run(clients, name=hostile)], False)
+    with set_display_options(show_link=False):
+        card = _asset(clients, name=hostile)._repr_html_()
+    assert card is not None
+    diagram = _diagram(card)
+    assert "<script>" not in diagram and "<a " not in diagram and 'href="javascript' not in diagram
+    assert "&lt;script&gt;" in diagram and "&quot;]:::self" in diagram
+    # Tooltips keep the full name; labels are cut short with an ellipsis.
+    assert f"<title>Asset: {_display.escape(hostile)}</title>" in diagram and "…</text>" in diagram
+
+
+def test_diagram_counts_nodes_past_graph_max_nodes(asset_loads):
+    """Past graph_max_nodes, a group draws its first few and a node counting the rest, linked to its section."""
+    clients = _offline_clients()
+    asset_loads["datasets"] = [(f"scope{i}", _dataset(clients, rid=f"ri.catalog.dataset.{i}")) for i in range(2)]
+    asset_loads["runs"] = ([_run(clients, rid=f"ri.scout.run.{i}", name=f"Test {i}") for i in range(30)], False)
+    with set_display_options(show_link=False, graph_max_nodes=8, max_items=50):
+        card = _asset(clients)._repr_html_()
+    assert card is not None
+    diagram = _diagram(card)
+    assert diagram.count("<title>") == 8
+    assert diagram.count("<title>Dataset:") == 2 and diagram.count("<title>Run:") == 4
+    anchor = re.search(r'href="#([^"]+-runs)"', diagram)
+    assert anchor is not None and f'<details id="{anchor.group(1)}"' in card
+    assert ">+26 more runs</text>" in diagram
+
+
+def test_diagram_counts_runs_past_those_loaded(asset_loads):
+    """When more runs exist than the card loaded, the counting node says at least how many more."""
+    asset_loads["runs"] = ([_run(_offline_clients())], True)
+    with set_display_options(show_link=False):
+        card = _asset(_offline_clients())._repr_html_()
+    assert card is not None and ">+1 or more runs</text>" in _diagram(card)
+
+
+@pytest.mark.parametrize("cap", range(3, 12))
+def test_diagram_draws_at_most_graph_max_nodes(asset_loads, cap):
+    """A diagram never draws more nodes than graph_max_nodes when there's room for one node of each group."""
+    clients = _offline_clients()
+    asset_loads["datasets"] = [(f"scope{i}", _dataset(clients, rid=f"ri.catalog.dataset.{i}")) for i in range(2)]
+    asset_loads["runs"] = ([_run(clients, rid=f"ri.scout.run.{i}") for i in range(3)], False)
+    with set_display_options(show_link=False, graph_max_nodes=cap):
+        card = _asset(clients)._repr_html_()
+    assert card is not None
+    assert _diagram(card).count("<title>") == min(cap, 6)
+
+
+def test_every_group_keeps_a_node_under_a_small_cap(asset_loads):
+    """However small graph_max_nodes is, the card's own node and one node of every group stay visible."""
+    clients = _offline_clients()
+    asset_loads["datasets"] = [(f"scope{i}", _dataset(clients, rid=f"ri.catalog.dataset.{i}")) for i in range(5)]
+    asset_loads["runs"] = ([_run(clients, rid=f"ri.scout.run.{i}") for i in range(5)], False)
+    with set_display_options(show_link=False, graph_max_nodes=1):
+        card = _asset(clients)._repr_html_()
+    assert card is not None
+    diagram = _diagram(card)
+    assert diagram.count("<title>") == 3 and diagram.count("<title>Asset:") == 1
+    assert ">+5 more datasets</text>" in diagram and ">+5 more runs</text>" in diagram
+
+
+@pytest.mark.parametrize("asset_count, datasets_to", [(1, "ri.scout.asset.0"), (2, "ri.scout.run.1")])
+def test_run_diagram_joins_datasets_to_its_only_asset(asset_count, datasets_to):
+    """A run's datasets join its asset, or the run itself when it has several, as which holds each isn't loaded."""
+    clients = _offline_clients()
+    assets = [
+        Asset(
+            rid=f"ri.scout.asset.{i}",
+            name=f"Rig {i}",
+            description=None,
+            properties={},
+            labels=[],
+            created_at=START,
+            is_archived=False,
+            _clients=clients,
+        )
+        for i in range(asset_count)
+    ]
+    graph = _run(clients)._graph(assets, [("telemetry", _dataset(clients))])
+    datasets = next(group for group in graph.groups if group.section == "Datasets")
+    assert datasets.to.rid == datasets_to
+
+
+@pytest.mark.parametrize("options", [dict(show_graph=False), dict(fetch_details=False)])
+def test_no_diagram_when_off(asset_loads, options):
+    """show_graph=False draws no diagram, nor does fetch_details=False, which loads nothing to draw."""
+    with set_display_options(show_link=False, **options):
+        card = _asset(_offline_clients())._repr_html_()
+    assert card is not None and 'class="nominal-repr-graph"' not in card and "Relationships" not in card
+
+
+def test_no_diagram_in_the_text_style(asset_loads):
+    """The text style builds no card, so it loads nothing and draws no diagram."""
+    with set_display_options(style="text"):
+        assert _asset(_offline_clients())._repr_html_() is None
+    assert asset_loads["calls"] == []
+
+
+def test_card_displays_when_its_diagram_fails():
+    """A diagram that fails to build becomes a note, and the rest of the card displays."""
+
+    def graph() -> _display.Graph:
+        raise RuntimeError("layout failed")
+
+    with set_display_options(show_link=False):
+        card = _display.render(
+            kind="Test",
+            title="Rig",
+            fallback="",
+            fields=[],
+            sections=[_display.Section("Runs", [["ok"]])],
+            graph=graph,
+        )
+    assert card is not None
+    assert "Couldn&#x27;t load: RuntimeError layout failed" in card and "<td>ok</td>" in card
+
+
+def test_large_diagrams_start_collapsed(asset_loads):
+    """A diagram with more nodes than collapse_threshold starts collapsed, like a long section."""
+    clients = _offline_clients()
+    asset_loads["runs"] = ([_run(clients, rid=f"ri.scout.run.{i}") for i in range(6)], False)
+    with set_display_options(show_link=False, collapse_threshold=5):
+        card = _asset(clients)._repr_html_()
+    assert card is not None and re.search(r'<details id="[^"]+-relationships"><summary>Relationships', card)
+    with set_display_options(show_link=False, collapse_threshold=10):
+        card = _asset(clients)._repr_html_()
+    assert card is not None and re.search(r'<details id="[^"]+-relationships" open><summary>Relationships', card)
+
+
+def test_workbook_pointing_at_one_run_at_a_time_has_dashed_edges():
+    """A workbook's runs join it with dashed edges, as it points at one at a time; a comparison's are solid."""
+    from nominal.core import Workbook
+    from nominal.core.workbook import WorkbookType
+
+    def workbook(workbook_type: WorkbookType) -> Workbook:
+        return Workbook(
+            rid="ri.scout.notebook.1",
+            title="Results",
+            description="",
+            properties={},
+            labels=[],
+            workbook_type=workbook_type,
+            run_rids=["ri.scout.run.1", "ri.scout.run.2"],
+            asset_rids=None,
+            _clients=_offline_clients(),
+        )
+
+    with set_display_options(show_link=False):
+        single = workbook(WorkbookType.WORKBOOK)._repr_html_()
+        comparison = workbook(WorkbookType.COMPARISON_WORKBOOK)._repr_html_()
+    assert single is not None and _diagram(single).count('stroke-dasharray="5 4"') == 2
+    assert comparison is not None and 'stroke-dasharray="5 4"' not in _diagram(comparison)
+
+
+def test_graph_max_nodes_must_be_positive():
+    """A diagram can't be capped below the card's own node."""
+    with pytest.raises(ValueError, match="graph_max_nodes"):
+        set_display_options(graph_max_nodes=0)
+
+
+def test_cards_list_properties_first_with_every_section_folded(asset_loads):
+    """By default a card lists its properties before its diagram and other sections, all folded."""
+    asset = _asset(_offline_clients(), properties={"rig_id": "RTR-02"})
+    with set_display_options(show_link=False):
+        card = asset._repr_html_()
+    assert card is not None
+    titles = re.findall(r'<details id="[^"]+"( open)?><summary>([A-Za-z]+)', card)
+    assert titles == [("", "Properties"), ("", "Relationships"), ("", "Datasets"), ("", "Runs")]

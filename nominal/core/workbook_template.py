@@ -110,7 +110,7 @@ class WorkbookTemplate(
                 ("Description", _display.escape(self.description) if self.description else None),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
-            sections=[_display.properties_section(self.properties)],
+            properties=self.properties,
             url=lambda: self.nominal_url,
         )
 
