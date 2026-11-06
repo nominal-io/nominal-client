@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Self, TypeAlias
+from typing import Self, TypeAlias, assert_never
 
 from nominal_api import scout_catalog
 
 from nominal.protos.storage.v1 import dataset_retention_pb2
-from nominal.protos.types.time import time_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -24,7 +22,18 @@ class KeepUntilExpiry:
     """Age in days after which data becomes eligible for deletion."""
 
 
-RetentionPolicy: TypeAlias = KeepForever | KeepUntilExpiry
+@dataclass(frozen=True)
+class UnknownRetentionPolicy:
+    """A policy of a type this client version does not recognize, such as one added to the server after this release.
+
+    It can be read but not applied: `Dataset.set_retention_policy` rejects it.
+    """
+
+    type: str
+    """The server's name for the policy type."""
+
+
+RetentionPolicy: TypeAlias = KeepForever | KeepUntilExpiry | UnknownRetentionPolicy
 """How long a dataset's data is retained."""
 
 
@@ -55,26 +64,25 @@ class RetentionExemption:
 
 
 def _policy_to_proto(policy: RetentionPolicy) -> dataset_retention_pb2.RetentionPolicy:
-    if isinstance(policy, KeepUntilExpiry):
-        return dataset_retention_pb2.RetentionPolicy(
-            keep_until_expiry=dataset_retention_pb2.KeepUntilExpiry(expiry_days=policy.expiry_days)
-        )
-    return dataset_retention_pb2.RetentionPolicy(keep_forever=dataset_retention_pb2.KeepForever())
+    match policy:
+        case KeepForever():
+            return dataset_retention_pb2.RetentionPolicy(keep_forever=dataset_retention_pb2.KeepForever())
+        case KeepUntilExpiry(expiry_days=expiry_days):
+            return dataset_retention_pb2.RetentionPolicy(
+                keep_until_expiry=dataset_retention_pb2.KeepUntilExpiry(expiry_days=expiry_days)
+            )
+        case UnknownRetentionPolicy(type=policy_type):
+            raise ValueError(f"Cannot set a retention policy of unrecognized type {policy_type!r}.")
+        case _:
+            assert_never(policy)
 
 
-def _policy_from_conjure(policy: scout_catalog.RetentionPolicy) -> RetentionPolicy | None:
-    """Convert a catalog policy, or None when it is a type this client version does not recognize."""
-    if policy.type == scout_catalog.RetentionPolicyType.KEEP_FOREVER:
-        return KeepForever()
-    if policy.type == scout_catalog.RetentionPolicyType.KEEP_UNTIL_EXPIRY and policy.expiry_days is not None:
-        return KeepUntilExpiry(expiry_days=policy.expiry_days)
-    return None
-
-
-def _time_range_to_proto(
-    start: datetime | IntegralNanosecondsUTC, end: datetime | IntegralNanosecondsUTC
-) -> time_pb2.Range:
-    return time_pb2.Range(
-        start=_SecondsNanos.from_flexible(start).to_proto(),
-        end=_SecondsNanos.from_flexible(end).to_proto(),
-    )
+def _policy_from_conjure(policy: scout_catalog.RetentionPolicy) -> RetentionPolicy:
+    """Convert a catalog policy, keeping any type this client version does not recognize as `UnknownRetentionPolicy`."""
+    match policy.type:
+        case scout_catalog.RetentionPolicyType.KEEP_FOREVER:
+            return KeepForever()
+        case scout_catalog.RetentionPolicyType.KEEP_UNTIL_EXPIRY if policy.expiry_days is not None:
+            return KeepUntilExpiry(expiry_days=policy.expiry_days)
+        case _:
+            return UnknownRetentionPolicy(type=policy.type.name)

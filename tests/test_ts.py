@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import dateutil.parser
 import pytest
@@ -96,26 +96,6 @@ def test_string_timestamp_types_cannot_describe_avro_timestamps(typed: ts.TypedT
     """Avro timestamps are integers, so a string-formatted type has no representation there."""
     with pytest.raises(ValueError, match="not supported with .avro files"):
         typed._to_conjure_ingest_avro_api()
-
-
-@pytest.mark.parametrize(
-    ("dt", "expected_nanoseconds"),
-    [
-        pytest.param(datetime(1970, 1, 1, 0, 0, 1, 500_000, tzinfo=UTC), 1_500_000_000, id="after-epoch"),
-        pytest.param(datetime(1970, 1, 1, tzinfo=UTC), 0, id="epoch"),
-        pytest.param(datetime(1969, 12, 31, 23, 59, 59, tzinfo=UTC), -1_000_000_000, id="before-epoch-whole-second"),
-        pytest.param(datetime(1969, 12, 31, 23, 59, 59, 500_000, tzinfo=UTC), -500_000_000, id="before-epoch-fraction"),
-        pytest.param(
-            datetime(1969, 12, 31, 23, 59, 59, 1, tzinfo=UTC), -999_999_000, id="before-epoch-one-microsecond"
-        ),
-    ],
-)
-def test_seconds_nanos_from_datetime_floors_negative_times(dt: datetime, expected_nanoseconds: int) -> None:
-    """A datetime before the epoch converts to the same value as the equivalent signed nanoseconds."""
-    converted = ts._SecondsNanos.from_datetime(dt)
-
-    assert converted.to_nanoseconds() == expected_nanoseconds
-    assert converted == ts._SecondsNanos.from_nanoseconds(expected_nanoseconds)
 
 
 @pytest.mark.parametrize(

@@ -54,7 +54,13 @@ from nominal.core.integration import (
 )
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
-from nominal.core.retention import KeepForever, KeepUntilExpiry, RetentionExemption, RetentionPolicy
+from nominal.core.retention import (
+    KeepForever,
+    KeepUntilExpiry,
+    RetentionExemption,
+    RetentionPolicy,
+    UnknownRetentionPolicy,
+)
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import (
@@ -149,6 +155,7 @@ __all__ = [
     "Unit",
     "UnitLike",
     "UnknownIntegrationDetails",
+    "UnknownRetentionPolicy",
     "User",
     "Video",
     "VideoDatasetFile",
