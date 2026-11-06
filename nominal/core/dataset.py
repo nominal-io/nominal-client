@@ -46,11 +46,11 @@ from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.retention import (
+    KeepForever,
     RetentionExemption,
     RetentionPolicy,
     _policy_from_conjure,
     _policy_to_proto,
-    _time_range_to_proto,
 )
 from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol_from_unit_like
 from nominal.core.video import _build_video_file_timestamp_manifest
@@ -70,6 +70,7 @@ from nominal.ts import (
     _AnyTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
+    _time_range_to_proto,
     _to_typed_timestamp_type,
     _validate_timestamp_pair,
 )
@@ -94,9 +95,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
-    retention_policy: RetentionPolicy | None = None
-    """How long this dataset's data is retained. None if the server reported a policy type this client version does
-    not recognize."""
+    retention_policy: RetentionPolicy = KeepForever()
+    """How long this dataset's data is retained. A policy type this client version does not recognize is an
+    `UnknownRetentionPolicy`."""
 
     class _Clients(
         Channel._Clients,
@@ -1332,6 +1333,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             This does not update the instance in place; call `refresh()` to see the change reflected.
 
         Raises:
+            ValueError: If ``policy`` is an `UnknownRetentionPolicy`, which this client version cannot apply.
             NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
             NominalInvalidArgumentError: If this is a derived dataset.
             NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
