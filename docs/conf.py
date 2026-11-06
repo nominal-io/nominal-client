@@ -56,7 +56,7 @@ autosummary_context = {
 core_topic_modules = {
     "client": ("client", "workspace", "user", "_utils.networking", "_display"),
     "assets-and-runs": ("asset", "run", "attachment", "comment"),
-    "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job"),
+    "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job", "retention"),
     "channels-and-units": ("channel", "unit"),
     "streaming": ("_stream.write_stream", "log"),
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
