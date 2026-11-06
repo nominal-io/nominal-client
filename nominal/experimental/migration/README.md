@@ -163,7 +163,7 @@ The migration copies:
 - Locks on each migrated run that is locked at the source. Locking a run creates its dataset exemptions at the destination, so exemptions the source created by locking a run are not copied separately.
 - Retention policies that expire data. A dataset with no policy keeps its data forever, so there is nothing to copy for it.
 
-It applies exemptions and run locks before any expiry policy, so data the source protected is never exposed to deletion at the destination.
+It applies exemptions and run locks before any expiry policy. A dataset whose exemptions or run locks could not all be copied gets no expiry until a rerun copies them, so data the source protected is never exposed to deletion at the destination. A rerun also clears an expiry copied earlier if the source has since gone back to keeping data forever.
 
 Requirements:
 - The destination profile's user must be an organization admin. Retention changes ignore `impersonation` and use the destination profile directly.

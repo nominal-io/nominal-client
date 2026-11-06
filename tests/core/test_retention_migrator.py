@@ -34,6 +34,7 @@ class _Destination:
     def __init__(self) -> None:
         self.events: list[tuple[str, ...]] = []
         self.fail_on: dict[tuple[str, ...], Exception] = {}
+        self.policies: dict[str, KeepForever | KeepUntilExpiry] = {}
         self.client = MagicMock()
         self.client.get_dataset.side_effect = self._dataset
         self.client.get_run.side_effect = self._run
@@ -48,7 +49,10 @@ class _Destination:
         dataset.upsert_retention_exemption.side_effect = lambda source_id, *_, **__: self._record(
             "exemption", rid, source_id
         )
-        dataset.set_retention_policy.side_effect = lambda policy: self._record("policy", rid, str(policy.expiry_days))
+        dataset.retention_policy = self.policies.get(rid, KeepForever())
+        dataset.set_retention_policy.side_effect = lambda policy: self._record(
+            "policy", rid, "cleared" if policy is None else str(policy.expiry_days)
+        )
         return dataset
 
     def _run(self, rid: str) -> MagicMock:
@@ -210,6 +214,112 @@ def test_other_failures_skip_the_resource_and_continue() -> None:
 
     assert ("exemption", "dest-ds-b", "manual") in destination.events
     assert [(s.source_rid, s.resource_type) for s in state.skipped_resources] == [("ds-a", "DATASET")]
+
+
+def _asset_with(*datasets: MagicMock) -> MagicMock:
+    return MagicMock(list_datasets=MagicMock(return_value=[("scope", dataset) for dataset in datasets]))
+
+
+def test_expiry_is_withheld_when_a_dataset_exemption_could_not_be_copied() -> None:
+    """Setting an expiry after a failed exemption copy would expose data the source protected."""
+    destination = _Destination()
+    destination.fail_on[("exemption", "dest-ds-a", "manual")] = NominalError("boom")
+    datasets = [
+        _dataset("ds-a", policy=KeepUntilExpiry(5), exemptions=[_exemption("ds-a", "manual")]),
+        _dataset("ds-b", policy=KeepUntilExpiry(6)),
+    ]
+    migrator, state = _migrator(destination, datasets=datasets)
+
+    migrator.copy_retention(datasets, [])
+
+    assert ("policy", "dest-ds-a", "5") not in destination.events
+    assert ("policy", "dest-ds-b", "6") in destination.events
+    reasons = [skipped.reason for skipped in state.skipped_resources if skipped.source_rid == "ds-a"]
+    assert any("failed to copy retention exemptions" in reason for reason in reasons)
+    assert any("expiry not set" in reason for reason in reasons)
+
+
+def test_expiry_is_withheld_when_a_dataset_exemption_could_not_be_read() -> None:
+    """An unreadable source exemption list means protection is unknown, so no expiry is set on that dataset."""
+    destination = _Destination()
+    unreadable = _dataset("ds-a", policy=KeepUntilExpiry(5))
+    unreadable.list_retention_exemptions.side_effect = NominalError("boom")
+    migrator, _ = _migrator(destination, datasets=[unreadable])
+
+    migrator.copy_retention([unreadable], [])
+
+    assert destination.events == []
+
+
+def test_failed_run_lock_withholds_expiry_only_on_the_datasets_it_would_have_exempted() -> None:
+    """A run's lock covers the datasets of its assets; datasets of other assets keep getting their expiry."""
+    destination = _Destination()
+    destination.fail_on[("lock", "dest-run-1")] = NominalError("boom")
+    locked = _dataset("ds-locked", policy=KeepUntilExpiry(5))
+    other = _dataset("ds-other", policy=KeepUntilExpiry(6))
+    run = _run("run-1")
+    run.list_assets.return_value = [_asset_with(locked)]
+    migrator, _ = _migrator(destination, datasets=[locked, other], runs=[run])
+
+    migrator.copy_retention([locked, other], [run])
+
+    assert ("policy", "dest-ds-locked", "5") not in destination.events
+    assert ("policy", "dest-ds-other", "6") in destination.events
+
+
+@pytest.mark.parametrize(
+    "run",
+    [_run("run-1", end=None), _run("run-1")],
+    ids=["no-end-time", "lock-fails-and-assets-unlistable"],
+)
+def test_expiry_is_withheld_everywhere_when_an_unlockable_runs_datasets_are_unknown(run: MagicMock) -> None:
+    """When a run cannot be locked and its datasets can't be listed, no dataset may risk an unprotected expiry."""
+    destination = _Destination()
+    destination.fail_on[("lock", "dest-run-1")] = NominalError("boom")
+    run.list_assets.side_effect = NominalError("cannot list")
+    datasets = [_dataset("ds-a", policy=KeepUntilExpiry(5)), _dataset("ds-b", policy=KeepUntilExpiry(6))]
+    migrator, _ = _migrator(destination, datasets=datasets, runs=[run])
+
+    migrator.copy_retention(datasets, [run])
+
+    assert not any(event[0] == "policy" for event in destination.events)
+
+
+def test_a_source_that_returned_to_keeping_forever_clears_an_expiry_copied_earlier() -> None:
+    """On a rerun the destination can still hold an earlier expiry, which must not delete data the source keeps."""
+    destination = _Destination()
+    destination.policies["dest-ds-a"] = KeepUntilExpiry(5)
+    datasets = [_dataset("ds-a", policy=KeepForever()), _dataset("ds-b", policy=KeepForever())]
+    migrator, _ = _migrator(destination, datasets=datasets)
+
+    migrator.copy_retention(datasets, [])
+
+    assert destination.events == [("policy", "dest-ds-a", "cleared")]
+
+
+def test_an_expiry_the_destination_already_has_is_not_rewritten() -> None:
+    """Reruns skip the write when the destination policy already matches."""
+    destination = _Destination()
+    destination.policies["dest-ds-a"] = KeepUntilExpiry(5)
+    datasets = [_dataset("ds-a", policy=KeepUntilExpiry(5))]
+    migrator, _ = _migrator(destination, datasets=datasets)
+
+    migrator.copy_retention(datasets, [])
+
+    assert destination.events == []
+
+
+def test_skips_from_an_earlier_run_do_not_outlive_a_successful_retry() -> None:
+    """Every run re-attempts everything, so a retention skip left by an earlier run is dropped, others are kept."""
+    destination = _Destination()
+    datasets = [_dataset("ds-a", exemptions=[_exemption("ds-a", "manual")])]
+    migrator, state = _migrator(destination, datasets=datasets)
+    state.record_skip(ResourceType.DATASET, "ds-a", "retention: failed to copy retention exemptions: old failure")
+    state.record_skip(ResourceType.DATASET, "ds-a", "copy failed: unrelated file problem")
+
+    migrator.copy_retention(datasets, [])
+
+    assert [s.reason for s in state.skipped_resources] == ["copy failed: unrelated file problem"]
 
 
 def test_source_read_failure_skips_the_dataset_instead_of_blaming_the_destination() -> None:
