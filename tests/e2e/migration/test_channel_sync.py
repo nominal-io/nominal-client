@@ -80,6 +80,8 @@ SETTLE_SECONDS = 20.0
 # Bounded retry for post-sync verification reads (data can lag the sync's own settle briefly).
 _READ_RETRY_ATTEMPTS = 30
 _READ_RETRY_DELAY = 2.0
+# Export error for a dataset with no data in storage yet (scout DataExportServiceOperations).
+_NO_INGESTED_DATA = "have no ingested data yet"
 
 
 # ---------------------------------------------------------------------------
@@ -115,10 +117,16 @@ def _read_all_series(channel: Channel, start: int, end: int, tags: Mapping[str, 
     that happens we recursively halve the window and concatenate — the same recursive-halving the sync
     itself uses — so the verification read stays correct regardless of the cap's value. Sub-window
     boundaries are de-duplicated by timestamp in case the export range is inclusive.
+
+    A dataset whose streamed data has not reached storage yet rejects the export with
+    ``INVALID_ARGUMENT: ... have no ingested data yet``. That reads as an empty Series so the polling
+    helpers retry instead of failing on the first read.
     """
     try:
         return channel_to_series(channel, start, end, tags=tags).sort_index()
     except ConjureHTTPError as exc:
+        if _NO_INGESTED_DATA in str(exc):
+            return pd.Series(dtype=object)
         if "TooManyCategories" not in str(exc) or end - start <= 1:
             raise
         mid = start + (end - start) // 2
