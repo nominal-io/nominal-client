@@ -134,7 +134,7 @@ for name, begin, end in [
         properties={"test_bay": "Bay 3", "gearbox_sn": "GB-1187"},
         links=[
             {
-                "url": "https://dev.nominal.io/quickstart/fundamentals/data-model/",
+                "url": "https://dev.nominal.io/platform/data-model/",
                 "title": "Nominal data model",
             }
         ],
@@ -176,7 +176,7 @@ rig
 
 The card above has a **Relationships** section, after the properties, with a diagram of the rig and
 the resources around it, drawn like the diagrams in
-[Per-asset organization](https://dev.nominal.io/quickstart/fundamentals/organization/per-asset/).
+[Per-asset organization](https://dev.nominal.io/platform/data-model/organization/per-asset/).
 Data flows from the bottom up: each dataset feeds the rig under its data scope's ref name, and the
 rig's runs sit above it. The rig's own node has the thicker border.
 Each node links to its page in Nominal, and hovering over a node shows its full name.
