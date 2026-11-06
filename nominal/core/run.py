@@ -707,7 +707,8 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         """Unlock this run, removing the retention exemptions that locking it created.
 
         Note:
-            Requires organization admin access and dataset retention to be enabled for your organization.
+            Requires organization admin access, a run with an end time, and dataset retention to be enabled for
+            your organization.
 
         Note:
             This does not update the instance in place; call `refresh()` to see the change reflected.

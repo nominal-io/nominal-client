@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -52,10 +53,18 @@ def test_dataset_reads_retention_policy(make_enriched_dataset, policy, expected)
 
 
 @pytest.mark.parametrize(
-    ("policy", "expected_case"),
-    [(KeepForever(), "keep_forever"), (KeepUntilExpiry(expiry_days=7), "keep_until_expiry")],
+    ("policy", "expected"),
+    [
+        (KeepForever(), dataset_retention_pb2.RetentionPolicy(keep_forever=dataset_retention_pb2.KeepForever())),
+        (
+            KeepUntilExpiry(expiry_days=7),
+            dataset_retention_pb2.RetentionPolicy(
+                keep_until_expiry=dataset_retention_pb2.KeepUntilExpiry(expiry_days=7)
+            ),
+        ),
+    ],
 )
-def test_set_retention_policy_sends_the_chosen_policy(make_enriched_dataset, policy, expected_case) -> None:
+def test_set_retention_policy_sends_the_chosen_policy(make_enriched_dataset, policy, expected) -> None:
     """Each policy maps to its own branch of the request's oneof, carrying the expiry."""
     clients = MagicMock()
     dataset = _dataset(make_enriched_dataset, clients)
@@ -64,9 +73,7 @@ def test_set_retention_policy_sends_the_chosen_policy(make_enriched_dataset, pol
 
     request = clients.dataset_retention.UpdateRetentionPolicy.call_args.args[0]
     assert request.dataset_rid == dataset.rid
-    assert request.retention_policy.WhichOneof("policy") == expected_case
-    if isinstance(policy, KeepUntilExpiry):
-        assert request.retention_policy.keep_until_expiry.expiry_days == 7
+    assert request.retention_policy == expected
 
 
 def test_set_retention_policy_none_clears_rather_than_sets(make_enriched_dataset) -> None:
@@ -119,6 +126,23 @@ def test_upsert_retention_exemption_omits_unset_description(make_enriched_datase
     assert not request.HasField("description")
     assert (request.bounds.start.nanos, request.bounds.end.nanos) == (123_456_789, 987_654_321)
     assert exemption == RetentionExemption(dataset.rid, "manual", _START_NANOS, _END_NANOS, None)
+
+
+def test_upsert_retention_exemption_keeps_a_pre_epoch_start_exact(make_enriched_dataset) -> None:
+    """A fractional pre-1970 datetime must not shift forward, or the first moments of the range lose protection."""
+    clients = MagicMock()
+    clients.dataset_retention.UpsertDatasetRetentionExemption.return_value = (
+        dataset_retention_pb2.UpsertDatasetRetentionExemptionResponse(exemption=_proto_exemption("manual"))
+    )
+    dataset = _dataset(make_enriched_dataset, clients)
+
+    dataset.upsert_retention_exemption(
+        "manual", datetime(1969, 12, 31, 23, 59, 59, 500_000, tzinfo=UTC), datetime(1970, 1, 1, 0, 0, 1, tzinfo=UTC)
+    )
+
+    bounds = clients.dataset_retention.UpsertDatasetRetentionExemption.call_args.args[0].bounds
+    assert (bounds.start.seconds, bounds.start.nanos) == (-1, 500_000_000)
+    assert (bounds.end.seconds, bounds.end.nanos) == (1, 0)
 
 
 @pytest.mark.parametrize(
