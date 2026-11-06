@@ -711,10 +711,9 @@ class _SecondsNanos(NamedTuple):
 
     @classmethod
     def from_datetime(cls, dt: datetime) -> Self:
-        dt = dt.astimezone(UTC)
-        seconds = int(dt.timestamp())
-        nanos = dt.microsecond * 1000
-        return cls(seconds, nanos)
+        # timedelta keeps microseconds in [0, 1e6), so a pre-epoch fraction borrows a whole second as nanos expects.
+        since_epoch = dt.astimezone(UTC) - _UNIX_EPOCH
+        return cls(since_epoch.days * 86_400 + since_epoch.seconds, since_epoch.microseconds * 1000)
 
     @classmethod
     def from_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
@@ -733,6 +732,7 @@ class _SecondsNanos(NamedTuple):
         return cls.from_datetime(ts)
 
 
+_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0)
 _MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
 """
