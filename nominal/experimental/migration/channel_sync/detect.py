@@ -13,7 +13,10 @@ dataset with thousands of channels costs a few hundred requests rather than one 
 * **Numeric** (``DOUBLE`` / ``INT``) channels yield exact per-bucket counts from numeric decimation.
 * **String** (``STRING``) channels yield exact per-bucket counts from enum decimation (the per-bucket
   histogram frequencies sum to the count).
-* Any channel whose batched compute result errored (or is non-batchable) falls back to a whole-window
+* A **STRING** channel whose window holds too many distinct values for one request
+  (``Compute:TooManyCategories``) is recounted alone over recursively halved windows, which keeps
+  its counts exact.
+* Any other channel whose batched compute result errored (or is non-batchable) falls back to a whole-window
   **presence** probe via ``batchGetSeriesCount`` (1 if ``series_count > 0`` in the window, else 0,
   uniform across buckets). This is tag-independent -- it does not require the series to carry tags --
   but it loses per-bucket granularity. Caveat: ``series_count`` is empty for non-Nominal/external
@@ -53,6 +56,10 @@ _PRESENCE_PROBE_BATCH = 200
 # Compute:ResolutionIntervalTooSmallForRange). Long windows are therefore counted in segments of at
 # most this many buckets per request and the per-bucket counts merged client-side.
 MAX_BUCKETS_PER_REQUEST = 10_000
+# A STRING channel whose window holds more distinct values than the backend's maxCategories (default
+# 100, scout PlottingConfiguration) errors with Compute:TooManyCategories and is recounted by halving
+# the window. This caps the requests spent on one channel; past it the channel takes the fallback.
+MAX_HALVING_REQUESTS_PER_CHANNEL = 512
 
 
 def _iter_bucket_starts(
@@ -125,11 +132,16 @@ class ChannelBucketCounts:
     point count; for the presence fallback it is 1 if the channel has any data in the window (else
     0), uniform across buckets. ``precise`` distinguishes the two so callers can report the coarser
     fallback granularity if desired.
+
+    ``high_cardinality`` marks a STRING channel that was too varied to count in one request and was
+    counted over halved windows instead. Its counts are exact, but the export cannot estimate its
+    rate either, so it needs the per-channel halving export.
     """
 
     channel: str
     counts: Mapping[int, int]
     precise: bool
+    high_cardinality: bool = False
 
 
 def shortfall_buckets(source: ChannelBucketCounts, destination: ChannelBucketCounts) -> list[int]:
@@ -171,8 +183,10 @@ def count_channels(  # noqa: PLR0912 - one cohesive segment/chunk/fallback pipel
     ``MAX_BUCKETS_PER_REQUEST`` buckets are counted in multiple per-segment requests (the backend
     rejects summarize requests beyond that many buckets) and merged client-side.
 
-    Channels that cannot be counted precisely (non-batchable data types, or a batch result that
-    errored in any segment) take the fallback selected by ``presence_fallback``:
+    STRING channels whose batch result errored are first recounted one at a time over halved windows
+    (see :func:`_count_string_by_halving`). Channels that still cannot be counted precisely
+    (non-batchable data types, or a batch result that errored in any segment) take the fallback
+    selected by ``presence_fallback``:
 
     * ``"present"``: a whole-window presence probe -- 1 in every bucket if the channel has any data
       in the window, else 0. Correct for the *source* side, where the worst case is syncing a range
@@ -254,6 +268,14 @@ def count_channels(  # noqa: PLR0912 - one cohesive segment/chunk/fallback pipel
             if ch.name not in errored_by_name:
                 results[ch.name] = ChannelBucketCounts(ch.name, merged.get(ch.name, {}), precise=True)
 
+        # STRING channels usually error because the window holds more distinct values than one
+        # request may summarize. Recount those one at a time over halved windows.
+        for ch in [c for c in errored_by_name.values() if c.data_type == ChannelDataType.STRING]:
+            halved = _count_string_by_halving(ch, segments, start, bucket, tags, request_delay)
+            if halved is not None:
+                results[ch.name] = ChannelBucketCounts(ch.name, halved, precise=True, high_cardinality=True)
+                del errored_by_name[ch.name]
+
     errored = list(errored_by_name.values())
     presence_channels = fallback + errored
     if presence_channels:
@@ -325,6 +347,118 @@ def _count_chunk(
         else:
             counts[channel.name] = ChannelBucketCounts(channel.name, binned, precise=True)
     return counts, errored
+
+
+def _count_string_by_halving(
+    channel: Channel,
+    segments: Sequence[tuple[int, int]],
+    start: IntegralNanosecondsUTC,
+    bucket: IntegralNanosecondsUTC,
+    tags: Mapping[str, str] | None,
+    request_delay: float,
+) -> dict[int, int] | None:
+    """Count one STRING channel per bucket by halving any window that has too many distinct values.
+
+    The backend rejects an enum summary whose window holds more than ``maxCategories`` distinct
+    values with ``Compute:TooManyCategories``. Each rejected window is split in two and both halves
+    are counted again. A window that spans several buckets splits on a bucket edge, so no bucket is
+    split across requests unless the bucket itself is too large. Requests go out one at a time,
+    ``request_delay`` seconds apart.
+
+    Args:
+        channel: The STRING channel to count.
+        segments: The ``[start, end)`` segments of the full window, on the bucket grid.
+        start: Start of the full window. Bucket edges are ``start + k * bucket``.
+        bucket: Bucket width (nanoseconds).
+        tags: Optional datascope tag filter.
+        request_delay: Seconds to sleep before every request after the first.
+
+    Returns:
+        Per-bucket counts over the full window, or None when any request fails with another error,
+        a window cannot be split further, or the channel needs more than
+        ``MAX_HALVING_REQUESTS_PER_CHANNEL`` requests. On None the caller uses its usual fallback.
+    """
+    grid = int(start)
+    width = int(bucket)
+    sent = 0
+
+    def count_window(lo: int, hi: int) -> dict[int, int] | None:
+        nonlocal sent
+        if sent >= MAX_HALVING_REQUESTS_PER_CHANNEL:
+            return None
+        if request_delay > 0 and sent > 0:
+            time.sleep(request_delay)
+        sent += 1
+        first = grid + (lo - grid) // width * width
+        starts = list(range(first, hi, width))
+        counts, error_type = _count_single(channel, lo, hi, starts, bucket, tags)
+        if counts is not None:
+            return counts
+        if error_type is None or "TooManyCategories" not in error_type or hi - lo <= 1:
+            return None
+        mid = _halving_midpoint(lo, hi, grid, width)
+        left = count_window(lo, mid)
+        if left is None:
+            return None
+        right = count_window(mid, hi)
+        if right is None:
+            return None
+        for bucket_start, n in right.items():
+            left[bucket_start] = left.get(bucket_start, 0) + n
+        return left
+
+    totals: dict[int, int] = {}
+    for seg_start, seg_end in segments:
+        seg_counts = count_window(int(seg_start), int(seg_end))
+        if seg_counts is None:
+            logger.warning(
+                "Could not count high-cardinality channel %r by halving after %d request(s)", channel.name, sent
+            )
+            return None
+        totals.update(seg_counts)
+    logger.info("Counted high-cardinality channel %r in %d halved request(s)", channel.name, sent)
+    return totals
+
+
+def _halving_midpoint(lo: int, hi: int, grid: int, width: int) -> int:
+    """Split point for ``[lo, hi)``: the bucket edge nearest the middle, else the exact middle."""
+    first_edge = grid + ((lo - grid) // width + 1) * width
+    if first_edge >= hi:
+        return lo + (hi - lo) // 2
+    last_edge = grid + ((hi - 1 - grid) // width) * width
+    middle = lo + (hi - lo) // 2
+    nearest = grid + (middle - grid + width // 2) // width * width
+    return min(max(nearest, first_edge), last_edge)
+
+
+def _count_single(
+    channel: Channel,
+    start: int,
+    end: int,
+    starts: list[int],
+    bucket: IntegralNanosecondsUTC,
+    tags: Mapping[str, str] | None,
+) -> tuple[dict[int, int] | None, str | None]:
+    """Count one channel over ``[start, end)`` in one request.
+
+    Returns:
+        ``(counts, None)`` on success, keyed by ``starts``. ``(None, error_type)`` when the compute
+        result failed, where ``error_type`` is the backend's error name (or None if absent).
+    """
+    clients = channel._clients
+    request = scout_compute_api.BatchComputeWithUnitsRequest(
+        requests=[_bucket_request(channel, tags, start, end, len(starts))]
+    )
+    response = clients.compute.batch_compute_with_units(clients.auth_header, request)
+    if len(response.results) != 1:
+        raise RuntimeError(
+            f"batch_compute_with_units returned {len(response.results)} result(s) for 1 requested channel"
+        )
+    compute_result = response.results[0].compute_result
+    if compute_result is None or compute_result.success is None:
+        error = compute_result.error if compute_result is not None else None
+        return None, error.error_type if error is not None else None
+    return _counts_from_response(compute_result.success, starts, bucket, starts[0]), None
 
 
 def _bucket_request(

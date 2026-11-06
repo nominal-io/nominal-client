@@ -378,3 +378,107 @@ def test_counts_from_response_single_bucket_binned_by_first_point_not_right_edge
 
     # The 10 points must land in bucket 0 (where the data is), not be dropped to {0: 0}.
     assert detect_mod._counts_from_response(response, [0, SEC, 2 * SEC], SEC, 0) == {0: 10, SEC: 0, 2 * SEC: 0}
+
+
+# --- count_channels: high-cardinality STRING channels counted by halving --------------------
+
+_MAX_CATEGORIES = 4  # stands in for the backend's maxCategories
+
+
+def _string_compute(points: list[int], error_type: str = "Compute:TooManyCategories") -> SimpleNamespace:
+    """A fake compute service over one STRING channel holding a distinct value at each of ``points``.
+
+    A request window holding more than ``_MAX_CATEGORIES`` points fails with ``error_type``. Otherwise
+    it succeeds with one enum bucket per point. Each request's ``(start, end)`` is recorded.
+    """
+    windows: list[tuple[int, int]] = []
+
+    def batch_compute_with_units(auth: Any, request: Any) -> SimpleNamespace:
+        results = []
+        for req in request.requests:
+            windows.append((req.start, req.end))
+            inside = [p for p in points if req.start <= p < req.end]
+            if len(inside) > _MAX_CATEGORIES:
+                error = SimpleNamespace(code=400, error_type=error_type)
+                results.append(SimpleNamespace(compute_result=SimpleNamespace(success=None, error=error)))
+            else:
+                success = SimpleNamespace(type="bucketedEnum", points=inside)
+                results.append(SimpleNamespace(compute_result=SimpleNamespace(success=success, error=None)))
+        return SimpleNamespace(results=results)
+
+    return SimpleNamespace(
+        auth_header="auth", compute=SimpleNamespace(batch_compute_with_units=batch_compute_with_units), windows=windows
+    )
+
+
+@pytest.fixture
+def string_channel_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route request building and enum parsing through plain windows and point lists."""
+    monkeypatch.setattr(
+        detect_mod,
+        "_bucket_request",
+        lambda channel, tags, start, end, buckets: SimpleNamespace(start=start, end=end),
+    )
+    monkeypatch.setattr(
+        detect_mod,
+        "_enum_buckets_from_compute_response",
+        lambda response: [
+            SimpleNamespace(frequencies={f"v{p}": 1}, first_point=SimpleNamespace(timestamp=p)) for p in response.points
+        ],
+    )
+
+
+@pytest.mark.usefixtures("string_channel_boundary")
+def test_count_channels_counts_high_cardinality_string_by_halving() -> None:
+    """A STRING channel with too many distinct values gets exact per-bucket counts from halved windows."""
+    compute = _string_compute(list(range(0, 20 * SEC, SEC)))
+    channel = SimpleNamespace(name="s", data_type=ChannelDataType.STRING, _clients=compute)
+
+    result = count_channels([channel], 0, 20 * SEC, 5 * SEC, presence_fallback="empty")
+
+    assert result["s"].counts == {0: 5, 5 * SEC: 5, 10 * SEC: 5, 15 * SEC: 5}
+    assert result["s"].precise is True
+    assert result["s"].high_cardinality is True
+    # Windows wider than one bucket split on bucket edges.
+    assert all(lo % (5 * SEC) == 0 for lo, hi in compute.windows if hi - lo > 5 * SEC)
+
+
+@pytest.mark.usefixtures("string_channel_boundary")
+def test_count_channels_string_with_other_error_takes_fallback() -> None:
+    """A STRING channel that errors for any reason other than too many categories is not halved."""
+    compute = _string_compute(list(range(0, 20 * SEC, SEC)), error_type="Compute:SomethingElse")
+    channel = SimpleNamespace(name="s", data_type=ChannelDataType.STRING, _clients=compute)
+
+    result = count_channels([channel], 0, 20 * SEC, 5 * SEC, presence_fallback="empty")
+
+    assert result["s"].precise is False
+    assert result["s"].counts == dict.fromkeys(range(0, 20 * SEC, 5 * SEC), 0)
+    # One batched request, then one single-channel retry that also fails: no halving.
+    assert len(compute.windows) == 2
+
+
+@pytest.mark.usefixtures("string_channel_boundary")
+def test_count_channels_string_halving_stops_at_request_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Halving gives up and takes the fallback once a channel reaches the per-channel request cap."""
+    monkeypatch.setattr(detect_mod, "MAX_HALVING_REQUESTS_PER_CHANNEL", 3)
+    compute = _string_compute(list(range(0, 20 * SEC, SEC)))
+    channel = SimpleNamespace(name="s", data_type=ChannelDataType.STRING, _clients=compute)
+
+    result = count_channels([channel], 0, 20 * SEC, 5 * SEC, presence_fallback="empty")
+
+    assert result["s"].precise is False
+    assert len(compute.windows) == 1 + 3  # the batched request plus the capped halving requests
+
+
+@pytest.mark.parametrize(
+    ("lo", "hi", "grid", "expected"),
+    [
+        (0, 20 * SEC, 0, 10 * SEC),  # several buckets: the bucket edge at the middle
+        (0, 15 * SEC, 0, 10 * SEC),  # middle falls mid-bucket: the nearest bucket edge
+        (2 * SEC, 17 * SEC, 2 * SEC, 12 * SEC),  # edges follow the window's grid, not the epoch
+        (5 * SEC, 10 * SEC, 0, 7_500_000_000),  # one bucket: the exact middle
+    ],
+)
+def test_halving_midpoint(lo: int, hi: int, grid: int, expected: int) -> None:
+    """Halving splits on the bucket edge nearest the middle, and inside a lone bucket at its middle."""
+    assert detect_mod._halving_midpoint(lo, hi, grid, 5 * SEC) == expected

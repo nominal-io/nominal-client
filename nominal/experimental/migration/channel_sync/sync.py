@@ -454,10 +454,11 @@ def sync_missing_channel_data(  # noqa: PLR0912, PLR0915 - linear phase dispatch
             on_advance=advance,
         )
 
-    # Channels detection could only presence-probe (precise=False) are the ones whose rate the export
-    # can't estimate (e.g. high-cardinality enums that error with Compute:TooManyCategories). They get
-    # the per-channel recursive-halving export fallback instead of the rate-sized grouped path.
-    non_precise = {name for name, counts in source_counts.items() if not counts.precise}
+    # The export can't estimate the rate of channels detection could only presence-probe
+    # (precise=False) or had to count over halved windows (high_cardinality, e.g. strings that error
+    # with Compute:TooManyCategories). They get the per-channel recursive-halving export fallback
+    # instead of the rate-sized grouped path.
+    non_precise = {name for name, counts in source_counts.items() if not counts.precise or counts.high_cardinality}
     # When destination is None, _detect_missing treats it as empty: any source bucket with data > 0
     # is flagged as missing, so channels with zero source data are silently skipped.
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)

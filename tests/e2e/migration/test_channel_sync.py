@@ -473,15 +473,11 @@ def test_untagged_high_cardinality_channel_detected_present(
     source_client: NominalClient,
     dest_dataset: Dataset,
 ):
-    """An untagged high-cardinality STRING channel is detected present via the series-count probe.
+    """An untagged high-cardinality STRING channel is counted on both sides and verified after sync.
 
-    ``hi_card_str`` overflows the enum-category limit during detection, so it cannot be counted
-    precisely and falls to the whole-window presence probe. That probe is now tag-independent
-    (``batchGetSeriesCount`` / ``series_count > 0``) rather than tag-derived, so it must flag the
-    channel present and sync it even though nothing constrains it by tags. This locks in that the
-    series-count probe detects untagged data (``tags=None``); the genuinely tag-free correctness --
-    which e2e cannot construct, since exportable data always carries internal ``_nominal_*`` tags --
-    is proven by the ``_channels_with_data`` unit tests.
+    ``hi_card_str`` overflows the enum-category limit in one batched count, so detection recounts it
+    over halved windows. Those counts are exact on the destination too, so the post-stream re-check
+    passes only once every bucket has landed (``tags=None``).
     """
     report = sync_missing_channel_data(
         source_dataset_stress,
@@ -492,7 +488,7 @@ def test_untagged_high_cardinality_channel_detected_present(
         _options(),  # tags=None
     )
 
-    # The presence probe found data for the non-precise channel: it synced and nothing is still short.
+    # The halved count found the channel short, it synced, and the re-check found every bucket.
     assert report.channels_synced > 0
     assert report.still_short == []
 
