@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Collection, Iterable
+from typing import Callable, Collection, Iterable, assert_never
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.core.retention import KeepUntilExpiry
+from nominal.core.retention import KeepForever, KeepUntilExpiry, UnknownRetentionPolicy
 from nominal.core.run import Run
 from nominal.exceptions import NominalError, NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
@@ -145,13 +145,19 @@ class RetentionMigrator:
             return None
 
     def _copy_policy(self, source: Dataset, *, withhold_expiry: bool) -> None:
-        policy = source.retention_policy
-        if policy is None:
-            self._record_skip(ResourceType.DATASET, source.rid, f"{_SKIP_PREFIX} source policy type is not recognized")
-        elif isinstance(policy, KeepUntilExpiry):
-            self._copy_expiry(source, policy, withhold_expiry)
-        else:
-            self._clear_stale_expiry(source)
+        match source.retention_policy:
+            case UnknownRetentionPolicy(type=policy_type):
+                self._record_skip(
+                    ResourceType.DATASET,
+                    source.rid,
+                    f"{_SKIP_PREFIX} source policy type {policy_type!r} is not recognized by this client",
+                )
+            case KeepUntilExpiry() as policy:
+                self._copy_expiry(source, policy, withhold_expiry)
+            case KeepForever():
+                self._clear_stale_expiry(source)
+            case unexpected:
+                assert_never(unexpected)
 
     def _copy_expiry(self, source: Dataset, policy: KeepUntilExpiry, withhold: bool) -> None:
         if withhold:

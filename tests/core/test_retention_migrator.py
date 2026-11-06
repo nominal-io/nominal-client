@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from nominal.core.retention import KeepForever, KeepUntilExpiry, RetentionExemption, _time_range_to_proto
+from nominal.core.retention import KeepForever, KeepUntilExpiry, RetentionExemption, UnknownRetentionPolicy
 from nominal.exceptions import NominalError, NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.experimental.migration import migration_cli
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
@@ -26,6 +26,7 @@ from nominal.experimental.migration.migrator.retention_migrator import (
 )
 from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.ts import _time_range_to_proto
 
 
 class _Destination:
@@ -137,7 +138,7 @@ def test_only_expiry_policies_are_copied() -> None:
     destination = _Destination()
     datasets = [
         _dataset("ds-forever"),
-        _dataset("ds-unknown", policy=None),
+        _dataset("ds-unknown", policy=UnknownRetentionPolicy("NEW_TYPE")),
         _dataset("ds-expiry", policy=KeepUntilExpiry(7)),
     ]
     migrator, state = _migrator(destination, datasets=datasets)
