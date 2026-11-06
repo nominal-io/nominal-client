@@ -374,11 +374,15 @@ class MultipartFileDownloader:
                 if expected_etag and r.headers.get("ETag") and r.headers["ETag"] != expected_etag:
                     raise RuntimeError("ETag mismatch across parts (object changed during download)")
 
-                self._write_part(
-                    destination,
-                    start,
-                    b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk),
-                )
+                data = b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk)
+                if len(data) != end - start + 1:
+                    # A server that ignores Range answers with the whole object; writing that at `start`
+                    # would silently corrupt the file.
+                    raise RuntimeError(
+                        f"Expected {end - start + 1} bytes for range {start}-{end}, got {len(data)}; "
+                        "the server may not support ranged downloads"
+                    )
+                self._write_part(destination, start, data)
                 return
 
             except Exception as ex:

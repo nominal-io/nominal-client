@@ -44,6 +44,8 @@ For setup and an end-to-end example, see the [Python quickstart](/guides/quickst
   - Write timeseries data and log messages through asynchronous streams.
 * - {doc}`containerized-extractors`
   - Register container images, configure extractors, and manage their secrets.
+* - {doc}`drives`
+  - Store files in drives, add versions, and restore or download past revisions.
 ```
 
 ## Events and validation
@@ -67,6 +69,7 @@ datasets-and-files
 channels-and-units
 streaming
 containerized-extractors
+drives
 events
 automatic-validation
 workbooks
