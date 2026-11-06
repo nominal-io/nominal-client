@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.182.0](https://github.com/nominal-io/nominal-client/compare/v1.181.0...v1.182.0) (2026-11-06)
+
+
+### Features
+
+* **core:** notebook cards for core resources ([#1260](https://github.com/nominal-io/nominal-client/issues/1260)) ([73c0bee](https://github.com/nominal-io/nominal-client/commit/73c0bee633ac8c23262f5f8b5d6ee6d4be84b030))
+* **core:** relationship diagrams in notebook cards ([#1272](https://github.com/nominal-io/nominal-client/issues/1272)) ([07de14a](https://github.com/nominal-io/nominal-client/commit/07de14a466cb97df8941f071ca3429c02b6f5ff0))
+
+
+### Bug Fixes
+
+* **migration:** keep multi-run workbooks pending until all their runs migrate ([#1264](https://github.com/nominal-io/nominal-client/issues/1264)) ([c5dd11d](https://github.com/nominal-io/nominal-client/commit/c5dd11d610b15e57b53a37b9ec9913910cf11239))
+* **migration:** scope prep and copy to the source profile's workspace ([#1249](https://github.com/nominal-io/nominal-client/issues/1249)) ([cd434ad](https://github.com/nominal-io/nominal-client/commit/cd434ad0ef6f6e1a5891e01d0d19198af20ba07a))
+
+
+### Documentation
+
+* link to the data model pages at their new dev.nominal.io paths ([#1281](https://github.com/nominal-io/nominal-client/issues/1281)) ([d361390](https://github.com/nominal-io/nominal-client/commit/d361390337ff272eff080a8efd1d8b86d53b6569))
+* rename the SDK tab to Reference ([#1275](https://github.com/nominal-io/nominal-client/issues/1275)) ([9b678ef](https://github.com/nominal-io/nominal-client/commit/9b678efc089f5e62d6df44fce432ec85e243d4d9))
+* serve the API reference from ref/, not sdk/ ([#1276](https://github.com/nominal-io/nominal-client/issues/1276)) ([a2075d7](https://github.com/nominal-io/nominal-client/commit/a2075d73fd7120ed1e85848003ff32d01ab2e9f8))
+
 ## [1.181.0](https://github.com/nominal-io/nominal-client/compare/v1.180.1...v1.181.0) (2026-11-03)
 
 
