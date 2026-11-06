@@ -39,9 +39,9 @@ from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
 ArchiveFn = Callable[[object], None]
 
-# Nanosecond-precision bounds: float seconds or datetime conversion would lose the low digits.
-EXEMPTION_START_NANOS = 1_700_000_000_123_456_789
-EXEMPTION_END_NANOS = 1_700_000_100_987_654_321
+# Microsecond-aligned: the server stores exemption bounds at microsecond precision, so finer values come back rounded.
+EXEMPTION_START_NANOS = 1_700_000_000_123_456_000
+EXEMPTION_END_NANOS = 1_700_000_100_987_654_000
 
 DATASET_REF = "dataset-ref"
 VIDEO_REF = "video-ref"
@@ -474,7 +474,7 @@ def test_dataset_retention_policy_roundtrip(client: NominalClient, archive: Arch
 
 
 def test_dataset_retention_exemption_roundtrip(client: NominalClient, archive: ArchiveFn):
-    """An exemption is stored with nanosecond bounds, replaced by upserting its source ID, and deleted by it."""
+    """An exemption is stored with its bounds, replaced by upserting its source ID, and deleted by it."""
     ds = _create_retention_dataset(client, archive)
 
     stored = ds.upsert_retention_exemption(
