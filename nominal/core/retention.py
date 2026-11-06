@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TypeAlias
+from typing import Self, TypeAlias
 
 from nominal_api import scout_catalog
 
@@ -33,14 +33,18 @@ class RetentionExemption:
     """A time range of a dataset's data that retention must not delete."""
 
     dataset_rid: str
+    """RID of the dataset the exemption applies to."""
     source_id: str
     """Identifies what owns the exemption. Locking a run creates exemptions whose source ID is the run's RID."""
     start: IntegralNanosecondsUTC
+    """Start of the exempt range, in UTC nanoseconds."""
     end: IntegralNanosecondsUTC
+    """End of the exempt range, in UTC nanoseconds."""
     description: str | None
+    """Why the range is exempt, if one was given."""
 
     @classmethod
-    def _from_proto(cls, exemption: dataset_retention_pb2.DatasetRetentionExemption) -> RetentionExemption:
+    def _from_proto(cls, exemption: dataset_retention_pb2.DatasetRetentionExemption) -> Self:
         return cls(
             dataset_rid=exemption.dataset_rid,
             source_id=exemption.source_id,
