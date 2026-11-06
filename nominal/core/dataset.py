@@ -1397,6 +1397,10 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Note:
             Requires organization admin access and dataset retention to be enabled for your organization.
 
+        Note:
+            The server stores bounds at microsecond precision, so the returned exemption can differ from the
+            requested range by under a microsecond.
+
         Returns:
             The stored exemption.
 
