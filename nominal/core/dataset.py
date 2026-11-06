@@ -39,7 +39,11 @@ from nominal.core._utils.properties import (
 from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
-from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
+from nominal.core.containerized_extractor import (
+    ContainerizedExtractor,
+    _get_containerized_extractor,
+    _normalize_containerized_arguments,
+)
 from nominal.core.dataset_file import DatasetFile, _dataset_file_from_conjure
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
@@ -1164,7 +1168,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> IngestionJob: ...
     @overload
@@ -1173,7 +1177,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
@@ -1183,7 +1187,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
@@ -1206,6 +1210,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
                 **Note:** These must match the registered inputs of the active container image exactly.
             arguments: Mapping of key-value pairs of input arguments to the extractor.
+                Strings are unchanged, booleans become ``"true"`` or ``"false"``, integers use
+                `str`, and finite floats use `repr`.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the extractor's output that contains the timestamp data.
                 Provided together with `timestamp_type`, overrides the active container image's
@@ -1223,8 +1229,12 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         Returns:
             An `IngestionJob` handle for the asynchronous containerized ingest.
+
+        Raises:
+            ValueError: An argument is a non-finite float.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
+        normalized_arguments = {} if arguments is None else _normalize_containerized_arguments(arguments)
 
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
@@ -1264,7 +1274,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             trigger_ingest=ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
                     containerized=ingest_api.ContainerizedOpts(
-                        arguments={**(arguments or {})},
+                        arguments=normalized_arguments,
                         extractor_rid=extractor.rid,
                         sources={
                             source: ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
