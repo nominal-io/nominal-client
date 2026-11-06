@@ -9,6 +9,8 @@ class AssetInclusionConfig:
     include_attachments: bool = True
     include_checklists: bool = True
     include_workbooks: bool = True
+    include_retention: bool = False
+    """Copy dataset retention policies, retention exemptions, and run locks. Needs destination org admin access."""
 
 
 class MigrationDatasetConfig:

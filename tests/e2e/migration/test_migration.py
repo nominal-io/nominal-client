@@ -47,9 +47,11 @@ from nominal.core.data_review import DataReview
 from nominal.core.dataset import Dataset
 from nominal.core.event import Event
 from nominal.core.filetype import FileTypes
+from nominal.core.retention import KeepUntilExpiry
 from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
+from nominal.exceptions import NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
 from nominal.experimental.dataset_utils import get_dataset_owner_rid
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
@@ -1274,3 +1276,69 @@ def test_migrate_preserves_dataset_owner_with_impersonation(
     register_cleanup(dest_dataset.archive)
 
     assert get_dataset_owner_rid(dest_dataset) == dest_user_rid
+
+
+def _skip_unless_retention_allowed(client: NominalClient, register_cleanup: RegisterCleanup, tenant: str) -> None:
+    """Skip the test unless the client may change retention, by trying it on a scratch dataset."""
+    scratch = client.create_dataset(f"migration-e2e-retention-probe-{uuid4()}", labels=["migration-e2e"])
+    register_cleanup(scratch.archive)
+    try:
+        scratch.upsert_retention_exemption("probe", datetime(2024, 1, 1), datetime(2024, 1, 2))
+    except (NominalPermissionDeniedError, NominalFailedPreconditionError) as error:
+        pytest.skip(f"The {tenant} tenant does not allow retention changes: {error}")
+
+
+def test_migrate_retention(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Retention policies, manual exemptions, and run locks are copied; a locked run's exemptions are not duplicated.
+
+    Needs organization admin access on both tenants and dataset retention enabled on both, so the test
+    is skipped when either tenant refuses retention changes.
+    """
+    _skip_unless_retention_allowed(source_client, register_cleanup, "source")
+    _skip_unless_retention_allowed(dest_client, register_cleanup, "destination")
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    source_ds.set_retention_policy(KeepUntilExpiry(expiry_days=3650))
+    source_ds.upsert_retention_exemption("migration-e2e-manual", start, end, description="manual exemption")
+    source_run.lock()
+
+    runner = _make_runner(
+        _make_resources(source_asset),
+        _no_files_config(),
+        dest_client,
+        tmp_path / "state.json",
+        asset_inclusion_config=AssetInclusionConfig(
+            include_video=False,
+            include_events=False,
+            include_attachments=False,
+            include_checklists=False,
+            include_workbooks=False,
+            include_retention=True,
+        ),
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+    assert dest_ds_rid is not None and dest_run_rid is not None
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    register_cleanup(dest_client.get_run(dest_run_rid).archive)
+
+    assert dest_ds.retention_policy == KeepUntilExpiry(expiry_days=3650)
+    assert dest_client.get_run(dest_run_rid).is_locked
+    exemptions = {e.source_id: e for e in dest_ds.list_retention_exemptions(start, end)}
+    # The manual exemption is copied; the source run's exemption is replaced by the destination run's own.
+    assert set(exemptions) == {"migration-e2e-manual", dest_run_rid}
+    assert exemptions["migration-e2e-manual"].description == "manual exemption"

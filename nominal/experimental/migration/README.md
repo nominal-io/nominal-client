@@ -14,6 +14,7 @@ A CLI to copy resources from one Nominal tenant to another.
 6. Video cloning
 7. Checklist cloning
 8. Run cloning
+9. Dataset retention policies, retention exemptions, and run locks (opt-in; see [Retention](#retention))
 
 ## One-time setup
 
@@ -120,6 +121,7 @@ migration:
   preserve_dataset_uuid: true    # true to keep dataset UUIDs identical across tenants
   add_labels:                    # optional: added to every resource the migration creates
     - migrated
+  include_retention: false       # optional: true to copy dataset retention and run locks (needs destination org admin)
   source_asset_rids:
     - asset_rid: ri.scout.main.asset.<uuid>
   standalone_workbook_template_rids:
@@ -151,6 +153,23 @@ Misc. configs:
    - Resources whose source user has no mapping are created as the destination service user.
    - Checklist executions (data reviews) are re-executed as the mapped creator of the source data review, so `created_by` on the destination reflects the original executor.
    - The checklist assignee is translated through the same user mapping; an unmapped assignee falls back to the user creating the checklist (the impersonated author or the service user).
+
+## Retention
+
+Set `include_retention: true` to copy retention settings after every asset has migrated. It is off by default.
+
+The migration copies:
+- Retention exemptions on each migrated dataset.
+- Locks on each migrated run that is locked at the source. Locking a run creates its dataset exemptions at the destination, so exemptions the source created by locking a run are not copied separately.
+- Retention policies that expire data. A dataset with no policy keeps its data forever, so there is nothing to copy for it.
+
+It applies exemptions and run locks before any expiry policy. A dataset whose exemptions or run locks could not all be copied gets no expiry until a rerun copies them, so data the source protected is never exposed to deletion at the destination. A rerun also clears an expiry copied earlier if the source has since gone back to keeping data forever.
+
+Requirements:
+- The destination profile's user must be an organization admin. Retention changes ignore `impersonation` and use the destination profile directly.
+- Dataset retention must be enabled for the destination organization.
+
+If the destination rejects a change for either reason, the migration stops with a message naming it. Other failures are recorded in the end-of-run skip summary, and a rerun repeats them. A locked run with no end time is recorded there too, because it cannot be locked.
 
 Dataset file migration re-uploads the stored source files and waits for ingestion at the destination.
 Journal JSON and gzip-compressed journal JSON stream directly, without staging to disk.

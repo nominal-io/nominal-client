@@ -105,6 +105,11 @@ class ThreadSafeMigrationState(MigrationState):
             super().record_skip(resource_type, source_rid, reason)
         self._persist()
 
+    def clear_skips_with_prefix(self, reason_prefix: str) -> None:
+        with self._lock:
+            super().clear_skips_with_prefix(reason_prefix)
+        self._persist()
+
     def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
         with self._lock:
             changed = super().set_skip(resource_type, source_rid, reason)
