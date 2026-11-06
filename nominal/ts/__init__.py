@@ -711,9 +711,7 @@ class _SecondsNanos(NamedTuple):
 
     @classmethod
     def from_datetime(cls, dt: datetime) -> Self:
-        # timedelta keeps microseconds in [0, 1e6), so a pre-epoch fraction borrows a whole second as nanos expects.
-        since_epoch = dt.astimezone(UTC) - _UNIX_EPOCH
-        return cls(since_epoch.days * 86_400 + since_epoch.seconds, since_epoch.microseconds * 1000)
+        return cls(*_to_seconds_nanos_duration(dt.astimezone(UTC) - _UNIX_EPOCH))
 
     @classmethod
     def from_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
