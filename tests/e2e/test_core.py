@@ -108,11 +108,13 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     archive(ds)
     ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
-    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-{uuid4()}", start, None)
     archive(run)
 
     ref_name = f"ref-name-{uuid4()}"
     run.add_dataset(ref_name, ds)
+    run.update(end=end)
 
     ds_list = run.list_datasets()
     assert len(ds_list) == 1
@@ -135,10 +137,12 @@ def test_add_dataset_to_run_and_get_by_ref_name(client: NominalClient, archive: 
     dataset = client.create_dataset(f"dataset-{tag}")
     archive(dataset)
 
-    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-{tag}", start, None)
     archive(run)
 
     run.add_dataset(DATASET_REF, dataset)
+    run.update(end=end)
 
     assert run.get_dataset(DATASET_REF).rid == dataset.rid
 
@@ -157,10 +161,12 @@ def test_add_video_to_run_and_get_by_ref_name(client: NominalClient, archive: Ar
     video = client.create_video(f"video-{tag}")
     archive(video)
 
-    run = client.create_run(f"run-{tag}", *_create_random_start_end())
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-{tag}", start, None)
     archive(run)
 
     run.add_video(VIDEO_REF, video)
+    run.update(end=end)
 
     assert run.get_video(VIDEO_REF).rid == video.rid
 
