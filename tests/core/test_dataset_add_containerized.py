@@ -3,12 +3,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import ingest_api
 
 from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.ingestion_job import IngestionJob
 from nominal.protos.ingest.v2 import containerized_extractor_pb2
+from nominal.protos.ingestjobs.v1 import ingest_jobs_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.types.time import timestamp_parsers_pb2
 
@@ -88,16 +88,19 @@ def test_add_containerized_returns_ingestion_job() -> None:
     )
     extractor = _extractor(clients, active_image=image)
     clients.ingest.ingest.return_value = MagicMock(ingest_job_rid="ri.ingest-job.1")
-    clients.ingest_jobs.get_ingest_job.return_value = ingest_api.IngestJob(
-        created_by="ri.user",
-        ingest_job_rid="ri.ingest-job.1",
-        ingest_type=ingest_api.IngestType.CONTAINERIZED,
-        org_uuid="org",
-        status=ingest_api.IngestJobStatus.IN_PROGRESS,
+    clients.grpc_ingest_jobs.GetIngestJob.return_value = ingest_jobs_pb2.GetIngestJobResponse(
+        ingest_job=ingest_jobs_pb2.IngestJob(
+            created_by="ri.user",
+            rid="ri.ingest-job.1",
+            type=ingest_jobs_pb2.INGEST_JOB_TYPE_CONTAINERIZED,
+            status=ingest_jobs_pb2.INGEST_JOB_STATUS_IN_PROGRESS,
+        )
     )
 
     job = dataset.add_containerized(extractor, sources={})
 
     assert isinstance(job, IngestionJob)
     assert job.rid == "ri.ingest-job.1"
-    clients.ingest_jobs.get_ingest_job.assert_called_once_with(clients.auth_header, "ri.ingest-job.1")
+    clients.grpc_ingest_jobs.GetIngestJob.assert_called_once_with(
+        ingest_jobs_pb2.GetIngestJobRequest(ingest_job_rid="ri.ingest-job.1")
+    )

@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.protobuf.timestamp_pb2 import Timestamp
-from nominal_api import ingest_api
 
 from nominal.core import Asset, Run
 from nominal.exceptions import NominalNotFoundError
@@ -24,6 +23,7 @@ from nominal.experimental.spatial import (
 )
 from nominal.experimental.spatial._spatial import _PointCloudTimeMetadata
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.ingestjobs.v1 import ingest_jobs_pb2
 from nominal.protos.run.v1 import run_service_pb2
 from nominal.protos.spatial.v2 import spatial_pb2
 from nominal.ts import Epoch, Relative
@@ -42,7 +42,9 @@ def clients() -> MagicMock:
     clients.auth_header = "Bearer t"
     clients.resolve_default_workspace_rid.return_value = _WORKSPACE_RID
     clients.ingest.ingest.return_value.ingest_job_rid = _JOB_RID
-    clients.ingest_jobs.get_ingest_job.return_value = _raw_ingest_job()
+    clients.grpc_ingest_jobs.GetIngestJob.return_value = ingest_jobs_pb2.GetIngestJobResponse(
+        ingest_job=_raw_ingest_job()
+    )
     # The time-range write reads properties back before replacing the map.
     clients.spatial.GetSpatial.return_value = spatial_pb2.GetSpatialResponse(spatial=_raw_spatial())
     clients.spatial.UpdateSpatial.return_value = spatial_pb2.UpdateSpatialResponse(spatial=_raw_spatial())
@@ -90,24 +92,13 @@ def _raw_spatial(
     )
 
 
-def _raw_ingest_job() -> MagicMock:
-    """A conjure IngestJob bean as the service would return it for a point-cloud ingest.
-
-    `dataset_rid` is None and no files are produced: a point-cloud ingest writes into
-    the spatial's own model, so the job is the only artifact it yields.
-    """
-    job = MagicMock()
-    job.ingest_job_rid = _JOB_RID
-    job.status = ingest_api.IngestJobStatus.IN_PROGRESS
-    job.ingest_type = ingest_api.IngestType.POINT_CLOUD
-    job.dataset_rid = None
-    job.origin_files = []
-    job.produced_file_count = None
-    job.created_by_rid = None
-    job.created_at = None
-    job.start_time = None
-    job.end_time = None
-    return job
+def _raw_ingest_job() -> ingest_jobs_pb2.IngestJob:
+    """A point-cloud job writes into the spatial without a dataset or produced files."""
+    return ingest_jobs_pb2.IngestJob(
+        rid=_JOB_RID,
+        status=ingest_jobs_pb2.INGEST_JOB_STATUS_IN_PROGRESS,
+        type=ingest_jobs_pb2.INGEST_JOB_TYPE_POINT_CLOUD,
+    )
 
 
 def _stubbed_upload(s3_path: str = "s3://bucket/scan.csv") -> object:
@@ -504,7 +495,9 @@ def test_ingest_time_metadata_preserves_nanoseconds_and_order(
     assert request.spatial.end_timestamp.ToNanoseconds() == 44_999_999_999
     assert set(request.update_mask.paths) == {"source_handle", "properties", "start_timestamp", "end_timestamp"}
     calls = [entry[0] for entry in clients.mock_calls]
-    assert calls.index("ingest.ingest") < calls.index("ingest_jobs.get_ingest_job") < calls.index("spatial.GetSpatial")
+    assert (
+        calls.index("ingest.ingest") < calls.index("grpc_ingest_jobs.GetIngestJob") < calls.index("spatial.GetSpatial")
+    )
     assert calls.index("spatial.GetSpatial") < calls.index("spatial.UpdateSpatial")
 
 
