@@ -1,4 +1,4 @@
-# SDK reference
+# Reference
 
 {.lead}
 The API reference for the `nominal` package. For installation, quickstarts, and how-to guides,

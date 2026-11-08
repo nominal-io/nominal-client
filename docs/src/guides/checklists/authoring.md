@@ -164,4 +164,4 @@ for module, limit in {"module_1": 55, "module_2": 60}.items():
 ```
 
 Test a new checklist on runs with known failures and known good intervals before you rely on it.
-See the [compute-as-code reference](/sdk/experimental/compute-as-code.md) for all methods.
+See the [compute-as-code reference](/ref/experimental/compute-as-code.md) for all methods.

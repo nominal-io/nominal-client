@@ -10,11 +10,13 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages,
+# and to post the docs preview status on PRs
 permissions:
   contents: read
   pages: write
   id-token: write
+  statuses: write
 
 jobs:
   # Build job
@@ -57,15 +59,14 @@ jobs:
       - name: Build docs (warnings fail the build)
         run: |
           just build-docs
-      # Download from the run's Artifacts to preview a PR's docs: unzip, then
-      # `uv run python -m http.server -d <dir>` (the folder-style URLs need a server).
-      - name: Upload built site
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      # Uploads the site as the PR's docs-site artifact, which the renderdoc Worker serves,
+      # and links the preview, or the failed run, as the "docs preview" commit status
+      - name: "Built docs: upload and preview"
+        if: always() && github.event_name == 'pull_request'
+        uses: nominal-io/nominal-sphinx-theme/.github/actions/docs-preview@3c82e356cb791063fb5bd09bfaf64be1c03ce383 # main, 2026-11-04
         with:
-          name: docs-site
           path: ./docs/_build/dirhtml
-          retention-days: 7
+          job-status: ${{ job.status }}
       # PRs aren't deployed and preview from docs-site, so only other builds keep a Pages upload
       - name: Upload pages artifact
         if: github.event_name != 'pull_request'

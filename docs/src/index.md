@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Guides, examples and SDK reference for the Nominal Python Client."
+    description: "Guides, examples and reference for the Nominal Python Client."
 ---
 
 # Nominal Python Client
@@ -18,7 +18,8 @@ from nominal.core import NominalClient
 client  = NominalClient.from_profile("default")
 asset   = client.get_or_create_asset_by_properties({"serial": "SN42"}, name="Test stand SN42")
 dataset = asset.get_or_create_dataset("primary")
-dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")  # your CSV
+file    = dataset.add_tabular_data("run.csv", timestamp_column="time", timestamp_type="iso_8601")  # your CSV
+file.poll_until_ingestion_completed()  # raises NominalIngestError if the ingest fails
 print(asset.nominal_url)
 ```
 
@@ -49,8 +50,8 @@ Upload a file, stream data, mark a run and read it back.
 Full, runnable scripts.
 :::
 
-:::{grid-item-card} {octicon}`book` SDK reference
-:link: sdk/index
+:::{grid-item-card} {octicon}`book` Reference
+:link: ref/index
 :link-type: doc
 
 Every class, function and `nom` command.
@@ -66,6 +67,14 @@ Overview <self>
 Install <guides/install>
 API keys setup <guides/api-keys-setup>
 Quickstart <guides/quickstart>
+```
+
+```{toctree}
+:hidden:
+:caption: Tutorials
+
+Upload and stream tutorial <guides/longstart>
+Data integration tutorial <guides/data-integration-tutorial>
 ```
 
 ```{toctree}
@@ -139,34 +148,27 @@ Ingest jobs <guides/ingest/ingestion-jobs>
 File extractors <guides/extractors/overview>
 ```
 
-```{toctree}
-:hidden:
-:caption: Advanced Usage
 
-Upload and stream tutorial <guides/longstart>
-Data integration tutorial <guides/data-integration-tutorial>
-Networking and TLS <networking-tls>
-```
-
-
-<!-- Examples section: notebooks in examples/, listed by its example-gallery -->
+<!-- Examples section: the gallery page, then every page in examples/ except that index -->
 
 ```{toctree}
 :hidden:
 :caption: Examples
+:glob:
 
-examples/index
+Gallery <examples/index>
+examples/*
 ```
 
 ```{toctree}
 :hidden:
-:caption: SDK
+:caption: Reference
 :maxdepth: 2
 
-Overview <sdk/index>
-Core <sdk/core/index>
-Timestamps <sdk/ts/index>
-Exceptions <sdk/exceptions>
+Overview <ref/index>
+Core <ref/core/index>
+Timestamps <ref/ts/index>
+Exceptions <ref/exceptions>
 ```
 
 ```{toctree}
@@ -174,7 +176,7 @@ Exceptions <sdk/exceptions>
 :caption: Command Line
 :maxdepth: 1
 
-nom CLI <sdk/cli>
+nom CLI <ref/cli>
 ```
 
 ```{toctree}
@@ -182,15 +184,15 @@ nom CLI <sdk/cli>
 :caption: Experiments
 :maxdepth: 1
 
-sdk/experimental/compute
-sdk/experimental/compute-as-code
-sdk/experimental/derived_datasets
-sdk/experimental/extractors
-sdk/experimental/ingest
-sdk/experimental/migration
-sdk/experimental/spatial
-sdk/experimental/video
-sdk/experimental/video_processing
+ref/experimental/compute
+ref/experimental/compute-as-code
+ref/experimental/derived_datasets
+ref/experimental/extractors
+ref/experimental/ingest
+ref/experimental/migration
+ref/experimental/spatial
+ref/experimental/video
+ref/experimental/video_processing
 ```
 
 ```{toctree}
@@ -198,18 +200,18 @@ sdk/experimental/video_processing
 :caption: Third-Party Integrations
 :maxdepth: 1
 
-sdk/ibis/index
-sdk/thirdparty/matlab
-sdk/thirdparty/pandas
-sdk/thirdparty/polars
-sdk/thirdparty/tdms
+ref/ibis/index
+ref/thirdparty/matlab
+ref/thirdparty/pandas
+ref/thirdparty/polars
+ref/thirdparty/tdms
 ```
 
 ```{toctree}
 :hidden:
 :caption: Releases
 
-sdk/changelog
+ref/changelog
 ```
 
 ```{toctree}

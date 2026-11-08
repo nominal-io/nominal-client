@@ -3,11 +3,12 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
 from typing_extensions import deprecated
 
-from nominal.core import data_review, streaming_checklist
+from nominal.core import _display, data_review, streaming_checklist
 from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
@@ -23,13 +24,13 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.api_types import NominalProperties
-from nominal.core._utils.frontend_urls import asset_url
+from nominal.core._utils.frontend_urls import asset_url, run_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated, search_runs_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
-from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.attachment import Attachment, _get_accessible_attachments
-from nominal.core.dataset import Dataset, _create_dataset
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_runs_query
+from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
+from nominal.core.dataset import Dataset, _create_dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook, _search_workbooks
@@ -86,6 +87,70 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
         return asset_url(self._clients, self.rid)
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        # The datasets and runs load once, for their sections and for the diagram.
+        datasets = _display.start(self.list_datasets)
+        runs = _display.start(self._first_runs)
+        return _display.render(
+            kind="Asset",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                ("Created", _display.timestamp(self.created_at)),
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            sections=[
+                _display.fetched_from("Datasets", datasets, _data_scopes_section),
+                _display.fetched_from("Runs", runs, self._runs_section),
+                _display.fetched("Attachments", lambda: _attachments_section(self._iter_list_attachments())),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+            graph=lambda: (
+                self._graph(_display.wait(datasets), _display.wait(runs))
+                if datasets is not None and runs is not None
+                else None
+            ),
+        )
+
+    def _first_runs(self) -> tuple[list[Run], bool]:
+        """The asset's newest runs, up to `max_items`, and whether it has more."""
+        # The search returns active runs newest first, so the card loads only the runs it lists.
+        protos, has_more = _display.first(
+            search_runs_paginated(self._clients.run, create_search_runs_query(asset_rid=self.rid))
+        )
+        return [Run._from_proto(self._clients, proto) for proto in protos], has_more
+
+    def _runs_section(self, runs: tuple[list[Run], bool]) -> _display.Section:
+        shown, has_more = runs
+        rows = [
+            [
+                _display.escape(f"#{run.run_number}"),
+                _display.named(run.name, run.rid, partial(run_url, self._clients, run.rid)),
+                _display.timestamp(run.start),
+                _display.duration(run.end - run.start) if run.end is not None else "ongoing",
+            ]
+            for run in shown
+        ]
+        return _display.Section("Runs", rows, columns=("Run", "Name", "Start", "Duration"), has_more=has_more)
+
+    def _graph(self, datasets: Sequence[tuple[str, Dataset]], runs: tuple[list[Run], bool]) -> _display.Graph:
+        """The asset's datasets, labeled with their ref names, below it, and its runs above it."""
+        node = _display.Node("Asset", self.name, self.rid, lambda: self.nominal_url)
+        shown, has_more = runs
+        run_nodes = [_display.Node("Run", run.name, run.rid, partial(run_url, self._clients, run.rid)) for run in shown]
+        return _display.Graph(
+            node,
+            [
+                _display.Group("Datasets", _data_scope_nodes(datasets), node),
+                _display.Group("Runs", run_nodes, node, below=False, has_more=has_more),
+            ],
+        )
 
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)
