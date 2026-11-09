@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import click
 import pytest
@@ -116,9 +116,7 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     client = MagicMock()
     client.search_runs.return_value = []
     client.search_workbooks.return_value = []
-    client.search_assets.side_effect = lambda archive_status=ArchiveStatusFilter.NOT_ARCHIVED: (
-        [asset] if archive_status == ArchiveStatusFilter.NOT_ARCHIVED else []
-    )
+    client.search_assets.return_value = [asset]
     client.get_asset.return_value = asset
     client.search_datasets.return_value = [scoped, *orphans]
     client.search_videos.return_value = []
@@ -138,3 +136,6 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     migration = yaml.safe_load(output_path.read_text(encoding="utf-8"))["migration"]
     assert migration["source_asset_rids"] == [{"asset_rid": "asset"}]
     assert migration["standalone_dataset_rids"] == ["ds-orphan-a", "ds-orphan-b"]
+    # Only non-archived assets count, so a dataset whose only asset is archived is listed as orphaned.
+    # The archived search only filters archived assets out of the assets reached through runs.
+    assert client.search_assets.call_args_list == [call(), call(archive_status=ArchiveStatusFilter.ARCHIVED)]

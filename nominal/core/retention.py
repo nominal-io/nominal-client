@@ -63,8 +63,10 @@ class RetentionExemption:
         )
 
 
-def _policy_to_proto(policy: RetentionPolicy) -> dataset_retention_pb2.RetentionPolicy:
+def _policy_to_proto(policy: RetentionPolicy | None) -> dataset_retention_pb2.RetentionPolicy | None:
     match policy:
+        case None:
+            return None
         case KeepForever():
             return dataset_retention_pb2.RetentionPolicy(keep_forever=dataset_retention_pb2.KeepForever())
         case KeepUntilExpiry(expiry_days=expiry_days):
