@@ -12,6 +12,7 @@ import pytest
 
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core.dataset import Dataset
+from nominal.core.retention import KeepForever
 from nominal.experimental.stream_v2 import create_write_stream
 from nominal.protos.write.nominal_write_pb2 import WriteRequestNominal
 
@@ -43,6 +44,7 @@ def mock_dataset(mock_clients):
         labels=[],
         bounds=None,
         is_archived=False,
+        retention_policy=KeepForever(),
     )
 
 

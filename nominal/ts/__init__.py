@@ -735,6 +735,18 @@ class _SecondsNanos(NamedTuple):
 
 _MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0)
 _MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
+
+
+def _time_range_to_proto(
+    start: datetime | IntegralNanosecondsUTC, end: datetime | IntegralNanosecondsUTC
+) -> time_pb2.Range:
+    """Convert a time interval to the proto `Range`, with both ends set."""
+    return time_pb2.Range(
+        start=_SecondsNanos.from_flexible(start).to_proto(),
+        end=_SecondsNanos.from_flexible(end).to_proto(),
+    )
+
+
 """
 The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
 The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.

@@ -25,6 +25,7 @@ from nominal.exceptions import (
     NominalAuthenticationError,
     NominalConfigError,
     NominalError,
+    NominalFailedPreconditionError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
     NominalPermissionDeniedError,
@@ -270,6 +271,7 @@ def test_http_grpc_channel_rejects_nonliteral_or_remote_hosts_before_channel_cre
         (grpc.StatusCode.NOT_FOUND, NominalNotFoundError),
         (grpc.StatusCode.ALREADY_EXISTS, NominalAlreadyExistsError),
         (grpc.StatusCode.INVALID_ARGUMENT, NominalInvalidArgumentError),
+        (grpc.StatusCode.FAILED_PRECONDITION, NominalFailedPreconditionError),
     ],
 )
 def test_translate_grpc_errors_maps_known_status_codes(code, expected, fake_rpc_error) -> None:
