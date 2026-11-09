@@ -70,6 +70,7 @@ def make_enriched_dataset():
         *,
         name: str = "A dataset",
         derived_definition: scout_catalog.DerivedDefinition | None = None,
+        retention_policy: scout_catalog.RetentionPolicy | None = None,
     ) -> scout_catalog.EnrichedDataset:
         return scout_catalog.EnrichedDataset(
             rid=rid,
@@ -86,7 +87,8 @@ def make_enriched_dataset():
             ingest_date="2026-01-01T00:00:00Z",
             last_ingest_status=api.IngestStatusV2(success=api.SuccessResult()),
             origin_metadata=scout_catalog.DatasetOriginMetadata(),
-            retention_policy=scout_catalog.RetentionPolicy(type=scout_catalog.RetentionPolicyType.KEEP_FOREVER),
+            retention_policy=retention_policy
+            or scout_catalog.RetentionPolicy(type=scout_catalog.RetentionPolicyType.KEEP_FOREVER),
             timestamp_type=scout_catalog.WeakTimestampType.ABSOLUTE,
             derived_definition=derived_definition,
         )

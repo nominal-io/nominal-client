@@ -47,6 +47,7 @@ from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
+from nominal.protos.storage.v1 import dataset_retention_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
@@ -163,6 +164,7 @@ class ClientsBunch:
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
+    dataset_retention: dataset_retention_pb2_grpc.DatasetRetentionServiceStub
     event: event_pb2_grpc.EventServiceStub
     ingest_v2: ingest_service_pb2_grpc.IngestServiceStub
     integrations: integrations_pb2_grpc.IntegrationsServiceStub
@@ -335,6 +337,7 @@ class ClientsBunch:
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),
+            dataset_retention=grpc_factory(dataset_retention_pb2_grpc.DatasetRetentionServiceStub),
             event=grpc_factory(event_pb2_grpc.EventServiceStub),
             ingest_v2=grpc_factory(ingest_service_pb2_grpc.IngestServiceStub),
             integrations=grpc_factory(integrations_pb2_grpc.IntegrationsServiceStub),
