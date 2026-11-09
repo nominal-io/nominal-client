@@ -46,7 +46,6 @@ from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.retention import (
-    KeepForever,
     RetentionExemption,
     RetentionPolicy,
     _policy_from_conjure,
@@ -95,7 +94,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
-    retention_policy: RetentionPolicy = KeepForever()
+    retention_policy: RetentionPolicy
     """How long this dataset's data is retained. A policy type this client version does not recognize is an
     `UnknownRetentionPolicy`."""
 
@@ -1339,9 +1338,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
             NominalError: If the request fails.
         """
-        request = dataset_retention_pb2.UpdateRetentionPolicyRequest(dataset_rid=self.rid)
-        if policy is not None:
-            request.retention_policy.CopyFrom(_policy_to_proto(policy))
+        request = dataset_retention_pb2.UpdateRetentionPolicyRequest(
+            dataset_rid=self.rid, retention_policy=_policy_to_proto(policy)
+        )
         with translate_grpc_errors():
             self._clients.dataset_retention.UpdateRetentionPolicy(request)
 
