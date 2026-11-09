@@ -7,6 +7,7 @@ import pytest
 
 from nominal.core.channel import ChannelDataType, CreateChannelRequest
 from nominal.core.dataset import Dataset
+from nominal.core.retention import KeepForever
 from nominal.exceptions import NominalPermissionDeniedError
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as metadata_proto
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2 as proto
@@ -33,6 +34,7 @@ def datasource(clients):
         is_archived=False,
         rid="ri.datasource.test",
         _clients=clients,
+        retention_policy=KeepForever(),
     )
 
 
