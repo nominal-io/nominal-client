@@ -12,7 +12,6 @@ from nominal_api import api, scout_catalog
 from nominal.core._dataset_scope_ingest import _DatasetScopeIngestMixin
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.log import LogPoint
-from nominal.core.retention import KeepForever
 from nominal.core.unit import Unit
 from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError
@@ -42,7 +41,6 @@ def mock_dataset(mock_clients):
         labels=[],
         is_archived=False,
         _clients=mock_clients,
-        retention_policy=KeepForever(),
     )
 
     spy: MagicMock = MagicMock(wraps=ds.refresh)
