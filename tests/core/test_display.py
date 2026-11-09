@@ -22,7 +22,6 @@ from nominal.core import (
     set_display_options,
 )
 from nominal.core.attachment import _attachments_section
-from nominal.core.retention import KeepForever
 from nominal.exceptions import NominalConfigError
 from nominal.protos.run.v1 import run_service_pb2
 
@@ -51,7 +50,6 @@ def _dataset(clients: object, **overrides: object) -> Dataset:
         labels=[],
         bounds=Bounds(start=START, end=START + 90_000_000_000),
         is_archived=False,
-        retention_policy=KeepForever(),
         _clients=clients,
     )
     fields.update(overrides)

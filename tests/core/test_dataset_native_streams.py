@@ -12,7 +12,6 @@ from urllib3.response import HTTPResponse
 from nominal import ts
 from nominal.core import Dataset, FileTypes
 from nominal.core.dataset_file import IngestStatus
-from nominal.core.retention import KeepForever
 
 LOCATION = "s3://backend-selected-bucket/workspace/opaque%2Fkey+name"
 
@@ -45,7 +44,6 @@ def dataset() -> Dataset:
         labels=[],
         is_archived=False,
         _clients=clients,
-        retention_policy=KeepForever(),
     )
 
 

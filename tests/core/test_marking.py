@@ -10,7 +10,6 @@ from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.elements import Symbol
 from nominal.core.marking import MarkableMixin, Marking
-from nominal.core.retention import KeepForever
 from nominal.core.video import Video
 from nominal.exceptions import NominalError, NominalNotFoundError, NominalPermissionDeniedError
 from nominal.protos.authorization.markings.v1 import markings_pb2
@@ -84,7 +83,6 @@ def _build_dataset(clients: MagicMock, rid: str) -> Dataset:
         labels=[],
         bounds=None,
         is_archived=False,
-        retention_policy=KeepForever(),
     )
 
 

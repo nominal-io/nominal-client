@@ -46,6 +46,7 @@ from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
 from nominal.core.retention import (
+    KeepForever,
     RetentionExemption,
     RetentionPolicy,
     _policy_from_conjure,
@@ -94,7 +95,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
-    retention_policy: RetentionPolicy
+    retention_policy: RetentionPolicy = KeepForever()
     """How long this dataset's data is retained. A policy type this client version does not recognize is an
     `UnknownRetentionPolicy`."""
 
