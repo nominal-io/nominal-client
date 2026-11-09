@@ -1278,34 +1278,34 @@ def test_migrate_preserves_dataset_owner_with_impersonation(
     assert get_dataset_owner_rid(dest_dataset) == dest_user_rid
 
 
-def _skip_unless_retention_allowed(client: NominalClient, register_cleanup: RegisterCleanup, tenant: str) -> None:
+def _skip_unless_retention_allowed(client: NominalClient, register_cleanup: RegisterCleanup) -> None:
     """Skip the test unless the client may change retention, by trying it on a scratch dataset."""
     scratch = client.create_dataset(f"migration-e2e-retention-probe-{uuid4()}", labels=["migration-e2e"])
     register_cleanup(scratch.archive)
     try:
         scratch.upsert_retention_exemption("probe", datetime(2024, 1, 1), datetime(2024, 1, 2))
     except (NominalPermissionDeniedError, NominalFailedPreconditionError) as error:
-        pytest.skip(f"The {tenant} tenant does not allow retention changes: {error}")
+        pytest.skip(f"The tenant does not allow retention changes: {error}")
 
 
 def test_migrate_retention(
-    source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
     """Retention policies, manual exemptions, and run locks are copied; a locked run's exemptions are not duplicated.
 
-    Needs organization admin access on both tenants and dataset retention enabled on both, so the test
-    is skipped when either tenant refuses retention changes.
+    Copies within the destination tenant rather than from the source tenant: setting retention needs organization
+    admin access and dataset retention enabled, and the source tenant's CI user has neither. The copy goes through
+    the same code as a cross-tenant one, since the migrator reads the source objects and writes with the destination
+    client. The test is skipped when the tenant refuses retention changes.
     """
-    _skip_unless_retention_allowed(source_client, register_cleanup, "source")
-    _skip_unless_retention_allowed(dest_client, register_cleanup, "destination")
+    _skip_unless_retention_allowed(dest_client, register_cleanup)
     start = datetime(2024, 1, 1)
     end = start + timedelta(hours=1)
-    source_asset = _create_source_asset(source_client, register_cleanup)
-    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
-    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    source_asset = _create_source_asset(dest_client, register_cleanup)
+    source_ds = _create_source_dataset(dest_client, register_cleanup, source_asset)
+    source_run = _create_source_run(dest_client, register_cleanup, source_asset, start, end)
     source_ds.set_retention_policy(KeepUntilExpiry(expiry_days=3650))
     source_ds.upsert_retention_exemption("migration-e2e-manual", start, end, description="manual exemption")
     source_run.lock()
