@@ -10,6 +10,7 @@ import pytest
 from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, WriteStream, infer_point_type
 from nominal.core.dataset import Dataset
+from nominal.core.retention import KeepForever
 from nominal.protos.write.nominal_write_pb2 import (
     Series,
     StructPoints,
@@ -52,6 +53,7 @@ def mock_dataset(mock_clients):
         labels=[],
         bounds=None,
         is_archived=False,
+        retention_policy=KeepForever(),
     )
 
 

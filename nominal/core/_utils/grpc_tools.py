@@ -34,6 +34,7 @@ from nominal.exceptions import (
     NominalAlreadyExistsError,
     NominalAuthenticationError,
     NominalError,
+    NominalFailedPreconditionError,
     NominalInvalidArgumentError,
     NominalNotFoundError,
     NominalPermissionDeniedError,
@@ -299,6 +300,7 @@ _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
     grpc.StatusCode.NOT_FOUND: NominalNotFoundError,
     grpc.StatusCode.ALREADY_EXISTS: NominalAlreadyExistsError,
     grpc.StatusCode.INVALID_ARGUMENT: NominalInvalidArgumentError,
+    grpc.StatusCode.FAILED_PRECONDITION: NominalFailedPreconditionError,
 }
 
 

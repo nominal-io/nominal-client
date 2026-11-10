@@ -9,6 +9,7 @@ Covers:
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
   - Creating channels on a datasource via add_channel and batch_add_channels
   - Upserting channels on a datasource via batch_update_or_create_channels
+  - Setting dataset retention policies and managing retention exemptions, including those created by locking a run
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -30,11 +31,17 @@ from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType, CreateChannelRequest
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
+from nominal.core.retention import KeepForever, KeepUntilExpiry
+from nominal.exceptions import NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
 ArchiveFn = Callable[[object], None]
+
+# Microsecond-aligned: the server stores exemption bounds at microsecond precision, so finer values come back rounded.
+EXEMPTION_START_NANOS = 1_700_000_000_123_456_000
+EXEMPTION_END_NANOS = 1_700_000_100_987_654_000
 
 DATASET_REF = "dataset-ref"
 VIDEO_REF = "video-ref"
@@ -435,3 +442,79 @@ def test_batch_update_or_create_channels(client: NominalClient, archive: Archive
     assert channels["gyro"].description == "gyro xyz"
     assert channels["gyro"].data_type == ChannelDataType.DOUBLE_ARRAY
     assert channels["temperature"].unit == "degC"
+
+
+def _create_retention_dataset(client: NominalClient, archive: ArchiveFn) -> Dataset:
+    """Create a dataset, skipping the test unless the client may change dataset retention.
+
+    Retention changes need organization admin access and dataset retention to be enabled for the organization.
+    """
+    ds = client.create_dataset(f"dataset-retention-{uuid4()}")
+    archive(ds)
+    try:
+        ds.upsert_retention_exemption("e2e-probe", EXEMPTION_START_NANOS, EXEMPTION_END_NANOS)
+    except (NominalPermissionDeniedError, NominalFailedPreconditionError) as error:
+        pytest.skip(f"Retention changes are not allowed for this client: {error}")
+    ds.delete_retention_exemption("e2e-probe")
+    return ds
+
+
+def test_dataset_retention_policy_roundtrip(client: NominalClient, archive: ArchiveFn):
+    """A dataset's retention policy can be set to an expiry and cleared back to keeping data forever."""
+    ds = _create_retention_dataset(client, archive)
+    assert ds.retention_policy == KeepForever()
+
+    ds.set_retention_policy(KeepUntilExpiry(expiry_days=3650))
+    ds.refresh()
+    assert ds.retention_policy == KeepUntilExpiry(expiry_days=3650)
+
+    ds.set_retention_policy(None)
+    ds.refresh()
+    assert ds.retention_policy == KeepForever()
+
+
+def test_dataset_retention_exemption_roundtrip(client: NominalClient, archive: ArchiveFn):
+    """An exemption is stored with its bounds, replaced by upserting its source ID, and deleted by it."""
+    ds = _create_retention_dataset(client, archive)
+
+    stored = ds.upsert_retention_exemption(
+        "e2e-manual", EXEMPTION_START_NANOS, EXEMPTION_END_NANOS, description="manual exemption"
+    )
+    assert (stored.source_id, stored.start, stored.end) == ("e2e-manual", EXEMPTION_START_NANOS, EXEMPTION_END_NANOS)
+    assert ds.list_retention_exemptions(EXEMPTION_START_NANOS, EXEMPTION_END_NANOS) == [stored]
+    assert stored.description == "manual exemption"
+
+    ds.upsert_retention_exemption("e2e-manual", EXEMPTION_START_NANOS, EXEMPTION_END_NANOS - 1_000_000_000)
+    (replaced,) = ds.list_retention_exemptions(EXEMPTION_START_NANOS, EXEMPTION_END_NANOS)
+    assert replaced.end == EXEMPTION_END_NANOS - 1_000_000_000
+
+    ds.delete_retention_exemption("e2e-manual")
+    assert ds.list_retention_exemptions(EXEMPTION_START_NANOS, EXEMPTION_END_NANOS) == []
+
+
+def test_lock_run_creates_and_unlock_removes_dataset_exemptions(client: NominalClient, archive: ArchiveFn):
+    """Locking a run exempts its asset's datasets over the run's time range, with the run's RID as the source ID."""
+    ds = _create_retention_dataset(client, archive)
+    asset = client.create_asset(f"asset-retention-{uuid4()}")
+    archive(asset)
+    asset.add_dataset("primary", ds)
+    start, end = _create_random_start_end()
+    run = client.create_run(f"run-retention-{uuid4()}", start, end, assets=[asset])
+    archive(run)
+    assert not run.is_locked
+    # The window is widened by a second so the assertions don't depend on bound-inclusive overlap rules.
+    window_start = _SecondsNanos.from_datetime(start - timedelta(seconds=1)).to_nanoseconds()
+    window_end = _SecondsNanos.from_datetime(end + timedelta(seconds=1)).to_nanoseconds()
+
+    run.lock()
+    run.refresh()
+    assert run.is_locked
+    (exemption,) = ds.list_retention_exemptions(window_start, window_end)
+    assert exemption.source_id == run.rid
+    assert exemption.start == _SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert exemption.end == _SecondsNanos.from_datetime(end).to_nanoseconds()
+
+    run.unlock()
+    run.refresh()
+    assert not run.is_locked
+    assert ds.list_retention_exemptions(window_start, window_end) == []

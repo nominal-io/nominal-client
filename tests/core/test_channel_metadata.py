@@ -6,6 +6,7 @@ from nominal_api import datasource_api
 
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.dataset import Dataset
+from nominal.core.retention import KeepForever
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2 as pb
@@ -23,6 +24,7 @@ def _dataset(clients: MagicMock, rid: str) -> Dataset:
         labels=[],
         bounds=None,
         is_archived=False,
+        retention_policy=KeepForever(),
     )
 
 
