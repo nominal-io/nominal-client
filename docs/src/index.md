@@ -79,7 +79,7 @@ Data integration tutorial <guides/data-integration-tutorial>
 
 ```{toctree}
 :hidden:
-:caption: Command line interface
+:caption: CLI
 
 Overview <guides/cli/overview>
 Download data <guides/cli/downloading-data>
@@ -141,7 +141,7 @@ Object identification <guides/video/object-identification>
 
 ```{toctree}
 :hidden:
-:caption: Advanced Ingest Guides
+:caption: Ingest guides
 
 Ingest jobs <guides/ingest/ingestion-jobs>
 File extractors <guides/extractors/overview>
