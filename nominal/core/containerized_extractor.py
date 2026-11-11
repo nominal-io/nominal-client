@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 
-from nominal_api import upload_api
-
 from nominal import ts
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -40,6 +38,7 @@ from nominal.core.container_image import (
 from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2, containerized_extractor_pb2_grpc
 from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.uploads.v1 import uploads_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -62,7 +61,7 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
         @property
         def containerized_extractor(self) -> containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
 
     def _get_latest_api(self) -> containerized_extractor_pb2.ContainerizedExtractor:
         with translate_grpc_errors():
@@ -244,11 +243,11 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             resources=resources._to_proto(),
         )
         request.object_path = upload_multipart_file(
-            self._clients.auth_header,
             self._workspace_rid,
             Path(tarball),
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         with translate_grpc_errors():
             response = self._clients.registry.CreateImage(request)

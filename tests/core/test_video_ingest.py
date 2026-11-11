@@ -25,14 +25,14 @@ def test_manifest_selects_the_arm_for_its_mode(kwargs: dict[str, Any], expected_
     that the other two are unset.
     """
     with patch("nominal.core.video._upload_frame_timestamps", return_value="s3://path"):
-        manifest = _build_video_file_timestamp_manifest("auth", "ws", MagicMock(), **kwargs)
+        manifest = _build_video_file_timestamp_manifest("ws", MagicMock(), **kwargs)
 
     assert ConjureEncoder.do_encode(manifest)["type"] == expected_arm
 
 
 def test_manifest_from_mcap_topic_carries_the_topic_locator() -> None:
     """The mcap arm keeps the topic it was given, which is what locates the video channel."""
-    manifest = _build_video_file_timestamp_manifest("auth", None, MagicMock(), mcap_topic="/camera/front")
+    manifest = _build_video_file_timestamp_manifest(None, MagicMock(), mcap_topic="/camera/front")
 
     assert manifest.mcap is not None
     assert manifest.mcap.mcap_channel_locator.topic == "/camera/front"
@@ -41,7 +41,7 @@ def test_manifest_from_mcap_topic_carries_the_topic_locator() -> None:
 def test_manifest_from_frame_timestamps_uploads_the_sidecar() -> None:
     """Per-frame timestamps are uploaded, and the returned path is what the arm references."""
     with patch("nominal.core.video._upload_frame_timestamps", return_value="s3://path") as upload:
-        manifest = _build_video_file_timestamp_manifest("auth", "ws", MagicMock(), frame_timestamps=[1, 2, 3])
+        manifest = _build_video_file_timestamp_manifest("ws", MagicMock(), frame_timestamps=[1, 2, 3])
 
     assert manifest.s3path == "s3://path"
     upload.assert_called_once()
@@ -59,7 +59,7 @@ def test_manifest_from_frame_timestamps_uploads_the_sidecar() -> None:
 def test_manifest_requires_exactly_one_mode(kwargs: dict[str, Any]) -> None:
     """Zero or multiple timestamp modes raise a ValueError."""
     with pytest.raises(NominalVideoTimestampModeError, match="exactly one of"):
-        _build_video_file_timestamp_manifest("auth", None, MagicMock(), **kwargs)
+        _build_video_file_timestamp_manifest(None, MagicMock(), **kwargs)
 
 
 def _video() -> Video:
@@ -95,4 +95,4 @@ def test_add_file_requires_exactly_one_timestamp_mode(timestamp_modes):
 def test_timestamp_mode_error_is_also_a_value_error() -> None:
     """These call sites raised ValueError before the type existed, so `except ValueError` still works."""
     with pytest.raises(ValueError, match="exactly one of"):
-        _build_video_file_timestamp_manifest("auth", None, MagicMock())
+        _build_video_file_timestamp_manifest(None, MagicMock())

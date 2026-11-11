@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import Mapping, Protocol, Self, Sequence, overload
 
 from google.protobuf.field_mask_pb2 import FieldMask
-from nominal_api import ingest_api, upload_api
+from nominal_api import ingest_api
 
 from nominal._utils.iterator_tools import batched
 from nominal.core import Marking, NominalClient
@@ -25,6 +25,7 @@ from nominal.core.marking import _marking_rids
 from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.protos.spatial.v2 import spatial_pb2, spatial_pb2_grpc
 from nominal.protos.types import types_pb2
+from nominal.protos.uploads.v1 import uploads_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, Relative, _SecondsNanos, _validate_timestamp_pair
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,7 @@ class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
 
     def _get_latest_api(self) -> spatial_pb2.Spatial:
         return _get_spatial(self._clients, self.rid)
@@ -336,12 +337,12 @@ class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
     def _upload_csv(self, path: Path) -> str:
         """Upload the CSV to object storage and return its location."""
         return upload_multipart_file(
-            self._clients.auth_header,
             self._clients.resolve_default_workspace_rid(),
             path,
             self._clients.upload,
             file_type=FileTypes.CSV,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
 
     def _submit_ingest(self, source_handle: str, described: _PointCloudCsv) -> IngestionJob:

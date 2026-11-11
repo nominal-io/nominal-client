@@ -181,7 +181,7 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
             output_format=output_format,
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.registry.CreateImage.assert_not_called()
 
 
@@ -284,7 +284,7 @@ def test_register_image_rejects_unserializable_resources_before_uploading(tmp_pa
             resources=core.ContainerResources(cpu_cores=-1),
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
 
 
 def test_set_active_image_polls_then_activates() -> None:

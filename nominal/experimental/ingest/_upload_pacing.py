@@ -1,8 +1,7 @@
 """Request governance for the experimental uploader: two-layer backoff, throughput-first.
 
-The transport performs each request's own short jittered retries (the standard conjure
-client retries throttle statuses locally on a sub-second ladder). This module adds the two
-pieces that need to be global:
+The shared gRPC channel retries uncommitted requests with jittered backoff. This module
+adds the two pieces that need to be global:
 
 - a fixed-width admission lane (`max_concurrency` tickets) so at most N requests ever touch
   the Nominal API concurrently — bounding the offered pressure structurally instead of
@@ -24,9 +23,10 @@ import threading
 import time
 from typing import Callable, TypeVar
 
+import grpc
 import requests
 
-from nominal.exceptions import NominalRequestThrottledError
+from nominal.exceptions import NominalError, NominalRequestThrottledError
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,13 @@ _BACKOFF_DECAY = 0.9  # per-success decay: a healthy lane forgets a storm within
 def _is_throttle_error(exc: BaseException) -> bool:
     """True if `exc` is the server refusing the request because the caller is over budget.
 
-    `RetryError` is the primary signal: the transport's own short retry ladder was exhausted,
-    meaning the throttling is sustained rather than momentary. Raw 429/503 surface as
-    `requests.HTTPError` (the conjure client's errors subclass it) from transports that do not
-    retry statuses locally.
+    gRPC UNAVAILABLE/RESOURCE_EXHAUSTED statuses can arrive raw or through SDK error
+    translation. HTTP retry exhaustion and 429/503 responses remain retryable too.
     """
+    if isinstance(exc, NominalError) and isinstance(exc.__cause__, grpc.RpcError):
+        exc = exc.__cause__
+    if isinstance(exc, grpc.RpcError):
+        return exc.code() in (grpc.StatusCode.RESOURCE_EXHAUSTED, grpc.StatusCode.UNAVAILABLE)
     if isinstance(exc, requests.exceptions.RetryError):
         return True
     if isinstance(exc, requests.exceptions.HTTPError):
