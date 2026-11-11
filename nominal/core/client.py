@@ -1173,13 +1173,13 @@ class NominalClient:
         file_type = FileType(*file_type)
         workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             attachment,
             name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         request = attachments_pb2.CreateAttachmentRequest(
             attachment=attachments_pb2.Attachment(

@@ -8,12 +8,14 @@ from queue import Queue
 from typing import BinaryIO, Iterable, Mapping
 
 import requests
-from nominal_api import ingest_api, upload_api
 
 from nominal.core._utils.filenames import resolve_upload_filename
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
+from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
+from nominal.protos.uploads.v1 import uploads_pb2, uploads_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ def _wrap_multipart_retry_exception(
 
 def _put_part(
     multipart_session: requests.Session,
-    sign_response: ingest_api.SignPartResponse,
+    sign_response: uploads_pb2.UploadPartUrl,
     data: bytes,
     *,
     verify: bool | str | None,
@@ -63,7 +65,6 @@ def _put_part(
     put_response = multipart_session.put(
         sign_response.url,
         data=data,
-        headers=sign_response.headers,
         verify=verify,
         timeout=timeout,
     )
@@ -72,39 +73,42 @@ def _put_part(
 
 
 def _sign_and_put_part(
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     multipart_session: requests.Session,
-    auth_header: str,
     key: str,
     upload_id: str,
     part: int,
     data: bytes,
     num_retries: int = 3,
+    verify: bool | str | None = None,
 ) -> requests.Response:
     """Sign and PUT a single in-memory part to S3, retrying transient failures.
 
     The retry wrapper for the legacy single-stream path; the driver-model uploader runs its own
-    gated, drainable retry loop over the same `sign_part` endpoint and `_put_part` primitive.
+    gated, drainable retry loop over the same signing RPC and `_put_part` primitive.
     """
     attempt_errors: list[NominalMultipartUploadError] = []
     for attempt in range(num_retries):
         log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
         try:
             logger.debug("Signing part %d for upload", part, extra=log_extras)
-            sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+            with translate_grpc_errors():
+                sign_response = upload_client.CreateUploadPartUrl(
+                    uploads_pb2.CreateUploadPartUrlRequest(upload_id=upload_id, part_number=part)
+                ).upload_part_url
             logger.debug(
                 "Successfully signed part %d for upload",
                 part,
-                extra={"response.url": sign_response.url, **log_extras},
+                extra=log_extras,
             )
 
             logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
-            put_response = _put_part(multipart_session, sign_response, data, verify=upload_client._verify)
+            put_response = _put_part(multipart_session, sign_response, data, verify=verify)
             logger.debug(
                 "Finished pushing part %d for multipart upload with status %d",
                 part,
                 put_response.status_code,
-                extra={"response.url": put_response.url, **log_extras},
+                extra=log_extras,
             )
             return put_response
         except Exception as ex:
@@ -123,41 +127,41 @@ def _sign_and_put_part(
 
 
 def _sign_and_upload_part_job(
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     multipart_session: requests.Session,
-    auth_header: str,
     key: str,
     upload_id: str,
     q: Queue[bytes],
     part: int,
     num_retries: int = 3,
+    verify: bool | str | None = None,
 ) -> requests.Response:
     data = q.get()
     try:
-        return _sign_and_put_part(
-            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries
-        )
+        return _sign_and_put_part(upload_client, multipart_session, key, upload_id, part, data, num_retries, verify)
     finally:
         q.task_done()
 
 
 def _initiate_multipart_upload(
-    upload_client: upload_api.UploadService,
-    auth_header: str,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     filename: str,
     mimetype: str,
     workspace_rid: str | None,
 ) -> tuple[str, str]:
     """Initiate a multipart upload. Returns (key, upload_id)."""
-    request = ingest_api.InitiateMultipartUploadRequest(filename=filename, filetype=mimetype, workspace=workspace_rid)
-    response = upload_client.initiate_multipart_upload(auth_header, request)
-    return response.key, response.upload_id
+    request = uploads_pb2.CreateMultipartUploadRequest(
+        multipart_upload=uploads_pb2.MultipartUpload(
+            file_name=filename, content_type=mimetype, workspace_rid=workspace_rid
+        )
+    )
+    with translate_grpc_errors():
+        response = upload_client.CreateMultipartUpload(request).multipart_upload
+    return response.object_key, response.upload_id
 
 
 def _complete_multipart_upload(
-    upload_client: upload_api.UploadService,
-    auth_header: str,
-    key: str,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     upload_id: str,
     etags: Mapping[int, str],
 ) -> str:
@@ -166,14 +170,17 @@ def _complete_multipart_upload(
     Parts are sent in ascending part-number order, which the storage provider requires.
     Returns the object location, or raises if the response carries none.
     """
-    parts = [ingest_api.Part(etag=etags[number], part_number=number) for number in sorted(etags)]
-    response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
-    if response.location is None:
+    parts = [uploads_pb2.UploadPart(etag=etags[number], part_number=number) for number in sorted(etags)]
+    with translate_grpc_errors():
+        response = upload_client.CompleteMultipartUpload(
+            uploads_pb2.CompleteMultipartUploadRequest(upload_id=upload_id, parts=parts)
+        )
+    if not response.object_path:
         raise NominalMultipartUploadFailed(
             "completing multipart upload failed: no location on response",
             [RuntimeError("Multipart upload completion returned no location")],
         )
-    return response.location
+    return response.object_path
 
 
 def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
@@ -182,15 +189,15 @@ def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
 
 
 def put_multipart_upload(
-    auth_header: str,
     workspace_rid: str | None,
     f: BinaryIO,
     filename: str,
     mimetype: str,
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    verify: bool | str | None = None,
 ) -> str:
     """Execute a multipart upload to S3.
 
@@ -198,14 +205,14 @@ def put_multipart_upload(
     each part go to a pre-signed URL to the storage provider.
 
     Args:
-        auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         f: Binary IO to upload
         filename: filename to use when uploading; sent literally as the object name
         mimetype: Type of data contained within binary stream
-        upload_client: Conjure upload client
+        upload_client: gRPC upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        verify: CA bundle or TLS verification setting for object-storage requests.
         header_provider: Optional provider for headers to include in all requests to object store
 
     Returns: Path to the uploaded object in S3
@@ -224,13 +231,13 @@ def put_multipart_upload(
 
     q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    key, upload_id = _initiate_multipart_upload(upload_client, auth_header, filename, mimetype, workspace_rid)
+    key, upload_id = _initiate_multipart_upload(upload_client, filename, mimetype, workspace_rid)
 
     # One session shared across all part jobs for this upload.
     session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
 
     # Prefill arguments for helper function
-    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q)
+    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, session, key, upload_id, q, verify=verify)
 
     jobs: list[concurrent.futures.Future[requests.Response]] = []
 
@@ -258,39 +265,46 @@ def put_multipart_upload(
         q.join()
 
         # Mark the upload as completed. This single-stream path tracks no ETags of its own, so it
-        # asks the server which parts landed — one extra request vs supplying the ETags directly.
-        parts_with_size = upload_client.list_parts(auth_header, key, upload_id)
-        return _complete_multipart_upload(
-            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts_with_size}
+        # asks the server which parts landed, following every page before completing.
+        parts_with_size = (
+            part
+            for page in paginate_grpc(
+                upload_client.ListUploadParts,
+                request_factory=lambda token: uploads_pb2.ListUploadPartsRequest(
+                    upload_id=upload_id, page_token=token or "", page_size=1000
+                ),
+            )
+            for part in page.parts
         )
+        return _complete_multipart_upload(upload_client, upload_id, {p.part_number: p.etag for p in parts_with_size})
     except Exception as e:
-        _abort(upload_client, auth_header, key, upload_id, e)
+        _abort(upload_client, key, upload_id, e)
         raise e
 
 
 def upload_multipart_io(
-    auth_header: str,
     workspace_rid: str | None,
     f: BinaryIO,
     name: str,
     file_type: FileType,
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    verify: bool | str | None = None,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers
 
     Args:
-        auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         f: Binary IO to upload
         name: Upload filename. Existing extensions are preserved; only names without one use the default.
             Sent literally (no URL-encoding); unsafe storage characters raise ValueError.
         file_type: MIME type and default extension to use when the filename has none.
-        upload_client: Conjure upload client
+        upload_client: gRPC upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        verify: CA bundle or TLS verification setting for object-storage requests.
         header_provider: Optional provider for headers to include in all requests to object store
 
     Returns: Path to the uploaded object in S3
@@ -301,7 +315,6 @@ def upload_multipart_io(
     """
     safe_filename = resolve_upload_filename(name, file_type.extension)
     return put_multipart_upload(
-        auth_header,
         workspace_rid,
         f,
         safe_filename,
@@ -310,29 +323,30 @@ def upload_multipart_io(
         chunk_size=chunk_size,
         max_workers=max_workers,
         header_provider=header_provider,
+        verify=verify,
     )
 
 
 def upload_multipart_file(
-    auth_header: str,
     workspace_rid: str | None,
     file: pathlib.Path,
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     file_type: FileType | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    verify: bool | str | None = None,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers.
 
     Args:
-        auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
         file: File to upload to S3
-        upload_client: Conjure upload client
+        upload_client: gRPC upload client
         file_type: Manually override inferred file type for the given file
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        verify: CA bundle or TLS verification setting for object-storage requests.
         header_provider: Optional provider for headers to include in all requests to object store
 
     Returns: Path to the uploaded object in S3
@@ -346,7 +360,6 @@ def upload_multipart_file(
 
     with file.open("rb") as file_handle:
         return upload_multipart_io(
-            auth_header,
             workspace_rid,
             file_handle,
             file.name,
@@ -355,17 +368,17 @@ def upload_multipart_file(
             chunk_size=chunk_size,
             max_workers=max_workers,
             header_provider=header_provider,
+            verify=verify,
         )
 
 
-def _abort(
-    upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: BaseException
-) -> None:
+def _abort(upload_client: uploads_pb2_grpc.UploadServiceStub, key: str, upload_id: str, e: BaseException) -> None:
     logger.error(
         "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}
     )
     try:
-        upload_client.abort_multipart_upload(auth_header, key, upload_id)
+        with translate_grpc_errors():
+            upload_client.DeleteMultipartUpload(uploads_pb2.DeleteMultipartUploadRequest(upload_id=upload_id))
     except Exception as exc:
         logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
-        raise exc from e
+        raise

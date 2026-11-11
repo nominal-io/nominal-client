@@ -32,6 +32,7 @@ from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
+from nominal.protos.uploads.v1 import uploads_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 
 
@@ -283,6 +284,7 @@ def test_from_config_wires_grpc_services_through_one_shared_channel(monkeypatch)
     assert isinstance(clients.channel_metadata, channel_metadata_pb2_grpc.ChannelMetadataServiceStub)
     assert isinstance(clients.run, run_service_pb2_grpc.RunServiceStub)
     assert isinstance(clients.units, units_pb2_grpc.UnitsServiceStub)
+    assert isinstance(clients.upload, uploads_pb2_grpc.UploadServiceStub)
     assert isinstance(clients.comments, comments_pb2_grpc.CommentsServiceStub)
     assert isinstance(clients.workspace, workspaces_pb2_grpc.WorkspaceServiceStub)
     assert isinstance(clients.roles, roles_pb2_grpc.RoleServiceStub)

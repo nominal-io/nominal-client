@@ -18,7 +18,6 @@ from nominal_api import (
     scout_datasource,
     scout_video,
     storage_writer_api,
-    upload_api,
 )
 
 from nominal._utils.dataclass_tools import LazyField
@@ -49,6 +48,7 @@ from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.storage.v1 import dataset_retention_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
+from nominal.protos.uploads.v1 import uploads_pb2_grpc
 from nominal.protos.workspaces.v1 import workspaces_pb2, workspaces_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -153,11 +153,11 @@ class ClientsBunch:
     series_metadata: series_metadata_pb2_grpc.SeriesMetadataServiceStub
     storage_writer: storage_writer_api.NominalChannelWriterService
     template: scout.TemplateService
-    upload: upload_api.UploadService
     video_file: scout_video.VideoFileService
     video: scout_video.VideoService
 
     # GRPC services
+    upload: uploads_pb2_grpc.UploadServiceStub
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
     channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
@@ -179,6 +179,12 @@ class ClientsBunch:
     units: units_pb2_grpc.UnitsServiceStub
     users: users_pb2_grpc.UserServiceStub
     workspace: workspaces_pb2_grpc.WorkspaceServiceStub
+
+    @property
+    def trust_store_path(self) -> str | None:
+        """Configured CA bundle for direct object-storage requests."""
+        security = self._service_config.security
+        return security.trust_store_path if security is not None else None
 
     @property
     def api_base_url(self) -> str:
@@ -327,10 +333,10 @@ class ClientsBunch:
             series_metadata=grpc_factory(series_metadata_pb2_grpc.SeriesMetadataServiceStub),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             template=client_factory(scout.TemplateService),
-            upload=client_factory(upload_api.UploadService),
             video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             # GRPC Service Stubs
+            upload=grpc_factory(uploads_pb2_grpc.UploadServiceStub),
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),
@@ -356,6 +362,9 @@ class ClientsBunch:
 
 
 class HasScoutParams(Protocol):
+    @property
+    def trust_store_path(self) -> str | None: ...
+
     @property
     def api_base_url(self) -> str: ...
     @property

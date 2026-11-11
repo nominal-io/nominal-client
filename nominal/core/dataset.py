@@ -390,13 +390,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         file_type = FileType(*file_type)
         workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             dataset,
             file_name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
 
         request = ingest_api.IngestRequest(
@@ -507,12 +507,12 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         # Upload to S3
         s3_path = upload_multipart_file(
-            self._clients.auth_header,
             workspace_rid,
             avro_path,
             self._clients.upload,
             file_type=file_type,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
 
         # Ingest to Nominal
@@ -679,13 +679,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 epoch_of_time_unit=typed_timestamp_type._to_conjure_epoch_timestamp(), field_name=timestamp_column
             )
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             self._clients.resolve_default_workspace_rid(),
             journal,
             file_name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -768,13 +768,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
         workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             mcap,
             file_name,
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
 
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -1057,22 +1057,22 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """Upload a video stream and submit the VideoOptsV2 ingest shared by all add-video methods."""
         workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header,
             workspace_rid,
             self._clients.upload,
             start=start,
             frame_timestamps=frame_timestamps,
             mcap_topic=mcap_topic,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             video,
             file_name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         request = ingest_api.IngestRequest(
             options=self._build_video_ingest_options(
@@ -1156,13 +1156,13 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         if file_name is None:
             file_name = self.name
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             self._clients.resolve_default_workspace_rid(),
             dataflash,
             file_name,
             FileTypes.DATAFLASH,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -1262,11 +1262,11 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         for source, source_path in sources.items():
             logger.info("Uploading %s (%s) to s3", source_path, source)
             s3_path = upload_multipart_file(
-                self._clients.auth_header,
                 workspace_rid,
                 Path(source_path),
                 self._clients.upload,
                 header_provider=self._clients.header_provider,
+                verify=self._clients.trust_store_path,
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path

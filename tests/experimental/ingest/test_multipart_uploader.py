@@ -8,9 +8,12 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterator
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 import requests
 
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.multipart import _abort
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import (
     NominalMultipartUploadError,
@@ -21,7 +24,10 @@ from nominal.experimental.ingest._multipart_uploader import (
     DEFAULT_SMALL_FILE_ROUTE_MAX_BYTES,
     MAX_SMALL_FILE_ROUTE_BYTES,
     MultipartUploader,
+    _is_transient_upload_error,
 )
+from nominal.experimental.ingest._upload_pacing import _is_throttle_error, _ThrottleGate
+from nominal.protos.uploads.v1 import uploads_pb2
 
 WriteFile = Callable[[str, int], pathlib.Path]
 MakeUploader = Callable[..., "tuple[MultipartUploader, FakeUploadService, FakePutSession]"]
@@ -45,45 +51,67 @@ class FakeUploadService:
         self.upload_file_started = threading.Event()
         self.upload_file_release = threading.Event()
         self.upload_file_release.set()
-        self._verify = False
 
     def _record(self, name: str) -> None:
         with self.lock:
             self.calls.append(name)
 
-    def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
+    def CreateMultipartUpload(
+        self, request: uploads_pb2.CreateMultipartUploadRequest
+    ) -> uploads_pb2.CreateMultipartUploadResponse:
         self._record("initiate")
-        return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}")
+        return uploads_pb2.CreateMultipartUploadResponse(
+            multipart_upload=uploads_pb2.MultipartUpload(
+                object_key=request.multipart_upload.file_name, upload_id=f"uid-{request.multipart_upload.file_name}"
+            )
+        )
 
-    def sign_part(self, auth: str, key: str, part: int, upload_id: str) -> Any:
+    def CreateUploadPartUrl(
+        self, request: uploads_pb2.CreateUploadPartUrlRequest
+    ) -> uploads_pb2.CreateUploadPartUrlResponse:
+        key = request.upload_id.removeprefix("uid-")
+        part = request.part_number
         self._record("sign")
         if self.fail_sign_for_key is not None and key == self.fail_sign_for_key:
             raise ConnectionError(f"sign failed for {key}")
-        return SimpleNamespace(url=f"https://s3.example/{key}/{part}", headers={})
+        return uploads_pb2.CreateUploadPartUrlResponse(
+            upload_part_url=uploads_pb2.UploadPartUrl(url=f"https://s3.example/{key}/{part}")
+        )
 
-    def complete_multipart_upload(self, auth: str, key: str, upload_id: str, parts: Any) -> Any:
+    def CompleteMultipartUpload(
+        self, request: uploads_pb2.CompleteMultipartUploadRequest
+    ) -> uploads_pb2.CompleteMultipartUploadResponse:
+        key = request.upload_id.removeprefix("uid-")
+        parts = request.parts
         self._record("complete")
         with self.lock:
             self.completed_etags[key] = {p.part_number: p.etag for p in parts}
-        return SimpleNamespace(location=f"s3://bucket/{key}")
+        return uploads_pb2.CompleteMultipartUploadResponse(object_path=f"s3://bucket/{key}")
 
-    def abort_multipart_upload(self, auth: str, key: str, upload_id: str) -> None:
+    def DeleteMultipartUpload(
+        self, request: uploads_pb2.DeleteMultipartUploadRequest
+    ) -> uploads_pb2.DeleteMultipartUploadResponse:
+        key = request.upload_id.removeprefix("uid-")
         self._record("abort")
         with self.lock:
             self.aborted.append(key)
+        return uploads_pb2.DeleteMultipartUploadResponse()
 
-    def list_parts(self, auth: str, key: str, upload_id: str) -> None:
+    def ListUploadParts(self, request: uploads_pb2.ListUploadPartsRequest) -> None:
         raise AssertionError("list_parts must not be called: etags come from the PUT responses")
 
-    def upload_file(
-        self, auth: str, body: bytes, file_name: str, size_bytes: int | None = None, workspace: str | None = None
-    ) -> str:
+    def UploadFile(self, requests: Any) -> uploads_pb2.UploadFileResponse:
+        messages = list(requests)
+        metadata = messages[0].metadata
+        file_name, size_bytes = metadata.file_name, metadata.size_bytes
+        body = b"".join(message.data for message in messages[1:])
+        assert all(0 < len(message.data) <= 1024 * 1024 for message in messages[1:])
         self._record("upload_file")
         with self.lock:
             self.upload_file_args.append((file_name, size_bytes, len(body)))
         self.upload_file_started.set()
         self.upload_file_release.wait(timeout=10)
-        return f"s3://bucket/{file_name}"
+        return uploads_pb2.UploadFileResponse(file=uploads_pb2.UploadedFile(object_path=f"s3://bucket/{file_name}"))
 
 
 class FakePutSession:
@@ -164,7 +192,7 @@ def fake_nominal_client(service: FakeUploadService | None = None) -> MagicMock:
     """A NominalClient stand-in shaped like `create` consumes it: a bundle with an upload client."""
     client = MagicMock()
     client._clients.upload = service if service is not None else FakeUploadService()
-    client._clients.auth_header = "Bearer test"
+    client._clients.trust_store_path = "/custom/ca.pem"
     client._clients.header_provider = None
     client._clients.resolve_default_workspace_rid.return_value = "rid.workspace.test"
     return client
@@ -679,22 +707,22 @@ def _throttle_once(original: Callable[..., Any]) -> tuple[Callable[..., Any], di
 
 def _throttle_initiate_once(service: FakeUploadService) -> dict[str, int]:
     """Make the first initiate call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.initiate_multipart_upload)
-    service.initiate_multipart_upload = wrapper
+    wrapper, calls = _throttle_once(service.CreateMultipartUpload)
+    service.CreateMultipartUpload = wrapper
     return calls
 
 
 def _throttle_sign_once(service: FakeUploadService) -> dict[str, int]:
     """Make the first sign call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.sign_part)
-    service.sign_part = wrapper
+    wrapper, calls = _throttle_once(service.CreateUploadPartUrl)
+    service.CreateUploadPartUrl = wrapper
     return calls
 
 
 def _throttle_complete_once(service: FakeUploadService) -> dict[str, int]:
     """Make the first complete call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.complete_multipart_upload)
-    service.complete_multipart_upload = wrapper
+    wrapper, calls = _throttle_once(service.CompleteMultipartUpload)
+    service.CompleteMultipartUpload = wrapper
     return calls
 
 
@@ -741,8 +769,8 @@ class TestThrottlingIsAbsorbedByTheGate:
         """A single throttle on the single-shot route is retried instead of failing the file."""
         up, service, _ = make_uploader(small_file_route_max_bytes=1024)
         install_test_gate(up)
-        wrapper, calls = _throttle_once(service.upload_file)
-        service.upload_file = wrapper
+        wrapper, calls = _throttle_once(service.UploadFile)
+        service.UploadFile = wrapper
         path = write_file("small.csv", 100)
 
         with up:
@@ -770,7 +798,7 @@ class TestThrottlingIsAbsorbedByTheGate:
             clock.now += 1.0  # each attempt burns a second of the budget
             raise _throttled()
 
-        service.sign_part = always_throttle
+        service.CreateUploadPartUrl = always_throttle
         path = write_file("f.csv", 100)
 
         with up:
@@ -824,14 +852,14 @@ class TestFileLevelTransientRetry:
         """A non-network failure settles immediately even with a generous retry budget."""
         up, service, _ = make_uploader(file_retry_timeout=60.0)
         self._install_retry_seams(up, fake_clock)
-        service.initiate_multipart_upload = MagicMock(side_effect=RuntimeError("not weather"))
+        service.CreateMultipartUpload = MagicMock(side_effect=RuntimeError("not weather"))
         path = write_file("f.csv", 100)
 
         with up:
             with pytest.raises(RuntimeError, match="not weather"):
                 up.enqueue_file(path).result(timeout=10)
 
-        assert service.initiate_multipart_upload.call_count == 1
+        assert service.CreateMultipartUpload.call_count == 1
         assert fake_clock.sleeps == []  # no backoff was ever taken
 
     def test_the_retry_budget_bounds_a_sustained_outage(
@@ -879,7 +907,7 @@ class TestFileLevelTransientRetry:
         gate_clock = install_test_gate(up, deadline_seconds=1.0)
         self._install_retry_seams(up, fake_clock)
         calls = {"n": 0}
-        original = service.upload_file
+        original = service.UploadFile
 
         def throttle_out_once(*args: Any, **kwargs: Any) -> Any:
             calls["n"] += 1
@@ -888,7 +916,7 @@ class TestFileLevelTransientRetry:
                 raise _throttled()
             return original(*args, **kwargs)
 
-        service.upload_file = throttle_out_once
+        service.UploadFile = throttle_out_once
         path = write_file("small.csv", 100)
 
         with up:
@@ -913,7 +941,7 @@ class TestNominalConcurrencyCap:
         active = [0]
         peak = [0]
         lane_full = threading.Event()
-        original = service.upload_file
+        original = service.UploadFile
 
         def tracked(*args: Any, **kwargs: Any) -> Any:
             with lock:
@@ -927,7 +955,7 @@ class TestNominalConcurrencyCap:
                 with lock:
                     active[0] -= 1
 
-        service.upload_file = tracked
+        service.UploadFile = tracked
         service.upload_file_release.clear()  # park in-flight requests so concurrency is observable
         futures = [up.enqueue_file(write_file(f"s{i}.csv", 10)) for i in range(6)]
 
@@ -936,3 +964,71 @@ class TestNominalConcurrencyCap:
         for fut in futures:
             assert fut.result(timeout=10).startswith("s3://")
         assert peak[0] == 2  # ...and is never exceeded across all six files
+
+
+@pytest.mark.parametrize(
+    "status, transient, throttle",
+    [
+        (grpc.StatusCode.UNAVAILABLE, True, True),
+        (grpc.StatusCode.RESOURCE_EXHAUSTED, True, True),
+        (grpc.StatusCode.DEADLINE_EXCEEDED, True, False),
+        (grpc.StatusCode.PERMISSION_DENIED, False, False),
+    ],
+)
+@pytest.mark.parametrize("translated", [False, True])
+def test_grpc_upload_retry_classification(status, transient, throttle, translated, fake_rpc_error) -> None:
+    """Both raw signing failures and translated upload failures retain their retry meaning."""
+    error = fake_rpc_error(status)
+    if translated:
+        try:
+            with translate_grpc_errors():
+                raise error
+        except Exception as translated_error:
+            error = translated_error
+    assert _is_transient_upload_error(error) is transient
+    assert _is_throttle_error(error) is throttle
+
+
+def test_small_file_throttle_replays_complete_stream(make_uploader, write_file, fake_rpc_error) -> None:
+    """A throttle after consuming the stream retries metadata and every bounded chunk."""
+    service = FakeUploadService()
+    received = []
+
+    def upload(requests):
+        messages = list(requests)
+        received.append(messages)
+        if len(received) == 1:
+            raise fake_rpc_error(grpc.StatusCode.RESOURCE_EXHAUSTED)
+        return uploads_pb2.UploadFileResponse(file=uploads_pb2.UploadedFile(object_path="s3://file"))
+
+    service.UploadFile = MagicMock(side_effect=upload)
+    up, _, _ = make_uploader(service=service, small_file_route_max_bytes=4 * 1024 * 1024)
+    path = write_file("replay.csv", 2 * 1024 * 1024 + 3)
+    assert up.enqueue_file(path).result(timeout=5) == "s3://file"
+    assert len(received) == 2
+    assert received[0] == received[1]
+    assert received[0][0].metadata.size_bytes == path.stat().st_size
+    assert received[0][0].WhichOneof("content") == "metadata"
+    chunks = received[0][1:]
+    assert [len(message.data) for message in chunks] == [1024 * 1024, 1024 * 1024, 3]
+    assert b"".join(message.data for message in chunks) == path.read_bytes()
+
+
+def test_custom_ca_reaches_experimental_storage_put(make_uploader, write_file) -> None:
+    """The configured custom CA bundle survives removal of the Conjure client's private setting."""
+    up, _, session = make_uploader()
+    session.put = MagicMock(return_value=SimpleNamespace(headers={"ETag": "etag"}, raise_for_status=lambda: None))
+    assert up.enqueue_file(write_file("ca.csv", 4)).result(timeout=5)
+    assert session.put.call_args.kwargs["verify"] == "/custom/ca.pem"
+
+
+def test_throttled_abort_preserves_status_for_retry(fake_rpc_error) -> None:
+    """Abort failures retain their transport cause so cleanup can retry sustained throttling."""
+    client = MagicMock()
+    client.DeleteMultipartUpload.side_effect = [
+        fake_rpc_error(grpc.StatusCode.RESOURCE_EXHAUSTED),
+        uploads_pb2.DeleteMultipartUploadResponse(),
+    ]
+    gate = _ThrottleGate(max_concurrency=1, deadline_seconds=5, sleep=lambda _: None)
+    gate.call(lambda: _abort(client, "key", "opaque-id", ValueError("original upload failure")))
+    assert client.DeleteMultipartUpload.call_count == 2

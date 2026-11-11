@@ -226,7 +226,7 @@ def test_attachment_filename_defaults_preserve_title_and_workspace(name, file_ty
             io.BytesIO(b"data"), name, file_type=file_type, labels=["monthly"]
         )
 
-    assert upload.call_args.args[3] == expected_filename
+    assert upload.call_args.args[2] == expected_filename
     request = clients.attachment.CreateAttachment.call_args.args[0]
     assert request.workspace_rid == "ri.workspace.test"
     assert request.attachment == attachments_pb2.Attachment(
