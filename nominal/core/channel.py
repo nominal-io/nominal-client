@@ -29,7 +29,6 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.bounds import Bounds
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
@@ -47,6 +46,7 @@ from nominal.protos.compute.v1 import (
 )
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2
 from nominal.protos.types.series import series_pb2
+from nominal.protos.types.time import time_pb2
 from nominal.ts import (
     _MAX_TIMESTAMP,
     _MIN_TIMESTAMP,
@@ -217,22 +217,26 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
         # A channel with few points comes back as the points themselves, which are their own buckets.
         response = self._decimate_request(bounds.start, bounds.end + 1, buckets=60)
         buckets: list[tuple[int, float, float, float] | None] = []
-        times: list[api.Timestamp] = []
-        if response.bucketed_numeric is not None:
-            for time, bucket in zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets):
-                if bucket.count and bucket.min is not None and bucket.max is not None and bucket.mean is not None:
-                    buckets.append((bucket.count, bucket.min, bucket.max, bucket.mean))
-                    # A bucket's first and last points give exact bounds; without them, its timestamp is the best
-                    # available.
-                    points = [point.timestamp for point in (bucket.first_point, bucket.last_point) if point]
-                    times.extend(points or [time])
+        times: list[time_pb2.Timestamp] = []
+        if response.HasField("numeric_buckets"):
+            for bucket in response.numeric_buckets.buckets:
+                stats = bucket.statistics
+                if stats.count and stats.HasField("min") and stats.HasField("max") and stats.HasField("mean"):
+                    buckets.append((stats.count, stats.min, stats.max, stats.mean))
+                    # First and last samples give exact bounds; otherwise use the bucket timestamp.
+                    points = []
+                    if stats.HasField("first"):
+                        points.append(stats.first.timestamp)
+                    if stats.HasField("last"):
+                        points.append(stats.last.timestamp)
+                    times.extend(points or [bucket.end])
                 else:
                     buckets.append(None)
-        elif response.numeric is not None:
-            buckets = [(1, value, value, value) for value in response.numeric.values]
-            times = list(response.numeric.timestamps)
-        elif response.numeric_point is not None:
-            point = response.numeric_point
+        elif response.HasField("numeric_samples"):
+            buckets = [(1, point.value, point.value, point.value) for point in response.numeric_samples.samples]
+            times = [point.timestamp for point in response.numeric_samples.samples]
+        elif response.HasField("numeric_sample") and response.numeric_sample.HasField("sample"):
+            point = response.numeric_sample.sample
             buckets = [(1, point.value, point.value, point.value)]
             times = [point.timestamp]
         filled = [bucket for bucket in buckets if bucket is not None]
@@ -247,7 +251,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             ["Mean", _display.number(sum(bucket[0] * bucket[3] for bucket in filled) / count, self.unit)],
         ]
         if times:
-            nanoseconds = [_SecondsNanos.from_api(time).to_nanoseconds() for time in times]
+            nanoseconds = [_SecondsNanos.from_proto(time).to_nanoseconds() for time in times]
             rows.append(["First", _display.timestamp(min(nanoseconds))])
             rows.append(["Last", _display.timestamp(max(nanoseconds))])
         chart = _display.sparkline([bucket[1:] if bucket is not None else None for bucket in buckets])
