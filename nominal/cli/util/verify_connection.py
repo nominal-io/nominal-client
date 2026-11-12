@@ -6,12 +6,14 @@ from nominal.core.client import NominalClient
 from nominal.exceptions import NominalAuthenticationError, NominalConfigError, NominalError, NominalNotFoundError
 
 
-def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
+def validate_token_url(
+    token: str, base_url: str, workspace_rid: str | None, *, allow_insecure_http: bool = False
+) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
     err_msg = ""
     try:
-        client = NominalClient.create(base_url, token)
+        client = NominalClient.create(base_url, token, allow_insecure_http=allow_insecure_http)
     except NominalConfigError as err:
         raise click.ClickException(f"Invalid client configuration: {err}") from err
 

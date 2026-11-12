@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conjure_python_client import ServiceConfiguration
 
+from nominal.config import ConfigProfile, NominalConfig
 from nominal.core._clientsbunch import (
     ON_BEHALF_OF_USER_RID_HEADER,
     ClientsBunch,
@@ -66,6 +67,17 @@ def test_impersonated_client_keeps_insecure_http_allowance(base_url: str) -> Non
     """as_user carries the source client's opt-in rather than inferring it from the URL."""
     client = NominalClient.from_token("token", base_url=base_url, allow_insecure_http=True)
     assert as_user(client, "user-rid")._clients.api_base_url == base_url
+
+
+def test_client_from_profile_uses_profile_insecure_http_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A profile that sets allow_insecure_http lets from_profile use its LAN HTTP base URL."""
+    profile = ConfigProfile(base_url="http://10.0.0.1:20000/api", token="token", allow_insecure_http=True)
+    config = NominalConfig(version=2, profiles={"desktop": profile})
+    monkeypatch.setattr(NominalConfig, "from_yaml", classmethod(lambda cls: config))
+
+    client = NominalClient.from_profile("desktop")
+
+    assert client._clients._allow_insecure_http
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:

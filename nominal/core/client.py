@@ -183,12 +183,13 @@ class NominalClient:
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
             allow_insecure_http: Allow an `http://` base URL to any host, such as a Nominal Desktop Core on the
                 local network. By default, HTTP is allowed only to a literal loopback IP. The token then travels
-                unencrypted, so enable this only on a network you trust.
+                unencrypted, so enable this only on a network you trust. Also enabled when the profile sets
+                `allow_insecure_http`.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP and `allow_insecure_http` is not set. This prevents client
-                construction even for HTTP-only usage.
+                without a literal loopback IP and neither the argument nor the profile allows insecure HTTP.
+                This prevents client construction even for HTTP-only usage.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -199,7 +200,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             extra_headers=extra_headers,
-            allow_insecure_http=allow_insecure_http,
+            allow_insecure_http=allow_insecure_http or prof.allow_insecure_http,
             _profile=profile,
         )
         return client
