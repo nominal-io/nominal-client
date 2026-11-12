@@ -56,13 +56,16 @@ def test_client_rejects_invalid_url_before_building_transports(base_url: str, me
 
 
 def test_client_allows_http_to_lan_host_when_insecure_http_is_allowed() -> None:
+    """The opt-in lets the client use an HTTP base URL on a LAN host."""
     client = NominalClient.from_token("token", base_url="http://10.0.0.1:20000/api", allow_insecure_http=True)
     assert client._clients.api_base_url == "http://10.0.0.1:20000/api"
 
 
-def test_impersonated_client_keeps_insecure_http_allowance() -> None:
-    client = NominalClient.from_token("token", base_url="http://10.0.0.1:20000/api", allow_insecure_http=True)
-    assert as_user(client, "user-rid")._clients.api_base_url == "http://10.0.0.1:20000/api"
+@pytest.mark.parametrize("base_url", ["http://10.0.0.1:20000/api", "HTTP://10.0.0.1:20000/api"])
+def test_impersonated_client_keeps_insecure_http_allowance(base_url: str) -> None:
+    """as_user carries the source client's opt-in rather than inferring it from the URL."""
+    client = NominalClient.from_token("token", base_url=base_url, allow_insecure_http=True)
+    assert as_user(client, "user-rid")._clients.api_base_url == base_url
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
@@ -81,6 +84,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
             "_user_agent",
             "_token",
             "_service_config",
+            "_allow_insecure_http",
             "workspace",
         }
     }
@@ -93,6 +97,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
         _user_agent="test-agent",
         _token="token",
         _service_config=ServiceConfiguration(uris=["https://api.nominal.test"]),
+        _allow_insecure_http=False,
         workspace=workspace,
         **services,
     )

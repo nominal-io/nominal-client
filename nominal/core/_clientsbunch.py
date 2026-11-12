@@ -130,6 +130,7 @@ class ClientsBunch:
     _user_agent: str = field(repr=False)
     _token: str = field(repr=False)
     _service_config: ServiceConfiguration = field(repr=False)
+    _allow_insecure_http: bool = field(repr=False)
 
     _default_workspace: LazyField[workspaces_pb2.Workspace] = field(
         default_factory=LazyField,
@@ -314,6 +315,7 @@ class ClientsBunch:
             _user_agent=agent,
             _token=token,
             _service_config=cfg,
+            _allow_insecure_http=allow_insecure_http,
             # Conjure Service Stubs
             authorization=client_factory(authorization.AuthorizationService),
             catalog=client_factory(scout_catalog.CatalogService),
