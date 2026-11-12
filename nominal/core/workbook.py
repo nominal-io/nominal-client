@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, o
 from nominal_api import (
     scout,
     scout_chartdefinition_api,
-    scout_comparisonnotebook_api,
     scout_layout_api,
     scout_notebook_api,
     scout_workbookcommon_api,
@@ -573,7 +572,6 @@ def _create_blank_workbook(
     properties: Mapping[str, str] | None = None,
     is_draft: bool = False,
     workspace: Workspace | str | None = None,
-    comparison: bool = False,
 ) -> Workbook:
     """Create a workbook with no panels, scoped to the given runs or the given assets; callers pass exactly one."""
     request = scout_notebook_api.CreateNotebookRequest(
@@ -588,14 +586,7 @@ def _create_blank_workbook(
             asset_rids=None if asset_rids is None else [*asset_rids],
         ),
         layout=_blank_workbook_layout(),
-        # TODO: needs testing. The server accepts a blank comparison workbook, but how the app renders one and
-        # whether panels can be added to it has not been checked.
-        notebook_type=scout_notebook_api.NotebookType.COMPARISON_WORKBOOK if comparison else None,
-        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(
-            comparison_workbook=scout_comparisonnotebook_api.ComparisonWorkbookContent(channel_variables={}, charts={})
-        )
-        if comparison
-        else scout_workbookcommon_api.UnifiedWorkbookContent(workbook=_blank_workbook_content()),
+        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=_blank_workbook_content()),
         event_refs=[],
         workspace=clients.resolve_default_workspace_rid()
         if workspace is None

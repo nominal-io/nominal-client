@@ -782,6 +782,17 @@ def _create_run(
     return Run._from_proto(clients, response.run)
 
 
+def _get_runs(clients: Run._Clients, rids: Sequence[str]) -> Mapping[str, run_service_pb2.Run]:
+    """The runs with the given rids, keyed by rid. Rids that do not resolve are absent from the result.
+
+    Raises:
+        NominalError: If the retrieval request fails.
+    """
+    with translate_grpc_errors():
+        response = clients.run.GetRuns(run_service_pb2.GetRunsRequest(rids=list(rids)))
+    return dict(response.runs)
+
+
 def _get_run(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_service_pb2.Run:
     """Retrieve the run with the given RID.
 

@@ -109,7 +109,7 @@ from nominal.core.marking import (
     _marking_rids,
     _search_markings,
 )
-from nominal.core.run import Run, _create_run, _get_run
+from nominal.core.run import Run, _create_run, _get_run, _get_runs
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
@@ -1851,6 +1851,34 @@ class NominalClient:
         raw_workbook = self._clients.notebook.get(self._clients.auth_header, rid)
         return Workbook._from_conjure(self._clients, raw_workbook)
 
+    @overload
+    def create_workbook(
+        self,
+        *,
+        runs: Run | str | Sequence[Run | str],
+        assets: None = None,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_draft: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Workbook: ...
+
+    @overload
+    def create_workbook(
+        self,
+        *,
+        runs: None = None,
+        assets: Asset | str | Sequence[Asset | str],
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_draft: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Workbook: ...
+
     def create_workbook(
         self,
         *,
@@ -1862,7 +1890,6 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         is_draft: bool = False,
         workspace: Workspace | str | None = None,
-        comparison: bool = False,
     ) -> Workbook:
         """Create a blank workbook scoped to one or more runs, or to one or more assets.
 
@@ -1881,8 +1908,6 @@ class NominalClient:
             properties: Properties to attach to the workbook.
             is_draft: Whether to create the workbook as a draft. Defaults to False.
             workspace: Workspace or workspace RID for the workbook. Defaults to the client's default workspace.
-            comparison: Whether to create a comparison workbook, which views the runs or assets side by side.
-                Defaults to False, which creates a standard workbook.
 
         Returns:
             The created workbook.
@@ -1901,12 +1926,12 @@ class NominalClient:
         selected = runs if runs is not None else assets
         if selected is None:
             raise ValueError("One of `runs` or `assets` must be given to create a workbook")
-        scope = _one_or_many(selected)
-        if not scope:
+        scopes = _one_or_many(selected)
+        if not scopes:
             raise ValueError("At least one run or asset must be given to create a workbook")
         if title is None:
-            title = _workbook_title(self._scope_names(scope, is_runs=runs is not None))
-        rids = [rid_from_instance_or_string(item) for item in scope]
+            title = _workbook_title(self._scope_names(scopes, is_runs=runs is not None))
+        rids = [rid_from_instance_or_string(item) for item in scopes]
         return _create_blank_workbook(
             self._clients,
             title=title,
@@ -1917,32 +1942,29 @@ class NominalClient:
             properties=properties,
             is_draft=is_draft,
             workspace=workspace,
-            comparison=comparison,
         )
 
-    def _scope_names(self, scope: Sequence[Run | Asset | str], *, is_runs: bool) -> list[str]:
-        """The names of the runs or assets in the scope, in order, fetching the given RIDs.
-
-        Asset RIDs are fetched together in one request; run RIDs are fetched one at a time.
+    def _scope_names(self, scopes: Sequence[HasRid | str], *, is_runs: bool) -> list[str]:
+        """The names of the runs or assets in `scopes`, in order, fetching the RIDs given as strings in one request.
 
         Raises:
-            NominalNotFoundError: If an asset RID does not resolve.
+            NominalNotFoundError: If a RID does not resolve.
         """
+        rids = [item for item in scopes if isinstance(item, str)]
         if is_runs:
-            return [
-                item.name if isinstance(item, Run) else self.get_run(rid_from_instance_or_string(item)).name
-                for item in scope
-            ]
-        asset_rids = [item for item in scope if isinstance(item, str)]
-        fetched = _get_assets(self._clients, asset_rids) if asset_rids else {}
+            fetched_runs = _get_runs(self._clients, rids) if rids else {}
+            fetched = {rid: run.title for rid, run in fetched_runs.items()}
+        else:
+            fetched_assets = _get_assets(self._clients, rids) if rids else {}
+            fetched = {rid: asset.title for rid, asset in fetched_assets.items()}
         names = []
-        for item in scope:
+        for item in scopes:
             if isinstance(item, str):
                 if item not in fetched:
-                    raise NominalNotFoundError(f"no asset found with RID {item!r}")
-                names.append(fetched[item].title)
+                    raise NominalNotFoundError(f"no {'run' if is_runs else 'asset'} found with RID {item!r}")
+                names.append(fetched[item])
             else:
-                names.append(item.name)
+                names.append(item.name)  # type: ignore[attr-defined]
         return names
 
     def search_workbooks(
@@ -2116,7 +2138,7 @@ class NominalClient:
         return WorkbookTemplate._from_conjure(self._clients, template)
 
 
-def _one_or_many(value: Run | Asset | str | Sequence[Run | Asset | str]) -> list[Run | Asset | str]:
+def _one_or_many(value: Sequence[HasRid | str] | HasRid | str) -> list[HasRid | str]:
     """A single resource or RID as a one-item list, or a sequence of them as a list."""
     if isinstance(value, (str, HasRid)):
         return [value]

@@ -12,6 +12,7 @@ from nominal.core.workbook import WorkbookType, _workbook_title
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
+from nominal.protos.run.v1 import run_service_pb2
 from tests.core._workbook_fixtures import notebook_response
 
 
@@ -165,7 +166,7 @@ def test_client_accepts_one_rid_or_a_sequence(clients: MagicMock, runs: object, 
 
 def test_client_scopes_to_several_run_objects_without_fetching(clients: MagicMock) -> None:
     """Run objects provide their own names for the title."""
-    clients.run.GetRun.side_effect = AssertionError("Run objects need no fetch")
+    clients.run.GetRuns.side_effect = AssertionError("Run objects need no fetch")
 
     workbook = NominalClient(_clients=clients).create_workbook(
         runs=[_run(clients), _run(clients, "run-rid-2", "Spin-up 2")]
@@ -234,7 +235,7 @@ def test_client_rejects_a_missing_mixed_or_empty_scope(clients: MagicMock, kwarg
     with pytest.raises(ValueError):
         NominalClient(_clients=clients).create_workbook(**kwargs)  # type: ignore[arg-type]
 
-    clients.run.GetRun.assert_not_called()
+    clients.run.GetRuns.assert_not_called()
     clients.assets.GetAssets.assert_not_called()
     clients.notebook.create.assert_not_called()
 
@@ -251,19 +252,25 @@ def test_default_title_names_the_scope(names: list[str], expected: str) -> None:
     assert _workbook_title(names) == expected
 
 
-def test_client_creates_a_blank_comparison_workbook_only_when_asked(clients: MagicMock) -> None:
-    """`comparison=True` sends the comparison type and content; otherwise the type is left to the server."""
-    client = NominalClient(_clients=clients)
+def test_client_fetches_several_run_rids_in_one_request(clients: MagicMock) -> None:
+    """Run RIDs are looked up in a single batch, and the title keeps the input order."""
+    clients.run.GetRuns.return_value = run_service_pb2.GetRunsResponse(
+        runs={
+            "run-rid-3": run_service_pb2.Run(rid="run-rid-3", title="Spin-up 3"),
+            "run-rid-2": run_service_pb2.Run(rid="run-rid-2", title="Spin-up 2"),
+        }
+    )
 
-    client.create_workbook(runs=["run-rid-1", "run-rid-2"], title="Compare", comparison=True)
-    request = _request(clients)
-    assert request.notebook_type == scout_notebook_api.NotebookType.COMPARISON_WORKBOOK
-    assert request.content_v2.workbook is None
-    assert request.content_v2.comparison_workbook.charts == {}
-    assert request.data_scope.run_rids == ["run-rid-1", "run-rid-2"]
+    NominalClient(_clients=clients).create_workbook(runs=["run-rid-2", _run(clients), "run-rid-3"])
 
-    clients.notebook.create.reset_mock()
-    client.create_workbook(runs=["run-rid-1", "run-rid-2"], title="Standard")
-    request = _request(clients)
-    assert request.notebook_type is None
-    assert request.content_v2.comparison_workbook is None
+    clients.run.GetRuns.assert_called_once()
+    assert list(clients.run.GetRuns.call_args.args[0].rids) == ["run-rid-2", "run-rid-3"]
+    assert _request(clients).title == "Workbook for Spin-up 2, Spin-up 1 and 1 more"
+
+
+def test_client_raises_for_an_unknown_run_rid_before_creating(clients: MagicMock) -> None:
+    clients.run.GetRuns.return_value = run_service_pb2.GetRunsResponse(runs={})
+
+    with pytest.raises(NominalNotFoundError):
+        NominalClient(_clients=clients).create_workbook(runs=["missing-rid"])
+    clients.notebook.create.assert_not_called()
