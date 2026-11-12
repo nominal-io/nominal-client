@@ -55,6 +55,11 @@ def test_client_rejects_invalid_url_before_building_transports(base_url: str, me
     conjure_factory.assert_not_called()
 
 
+def test_client_allows_http_to_lan_host_when_insecure_http_is_allowed() -> None:
+    client = NominalClient.from_token("token", base_url="http://10.0.0.1:20000/api", allow_insecure_http=True)
+    assert client._clients.api_base_url == "http://10.0.0.1:20000/api"
+
+
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
     workspace = MagicMock()
     services = {

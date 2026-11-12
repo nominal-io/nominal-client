@@ -281,8 +281,9 @@ class ClientsBunch:
         workspace_rid: str | None,
         *,
         header_provider: HeaderProvider | None = None,
+        allow_insecure_http: bool = False,
     ) -> Self:
-        validate_api_base_url(base_url)
+        validate_api_base_url(base_url, allow_insecure_http=allow_insecure_http)
         app_base_url = api_base_url_to_app_base_url(base_url)
 
         def client_factory(service_class: type[TService]) -> TService:
@@ -298,6 +299,7 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
+            allow_insecure_http=allow_insecure_http,
         )
 
         def grpc_factory(stub_class: GRPCStub[TStub]) -> TStub:

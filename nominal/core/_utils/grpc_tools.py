@@ -6,7 +6,8 @@ generated stub to, so every stub shares that one channel.
 
 The channel is configured to track the conjure HTTP transport as closely as gRPC allows:
 
-- HTTP URLs allow plaintext gRPC only for literal loopback IP addresses; HTTPS URLs select TLS.
+- HTTP URLs allow plaintext gRPC only for literal loopback IP addresses, unless `allow_insecure_http` is
+  set; HTTPS URLs select TLS.
 - For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
 - Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
@@ -254,8 +255,9 @@ def create_grpc_channel(
     user_agent: str,
     auth_header: str,
     header_provider: HeaderProvider | None,
+    allow_insecure_http: bool = False,
 ) -> grpc.Channel:
-    """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs.
+    """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs by default.
 
     Configures gzip compression, native retry, lifted message-size limits, the SDK user-agent, and the
     auth-metadata + default-deadline interceptors. TLS channels use the union trust bundle; plaintext
@@ -263,9 +265,9 @@ def create_grpc_channel(
 
     Raises:
         NominalConfigError: If the API URL is malformed, contains user information, or uses HTTP
-            without a literal loopback address.
+            without a literal loopback address and `allow_insecure_http` is not set.
     """
-    channel = _build_grpc_channel(api_base_url, service_config, user_agent)
+    channel = _build_grpc_channel(api_base_url, service_config, user_agent, allow_insecure_http)
     # The two interceptors are order-independent: one rewrites metadata, the other the deadline.
     return grpc.intercept_channel(
         channel,
@@ -274,8 +276,10 @@ def create_grpc_channel(
     )
 
 
-def _build_grpc_channel(api_base_url: str, service_config: ServiceConfiguration, user_agent: str) -> grpc.Channel:
-    parsed = validate_api_base_url(api_base_url)
+def _build_grpc_channel(
+    api_base_url: str, service_config: ServiceConfiguration, user_agent: str, allow_insecure_http: bool
+) -> grpc.Channel:
+    parsed = validate_api_base_url(api_base_url, allow_insecure_http=allow_insecure_http)
     options = [
         ("grpc.primary_user_agent", user_agent),
         ("grpc.enable_retries", 1),
