@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.metadata
 import inspect
 import sys
 from datetime import UTC, datetime, timedelta
@@ -285,14 +286,37 @@ def test_default_stream_flush_warns_and_does_nothing(mock_dataset: Dataset):
 
 def test_rust_stream_uses_configured_http_endpoint(mock_dataset: Dataset, mock_clients):
     """Rust streaming uses client configuration without inspecting a service transport."""
-    rust_write_stream = rust_write_stream_type()
-
     mock_clients.api_base_url = "https://api.example.com/api"
-    with patch.object(rust_write_stream, "create") as create:
-        mock_dataset.get_write_stream(implementation="rust")
-    assert create.call_args.args == ("test-token", "https://api.example.com/api")
-    create.return_value.with_core_consumer.assert_called_once_with(mock_dataset.rid)
-    create.return_value.with_core_consumer.return_value.open.assert_called_once()
+    with mock_dataset.get_write_stream(implementation="rust") as stream:
+        assert stream._auth_header == "test-token"  # type: ignore[attr-defined]
+        assert stream._opts.base_api_url == "https://api.example.com/api"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("installed", "release"),
+    [("1.2.0", "1.2.0"), ("1.2.0.dev3", "1.2.0"), ("1.2.0b1", "1.2.0"), ("1.2.0+local", "1.2.0")],
+    ids=["release", "dev", "pre-release", "local"],
+)
+def test_rust_stream_identifies_as_nominal_python(
+    mock_dataset: Dataset, monkeypatch: pytest.MonkeyPatch, installed: str, release: str
+):
+    """The rust stream's user agent names this SDK and its numeric release, like the HTTP clients do."""
+    monkeypatch.setattr(importlib.metadata, "version", {"nominal": installed}.__getitem__)
+    with mock_dataset.get_write_stream(implementation="rust") as stream:
+        assert stream._opts.user_agent == f"nominal-python/{release}"  # type: ignore[attr-defined]
+
+
+def test_rust_stream_keeps_default_user_agent_without_nominal_metadata(
+    mock_dataset: Dataset, monkeypatch: pytest.MonkeyPatch
+):
+    """An unreadable `nominal` version leaves the stream's own agent rather than failing to stream."""
+
+    def missing(name: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    with mock_dataset.get_write_stream(implementation="rust") as stream:
+        assert stream._opts.user_agent.startswith("nominal-streaming/")  # type: ignore[attr-defined]
 
 
 def test_experimental_factory_writes_to_dataset(mock_dataset: Dataset, mock_clients: MagicMock):
