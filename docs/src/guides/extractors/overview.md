@@ -10,7 +10,7 @@ myst:
 A file extractor is a Docker image that Nominal runs during ingest to convert files it can't read, such as a bespoke binary log.
 It reads the uploaded files and writes outputs in formats Nominal ingests.
 
-The authoring helpers in `nominal.experimental.extractor` are experimental, so their API may change between releases. The container contract they implement is stable.
+The authoring helpers in `nominal.experimental.extractor` are [experimental](/ref/experimental/index.md), so their API may change between releases. The container contract they implement is stable.
 
 Use an extractor when the format recurs, when the conversion should live in one versioned place, or when people upload these files in the Nominal app.
 For a one-off conversion, convert locally and [upload the result](/guides/datasets/overview.md).

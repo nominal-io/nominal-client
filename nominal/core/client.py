@@ -263,7 +263,7 @@ class NominalClient:
         """Create a connection to the Nominal platform.
 
         Args:
-            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            base_url: The URL of the Nominal API platform, e.g. ``"https://api.gov.nominal.io/api"``.
             token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
             trust_store_path: Path to a PEM CA bundle used to verify TLS for both the HTTP and gRPC
                 transports. Defaults to certifi's bundle. On Windows and Linux, the host's OS trust
