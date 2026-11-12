@@ -1639,6 +1639,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/6b/58dd0b39c338744e29ac944849d8e6915ee84f2c416daa25a58173630d26/nominal_streaming-0.11.0-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:452384b229bce52fbbea8a3529190836560aed009c8ab3ad66ef37bd9cf7b5af", size = 3954123, upload-time = "2026-11-12T17:02:59.828Z" },
     { url = "https://files.pythonhosted.org/packages/90/5a/f0ec71e1e8ea023621a454d2047191d29c041a37027a7302e5b5cfdc3c3c/nominal_streaming-0.11.0-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:a8448bf3a78c793179102461a3ef79ba0e0b4329f1aa16a903ef1264bc54b73b", size = 3730766, upload-time = "2026-11-12T17:03:06.041Z" },
     { url = "https://files.pythonhosted.org/packages/cf/f2/f2e692ddfc2b39a446156bf8b0d4105b82381f9fe3c69c042bdf9e5301e2/nominal_streaming-0.11.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f33ee18da2334d5f5bb097d4180624117492aff517430c20726548d3fb1d32b8", size = 4212015, upload-time = "2026-11-12T17:02:55.653Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/1e/ece6a459ae85b28f582b2e27f341db5174510ac616b81a838ec5db903a3f/nominal_streaming-0.11.0-cp311-abi3-win_amd64.whl", hash = "sha256:d3e1ba0802f7b796bb159b600efafe0918834740645d2b8a2a0800d0c653cdfa", size = 4278818, upload-time = "2026-11-12T17:07:59.685Z" },
 ]
 
 [[package]]
