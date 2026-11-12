@@ -17,5 +17,7 @@ def as_user(client: NominalClient, user_rid: str) -> NominalClient:
         trust_store_path=security.trust_store_path if security is not None else None,
         connect_timeout=client._clients._service_config.connect_timeout,
         extra_headers={ON_BEHALF_OF_USER_RID_HEADER: user_rid},
+        # The source client already passed URL validation, so an http:// URL here was allowed.
+        allow_insecure_http=client._clients.api_base_url.startswith("http://"),
         _profile=client._profile,
     )
