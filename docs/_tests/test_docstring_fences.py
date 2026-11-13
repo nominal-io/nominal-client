@@ -1,4 +1,4 @@
-"""Fenced examples remain literal inside Google sections and notes."""
+"""nominal_sphinx_theme.docstring_fences keeps fenced examples literal inside Google sections and notes."""
 
 import pickle
 import subprocess
@@ -30,10 +30,9 @@ def build_docs(tmp_path: Path):
 def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> None:
     """Fenced code and bold inner notes stay attached to the correct argument."""
     source = tmp_path / "docs/src"
-    extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
-        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'docstring_fences']\n"
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'nominal_sphinx_theme.docstring_fences']\n"
         "napoleon_use_param = False\n",
         encoding="utf-8",
     )
@@ -112,10 +111,9 @@ def test_fences_preserve_code_and_argument_notes(tmp_path: Path, build_docs) -> 
 def test_invalid_fences_fail_the_strict_build(tmp_path: Path, build_docs, closing: str) -> None:
     """Missing or misindented closing fences cannot silently publish as prose."""
     source = tmp_path / "docs/src"
-    extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
-        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx.ext.autodoc', 'docstring_fences']\n",
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}]\n"
+        "extensions = ['sphinx.ext.autodoc', 'nominal_sphinx_theme.docstring_fences']\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text("API\n===\n\n.. autofunction:: fixture_api.example\n", encoding="utf-8")
@@ -130,10 +128,9 @@ def test_invalid_fences_fail_the_strict_build(tmp_path: Path, build_docs, closin
 def test_cli_help_preserves_fenced_shell_examples(tmp_path: Path, build_docs) -> None:
     """Click help uses the same fenced-code convention as API docstrings."""
     source = tmp_path / "docs/src"
-    extensions = Path(__file__).resolve().parents[1] / "_ext"
     (source.parent / "conf.py").write_text(
-        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}, {str(extensions)!r}]\n"
-        "extensions = ['sphinx_click', 'docstring_fences']\n",
+        f"import sys\nsys.path[:0] = [{str(tmp_path)!r}]\n"
+        "extensions = ['sphinx_click', 'nominal_sphinx_theme.docstring_fences']\n",
         encoding="utf-8",
     )
     (source / "index.rst").write_text(
