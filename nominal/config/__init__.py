@@ -19,12 +19,14 @@ class ConfigProfile:
     """Connection settings for a named Nominal profile.
 
     If `workspace_rid` is set, methods that resolve `WorkspaceSearchType.DEFAULT` use it before falling back to a
-    default-workspace lookup.
+    default-workspace lookup. If `allow_insecure_http` is set, clients created from the profile accept an `http://`
+    base URL to any host; see `NominalClient.from_token`.
     """
 
     base_url: str
     token: str
     workspace_rid: str | None = None
+    allow_insecure_http: bool = False
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,10 @@ class NominalConfig:
       dev:
         base_url: https://api.nominal.test
         token: eyJ...
+      desktop:
+        base_url: http://192.168.1.20:20000/api
+        token: nominal_api_key_...
+        allow_insecure_http: true
 
 
     For production environments, the typical URL is: https://api.gov.nominal.io/api
@@ -80,8 +86,13 @@ class NominalConfig:
 
     def to_yaml(self, path: Path = DEFAULT_NOMINAL_CONFIG_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+        obj = asdict(self)
+        for profile in obj["profiles"].values():
+            # Written only when set, so SDK versions without the field can still read other profiles.
+            if not profile["allow_insecure_http"]:
+                del profile["allow_insecure_http"]
         with open(path, "w") as f:
-            yaml.dump(asdict(self), f)
+            yaml.dump(obj, f)
 
     def get_profile(self, name: str) -> ConfigProfile:
         if name in self.profiles:

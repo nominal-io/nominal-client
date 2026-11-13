@@ -53,12 +53,25 @@ def test_nominal_config_round_trips_profiles(config_path: Path) -> None:
                 token="token-2",
                 workspace_rid="ri.workspace.test.workspace.123",
             ),
+            "desktop": ConfigProfile(
+                base_url="http://192.168.1.20:20000/api",
+                token="token-3",
+                allow_insecure_http=True,
+            ),
         },
     )
 
     config.to_yaml(config_path)
 
     assert NominalConfig.from_yaml(config_path) == config
+
+
+def test_nominal_config_omits_unset_insecure_http_allowance(config_path: Path) -> None:
+    """Profiles without the opt-in are written without the key, so older SDK versions can read them."""
+    profile = ConfigProfile(base_url="https://api.gov.nominal.io/api", token="tok")
+    NominalConfig(version=2, profiles={"default": profile}).to_yaml(config_path)
+
+    assert "allow_insecure_http" not in config_path.read_text()
 
 
 def test_nominal_config_get_profile_returns_matching_profile() -> None:

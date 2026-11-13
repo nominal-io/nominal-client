@@ -45,12 +45,17 @@ def _is_loopback_address(host: str | None) -> bool:
     return any(address in network for network in _LOOPBACK_NETWORKS)
 
 
-def validate_api_base_url(api_base_url: str) -> ParseResult:
+def validate_api_base_url(api_base_url: str, *, allow_insecure_http: bool = False) -> ParseResult:
     """Validate the client-wide URL policy without resolving hostnames.
+
+    Args:
+        api_base_url: The API base URL to validate.
+        allow_insecure_http: Allow HTTP to any host, not only literal loopback addresses. The token
+            then travels unencrypted over the network.
 
     Raises:
         NominalConfigError: If the URL is malformed, contains user information, or uses HTTP
-            without a literal loopback address.
+            without a literal loopback address and `allow_insecure_http` is not set.
     """
     try:
         parsed = urlparse(api_base_url)
@@ -64,11 +69,12 @@ def validate_api_base_url(api_base_url: str) -> ParseResult:
         raise NominalConfigError(
             f"API base URL for host {host!r} must not contain user information; pass the token separately."
         )
-    if parsed.scheme == "http" and not _is_loopback_address(host):
+    if parsed.scheme == "http" and not allow_insecure_http and not _is_loopback_address(host):
         raise NominalConfigError(
             f"HTTP API base URL for host {host!r} requires a literal loopback IP address "
             "(127.0.0.0/8 or [::1]). Hostnames are not resolved; use 127.0.0.1 instead of localhost. "
-            "Use an https:// API URL for remote deployments."
+            "Use an https:// API URL for remote deployments, or pass allow_insecure_http=True to "
+            "send the token unencrypted to a trusted network host."
         )
     return parsed
 
