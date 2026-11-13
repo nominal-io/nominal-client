@@ -57,7 +57,7 @@ class VideoStream:
         try:
             stream.run()
         except NominalVideoStreamError:
-            stream.restart()  # re-opens the pipeline with the same WHIP endpoint
+            stream.restart()  # re-opens the pipeline; an expired WHIP token is refreshed automatically
             stream.run()
         finally:
             stream.close()
@@ -93,6 +93,9 @@ class VideoStream:
         Resolves the WHIP endpoint from Nominal and configures the pipeline.
         The pipeline is not started until ``open()`` is called.
 
+        When the WHIP server rejects the token, the stream asks Nominal for a new WHIP endpoint and
+        retries with it, at most once per connection attempt.
+
         Args:
             target: The dataset owning the video channel to stream to. Passing a legacy standalone
                 `Video` is deprecated.
@@ -118,14 +121,21 @@ class VideoStream:
             ValueError: `channel` was omitted for a dataset target, or supplied for a `Video` target.
             NominalVideoStreamError: Nominal rejected the request for a WHIP endpoint.
         """
-        resp = cls._request_whip_stream(target, channel=channel, tags=tags)
+        # Imported here rather than at module scope: nominal.core.video imports this package lazily,
+        # and a top-level import would close that cycle.
+        from nominal.core.video import Video
 
-        whip_url = resp.whip_url
-        parsed = urllib.parse.urlparse(whip_url)
-        endpoint = urllib.parse.urlunparse(parsed._replace(query=""))
-        query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-        token_list = query_params.get("token")
-        token = token_list[0] if token_list else None
+        # Warned here rather than in _request_whip_stream, which also runs on nominal-video's
+        # background thread to refresh credentials, where a warning has no caller to point at.
+        if isinstance(target, Video):
+            warnings.warn(
+                "Streaming to a standalone `Video` is deprecated in favor of video channels on a dataset. "
+                "Pass a `Dataset` with `channel=...` instead.",
+                LegacyVideoDeprecationWarning,
+                stacklevel=2,
+            )
+        resp = cls._request_whip_stream(target, channel=channel, tags=tags)
+        endpoint, token = cls._split_whip_url(resp.whip_url)
 
         stun_url: str | None = None
         if resp.ice_servers:
@@ -138,7 +148,12 @@ class VideoStream:
             if resp.ice_servers[0].urls:
                 stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
-        whip_sink = Sink.whip(endpoint=endpoint, token=token, stun_server=stun_url)
+        def refresh_credentials() -> tuple[str, str | None]:
+            return cls._split_whip_url(cls._request_whip_stream(target, channel=channel, tags=tags).whip_url)
+
+        whip_sink = Sink.whip(
+            endpoint=endpoint, token=token, stun_server=stun_url, refresh_credentials=refresh_credentials
+        )
         return cls(rid=target.rid, src=src, options=options, whip_sink=whip_sink)
 
     @staticmethod
@@ -149,20 +164,12 @@ class VideoStream:
         tags: Mapping[str, str] | None,
     ) -> scout_video_api.GenerateWhipStreamResponse:
         """Resolve a WHIP endpoint for a dataset channel, or for a legacy video (deprecated)."""
-        # Imported here rather than at module scope: nominal.core.video imports this package lazily,
-        # and a top-level import would close that cycle.
         from nominal.core.video import Video
 
         clients = target._clients
         if isinstance(target, Video):
             if channel is not None:
                 raise ValueError("'channel' does not apply when streaming to a legacy `Video`")
-            warnings.warn(
-                "Streaming to a standalone `Video` is deprecated in favor of video channels on a dataset. "
-                "Pass a `Dataset` with `channel=...` instead.",
-                LegacyVideoDeprecationWarning,
-                stacklevel=3,
-            )
             try:
                 return clients.video.generate_whip_stream(clients.auth_header, target.rid)
             except ConjureHTTPError as e:
@@ -186,6 +193,14 @@ class VideoStream:
                 f"failed to create WHIP stream for channel {channel!r} on dataset {target.rid!r}: {e}"
             ) from e
 
+    @staticmethod
+    def _split_whip_url(whip_url: str) -> tuple[str, str | None]:
+        """Split a WHIP URL into its endpoint and the bearer token from its ``token`` query parameter."""
+        parsed = urllib.parse.urlparse(whip_url)
+        endpoint = urllib.parse.urlunparse(parsed._replace(query=""))
+        token_list = urllib.parse.parse_qs(parsed.query, keep_blank_values=True).get("token")
+        return endpoint, token_list[0] if token_list else None
+
     def open(self) -> None:
         """Build and start the GStreamer pipeline. Idempotent — safe to call multiple times.
 
@@ -204,7 +219,8 @@ class VideoStream:
     def close(self) -> None:
         """Stop the pipeline and release all resources. Idempotent — safe to call multiple times.
 
-        After close(), open() can be called again to restart with the same WHIP endpoint.
+        After close(), open() can be called again to restart with the newest WHIP credentials: those from
+        create(), or from the latest refresh.
         """
         if self._stream is not None:
             self._stream.close()
@@ -221,7 +237,8 @@ class VideoStream:
 
         Raises:
             NominalVideoStreamNotOpenError: if the stream is not open — call open() first or use as a context manager.
-            NominalVideoStreamError: if the pipeline encounters an unrecoverable error.
+            NominalVideoStreamError: if the pipeline encounters an unrecoverable error. A WHIP token rejected
+                again after a refresh raises at once, regardless of ``ReconnectOptions.max_retries``.
         """
         if self._stream is None:
             raise NominalVideoStreamNotOpenError()
@@ -237,7 +254,7 @@ class VideoStream:
         """Stop and restart the pipeline.
 
         Useful for recovering from errors or reconnecting after a source interruption.
-        Reuses the same WHIP endpoint resolved at create() time.
+        Uses the newest WHIP credentials: those from create(), or from the latest refresh.
         """
         self.close()
         self.open()
