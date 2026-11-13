@@ -25,6 +25,8 @@ dev = [
 
 [tool.uv]
 managed = true
+required-version = ">=0.9.17"
+exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = []

@@ -4,7 +4,7 @@ Build a self-contained Conda environment on a connected machine and install it w
 
 ## Build locally
 
-Prerequisites: uv, Git, and Conda (Anaconda or Miniforge). The runtime uses conda-forge; Python dependencies come from PyPI. No changes are made to Anaconda base. Conda is used to create the requested runtime, while uv manages Python dependencies.
+Prerequisites: uv 0.9.17 or newer, Git, and Conda (Anaconda or Miniforge). The runtime uses conda-forge; Python dependencies come from PyPI. No changes are made to Anaconda base. Conda is used to create the requested runtime, while uv manages Python dependencies.
 
 From the repository root:
 
@@ -13,7 +13,7 @@ uv run --project tools/conda-pack nominal-bundle build
 uv run --project tools/conda-pack nominal-bundle build --sdk-version 1.180.1 --python 3.12
 ```
 
-Builds resolve current compatible stable dependencies without using the parent repository lockfile. The explicit SDK version is optional. The first example always selects the latest stable SDK reported by PyPI. Transitive constraints can require older dependency versions; the inventory records the selected versions. Compiling packages from source is disabled.
+Builder dependencies use a dedicated lockfile and a seven-day resolution cooldown. Bundle dependencies resolve independently with explicit package-index settings and continue to select current compatible stable releases, without inheriting builder-project settings or using the parent repository lockfile. The explicit SDK version is optional. The first example always selects the latest stable SDK reported by PyPI. Transitive constraints can require older dependency versions; the inventory records the selected versions. Compiling packages from source is disabled.
 
 Output: `dist/conda-pack/nominal-VERSION-PLATFORM-pyVERSION-rREVISION/`. Existing directories are never overwritten; choose another output directory or increment `--revision`. Preserve the complete directory, including checksums and setup scripts. Conda archives contain platform-specific native binaries and must be built on matching hosts.
 

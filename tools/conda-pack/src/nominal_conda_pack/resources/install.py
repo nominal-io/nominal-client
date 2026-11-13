@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -40,17 +41,11 @@ def check(bundle: Path) -> None:
 
 
 def extract(archive: Path, destination: Path) -> None:
-    with tarfile.open(archive, "r:gz") as tar:
-        # Conda environments contain internal links. Reject traversal, devices, and escaping links.
-        for member in tar.getmembers():
-            target = (destination / member.name).resolve()
-            if not target.is_relative_to(destination) or member.isdev() or member.isfifo():
-                raise ValueError(f"Unsafe archive member: {member.name}")
-            if member.issym() or member.islnk():
-                parent = target.parent if member.issym() else destination
-                if not (parent / member.linkname).resolve().is_relative_to(destination):
-                    raise ValueError(f"Unsafe archive link: {member.name}")
-        tar.extractall(destination, filter="data")
+    try:
+        # The standard-library data filter rejects escaping links, traversal, and special files.
+        shutil.unpack_archive(archive, destination, format="gztar", filter="data")
+    except tarfile.FilterError as exc:
+        raise ValueError(f"Unsafe archive member: {exc}") from exc
 
 
 def main() -> None:
@@ -114,8 +109,6 @@ def main() -> None:
     )
     subprocess.run([str(python), str(unpack)], env=env, cwd=writable, check=True)
     # Save launchers so later notebook sessions keep state off the source media.
-    import shutil
-
     shutil.copy2(bundle / "example.ipynb", writable / "example.ipynb")
     local_env = {
         k: v

@@ -55,6 +55,7 @@ def probe(item):
         result = subprocess.run(
             [
                 "uv",
+                "--no-config",
                 "pip",
                 "compile",
                 str(requirements),

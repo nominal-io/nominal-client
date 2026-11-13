@@ -108,6 +108,7 @@ def build(args: argparse.Namespace) -> None:
         run(
             [
                 "uv",
+                "--no-config",
                 "pip",
                 "install",
                 "--python",

@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import io
+import sys
 import tarfile
 
 import pytest
@@ -63,3 +64,47 @@ def test_missing_payload(tmp_path):
     (tmp_path / "SHA256SUMS").write_text("")
     with pytest.raises(ValueError, match="Incomplete"):
         installer.check(tmp_path)
+
+
+def test_extract_nested_file(tmp_path):
+    """Keep ordinary nested environment files readable after safe extraction."""
+    archive = tmp_path / "valid.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        item = tarfile.TarInfo("lib/payload")
+        item.size = 7
+        tar.addfile(item, io.BytesIO(b"payload"))
+    destination = tmp_path / "environment"
+    installer.extract(archive, destination)
+    assert (destination / "lib/payload").read_bytes() == b"payload"
+
+
+@pytest.mark.parametrize("link_type", [tarfile.LNKTYPE, tarfile.SYMTYPE])
+def test_extract_internal_links(tmp_path, link_type):
+    """Preserve internal Conda links without permitting links outside the environment."""
+    if sys.platform == "win32" and link_type == tarfile.SYMTYPE:
+        pytest.skip("Creating symbolic links requires additional Windows privileges")
+    archive = tmp_path / "valid.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        item = tarfile.TarInfo("lib/payload")
+        item.size = 7
+        tar.addfile(item, io.BytesIO(b"payload"))
+        link = tarfile.TarInfo("lib/alias")
+        link.type = link_type
+        link.linkname = "payload" if link_type == tarfile.SYMTYPE else "lib/payload"
+        tar.addfile(link)
+    destination = tmp_path / "environment"
+    installer.extract(archive, destination)
+    assert (destination / "lib/alias").read_bytes() == b"payload"
+
+
+@pytest.mark.parametrize("member_type", [tarfile.FIFOTYPE, tarfile.CHRTYPE])
+def test_reject_special_files(tmp_path, member_type):
+    """Reject pipes and devices rather than creating them in an environment."""
+    archive = tmp_path / "bad.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        item = tarfile.TarInfo("special")
+        item.type = member_type
+        tar.addfile(item)
+    with pytest.raises(ValueError, match="Unsafe"):
+        installer.extract(archive, tmp_path / "environment")
+    assert not (tmp_path / "environment/special").exists()

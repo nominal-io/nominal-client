@@ -38,6 +38,7 @@ with tempfile.TemporaryDirectory(prefix="nominal-e2e-") as tmp:
     subprocess.run(
         [
             "uv",
+            "--no-config",
             "pip",
             "compile",
             "--python",
@@ -65,6 +66,7 @@ with tempfile.TemporaryDirectory(prefix="nominal-e2e-") as tmp:
     subprocess.run(
         [
             "uv",
+            "--no-config",
             "pip",
             "install",
             "--python",
