@@ -89,14 +89,16 @@ def _mock_sink(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 
 def test_refresh_requests_a_new_whip_stream_for_the_same_channel(monkeypatch: pytest.MonkeyPatch):
-    """The refresh hook asks Nominal for a fresh WHIP stream on the same series and returns its credentials."""
+    """The refresh hook asks Nominal for a fresh WHIP stream on the series from create() and returns its credentials."""
     sink = _mock_sink(monkeypatch)
     clients = MagicMock()
     clients.video.generate_whip_stream_v2.side_effect = [
         MagicMock(whip_url="https://mediamtx.example/whip/abc?token=tok1", ice_servers=[]),
         MagicMock(whip_url="https://mediamtx.example/whip/def?token=tok2", ice_servers=[]),
     ]
-    VideoStream.create(_dataset(clients), Src.file("in.mp4"), channel="camera/front", tags={"vehicle": "alpha"})
+    tags = {"vehicle": "alpha"}
+    VideoStream.create(_dataset(clients), Src.file("in.mp4"), channel="camera/front", tags=tags)
+    tags["vehicle"] = "beta"
 
     whip_kwargs = sink.whip.call_args.kwargs
     assert (whip_kwargs["endpoint"], whip_kwargs["token"]) == ("https://mediamtx.example/whip/abc", "tok1")

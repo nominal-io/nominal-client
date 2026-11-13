@@ -134,6 +134,8 @@ class VideoStream:
                 LegacyVideoDeprecationWarning,
                 stacklevel=2,
             )
+        # Snapshotted so a refresh requests the same series even if the caller's mapping changes later.
+        tags = {**(tags or {})}
         resp = cls._request_whip_stream(target, channel=channel, tags=tags)
         endpoint, token = cls._split_whip_url(resp.whip_url)
 
@@ -164,7 +166,7 @@ class VideoStream:
         tags: Mapping[str, str] | None,
     ) -> scout_video_api.GenerateWhipStreamResponse:
         """Resolve a WHIP endpoint for a dataset channel, or for a legacy video (deprecated)."""
-        from nominal.core.video import Video
+        from nominal.core.video import Video  # Local import, as in create().
 
         clients = target._clients
         if isinstance(target, Video):
