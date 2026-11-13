@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from nominal_api import scout_compute_api
 
 from nominal.experimental.compute.dsl import NumericExpr, RangeExpr
+from nominal.protos.compute.v1 import expressions_pb2
 
 
 @pytest.fixture
@@ -38,82 +38,64 @@ def test_operator_overloads(ch1: NumericExpr, ch2: NumericExpr):
 
 
 def test_numeric_nary_operations(ch1: NumericExpr, ch2: NumericExpr):
-    conjure = ch1.sum([ch2])._to_conjure()
-    assert conjure.type == "sum"
-    assert conjure.sum is not None
-    assert len(conjure.sum.inputs) == 2
-
-    conjure = ch1.product([ch2])._to_conjure()
-    assert conjure.type == "product"
-    assert conjure.product is not None
-    assert len(conjure.product.inputs) == 2
-
-    conjure = ch1.min([ch2])._to_conjure()
-    assert conjure.type == "min"
-    assert conjure.min is not None
-    assert len(conjure.min.inputs) == 2
-
-    conjure = ch1.max([ch2])._to_conjure()
-    assert conjure.type == "max"
-    assert conjure.max is not None
-    assert len(conjure.max.inputs) == 2
-
-    conjure = ch1.mean([ch2])._to_conjure()
-    assert conjure.type == "mean"
-    assert conjure.mean is not None
-    assert len(conjure.mean.inputs) == 2
+    """N-ary operations include the receiver and all supplied operands in order."""
+    for expression, operation in [
+        (ch1.sum([ch2]), expressions_pb2.NARY_NUMERIC_OPERATION_SUM),
+        (ch1.product([ch2]), expressions_pb2.NARY_NUMERIC_OPERATION_PRODUCT),
+        (ch1.min([ch2]), expressions_pb2.NARY_NUMERIC_OPERATION_MIN),
+        (ch1.max([ch2]), expressions_pb2.NARY_NUMERIC_OPERATION_MAX),
+        (ch1.mean([ch2]), expressions_pb2.NARY_NUMERIC_OPERATION_MEAN),
+    ]:
+        proto = expression._to_proto()
+        assert proto.nary.operation == operation
+        assert list(proto.nary.inputs) == [ch1._to_proto(), ch2._to_proto()]
 
 
 def test_range_nary_operations(range1: RangeExpr, range2: RangeExpr):
-    conjure = range1.union([range2])._to_conjure()
-    assert conjure.type == "unionRange"
-    assert conjure.union_range is not None
-    assert len(conjure.union_range.inputs) == 2
-
-    conjure = range1.intersect([range2])._to_conjure()
-    assert conjure.type == "intersectRange"
-    assert conjure.intersect_range is not None
-    assert len(conjure.intersect_range.inputs) == 2
+    """Range combinations retain the receiver and supplied ranges."""
+    assert list(range1.union([range2])._to_proto().union.inputs) == [range1._to_proto(), range2._to_proto()]
+    assert list(range1.intersect([range2])._to_proto().intersection.inputs) == [range1._to_proto(), range2._to_proto()]
 
 
 def test_numeric_serialization(ch1: NumericExpr, ch2: NumericExpr, range1: RangeExpr):
-    # Test all numeric channel methods serialize successfully
-    assert isinstance(ch1.abs()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.acos()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.asin()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.atan2(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.cos()._to_conjure(), scout_compute_api.NumericSeries)
+    """All numeric operations construct a typed expression graph."""
+    assert isinstance(ch1.abs()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.acos()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.asin()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.atan2(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.cos()._to_proto(), expressions_pb2.NumericExpression)
 
-    assert isinstance(ch1.cumulative_sum(100000000)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.derivative("s")._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.integral(100000000, "s")._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.ln()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.log()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.offset(5.0)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.rolling(1000000000, "mean")._to_conjure(), scout_compute_api.NumericSeries)  # 1 second window
-    assert isinstance(ch1.scale(2.0)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.sin()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.sqrt()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.tan()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.time_difference()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.time_difference("s")._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.value_difference()._to_conjure(), scout_compute_api.NumericSeries)
+    assert isinstance(ch1.cumulative_sum(100000000)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.derivative("s")._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.integral(100000000, "s")._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.ln()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.log()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.offset(5.0)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.rolling(1000000000, "mean")._to_proto(), expressions_pb2.NumericExpression)  # 1 second window
+    assert isinstance(ch1.scale(2.0)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.sin()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.sqrt()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.tan()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.time_difference()._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.time_difference("s")._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.value_difference()._to_proto(), expressions_pb2.NumericExpression)
 
     # Test binary operations
-    assert isinstance(ch1.plus(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.minus(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.multiply(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.divide(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.power(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.modulo(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.floor_divide(ch2)._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.filter(range1)._to_conjure(), scout_compute_api.NumericSeries)
+    assert isinstance(ch1.plus(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.minus(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.multiply(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.divide(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.power(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.modulo(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.floor_divide(ch2)._to_proto(), expressions_pb2.NumericExpression)
+    assert isinstance(ch1.filter(range1)._to_proto(), expressions_pb2.NumericExpression)
 
     # Test operations that return RangeExpr
-    assert isinstance(ch1.threshold(0, "==")._to_conjure(), scout_compute_api.RangeSeries)
+    assert isinstance(ch1.threshold(0, "==")._to_proto(), expressions_pb2.RangeExpression)
 
 
 def test_range_serialization(range1: RangeExpr, range2: RangeExpr):
-    assert isinstance(range1.invert()._to_conjure(), scout_compute_api.RangeSeries)
-    assert isinstance(range1.union([range2])._to_conjure(), scout_compute_api.RangeSeries)
-    assert isinstance(range1.intersect([range2])._to_conjure(), scout_compute_api.RangeSeries)
+    """Range operations construct typed graphs."""
+    assert isinstance(range1.invert()._to_proto(), expressions_pb2.RangeExpression)
+    assert isinstance(range1.union([range2])._to_proto(), expressions_pb2.RangeExpression)
+    assert isinstance(range1.intersect([range2])._to_proto(), expressions_pb2.RangeExpression)

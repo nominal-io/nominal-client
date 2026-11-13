@@ -7,7 +7,6 @@ from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence, cast
 
 from nominal_api import api, scout_compute_api, scout_dataexport_api
-from nominal_api.api import Timestamp
 
 import pandas as pd
 from nominal import ts
@@ -18,6 +17,7 @@ from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.filetype import FileTypes
+from nominal.protos.types.time import time_pb2
 from nominal.ts import _AnyExportableTimestampType, _to_export_timestamp_format
 
 logger = logging.getLogger(__name__)
@@ -207,30 +207,36 @@ def channel_to_dataframe_decimated(
 
     # when there are less than 1000 points, the result is numeric
     # TODO(alkasm): why should this return differently shaped dataframes?
-    if result.numeric is not None:
+    if result.HasField("numeric_samples"):
         df = pd.DataFrame(
-            result.numeric.values,
+            [point.value for point in result.numeric_samples.samples],
             columns=["value"],
-            index=[_to_pandas_timestamp(timestamp) for timestamp in result.numeric.timestamps],
+            index=[_to_pandas_timestamp(point.timestamp) for point in result.numeric_samples.samples],
         )
         df.index.name = "timestamp"
         return df
 
-    if result.bucketed_numeric is None:
+    if not result.HasField("numeric_buckets"):
         raise ValueError("Unexpected response from compute service, bucketed_numeric should not be None")
     df = pd.DataFrame(
         [
-            (bucket.min, bucket.max, bucket.mean, bucket.count, bucket.variance)
-            for bucket in result.bucketed_numeric.buckets
+            (
+                bucket.statistics.min if bucket.statistics.HasField("min") else None,
+                bucket.statistics.max if bucket.statistics.HasField("max") else None,
+                bucket.statistics.mean if bucket.statistics.HasField("mean") else None,
+                bucket.statistics.count if bucket.statistics.HasField("count") else None,
+                bucket.statistics.variance if bucket.statistics.HasField("variance") else None,
+            )
+            for bucket in result.numeric_buckets.buckets
         ],
         columns=["min", "max", "mean", "count", "variance"],
-        index=[_to_pandas_timestamp(timestamp) for timestamp in result.bucketed_numeric.timestamps],
+        index=[_to_pandas_timestamp(bucket.end) for bucket in result.numeric_buckets.buckets],
     )
     df.index.name = "timestamp"
     return df
 
 
-def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+def _to_pandas_timestamp(timestamp: time_pb2.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 

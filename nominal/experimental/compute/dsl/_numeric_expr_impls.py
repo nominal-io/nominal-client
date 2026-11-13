@@ -3,20 +3,25 @@ from __future__ import annotations
 import typing
 from dataclasses import dataclass
 
-from nominal_api import scout_compute_api
-
+from nominal.core._utils.api_tools import create_compute_tag_constraints
 from nominal.experimental.compute.dsl import exprs, params
+from nominal.protos.compute.v1 import (
+    constants_pb2,
+    expressions_pb2,
+    numeric_parameters_pb2,
+    source_selection_pb2,
+)
 
 
 @dataclass(frozen=True)
 class AbsExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="|input|",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="|input|",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -25,11 +30,11 @@ class AbsExpr(exprs.NumericExpr):
 class AcosExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="acos(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="acos(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -38,11 +43,11 @@ class AcosExpr(exprs.NumericExpr):
 class AsinExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="asin(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="asin(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -52,13 +57,13 @@ class Atan2Expr(exprs.NumericExpr):
     _y_node: exprs.NumericExpr
     _x_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="atan2(y, x)",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="atan2(y, x)",
                 inputs={
-                    "y": self._y_node._to_conjure(),
-                    "x": self._x_node._to_conjure(),
+                    "y": self._y_node._to_proto(),
+                    "x": self._x_node._to_proto(),
                 },
             )
         )
@@ -68,11 +73,11 @@ class Atan2Expr(exprs.NumericExpr):
 class CosExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="cos(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="cos(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -82,11 +87,11 @@ class CumulativeSumExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _start_timestamp: params.NanosecondsUTC
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            cumulative_sum=scout_compute_api.CumulativeSumSeries(
-                input=self._node._to_conjure(),
-                start_timestamp=params._timestamp_to_conjure(self._start_timestamp),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            cumulative_sum=expressions_pb2.NumericCumulativeSumExpression(
+                input=self._node._to_proto(),
+                start=params._timestamp_to_proto(self._start_timestamp),
             )
         )
 
@@ -96,11 +101,11 @@ class DerivativeExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _time_unit: params.TimeUnitLiteral
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            derivative=scout_compute_api.DerivativeSeries(
-                input=self._node._to_conjure(),
-                time_unit=params._time_unit_to_conjure(self._time_unit),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            derivative=expressions_pb2.NumericDerivativeExpression(
+                input=self._node._to_proto(),
+                time_unit=params._time_unit_to_proto(self._time_unit),
             )
         )
 
@@ -110,13 +115,13 @@ class DivideExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="left / right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="left / right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -127,11 +132,10 @@ class FilterExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _ranges: exprs.RangeExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            filter_transformation=scout_compute_api.NumericFilterTransformationSeries(
-                input=self._node._to_conjure(),
-                filter=self._ranges._to_conjure(),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            range_filter=expressions_pb2.NumericRangeFilterExpression(
+                input=self._node._to_proto(), ranges=self._ranges._to_proto()
             )
         )
 
@@ -141,13 +145,13 @@ class FloorDivideExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="left // right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="left // right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -159,12 +163,12 @@ class IntegralExpr(exprs.NumericExpr):
     _start_timestamp: params.NanosecondsUTC
     _time_unit: params.TimeUnitLiteral
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            integral=scout_compute_api.IntegralSeries(
-                input=self._node._to_conjure(),
-                start_timestamp=params._timestamp_to_conjure(self._start_timestamp),
-                time_unit=params._time_unit_to_conjure(self._time_unit),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            integral=expressions_pb2.NumericIntegralExpression(
+                input=self._node._to_proto(),
+                start=params._timestamp_to_proto(self._start_timestamp),
+                time_unit=params._time_unit_to_proto(self._time_unit),
             )
         )
 
@@ -173,11 +177,10 @@ class IntegralExpr(exprs.NumericExpr):
 class LnExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            unary_arithmetic=scout_compute_api.UnaryArithmeticSeries(
-                input=self._node._to_conjure(),
-                operation=scout_compute_api.UnaryArithmeticOperation.LN,
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            unary=expressions_pb2.NumericUnaryExpression(
+                input=self._node._to_proto(), operation=expressions_pb2.UNARY_NUMERIC_OPERATION_LN
             )
         )
 
@@ -186,11 +189,10 @@ class LnExpr(exprs.NumericExpr):
 class LogarithmExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            unary_arithmetic=scout_compute_api.UnaryArithmeticSeries(
-                input=self._node._to_conjure(),
-                operation=scout_compute_api.UnaryArithmeticOperation.LOG,
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            unary=expressions_pb2.NumericUnaryExpression(
+                input=self._node._to_proto(), operation=expressions_pb2.UNARY_NUMERIC_OPERATION_LOG10
             )
         )
 
@@ -199,10 +201,10 @@ class LogarithmExpr(exprs.NumericExpr):
 class MaxExpr(exprs.NumericExpr):
     _nodes: typing.Sequence[exprs.NumericExpr]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            max=scout_compute_api.MaxSeries(
-                inputs=[node._to_conjure() for node in self._nodes],
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            nary=expressions_pb2.NumericNaryExpression(
+                operation=expressions_pb2.NARY_NUMERIC_OPERATION_MAX, inputs=[node._to_proto() for node in self._nodes]
             )
         )
 
@@ -211,10 +213,10 @@ class MaxExpr(exprs.NumericExpr):
 class MeanExpr(exprs.NumericExpr):
     _nodes: typing.Sequence[exprs.NumericExpr]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            mean=scout_compute_api.MeanSeries(
-                inputs=[node._to_conjure() for node in self._nodes],
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            nary=expressions_pb2.NumericNaryExpression(
+                operation=expressions_pb2.NARY_NUMERIC_OPERATION_MEAN, inputs=[node._to_proto() for node in self._nodes]
             )
         )
 
@@ -223,10 +225,10 @@ class MeanExpr(exprs.NumericExpr):
 class MinExpr(exprs.NumericExpr):
     _nodes: typing.Sequence[exprs.NumericExpr]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            min=scout_compute_api.MinSeries(
-                inputs=[node._to_conjure() for node in self._nodes],
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            nary=expressions_pb2.NumericNaryExpression(
+                operation=expressions_pb2.NARY_NUMERIC_OPERATION_MIN, inputs=[node._to_proto() for node in self._nodes]
             )
         )
 
@@ -236,13 +238,13 @@ class MinusExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="left - right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="left - right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -253,13 +255,13 @@ class ModuloExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression=r"left % right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula=r"left % right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -270,13 +272,13 @@ class MultiplyExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="left * right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="left * right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -289,20 +291,14 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
     _channel_name: str
     _additional_tags: dict[str, str]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            channel=scout_compute_api.ChannelSeries(
-                asset=scout_compute_api.AssetChannel(
-                    additional_tags={
-                        key: scout_compute_api.StringConstant(literal=value)
-                        for key, value in self._additional_tags.items()
-                    },
-                    asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
-                    data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
-                    group_by_tags=[],
-                    tags_to_group_by=[],
-                    additional_tag_filters=None,
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            channel_selection=source_selection_pb2.ChannelSelection(
+                asset=source_selection_pb2.AssetChannelSelection(
+                    asset=source_selection_pb2.AssetReferenceExpression(literal=self._asset_rid),
+                    channel=constants_pb2.StringConstant(literal=self._channel_name),
+                    data_scope=constants_pb2.StringConstant(literal=self._data_scope_name),
+                    tags=create_compute_tag_constraints(self._additional_tags),
                 )
             )
         )
@@ -314,16 +310,13 @@ class NumericDatasourceChannelExpr(exprs.NumericExpr):
     _channel_name: str
     _tags: dict[str, str]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            channel=scout_compute_api.ChannelSeries(
-                data_source=scout_compute_api.DataSourceChannel(
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
-                    data_source_rid=scout_compute_api.StringConstant(literal=self._datasource_rid),
-                    tags={key: scout_compute_api.StringConstant(literal=value) for key, value in self._tags.items()},
-                    group_by_tags=[],
-                    tags_to_group_by=[],
-                    tag_filters=None,
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            channel_selection=source_selection_pb2.ChannelSelection(
+                data_source=source_selection_pb2.DataSourceChannelSelection(
+                    data_source=source_selection_pb2.DataSourceReferenceExpression(literal=self._datasource_rid),
+                    channel=constants_pb2.StringConstant(literal=self._channel_name),
+                    tags=create_compute_tag_constraints(self._tags),
                 )
             )
         )
@@ -336,20 +329,14 @@ class NumericRunChannelExpr(exprs.NumericExpr):
     _channel_name: str
     _additional_tags: dict[str, str]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            channel=scout_compute_api.ChannelSeries(
-                run=scout_compute_api.RunChannel(
-                    additional_tags={
-                        key: scout_compute_api.StringConstant(literal=value)
-                        for key, value in self._additional_tags.items()
-                    },
-                    run_rid=scout_compute_api.StringConstant(literal=self._run_rid),
-                    data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
-                    group_by_tags=[],
-                    tags_to_group_by=[],
-                    additional_tag_filters=None,
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            channel_selection=source_selection_pb2.ChannelSelection(
+                run=source_selection_pb2.RunChannelSelection(
+                    run=source_selection_pb2.RunReferenceExpression(literal=self._run_rid),
+                    channel=constants_pb2.StringConstant(literal=self._channel_name),
+                    data_scope=constants_pb2.StringConstant(literal=self._data_scope_name),
+                    tags=create_compute_tag_constraints(self._additional_tags),
                 )
             )
         )
@@ -360,11 +347,10 @@ class OffsetExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _offset: float
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            offset=scout_compute_api.OffsetSeries(
-                input=self._node._to_conjure(),
-                scalar=params._float_to_conjure(self._offset),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            scalar_transform=expressions_pb2.NumericScalarTransformExpression(
+                input=self._node._to_proto(), offset=params._float_to_proto(self._offset)
             )
         )
 
@@ -374,13 +360,13 @@ class PlusExpr(exprs.NumericExpr):
     _left_node: exprs.NumericExpr
     _right_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="left + right",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="left + right",
                 inputs={
-                    "left": self._left_node._to_conjure(),
-                    "right": self._right_node._to_conjure(),
+                    "left": self._left_node._to_proto(),
+                    "right": self._right_node._to_proto(),
                 },
             )
         )
@@ -391,13 +377,13 @@ class PowerExpr(exprs.NumericExpr):
     _base_node: exprs.NumericExpr
     _exponent_node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="base ** exponent",
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="base ** exponent",
                 inputs={
-                    "base": self._base_node._to_conjure(),
-                    "exponent": self._exponent_node._to_conjure(),
+                    "base": self._base_node._to_proto(),
+                    "exponent": self._exponent_node._to_proto(),
                 },
             )
         )
@@ -407,10 +393,11 @@ class PowerExpr(exprs.NumericExpr):
 class ProductExpr(exprs.NumericExpr):
     _inputs: typing.Sequence[exprs.NumericExpr]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            product=scout_compute_api.ProductSeries(
-                inputs=[node._to_conjure() for node in self._inputs],
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            nary=expressions_pb2.NumericNaryExpression(
+                operation=expressions_pb2.NARY_NUMERIC_OPERATION_PRODUCT,
+                inputs=[node._to_proto() for node in self._inputs],
             )
         )
 
@@ -421,12 +408,12 @@ class RollingExpr(exprs.NumericExpr):
     _window: params.Nanoseconds
     _operator: params.RollingOperationLiteral
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            rolling_operation=scout_compute_api.RollingOperationSeries(
-                input=self._node._to_conjure(),
-                window=params._window_to_conjure(self._window),
-                operator=params._rolling_operation_to_conjure(self._operator),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            rolling_aggregation=expressions_pb2.NumericRollingAggregationExpression(
+                input=self._node._to_proto(),
+                window=params._duration_ns_to_proto(self._window),
+                reduction=params._rolling_operation_to_proto(self._operator),
             )
         )
 
@@ -436,11 +423,11 @@ class ScaleExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _scalar: float
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            scale=scout_compute_api.ScaleSeries(
-                input=self._node._to_conjure(),
-                scalar=params._float_to_conjure(self._scalar),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            scalar_transform=expressions_pb2.NumericScalarTransformExpression(
+                input=self._node._to_proto(),
+                scale=numeric_parameters_pb2.ScalingFactor(value=params._float_to_proto(self._scalar)),
             )
         )
 
@@ -449,11 +436,11 @@ class ScaleExpr(exprs.NumericExpr):
 class SinExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="sin(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="sin(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -462,11 +449,11 @@ class SinExpr(exprs.NumericExpr):
 class SqrtExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="sqrt(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="sqrt(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -475,10 +462,10 @@ class SqrtExpr(exprs.NumericExpr):
 class SumExpr(exprs.NumericExpr):
     _nodes: typing.Sequence[exprs.NumericExpr]
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            sum=scout_compute_api.SumSeries(
-                inputs=[node._to_conjure() for node in self._nodes],
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            nary=expressions_pb2.NumericNaryExpression(
+                operation=expressions_pb2.NARY_NUMERIC_OPERATION_SUM, inputs=[node._to_proto() for node in self._nodes]
             )
         )
 
@@ -487,11 +474,11 @@ class SumExpr(exprs.NumericExpr):
 class TanExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="tan(input)",
-                inputs={"input": self._node._to_conjure()},
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            arithmetic=expressions_pb2.NumericArithmeticExpression(
+                formula="tan(input)",
+                inputs={"input": self._node._to_proto()},
             )
         )
 
@@ -501,13 +488,13 @@ class TimeDifferenceExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
     _time_unit: params.TimeUnitLiteral | None = None
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
         # TimeDifferenceSeries expects a generic Series input, so we need to wrap our NumericSeries
-        input_series = scout_compute_api.Series(numeric=self._node._to_conjure())
-        return scout_compute_api.NumericSeries(
-            time_difference=scout_compute_api.TimeDifferenceSeries(
+        input_series = expressions_pb2.SeriesExpression(numeric=self._node._to_proto())
+        return expressions_pb2.NumericExpression(
+            time_difference=expressions_pb2.NumericTimeDifferenceExpression(
                 input=input_series,
-                time_unit=params._time_unit_to_conjure(self._time_unit) if self._time_unit else None,
+                unit=params._time_unit_to_proto(self._time_unit) if self._time_unit else None,
             )
         )
 
@@ -516,9 +503,9 @@ class TimeDifferenceExpr(exprs.NumericExpr):
 class ValueDifferenceExpr(exprs.NumericExpr):
     _node: exprs.NumericExpr
 
-    def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            value_difference=scout_compute_api.ValueDifferenceSeries(
-                input=self._node._to_conjure(),
+    def _to_proto(self) -> expressions_pb2.NumericExpression:
+        return expressions_pb2.NumericExpression(
+            value_difference=expressions_pb2.NumericValueDifferenceExpression(
+                input=self._node._to_proto(),
             )
         )

@@ -10,9 +10,19 @@ from nominal_api import api, scout_compute_api, scout_dataexport_api
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.protos.compute.v1 import (
+    computation_spec_pb2,
+    compute_pb2,
+    execution_inputs_pb2,
+    execution_options_pb2,
+    execution_results_pb2,
+    expressions_pb2,
+)
+from nominal.protos.types.time import time_pb2
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsDuration,
@@ -56,62 +66,54 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_bucket_counts(
-    response: scout_compute_api.ComputeNodeResponse,
+    response: execution_results_pb2.ComputationResult,
 ) -> Sequence[tuple[IntegralNanosecondsUTC, int]]:
     """Extract (timestamp, point_count) pairs from a compute response.
 
     Works for both numeric and enum series. Handles bucketed (decimated) responses
     as well as undecimated fallbacks when the data has fewer points than requested buckets.
     """
-    # Numeric — decimated into buckets with statistics
-    if response.bucketed_numeric is not None:
+    if response.HasField("numeric_buckets"):
         return [
-            (_SecondsNanos.from_api(ts).to_nanoseconds(), bucket.count or 0)
-            for ts, bucket in zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
+            (_SecondsNanos.from_proto(bucket.end).to_nanoseconds(), bucket.statistics.count)
+            for bucket in response.numeric_buckets.buckets
         ]
-
-    # Numeric — undecimated (fewer points than requested buckets)
-    if response.numeric is not None:
-        return [(_SecondsNanos.from_api(ts).to_nanoseconds(), 1) for ts in response.numeric.timestamps]
-
-    # Numeric — single point
-    if response.numeric_point is not None:
-        return [(_SecondsNanos.from_api(response.numeric_point.timestamp).to_nanoseconds(), 1)]
-
-    # Enum — decimated into buckets with histograms
-    if response.bucketed_enum is not None:
+    if response.HasField("numeric_samples"):
         return [
-            (_SecondsNanos.from_api(ts).to_nanoseconds(), sum(bucket.histogram.values()))
-            for ts, bucket in zip(response.bucketed_enum.timestamps, response.bucketed_enum.buckets)
+            (_SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), 1)
+            for point in response.numeric_samples.samples
         ]
-
-    # Enum — undecimated (fewer points than requested buckets)
-    if response.enum is not None:
-        return [(_SecondsNanos.from_api(ts).to_nanoseconds(), 1) for ts in response.enum.timestamps]
-
-    logger.warning("Unrecognized compute response type: %s", response.type)
+    if response.HasField("numeric_sample") and response.numeric_sample.HasField("sample"):
+        return [(_SecondsNanos.from_proto(response.numeric_sample.sample.timestamp).to_nanoseconds(), 1)]
+    if response.HasField("categorical_buckets"):
+        return [
+            (
+                _SecondsNanos.from_proto(bucket.end).to_nanoseconds(),
+                sum(bucket.statistics.count_by_category_index.values()),
+            )
+            for bucket in response.categorical_buckets.buckets
+        ]
+    if response.HasField("categorical_samples"):
+        return [
+            (_SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), 1)
+            for point in response.categorical_samples.samples
+        ]
+    logger.warning("Unrecognized compute response type: %s", response.WhichOneof("kind"))
     return []
 
 
 def _build_compute_request(
-    series: scout_compute_api.Series,
-    start: api.Timestamp,
-    end: api.Timestamp,
-    num_buckets: int,
-) -> scout_compute_api.ComputeNodeRequest:
+    series: expressions_pb2.SeriesExpression, start: time_pb2.Timestamp, end: time_pb2.Timestamp, num_buckets: int
+) -> execution_inputs_pb2.ExecutionInput:
     """Build a decimation compute request for a single series."""
-    return scout_compute_api.ComputeNodeRequest(
-        context=scout_compute_api.Context(dataset_references={}, variables={}),
-        node=scout_compute_api.ComputableNode(
-            series=scout_compute_api.SummarizeSeries(
+    return execution_inputs_pb2.ExecutionInput(
+        context=expressions_pb2.ComputeContext(),
+        computation=computation_spec_pb2.ComputationSpec(
+            series_summary=computation_spec_pb2.SeriesSummarySpec(
                 input=series,
-                numeric_aggregations={},
-                summarization_strategy=scout_compute_api.SummarizationStrategy(
-                    decimate=scout_compute_api.DecimateStrategy(
-                        buckets=scout_compute_api.DecimateWithBuckets(buckets=num_buckets)
-                    )
+                summarization=execution_options_pb2.SeriesSummarization(
+                    bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=num_buckets)
                 ),
-                buckets=num_buckets,
             )
         ),
         start=start,
@@ -192,19 +194,18 @@ def _batch_channel_points_per_second(
 
     # _to_compute_series raises ValueError for unsupported types; callers are expected to
     # pre-filter to DOUBLE/INT/STRING channels (see _compute_export_jobs).
-    series_list = [channel._to_compute_series(tags=tags) for channel in channels]
+    series_list = [channel._to_proto_compute_series(tags=tags) for channel in channels]
 
-    api_start = _SecondsNanos.from_nanoseconds(start_ns).to_api()
-    api_end = _SecondsNanos.from_nanoseconds(end_ns).to_api()
+    api_start = _SecondsNanos.from_nanoseconds(start_ns).to_proto()
+    api_end = _SecondsNanos.from_nanoseconds(end_ns).to_proto()
 
     try:
-        request = scout_compute_api.BatchComputeWithUnitsRequest(
-            requests=[_build_compute_request(s, api_start, api_end, num_buckets) for s in series_list]
+        request = compute_pb2.BatchComputeWithUnitsRequest(
+            inputs=[_build_compute_request(s, api_start, api_end, num_buckets) for s in series_list]
         )
-        resp = client._clients.compute.batch_compute_with_units(
-            auth_header=client._clients.auth_header,
-            request=request,
-        )
+        with translate_grpc_errors():
+            resp = client._clients.compute.BatchComputeWithUnits(request)
+
     except Exception:
         logger.exception("Failed to compute buckets for channels: %s", [ch.name for ch in channels])
         return {(ch.data_source, ch.name): None for ch in channels}
@@ -212,14 +213,14 @@ def _batch_channel_points_per_second(
     results: dict[tuple[str, str], float | None] = {}
     for channel, result in zip(channels, resp.results):
         key = (channel.data_source, channel.name)
-        compute_result = result.compute_result
-        if compute_result is None or compute_result.error is not None:
-            error_msg = compute_result.error if compute_result else "no result"
+        compute_result = result.outcome
+        if not result.HasField("outcome") or compute_result.HasField("failure"):
+            error_msg = compute_result.failure if compute_result.HasField("failure") else "no result"
             logger.warning("Failed to compute point rate for channel '%s': %s", channel.name, error_msg)
             results[key] = None
             continue
 
-        if compute_result.success is None:
+        if not compute_result.HasField("success"):
             logger.warning("Compute succeeded for channel '%s' but response is empty", channel.name)
             results[key] = None
             continue
