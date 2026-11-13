@@ -9,7 +9,7 @@ myst:
 {.lead}
 Read channel data into a DataFrame, export long time ranges in batches, or download the files a dataset was built from.
 
-To download data from the terminal instead, see [Download data](/guides/cli/downloading-data.md).
+To download data from the terminal instead, see [Download data](/guides/cli/downloading-data.md). For all the pandas, Polars and MATLAB helpers, see [Third-Party Integrations](/ref/thirdparty/index.md).
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
