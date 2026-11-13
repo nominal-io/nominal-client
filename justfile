@@ -101,7 +101,7 @@ clean:
 
 # Generated documentation pages and HTML are disposable.
 _clean-docs:
-    rm -rf docs/src/sdk/_summaries docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
+    rm -rf docs/src/ref/_summaries docs/src/ref/generated docs/src/ref/exceptions.rst docs/_build/dirhtml
 
 # Build the docs into folder-style URLs; warnings fail the build.
 build-docs: _clean-docs
@@ -113,6 +113,6 @@ serve-docs: _clean-docs
         sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml \
         --watch docs --watch nominal --watch packages --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE \
         --ignore docs/_build --ignore docs/_tests --ignore "**/__pycache__/**" \
-        --ignore docs/src/_nominal_snippets --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated \
-        --ignore docs/src/sdk/exceptions.rst \
+        --ignore docs/src/_nominal_snippets --ignore docs/src/ref/_summaries --ignore docs/src/ref/generated \
+        --ignore docs/src/ref/exceptions.rst \
         --re-ignore '(~|/\.?#[^/]*)$'

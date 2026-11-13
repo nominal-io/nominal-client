@@ -10,7 +10,7 @@ myst:
 `nom` is the client's command line interface. It installs with `nominal` and covers profiles, extractors, downloads, instrumentation sheets and migrations.
 
 Commands that call Nominal take `--profile <name>`, using a profile from [API keys setup](/guides/api-keys-setup.md).
-Add `--help` to any command for its options, or see the [CLI reference](/sdk/cli.md).
+Add `--help` to any command for its options, or see the [CLI reference](/ref/cli.md).
 
 | Command | Use it to | Guide |
 | --- | --- | --- |
@@ -18,4 +18,4 @@ Add `--help` to any command for its options, or see the [CLI reference](/sdk/cli
 | `nom container` | Register and manage file extractors and their images | [File extractors](/guides/extractors/overview.md#from-the-cli) |
 | `nom download` | Pick channels and a time range, and save them as CSV or Parquet | [Download data](/guides/cli/downloading-data.md) |
 | `nom mis` | Set channel units and descriptions from an instrumentation sheet | [Instrumentation sheets](/guides/cli/instrumentation-sheets.md) |
-| `nom migrate` | Copy resources between Nominal tenants | [CLI reference](/sdk/cli.md) |
+| `nom migrate` | Copy resources between Nominal tenants | [CLI reference](/ref/cli.md) |

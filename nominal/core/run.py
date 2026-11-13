@@ -62,6 +62,8 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
 
     _clients: _Clients = field(repr=False)
     author_rid: str | None = field(default=None, repr=False)
+    is_locked: bool = False
+    """Whether the run is locked, which exempts its time range from dataset retention."""
 
     class _Clients(
         Attachment._Clients,
@@ -723,6 +725,52 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
         with translate_grpc_errors():
             self._clients.run.UnarchiveRun(run_service_pb2.UnarchiveRunRequest(rid=self.rid))
 
+    def lock(self) -> None:
+        """Lock this run, exempting its time range from retention on every dataset of its assets.
+
+        Locking creates a retention exemption on each dataset, with this run's RID as the exemption's source ID,
+        covering the run's start to end time.
+
+        Note:
+            Requires organization admin access, a run with an end time, and dataset retention to be enabled for
+            your organization. Datasets added to the run's assets afterward are not covered; lock again to
+            include them.
+
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from every dataset of the run's assets.
+            NominalFailedPreconditionError: If the run has no end time, or dataset retention is not enabled for
+                your organization.
+            NominalError: If the request fails.
+        """
+        self._update_lock_status(run_service_pb2.LOCK_STATUS_LOCKED)
+
+    def unlock(self) -> None:
+        """Unlock this run, removing the retention exemptions that locking it created.
+
+        Note:
+            Requires organization admin access, a run with an end time, and dataset retention to be enabled for
+            your organization.
+
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from every dataset of the run's assets.
+            NominalFailedPreconditionError: If the run has no end time, or dataset retention is not enabled for
+                your organization.
+            NominalError: If the request fails.
+        """
+        self._update_lock_status(run_service_pb2.LOCK_STATUS_UNLOCKED)
+
+    def _update_lock_status(self, lock_status: run_service_pb2.LockStatus.ValueType) -> None:
+        with translate_grpc_errors():
+            self._clients.run.UpdateLockStatus(
+                run_service_pb2.UpdateLockStatusRequest(rid=self.rid, lock_status=lock_status)
+            )
+
     @classmethod
     def _from_proto(cls, clients: _Clients, run: run_service_pb2.Run) -> Self:
         return cls(
@@ -743,6 +791,7 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             is_archived=run.is_archived,
             _clients=clients,
             author_rid=run.author_rid if run.HasField("author_rid") else None,
+            is_locked=run.lock_status == run_service_pb2.LOCK_STATUS_LOCKED,
         )
 
 

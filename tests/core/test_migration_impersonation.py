@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from nominal.core.dataset import Dataset
+from nominal.core.retention import KeepForever
 from nominal.experimental.migration.migration_cli import (
     ImpersonatingDestinationClientResolver,
     ImpersonationConfig,
@@ -20,6 +21,7 @@ def _dataset() -> Dataset:
         bounds=None,
         is_archived=False,
         _clients=MagicMock(),
+        retention_policy=KeepForever(),
     )
 
 
