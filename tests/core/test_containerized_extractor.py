@@ -15,6 +15,7 @@ from nominal.core.containerized_extractor import (
 from nominal.exceptions import NominalContainerImageError
 from nominal.protos.ingest.v2 import containerized_extractor_pb2
 from nominal.protos.registry.v2 import registry_pb2
+from nominal.protos.uploads.v1 import uploads_pb2
 
 
 def _clients() -> MagicMock:
@@ -36,9 +37,13 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
 
 
 def _registrable_extractor(clients: MagicMock, tmp_path: Path) -> tuple[ContainerizedExtractor, Path]:
-    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
-    clients.upload.list_parts.return_value = []
-    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
+    clients.upload.CreateMultipartUpload.return_value = uploads_pb2.CreateMultipartUploadResponse(
+        multipart_upload=uploads_pb2.MultipartUpload(object_key="image", upload_id="upload-id")
+    )
+    clients.upload.ListUploadParts.return_value = uploads_pb2.ListUploadPartsResponse()
+    clients.upload.CompleteMultipartUpload.return_value = uploads_pb2.CompleteMultipartUploadResponse(
+        object_path="s3://image"
+    )
     # No file chunks means no object-store requests; upload service calls use the mock client.
     tarball = tmp_path / "extractor.tar"
     tarball.touch()
@@ -183,7 +188,7 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
             output_format=output_format,
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.registry.CreateImage.assert_not_called()
 
 
@@ -276,7 +281,7 @@ def test_register_image_rejects_unserializable_resources_before_uploading(tmp_pa
             resources=core.ContainerResources(cpu_cores=-1),
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
 
 
 def test_set_active_image_polls_then_activates() -> None:

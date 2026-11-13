@@ -16,12 +16,13 @@ import time
 from concurrent.futures import FIRST_EXCEPTION, CancelledError, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Iterable, Self, Type
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Self, Type
 
+import grpc
 import requests
-from nominal_api import upload_api
 
 from nominal.core._utils.filenames import resolve_upload_filename
+from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import (
     DEFAULT_CHUNK_SIZE,
     _abort,
@@ -33,6 +34,7 @@ from nominal.core._utils.multipart import (
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core.filetype import FileType
 from nominal.exceptions import (
+    NominalError,
     NominalMultipartUploadError,
     NominalMultipartUploadFailed,
     NominalRequestThrottledError,
@@ -45,6 +47,7 @@ from nominal.experimental.ingest._upload_pacing import (
     _GlobalBackoff,
     _ThrottleGate,
 )
+from nominal.protos.uploads.v1 import uploads_pb2, uploads_pb2_grpc
 
 if TYPE_CHECKING:
     from nominal.core.client import NominalClient
@@ -91,6 +94,16 @@ def _is_transient_upload_error(exc: BaseException) -> bool:
     exceptions) is treated as permanent: retrying cannot help, so the failure surfaces
     immediately.
     """
+    if isinstance(exc, NominalError) and isinstance(exc.__cause__, grpc.RpcError):
+        exc = exc.__cause__
+    if isinstance(exc, grpc.RpcError):
+        return exc.code() in (
+            grpc.StatusCode.RESOURCE_EXHAUSTED,
+            grpc.StatusCode.UNAVAILABLE,
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+            grpc.StatusCode.INTERNAL,
+            grpc.StatusCode.UNKNOWN,
+        )
     match exc:
         case (
             ConnectionError()  # raw socket-level errors
@@ -220,11 +233,11 @@ class MultipartUploader:
     timeout: float
     max_part_retries: int
 
-    _upload_client: upload_api.UploadService = field(repr=False)
-    _auth_header: str = field(repr=False)
+    _upload_client: uploads_pb2_grpc.UploadServiceStub = field(repr=False)
+    _verify: str | None = field(repr=False)
     _workspace_rid: str | None = field(repr=False)
     # The session used for direct-to-storage PUTs; always owned (and closed) by this uploader.
-    # The upload client itself is the caller's (usually the shared conjure client): never closed here.
+    # The upload client itself is the caller's (usually the shared gRPC client): never closed here.
     _session: requests.Session = field(repr=False)
     _small_pool: ThreadPoolExecutor = field(repr=False)
     _driver_pool: ThreadPoolExecutor = field(repr=False)
@@ -359,7 +372,7 @@ class MultipartUploader:
             # The shared client's transport-level status retries are the LOCAL layer of the
             # two-layer backoff; the gate's lane + damper are the global layer.
             _upload_client=clients.upload,
-            _auth_header=clients.auth_header,
+            _verify=clients.trust_store_path,
             _workspace_rid=clients.resolve_default_workspace_rid(),
             _session=create_multipart_request_session(
                 pool_size=storage_workers, header_provider=clients.header_provider
@@ -582,11 +595,14 @@ class MultipartUploader:
         safe_filename = pending.filename
         body = pending.path.read_bytes()
         started = time.monotonic()
-        location = self._gate.call(
-            lambda: self._upload_client.upload_file(
-                self._auth_header, body, safe_filename, size_bytes=pending.total_size, workspace=self._workspace_rid
-            )
-        )
+
+        def upload() -> str:
+            with translate_grpc_errors():
+                return self._upload_client.UploadFile(
+                    _upload_file_requests(body, safe_filename, pending.total_size, self._workspace_rid)
+                ).file.object_path
+
+        location = self._gate.call(upload)
         logger.debug(
             "uploaded %s single-shot (%d bytes) in %.2fs", safe_filename, pending.total_size, time.monotonic() - started
         )
@@ -611,7 +627,7 @@ class MultipartUploader:
         started = time.monotonic()
         key, upload_id = self._gate.call(
             lambda: _initiate_multipart_upload(
-                self._upload_client, self._auth_header, safe_filename, pending.file_type.mimetype, self._workspace_rid
+                self._upload_client, safe_filename, pending.file_type.mimetype, self._workspace_rid
             )
         )
         logger.debug("initiated multipart upload for %s: key=%s upload_id=%s", safe_filename, key, upload_id)
@@ -645,9 +661,7 @@ class MultipartUploader:
                     raise failure
             results = [f.result() for f in futs]
             etags = {r.part_number: r.etag for r in results}
-            location = self._gate.call(
-                lambda: _complete_multipart_upload(self._upload_client, self._auth_header, key, upload_id, etags)
-            )
+            location = self._gate.call(lambda: _complete_multipart_upload(self._upload_client, upload_id, etags))
             logger.debug(
                 "completed multipart upload for %s (%d bytes, %d parts) in %.2fs",
                 safe_filename,
@@ -705,16 +719,19 @@ class MultipartUploader:
             if plan.revoked.is_set():
                 raise CancelledError("file upload failed; sibling parts revoked")
             try:
-                sign_response = self._gate.call(
-                    lambda: self._upload_client.sign_part(
-                        self._auth_header, plan.key, bounds.part_number, plan.upload_id
-                    )
-                )
+                with translate_grpc_errors():
+                    sign_response = self._gate.call(
+                        lambda: self._upload_client.CreateUploadPartUrl(
+                            uploads_pb2.CreateUploadPartUrlRequest(
+                                upload_id=plan.upload_id, part_number=bounds.part_number
+                            )
+                        )
+                    ).upload_part_url
                 put_response = _put_part(
                     self._session,
                     sign_response,
                     data,
-                    verify=self._upload_client._verify,
+                    verify=self._verify,
                     timeout=self.timeout,
                 )
             except NominalRequestThrottledError:
@@ -758,8 +775,19 @@ class MultipartUploader:
         # the uploads still trying to succeed, and must not delay the caller's failure.
         try:
             self._gate.call(
-                lambda: _abort(self._upload_client, self._auth_header, key, upload_id, exc),
+                lambda: _abort(self._upload_client, key, upload_id, exc),
                 deadline_seconds=_ABORT_THROTTLE_DEADLINE_S,
             )
         except Exception:
             logger.warning("best-effort multipart abort failed", exc_info=True)
+
+
+def _upload_file_requests(
+    body: bytes, filename: str, size_bytes: int, workspace_rid: str | None
+) -> Iterator[uploads_pb2.UploadFileRequest]:
+    """Send metadata first and bound each data message to the API's one-MiB limit."""
+    yield uploads_pb2.UploadFileRequest(
+        metadata=uploads_pb2.UploadFileMetadata(file_name=filename, size_bytes=size_bytes, workspace_rid=workspace_rid)
+    )
+    for offset in range(0, len(body), 1024 * 1024):
+        yield uploads_pb2.UploadFileRequest(data=body[offset : offset + 1024 * 1024])

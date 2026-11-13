@@ -10,7 +10,7 @@ from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
 from typing import BinaryIO, Mapping, Protocol, Self, Sequence, overload
 
-from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api
 from typing_extensions import deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -29,6 +29,7 @@ from nominal.exceptions import (
     NominalVideoTimestampModeError,
 )
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
+from nominal.protos.uploads.v1 import uploads_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         @property
         def video(self) -> scout_video.VideoService: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         @property
@@ -327,22 +328,22 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
         workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header,
             workspace_rid,
             self._clients.upload,
             start,
             frame_timestamps,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             video,
             name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
@@ -449,13 +450,13 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
         file_type = FileType(*file_type)
         workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
-            self._clients.auth_header,
             workspace_rid,
             mcap,
             name,
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            verify=self._clients.trust_store_path,
         )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
@@ -515,11 +516,11 @@ class Video(HasRid, MarkableMixin, RefreshableConjureMixin[scout_video_api.Video
 
 
 def _upload_frame_timestamps(
-    auth_header: str,
     workspace_rid: str | None,
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     frame_timestamps: Sequence[IntegralNanosecondsUTC],
     header_provider: HeaderProvider | None = None,
+    verify: bool | str | None = None,
 ) -> str:
     """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
     # Dump timestamp array into an in-memory file-like IO object
@@ -531,24 +532,24 @@ def _upload_frame_timestamps(
 
     logger.debug("Uploading timestamp manifests to s3")
     return upload_multipart_io(
-        auth_header,
         workspace_rid,
         json_io,
         "timestamp_manifest",
         FileTypes.JSON,
         upload_client,
         header_provider=header_provider,
+        verify=verify,
     )
 
 
 def _build_video_file_timestamp_manifest(
-    auth_header: str,
     workspace_rid: str | None,
-    upload_client: upload_api.UploadService,
+    upload_client: uploads_pb2_grpc.UploadServiceStub,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
     mcap_topic: str | None = None,
     header_provider: HeaderProvider | None = None,
+    verify: bool | str | None = None,
 ) -> scout_video_api.VideoFileTimestampManifest:
     """Build a timestamp manifest for video ingest.
 
@@ -564,7 +565,7 @@ def _build_video_file_timestamp_manifest(
         )
     elif frame_timestamps is not None:
         manifest_s3_path = _upload_frame_timestamps(
-            auth_header, workspace_rid, upload_client, frame_timestamps, header_provider=header_provider
+            workspace_rid, upload_client, frame_timestamps, header_provider=header_provider, verify=verify
         )
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
     elif start is not None:

@@ -97,8 +97,7 @@ def test_native_streams_preserve_storage_location_and_caller_owned_stream(
     """Non-seekable binary streams use existing upload routing and return pending files without closing input."""
     stream = HTTPResponse(body=io.BytesIO(b"native-bytes"), preload_content=False)
 
-    def upload(auth, workspace, source, filename, mimetype, client, **options):
-        assert auth == dataset._clients.auth_header
+    def upload(workspace, source, filename, mimetype, client, **options):
         assert workspace == "workspace"
         assert client is dataset._clients.upload
         assert options["header_provider"] is dataset._clients.header_provider
@@ -141,7 +140,6 @@ def test_tabular_stream_preserves_storage_routing_and_ingest_metadata(dataset, f
         )
 
     assert upload.call_args.args == (
-        dataset._clients.auth_header,
         "workspace",
         stream,
         filename,
@@ -183,8 +181,8 @@ def test_journal_stream_keeps_known_type_channel_and_timestamp_options(dataset, 
             timestamp_column="source_ts",
             timestamp_type="epoch_seconds",
         )
-    assert upload.call_args.args[2].read() == b"journal-bytes"
-    assert upload.call_args.args[3] == "logs.jsonl.gz"
+    assert upload.call_args.args[1].read() == b"journal-bytes"
+    assert upload.call_args.args[2] == "logs.jsonl.gz"
     _, request = dataset._clients.ingest.ingest.call_args.args
     options = request.options.journal_json
     assert options.channel == "events"
@@ -209,8 +207,8 @@ def test_journal_stream_preserves_filename_with_inferred_or_explicit_type(
     stream = HTTPResponse(body=io.BytesIO(b"journal-bytes"), preload_content=False)
     with patch("nominal.core._utils.multipart.put_multipart_upload", return_value=LOCATION) as upload:
         result = dataset.add_journal_json_from_io(stream, file_name=file_name, **kwargs)
-    assert upload.call_args.args[2] is stream
-    assert upload.call_args.args[3] == expected_name
+    assert upload.call_args.args[1] is stream
+    assert upload.call_args.args[2] == expected_name
     assert stream.read() == b"journal-bytes"
     assert not stream.closed
     assert result.id == "native-file"
@@ -317,8 +315,8 @@ def test_existing_path_methods_preserve_filename_and_own_file_handle(
     path.write_bytes(b"native")
     with patch("nominal.core._utils.multipart.put_multipart_upload", return_value=LOCATION) as upload:
         result = method(dataset, path, **kwargs)
-    assert upload.call_args.args[2].closed
-    assert upload.call_args.args[3] == filename
+    assert upload.call_args.args[1].closed
+    assert upload.call_args.args[2] == filename
     assert result.id == "native-file"
     _, request = dataset._clients.ingest.ingest.call_args.args
     options = request.options.dataflash if expected_arm == "dataflash" else request.options.journal_json
@@ -370,4 +368,4 @@ def test_path_ingestion_failure_closes_owned_file(dataset, tmp_path, method, fil
     with patch("nominal.core._utils.multipart.put_multipart_upload", return_value=LOCATION) as upload:
         with pytest.raises(RuntimeError, match="ingest failed"):
             method(dataset, path)
-    assert upload.call_args.args[2].closed
+    assert upload.call_args.args[1].closed

@@ -116,15 +116,15 @@ def _service_config_json(service_config: ServiceConfiguration) -> str:
     gRPC analogue), jittered exponential backoff (`initialBackoff = backoff_slot_size`, x2 per attempt,
     capped at 120s), and retry for every method regardless of idempotency.
 
-    Two intentional divergences from conjure's `RetryWithJitter`, accepted because gRPC's native retry is
-    simpler/more robust and both are negligible for the unary RPCs this client makes today:
+    Two intentional divergences from conjure's `RetryWithJitter`:
 
     - First-retry backoff: conjure's first retry is immediate (0); gRPC requires `initialBackoff > 0`, so
       our first retry waits ~uniform(0, backoff_slot_size) instead.
     - Commit state: gRPC only retries *uncommitted* RPCs (it stops once any response has been received),
       whereas conjure (urllib3) retries the whole request regardless. This only changes behaviour for
       streaming RPCs (a partial response received mid-stream); for unary calls the two are equivalent.
-      Revisit (e.g. a `RetryWithJitter`-mirroring interceptor) if/when streaming gRPC calls are added.
+      The experimental uploader recreates each UploadFile request stream in its own throttle/file retry
+      loops when native retries are exhausted or the request has already committed.
     """
     return json.dumps(
         {

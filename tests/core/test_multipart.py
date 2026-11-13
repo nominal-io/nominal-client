@@ -20,6 +20,7 @@ from nominal.core._utils.multipart import (
 )
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalMultipartUploadFailed
+from nominal.protos.uploads.v1 import uploads_pb2
 
 
 def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) -> str:
@@ -27,7 +28,6 @@ def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) 
     with patch.object(multipart, "put_multipart_upload") as mock_put:
         mock_put.return_value = "s3://bucket/key"
         multipart.upload_multipart_io(
-            "Bearer token",
             "ri.workspace",
             io.BytesIO(b"data"),
             name,
@@ -35,7 +35,7 @@ def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) 
             MagicMock(),
         )
     # put_multipart_upload(auth, workspace, f, filename, mimetype, upload_client, ...)
-    return mock_put.call_args.args[3]
+    return mock_put.call_args.args[2]
 
 
 @pytest.mark.parametrize(
@@ -116,8 +116,8 @@ def test_path_uploads_use_the_actual_filename(tmp_path, name, file_type, expecte
     path = tmp_path / name
     path.write_bytes(b"data")
     with patch.object(multipart, "put_multipart_upload", return_value="s3://backend/opaque") as upload:
-        multipart.upload_multipart_file("test", None, path, MagicMock(), file_type=file_type)
-    assert upload.call_args.args[3] == expected
+        multipart.upload_multipart_file(None, path, MagicMock(), file_type=file_type)
+    assert upload.call_args.args[2] == expected
 
 
 def test_unsafe_format_suffix_is_rejected_before_upload() -> None:
@@ -125,7 +125,6 @@ def test_unsafe_format_suffix_is_rejected_before_upload() -> None:
     with patch.object(multipart, "put_multipart_upload") as upload:
         with pytest.raises(ValueError, match="unsafe for storage"):
             multipart.upload_multipart_io(
-                "test",
                 None,
                 io.BytesIO(b"data"),
                 "safe",
@@ -141,7 +140,6 @@ def test_malformed_default_extension_is_rejected_before_upload(extension: str) -
     with patch.object(multipart, "put_multipart_upload") as upload:
         with pytest.raises(ValueError, match="extension"):
             multipart.upload_multipart_io(
-                "test",
                 None,
                 io.BytesIO(b"data"),
                 "traffic",
@@ -156,53 +154,49 @@ def test_unsafe_filename_rejected_before_upload(name: str) -> None:
     upload_client = MagicMock()
     with patch.object(multipart, "put_multipart_upload") as mock_put:
         with pytest.raises(ValueError, match="unsafe for storage"):
-            multipart.upload_multipart_io(
-                "Bearer token", "ri.workspace", io.BytesIO(b"data"), name, FileTypes.CSV, upload_client
-            )
+            multipart.upload_multipart_io("ri.workspace", io.BytesIO(b"data"), name, FileTypes.CSV, upload_client)
         mock_put.assert_not_called()  # no upload attempted for an unsafe name
-    upload_client.initiate_multipart_upload.assert_not_called()
+    upload_client.CreateMultipartUpload.assert_not_called()
 
 
-def _sign_response() -> MagicMock:
-    r = MagicMock()
-    r.url = "https://s3.example.com/signed"
-    r.headers = {"x-amz-meta": "1"}
-    return r
+def _sign_response() -> uploads_pb2.UploadPartUrl:
+    return uploads_pb2.UploadPartUrl(url="https://s3.example.com/signed")
 
 
 def test_sign_and_put_part_raises_after_retries() -> None:
     """The legacy retry wrapper spends exactly its retry budget, then fails with the public error."""
-    client = MagicMock(spec=["sign_part", "_verify"])
-    client._verify = True
-    client.sign_part.return_value = _sign_response()
+    client = MagicMock(spec=["CreateUploadPartUrl"])
+    client.CreateUploadPartUrl.return_value = uploads_pb2.CreateUploadPartUrlResponse(upload_part_url=_sign_response())
     session = MagicMock(spec=["put"])
     session.put.side_effect = requests.ConnectionError("boom")
 
     with pytest.raises(NominalMultipartUploadFailed):
-        _sign_and_put_part(client, session, "auth", "key", "uid", 3, b"chunk", num_retries=2)
+        _sign_and_put_part(client, session, "key", "uid", 3, b"chunk", num_retries=2)
 
     assert session.put.call_count == 2
 
 
 def test_complete_multipart_upload_builds_parts_from_etags_in_order() -> None:
     """Completion sends parts in ascending part-number order, which the storage provider requires."""
-    client = MagicMock(spec=["complete_multipart_upload"])
-    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
+    client = MagicMock(spec=["CompleteMultipartUpload"])
+    client.CompleteMultipartUpload.return_value = uploads_pb2.CompleteMultipartUploadResponse(
+        object_path="s3://bucket/key"
+    )
 
-    location = _complete_multipart_upload(client, "auth", "key", "uid", {3: '"c"', 1: '"a"', 2: '"b"'})
+    location = _complete_multipart_upload(client, "uid", {3: '"c"', 1: '"a"', 2: '"b"'})
 
     assert location == "s3://bucket/key"
-    _, _, _, parts = client.complete_multipart_upload.call_args[0]
+    parts = client.CompleteMultipartUpload.call_args.args[0].parts
     assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"'), (2, '"b"'), (3, '"c"')]
 
 
 def test_complete_multipart_upload_raises_when_location_missing() -> None:
     """A completion response without a location is a failed upload, not a None return."""
-    client = MagicMock(spec=["complete_multipart_upload"])
-    client.complete_multipart_upload.return_value = MagicMock(location=None)
+    client = MagicMock(spec=["CompleteMultipartUpload"])
+    client.CompleteMultipartUpload.return_value = uploads_pb2.CompleteMultipartUploadResponse()
 
     with pytest.raises(NominalMultipartUploadFailed):
-        _complete_multipart_upload(client, "auth", "key", "uid", {1: '"e"'})
+        _complete_multipart_upload(client, "uid", {1: '"e"'})
 
 
 def test_put_multipart_upload_completes_via_list_parts() -> None:
@@ -211,20 +205,26 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
     ETag-based primitive the newer MultipartUploader uses.
     """
     upload_client = MagicMock(
-        spec=["initiate_multipart_upload", "sign_part", "list_parts", "complete_multipart_upload", "_verify"]
+        spec=["CreateMultipartUpload", "CreateUploadPartUrl", "ListUploadParts", "CompleteMultipartUpload"]
     )
-    upload_client._verify = False
-    upload_client.initiate_multipart_upload.return_value = MagicMock(key="key", upload_id="uid")
-    upload_client.sign_part.return_value = _sign_response()
-    upload_client.list_parts.return_value = [MagicMock(etag='"a"', part_number=1)]
-    upload_client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/key")
+    upload_client.CreateMultipartUpload.return_value = uploads_pb2.CreateMultipartUploadResponse(
+        multipart_upload=uploads_pb2.MultipartUpload(object_key="key", upload_id="uid")
+    )
+    upload_client.CreateUploadPartUrl.return_value = uploads_pb2.CreateUploadPartUrlResponse(
+        upload_part_url=_sign_response()
+    )
+    upload_client.ListUploadParts.return_value = uploads_pb2.ListUploadPartsResponse(
+        parts=[uploads_pb2.UploadPart(etag='"a"', part_number=1)]
+    )
+    upload_client.CompleteMultipartUpload.return_value = uploads_pb2.CompleteMultipartUploadResponse(
+        object_path="s3://bucket/key"
+    )
 
     session = MagicMock(spec=["put", "close"])
     session.put.return_value = MagicMock(status_code=200)
 
     with patch.object(multipart, "create_multipart_request_session", return_value=session):
         location = multipart.put_multipart_upload(
-            "Bearer token",
             "ri.workspace",
             io.BytesIO(b"data"),
             "file.csv",
@@ -232,11 +232,15 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
             upload_client,
             chunk_size=1_000_000,
             max_workers=1,
+            verify="/custom/ca.pem",
         )
 
     assert location == "s3://bucket/key"
-    upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid")
-    _, _, _, parts = upload_client.complete_multipart_upload.call_args[0]
+    assert session.put.call_args.kwargs["verify"] == "/custom/ca.pem"
+    upload_client.ListUploadParts.assert_called_once_with(
+        uploads_pb2.ListUploadPartsRequest(upload_id="uid", page_size=1000)
+    )
+    parts = upload_client.CompleteMultipartUpload.call_args.args[0].parts
     assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"')]
 
 
@@ -248,3 +252,27 @@ def test_put_part_makes_exactly_one_request() -> None:
     with pytest.raises(requests.ConnectionError):
         _put_part(session, _sign_response(), b"chunk", verify=False, timeout=9.0)
     assert session.put.call_count == 1  # exactly one PUT; retrying is the caller's job
+
+
+def test_grpc_upload_completion_collects_every_page() -> None:
+    """Completion includes all uploaded parts, including those beyond the first page."""
+    client = MagicMock()
+    client.CreateMultipartUpload.return_value = uploads_pb2.CreateMultipartUploadResponse(
+        multipart_upload=uploads_pb2.MultipartUpload(object_key="key", upload_id="opaque-id")
+    )
+    client.ListUploadParts.side_effect = [
+        uploads_pb2.ListUploadPartsResponse(
+            parts=[uploads_pb2.UploadPart(part_number=1, etag="first")], next_page_token="next"
+        ),
+        uploads_pb2.ListUploadPartsResponse(parts=[uploads_pb2.UploadPart(part_number=2, etag="last")]),
+    ]
+    client.CompleteMultipartUpload.return_value = uploads_pb2.CompleteMultipartUploadResponse(object_path="s3://file")
+    with patch.object(multipart, "_sign_and_upload_part_job", return_value=MagicMock()):
+        # Avoid queued work: this test isolates the recovery-list/completion boundary.
+        result = multipart.put_multipart_upload(None, io.BytesIO(), "file", "text/csv", client)
+    assert result == "s3://file"
+    requests = [call.args[0] for call in client.ListUploadParts.call_args_list]
+    assert [(r.upload_id, r.page_token) for r in requests] == [("opaque-id", ""), ("opaque-id", "next")]
+    request = client.CompleteMultipartUpload.call_args.args[0]
+    assert request.upload_id == "opaque-id"
+    assert [(p.part_number, p.etag) for p in request.parts] == [(1, "first"), (2, "last")]
