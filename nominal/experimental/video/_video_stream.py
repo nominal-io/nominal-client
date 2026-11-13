@@ -12,6 +12,7 @@ from conjure_python_client import ConjureHTTPError
 from nominal_api import scout_video_api
 from nominal_video import Sink, Src, Stream, StreamOptions
 
+from nominal.core.video import Video
 from nominal.exceptions import (
     LegacyVideoDeprecationWarning,
     NominalVideoStreamError,
@@ -21,7 +22,6 @@ from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
     from nominal.core.dataset import Dataset
-    from nominal.core.video import Video
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +121,6 @@ class VideoStream:
             ValueError: `channel` was omitted for a dataset target, or supplied for a `Video` target.
             NominalVideoStreamError: Nominal rejected the request for a WHIP endpoint.
         """
-        # Imported here rather than at module scope: nominal.core.video imports this package lazily,
-        # and a top-level import would close that cycle.
-        from nominal.core.video import Video
-
         # Warned here rather than in _request_whip_stream, which also runs on nominal-video's
         # background thread to refresh credentials, where a warning has no caller to point at.
         if isinstance(target, Video):
@@ -151,7 +147,8 @@ class VideoStream:
                 stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
         def refresh_credentials() -> tuple[str, str | None]:
-            return cls._split_whip_url(cls._request_whip_stream(target, channel=channel, tags=tags).whip_url)
+            refreshed = cls._request_whip_stream(target, channel=channel, tags=tags)
+            return cls._split_whip_url(refreshed.whip_url)
 
         whip_sink = Sink.whip(
             endpoint=endpoint, token=token, stun_server=stun_url, refresh_credentials=refresh_credentials
@@ -166,8 +163,6 @@ class VideoStream:
         tags: Mapping[str, str] | None,
     ) -> scout_video_api.GenerateWhipStreamResponse:
         """Resolve a WHIP endpoint for a dataset channel, or for a legacy video (deprecated)."""
-        from nominal.core.video import Video  # Local import, as in create().
-
         clients = target._clients
         if isinstance(target, Video):
             if channel is not None:

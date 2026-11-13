@@ -12,7 +12,6 @@ Needs a Nominal stack with live video (gov-staging has it; EUW2 has no MediaMTX 
 from __future__ import annotations
 
 import time
-import urllib.parse
 from datetime import timedelta
 from typing import Callable, Mapping
 from uuid import uuid4
@@ -36,13 +35,6 @@ SEGMENT_DEADLINE = timedelta(minutes=2)
 GAP_SLACK_NS = 2_000_000_000
 
 
-def _with_token(whip_url: str, token: str) -> str:
-    parsed = urllib.parse.urlparse(whip_url)
-    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-    query["token"] = [token]
-    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query, doseq=True)))
-
-
 def _bad_token_on_first_request(
     real_request: Callable[..., scout_video_api.GenerateWhipStreamResponse], calls: list[str]
 ) -> Callable[..., scout_video_api.GenerateWhipStreamResponse]:
@@ -55,8 +47,9 @@ def _bad_token_on_first_request(
         calls.append(resp.stream_id)
         if len(calls) > 1:
             return resp
+        endpoint, _ = VideoStream._split_whip_url(resp.whip_url)
         return scout_video_api.GenerateWhipStreamResponse(
-            ice_servers=resp.ice_servers, stream_id=resp.stream_id, whip_url=_with_token(resp.whip_url, "invalid")
+            ice_servers=resp.ice_servers, stream_id=resp.stream_id, whip_url=f"{endpoint}?token=invalid"
         )
 
     return request
