@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Literal, Mapping, Protocol, Self, Sequence, TypeAlias, overload
@@ -19,6 +20,7 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
+from nominal.core import _display
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.factory import create_dataset_stream
@@ -29,7 +31,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file, upload_multipart_io
-from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.pagination_tools import paginate_grpc, search_dataset_files_paginated
 from nominal.core._utils.properties import (
     properties_from_conjure,
     typed_properties_to_conjure,
@@ -43,6 +45,12 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
 from nominal.core.marking import MarkableMixin, Marking
+from nominal.core.retention import (
+    RetentionExemption,
+    RetentionPolicy,
+    _policy_from_conjure,
+    _policy_to_proto,
+)
 from nominal.core.unit import UnitMapping, _error_on_invalid_units, _unit_symbol_from_unit_like
 from nominal.core.video import _build_video_file_timestamp_manifest
 from nominal.core.video_dataset_file import VideoDatasetFile
@@ -51,6 +59,7 @@ from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
+from nominal.protos.storage.v1 import dataset_retention_pb2, dataset_retention_pb2_grpc
 from nominal.protos.units.v1 import units_pb2_grpc
 from nominal.ts import (
     Epoch,
@@ -60,6 +69,7 @@ from nominal.ts import (
     _AnyTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
+    _time_range_to_proto,
     _to_typed_timestamp_type,
     _validate_timestamp_pair,
 )
@@ -84,6 +94,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     labels: Sequence[str]
     bounds: DatasetBounds | None
     is_archived: bool
+    retention_policy: RetentionPolicy
+    """How long this dataset's data is retained. A policy type this client version does not recognize is an
+    `UnknownRetentionPolicy`."""
 
     class _Clients(
         Channel._Clients,
@@ -92,6 +105,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         Marking._Clients,
         Protocol,
     ):
+        @property
+        def dataset_retention(self) -> dataset_retention_pb2_grpc.DatasetRetentionServiceStub: ...
         @property
         def units(self) -> units_pb2_grpc.UnitsServiceStub: ...
         @property
@@ -110,6 +125,81 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
         return dataset_url(self._clients, self.rid)
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        if self.bounds is None:
+            bounds_fields = [("Data", "none yet")]
+        else:
+            bounds_fields = [
+                ("Start", _display.timestamp(self.bounds.start)),
+                ("End", _display.timestamp(self.bounds.end)),
+                ("Duration", _display.duration(self.bounds.end - self.bounds.start)),
+            ]
+        # The files load once, for their section and for the diagram.
+        files = _display.start(self._first_files)
+        return _display.render(
+            kind="Dataset",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("RID", _display.identifier(self.rid)),
+                ("Description", _display.escape(self.description) if self.description else None),
+                *bounds_fields,
+                ("Labels", _display.labels(self.labels) if self.labels else None),
+            ],
+            properties=self.properties,
+            sections=[
+                _display.fetched_from("Files", files, self._files_section),
+                _display.fetched("Channels", self._channels_section),
+            ],
+            archived=self.is_archived,
+            url=lambda: self.nominal_url,
+            graph=None if files is None else lambda: self._graph(_display.wait(files)),
+        )
+
+    def _first_files(self) -> tuple[list[DatasetFile], bool]:
+        """The dataset's files, up to `max_items`, and whether it has more."""
+        return _display.first(self.list_files(successful_only=False))
+
+    def _files_section(self, loaded: tuple[list[DatasetFile], bool]) -> _display.Section:
+        files, has_more = loaded
+        return _display.Section(
+            "Files",
+            [
+                [
+                    _display.escape(file.name),
+                    _display.escape(file.ingest_status.value.lower().replace("_", " ")),
+                    _display.timestamp(file.uploaded_at),
+                ]
+                for file in files
+            ],
+            columns=("File", "Status", "Uploaded"),
+            has_more=has_more,
+        )
+
+    def _graph(self, loaded: tuple[list[DatasetFile], bool]) -> _display.Graph:
+        """The dataset's files below it. Files have no page in the app, so their nodes aren't links."""
+        node = _display.Node("Dataset", self.name, self.rid, lambda: self.nominal_url)
+        files, has_more = loaded
+        nodes = [_display.Node("File", file.name, file.id) for file in files]
+        return _display.Graph(node, [_display.Group("Files", nodes, node, has_more=has_more)])
+
+    def _channels_section(self) -> _display.Section:
+        channels, has_more = _display.first(self.search_channels())
+        return _display.Section(
+            "Channels",
+            [
+                [
+                    _display.escape(channel.name),
+                    _display.escape(channel.data_type.value.lower() if channel.data_type else ""),
+                    _display.escape(channel.unit or ""),
+                ]
+                for channel in channels
+            ],
+            columns=("Channel", "Type", "Unit"),
+            has_more=has_more,
+        )
 
     def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
         return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
@@ -1227,6 +1317,128 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         """
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
+    def set_retention_policy(self, policy: RetentionPolicy | None) -> None:
+        """Set how long this dataset's data is retained.
+
+        Args:
+            policy: The policy to apply. Passing ``None`` removes the dataset's policy, which retains data
+                indefinitely, the same as `KeepForever`.
+
+        Note:
+            Requires organization admin access, and, unless clearing the policy, dataset retention to be
+            enabled for your organization. Derived datasets cannot have a retention policy.
+
+        Note:
+            This does not update the instance in place; call `refresh()` to see the change reflected.
+
+        Raises:
+            ValueError: If ``policy`` is an `UnknownRetentionPolicy`, which this client version cannot apply.
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalInvalidArgumentError: If this is a derived dataset.
+            NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
+            NominalError: If the request fails.
+        """
+        request = dataset_retention_pb2.UpdateRetentionPolicyRequest(
+            dataset_rid=self.rid, retention_policy=_policy_to_proto(policy)
+        )
+        with translate_grpc_errors():
+            self._clients.dataset_retention.UpdateRetentionPolicy(request)
+
+    def list_retention_exemptions(
+        self, start: datetime | IntegralNanosecondsUTC, end: datetime | IntegralNanosecondsUTC
+    ) -> Sequence[RetentionExemption]:
+        """List retention exemptions that overlap a time range.
+
+        Args:
+            start: Start of the time range to search.
+            end: End of the time range to search.
+
+        Note:
+            Both bounds are required. The server treats an unset bound as the Unix epoch, not as unbounded.
+
+        Returns:
+            Every exemption overlapping the range, across all pages.
+
+        Raises:
+            NominalError: If the request fails.
+        """
+        bounds = _time_range_to_proto(start, end)
+
+        def request_for_page(page_token: str | None) -> dataset_retention_pb2.ListDatasetRetentionExemptionsRequest:
+            return dataset_retention_pb2.ListDatasetRetentionExemptionsRequest(
+                dataset_rid=self.rid, bounds=bounds, next_page_token=page_token
+            )
+
+        pages = paginate_grpc(
+            self._clients.dataset_retention.ListDatasetRetentionExemptions, request_factory=request_for_page
+        )
+        return [RetentionExemption._from_proto(exemption) for page in pages for exemption in page.exemptions]
+
+    def upsert_retention_exemption(
+        self,
+        source_id: str,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC,
+        *,
+        description: str | None = None,
+    ) -> RetentionExemption:
+        """Exempt a time range of this dataset's data from retention.
+
+        An exemption is identified by its ``source_id``; upserting an existing ``source_id`` replaces its range.
+
+        Args:
+            source_id: Identifies what owns the exemption.
+
+                **Note:** Locking a run creates exemptions whose ``source_id`` is the run's RID. Changing or deleting
+                one of those exemptions makes it disagree with the run's lock status.
+            start: Start of the exempt range.
+            end: End of the exempt range.
+            description: Optional explanation of why the range is exempt.
+
+        Note:
+            Requires organization admin access and dataset retention to be enabled for your organization.
+
+        Note:
+            The server stores bounds at microsecond precision, so the returned exemption can differ from the
+            requested range by under a microsecond.
+
+        Returns:
+            The stored exemption.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalFailedPreconditionError: If dataset retention is not enabled for your organization.
+            NominalError: If the request fails.
+        """
+        request = dataset_retention_pb2.UpsertDatasetRetentionExemptionRequest(
+            dataset_rid=self.rid,
+            source_id=source_id,
+            bounds=_time_range_to_proto(start, end),
+            description=description,
+        )
+        with translate_grpc_errors():
+            response = self._clients.dataset_retention.UpsertDatasetRetentionExemption(request)
+        return RetentionExemption._from_proto(response.exemption)
+
+    def delete_retention_exemption(self, source_id: str) -> None:
+        """Delete the retention exemption with the given source ID.
+
+        Args:
+            source_id: Source ID of the exemption to delete.
+
+        Note:
+            Requires organization admin access.
+
+        Raises:
+            NominalPermissionDeniedError: If you lack permission to delete data from this dataset.
+            NominalError: If the request fails.
+        """
+        request = dataset_retention_pb2.DeleteDatasetRetentionExemptionRequest(
+            dataset_rid=self.rid, source_id=source_id
+        )
+        with translate_grpc_errors():
+            self._clients.dataset_retention.DeleteDatasetRetentionExemption(request)
+
     @classmethod
     def _from_conjure(cls, clients: Dataset._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
@@ -1237,6 +1449,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             labels=tuple(dataset.labels),
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             is_archived=dataset.is_archived,
+            retention_policy=_policy_from_conjure(dataset.retention_policy),
             _clients=clients,
         )
 
@@ -1507,7 +1720,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
                 **Note:** 'experimental' is deprecated and retains its Python metrics implementation.
                 Use ``implementation='rust'`` with ``track_metrics=True`` to migrate.
-            file_fallback: Filepath to write failed batches to during streaming.
+            file_fallback: Filepath to write failed batches to during streaming. The stream's start
+                time (UTC) is appended to the file name, so ``fallback.avro`` is written as
+                ``fallback_20260101_120000.avro``. No file is created if every batch is sent.
 
                 **Note:** Expects a .avro filename.
 
@@ -1998,3 +2213,34 @@ def _construct_existing_ingest_options(
                 channel_name_overrides={},
             )
         )
+
+
+def _data_scope_nodes(scopes: Sequence[tuple[str, Dataset]]) -> list[_display.Node]:
+    """Diagram nodes for the datasets an asset or run holds, each edge labeled with its ref name."""
+    return [
+        _display.Node(
+            "Dataset",
+            dataset.name,
+            dataset.rid,
+            partial(dataset_url, dataset._clients, dataset.rid),
+            f"ref name={scope}",
+        )
+        for scope, dataset in scopes
+    ]
+
+
+def _data_scopes_section(scopes: Sequence[tuple[str, Dataset]]) -> _display.Section:
+    """A card section listing the datasets an asset or run holds, by data scope."""
+    rows = []
+    for scope, dataset in scopes:
+        url = partial(dataset_url, dataset._clients, dataset.rid)
+        bounds = dataset.bounds
+        rows.append(
+            [
+                _display.code(scope),
+                _display.named(dataset.name, dataset.rid, url),
+                _display.timestamp(bounds.start) if bounds else "no data yet",
+                _display.timestamp(bounds.end) if bounds else "",
+            ]
+        )
+    return _display.Section("Datasets", rows, columns=("Data scope", "Dataset", "Start", "End"))

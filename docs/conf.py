@@ -1,4 +1,4 @@
-"""Sphinx config for the Nominal Python Client guides, examples, and SDK reference."""
+"""Sphinx config for the Nominal Python Client guides, examples, and reference."""
 
 import sys
 from collections import Counter
@@ -25,7 +25,6 @@ copyright = "Nominal, Inc."
 
 extensions = [
     "myst_nb",
-    "sphinx_codeautolink",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -36,9 +35,9 @@ extensions = [
     "sphinxext.rediraffe",
     "examples",
     "video",
-    "docstring_fences",
     "reference_presentation",
     "nominal_sphinx_theme",
+    "nominal_sphinx_theme.docstring_fences",
 ]
 
 templates_path = [str(HERE / "_templates")]
@@ -54,9 +53,9 @@ autosummary_context = {
 
 # Curate topic ownership by module; names still come from nominal.core.__all__.
 core_topic_modules = {
-    "client": ("client", "workspace", "user", "_utils.networking"),
+    "client": ("client", "workspace", "user", "_utils.networking", "_display"),
     "assets-and-runs": ("asset", "run", "attachment", "comment"),
-    "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job"),
+    "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job", "retention"),
     "channels-and-units": ("channel", "unit"),
     "streaming": ("_stream.write_stream", "log"),
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
@@ -132,10 +131,8 @@ codeautolink_inventory_map = {
     for member in dir(getattr(nominal.core, name))
     if not member.startswith("_")
 }
-# A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
-codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
-exclude_patterns = ["guides/_snippets", "sdk/_summaries"]
+exclude_patterns = ["guides/_snippets", "ref/_summaries"]
 
 # Keep published links working when reference pages move.
 rediraffe_redirects = "redirects.txt"
@@ -200,7 +197,6 @@ html_css_files = ["custom.css"]
 html_js_files = ["reference-links.js"]
 html_copy_source = False
 
-nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
 # Left sidebar groups fold; only "Get started" (and the current page's group) start open.
 nominal_sidebar_open = ["Get started"]
 
@@ -212,8 +208,8 @@ html_context = {
     "source_docs_path": "/docs/src/",
 }
 
-# Right sidebar: on-page contents and edit link, no GitHub repo-stats box.
-html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/edit-this-page.html"]}
+# Right sidebar: on-page contents and a link to CONTRIBUTING.md, no GitHub repo-stats box.
+html_sidebars = {"**": ["sidebars/localtoc.html", "sidebars/contribute.html"]}
 
 html_theme_options = theme_options(
     github_url="https://github.com/nominal-io/nominal-client",
@@ -222,6 +218,6 @@ html_theme_options = theme_options(
     nav_links=[
         {"title": "Guides", "url": "index"},
         {"title": "Examples", "url": "examples/index"},
-        {"title": "SDK", "url": "sdk/index"},
+        {"title": "Reference", "url": "ref/index"},
     ],
 )

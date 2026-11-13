@@ -47,7 +47,7 @@ with NominalDatasetStream().to_file(Path("flight.avro")) as stream:
 Batch timestamps are epoch nanoseconds.
 
 To keep data when a live stream loses its connection, pass `file_fallback` to {py:meth}`~nominal.core.Dataset.get_write_stream`.
-Batches that fail to send are written to that `.avro` file instead:
+Batches that fail to send are written to an `.avro` file named after it, with the stream's start time (UTC) appended, such as `flight_backup_20260101_120000.avro`:
 
 ```python
 dataset = client.get_dataset("<DATASET_RID>")

@@ -4,13 +4,13 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 const script = readFileSync(new URL("../_static/reference-links.js", import.meta.url), "utf8");
-const resource = "https://docs.example.test/sdk/generated/sample_api.Resource/#sample_api.Resource";
-const create = "https://docs.example.test/sdk/generated/sample_api.create/#sample_api.create";
+const resource = "https://docs.example.test/ref/generated/sample_api.Resource/#sample_api.Resource";
+const create = "https://docs.example.test/ref/generated/sample_api.create/#sample_api.create";
 
 function page(hash, hasTarget = false, links = [resource, create]) {
   const redirects = [];
   const window = new EventTarget();
-  window.location = new URL(`https://docs.example.test/sdk/experimental/sample/?view=compact${hash}`);
+  window.location = new URL(`https://docs.example.test/ref/experimental/sample/?view=compact${hash}`);
   window.location.replace = (url) => redirects.push(url);
   const document = new EventTarget();
   document.querySelector = () => hasTarget ? {} : null;

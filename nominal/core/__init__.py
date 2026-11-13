@@ -1,4 +1,5 @@
 from nominal.core._checklist_types import Priority
+from nominal.core._display import DisplayOptions, get_display_options, set_display_options
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
@@ -53,6 +54,13 @@ from nominal.core.integration import (
 )
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
+from nominal.core.retention import (
+    KeepForever,
+    KeepUntilExpiry,
+    RetentionExemption,
+    RetentionPolicy,
+    UnknownRetentionPolicy,
+)
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.streaming_checklist import (
@@ -93,6 +101,7 @@ __all__ = [
     "DataReviewBuilder",
     "Dataset",
     "DatasetFile",
+    "DisplayOptions",
     "DataStream",
     "Event",
     "EventDisposition",
@@ -103,6 +112,7 @@ __all__ = [
     "FileOutputFormat",
     "FileType",
     "FileTypes",
+    "get_display_options",
     "HeaderProvider",
     "IngestionJob",
     "IngestionJobStatus",
@@ -110,6 +120,8 @@ __all__ = [
     "IngestWaitType",
     "Integration",
     "IntegrationDetails",
+    "KeepForever",
+    "KeepUntilExpiry",
     "LinkDict",
     "LogPoint",
     "LogStream",
@@ -121,10 +133,13 @@ __all__ = [
     "OpsgenieRegion",
     "PagerDutyIntegrationDetails",
     "Priority",
+    "RetentionExemption",
+    "RetentionPolicy",
     "Run",
     "SearchEventOriginType",
     "Secret",
     "SecureWebhookIntegrationDetails",
+    "set_display_options",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",
     "StreamingChecklistConfiguration",
@@ -140,6 +155,7 @@ __all__ = [
     "Unit",
     "UnitLike",
     "UnknownIntegrationDetails",
+    "UnknownRetentionPolicy",
     "User",
     "Video",
     "VideoDatasetFile",

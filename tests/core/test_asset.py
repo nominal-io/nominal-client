@@ -7,6 +7,7 @@ import pytest
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.core.retention import KeepForever
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 
@@ -43,6 +44,7 @@ def mock_dataset(mock_clients):
         labels=[],
         is_archived=False,
         _clients=mock_clients,
+        retention_policy=KeepForever(),
     )
 
 

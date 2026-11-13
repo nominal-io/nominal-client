@@ -28,6 +28,8 @@ from nominal.protos.types import types_pb2
 
 logger = logging.getLogger(__name__)
 
+USER_AGENT_NAME = "nominal-python"
+
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
@@ -110,11 +112,11 @@ def construct_user_agent_string() -> str:
         p = platform.platform()
         impl = sys.implementation
         py = platform.python_version()
-        return f"nominal-python/{v} ({p}) {impl.name}/{py}"
+        return f"{USER_AGENT_NAME}/{v} ({p}) {impl.name}/{py}"
     except Exception as e:
         # I believe all of the above are cross-platform, but just in-case...
         logger.error("failed to construct user-agent string", exc_info=e)
-        return "nominal-python/unknown"
+        return f"{USER_AGENT_NAME}/unknown"
 
 
 Link: TypeAlias = tuple[str, str]

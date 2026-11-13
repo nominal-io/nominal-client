@@ -6,6 +6,7 @@ import grpc
 import pytest
 
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.core.retention import KeepForever
 from nominal.core.user import User
 from nominal.exceptions import NominalPermissionDeniedError
 from nominal.experimental.dataset_utils import get_dataset_owner, get_dataset_owner_rid
@@ -26,6 +27,7 @@ def mock_dataset() -> Dataset:
         labels=[],
         is_archived=False,
         _clients=clients,
+        retention_policy=KeepForever(),
     )
 
 

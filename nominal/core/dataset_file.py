@@ -7,15 +7,18 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 from urllib.parse import unquote, urlparse
 
 from nominal_api import api, ingest_api, scout_catalog, scout_video
 
 from nominal._utils.iterator_tools import batched
+from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableConjureMixin
+from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -67,6 +70,32 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         # Used by the VideoDatasetFile subtype for video-channel timing updates.
         @property
         def video(self) -> scout_video.VideoService: ...
+
+    @_display.card
+    def _repr_html_(self) -> str | None:
+        return _display.render(
+            kind="Dataset file",
+            title=self.name,
+            fallback=repr(self),
+            fields=[
+                ("ID", _display.identifier(self.id)),
+                (
+                    "Dataset",
+                    _display.identifier(self.dataset_rid, partial(dataset_url, self._clients, self.dataset_rid)),
+                ),
+                ("Status", _display.escape(self.ingest_status.value.lower().replace("_", " "))),
+                ("Error", _display.escape(self._ingest_error_message) if self._ingest_error_message else None),
+                ("Uploaded", _display.timestamp(self.uploaded_at)),
+                ("Ingested", _display.timestamp(self.ingested_at) if self.ingested_at is not None else None),
+                ("Start", _display.timestamp(self.bounds.start) if self.bounds is not None else None),
+                ("End", _display.timestamp(self.bounds.end) if self.bounds is not None else None),
+                ("Timestamp column", _display.code(self.timestamp_channel) if self.timestamp_channel else None),
+            ],
+            sections=[
+                _display.properties_section(self.file_tags or {}, "File tags"),
+                _display.properties_section(self.tag_columns or {}, "Tag columns"),
+            ],
+        )
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)

@@ -185,16 +185,24 @@ class MigrationRunner:
                 )
                 self.save_state()
 
-            source_clients_by_asset_rid: dict[str, ClientsBunch] = {
-                asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
-                for asset_rid, asset_resources in self.migration_resources.source_assets.items()
-            }
-            if self.asset_inclusion_config.include_workbooks:
-                WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
+            self.migrate_deferred_workbooks(migration_context)
         finally:
             self.save_state()
             log_skipped_resources(self.migration_state)
         logger.info("Completed migration")
+
+    def migrate_deferred_workbooks(self, migration_context: MigrationContext) -> None:
+        """Copy the multi-asset and multi-run workbooks queued while assets migrated.
+
+        Call only after every asset has migrated, so the asset and run RID mappings are complete.
+        """
+        if not self.asset_inclusion_config.include_workbooks:
+            return
+        source_clients_by_asset_rid: dict[str, ClientsBunch] = {
+            asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
+            for asset_rid, asset_resources in self.migration_resources.source_assets.items()
+        }
+        WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
 
     def save_state(self) -> None:
         if self.dry_run:

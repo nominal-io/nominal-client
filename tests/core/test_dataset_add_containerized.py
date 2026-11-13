@@ -8,6 +8,7 @@ from nominal_api import ingest_api
 from nominal.core.containerized_extractor import ContainerizedExtractor
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.ingestion_job import IngestionJob
+from nominal.core.retention import KeepForever
 from nominal.protos.ingest.v2 import containerized_extractor_pb2
 from nominal.protos.registry.v2 import registry_pb2
 from nominal.protos.types.time import timestamp_parsers_pb2
@@ -23,6 +24,7 @@ def _dataset(clients: MagicMock) -> Dataset:
         bounds=DatasetBounds(start=0, end=1),
         is_archived=False,
         _clients=clients,
+        retention_policy=KeepForever(),
     )
 
 

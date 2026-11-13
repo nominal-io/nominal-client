@@ -2,7 +2,7 @@
 
 - Writing rules for pages and docstrings come from the `nominal-docs` skill. See the root [AGENTS.md](../AGENTS.md).
 - This file covers this site's folders, build commands and layout.
-- Call the library the "Nominal Python Client", or "the client" after first use. "SDK" means only the reference section under `sdk/`, as in "SDK reference".
+- Call the library the "Nominal Python Client", or "the client" after first use. Call the section under `ref/` "Reference", the name of its tab, not "SDK reference".
 
 ## Contents
 
@@ -32,8 +32,8 @@
 
 - Pages are Markdown in `src/`, parsed by MyST. Sphinx config is `conf.py`; `nominal-sphinx-theme` supplies the styling.
 - `src/index.md` declares guide, example, reference and project navigation.
-- Header tabs: Guides, Examples and SDK. The sidebar shows only the active tab.
-  - `examples/` pages belong to Examples, `sdk/` pages to SDK, everything else to Guides.
+- Header tabs: Guides, Examples and Reference. The sidebar shows only the active tab.
+  - `examples/` pages belong to Examples, `ref/` pages to Reference, everything else to Guides.
   - Keep each captioned root toctree within one section.
 - Keep retired public URLs in `src/redirects.txt`. `sphinxext.rediraffe` builds the redirects, keeping query strings and section anchors. The entries record moved URLs, not an API inventory.
 - `_static/custom.css` keeps recordings within the content column. The shared theme owns all other styling.
@@ -43,7 +43,7 @@
 - Guides live in `src/guides/`. Keep their images, recordings and downloadable data there too.
 - Assets, datasets, runs, events, workbooks and channels are each defined on their own guide. Other guides link there rather than define them again.
 - Each guide runs from the top. Guides whose code needs a client include `_snippets/connect-the-client.md` before their first section, instead of repeating install, API key or connection steps.
-- Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the SDK reference.
+- Link each class or method on first mention in a section with `{py:meth}` and similar roles, so readers reach the reference.
 - Reusable prose goes in `src/guides/_snippets/`, code fragments in `src/guides/_snippets/code/`. Include them with MyST `{include}` and `{literalinclude}`. Partials are excluded from page discovery.
 - MyST colon fences support nested admonitions and Sphinx Design tabs, dropdowns and cards. Outer directives need more colons than nested ones.
 - `{video}` embeds local recordings or remote URLs.
@@ -54,7 +54,8 @@
 
 - Examples are MyST Markdown notebooks in `src/examples/`. The build runs them; `nb_execution_mode = "cache"` re-runs only changed notebooks.
 - A notebook has `kernelspec` and a Jupytext `format_name: myst` header in its front matter. The optional `icon` key names an octicon for its card.
-- The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading, and adds it to a hidden toctree. Other pages in the folder need their own toctree entry.
+- The `{example-gallery}` directive in `src/examples/index.md` comes from `_ext/examples.py`. It lists each notebook in the folder as a card, titled from its first `#` heading. The `examples/*` glob in the root `src/index.md` toctree lists every page in the folder in the sidebar.
+- `just notebook` opens `src/examples/` in JupyterLab with the client and the `docs` group installed. Open a notebook with **Open With → Jupytext Notebook**; saving writes back to its `.md` file.
 - `just fix-format-notebooks` formats notebook code with ruff, through Jupytext, at 85 columns so it fits the page. CI runs `just check-format-notebooks`.
 - `src/examples/jupytext.toml` keeps the `icon` key and drops version stamps when Jupytext rewrites a notebook's front matter.
 - Do numerical work in examples with numpy arrays, not the `math` module or Python loops. Notebook-only dependencies, such as numpy and matplotlib, belong in the `docs` dependency group.
@@ -63,9 +64,9 @@
 
 ### Pages and navigation
 
-- Reference pages live in `src/sdk/` and use native `autosummary`, with templates in `_templates/autosummary/`.
+- Reference pages live in `src/ref/` and use native `autosummary`, with templates in `_templates/autosummary/`.
 - Members come from Python exports. Don't maintain member lists or generated source pages.
-- Generated files are ignored by Git and the preview watcher: the exceptions overview (`src/sdk/exceptions.rst`), detail pages (`src/sdk/generated/`) and summary fragments (`src/sdk/_summaries/`).
+- Generated files are ignored by Git and the preview watcher: the exceptions overview (`src/ref/exceptions.rst`), detail pages (`src/ref/generated/`) and summary fragments (`src/ref/_summaries/`).
   - The sidebar shows only the exceptions overview. Its template splits errors and warnings, without a member list.
   - Summary fragments are excluded from page discovery. Only the Markdown landing page belongs in the sidebar.
 - New reference pages need an entry in the root `index.md` toctree.
@@ -75,7 +76,7 @@
 
 ### Core topics
 
-- Core, timestamp, experiment and integration pages include native module summaries from `src/sdk/_summaries/`.
+- Core, timestamp, experiment and integration pages include native module summaries from `src/ref/_summaries/`.
   - Their module entries live in `autosummary.rst`.
   - Sphinx finds members from `__all__` when present, otherwise from public local definitions.
   - Packages with `__all__` need no `:imported-members:` option.
@@ -91,7 +92,7 @@
 
 ### Members and tables
 
-- Classes, enums and functions get detail pages. All SDK references share one table template.
+- Classes, enums and functions get detail pages. All reference pages share one table template.
 - Constants and type aliases get compact tables with values and linked type definitions.
   - `conf.py` reads the native module seed to supply enum names, constant values and type aliases as template data.
   - Alias discovery includes explicit `TypeAlias` annotations, including aliases of concrete types. Sphinx formats definitions with `restify`.
@@ -117,4 +118,4 @@
 
 ## Docstring rendering
 
-- `_ext/docstring_fences.py` converts fenced blocks before Napoleon parses sections. For CLI help, it hooks sphinx-click's description event.
+- nominal-sphinx-theme's `nominal_sphinx_theme.docstring_fences` extension converts fenced blocks before Napoleon parses sections. For CLI help, it hooks sphinx-click's description event. `_tests/test_docstring_fences.py` checks it against this repo's docstrings' conventions.

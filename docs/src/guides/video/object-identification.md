@@ -63,12 +63,14 @@ The video's `start` must match the detections' first timestamp, or the two won't
 
 ## Review the detections
 
-Create a run over the detections' time range:
+Add the dataset to the drone's asset, then create a run on the asset over the detections' time range:
 
 ```python
+asset = client.get_or_create_asset_by_properties({"serial": "<serial number>"}, name="Drone")
+asset.add_dataset("rt_detr", dataset)
+
 end = datetime.fromisoformat(str(detections["timestamps"].max())).replace(tzinfo=timezone.utc)
-run = client.create_run("RT-DETR drone analysis", start=start, end=end)
-run.add_dataset("rt_detr", dataset)
+run = asset.create_run("RT-DETR drone analysis", start=start, end=end)
 print(run.nominal_url)
 ```
 

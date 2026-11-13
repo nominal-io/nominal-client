@@ -77,6 +77,14 @@ check-format-notebooks:
 fix-format-notebooks:
     uv run --group docs jupytext --from myst --pipe-fmt ipynb --pipe "ruff format --line-length 85 --stdin-filename docs/src/examples/notebook.ipynb -" $(grep -l '^kernelspec:' docs/src/examples/*.md)
 
+# open the docs notebooks in JupyterLab; open one with Open With → Jupytext Notebook
+# `--with jupyterlab` runs Jupyter from a separate environment, which doesn't see the Jupytext extensions installed in
+# .venv, so the Jupyter paths point there too.
+notebook *args:
+    JUPYTER_PATH="{{ justfile_directory() }}/.venv/share/jupyter" \
+    JUPYTER_CONFIG_PATH="{{ justfile_directory() }}/.venv/etc/jupyter" \
+        uv run --all-packages --all-extras --group docs --with jupyterlab jupyter lab docs/src/examples "$@"
+
 # run all tests and checks, except e2e tests
 verify: install test check
 
@@ -93,7 +101,7 @@ clean:
 
 # Generated documentation pages and HTML are disposable.
 _clean-docs:
-    rm -rf docs/src/sdk/_summaries docs/src/sdk/generated docs/src/sdk/exceptions.rst docs/_build/dirhtml
+    rm -rf docs/src/ref/_summaries docs/src/ref/generated docs/src/ref/exceptions.rst docs/_build/dirhtml
 
 # Build the docs into folder-style URLs; warnings fail the build.
 build-docs: _clean-docs
@@ -105,6 +113,6 @@ serve-docs: _clean-docs
         sphinx-autobuild -j auto -b dirhtml -c docs docs/src docs/_build/dirhtml \
         --watch docs --watch nominal --watch packages --watch CHANGELOG.md --watch CONTRIBUTING.md --watch LICENSE \
         --ignore docs/_build --ignore docs/_tests --ignore "**/__pycache__/**" \
-        --ignore docs/src/_nominal_snippets --ignore docs/src/sdk/_summaries --ignore docs/src/sdk/generated \
-        --ignore docs/src/sdk/exceptions.rst \
+        --ignore docs/src/_nominal_snippets --ignore docs/src/ref/_summaries --ignore docs/src/ref/generated \
+        --ignore docs/src/ref/exceptions.rst \
         --re-ignore '(~|/\.?#[^/]*)$'

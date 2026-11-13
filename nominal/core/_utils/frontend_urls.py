@@ -15,6 +15,14 @@ def asset_url(clients: HasScoutParams, asset_rid: str) -> str:
     return _resource_url(clients, f"/assets/{asset_rid}")
 
 
+def attachment_download_url(clients: HasScoutParams, attachment_rid: str) -> str:
+    """Downloads an attachment's file through the Nominal app, with the browser's sign-in.
+
+    Unlike resource pages, the route isn't under a workspace.
+    """
+    return f"{clients.app_base_url.rstrip('/')}/api/downloadAttachment/{attachment_rid}"
+
+
 def checklist_url(clients: HasScoutParams, checklist_rid: str) -> str:
     return _resource_url(clients, f"/checklists/{checklist_rid}")
 

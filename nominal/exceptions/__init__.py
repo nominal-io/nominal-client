@@ -101,6 +101,10 @@ class NominalInvalidArgumentError(NominalError):
     """The server rejected the request as malformed or invalid."""
 
 
+class NominalFailedPreconditionError(NominalError):
+    """The request was rejected because the system is not in the state it requires, e.g. a feature is not enabled."""
+
+
 class HeaderConflictError(NominalError):
     """A header provider attempted to override an explicit request header."""
 

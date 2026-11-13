@@ -1065,6 +1065,56 @@ def test_migrate_multi_asset_scenario(
     assert source_multi_asset_wb.rid not in state.pending_multi_asset_workbooks
 
 
+def test_multi_run_workbook_waits_for_run_migrated_later(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """A workbook spanning runs on two assets waits through a migration of one asset, then copies
+    when a second migration with the same state file migrates the other.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+
+    source_asset_a = _create_source_asset(source_client, register_cleanup)
+    source_asset_b = _create_source_asset(source_client, register_cleanup)
+    source_run_a = _create_source_run(source_client, register_cleanup, source_asset_a, start, end)
+    source_run_b = _create_source_run(source_client, register_cleanup, source_asset_b, start, end)
+    source_wb = _create_multi_run_workbook(source_client, register_cleanup, source_run_a, source_run_b)
+    state_file = tmp_path / "state.json"
+
+    first_runner = _make_runner(_make_resources(source_asset_a), _no_files_config(), dest_client, state_file)
+    first_runner.run_migration()
+    first_state = first_runner.migration_state
+    register_cleanup(_dest_asset(first_runner, source_asset_a, dest_client).archive)
+
+    assert first_state.get_mapped_rid(ResourceType.WORKBOOK, source_wb.rid) is None
+    assert source_wb.rid in first_state.pending_multi_run_workbooks
+    assert [(s.source_rid, s.reason) for s in first_state.skipped_resources] == [
+        (source_wb.rid, f"waiting for runs not yet migrated: {[source_run_b.rid]}")
+    ]
+
+    second_runner = _make_runner(_make_resources(source_asset_b), _no_files_config(), dest_client, state_file)
+    second_runner.run_migration()
+    state = second_runner.migration_state
+    register_cleanup(_dest_asset(second_runner, source_asset_b, dest_client).archive)
+
+    dest_runs = []
+    for source_run in (source_run_a, source_run_b):
+        dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+        assert dest_run_rid is not None
+        dest_runs.append(dest_client.get_run(dest_run_rid))
+        register_cleanup(dest_runs[-1].archive)
+    dest_wb_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_wb.rid)
+    assert dest_wb_rid is not None
+    dest_wb = dest_client.get_workbook(dest_wb_rid)
+    register_cleanup(dest_wb.archive)
+    _assert_workbook_migrated_multi_run(source_wb, dest_wb, dest_runs)
+    assert state.pending_multi_run_workbooks == {}
+    assert state.skipped_resources == []
+
+
 def test_dry_run_creates_nothing(
     source_client: NominalClient,
     dest_client: NominalClient,
