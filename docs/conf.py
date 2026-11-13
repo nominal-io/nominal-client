@@ -197,7 +197,6 @@ html_css_files = ["custom.css"]
 html_js_files = ["reference-links.js"]
 html_copy_source = False
 
-nominal_ga_id = "G-XJXZ2G04E3"  # the Fern docs site's GA4 measurement ID
 # Left sidebar groups fold; only "Get started" (and the current page's group) start open.
 nominal_sidebar_open = ["Get started"]
 

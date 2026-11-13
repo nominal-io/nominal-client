@@ -1720,7 +1720,9 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
                 **Note:** 'experimental' is deprecated and retains its Python metrics implementation.
                 Use ``implementation='rust'`` with ``track_metrics=True`` to migrate.
-            file_fallback: Filepath to write failed batches to during streaming.
+            file_fallback: Filepath to write failed batches to during streaming. The stream's start
+                time (UTC) is appended to the file name, so ``fallback.avro`` is written as
+                ``fallback_20260101_120000.avro``. No file is created if every batch is sent.
 
                 **Note:** Expects a .avro filename.
 

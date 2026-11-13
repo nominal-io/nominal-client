@@ -1,15 +1,32 @@
 from __future__ import annotations
 
 import datetime
+import importlib.metadata
 import pathlib
+import re
 import warnings
 from typing import Any
 
-from nominal_streaming import NominalDatasetStream
+from nominal_streaming import NominalDatasetStream, PyNominalStreamOpts
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._stream.write_stream import DataStream
 from nominal.core._types import PathLike
+from nominal.core._utils.api_tools import USER_AGENT_NAME
+
+
+def _nominal_release() -> str | None:
+    """The installed `nominal` version reduced to its numeric release, e.g. `1.2.0` for `1.2.0.dev3`.
+
+    The stream's user agent accepts only dot-separated numbers (optionally `-rcN`), so PEP 440
+    pre-release, dev, and local segments are dropped. None when the version cannot be read.
+    """
+    try:
+        version = importlib.metadata.version("nominal")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    match = re.match(r"\d+(\.\d+)*", version)
+    return match.group() if match else None
 
 
 class RustWriteStream(NominalDatasetStream, DataStream):
@@ -66,15 +83,19 @@ class RustWriteStream(NominalDatasetStream, DataStream):
             kwargs["num_upload_workers"] = num_workers
             kwargs["num_runtime_workers"] = num_workers
 
-        api_key = clients.auth_header.removeprefix("Bearer ")
-        stream = cls.create(
-            api_key,
-            clients.api_base_url,
+        opts = PyNominalStreamOpts(
             max_points_per_batch=batch_size,
             max_request_delay_secs=max_wait.total_seconds(),
+            base_api_url=clients.api_base_url,
             track_metrics=track_metrics,
             **kwargs,
-        ).with_core_consumer(dataset_rid)
+        )
+        release = _nominal_release()
+        if release is not None:
+            opts = opts.with_user_agent(USER_AGENT_NAME, release)
+
+        api_key = clients.auth_header.removeprefix("Bearer ")
+        stream = cls(api_key, opts).with_core_consumer(dataset_rid)
 
         if file_fallback is not None:
             stream = stream.with_file_fallback(pathlib.Path(file_fallback))
