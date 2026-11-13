@@ -63,6 +63,7 @@ default-groups = ["dev"]
 
 [tool.uv.workspace]
 members = ["packages/*"]
+exclude = ["tools/conda-pack"]
 
 [dependency-groups]
 dev = [
@@ -128,11 +129,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
 include = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "nominal/*"]
-exclude = ["packages/**"]
+exclude = ["packages/**", "tools/**"]
 
 [tool.hatch.build.targets.wheel]
 include = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "nominal/*"]
-exclude = ["packages/**"]
+exclude = ["packages/**", "tools/**"]
 
 [tool.ruff]
 line-length = 120
