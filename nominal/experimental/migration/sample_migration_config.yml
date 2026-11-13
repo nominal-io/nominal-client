@@ -29,7 +29,7 @@ migration:
 
   # -------------------------------------------------------------------------
   # Asset child-resource inclusion
-  # All fields below default to true when omitted.
+  # All fields below default to true when omitted, except include_retention.
   # Set any to false to skip that resource type entirely.
   # -------------------------------------------------------------------------
 
@@ -52,6 +52,12 @@ migration:
 
   # Copy workbooks scoped to each asset or its runs.
   include_workbooks: true
+
+  # Copy dataset retention policies, retention exemptions, and run locks.
+  # Defaults to false when omitted. Requires the destination profile's user to
+  # be an organization admin, and dataset retention to be enabled for the
+  # destination organization.
+  include_retention: false
 
   # -------------------------------------------------------------------------
   # Source assets
