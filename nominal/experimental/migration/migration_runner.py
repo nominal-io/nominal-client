@@ -15,12 +15,8 @@ from nominal.experimental.migration.config.migration_data_config import AssetInc
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
 from nominal.experimental.migration.migration_state import MigrationState
-from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
-from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
-from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
-from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
 from nominal.experimental.migration.utils.video_file_utils import DEFAULT_INGEST_POLL_TIMEOUT
 
@@ -136,60 +132,21 @@ class MigrationRunner:
         new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
         creating workbooks, and standalone datasets are copied without attaching them to any asset.
 
-        Args:
-        destination_client (NominalClient): client of the tenant/workspace to copy resources to.
-        migration_resources (MigrationResources): resources to copy.
-        dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
+        This runs `run_parallel_migration` with a single worker, so it shares the retries, failure
+        handling, state saving, and deferred-workbook step of the parallel runner. Tasks run in the
+        order assets, templates, checklists, datasets.
+
+        The runner's `migration_state` is replaced by a thread-safe copy for the run, so read it from the
+        runner afterwards rather than holding the earlier object.
+
+        Raises:
+            RuntimeError: If any resource failed to migrate, after every other resource was attempted.
+                It is chained from the first failure.
         """
-        try:
-            migration_context = self.build_context()
-            asset_migrator = AssetMigrator(migration_context)
-            template_migrator = WorkbookTemplateMigrator(migration_context)
-            checklist_migrator = ChecklistMigrator(migration_context)
-            dataset_migrator = DatasetMigrator(migration_context)
-            for asset_resources in self.migration_resources.source_assets.values():
-                source_asset = asset_resources.asset
-                asset_migrator.copy_from(
-                    source_asset,
-                    AssetCopyOptions(
-                        dataset_config=self.dataset_config,
-                        include_attachments=self.asset_inclusion_config.include_attachments,
-                        include_events=self.asset_inclusion_config.include_events,
-                        include_runs=self.asset_inclusion_config.include_runs,
-                        include_video=self.asset_inclusion_config.include_video,
-                        include_checklists=self.asset_inclusion_config.include_checklists,
-                        include_workbooks=self.asset_inclusion_config.include_workbooks,
-                        workbook_rids_allowlist=asset_resources.source_workbook_rids,
-                    ),
-                )
-                self.save_state()
+        # Imported here because the parallel runner imports this module.
+        from nominal.experimental.migration.parallel_migration_runner import run_parallel_migration
 
-            for source_template in self.migration_resources.source_standalone_templates:
-                template_migrator.clone(source_template)
-                self.save_state()
-
-            for source_checklist in self.migration_resources.source_standalone_checklists:
-                # ChecklistMigrator.clone() raises NotImplementedError; use copy_from() to clone the
-                # checklist definition. No run/execution is involved — series resolve at execution time
-                # against whatever run the checklist is later run against.
-                checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
-                self.save_state()
-
-            for source_dataset in self.migration_resources.source_standalone_datasets:
-                dataset_migrator.copy_from(
-                    source_dataset,
-                    DatasetCopyOptions(
-                        include_files=self.dataset_config.include_dataset_files,
-                        preserve_uuid=self.dataset_config.preserve_dataset_uuid,
-                    ),
-                )
-                self.save_state()
-
-            self.migrate_deferred_workbooks(migration_context)
-        finally:
-            self.save_state()
-            log_skipped_resources(self.migration_state)
-        logger.info("Completed migration")
+        run_parallel_migration(self, max_workers=1)
 
     def migrate_deferred_workbooks(self, migration_context: MigrationContext) -> None:
         """Copy the multi-asset and multi-run workbooks queued while assets migrated.
