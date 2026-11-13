@@ -25,7 +25,6 @@ copyright = "Nominal, Inc."
 
 extensions = [
     "myst_nb",
-    "sphinx_codeautolink",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
@@ -132,8 +131,6 @@ codeautolink_inventory_map = {
     for member in dir(getattr(nominal.core, name))
     if not member.startswith("_")
 }
-# A page's code blocks run in sequence, so names from earlier blocks resolve in later ones.
-codeautolink_concat_default = True
 # Partials are included by guide pages rather than built as standalone pages.
 exclude_patterns = ["guides/_snippets", "ref/_summaries"]
 
