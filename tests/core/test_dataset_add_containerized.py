@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from nominal_api import ingest_api
@@ -81,7 +81,7 @@ def test_add_containerized_raises_when_no_active_image() -> None:
 
 
 def test_add_containerized_returns_ingestion_job() -> None:
-    """A successful trigger eagerly returns a populated IngestionJob built from the response's ingest_job_rid."""
+    """Scalar arguments reach the wire as strings and a successful trigger returns an ingestion job."""
     clients = MagicMock()
     dataset = _dataset(clients)
     # Active image with no required inputs, so empty sources passes validation and reaches the ingest trigger.
@@ -98,8 +98,33 @@ def test_add_containerized_returns_ingestion_job() -> None:
         status=ingest_api.IngestJobStatus.IN_PROGRESS,
     )
 
-    job = dataset.add_containerized(extractor, sources={})
+    job = dataset.add_containerized(
+        extractor, sources={}, arguments={"text": " FALSE 001 ", "enabled": False, "count": 0, "scale": 1.25}
+    )
 
     assert isinstance(job, IngestionJob)
     assert job.rid == "ri.ingest-job.1"
     clients.ingest_jobs.get_ingest_job.assert_called_once_with(clients.auth_header, "ri.ingest-job.1")
+    request = clients.ingest.ingest.call_args.kwargs["trigger_ingest"]
+    assert request.options.containerized.arguments == {
+        "text": " FALSE 001 ",
+        "enabled": "false",
+        "count": "0",
+        "scale": "1.25",
+    }
+
+
+def test_add_containerized_rejects_nonfinite_arguments_before_upload() -> None:
+    """Non-finite arguments fail before source uploads or the ingest trigger."""
+    clients = MagicMock()
+    dataset = _dataset(clients)
+    extractor = _extractor(clients, active_image=_image_proto("INPUT_FILE"))
+
+    with patch("nominal.core.dataset.upload_multipart_file", autospec=True) as upload:
+        with pytest.raises(ValueError, match="scale.*finite"):
+            dataset.add_containerized(
+                extractor, sources={"INPUT_FILE": "./data.bin"}, arguments={"scale": float("nan")}
+            )
+
+    upload.assert_not_called()
+    clients.ingest.ingest.assert_not_called()

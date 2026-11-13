@@ -90,7 +90,7 @@ def parameter(
     Binding happens before extraction and uses the runner's normal error mappings. Registered
     parameter metadata is authoritative: an unknown parameter fails even if it has a default.
     Registration stores names, descriptions, environment variables, and requiredness;
-    converters and default values remain runtime settings.
+    catalog manifests also export built-in bool/int/float types and defaults.
 
     Args:
         argument: Name of the explicit callback argument to populate.
@@ -137,6 +137,7 @@ def parameter(
         ),
         converter,
         default,
+        type,
     )
 
 

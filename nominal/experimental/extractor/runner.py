@@ -108,7 +108,7 @@ class Extractor(Generic[_CtxT]):
         Timestamp settings describe image defaults; they do not populate local job metadata.
 
         Does not execute the callback or converters, inspect its body, read the environment,
-        upload an image, or activate it. Parameter types/defaults remain runtime-only.
+        upload an image, or activate it. Parameter types/defaults are not included in this export.
         Error mappings require a non-reserved code; omitted messages are derived from the code
         and truncated to 512 characters. Identical exit-code fallbacks are combined, while
         conflicting fallbacks raise ValueError.
@@ -131,7 +131,9 @@ class Extractor(Generic[_CtxT]):
         from their codes and truncated to 512 characters. Error codes must be non-reserved
         catalog identifiers. Identical error fallbacks sharing an exit code are combined;
         conflicting fallbacks are rejected.
-        Input display metadata, converters and defaults have no catalog schema fields.
+        Built-in bool/int/float converters export boolean/integer/double types and string
+        defaults. Other converters omit the type and export only string defaults. Missing
+        defaults and None are omitted. Input display metadata is not included.
         Incomplete or unrepresentable metadata raises ValueError before publication.
         """
         logger.debug("exporting catalog metadata for %s version %s", id, version)
