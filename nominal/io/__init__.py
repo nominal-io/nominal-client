@@ -60,6 +60,17 @@ a numeric sample. ``tags`` is a list of ``{key, value}`` structs.
      - ``.jsonl``
      - instro ``FilePublisher`` JSON Lines.
      - Included.
+   * - ``wfdb``
+     - ``.hea``
+     - PhysioNet WFDB records, such as ECGs.
+     - ``nominal[wfdb]``
+   * - ``sigmf``
+     - ``.sigmf-meta``, ``.sigmf-data``, ``.sigmf``
+     - SigMF recordings from software-defined radios.
+     - ``nominal[sigmf]``
+
+``wfdb`` and ``sigmf`` are separate packages (``nominal-io-wfdb``, ``nominal-io-sigmf``) that plug in through the
+entry-point group. Their options, such as ``start``, ``sampfrom`` and ``start_index``, pass through `read`.
 
 `nominal.io.instro.write_avro` writes a `Chunk` or a long-form pandas DataFrame as Avro that Nominal can ingest.
 

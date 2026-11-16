@@ -12,6 +12,14 @@
     "packages/nominal-tdms": {
       "release-type": "python",
       "component": "nominal-tdms"
+    },
+    "packages/nominal-io-wfdb": {
+      "release-type": "python",
+      "component": "nominal-io-wfdb"
+    },
+    "packages/nominal-io-sigmf": {
+      "release-type": "python",
+      "component": "nominal-io-sigmf"
     }
   }
 }
