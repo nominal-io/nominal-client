@@ -4,9 +4,9 @@ jupytext:
   text_representation:
     format_name: myst
 kernelspec:
-  name: python3
   display_name: Python 3 (ipykernel)
   language: python
+  name: python3
 ---
 
 # Read instro captures, in any format
@@ -54,7 +54,7 @@ chunk.to_pandas().head()
 ```{code-cell} ipython3
 df = nominal.io.read("capture.avro")
 print(len(df), "rows;", df.nom.channels)
-[f["name"] for f in nominal.io.list_formats()]
+[f.name for f in nominal.io.list_formats()]
 ```
 
 Large files can be streamed in chunks instead of loaded whole; each chunk is a `Chunk` unless you pass an `engine`:

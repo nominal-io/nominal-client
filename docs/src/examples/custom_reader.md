@@ -4,9 +4,9 @@ jupytext:
   text_representation:
     format_name: myst
 kernelspec:
-  name: python3
   display_name: Python 3 (ipykernel)
   language: python
+  name: python3
 ---
 
 # Add a file format to nominal.io
@@ -44,18 +44,29 @@ from collections.abc import Iterator
 from nominal.io import Chunk, ChunkBuilder, Reader, register_reader
 
 
-@register_reader("toylog", [".toylog"], description="A toy log: <seconds> <channel> <value>")
+@register_reader(
+    "toylog", [".toylog"], description="A toy log: <seconds> <channel> <value>"
+)
 class ToyLogReader(Reader):
     def sniff(self, path):
         return Path(path).read_text().startswith("# toy log")
 
     def read_chunks(self, path, **options) -> Iterator[Chunk]:
-        rows = [line.split() for line in Path(path).read_text().splitlines() if not line.startswith("#")]
+        rows = [
+            line.split()
+            for line in Path(path).read_text().splitlines()
+            if not line.startswith("#")
+        ]
         builder = ChunkBuilder()
         builder.add_rows(
-            [round(float(t) * 1e9) for t, _, _ in rows],  # nanoseconds since the epoch
+            [
+                round(float(t) * 1e9) for t, _, _ in rows
+            ],  # nanoseconds since the epoch
             [channel for _, channel, _ in rows],
-            [float(v) if v.replace(".", "", 1).isdigit() else v for _, _, v in rows],  # numbers or strings
+            [
+                float(v) if v.replace(".", "", 1).isdigit() else v
+                for _, _, v in rows
+            ],  # numbers or strings
         )
         yield builder.build()
 ```
