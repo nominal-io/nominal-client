@@ -32,8 +32,8 @@ guide owns reference layout, navigation, and build setup.
 - Prefer triple-backtick fences with a language such as `python`, `matlab`, or `text` for
   new or edited code examples, rather than `.. code-block::` or a prose line ending in
   `::`. Match opening and closing fence indentation and preserve the code's own indentation.
-  The existing [fence extension](../../docs/_ext/docstring_fences.py) handles this syntax
-  before Napoleon parses sections, including CLI help.
+  nominal-sphinx-theme's `nominal_sphinx_theme.docstring_fences` extension handles this
+  syntax before Napoleon parses sections, including CLI help.
 - Docstring prose uses reStructuredText inline markup, not arbitrary Markdown. Single
   backticks use the configured Python object role: resolvable objects become links,
   otherwise they render as code. Double backticks force literal code, such as parameter

@@ -35,9 +35,9 @@ extensions = [
     "sphinxext.rediraffe",
     "examples",
     "video",
-    "docstring_fences",
     "reference_presentation",
     "nominal_sphinx_theme",
+    "nominal_sphinx_theme.docstring_fences",
 ]
 
 templates_path = [str(HERE / "_templates")]

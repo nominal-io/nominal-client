@@ -118,4 +118,4 @@
 
 ## Docstring rendering
 
-- `_ext/docstring_fences.py` converts fenced blocks before Napoleon parses sections. For CLI help, it hooks sphinx-click's description event.
+- nominal-sphinx-theme's `nominal_sphinx_theme.docstring_fences` extension converts fenced blocks before Napoleon parses sections. For CLI help, it hooks sphinx-click's description event. `_tests/test_docstring_fences.py` checks it against this repo's docstrings' conventions.
