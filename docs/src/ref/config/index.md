@@ -1,7 +1,3 @@
----
-orphan: true
----
-
 # Config and profiles
 
 A profile is a named Nominal API key and URL in the config file, `~/.config/nominal/config.yml`.

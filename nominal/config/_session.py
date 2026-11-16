@@ -42,7 +42,9 @@ def active_profile() -> str:
 
     The name may not exist yet; check it against `list_profiles`.
     """
-    return _chosen or os.environ.get(ENV) or os.environ.get(LEGACY_ENV) or DEFAULT
+    if _chosen is not None:
+        return _chosen
+    return os.environ.get(ENV) or os.environ.get(LEGACY_ENV) or DEFAULT
 
 
 def use_profile(name: str | None) -> None:
@@ -83,21 +85,21 @@ def get_client(profile: str | None = None) -> nominal.core.NominalClient:
 
     Raises:
         ValueError: If there's no such profile.
+        nominal.exceptions.NominalConfigError: If the profile exists but its settings are invalid, such as a
+            malformed URL.
     """
     from nominal.config import NominalConfig
     from nominal.core import NominalClient
-    from nominal.exceptions import NominalConfigError
 
-    name = profile or active_profile()
+    name = profile if profile is not None else active_profile()
+    if name not in list_profiles():
+        raise ValueError(f"no Nominal profile {name!r}; {_available()}")
     workspace = os.environ.get(WORKSPACE_ENV)
-    try:
-        if not workspace:
-            return NominalClient.from_profile(name)
-        # from_profile, with the workspace replaced
-        found = NominalConfig.from_yaml(_config_path()).get_profile(name)
-        return NominalClient.from_token(found.token, found.base_url, workspace_rid=workspace, _profile=name)
-    except (FileNotFoundError, NominalConfigError) as e:
-        raise ValueError(f"no Nominal profile {name!r}; {_available()}") from e
+    if not workspace:
+        return NominalClient.from_profile(name)  # a profile that exists but is invalid raises NominalConfigError
+    # from_profile, with the workspace replaced
+    found = NominalConfig.from_yaml(_config_path()).get_profile(name)
+    return NominalClient.from_token(found.token, found.base_url, workspace_rid=workspace, _profile=name)
 
 
 def make_profile(
@@ -109,7 +111,7 @@ def make_profile(
 ) -> nominal.core.NominalClient:
     """Save a Nominal API key as a profile, replacing any profile with the same name.
 
-    The key is checked against Nominal before it's saved, and the file is made readable only by you.
+    The key is checked against Nominal before it's saved, and the file is created readable only by you.
     Create a key in Nominal's settings. This does what ``nom config profile add`` does::
 
         nominal.config.make_profile(token="nominal_api_key_...")
@@ -122,19 +124,26 @@ def make_profile(
 
     Returns:
         A `~nominal.core.NominalClient` on the new profile.
+
+    Raises:
+        ValueError: If ``name`` is empty.
     """
     from nominal.config import ConfigProfile, NominalConfig
     from nominal.core import NominalClient
     from nominal.core._constants import DEFAULT_API_BASE_URL
 
+    if not name:
+        raise ValueError("a profile needs a name")
     url = base_url or DEFAULT_API_BASE_URL
     client = NominalClient.from_token(token, url, workspace_rid=workspace_rid, _profile=name)
     client.get_user()  # fails here, before saving, if the key or URL is wrong
     path = _config_path()
     profiles = dict(NominalConfig.from_yaml(path).profiles) if path.exists() else {}
     profiles[name] = ConfigProfile(base_url=url, token=token, workspace_rid=workspace_rid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT, 0o600))  # it holds API keys: restrict it before writing any
+    path.chmod(0o600)
     NominalConfig(profiles=profiles, version=2).to_yaml(path)
-    path.chmod(0o600)  # it holds API keys
     return client
 
 
