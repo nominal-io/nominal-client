@@ -178,6 +178,7 @@ Timestamps <ref/ts/index>
 io <ref/io/index>
 pandas <ref/pandas/index>
 Config <ref/config/index>
+style <ref/style/index>
 Exceptions <ref/exceptions>
 ```
 
