@@ -1,7 +1,3 @@
----
-orphan: true
----
-
 # I/O
 
 Read files of many formats into one long-form frame (pandas, or polars), and add formats of your own.
@@ -118,4 +114,5 @@ def test_mylog():
 
 ```{eval-rst}
 .. include:: ../_summaries/nominal.io.rst
+.. include:: ../_summaries/nominal.io.testing.rst
 ```

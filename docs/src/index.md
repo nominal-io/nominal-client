@@ -167,6 +167,7 @@ examples/*
 Overview <ref/index>
 Core <ref/core/index>
 Timestamps <ref/ts/index>
+I/O <ref/io/index>
 Exceptions <ref/exceptions>
 ```
 

@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from importlib.metadata import entry_points
 from os import PathLike
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 
 from nominal.io._reader import MissingDependencyError, Reader, ReaderSpec
 from nominal.io.schema import ENGINES, Chunk
@@ -16,9 +16,10 @@ from nominal.io.schema import ENGINES, Chunk
 ENTRY_POINT_GROUP = "nominal.io.readers"
 """Entry-point group a package uses to add formats; each entry's value is a `ReaderSpec`."""
 
-_R = TypeVar("_R")
+_R = TypeVar("_R", bound=type[Reader])
 
 _lock = threading.Lock()
+_discovery_lock = threading.RLock()  # held while plugins import, so a plugin may call back into this module
 _specs: dict[str, ReaderSpec] = {}
 _discovered = False
 _readers: dict[str, Reader] = {}
@@ -59,10 +60,7 @@ def register_reader(
     """
 
     def decorate(cls: _R) -> _R:
-        register(
-            ReaderSpec(name, tuple(extensions), cast("Callable[[], Reader]", cls), description, install_hint),
-            replace=replace,
-        )
+        register(ReaderSpec(name, tuple(extensions), cls, description, install_hint), replace=replace)
         return cls
 
     return decorate
@@ -76,18 +74,11 @@ def unregister(name: str) -> None:
         _readers.pop(name, None)
 
 
-def list_formats() -> list[dict[str, Any]]:
-    """Describe every known format, without importing any reader.
-
-    Returns:
-        One dict per format, sorted by name, with ``name``, ``extensions``, ``description``
-        and ``install_hint``.
-    """
+def list_formats() -> list[ReaderSpec]:
+    """Return every known format's `ReaderSpec`, sorted by name, without importing any reader."""
     _discover()
-    return [
-        {"name": s.name, "extensions": list(s.extensions), "description": s.description, "install_hint": s.install_hint}
-        for s in sorted(_specs.values(), key=lambda s: s.name)
-    ]
+    with _lock:
+        return sorted(_specs.values(), key=lambda s: s.name)
 
 
 def get_reader(format: str) -> Reader:
@@ -159,18 +150,26 @@ def read_chunks(
             yield DataFrames of that library.
         **options: Passed to the format's reader.
 
+    This is a generator, so errors are raised when you first iterate, not when you call it.
+
     Raises:
         ValueError: If the format can't be chosen, the engine is unknown, or a reader yields invalid data.
         MissingDependencyError: If the format's dependencies aren't installed.
     """
-    if engine is not None and engine not in ENGINES:
-        raise ValueError(f"unknown engine {engine!r}; expected one of {', '.join(ENGINES)}")
-    reader = _load(resolve_format(path, format))
-    for chunk in reader.read_chunks(path, **options):
-        if not isinstance(chunk, Chunk):
-            raise ValueError(f"{type(reader).__name__}.read_chunks yielded a {type(chunk).__name__}, not a Chunk")
-        chunk.validate()
-        yield chunk if engine is None else chunk.to_frame(engine)
+    _check_engine(engine)
+    spec = resolve_format(path, format)
+    reader = _load(spec)
+    try:
+        for chunk in reader.read_chunks(path, **options):
+            if not isinstance(chunk, Chunk):
+                raise ValueError(f"{type(reader).__name__}.read_chunks yielded a {type(chunk).__name__}, not a Chunk")
+            chunk.validate()
+            yield chunk if engine is None else chunk.to_frame(engine)
+    except MissingDependencyError:
+        raise
+    except ModuleNotFoundError as e:  # a reader imported a package that isn't installed
+        hint = f"; {spec.install_hint}" if spec.install_hint else ""
+        raise MissingDependencyError(f"format {spec.name!r} can't be read: {e}{hint}") from e
 
 
 def read(path: str | PathLike[str], *, format: str | None = None, engine: str = "pandas", **options: Any) -> Any:
@@ -185,7 +184,13 @@ def read(path: str | PathLike[str], *, format: str | None = None, engine: str = 
     Returns:
         A DataFrame with one row per sample (see `nominal.io.schema`).
     """
+    _check_engine(engine)
     return Chunk.concat(read_chunks(path, format=format, **options)).to_frame(engine)
+
+
+def _check_engine(engine: str | None) -> None:
+    if engine is not None and engine not in ENGINES:
+        raise ValueError(f"unknown engine {engine!r}; expected one of {', '.join(ENGINES)}")
 
 
 def _load(spec: ReaderSpec) -> Reader:
@@ -195,14 +200,19 @@ def _load(spec: ReaderSpec) -> Reader:
     if reader is None:
         reader = spec.load()
         with _lock:
-            _readers[spec.name] = reader
+            if _specs.get(spec.name) is spec:  # not replaced or removed while it loaded
+                _readers[spec.name] = reader
     return reader
 
 
 def _discover() -> None:
-    """Load the specs that installed packages declare, once."""
+    """Load the specs that installed packages declare, once.
+
+    Plugins are imported outside ``_lock``, so one may call `register` or `list_formats` while it imports;
+    ``_discovery_lock`` is re-entrant for that, and makes other threads wait until discovery has finished.
+    """
     global _discovered
-    with _lock:
+    with _discovery_lock:
         if _discovered:
             return
         _discovered = True
@@ -216,4 +226,5 @@ def _discover() -> None:
             except Exception as e:  # one broken plugin must not take the others down
                 warnings.warn(f"skipping nominal.io reader {ep.name!r}: {e}", RuntimeWarning, stacklevel=2)
                 continue
-            _specs.setdefault(spec.name, spec)
+            with _lock:
+                _specs.setdefault(spec.name, spec)

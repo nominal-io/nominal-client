@@ -11,7 +11,7 @@ import pytest
 
 import nominal.io as nio
 from nominal.io import Reader, ReaderSpec
-from nominal.io.schema import COLUMNS, Chunk, ChunkBuilder, start_ns, to_ns, validate_frame
+from nominal.io.schema import COLUMNS, Chunk, ChunkBuilder, validate_frame
 from nominal.io.testing import check_reader
 
 
@@ -30,6 +30,8 @@ class _Lines(Reader):
 
 
 class _Sniffing(Reader):
+    """Reads one sample, and accepts files that start with its magic text."""
+
     def __init__(self, magic: str) -> None:
         self.magic = magic
 
@@ -42,14 +44,15 @@ class _Sniffing(Reader):
 
 @pytest.fixture(autouse=True)
 def _clean() -> Iterator[None]:
-    before = {f["name"] for f in nio.list_formats()}
+    before = {f.name for f in nio.list_formats()}
     yield
     for f in nio.list_formats():
-        if f["name"] not in before:
-            nio.unregister(f["name"])
+        if f.name not in before:
+            nio.unregister(f.name)
 
 
 def test_validate_frame() -> None:
+    """validate_frame accepts a long-form frame and rejects wrong columns or a non-UTC timestamp."""
     df = _chunk([2, 1]).to_pandas()
     assert validate_frame(df) is df
     with pytest.raises(ValueError, match="expected columns"):
@@ -58,22 +61,8 @@ def test_validate_frame() -> None:
         validate_frame(df.assign(timestamp=pd.Timestamp("2020-01-01")))
 
 
-def test_to_ns_and_start() -> None:
-    expected = 1_577_836_800_000_000_000  # 2020-01-01T00:00:00Z
-    assert to_ns("2020-01-01") == to_ns("2020-01-01T00:00:00Z") == expected
-    assert to_ns(pd.Timestamp("2020-01-01", tz="UTC")) == expected
-    assert to_ns(np.datetime64("2020-01-01T00:00:00")) == expected
-    assert to_ns(expected) == expected
-    assert to_ns("2020-12-20T17:32:07.142626Z") == 1_608_485_527_142_626_000
-    with pytest.raises(TypeError):
-        to_ns(1.5)
-    with pytest.warns(UserWarning, match="no start time"):
-        start_ns(None, None, "rec")
-    assert start_ns("2020-01-01", None, "rec") == expected
-    assert start_ns(None, "2020-01-01", "rec") == expected
-
-
 def test_builder_encodes_channels_and_tags() -> None:
+    """ChunkBuilder encodes channel names and tag sets once and keeps missing values as NaN."""
     b = ChunkBuilder()
     b.add([3, 1], "a", [1.0, 2.0], {"run": "x"})
     b.add_rows([2, 4, 5], ["b", "a", "b"], [10, None, 7.5], [{}, {"run": "x"}, {}])
@@ -86,6 +75,7 @@ def test_builder_encodes_channels_and_tags() -> None:
 
 
 def test_builder_validates() -> None:
+    """ChunkBuilder rejects mismatched value counts and boolean samples."""
     with pytest.raises(ValueError, match="2 values for 3 timestamps"):
         ChunkBuilder().add([1, 2, 3], "a", [1.0, 2.0])
     b = ChunkBuilder()
@@ -95,6 +85,7 @@ def test_builder_validates() -> None:
 
 
 def test_chunk_validate() -> None:
+    """Chunk.validate rejects wrong dtypes, out-of-range codes and mismatched lengths."""
     chunk = _chunk([1, 2])
     with pytest.raises(ValueError, match="int64"):
         Chunk(
@@ -117,6 +108,7 @@ def test_chunk_validate() -> None:
 
 
 def test_sort_is_stable_and_concat_merges_names() -> None:
+    """Chunk.concat merges channel names and tag sets, and sort keeps tied rows in insertion order."""
     b1, b2 = ChunkBuilder(), ChunkBuilder()
     b1.add([5, 1], "a", [1.0, 2.0], {"k": "1"})
     b2.add([1, 3], "b", ["s", "t"], {"k": "2"})
@@ -131,6 +123,7 @@ def test_sort_is_stable_and_concat_merges_names() -> None:
 
 
 def test_to_pandas_value_dtype() -> None:
+    """to_pandas gives a float64 value column unless a string sample is present, then a mixed object column."""
     assert _chunk([1]).to_pandas()["value"].dtype == "float64"
     b = ChunkBuilder()
     b.add([1, 2], "a", [1.0, "x"])
@@ -141,6 +134,7 @@ def test_to_pandas_value_dtype() -> None:
 
 
 def test_to_polars_and_engines() -> None:
+    """to_frame builds the polars layout and rejects an unknown engine."""
     b = ChunkBuilder()
     b.add([2, 1], "a", [1.0, "x"], {"run": "r"})
     b.add([3], "b", [None])
@@ -158,6 +152,7 @@ def test_to_polars_and_engines() -> None:
 
 
 def test_from_pandas_round_trip() -> None:
+    """A pandas frame converts to a Chunk and back unchanged, and a non-long-form frame is rejected."""
     b = ChunkBuilder()
     b.add([2, 1], "a", [1.0, "x"], {"run": "r"})
     b.add([3], "b", [4.0])
@@ -169,6 +164,7 @@ def test_from_pandas_round_trip() -> None:
 
 
 def test_read_concatenates_and_sorts(tmp_path: Path) -> None:
+    """Read joins a reader's chunks, sorts by time, and passes options to the reader."""
     nio.register(ReaderSpec("lines", (".lines",), _Lines))
     path = tmp_path / "x.lines"
     path.write_text("5,6\n1,2\n")
@@ -180,6 +176,7 @@ def test_read_concatenates_and_sorts(tmp_path: Path) -> None:
 
 
 def test_read_engines(tmp_path: Path) -> None:
+    """Read returns pandas by default, polars on request, and read_chunks yields Chunks unless given an engine."""
     nio.register(ReaderSpec("lines", (".lines",), _Lines))
     path = tmp_path / "x.lines"
     path.write_text("2,1\n")
@@ -192,6 +189,7 @@ def test_read_engines(tmp_path: Path) -> None:
 
 
 def test_read_empty(tmp_path: Path) -> None:
+    """Reading a file with no samples gives an empty frame in either engine."""
     nio.register(ReaderSpec("lines", (".lines",), _Lines))
     path = tmp_path / "x.lines"
     path.write_text("")
@@ -200,6 +198,8 @@ def test_read_empty(tmp_path: Path) -> None:
 
 
 def test_invalid_chunk_rejected(tmp_path: Path) -> None:
+    """A reader that yields something other than a Chunk is reported by name."""
+
     class Bad(Reader):
         def read_chunks(self, path: Any, **options: Any) -> Iterator[Any]:
             yield pd.DataFrame({"x": [1]})
@@ -212,6 +212,7 @@ def test_invalid_chunk_rejected(tmp_path: Path) -> None:
 
 
 def test_longest_extension_wins(tmp_path: Path) -> None:
+    """The format claiming the longest matching extension is chosen over a shorter one."""
     nio.register(ReaderSpec("meta", (".x-meta",), lambda: _Sniffing("meta")))
     nio.register(ReaderSpec("plain", (".meta",), lambda: _Sniffing("plain")))
     path = tmp_path / "a.x-meta"
@@ -220,6 +221,7 @@ def test_longest_extension_wins(tmp_path: Path) -> None:
 
 
 def test_sniff_breaks_ties(tmp_path: Path) -> None:
+    """When formats share an extension, the one whose sniff accepts the file is chosen."""
     nio.register(ReaderSpec("one", (".dat",), lambda: _Sniffing("ONE")))
     nio.register(ReaderSpec("two", (".dat",), lambda: _Sniffing("TWO")))
     path = tmp_path / "f.dat"
@@ -229,6 +231,7 @@ def test_sniff_breaks_ties(tmp_path: Path) -> None:
 
 
 def test_ambiguous_raises_and_format_overrides(tmp_path: Path) -> None:
+    """An ambiguous file raises an error naming the candidates, and format= resolves it."""
     nio.register(ReaderSpec("one", (".dat",), lambda: _Sniffing("ONE")))
     nio.register(ReaderSpec("two", (".dat",), lambda: _Sniffing("TWO")))
     path = tmp_path / "f.dat"
@@ -239,6 +242,7 @@ def test_ambiguous_raises_and_format_overrides(tmp_path: Path) -> None:
 
 
 def test_unknown_extension_and_format(tmp_path: Path) -> None:
+    """An unknown extension or format name raises a ValueError."""
     with pytest.raises(ValueError, match="no format reads"):
         nio.read(tmp_path / "f.nope")
     with pytest.raises(ValueError, match="unknown format"):
@@ -246,16 +250,18 @@ def test_unknown_extension_and_format(tmp_path: Path) -> None:
 
 
 def test_missing_dependency_is_actionable(tmp_path: Path) -> None:
+    """A reader whose module can't be imported raises MissingDependencyError with the install hint."""
     nio.register(ReaderSpec("ghost", (".ghost",), "no_such_pkg_xyz:Reader", install_hint="pip install nominal[ghost]"))
     path = tmp_path / "f.ghost"
     path.touch()
     with pytest.raises(nio.MissingDependencyError, match=r"pip install nominal\[ghost\]"):
         nio.read(path)
-    (listed,) = [f for f in nio.list_formats() if f["name"] == "ghost"]  # listing never imports it
-    assert listed["extensions"] == [".ghost"]
+    (listed,) = [f for f in nio.list_formats() if f.name == "ghost"]  # listing never imports it
+    assert listed.extensions == (".ghost",)
 
 
 def test_missing_dependency_candidate_does_not_block_sniffing(tmp_path: Path) -> None:
+    """A candidate that can't be loaded is skipped while sniffing rather than failing the choice."""
     nio.register(ReaderSpec("ghost", (".dat",), "no_such_pkg_xyz:Reader"))
     nio.register(ReaderSpec("real", (".dat",), lambda: _Sniffing("REAL")))
     path = tmp_path / "f.dat"
@@ -264,17 +270,20 @@ def test_missing_dependency_candidate_does_not_block_sniffing(tmp_path: Path) ->
 
 
 def test_register_conflicts_and_decorator() -> None:
+    """register_reader registers a class, and a duplicate name needs replace=True."""
+
     @nio.register_reader("deco", [".deco"], description="d")
     class Deco(_Lines):
         pass
 
-    assert [f["description"] for f in nio.list_formats() if f["name"] == "deco"] == ["d"]
+    assert [f.description for f in nio.list_formats() if f.name == "deco"] == ["d"]
     with pytest.raises(ValueError, match="already registered"):
         nio.register(ReaderSpec("deco", (".deco",), Deco))
     nio.register(ReaderSpec("deco", (".deco",), Deco), replace=True)
 
 
 def test_spec_validation() -> None:
+    """ReaderSpec rejects extensions without a dot or in uppercase."""
     with pytest.raises(ValueError):
         ReaderSpec("x", ("csv",), _Lines)
     with pytest.raises(ValueError):
@@ -282,6 +291,7 @@ def test_spec_validation() -> None:
 
 
 def test_entry_point_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Discovery keeps good entry points and warns about broken, wrongly typed or misnamed ones."""
     import nominal.io._registry as reg
 
     good = ReaderSpec("ep-good", (".epg",), _Lines)
@@ -300,12 +310,13 @@ def test_entry_point_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reg, "_discovered", False)
     monkeypatch.setattr(reg, "_specs", {})
     with pytest.warns(RuntimeWarning) as record:
-        names = [f["name"] for f in nio.list_formats()]
+        names = [f.name for f in nio.list_formats()]
     assert names == ["ep-good"]
     assert len(record) == 3  # broken, wrong type, name mismatch
 
 
 def test_check_reader(tmp_path: Path) -> None:
+    """check_reader returns the data for a conforming reader and fails on an empty or mismatched sample."""
     spec = ReaderSpec("lines", (".lines",), _Lines)
     path = tmp_path / "x.lines"
     path.write_text("1,2\n3\n")
@@ -315,3 +326,89 @@ def test_check_reader(tmp_path: Path) -> None:
         check_reader(spec, path)
     with pytest.raises(AssertionError, match="doesn't end in"):
         check_reader(spec, tmp_path / "x.other")
+
+
+def test_builder_keeps_numpy_numbers_numeric() -> None:
+    """Integer and float32 numpy values stay in the float64 column, not the string column."""
+    b = ChunkBuilder()
+    b.add([1, 2, 3], "ints", np.array([1, 2, 3]))
+    b.add([1, 2], "f32", [np.float32(1.5), np.float32(2.5)])
+    b.add([1], "u8", np.array([7], dtype=np.uint8))
+    chunk = b.build()
+    assert chunk.strings is None
+    assert chunk.values.tolist() == [1.0, 2.0, 3.0, 1.5, 2.5, 7.0]
+
+
+def test_read_chunks_raises_on_first_iteration(tmp_path: Path) -> None:
+    """read_chunks is a generator, so an unknown file type is reported when iterating, not when called."""
+    chunks = nio.read_chunks(tmp_path / "f.nope")  # no error yet
+    with pytest.raises(ValueError, match="no format reads"):
+        next(chunks)
+
+
+def test_unknown_engine_is_rejected_before_reading(tmp_path: Path) -> None:
+    """Read checks the engine before it opens the file."""
+    with pytest.raises(ValueError, match="unknown engine"):
+        nio.read(tmp_path / "does-not-exist.nope", engine="spark")
+
+
+def test_import_inside_a_reader_becomes_missing_dependency(tmp_path: Path) -> None:
+    """A package a reader imports lazily, when absent, raises MissingDependencyError with the install hint."""
+
+    class NeedsPackage(Reader):
+        def read_chunks(self, path: Any, **options: Any) -> Iterator[Chunk]:
+            import no_such_package_xyz  # noqa: F401
+
+            yield _chunk([1])
+
+    nio.register(ReaderSpec("needs", (".needs",), NeedsPackage, install_hint="pip install nominal[needs]"))
+    path = tmp_path / "f.needs"
+    path.touch()
+    with pytest.raises(nio.MissingDependencyError, match=r"no_such_package_xyz.*nominal\[needs\]"):
+        nio.read(path)
+
+
+def _discovery_with(monkeypatch: pytest.MonkeyPatch, plugin_load: Any) -> None:
+    import nominal.io._registry as reg
+
+    class EP:
+        name, value = "plugin", "mod:obj"
+
+        def load(self) -> Any:
+            return plugin_load()
+
+    monkeypatch.setattr(reg, "entry_points", lambda group: [EP()])
+    monkeypatch.setattr(reg, "_discovered", False)
+    monkeypatch.setattr(reg, "_specs", {})
+    monkeypatch.setattr(reg, "_readers", {})
+
+
+def test_plugin_may_register_while_it_is_discovered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plugin module that registers a reader or lists formats while importing doesn't deadlock discovery."""
+    import threading
+
+    def plugin() -> ReaderSpec:
+        nio.register(ReaderSpec("extra", (".extra",), _Lines))  # what @register_reader does at import
+        assert [f.name for f in nio.list_formats()] == ["extra"]
+        return ReaderSpec("plugin", (".plg",), _Lines)
+
+    _discovery_with(monkeypatch, plugin)
+    names: list[str] = []
+    worker = threading.Thread(target=lambda: names.extend(f.name for f in nio.list_formats()), daemon=True)
+    worker.start()
+    worker.join(timeout=5)
+    assert not worker.is_alive(), "discovery deadlocked"
+    assert names == ["extra", "plugin"]
+
+
+def test_replacing_a_format_while_it_loads_does_not_cache_the_old_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If a format is replaced during its reader's load, the replaced reader isn't cached."""
+    replacement = ReaderSpec("swap", (".swap",), lambda: _Sniffing("NEW"))
+
+    def old_factory() -> Reader:
+        nio.register(replacement, replace=True)
+        return _Sniffing("OLD")
+
+    nio.register(ReaderSpec("swap", (".swap",), old_factory))
+    nio.get_reader("swap")  # loads the old reader, and the format is replaced meanwhile
+    assert nio.get_reader("swap").magic == "NEW"  # type: ignore[attr-defined]
