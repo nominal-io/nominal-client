@@ -19,16 +19,6 @@
 * **migration:** scope prep and copy to the source profile's workspace ([#1249](https://github.com/nominal-io/nominal-client/issues/1249)) ([cd434ad](https://github.com/nominal-io/nominal-client/commit/cd434ad0ef6f6e1a5891e01d0d19198af20ba07a))
 
 
-### Documentation
-
-* get sphinx-codeautolink from nominal-sphinx-theme ([#1284](https://github.com/nominal-io/nominal-client/issues/1284)) ([45c0bc4](https://github.com/nominal-io/nominal-client/commit/45c0bc496764f889caf7045ab18971bcd7e93e46))
-* link to the data model pages at their new dev.nominal.io paths ([#1281](https://github.com/nominal-io/nominal-client/issues/1281)) ([d361390](https://github.com/nominal-io/nominal-client/commit/d361390337ff272eff080a8efd1d8b86d53b6569))
-* rename the SDK tab to Reference ([#1275](https://github.com/nominal-io/nominal-client/issues/1275)) ([9b678ef](https://github.com/nominal-io/nominal-client/commit/9b678efc089f5e62d6df44fce432ec85e243d4d9))
-* serve the API reference from ref/, not sdk/ ([#1276](https://github.com/nominal-io/nominal-client/issues/1276)) ([a2075d7](https://github.com/nominal-io/nominal-client/commit/a2075d73fd7120ed1e85848003ff32d01ab2e9f8))
-* shorten two TOC section titles ([#1286](https://github.com/nominal-io/nominal-client/issues/1286)) ([54e33c6](https://github.com/nominal-io/nominal-client/commit/54e33c651435cef9df2946fa95e1a1bebb2d3302))
-* switch from private to public google analytics "property" ([#1285](https://github.com/nominal-io/nominal-client/issues/1285)) ([925da2e](https://github.com/nominal-io/nominal-client/commit/925da2e68731d2cf56a552d3bb96fc6337fd5f1f))
-* use nominal-sphinx-theme's docstring_fences ([#1293](https://github.com/nominal-io/nominal-client/issues/1293)) ([4836ddb](https://github.com/nominal-io/nominal-client/commit/4836ddb6f3c3442b61f1c365f7f77c973f775672))
-
 ## [1.181.0](https://github.com/nominal-io/nominal-client/compare/v1.180.1...v1.181.0) (2026-11-03)
 
 
