@@ -10,6 +10,8 @@ myst:
 A skill is a folder with a SKILL.md of instructions, and any reference files, that Analyst and connected agents follow for a repeatable task, such as a post-test review.
 Skills use the [Agent Skills](https://agentskills.io/specification) format, and each workspace has a skills library that every Analyst user and connected agent in the workspace shares.
 Each skill's files are in the folder `skills/<name>` of the workspace's skills drive.
+Creating and changing skills needs permission to edit the workspace's configuration.
+Without it, the methods that save raise {py:class}`~nominal.exceptions.NominalPermissionDeniedError` before saving anything.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
@@ -62,7 +64,7 @@ Names use lowercase letters, digits and single hyphens, and must be unused in th
 Skills hold UTF-8 text files only.
 Pass `enabled=False` to save a skill without turning it on.
 
-If a file can't be saved, the files already saved are removed, so you can create the skill again with the same name.
+A skill's files are saved together or not at all, so if one can't be saved, you can create the skill again with the same name.
 
 {py:meth}`~nominal.core.NominalClient.import_skill` creates a skill from a folder with SKILL.md at its top level, or a .zip holding one:
 
@@ -84,8 +86,9 @@ skill.write_files({"templates/summary.md": "## Summary\n"})
 skill.remove_files(["methods/limits.md"])
 ```
 
-`update` saves only if the skill hasn't changed since you fetched it.
-Each file write replaces the file as it is when you call it, and is refused if another save changes the file at the same moment.
+`update` saves only if the skill hasn't changed since you fetched it, and saves SKILL.md and a rename's folder move together or not at all.
+Edits made to the skill's files in Drives don't count as a change to the skill, so read SKILL.md with {py:meth}`~nominal.core.Skill.get_content` before replacing it.
+Each call to `write_files` or `remove_files` saves its files together or not at all, replacing each file as it is when you call it, and is refused if another save changes one of them at the same moment.
 Both raise {py:class}`~nominal.exceptions.NominalConflictError`; refresh the skill and apply your change again:
 
 ```python

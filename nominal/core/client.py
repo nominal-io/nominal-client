@@ -642,8 +642,10 @@ class NominalClient:
             workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
-            ValueError: If SKILL.md has no frontmatter with a valid name, or a file's path is SKILL.md or leads
-                outside the skill's folder. Nothing is saved.
+            ValueError: If SKILL.md has no frontmatter with a valid name, a file's path is SKILL.md or leads
+                outside the skill's folder, or there are more than 99 reference files. Nothing is saved.
+            NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
+                skill needs. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
         """
         return _create_skill(
@@ -678,6 +680,8 @@ class NominalClient:
         Raises:
             ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, a file is
                 not UTF-8 text, or SKILL.md has no frontmatter with a valid name. Nothing is saved.
+            NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
+                skill needs. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
         """
         return _import_skill(
