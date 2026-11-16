@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.182.0](https://github.com/nominal-io/nominal-client/compare/v1.181.0...v1.182.0) (2026-11-16)
+
+
+### Features
+
+* **core:** create blank workbooks for runs and assets ([#1268](https://github.com/nominal-io/nominal-client/issues/1268)) ([bbff8e8](https://github.com/nominal-io/nominal-client/commit/bbff8e8e45f322a4efb2967e9dd1721f8103287c))
+* **core:** expose dataset retention and run locking ([#1278](https://github.com/nominal-io/nominal-client/issues/1278)) ([83d76a4](https://github.com/nominal-io/nominal-client/commit/83d76a4e03289c51fdaeb8ddf02671b28d8c8b64))
+* **core:** identify rust write streams as nominal-python via nominal-streaming 0.11.0 ([#1289](https://github.com/nominal-io/nominal-client/issues/1289)) ([3a36a41](https://github.com/nominal-io/nominal-client/commit/3a36a412cf3f82d9b7f876d605d170c2efe381b5))
+* **core:** notebook cards for core resources ([#1260](https://github.com/nominal-io/nominal-client/issues/1260)) ([73c0bee](https://github.com/nominal-io/nominal-client/commit/73c0bee633ac8c23262f5f8b5d6ee6d4be84b030))
+* **core:** relationship diagrams in notebook cards ([#1272](https://github.com/nominal-io/nominal-client/issues/1272)) ([07de14a](https://github.com/nominal-io/nominal-client/commit/07de14a466cb97df8941f071ca3429c02b6f5ff0))
+* **migration:** copy retention policies, exemptions, and run locks ([#1279](https://github.com/nominal-io/nominal-client/issues/1279)) ([eea1ae8](https://github.com/nominal-io/nominal-client/commit/eea1ae8b5d79bb5cecda0ad00bef391bce4f9143))
+
+
+### Bug Fixes
+
+* **migration:** keep multi-run workbooks pending until all their runs migrate ([#1264](https://github.com/nominal-io/nominal-client/issues/1264)) ([c5dd11d](https://github.com/nominal-io/nominal-client/commit/c5dd11d610b15e57b53a37b9ec9913910cf11239))
+* **migration:** scope prep and copy to the source profile's workspace ([#1249](https://github.com/nominal-io/nominal-client/issues/1249)) ([cd434ad](https://github.com/nominal-io/nominal-client/commit/cd434ad0ef6f6e1a5891e01d0d19198af20ba07a))
+
+
 ## [1.181.0](https://github.com/nominal-io/nominal-client/compare/v1.180.1...v1.181.0) (2026-11-03)
 
 
