@@ -255,6 +255,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
             # many small template/checklist tasks settle in a burst.
             run_concurrent(executor, tasks, on_task_complete=debounced_save)
             runner.migrate_deferred_workbooks(ctx)
+            runner.migrate_retention(ctx)
         executor.shutdown(wait=True)
     except BaseException:
         # KeyboardInterrupt/SystemExit included: don't block the unwind behind in-flight

@@ -11,6 +11,8 @@ from typing import Iterable, Mapping, cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
+from nominal.core.dataset import Dataset
+from nominal.core.run import Run
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.dry_run import DRY_RUN_PREFIX
@@ -19,6 +21,7 @@ from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOpti
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
+from nominal.experimental.migration.migrator.retention_migrator import RetentionMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 from nominal.experimental.migration.resource_type import format_resource_label
@@ -186,6 +189,7 @@ class MigrationRunner:
                 self.save_state()
 
             self.migrate_deferred_workbooks(migration_context)
+            self.migrate_retention(migration_context)
         finally:
             self.save_state()
             log_skipped_resources(self.migration_state)
@@ -203,6 +207,21 @@ class MigrationRunner:
             for asset_rid, asset_resources in self.migration_resources.source_assets.items()
         }
         WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
+
+    def migrate_retention(self, migration_context: MigrationContext) -> None:
+        """Copy retention policies, exemptions, and run locks for everything migrated, if configured.
+
+        Call only after every asset has migrated, so the destination datasets and runs all exist.
+        """
+        if not self.asset_inclusion_config.include_retention:
+            return
+        datasets: list[Dataset] = list(self.migration_resources.source_standalone_datasets)
+        runs: list[Run] = []
+        for asset_resources in self.migration_resources.source_assets.values():
+            datasets.extend(dataset for _, dataset in asset_resources.asset.list_datasets())
+            if self.asset_inclusion_config.include_runs:
+                runs.extend(asset_resources.asset.list_runs())
+        RetentionMigrator(migration_context).copy_retention(datasets, runs)
 
     def save_state(self) -> None:
         if self.dry_run:

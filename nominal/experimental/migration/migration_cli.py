@@ -480,6 +480,7 @@ def _load_migration_config(
         include_attachments=_optional_bool(m.get("include_attachments"), "migration.include_attachments", default=True),
         include_checklists=_optional_bool(m.get("include_checklists"), "migration.include_checklists", default=True),
         include_workbooks=_optional_bool(m.get("include_workbooks"), "migration.include_workbooks", default=True),
+        include_retention=_optional_bool(m.get("include_retention"), "migration.include_retention", default=False),
     )
     added_labels = _load_added_labels(m.get("add_labels"))
 
@@ -836,6 +837,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
             "include_attachments": True,
             "include_checklists": True,
             "include_workbooks": True,
+            "include_retention": False,
             "set_to_demo_workbook": False,
             "add_labels": list(added_labels),
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],

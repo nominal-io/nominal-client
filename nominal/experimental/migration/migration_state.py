@@ -102,6 +102,11 @@ class MigrationState:
     def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
         self.skipped_resources.append(SkippedResource(resource_type.value, source_rid, reason))
 
+    def clear_skips_with_prefix(self, reason_prefix: str) -> None:
+        """Drop every recorded skip whose reason starts with `reason_prefix`."""
+        # In place, for the same reason as set_skip.
+        self.skipped_resources[:] = [s for s in self.skipped_resources if not s.reason.startswith(reason_prefix)]
+
     def set_skip(self, resource_type: ResourceType, source_rid: str, reason: str | None) -> bool:
         """Record a resource's latest skip outcome, replacing any earlier entries for it;
         ``None`` clears them. Returns whether anything changed.
