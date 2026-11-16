@@ -11,6 +11,7 @@ import numpy as np
 
 from nominal.io._reader import Reader
 from nominal.io.schema import Chunk, ChunkBuilder, start_ns
+from nominal.io_sigmf._sigmf import open_recording
 
 _SUFFIXES = {".sigmf-meta", ".sigmf-data", ".sigmf"}
 
@@ -43,7 +44,8 @@ def read_sigmf_chunk(  # noqa: PLR0915
     A second of a 1 MS/s recording is two million rows, so use ``start_index`` and
     ``count`` to read part of a long one.
 
-    Needs sigmf (``pip install nominal[sigmf]``).
+    Reads SigMF with the standard library and numpy; the ``.sigmf-meta`` JSON must have ``core:datatype`` and
+    ``core:sample_rate``, and captures with ``core:header_bytes`` aren't supported.
 
     Args:
         path: The recording: its ``.sigmf-meta`` or ``.sigmf-data`` file, its name
@@ -60,77 +62,79 @@ def read_sigmf_chunk(  # noqa: PLR0915
     Returns:
         The recording as one `~nominal.io.schema.Chunk`; `read_sigmf` returns it as a DataFrame.
     """
-    from sigmf import sigmffile
-
     path = Path(path)
     name = path.name.removesuffix(path.suffix) if path.suffix in _SUFFIXES else path.name
-    recording = sigmffile.fromfile(str(path), skip_checksum=skip_checksum)
-    captures = recording.get_captures()
-    fs = float(recording.get_global_field("core:sample_rate"))
-    total = recording.sample_count
-    available = max(total - start_index, 0)
-    count = available if count is None else max(min(count, available), 0)
-    stop = start_index + count
-    t0 = start_ns(start, captures[0].get("core:datetime") if captures else None, name)
+    with open_recording(path, skip_checksum=skip_checksum) as recording:
+        captures = recording.captures
+        fs = float(recording.global_field("core:sample_rate"))
+        total = recording.sample_count
+        available = max(total - start_index, 0)
+        count = available if count is None else max(min(count, available), 0)
+        stop = start_index + count
+        t0 = start_ns(start, captures[0].get("core:datetime") if captures else None, name)
 
-    def times(samples: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-        """Return the timestamps (ns since the epoch) of recording sample numbers."""
-        offsets: np.ndarray[Any, Any] = np.round(samples * (1e9 / fs)).astype("int64")
-        return offsets + t0
+        def times(samples: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+            """Return the timestamps (ns since the epoch) of recording sample numbers."""
+            offsets: np.ndarray[Any, Any] = np.round(samples * (1e9 / fs)).astype("int64")
+            return offsets + t0
 
-    def channel(suffix: str) -> str:
-        return f"{prefix}.{suffix}" if prefix else suffix
+        def channel(suffix: str) -> str:
+            return f"{prefix}.{suffix}" if prefix else suffix
 
-    n_channels = int(recording.get_global_field("core:num_channels", 1))
-    if count > 0:
-        samples = recording.read_samples(start_index=start_index, count=count).reshape(count, n_channels)
-    else:  # nothing selected: keep the shape, and complex or real, so the channels still come out right
-        is_complex = str(recording.get_global_field("core:datatype", "")).startswith("c")
-        samples = np.zeros((0, n_channels), dtype=np.complex64 if is_complex else np.float32)
-    sample_times = times(np.arange(start_index, stop))
-    parts = [("I", samples.real), ("Q", samples.imag)] if np.iscomplexobj(samples) else [("value", samples)]
-    multi = samples.shape[1] > 1
-    builder = ChunkBuilder()
-    for c in range(samples.shape[1]):
-        for part, data in parts:
-            builder.add(sample_times, channel(f"ch{c}.{part}" if multi else part), data[:, c], {"recording": name})
+        # (count, channels, components); nothing selected keeps the shape, so the channels still come out right
+        samples = (
+            recording.read(start_index, count)
+            if count > 0
+            else np.zeros((0, recording.channels, 2 if recording.is_complex else 1))
+        )
+        sample_times = times(np.arange(start_index, stop))
+        parts = (
+            [("I", samples[:, :, 0]), ("Q", samples[:, :, 1])]
+            if recording.is_complex
+            else [("value", samples[:, :, 0])]
+        )
+        multi = recording.channels > 1
+        builder = ChunkBuilder()
+        for c in range(recording.channels):
+            for part, data in parts:
+                builder.add(sample_times, channel(f"ch{c}.{part}" if multi else part), data[:, c], {"recording": name})
 
-    # Centre frequency: each capture's in the samples read, plus the one in force at start_index.
-    meta_times: list[int] = []
-    meta_names: list[str] = []
-    meta_values: list[Any] = []
-    meta_tags: list[dict[str, str]] = []
-    for i, capture in enumerate(captures if count > 0 else []):
-        first = capture["core:sample_start"]
-        end = captures[i + 1]["core:sample_start"] if i + 1 < len(captures) else total
-        if "core:frequency" in capture and first < stop and end > start_index:
-            meta_times.append(max(first, start_index))
-            meta_names.append(channel("frequency"))
-            meta_values.append(float(capture["core:frequency"]))
-            meta_tags.append({"recording": name, "units": "Hz"})
+        # Centre frequency: each capture's in the samples read, plus the one in force at start_index.
+        meta_times: list[int] = []
+        meta_names: list[str] = []
+        meta_values: list[Any] = []
+        meta_tags: list[dict[str, str]] = []
+        for i, capture in enumerate(captures if count > 0 else []):
+            first = capture.get("core:sample_start", 0)
+            end = captures[i + 1].get("core:sample_start", 0) if i + 1 < len(captures) else total
+            if "core:frequency" in capture and first < stop and end > start_index:
+                meta_times.append(max(first, start_index))
+                meta_names.append(channel("frequency"))
+                meta_values.append(float(capture["core:frequency"]))
+                meta_tags.append({"recording": name, "units": "Hz"})
 
-    # Annotations: the label at the first sample (or at the start of the slice, if it begins inside the
-    # annotation), and "" after the last.
-    for annotation in recording.get_annotations() if count > 0 else []:
-        first = annotation["core:sample_start"]
-        after = first + annotation.get("core:sample_count", 1)
-        label = annotation.get("core:label") or annotation.get("core:comment") or "annotation"
-        info = {"recording": name}
-        for key in ("comment", "freq_lower_edge", "freq_upper_edge"):
-            if f"core:{key}" in annotation:
-                info[key] = str(annotation[f"core:{key}"])
-        if not (first < stop and after > start_index):
-            continue  # doesn't overlap the samples read
-        opening = [(max(first, start_index), label)]
-        closing = [(after, "")] if after < stop else []
-        for sample, value in opening + closing:
-            meta_times.append(sample)
-            meta_names.append(channel("annotation"))
-            meta_values.append(value)
-            meta_tags.append(info)
+        # Annotations: the label at the first sample (or at the start of the slice, if it begins inside the
+        # annotation), and "" after the last.
+        for annotation in recording.annotations if count > 0 else []:
+            first = annotation["core:sample_start"]
+            after = first + annotation.get("core:sample_count", 1)
+            label = annotation.get("core:label") or annotation.get("core:comment") or "annotation"
+            info = {"recording": name}
+            for key in ("comment", "freq_lower_edge", "freq_upper_edge"):
+                if f"core:{key}" in annotation:
+                    info[key] = str(annotation[f"core:{key}"])
+            if not (first < stop and after > start_index):
+                continue  # doesn't overlap the samples read
+            opening = [(max(first, start_index), label)]
+            closing = [(after, "")] if after < stop else []
+            for sample, value in opening + closing:
+                meta_times.append(sample)
+                meta_names.append(channel("annotation"))
+                meta_values.append(value)
+                meta_tags.append(info)
 
-    builder.add_rows(times(np.asarray(meta_times, dtype="int64")), meta_names, meta_values, meta_tags)
-    return builder.build()
+        builder.add_rows(times(np.asarray(meta_times, dtype="int64")), meta_names, meta_values, meta_tags)
+        return builder.build()
 
 
 def read_sigmf(path: str | PathLike[str], *, engine: str = "pandas", **options: Any) -> Any:

@@ -6,7 +6,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 readme = { text = "SigMF recordings (IQ data from software-defined radios) for nominal.io in the Nominal Python client.", content-type = "text/markdown" }
 requires-python = ">=3.11,<4"
-dependencies = ["nominal>=1.182.0", "sigmf>=1.2"]
+dependencies = ["nominal>=1.182.0"]
 
 [project.urls]
 Homepage = "https://nominal.io"

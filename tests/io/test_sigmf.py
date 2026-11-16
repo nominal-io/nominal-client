@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import tarfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
-import sigmf
-from sigmf import SigMFFile
 
 import nominal.io as nio
 from nominal.io.schema import COLUMNS
@@ -27,26 +29,41 @@ FS = 1000.0
 START = pd.Timestamp("2026-01-01T09:00:00Z")
 
 
-def _write(tmp_path: Path, samples: np.ndarray, datatype: str, channels: int = 1, datetime: str | None = None) -> Path:
+def _write(
+    tmp_path: Path,
+    samples: np.ndarray[Any, Any],
+    datatype: str,
+    channels: int = 1,
+    datetime: str | None = None,
+    checksum: str | None = None,
+) -> Path:
     """Write a SigMF recording with two captures and one annotation; return its meta path."""
     data = tmp_path / "rec.sigmf-data"
     samples.tofile(data)
-    meta = SigMFFile(
-        data_file=str(data),
-        global_info={sigmf.DATATYPE_KEY: datatype, sigmf.SAMPLE_RATE_KEY: FS, "core:num_channels": channels},
-    )
-    first = {"core:frequency": 915e6}
+    first: dict[str, Any] = {"core:sample_start": 0, "core:frequency": 915e6}
     if datetime:
         first["core:datetime"] = datetime
-    meta.add_capture(0, metadata=first)
-    meta.add_capture(50, metadata={"core:frequency": 916e6})
-    meta.add_annotation(
-        20,
-        10,
-        metadata={"core:label": "burst", "core:comment": "test", "core:freq_lower_edge": 914.9e6},
-    )
+    meta = {
+        "global": {
+            "core:datatype": datatype,
+            "core:sample_rate": FS,
+            "core:num_channels": channels,
+            "core:version": "1.0.0",
+            **({"core:sha512": checksum} if checksum else {}),
+        },
+        "captures": [first, {"core:sample_start": 50, "core:frequency": 916e6}],
+        "annotations": [
+            {
+                "core:sample_start": 20,
+                "core:sample_count": 10,
+                "core:label": "burst",
+                "core:comment": "test",
+                "core:freq_lower_edge": 914.9e6,
+            }
+        ],
+    }
     path = tmp_path / "rec.sigmf-meta"
-    meta.tofile(str(path))
+    path.write_text(json.dumps(meta))
     return path
 
 
@@ -173,3 +190,77 @@ def test_slice_inside_an_annotation_keeps_its_label(complex_path: Path):
     assert (ann["timestamp"] - START).tolist() == [pd.Timedelta(milliseconds=25), pd.Timedelta(milliseconds=30)]
     inside = sel(read_sigmf(complex_path, start=START, start_index=22, count=5), "sigmf.annotation")
     assert inside["value"].tolist() == ["burst"]  # the annotation outlasts the slice, so there is no closing mark
+
+
+def test_reads_without_the_sigmf_library():
+    """The reader needs only the standard library and numpy, not the sigmf package."""
+    import subprocess
+    import sys
+
+    code = "import sys, nominal.io_sigmf; sys.exit('sigmf' in sys.modules)"
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_archive_is_read_like_its_files(complex_path: Path, tmp_path: Path):
+    """A .sigmf archive (a tar of the meta and data files) reads the same as the loose files."""
+    archive = tmp_path / "rec.sigmf"
+    with tarfile.open(archive, "w") as tar:
+        tar.add(complex_path, arcname="rec/rec.sigmf-meta")
+        tar.add(complex_path.with_suffix(".sigmf-data"), arcname="rec/rec.sigmf-data")
+    pd.testing.assert_frame_equal(read_sigmf(archive, start=START), read_sigmf(complex_path, start=START))
+    with pytest.raises(FileNotFoundError):
+        read_sigmf(tmp_path / "nothing.sigmf-meta", start=START)
+
+
+def test_checksum_is_verified_unless_skipped(tmp_path: Path):
+    """A data file that doesn't match core:sha512 raises, unless skip_checksum is set."""
+    samples = (np.arange(100) + 1j * np.arange(100)).astype(np.complex64)
+    good = hashlib.sha512(samples.tobytes()).hexdigest()
+    ok = _write(tmp_path, samples, "cf32_le", checksum=good)
+    assert not read_sigmf(ok, start=START).empty
+    bad = _write(tmp_path, samples, "cf32_le", checksum="0" * 128)
+    with pytest.raises(ValueError, match="core:sha512"):
+        read_sigmf(bad, start=START)
+    assert not read_sigmf(bad, start=START, skip_checksum=True).empty
+
+
+@pytest.mark.parametrize(
+    ("datatype", "dtype", "complex_"),
+    [("ci16_le", "<i2", True), ("cu8", "u1", True), ("ri32_be", ">i4", False), ("rf64_le", "<f8", False)],
+)
+def test_other_datatypes(tmp_path: Path, datatype: str, dtype: str, complex_: bool):
+    """Integer, unsigned, big-endian and double datatypes read as numbers."""
+    raw = np.arange(1, 201 if complex_ else 101).astype(dtype)
+    df = read_sigmf(_write(tmp_path, raw, datatype), start=START)
+    first = "sigmf.I" if complex_ else "sigmf.value"
+    expected = raw[::2] if complex_ else raw
+    assert sel(df, first)["value"].tolist() == expected.astype(float).tolist()
+    assert ("sigmf.Q" in chans(df)) == complex_
+
+
+def test_multichannel_samples_are_interleaved(tmp_path: Path):
+    """Samples of several channels are read interleaved, one column per channel."""
+    interleaved = np.arange(200, dtype=np.float32)  # real, 2 channels x 100 samples
+    df = read_sigmf(_write(tmp_path, interleaved, "rf32_le", channels=2), start=START, prefix=None)
+    assert sel(df, "ch0.value")["value"].tolist() == interleaved[0::2].tolist()
+    assert sel(df, "ch1.value")["value"].tolist() == interleaved[1::2].tolist()
+
+
+def test_bad_metadata_is_reported(tmp_path: Path):
+    """An unsupported datatype, a missing required field, or header bytes raise a clear ValueError."""
+    path = _write(tmp_path, np.zeros(10, np.float32), "rf32_le")
+    meta = json.loads(path.read_text())
+    meta["global"]["core:datatype"] = "xx7"
+    path.write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match="unsupported SigMF datatype"):
+        read_sigmf(path, start=START)
+    del meta["global"]["core:sample_rate"]
+    meta["global"]["core:datatype"] = "rf32_le"
+    path.write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match="core:sample_rate"):
+        read_sigmf(path, start=START)
+    meta["global"]["core:sample_rate"] = FS
+    meta["captures"][0]["core:header_bytes"] = 16
+    path.write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match="header_bytes"):
+        read_sigmf(path, start=START)

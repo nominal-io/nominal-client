@@ -232,7 +232,7 @@ module = "nptdms"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["wfdb", "wfdb.*", "sigmf", "sigmf.*"]
+module = ["wfdb", "wfdb.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
