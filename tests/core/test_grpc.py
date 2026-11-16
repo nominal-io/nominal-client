@@ -263,6 +263,43 @@ def test_http_grpc_channel_rejects_nonliteral_or_remote_hosts_before_channel_cre
     intercept.assert_not_called()
 
 
+@pytest.mark.parametrize("host", ["192.168.1.2", "desktop-core.local"])
+def test_http_grpc_channel_allows_any_host_when_insecure_http_is_allowed(monkeypatch, host) -> None:
+    """The opt-in lets a LAN address or hostname use a plaintext channel."""
+    secure, _, credentials = _patch_channel(monkeypatch)
+    insecure = MagicMock(return_value="plaintext-channel")
+    monkeypatch.setattr(grpc, "insecure_channel", insecure)
+
+    create_grpc_channel(
+        api_base_url=f"http://{host}:20000/api",
+        service_config=_config(),
+        user_agent="test-agent",
+        auth_header="Bearer tok",
+        header_provider=None,
+        allow_insecure_http=True,
+    )
+
+    assert insecure.call_args.args == (f"{host}:20000",)
+    secure.assert_not_called()
+    credentials.assert_not_called()
+
+
+def test_http_grpc_channel_rejects_user_information_when_insecure_http_is_allowed(monkeypatch) -> None:
+    """The opt-in relaxes only the loopback rule, not the rest of the URL policy."""
+    _patch_channel(monkeypatch)
+    monkeypatch.setattr(grpc, "insecure_channel", MagicMock())
+
+    with pytest.raises(NominalConfigError, match="must not contain user information"):
+        create_grpc_channel(
+            api_base_url="http://user@192.168.1.2:20000/api",
+            service_config=_config(),
+            user_agent="test-agent",
+            auth_header="Bearer tok",
+            header_provider=None,
+            allow_insecure_http=True,
+        )
+
+
 @pytest.mark.parametrize(
     "code, expected",
     [

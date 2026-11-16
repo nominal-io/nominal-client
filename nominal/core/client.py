@@ -173,6 +173,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
+        allow_insecure_http: bool = False,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -185,10 +186,15 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+            allow_insecure_http: Allow an `http://` base URL to any host, such as a Nominal Desktop Core on the
+                local network. By default, HTTP is allowed only to a literal loopback IP. The token then travels
+                unencrypted, so enable this only on a network you trust. Also enabled when the profile sets
+                `allow_insecure_http`.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+                without a literal loopback IP and neither the argument nor the profile allows insecure HTTP.
+                This prevents client construction even for HTTP-only usage.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -199,6 +205,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             extra_headers=extra_headers,
+            allow_insecure_http=allow_insecure_http or prof.allow_insecure_http,
             _profile=profile,
         )
         return client
@@ -213,6 +220,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
+        allow_insecure_http: bool = False,
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -229,10 +237,14 @@ class NominalClient:
                 your corporate CA PEM if you are behind a TLS-inspecting proxy.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+            allow_insecure_http: Allow an `http://` base URL to any host, such as a Nominal Desktop Core on the
+                local network. By default, HTTP is allowed only to a literal loopback IP. The token then travels
+                unencrypted, so enable this only on a network you trust.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+                without a literal loopback IP and `allow_insecure_http` is not set. This prevents client
+                construction even for HTTP-only usage.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -250,6 +262,7 @@ class NominalClient:
                 token,
                 workspace_rid,
                 header_provider=normalize_header_provider(extra_headers),
+                allow_insecure_http=allow_insecure_http,
             ),
             _profile=_profile,
         )
@@ -264,6 +277,7 @@ class NominalClient:
         *,
         workspace_rid: str | None = None,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
+        allow_insecure_http: bool = False,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -279,10 +293,14 @@ class NominalClient:
             workspace_rid: Optional workspace RID to pin the client to for operations that require a single
                 workspace. If not provided, those operations resolve a default workspace client-side when needed.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
+            allow_insecure_http: Allow an `http://` base URL to any host, such as a Nominal Desktop Core on the
+                local network. By default, HTTP is allowed only to a literal loopback IP. The token then travels
+                unencrypted, so enable this only on a network you trust.
 
         Raises:
             NominalConfigError: If the base URL is malformed, contains user information, or uses HTTP
-                without a literal loopback IP. This prevents client construction even for HTTP-only usage.
+                without a literal loopback IP and `allow_insecure_http` is not set. This prevents client
+                construction even for HTTP-only usage.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -293,6 +311,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
             extra_headers=extra_headers,
+            allow_insecure_http=allow_insecure_http,
         )
 
     def __repr__(self) -> str:

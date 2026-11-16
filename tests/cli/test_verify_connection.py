@@ -39,7 +39,7 @@ def test_validate_token_url_accepts_valid_credentials() -> None:
     ):
         validate_token_url("token", "https://api.gov.nominal.io/api", None)
 
-    create_client.assert_called_once_with("https://api.gov.nominal.io/api", "token")
+    create_client.assert_called_once_with("https://api.gov.nominal.io/api", "token", allow_insecure_http=False)
     client.get_user.assert_called_once_with()
     client.get_workspace.assert_called_once_with(None)
     secho.assert_not_called()

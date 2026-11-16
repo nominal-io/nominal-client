@@ -27,8 +27,15 @@ def profile_cmd() -> None:
 @click.option("-u", "--base-url", default="https://api.gov.nominal.io/api")
 @click.option("-w", "--workspace-rid", help="workspace RID  [optional]")
 @click.option("--validate/--no-validate", default=True, help="Validate authentication parameters")
+@click.option(
+    "--allow-insecure-http",
+    is_flag=True,
+    help="Allow an http:// base URL to a non-loopback host. The token is sent unencrypted.",
+)
 @global_options
-def add_profile(profile: str, base_url: str, token: str, workspace_rid: str | None, validate: bool) -> None:
+def add_profile(
+    profile: str, base_url: str, token: str, workspace_rid: str | None, validate: bool, allow_insecure_http: bool
+) -> None:
     """Add or update a profile to your Nominal config"""
     cfg = config.NominalConfig(profiles={}, version=2)
     try:
@@ -36,10 +43,9 @@ def add_profile(profile: str, base_url: str, token: str, workspace_rid: str | No
     except FileNotFoundError:
         pass
     if validate:
-        validate_token_url(token, base_url, workspace_rid)
-    new_cfg = dataclasses.replace(
-        cfg, profiles={**cfg.profiles, profile: config.ConfigProfile(base_url, token, workspace_rid)}
-    )
+        validate_token_url(token, base_url, workspace_rid, allow_insecure_http=allow_insecure_http)
+    new_profile = config.ConfigProfile(base_url, token, workspace_rid, allow_insecure_http)
+    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, profile: new_profile})
     new_cfg.to_yaml()
     click.secho(f"Wrote profile {profile} to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
 
