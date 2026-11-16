@@ -15,6 +15,7 @@ The main components of the `nominal` package are:
 - **[`nominal.ts`](ts/index.md)**: how timestamps in your data are encoded across the client.
 - **[`nominal.exceptions`](exceptions.rst)**: errors raised by the client.
 - **[`nominal.experimental`](experimental/index.md)**: cutting-edge experiments. These APIs may change without notice.
+- **[`nominal.io`](io/index.md)**: read files of many formats into one frame, and add your own formats.
 - **[Third-Party Integrations](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
 
 For command-line operations, see the [`nom` CLI reference](cli.md).
