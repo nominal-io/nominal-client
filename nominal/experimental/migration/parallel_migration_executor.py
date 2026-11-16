@@ -83,4 +83,4 @@ def run_concurrent(
             on_task_complete()
     if errors:
         error_summary = "; ".join(str(e) for e in errors)
-        raise RuntimeError(f"Parallel migration had {len(errors)} failure(s): {error_summary}")
+        raise RuntimeError(f"Parallel migration had {len(errors)} failure(s): {error_summary}") from errors[0]
