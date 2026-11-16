@@ -191,9 +191,9 @@ class Chunk:
         return pl.DataFrame(
             {
                 "timestamp": pl.Series(chunk.timestamps_ns).cast(pl.Datetime("ns", "UTC")),
-                "channel": pl.Series(_pick(chunk.channel_names, chunk.channels), dtype=pl.String),
+                "channel": pl.Series(_pick(chunk.channel_names, chunk.channels).tolist(), dtype=pl.String),
                 "value": pl.Series(np.where(is_string, np.nan, chunk.values), nan_to_null=True),
-                "value_str": pl.Series(strings, dtype=pl.String),
+                "value_str": pl.Series(strings.tolist(), dtype=pl.String),
                 "tags": pl.Series(tag_lists, dtype=tag_type)[chunk.tags],
             }
         )

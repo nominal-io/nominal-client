@@ -17,7 +17,7 @@ It needs the Nominal Python Client. Some formats need an extra install, which th
 ```python
 import nominal.io
 
-df = nominal.io.read("<path to file>")
+df = nominal.io.read("capture.avro")
 ```
 
 The DataFrame has one row per sample, sorted by time, with `timestamp`, `channel`, `value` and `tags` columns.
@@ -26,7 +26,7 @@ The [reference](/ref/io/index.md) describes each column.
 Pass `engine="polars"` to get a polars DataFrame instead. Its layout is experimental and may change.
 
 ```python
-df = nominal.io.read("<path to file>", engine="polars")
+df = nominal.io.read("capture.avro", engine="polars")
 ```
 
 ## See which formats are installed
@@ -38,7 +38,7 @@ for spec in nominal.io.list_formats():
     print(spec.name, spec.extensions)
 ```
 
-A package that adds a format shows up here once it is installed.
+The [reference](/ref/io/index.md) lists the formats that ship with the client and what each one needs. A package that adds a format shows up here once it is installed.
 
 ## Choose the format
 
@@ -57,8 +57,8 @@ The [reference](/ref/io/index.md) gives the exact rules.
 Each piece is a {py:class}`~nominal.io.Chunk` unless you pass `engine`:
 
 ```python
-for chunk in nominal.io.read_chunks("<path to file>", engine="pandas"):
-    ...  # process one DataFrame of samples
+for chunk in nominal.io.read_chunks("capture.avro", engine="pandas", chunksize=50_000):
+    ...  # process one DataFrame of up to about 50,000 samples
 ```
 
 `read_chunks` is a generator, so an unknown format or a missing dependency raises when you start iterating, not when you call it.
@@ -66,6 +66,6 @@ for chunk in nominal.io.read_chunks("<path to file>", engine="pandas"):
 ## Pass options to a reader
 
 Keyword arguments other than `format` and `engine` go to the format's reader. Use them to read part of a file or set a start time.
-Each reader's options are in its reference entry.
+The instro readers take `chunksize`, the number of samples per piece. Each reader's options are in its reference entry.
 
 To read a format that isn't installed, see [Add a file format](/guides/io/write-a-reader.md).
