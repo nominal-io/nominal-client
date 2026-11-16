@@ -57,6 +57,7 @@ def complex_path(tmp_path: Path) -> Path:
 
 
 def test_iq_channels(complex_path: Path):
+    """A complex recording gives I and Q channels, a frequency channel and an annotation channel."""
     df = read_sigmf(complex_path, start=START)
     assert list(df.columns) == COLUMNS
     assert set(chans(df)) == {"sigmf.I", "sigmf.Q", "sigmf.frequency", "sigmf.annotation"}
@@ -68,6 +69,7 @@ def test_iq_channels(complex_path: Path):
 
 
 def test_frequency_per_capture(complex_path: Path):
+    """Each capture's centre frequency is recorded at the capture's first sample."""
     freq = sel(read_sigmf(complex_path, start=START), "sigmf.frequency")
     assert freq["value"].tolist() == [915e6, 916e6]
     assert (freq["timestamp"] - START).tolist() == [pd.Timedelta(0), pd.Timedelta(milliseconds=50)]
@@ -75,6 +77,7 @@ def test_frequency_per_capture(complex_path: Path):
 
 
 def test_annotation_span(complex_path: Path):
+    """An annotation is its label at its first sample and an empty string after its last."""
     ann = sel(read_sigmf(complex_path, start=START), "sigmf.annotation")
     assert ann["value"].tolist() == ["burst", ""]
     assert (ann["timestamp"] - START).tolist() == [pd.Timedelta(milliseconds=20), pd.Timedelta(milliseconds=30)]
@@ -82,6 +85,7 @@ def test_annotation_span(complex_path: Path):
 
 
 def test_slice_keeps_recording_times(complex_path: Path):
+    """Reading part of a recording keeps its absolute times and the capture in force."""
     df = read_sigmf(complex_path, start=START, start_index=60, count=10)
     i = sel(df, "sigmf.I")
     assert i["value"].tolist() == list(range(60, 70))
@@ -92,11 +96,13 @@ def test_slice_keeps_recording_times(complex_path: Path):
 
 
 def test_numeric_without_annotations(complex_path: Path):
+    """A slice with no annotations still gives a float64 value column."""
     df = read_sigmf(complex_path, start=START, start_index=60)
     assert df["value"].dtype == "float64"
 
 
 def test_real_and_multichannel(tmp_path: Path):
+    """Real recordings give a value channel, and multi-channel ones name each channel."""
     (tmp_path / "real").mkdir()
     (tmp_path / "multi").mkdir()
     real = read_sigmf(_write(tmp_path / "real", np.arange(100, dtype=np.float32), "rf32_le"), start=START)
@@ -108,12 +114,14 @@ def test_real_and_multichannel(tmp_path: Path):
 
 
 def test_capture_datetime_is_the_start(tmp_path: Path):
+    """The first capture's datetime is the start time when none is passed."""
     path = _write(tmp_path, np.zeros(100, np.complex64), "cf32_le", datetime="2020-12-20T17:32:07.142626Z")
     df = read_sigmf(path)
     assert df["timestamp"].iloc[0] == pd.Timestamp("2020-12-20T17:32:07.142626Z")
 
 
 def test_no_start_warns_and_uses_now(complex_path: Path):
+    """With no start anywhere, the reader warns and uses the current time."""
     before = pd.Timestamp.now(tz="UTC")
     with pytest.warns(UserWarning, match="no start time"):
         df = read_sigmf(complex_path)
@@ -121,6 +129,7 @@ def test_no_start_warns_and_uses_now(complex_path: Path):
 
 
 def test_paths_and_dispatch(complex_path: Path):
+    """A recording is found by its meta path, data path or bare name, and by nominal.io.read."""
     by_name = read_sigmf(complex_path.with_suffix(""), start=START)
     by_data = read_sigmf(complex_path.with_suffix(".sigmf-data"), start=START)
     pd.testing.assert_frame_equal(by_name, by_data)
@@ -129,6 +138,7 @@ def test_paths_and_dispatch(complex_path: Path):
 
 
 def test_registered_and_contract(complex_path: Path):
+    """The sigmf format is registered for each SigMF extension and passes the reader contract."""
     from nominal.io.testing import check_reader
     from nominal.io_sigmf import SPEC
 
@@ -139,9 +149,27 @@ def test_registered_and_contract(complex_path: Path):
 
 
 def test_chunk_and_polars_engine(complex_path: Path):
+    """The chunk function and the polars engine read the same samples."""
     from nominal.io_sigmf import read_sigmf_chunk
 
     chunk = read_sigmf_chunk(complex_path, start=START)
     assert set(chunk.channel_names) == {"sigmf.I", "sigmf.Q", "sigmf.frequency", "sigmf.annotation"}
     df = read_sigmf(complex_path, start=START, engine="polars")
     assert df.height == len(chunk)
+
+
+def test_empty_selections_give_an_empty_frame(complex_path: Path):
+    """count=0, and a start at or past the end of the recording, read as no rows instead of raising."""
+    assert read_sigmf(complex_path, start=START, count=0).empty
+    assert read_sigmf(complex_path, start=START, start_index=60, count=0).empty
+    assert read_sigmf(complex_path, start=START, start_index=100).empty
+    assert read_sigmf(complex_path, start=START, start_index=500).empty
+
+
+def test_slice_inside_an_annotation_keeps_its_label(complex_path: Path):
+    """A slice that starts inside an annotation still carries its label, from the first sample read."""
+    ann = sel(read_sigmf(complex_path, start=START, start_index=25, count=20), "sigmf.annotation")
+    assert ann["value"].tolist() == ["burst", ""]
+    assert (ann["timestamp"] - START).tolist() == [pd.Timedelta(milliseconds=25), pd.Timedelta(milliseconds=30)]
+    inside = sel(read_sigmf(complex_path, start=START, start_index=22, count=5), "sigmf.annotation")
+    assert inside["value"].tolist() == ["burst"]  # the annotation outlasts the slice, so there is no closing mark

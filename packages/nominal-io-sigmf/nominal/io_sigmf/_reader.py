@@ -68,7 +68,8 @@ def read_sigmf_chunk(  # noqa: PLR0915
     captures = recording.get_captures()
     fs = float(recording.get_global_field("core:sample_rate"))
     total = recording.sample_count
-    count = total - start_index if count is None else min(count, total - start_index)
+    available = max(total - start_index, 0)
+    count = available if count is None else max(min(count, available), 0)
     stop = start_index + count
     t0 = start_ns(start, captures[0].get("core:datetime") if captures else None, name)
 
@@ -80,8 +81,12 @@ def read_sigmf_chunk(  # noqa: PLR0915
     def channel(suffix: str) -> str:
         return f"{prefix}.{suffix}" if prefix else suffix
 
-    samples = recording.read_samples(start_index=start_index, count=count) if count > 0 else np.zeros(0)
-    samples = samples.reshape(count, -1)  # one column per recorded channel
+    n_channels = int(recording.get_global_field("core:num_channels", 1))
+    if count > 0:
+        samples = recording.read_samples(start_index=start_index, count=count).reshape(count, n_channels)
+    else:  # nothing selected: keep the shape, and complex or real, so the channels still come out right
+        is_complex = str(recording.get_global_field("core:datatype", "")).startswith("c")
+        samples = np.zeros((0, n_channels), dtype=np.complex64 if is_complex else np.float32)
     sample_times = times(np.arange(start_index, stop))
     parts = [("I", samples.real), ("Q", samples.imag)] if np.iscomplexobj(samples) else [("value", samples)]
     multi = samples.shape[1] > 1
@@ -95,7 +100,7 @@ def read_sigmf_chunk(  # noqa: PLR0915
     meta_names: list[str] = []
     meta_values: list[Any] = []
     meta_tags: list[dict[str, str]] = []
-    for i, capture in enumerate(captures):
+    for i, capture in enumerate(captures if count > 0 else []):
         first = capture["core:sample_start"]
         end = captures[i + 1]["core:sample_start"] if i + 1 < len(captures) else total
         if "core:frequency" in capture and first < stop and end > start_index:
@@ -104,8 +109,9 @@ def read_sigmf_chunk(  # noqa: PLR0915
             meta_values.append(float(capture["core:frequency"]))
             meta_tags.append({"recording": name, "units": "Hz"})
 
-    # Annotations: the label at the first sample, "" after the last.
-    for annotation in recording.get_annotations():
+    # Annotations: the label at the first sample (or at the start of the slice, if it begins inside the
+    # annotation), and "" after the last.
+    for annotation in recording.get_annotations() if count > 0 else []:
         first = annotation["core:sample_start"]
         after = first + annotation.get("core:sample_count", 1)
         label = annotation.get("core:label") or annotation.get("core:comment") or "annotation"
@@ -113,12 +119,15 @@ def read_sigmf_chunk(  # noqa: PLR0915
         for key in ("comment", "freq_lower_edge", "freq_upper_edge"):
             if f"core:{key}" in annotation:
                 info[key] = str(annotation[f"core:{key}"])
-        for sample, value in ((first, label), (after, "")):
-            if start_index <= sample < stop:
-                meta_times.append(sample)
-                meta_names.append(channel("annotation"))
-                meta_values.append(value)
-                meta_tags.append(info)
+        if not (first < stop and after > start_index):
+            continue  # doesn't overlap the samples read
+        opening = [(max(first, start_index), label)]
+        closing = [(after, "")] if after < stop else []
+        for sample, value in opening + closing:
+            meta_times.append(sample)
+            meta_names.append(channel("annotation"))
+            meta_values.append(value)
+            meta_tags.append(info)
 
     builder.add_rows(times(np.asarray(meta_times, dtype="int64")), meta_names, meta_values, meta_tags)
     return builder.build()

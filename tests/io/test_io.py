@@ -412,3 +412,21 @@ def test_replacing_a_format_while_it_loads_does_not_cache_the_old_reader(monkeyp
     nio.register(ReaderSpec("swap", (".swap",), old_factory))
     nio.get_reader("swap")  # loads the old reader, and the format is replaced meanwhile
     assert nio.get_reader("swap").magic == "NEW"  # type: ignore[attr-defined]
+
+
+def test_to_ns_and_start_ns() -> None:
+    """to_ns reads datetimes, strings, numpy times and integers as nanoseconds; start_ns falls back in order."""
+    from nominal.io.schema import start_ns, to_ns
+
+    expected = 1_577_836_800_000_000_000  # 2020-01-01T00:00:00Z
+    assert to_ns("2020-01-01") == to_ns("2020-01-01T00:00:00Z") == expected
+    assert to_ns(pd.Timestamp("2020-01-01", tz="UTC")) == expected
+    assert to_ns(np.datetime64("2020-01-01T00:00:00")) == expected
+    assert to_ns(expected) == expected
+    assert to_ns("2020-12-20T17:32:07.142626Z") == 1_608_485_527_142_626_000
+    with pytest.raises(TypeError):
+        to_ns(1.5)
+    with pytest.warns(UserWarning, match="no start time"):
+        start_ns(None, None, "rec")
+    assert start_ns("2020-01-01", None, "rec") == expected
+    assert start_ns(None, "2020-01-01", "rec") == expected

@@ -97,7 +97,7 @@ from nominal.io._registry import (
     resolve_format,
     unregister,
 )
-from nominal.io.schema import COLUMNS, ENGINES, Chunk, ChunkBuilder
+from nominal.io.schema import COLUMNS, ENGINES, Chunk, ChunkBuilder, start_ns, to_ns
 
 __all__ = [
     "COLUMNS",
@@ -115,5 +115,7 @@ __all__ = [
     "register",
     "register_reader",
     "resolve_format",
+    "start_ns",
+    "to_ns",
     "unregister",
 ]
