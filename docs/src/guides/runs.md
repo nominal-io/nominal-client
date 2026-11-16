@@ -99,7 +99,7 @@ Attach files about this test to the run, and files about the system to its [asse
 run.add_attachments([client.create_attachment("flight_report.pdf")])
 ```
 
-Create a workbook for the run from a template whose inputs match the run's ref names or data scope names. See [Workbooks](/guides/workbooks.md).
+Create a workbook for the run from a template whose inputs match the run's ref names or data scope names, or a blank one with {py:meth}`~nominal.core.Run.create_workbook`. See [Workbooks](/guides/workbooks.md).
 
 Mark moments inside the run with [events](/guides/events.md).
 

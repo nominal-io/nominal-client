@@ -33,7 +33,8 @@ from nominal.core.attachment import Attachment, _attachments_section, _get_acces
 from nominal.core.dataset import Dataset, _create_dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, _create_blank_workbook, _search_workbooks, _workbook_title
+from nominal.core.workspace import Workspace
 from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNotFoundError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
@@ -791,6 +792,49 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
             run_rid=run_rid,
             include_drafts=include_drafts,
             archive_status=archive_status,
+        )
+
+    def create_workbook(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_draft: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Workbook:
+        """Create a blank workbook scoped to this asset.
+
+        The workbook has no panels yet: open its `Workbook.nominal_url` to add them in the Nominal app. To start from
+        existing panels instead, use `WorkbookTemplate.create_workbook` or `Workbook.clone`.
+
+        Args:
+            title: Title of the workbook. Defaults to "Workbook for {name}", with this asset's name.
+            description: Description of the workbook. Defaults to no description.
+            labels: Labels to attach to the workbook.
+            properties: Properties to attach to the workbook.
+            is_draft: Whether to create the workbook as a draft. Defaults to False.
+            workspace: Workspace or workspace RID for the workbook. Defaults to the client's default workspace.
+
+        Returns:
+            The created workbook.
+
+        Example:
+            ```python
+            workbook = asset.create_workbook()
+            print(workbook.nominal_url)
+            ```
+        """
+        return _create_blank_workbook(
+            self._clients,
+            title=_workbook_title([self.name]) if title is None else title,
+            asset_rids=[self.rid],
+            description=description,
+            labels=labels,
+            properties=properties,
+            is_draft=is_draft,
+            workspace=workspace,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:

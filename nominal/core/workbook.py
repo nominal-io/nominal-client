@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Self, Sequence, overload
 
-from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
+from nominal_api import (
+    scout,
+    scout_chartdefinition_api,
+    scout_layout_api,
+    scout_notebook_api,
+    scout_workbookcommon_api,
+)
 
 from nominal.core import _display
 from nominal.core._clientsbunch import HasScoutParams
@@ -527,3 +534,63 @@ def _search_workbooks(
         archive_status=archive_status,
     )
     return list(_iter_search_workbooks(clients, query))
+
+
+def _blank_workbook_layout() -> scout_layout_api.WorkbookLayout:
+    """A layout with no tabs, as the app shows a new workbook before any panels are added."""
+    return scout_layout_api.WorkbookLayout(
+        v1=scout_layout_api.WorkbookLayoutV1(
+            root_panel=scout_layout_api.Panel(
+                tabbed=scout_layout_api.TabbedPanel(v1=scout_layout_api.TabbedPanelV1(id=str(uuid.uuid4()), tabs=[]))
+            )
+        )
+    )
+
+
+def _blank_workbook_content() -> scout_workbookcommon_api.WorkbookContent:
+    """Content with no channel variables and no charts."""
+    return scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
+
+
+def _workbook_title(names: Sequence[str]) -> str:
+    """The default title of a workbook scoped to resources with these names."""
+    if len(names) == 1:
+        return f"Workbook for {names[0]}"
+    if len(names) == 2:
+        return f"Workbook for {names[0]} and {names[1]}"
+    return f"Workbook for {names[0]}, {names[1]} and {len(names) - 2} more"
+
+
+def _create_blank_workbook(
+    clients: Workbook._Clients,
+    *,
+    title: str,
+    run_rids: Sequence[str] | None = None,
+    asset_rids: Sequence[str] | None = None,
+    description: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    is_draft: bool = False,
+    workspace: Workspace | str | None = None,
+) -> Workbook:
+    """Create a workbook with no panels, scoped to the given runs or the given assets; callers pass exactly one."""
+    request = scout_notebook_api.CreateNotebookRequest(
+        title=title,
+        description=description if description is not None else "",
+        labels=None if labels is None else [*labels],
+        properties=None if properties is None else {**properties},
+        is_draft=is_draft,
+        state_as_json="{}",
+        data_scope=scout_notebook_api.NotebookDataScope(
+            run_rids=None if run_rids is None else [*run_rids],
+            asset_rids=None if asset_rids is None else [*asset_rids],
+        ),
+        layout=_blank_workbook_layout(),
+        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=_blank_workbook_content()),
+        event_refs=[],
+        workspace=clients.resolve_default_workspace_rid()
+        if workspace is None
+        else rid_from_instance_or_string(workspace),
+    )
+    raw_notebook = clients.notebook.create(clients.auth_header, request)
+    return Workbook._from_conjure(clients, raw_notebook)

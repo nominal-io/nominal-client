@@ -30,7 +30,8 @@ from nominal.core.comment import Comment
 from nominal.core.dataset import Dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, _create_blank_workbook, _search_workbooks, _workbook_title
+from nominal.core.workspace import Workspace
 from nominal.exceptions import LegacyVideoDeprecationWarning, NominalDataScopeNotFoundError
 from nominal.protos.asset.v2 import asset_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2, comments_pb2_grpc
@@ -656,6 +657,49 @@ class Run(HasRid, RefreshableGrpcMixin[run_service_pb2.Run], _DatasetScopeIngest
             archive_status=archive_status,
         )
 
+    def create_workbook(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        is_draft: bool = False,
+        workspace: Workspace | str | None = None,
+    ) -> Workbook:
+        """Create a blank workbook scoped to this run.
+
+        The workbook has no panels yet: open its `Workbook.nominal_url` to add them in the Nominal app. To start from
+        existing panels instead, use `WorkbookTemplate.create_workbook` or `Workbook.clone`.
+
+        Args:
+            title: Title of the workbook. Defaults to "Workbook for {name}", with this run's name.
+            description: Description of the workbook. Defaults to no description.
+            labels: Labels to attach to the workbook.
+            properties: Properties to attach to the workbook.
+            is_draft: Whether to create the workbook as a draft. Defaults to False.
+            workspace: Workspace or workspace RID for the workbook. Defaults to the client's default workspace.
+
+        Returns:
+            The created workbook.
+
+        Example:
+            ```python
+            workbook = run.create_workbook()
+            print(workbook.nominal_url)
+            ```
+        """
+        return _create_blank_workbook(
+            self._clients,
+            title=_workbook_title([self.name]) if title is None else title,
+            run_rids=[self.rid],
+            description=description,
+            labels=labels,
+            properties=properties,
+            is_draft=is_draft,
+            workspace=workspace,
+        )
+
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
@@ -785,6 +829,17 @@ def _create_run(
     with translate_grpc_errors():
         response = clients.run.CreateRun(request)
     return Run._from_proto(clients, response.run)
+
+
+def _get_runs(clients: Run._Clients, rids: Sequence[str]) -> Mapping[str, run_service_pb2.Run]:
+    """The runs with the given rids, keyed by rid. Rids that do not resolve are absent from the result.
+
+    Raises:
+        NominalError: If the retrieval request fails.
+    """
+    with translate_grpc_errors():
+        response = clients.run.GetRuns(run_service_pb2.GetRunsRequest(rids=list(rids)))
+    return dict(response.runs)
 
 
 def _get_run(service: run_service_pb2_grpc.RunServiceStub, rid: str) -> run_service_pb2.Run:
