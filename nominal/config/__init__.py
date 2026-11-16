@@ -8,10 +8,36 @@ from typing import Literal, Mapping, Self
 import yaml
 
 from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH
+from nominal.config._session import (
+    active_profile as active_profile,
+)
+from nominal.config._session import (
+    get_client as get_client,
+)
+from nominal.config._session import (
+    list_profiles as list_profiles,
+)
+from nominal.config._session import (
+    make_profile as make_profile,
+)
+from nominal.config._session import (
+    use_profile as use_profile,
+)
 from nominal.exceptions import NominalConfigError as NominalConfigError
 
 DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "ConfigProfile",
+    "DEFAULT_NOMINAL_CONFIG_PATH",
+    "NominalConfig",
+    "active_profile",
+    "get_client",
+    "list_profiles",
+    "make_profile",
+    "use_profile",
+]
 
 
 @dataclass(frozen=True)

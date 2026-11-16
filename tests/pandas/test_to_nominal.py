@@ -156,6 +156,14 @@ def test_wait(df: pd.DataFrame, client: FakeClient):
     assert file.polled
 
 
+def test_uses_active_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
+    clients = {"default": FakeClient(), "docs": FakeClient()}
+    monkeypatch.setattr("nominal.core.NominalClient.from_profile", lambda profile: clients[profile])
+    monkeypatch.setenv("NOMINAL_PROFILE", "docs")
+    df.nom.to_nominal()
+    assert [a.name for a in clients["docs"].assets] == ["nominal-pandas"] and not clients["default"].assets
+
+
 def test_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
     """profile= selects the client to upload with."""
     clients = {"default": FakeClient(), "staging": FakeClient()}

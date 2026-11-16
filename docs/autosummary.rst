@@ -21,6 +21,7 @@
    nominal.experimental.extractor.types
    nominal.experimental.extractor.runner
    nominal.experimental.migration
+   nominal.config
    nominal.io
    nominal.io.testing
    nominal.io.instro

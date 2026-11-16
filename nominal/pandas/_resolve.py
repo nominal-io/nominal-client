@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nominal.config import get_client
 from nominal.core import NominalClient
 
 if TYPE_CHECKING:
@@ -45,13 +46,13 @@ def resolve(
             "pass the asset's name instead, or drop client= and profile="
         )
     if profile is not None:
-        client = NominalClient.from_profile(profile)
+        client = get_client(profile)
     if client is None:
         source = next((o for o in (asset, dataset) if o is not None and not isinstance(o, str)), None)
         if source is not None:
             client = client_of(source)
         else:
-            client = NominalClient.from_profile("default")
+            client = get_client()
     if asset is None or isinstance(asset, str):
         asset = _asset_named(client, asset or DEFAULT)
     if dataset is None or isinstance(dataset, str):
