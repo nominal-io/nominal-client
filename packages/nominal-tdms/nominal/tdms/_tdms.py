@@ -14,7 +14,7 @@ from nominal.core._types import PathLike
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
-from nominal.thirdparty.pandas import upload_dataframe, upload_dataframe_to_dataset
+from nominal.pandas import upload_dataframe, upload_dataframe_to_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def upload_tdms(
     """Create a dataset in the Nominal platform from a tdms file.
 
     See `upload_tdms_to_dataset` for a description of arguments available, or
-    `nominal.thirdparty.pandas.upload_dataframe` for a description of dataset creation arguments available.
+    `nominal.pandas.upload_dataframe` for a description of dataset creation arguments available.
     """
     if name is None:
         name = Path(file).name

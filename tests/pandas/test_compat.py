@@ -24,6 +24,7 @@ def _forget_old_modules() -> None:
 
 
 def test_old_path_warns_and_reexports_the_same_objects() -> None:
+    """nominal.thirdparty.pandas warns on import and re-exports the same objects as nominal.pandas."""
     _forget_old_modules()
     with pytest.warns(DeprecationWarning, match=r"nominal\.thirdparty\.pandas is deprecated.*nominal\.pandas"):
         old = importlib.import_module("nominal.thirdparty.pandas")
@@ -33,7 +34,18 @@ def test_old_path_warns_and_reexports_the_same_objects() -> None:
 
 
 def test_old_private_module_still_importable() -> None:
+    """The old private module path still imports, with a warning, and gives the same function."""
     _forget_old_modules()
     with pytest.warns(DeprecationWarning):
         from nominal.thirdparty.pandas._pandas import upload_dataframe
     assert upload_dataframe is nominal.pandas.upload_dataframe
+
+
+def test_tdms_does_not_import_the_deprecated_module() -> None:
+    """Importing nominal.tdms emits no deprecation warning, because it uses nominal.pandas."""
+    import subprocess
+    import sys
+
+    pytest.importorskip("nptdms")
+    code = "import warnings; warnings.simplefilter('error', DeprecationWarning); import nominal.tdms"
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0

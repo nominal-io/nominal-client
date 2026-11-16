@@ -147,7 +147,7 @@ class NomAccessor:
             A long-form frame.
         """
         items = tags.items()
-        return self._subset(self._df["tags"].map(lambda t: items <= t.items()))
+        return self._subset(self._df["tags"].map(lambda t: items <= t.items()).astype(bool))
 
     def wide(self) -> pd.DataFrame:
         """Pivot to one column per channel, indexed by timestamp.
@@ -224,12 +224,15 @@ class NomAccessor:
 
         Raises:
             ValueError: If ``asset`` is a name that several assets share, ``profile`` doesn't
-                exist, or both ``profile`` and ``client`` are given.
+                exist, both ``profile`` and ``client`` are given, or one of them is given with an
+                `~nominal.core.Asset` (which already has its own connection).
+            nominal.io.MissingDependencyError: If ``fastavro`` isn't installed (``pip install nominal[avro]``).
             nominal.exceptions.NominalIngestError: If ``wait`` is set and ingestion fails.
         """
-        asset, dataset = resolve(asset, dataset, client, profile)
         with tempfile.TemporaryDirectory() as tmp:
-            file = dataset.add_avro_stream(self.to_avro(Path(tmp) / "nominal.avro"), tags=tags)
+            avro = self.to_avro(Path(tmp) / "nominal.avro")  # first, so a missing fastavro creates nothing in Nominal
+            asset, dataset = resolve(asset, dataset, client, profile)
+            file = dataset.add_avro_stream(avro, tags=tags)
         return asset, dataset, file.poll_until_ingestion_completed() if wait else file
 
     def _subset(self, mask: pd.Series[bool]) -> pd.DataFrame:

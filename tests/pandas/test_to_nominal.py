@@ -85,6 +85,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
 
 
 def test_defaults(df: pd.DataFrame, client: FakeClient):
+    """With no arguments, to_nominal uploads to a reused asset and dataset named nominal-pandas."""
     asset, dataset, file = df.nom.to_nominal()
     assert (asset.name, dataset.name) == ("nominal-pandas", "nominal-pandas")
     assert not file.polled  # doesn't wait by default
@@ -97,6 +98,7 @@ def test_defaults(df: pd.DataFrame, client: FakeClient):
 
 
 def test_names(df: pd.DataFrame, client: FakeClient):
+    """Naming an asset and dataset finds the asset by exact name and creates the dataset on it."""
     existing = FakeAsset("ECG record 119", "ri.asset.ecg")
     client.assets += [existing, FakeAsset("ECG record 119 (old)", "ri.asset.old")]
     asset, dataset, _ = df.nom.to_nominal(asset="ECG record 119", dataset="lead II", tags={"test_id": "42"})
@@ -106,12 +108,14 @@ def test_names(df: pd.DataFrame, client: FakeClient):
 
 
 def test_ambiguous_asset_name(df: pd.DataFrame, client: FakeClient):
+    """An asset name shared by several assets raises an error listing them."""
     client.assets += [FakeAsset("rig", "ri.asset.1"), FakeAsset("rig", "ri.asset.2")]
     with pytest.raises(ValueError, match="2 assets are named 'rig'"):
         df.nom.to_nominal(asset="rig")
 
 
 def test_existing_asset_uses_its_connection(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
+    """An Asset object is used with its own connection, without consulting any profile."""
     monkeypatch.setattr("nominal.core.NominalClient.from_profile", lambda profile: pytest.fail("used the profile"))
     mine = FakeAsset("mine", "ri.asset.mine")
     asset, dataset, _ = df.nom.to_nominal(asset=mine)
@@ -119,6 +123,7 @@ def test_existing_asset_uses_its_connection(df: pd.DataFrame, monkeypatch: pytes
 
 
 def test_existing_dataset_goes_on_default_asset(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
+    """A Dataset object is attached to the default asset using its own connection."""
     client = FakeClient()
     mine = FakeDataset("mine", "ri.dataset.mine")
     monkeypatch.setattr("nominal.pandas._resolve.client_of", lambda obj: client if obj is mine else None)
@@ -128,6 +133,7 @@ def test_existing_dataset_goes_on_default_asset(df: pd.DataFrame, monkeypatch: p
 
 
 def test_existing_dataset_name_taken(df: pd.DataFrame):
+    """A Dataset whose name is taken on the asset is attached under its RID."""
     theirs = FakeDataset("nominal-pandas", "ri.dataset.theirs")
     asset = FakeAsset("rig", "ri.asset.rig")
     ours = asset.get_or_create_dataset("nominal-pandas", name="nominal-pandas")
@@ -136,6 +142,7 @@ def test_existing_dataset_name_taken(df: pd.DataFrame):
 
 
 def test_existing_dataset_already_on_asset(df: pd.DataFrame):
+    """A Dataset already on the asset isn't added a second time."""
     mine = FakeDataset("mine", "ri.dataset.mine")
     asset = FakeAsset("rig", "ri.asset.rig")
     asset.scopes["data"] = mine
@@ -144,11 +151,13 @@ def test_existing_dataset_already_on_asset(df: pd.DataFrame):
 
 
 def test_wait(df: pd.DataFrame, client: FakeClient):
+    """wait=True polls until Nominal has ingested the file."""
     _, _, file = df.nom.to_nominal(wait=True)
     assert file.polled
 
 
 def test_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
+    """profile= selects the client to upload with."""
     clients = {"default": FakeClient(), "staging": FakeClient()}
     monkeypatch.setattr("nominal.core.NominalClient.from_profile", lambda profile: clients[profile])
     df.nom.to_nominal(profile="staging")
@@ -156,5 +165,31 @@ def test_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_profile_and_client(df: pd.DataFrame, client: FakeClient):
+    """Passing both profile and client is an error."""
     with pytest.raises(ValueError, match="not both"):
         df.nom.to_nominal(profile="default", client=client)  # type: ignore[arg-type]
+
+
+def test_asset_object_cannot_be_combined_with_a_client_or_profile(df: pd.DataFrame, client: FakeClient):
+    """An Asset already has its own connection, so passing client= or profile= with one is an error."""
+    mine = FakeAsset("mine", "ri.asset.mine")
+    with pytest.raises(ValueError, match="already has its own connection"):
+        df.nom.to_nominal(asset=mine, client=client)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="already has its own connection"):
+        df.nom.to_nominal(asset=mine, profile="staging")
+    assert mine.scopes == {}
+
+
+def test_missing_fastavro_creates_nothing_in_nominal(
+    df: pd.DataFrame, client: FakeClient, monkeypatch: pytest.MonkeyPatch
+):
+    """If the Avro file can't be written (no fastavro), to_nominal fails before creating an asset or dataset."""
+    from nominal.io import MissingDependencyError
+
+    def no_avro(self: Any, path: Any) -> Any:
+        raise MissingDependencyError("Avro needs fastavro: pip install nominal[avro]")
+
+    monkeypatch.setattr("nominal.pandas.NomAccessor.to_avro", no_avro)
+    with pytest.raises(MissingDependencyError, match=r"nominal\[avro\]"):
+        df.nom.to_nominal()
+    assert client.assets == []

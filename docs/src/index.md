@@ -176,6 +176,7 @@ Overview <ref/index>
 Core <ref/core/index>
 Timestamps <ref/ts/index>
 io <ref/io/index>
+pandas <ref/pandas/index>
 Exceptions <ref/exceptions>
 ```
 
@@ -210,7 +211,6 @@ ref/experimental/video_processing
 
 ref/ibis/index
 ref/thirdparty/matlab
-ref/pandas/index
 ref/thirdparty/pandas
 ref/thirdparty/polars
 ref/thirdparty/tdms

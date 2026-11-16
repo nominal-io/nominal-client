@@ -34,10 +34,16 @@ def resolve(
     none), or ``None`` for `DEFAULT`. ``dataset``: a `Dataset`, attached to the asset if it
     isn't already (under its name, or its RID if the asset uses that name), or a name (the
     asset's dataset by that name, created if there is none), or ``None`` for `DEFAULT`.
-    ``profile`` names the client's profile, in place of ``client``.
+    ``profile`` names the client's profile, in place of ``client``. An `Asset` object already has its own
+    connection, so ``client`` and ``profile`` can't be combined with one.
     """
     if client is not None and profile is not None:
         raise ValueError("pass profile= or client=, not both")
+    if (client is not None or profile is not None) and asset is not None and not isinstance(asset, str):
+        raise ValueError(
+            "an Asset already has its own connection, so client= and profile= can't be used with it; "
+            "pass the asset's name instead, or drop client= and profile="
+        )
     if profile is not None:
         client = NominalClient.from_profile(profile)
     if client is None:

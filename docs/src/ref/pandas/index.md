@@ -1,7 +1,3 @@
----
-orphan: true
----
-
 # pandas
 
 Work with Nominal data in pandas: the `df.nom` accessor for long-form frames, and helpers to upload
