@@ -210,6 +210,7 @@ ref/experimental/video_processing
 
 ref/ibis/index
 ref/thirdparty/matlab
+ref/pandas/index
 ref/thirdparty/pandas
 ref/thirdparty/polars
 ref/thirdparty/tdms
