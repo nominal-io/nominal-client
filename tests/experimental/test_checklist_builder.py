@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from unittest.mock import MagicMock
 from uuid import UUID, uuid5
 
@@ -210,6 +211,15 @@ def test_strict_rejects_unused_bindings() -> None:
                 "pressure": ChannelBinding("telemetry", "pressure"),
             },
         )
+
+
+def test_unset_priority_rejected_on_add() -> None:
+    """A reusable definition may omit priority, but adding it requires one and names the check."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()")
+    builder = ChecklistBuilder()
+    with pytest.raises(ValueError, match="'Battery low' has no priority"):
+        builder.add(check, inputs={"soc": ChannelBinding("telemetry", "soc")})
+    builder.add(replace(check, priority=Priority.P2), inputs={"soc": ChannelBinding("telemetry", "soc")})
 
 
 CHECK_ID = uuid5(UUID("52e0d79d-a67f-4d15-8cb6-a294f8c64b4e"), "first")

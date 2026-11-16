@@ -80,7 +80,7 @@ For live data, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 | --- | --- | --- |
 | `title` | Display name. | Required |
 | `expression` | Compute expression returning the time ranges where the check fails. | Required |
-| `priority` | Severity, from `Priority.P0`, the most severe, to `Priority.P4`. | Required |
+| `priority` | Severity, from `Priority.P0`, the most severe, to `Priority.P4`. Can be set later with `dataclasses.replace`. | None; `add` fails without one |
 | `description` | Longer explanation. | Empty |
 | `key` | Identity that stays the same across versions. | New identity on each `add` |
 | `event_type` | {py:class}`~nominal.core.EventType` of the events the check creates. `UNKNOWN` isn't allowed. | `ERROR` |

@@ -31,7 +31,8 @@ class CheckDefinition:
         title: Display name of the check.
         expression: Source ending in a range expression describing violations. Assignments
             are allowed; omit imports. Convert boolean conditions with ``.ranges()``.
-        priority: Severity of violations, from P0 (most severe) to P4.
+        priority: Severity of violations, from P0 (most severe) to P4. May be left unset on a reusable
+            definition and supplied later with ``dataclasses.replace``; ``add`` requires it.
         event_type: Category of generated events. When omitted, the service uses ``EventType.ERROR``.
             This does not change the condition or turn absence of matching ranges into success.
             ``EventType.UNKNOWN`` is not a valid category for creation.
@@ -46,7 +47,7 @@ class CheckDefinition:
 
     title: str = field(kw_only=False)
     expression: str = field(kw_only=False)
-    priority: Priority
+    priority: Priority | None = None
     description: str = ""
     key: str | None = None
     event_type: EventType | None = None
@@ -147,13 +148,15 @@ class ChecklistBuilder:
         Raises:
             TypeError: The expression is not a source string or does not produce a range series.
             ValueError: Compilation fails, bindings are missing, strict bindings are unused,
-                a stable key is blank or duplicated, or the event type is UNKNOWN.
+                a stable key is blank or duplicated, the priority is unset, or the event type is UNKNOWN.
 
         Note:
             Compilation does not resolve live channels or establish streaming compatibility.
             Alignment, fill, and missing-data behavior follow service defaults. A check's
             ranges describe violations; absence of data does not establish a passing result.
         """
+        if check.priority is None:
+            raise ValueError(f"Check {check.title!r} has no priority; set one before adding it")
         if check.event_type is EventType.UNKNOWN:
             raise ValueError("EventType.UNKNOWN cannot be used for generated events")
         compiler_references = {
