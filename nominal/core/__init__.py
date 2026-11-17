@@ -64,7 +64,6 @@ from nominal.core.retention import (
 )
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.skill import Skill, SkillFileInfo, SkillLoadStatus
 from nominal.core.streaming_checklist import (
     StreamingChecklistConfiguration,
     StreamingChecklistState,
@@ -145,9 +144,6 @@ __all__ = [
     "Secret",
     "SecureWebhookIntegrationDetails",
     "set_display_options",
-    "Skill",
-    "SkillFileInfo",
-    "SkillLoadStatus",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",
     "StreamingChecklistConfiguration",

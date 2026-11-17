@@ -6,6 +6,7 @@ orphan: true
 
 These modules provide experimental client functionality. Their APIs may change between releases.
 
+- {doc}`analyst`
 - {doc}`compute`
 - {doc}`compute-as-code`
 - {doc}`derived_datasets`

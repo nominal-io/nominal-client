@@ -26,8 +26,6 @@ For setup and an end-to-end example, see the [Python quickstart](/guides/quickst
   - Manage workbooks and instantiate them from templates.
 * - {doc}`markings`
   - Apply markings and configure their display symbols.
-* - {doc}`skills`
-  - Find, read, create, import, edit and export Analyst skills.
 * - {doc}`shared-types`
   - Look up time bounds, resource links, archive filters, and property types.
 ```
@@ -73,6 +71,5 @@ events
 automatic-validation
 workbooks
 markings
-skills
 shared-types
 ```

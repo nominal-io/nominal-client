@@ -8,6 +8,7 @@
    :toctree: src/ref/_summaries
    :template: autosummary/module-summary.rst
 
+   nominal.experimental.analyst
    nominal.experimental.compute
    nominal.experimental.compute_as_code
    nominal.experimental.compute.dsl.exprs

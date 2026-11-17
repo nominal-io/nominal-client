@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-from nominal.core import NominalClient, SkillLoadStatus
+from nominal.core import NominalClient
+from nominal.experimental import analyst
+from nominal.experimental.analyst import SkillLoadStatus
 
 
 def _skill_md(name: str, description: str) -> str:
@@ -14,8 +16,8 @@ def test_skill_folder_round_trip(client: NominalClient, archive, tmp_path: Path)
     """A skill saves its folder in the skills drive, edits and renames it there, and exports what it holds."""
     name = f"sdk-e2e-{uuid4().hex[:8]}"
     # A draft never reaches the workspace's Analyst users.
-    skill = client.create_skill(
-        _skill_md(name, "Review an SDK test run."), files={"methods/a.md": "Method A\n"}, enabled=False
+    skill = analyst.create_skill(
+        client, _skill_md(name, "Review an SDK test run."), files={"methods/a.md": "Method A\n"}, enabled=False
     )
     archive(skill)
 
@@ -33,7 +35,7 @@ def test_skill_folder_round_trip(client: NominalClient, archive, tmp_path: Path)
     skill.update(content=_skill_md(renamed, "Review an SDK test run, renamed."))
     assert (skill.name, skill.description) == (renamed, "Review an SDK test run, renamed.")
     assert skill.read_file("methods/a.md") == "Method A, revised\n"
-    assert skill.rid in {found.rid for found in client.search_skills(renamed, enabled=False)}
+    assert skill.rid in {found.rid for found in analyst.search_skills(client, renamed, enabled=False)}
 
     folder = skill.export(tmp_path)
     assert folder.name == renamed

@@ -12,7 +12,6 @@ import requests
 
 from nominal.core import ArchiveStatusFilter
 from nominal.core.client import NominalClient
-from nominal.core.skill import Skill
 from nominal.exceptions import (
     NominalAlreadyExistsError,
     NominalConflictError,
@@ -20,6 +19,8 @@ from nominal.exceptions import (
     NominalNotFoundError,
     NominalPermissionDeniedError,
 )
+from nominal.experimental import analyst
+from nominal.experimental.analyst import Skill
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from nominal.protos.skills.v1 import skills_pb2
 
@@ -119,7 +120,7 @@ def uploads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
         uploaded[key] = data.read()
         return MagicMock(key=key)
 
-    monkeypatch.setattr("nominal.core.skill._put_multipart_upload_to", upload)
+    monkeypatch.setattr("nominal.experimental.analyst._skill._put_multipart_upload_to", upload)
     return uploaded
 
 
@@ -129,7 +130,7 @@ def downloads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     contents: dict[str, bytes] = {}
     session = MagicMock()
     session.get.side_effect = lambda url, timeout: MagicMock(content=contents[url])
-    monkeypatch.setattr("nominal.core.skill.create_multipart_request_session", lambda **_: session)
+    monkeypatch.setattr("nominal.experimental.analyst._skill.create_multipart_request_session", lambda **_: session)
     return contents
 
 
@@ -179,7 +180,9 @@ def test_create_saves_the_folder_then_registers_skill_md(uploads, enabled, state
     """Create saves each file new under skills/<name>, registers the saved SKILL.md, and turns it on if asked."""
     client, clients = _client()
 
-    skill = client.create_skill(_SKILL_MD, files={"methods/limits.md": "Use the plan's limits.\n"}, enabled=enabled)
+    skill = analyst.create_skill(
+        client, _SKILL_MD, files={"methods/limits.md": "Use the plan's limits.\n"}, enabled=enabled
+    )
 
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
@@ -200,7 +203,7 @@ def test_create_refuses_a_taken_name_before_uploading(uploads) -> None:
     clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/notes.md", "rev-x"))
 
     with pytest.raises(NominalAlreadyExistsError):
-        client.create_skill(_SKILL_MD)
+        analyst.create_skill(client, _SKILL_MD)
 
     assert uploads == {}
     clients.drive_files.ApplyFileChanges.assert_not_called()
@@ -217,7 +220,7 @@ def test_create_refuses_a_name_another_save_takes_first(uploads) -> None:
     )
 
     with pytest.raises(NominalAlreadyExistsError, match="already exists"):
-        client.create_skill(_SKILL_MD)
+        analyst.create_skill(client, _SKILL_MD)
 
     clients.skills.CreateSkill.assert_not_called()
 
@@ -231,7 +234,7 @@ def test_create_saves_nothing_when_a_file_is_refused(uploads) -> None:
     )
 
     with pytest.raises(NominalError, match=r"methods/limits\.md.*Nothing was changed"):
-        client.create_skill(_SKILL_MD, files={"methods/limits.md": "text"})
+        analyst.create_skill(client, _SKILL_MD, files={"methods/limits.md": "text"})
 
     assert clients.drive_files.ApplyFileChanges.call_count == 1
     clients.skills.CreateSkill.assert_not_called()
@@ -245,7 +248,7 @@ def test_create_removes_the_revisions_it_saved_when_the_skill_cant_be_registered
     clients.skills.CreateSkill.side_effect = fake_rpc_error(grpc.StatusCode.INVALID_ARGUMENT)
 
     with pytest.raises(NominalError) as raised:
-        client.create_skill(_SKILL_MD, files={"methods/limits.md": "text"})
+        analyst.create_skill(client, _SKILL_MD, files={"methods/limits.md": "text"})
 
     removal = clients.drive_files.ApplyFileChanges.call_args_list[1].args[0]
     assert [change.remove.revision_rid for change in removal.changes] == ["rev-0", "rev-1"]
@@ -264,7 +267,7 @@ def test_create_keeps_its_files_when_its_unknown_whether_the_skill_was_registere
     clients.skills.CreateSkill.side_effect = fake_rpc_error(code)
 
     with pytest.raises(NominalError) as raised:
-        client.create_skill(_SKILL_MD)
+        analyst.create_skill(client, _SKILL_MD)
 
     assert clients.drive_files.ApplyFileChanges.call_count == 1
     (note,) = raised.value.__notes__
@@ -284,7 +287,7 @@ def test_create_says_where_its_files_are_when_removing_them_is_refused(uploads, 
     clients.skills.CreateSkill.side_effect = fake_rpc_error(grpc.StatusCode.INVALID_ARGUMENT)
 
     with pytest.raises(NominalError, match="INVALID_ARGUMENT") as raised:
-        client.create_skill(_SKILL_MD)
+        analyst.create_skill(client, _SKILL_MD)
 
     (note,) = raised.value.__notes__
     assert f"still in {_FOLDER} in the skills drive of workspace {_WORKSPACE}" in note
@@ -299,7 +302,7 @@ def test_writes_without_the_edit_permission_save_nothing(uploads, fake_rpc_error
     skill = Skill._from_proto(clients, _proto_skill())
 
     with pytest.raises(NominalPermissionDeniedError):
-        client.create_skill(_SKILL_MD)
+        analyst.create_skill(client, _SKILL_MD)
     with pytest.raises(NominalPermissionDeniedError):
         skill.write_files({"methods/a.md": "text"})
     with pytest.raises(NominalPermissionDeniedError):
@@ -328,7 +331,7 @@ def test_create_needs_frontmatter_with_a_valid_name(uploads, content) -> None:
     client, clients = _client()
 
     with pytest.raises(ValueError):
-        client.create_skill(content)
+        analyst.create_skill(client, content)
 
     clients.skills.UpdateWorkspaceSkillsDrive.assert_not_called()
     assert uploads == {}
@@ -337,8 +340,8 @@ def test_create_needs_frontmatter_with_a_valid_name(uploads, content) -> None:
 @pytest.mark.parametrize(
     ("state", "write"),
     [
-        (skills_pb2.SKILL_STATE_ENABLED, lambda client, skill, folder: client.create_skill(_UNDESCRIBED_MD)),
-        (skills_pb2.SKILL_STATE_ENABLED, lambda client, skill, folder: client.import_skill(folder)),
+        (skills_pb2.SKILL_STATE_ENABLED, lambda client, skill, folder: analyst.create_skill(client, _UNDESCRIBED_MD)),
+        (skills_pb2.SKILL_STATE_ENABLED, lambda client, skill, folder: analyst.import_skill(client, folder)),
         (skills_pb2.SKILL_STATE_ENABLED, lambda client, skill, folder: skill.update(content=_UNDESCRIBED_MD)),
         (
             skills_pb2.SKILL_STATE_DISABLED,
@@ -368,7 +371,7 @@ def test_a_description_is_text_of_1_to_1024_characters(uploads, description) -> 
     client, clients = _client()
 
     with pytest.raises(ValueError, match="description"):
-        client.create_skill(f"---\nname: post-test-review\ndescription: {description}\n---\n")
+        analyst.create_skill(client, f"---\nname: post-test-review\ndescription: {description}\n---\n")
 
     assert uploads == {}
 
@@ -376,7 +379,7 @@ def test_a_description_is_text_of_1_to_1024_characters(uploads, description) -> 
 @pytest.mark.parametrize(
     ("listing", "write"),
     [
-        (_listing(), lambda client, skill: client.create_skill(_UNDESCRIBED_MD, enabled=False)),
+        (_listing(), lambda client, skill: analyst.create_skill(client, _UNDESCRIBED_MD, enabled=False)),
         (
             _listing(_entry("rev-1")),
             lambda client, skill: skill.update(content=_UNDESCRIBED_MD, enabled=False),
@@ -405,10 +408,10 @@ def test_a_failed_upload_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
             raise requests.ConnectionError("upload failed")
         return MagicMock(key=f"key-{filename}")
 
-    monkeypatch.setattr("nominal.core.skill._put_multipart_upload_to", upload)
+    monkeypatch.setattr("nominal.experimental.analyst._skill._put_multipart_upload_to", upload)
 
     with pytest.raises(requests.ConnectionError):
-        client.create_skill(_SKILL_MD, files={"methods/a.md": "A", "methods/b.md": "B"})
+        analyst.create_skill(client, _SKILL_MD, files={"methods/a.md": "A", "methods/b.md": "B"})
 
     clients.drive_files.ApplyFileChanges.assert_not_called()
 
@@ -420,7 +423,7 @@ def test_reference_paths_stay_inside_the_folder(uploads, path) -> None:
     skill = Skill._from_proto(clients, _proto_skill())
 
     with pytest.raises(ValueError):
-        client.create_skill(_SKILL_MD, files={path: "text"})
+        analyst.create_skill(client, _SKILL_MD, files={path: "text"})
     with pytest.raises(ValueError):
         skill.write_files({path: "text"})
 
@@ -814,7 +817,7 @@ def test_export_on_windows_refuses_a_skill_name_with_a_drive(downloads, tmp_path
     backing.file_store.entry_path.path = "skills/D:review/SKILL.md"
     skill = Skill._from_proto(clients, _proto_skill())
     clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_proto_skill(backing=backing))
-    monkeypatch.setattr("nominal.core.skill._ON_WINDOWS", True)
+    monkeypatch.setattr("nominal.experimental.analyst._skill._ON_WINDOWS", True)
 
     with pytest.raises(ValueError):
         skill.export(tmp_path)
@@ -844,7 +847,7 @@ def test_export_on_windows_refuses_a_drive_or_a_stream(downloads, tmp_path: Path
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
     clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/{path}", "rev-x"))
-    monkeypatch.setattr("nominal.core.skill._ON_WINDOWS", True)
+    monkeypatch.setattr("nominal.experimental.analyst._skill._ON_WINDOWS", True)
 
     with pytest.raises(ValueError):
         skill.export(tmp_path)
@@ -894,7 +897,7 @@ def test_search_selects_states_from_filters(enabled, archive_status, states) -> 
     client, clients = _client()
     clients.skills.SearchSkills.return_value = skills_pb2.SearchSkillsResponse()
 
-    client.search_skills(enabled=enabled, archive_status=archive_status)
+    analyst.search_skills(client, enabled=enabled, archive_status=archive_status)
 
     assert list(clients.skills.SearchSkills.call_args.args[0].filter.states) == states
 
@@ -903,7 +906,7 @@ def test_search_with_no_selectable_state_makes_no_call() -> None:
     """Asking for enabled skills among archived ones matches nothing, so no request is sent."""
     client, clients = _client()
 
-    assert client.search_skills(enabled=True, archive_status=ArchiveStatusFilter.ARCHIVED) == []
+    assert analyst.search_skills(client, enabled=True, archive_status=ArchiveStatusFilter.ARCHIVED) == []
     clients.skills.SearchSkills.assert_not_called()
 
 
@@ -915,7 +918,7 @@ def test_search_follows_pages_in_name_order() -> None:
         skills_pb2.SearchSkillsResponse(skills=[_proto_skill(skill_rid="ri.file-store.main.skill.b")]),
     ]
 
-    results = client.search_skills("review", workspace="ri.workspace.main.workspace.2")
+    results = analyst.search_skills(client, "review", workspace="ri.workspace.main.workspace.2")
 
     first, second = (call.args[0] for call in clients.skills.SearchSkills.call_args_list)
     assert [skill.rid for skill in results] == [_RID, "ri.file-store.main.skill.b"]
@@ -946,7 +949,7 @@ def test_import_saves_skill_md_unchanged_and_skips_hidden_paths(uploads, tmp_pat
     client, clients = _client()
     _write_skill_folder(tmp_path / "post-test-review")
 
-    client.import_skill(tmp_path / "post-test-review")
+    analyst.import_skill(client, tmp_path / "post-test-review")
 
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
@@ -966,7 +969,7 @@ def test_import_skips_links_that_can_lead_outside_the_folder(uploads, tmp_path: 
     (folder / "methods" / "key.md").symlink_to(secrets / "key.md")
     (folder / "linked").symlink_to(secrets, target_is_directory=True)
 
-    client.import_skill(folder)
+    analyst.import_skill(client, folder)
 
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
@@ -978,7 +981,7 @@ def test_import_reads_the_folder_holding_a_zips_skill_md(uploads, tmp_path: Path
     client, clients = _client()
     _write_skill_folder(tmp_path / "post-test-review")
 
-    client.import_skill(_zip_skill_folder(tmp_path))
+    analyst.import_skill(client, _zip_skill_folder(tmp_path))
 
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
@@ -992,7 +995,7 @@ def test_import_takes_a_zips_shallowest_skill_md_as_the_skill(uploads, tmp_path:
     (tmp_path / "post-test-review" / "examples").mkdir()
     (tmp_path / "post-test-review" / "examples" / "SKILL.md").write_text("Example.\n")
 
-    client.import_skill(_zip_skill_folder(tmp_path))
+    analyst.import_skill(client, _zip_skill_folder(tmp_path))
 
     puts = _puts(clients)
     assert uploads[puts[0].object.object_key] == _SKILL_MD.encode()
@@ -1009,6 +1012,22 @@ def test_import_refuses_binary_files_before_saving(uploads, tmp_path: Path) -> N
     (tmp_path / "diagram.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff")
 
     with pytest.raises(ValueError, match="diagram.png"):
-        client.import_skill(tmp_path)
+        analyst.import_skill(client, tmp_path)
     assert uploads == {}
     clients.skills.UpdateWorkspaceSkillsDrive.assert_not_called()
+
+
+@pytest.mark.parametrize("content", [b"hello", b"\xff"])
+def test_read_closes_download_session(monkeypatch, content) -> None:
+    """Downloads release their session even when UTF-8 decoding fails."""
+    client, clients = _client()
+    session = MagicMock()
+    session.get.return_value.content = content
+    monkeypatch.setattr("nominal.experimental.analyst._skill.create_multipart_request_session", lambda **_: session)
+    skill = analyst.get_skill(client, _RID)
+    if content == b"hello":
+        assert skill.get_content() == "hello"
+    else:
+        with pytest.raises(NominalError, match="Not UTF-8"):
+            skill.get_content()
+    session.close.assert_called_once_with()

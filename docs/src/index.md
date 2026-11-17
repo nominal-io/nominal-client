@@ -192,6 +192,7 @@ nom CLI <ref/cli>
 :caption: Experiments
 :maxdepth: 1
 
+ref/experimental/analyst
 ref/experimental/compute
 ref/experimental/compute-as-code
 ref/experimental/derived_datasets

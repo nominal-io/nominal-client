@@ -24,7 +24,7 @@ from nominal.core._utils.filenames import sanitize_upload_filename
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core._utils.pagination_tools import paginate_grpc, search_skills_paginated
+from nominal.core._utils.pagination_tools import DEFAULT_PAGE_SIZE, paginate_grpc
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import (
     NominalAlreadyExistsError,
@@ -638,7 +638,7 @@ def _iter_search_skills(
     if not states:
         return
     search_filter = skills_pb2.SkillSearchFilter(text=search_text, states=states)
-    for skill in search_skills_paginated(clients.skills, workspace_rid, search_filter):
+    for skill in _search_skills_paginated(clients.skills, workspace_rid, search_filter):
         yield Skill._from_proto(clients, skill)
 
 
@@ -751,12 +751,15 @@ def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str
     with translate_grpc_errors():
         url = clients.drive_files.GetDownloadUrl(request).url
     session = create_multipart_request_session(pool_size=1, header_provider=clients.header_provider)
-    response = session.get(url, timeout=_DOWNLOAD_TIMEOUT)
-    response.raise_for_status()
     try:
-        return response.content.decode("utf-8")
-    except UnicodeDecodeError as ex:
-        raise NominalError(f"Not UTF-8 text, which the client can't read: {file.path.path}") from ex
+        response = session.get(url, timeout=_DOWNLOAD_TIMEOUT)
+        response.raise_for_status()
+        try:
+            return response.content.decode("utf-8")
+        except UnicodeDecodeError as ex:
+            raise NominalError(f"Not UTF-8 text, which the client can't read: {file.path.path}") from ex
+    finally:
+        session.close()
 
 
 def _upload(clients: Skill._Clients, workspace_rid: str, path: str, text: str) -> str:
@@ -886,3 +889,21 @@ def _translate_skill_errors() -> Iterator[None]:
             if e.code() == grpc.StatusCode.ABORTED:
                 raise NominalConflictError(f"{e.code()}: {e.details()}") from e
             raise
+
+
+def _search_skills_paginated(
+    skills: skills_pb2_grpc.SkillsServiceStub,
+    workspace_rid: str,
+    search_filter: skills_pb2.SkillSearchFilter,
+) -> Iterable[skills_pb2.Skill]:
+    def factory(page_token: str | None) -> skills_pb2.SearchSkillsRequest:
+        return skills_pb2.SearchSkillsRequest(
+            workspace_rid=workspace_rid,
+            filter=search_filter,
+            sort=skills_pb2.SKILL_LIBRARY_SORT_NAME_ASC,
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+        )
+
+    for response in paginate_grpc(skills.SearchSkills, request_factory=factory):
+        yield from response.skills
