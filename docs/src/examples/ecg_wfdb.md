@@ -54,7 +54,7 @@ import nominal.plotly
 
 nominal.plotly.set_style()
 df = nominal.io.read(
-    "data/wfdb/119.hea", start="2026-01-01T09:00:00Z", sampto=60 * 360
+    "data/wfdb/119.hea", start="2026-01-01T12:00:00Z", sampto=60 * 360
 )
 print(df.nom.channels)
 df.head()
@@ -130,7 +130,7 @@ fig
 Pass `pn_dir` to read a record straight from PhysioNet; `sampto` keeps the download short.
 
 ```python
-more = nominal.io.read("100.hea", format="wfdb", pn_dir="mitdb", sampto=10 * 360, start="2026-01-01T09:00:00Z")
+more = nominal.io.read("100.hea", format="wfdb", pn_dir="mitdb", sampto=10 * 360, start="2026-01-01T12:00:00Z")
 more.nom.select("wfdb.beat")["value"].value_counts()
 ```
 

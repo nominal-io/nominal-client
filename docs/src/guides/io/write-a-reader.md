@@ -96,3 +96,5 @@ def test_mylog():
     chunk = check_reader(SPEC, "tests/data/sample.mylog")
     assert len(chunk.channel_names) == 3
 ```
+
+For an executable walkthrough, see [Add a file format to nominal.io](/examples/custom_reader.md).

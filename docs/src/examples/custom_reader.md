@@ -13,7 +13,7 @@ kernelspec:
 
 `nominal.io` is a registry of readers. A reader turns one file format into long-form frames, and
 `nominal.io.read` finds it by extension. This example registers a reader for a toy format in the notebook; to ship
-one in a package, see [the I/O reference](/ref/io/index.md#write-a-reader).
+one in a package, see [Add a file format](/guides/io/write-a-reader.md).
 
 +++
 
