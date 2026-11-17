@@ -16,12 +16,9 @@ import requests
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
+from nominal.exceptions import NominalDownloadRangeError
 
 logger = logging.getLogger(__name__)
-
-
-class _RangeNotHonoredError(RuntimeError):
-    """A response carried more than the requested byte range, so retrying the request cannot help."""
 
 
 @dataclasses.dataclass
@@ -348,7 +345,7 @@ class MultipartFileDownloader:
             if len(data) > expected:
                 # A server that ignores Range answers with the whole object. Writing that at
                 # `start` would corrupt the file, so stop reading rather than buffer it all.
-                raise _RangeNotHonoredError(
+                raise NominalDownloadRangeError(
                     f"Expected {expected} bytes for range {start}-{end}, got more; "
                     "the server may not support ranged downloads"
                 )
@@ -399,7 +396,7 @@ class MultipartFileDownloader:
                     self._write_part(destination, start, end, r.raw.stream(1024 * 1024, decode_content=False))
                     return
 
-            except _RangeNotHonoredError:
+            except NominalDownloadRangeError:
                 raise  # the server will answer the same way every time
             except Exception as ex:
                 last_ex = ex
