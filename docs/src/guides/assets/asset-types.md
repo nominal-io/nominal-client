@@ -5,12 +5,17 @@ Assets can belong to multiple types. Every member must satisfy all of its types:
 the identity key is a nonempty string, and additional properties can be required
 or suggested, with string or numeric values.
 
+```{include} /guides/_snippets/connect-the-client.md
+```
+
 ## Define a type and create an asset
 
-```python
-from nominal.core import AssetTypeProperty, NominalClient
+Use {py:meth}`~nominal.core.NominalClient.create_asset_type` to define the identity
+and {py:class}`~nominal.core.AssetTypeProperty` for additional property rules.
 
-client = NominalClient.from_profile("production")
+```python
+from nominal.core import AssetTypeProperty
+
 pump_type = client.create_asset_type(
     "Pump",
     primary_key="serial_number",
@@ -39,6 +44,9 @@ accepted wherever a type is assigned or selected.
 
 ## Find types and their members
 
+{py:meth}`~nominal.core.NominalClient.search_asset_types` finds definitions;
+{py:meth}`~nominal.core.NominalClient.search_assets` finds their members.
+
 ```python
 available_types = client.search_asset_types("Pump")
 pumps = client.search_assets(types=[pump_type])
@@ -55,6 +63,9 @@ an empty list matches no assets, while `None` omits the filter.
 call `pump.refresh()` first if memberships may have changed remotely.
 
 ## Resolve an asset by identity
+
+Use {py:meth}`~nominal.core.NominalClient.create_or_update_asset_by_primary_key`
+when repeated calls must resolve to the same active asset.
 
 ```python
 same_pump = client.create_or_update_asset_by_primary_key(
@@ -79,6 +90,9 @@ preserves attachments and attached data. Prefer `pump.update(...)` for partial e
 
 ## Update definitions and memberships
 
+Use {py:meth}`~nominal.core.AssetType.update` to change a definition and
+{py:meth}`~nominal.core.Asset.update` to change memberships.
+
 ```python
 pump_type.update(description="Pumps tracked by manufacturer serial number")
 pump.update(types=[pump_type])
@@ -97,7 +111,3 @@ primary-key renames once memberships exist.
 memberships. Archived types cannot be assigned to new members. Use `unarchive()` to
 restore one and `refresh()` to update the local snapshot after either operation.
 Type search accepts `ArchiveStatusFilter.ANY` or `.ARCHIVED` from `nominal.core`.
-
-The SDK exposes identity, property rules and membership. Required-series definitions
-and inter-type links are outside this workflow. UI controls may require feature
-flag enablement even when the API is available.

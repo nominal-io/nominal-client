@@ -77,6 +77,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     @property
     def nominal_url(self) -> str:
         """Link to this asset type in the Nominal app."""
+        # Type responses omit workspace; the legacy route resolves it from the RID.
         return f"{self._clients.app_base_url.rstrip('/')}/asset-types/{self.rid}"
 
     def _get_latest_api(self) -> asset_pb2.Type:
