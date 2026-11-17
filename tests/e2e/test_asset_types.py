@@ -6,7 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import ArchiveStatusFilter, Asset, AssetType, AssetTypeProperty, NominalClient
+from nominal.core import (
+    ArchiveStatusFilter,
+    Asset,
+    AssetType,
+    AssetTypeProperty,
+    AssetTypePropertyValueType,
+    NominalClient,
+)
 from nominal.exceptions import NominalInvalidArgumentError
 
 
@@ -24,7 +31,7 @@ def test_asset_type_identity_and_lifecycle(client: NominalClient, archive) -> No
     kind = client.create_asset_type(
         name,
         primary_key="serial_number",
-        properties={"power": AssetTypeProperty(value_type="number", required=True)},
+        properties={"power": AssetTypeProperty(value_type=AssetTypePropertyValueType.NUMBER, required=True)},
         description="Temporary SDK integration test; archived on completion.",
     )
     archive(kind)
@@ -147,7 +154,7 @@ def test_membership_validation_is_atomic_and_archived_definitions_remain_readabl
     rated_type = client.create_asset_type(
         f"SDK rated verification {uuid4()}",
         primary_key="serial",
-        properties={"power": AssetTypeProperty("number", required=True)},
+        properties={"power": AssetTypeProperty(AssetTypePropertyValueType.NUMBER, required=True)},
     )
     archive(rated_type)
     asset = client.create_asset("Pump", types=[identity_type], properties={"serial": "one"})

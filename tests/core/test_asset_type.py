@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core import AssetType, AssetTypeProperty, NominalClient
+from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
@@ -21,7 +21,7 @@ def test_type_round_trip_and_update_presence() -> None:
         },
     )
     kind = AssetType._from_proto(clients, raw)
-    assert kind.properties == {"power": AssetTypeProperty(value_type="number", required=True)}
+    assert kind.properties == {"power": AssetTypeProperty(value_type=AssetTypePropertyValueType.NUMBER, required=True)}
     clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(type=raw)
     assert kind.update(name="New") is kind
     request = clients.assets.UpdateType.call_args.args[0]
@@ -42,7 +42,7 @@ def test_create_asset_type_uses_workspace_and_separate_identity_key() -> None:
         "Pump",
         primary_key="serial",
         properties={
-            "power": AssetTypeProperty(value_type="number", required=True),
+            "power": AssetTypeProperty(value_type=AssetTypePropertyValueType.NUMBER, required=True),
         },
     )
     request = clients.assets.CreateType.call_args.args[0]
@@ -101,7 +101,9 @@ def test_definition_refresh_uses_authoritative_response() -> None:
     assert kind.is_archived
 
 
-@pytest.mark.parametrize(("value_type", "required"), [("string", False), ("number", True)])
+@pytest.mark.parametrize(
+    ("value_type", "required"), [(AssetTypePropertyValueType.STRING, False), (AssetTypePropertyValueType.NUMBER, True)]
+)
 def test_property_rules_round_trip(value_type, required) -> None:
     """Both property types and required/suggested rules survive transport conversion."""
     rule = AssetTypeProperty(value_type=value_type, required=required)

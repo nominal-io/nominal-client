@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Self, Sequence
+from typing import Iterable, Mapping, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
@@ -14,6 +15,29 @@ from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
+class AssetTypePropertyValueType(Enum):
+    """The kind of value accepted by an asset-type property rule."""
+
+    STRING = "STRING"
+    NUMBER = "NUMBER"
+
+    def _to_proto(self) -> asset_pb2.PropertyValueType.ValueType:
+        return {
+            AssetTypePropertyValueType.STRING: asset_pb2.STRING,
+            AssetTypePropertyValueType.NUMBER: asset_pb2.NUMBER,
+        }[self]
+
+    @classmethod
+    def _from_proto(cls, value: asset_pb2.PropertyValueType.ValueType) -> AssetTypePropertyValueType:
+        match value:
+            case asset_pb2.STRING:
+                return cls.STRING
+            case asset_pb2.NUMBER:
+                return cls.NUMBER
+            case _:
+                raise ValueError(f"Unknown asset-type property value type: {value}")
+
+
 @dataclass(frozen=True)
 class AssetTypeProperty:
     """A string or numeric property rule for members of an asset type.
@@ -22,31 +46,18 @@ class AssetTypeProperty:
     type's primary key is a separate, required nonempty string property.
     """
 
-    value_type: Literal["string", "number"] = "string"
+    value_type: AssetTypePropertyValueType = AssetTypePropertyValueType.STRING
     required: bool = False
 
     def _to_proto(self) -> asset_pb2.PropertyConfig:
-        match self.value_type:
-            case "string":
-                value_type = asset_pb2.STRING
-            case "number":
-                value_type = asset_pb2.NUMBER
-            case _:
-                raise ValueError(f"Unknown asset-type property value type: {self.value_type!r}")
         return asset_pb2.PropertyConfig(
             requirement=asset_pb2.REQUIRED if self.required else asset_pb2.SUGGESTED,
-            value_type=value_type,
+            value_type=self.value_type._to_proto(),
         )
 
     @classmethod
     def _from_proto(cls, value: asset_pb2.PropertyConfig) -> Self:
-        match value.value_type:
-            case asset_pb2.STRING:
-                value_type: Literal["string", "number"] = "string"
-            case asset_pb2.NUMBER:
-                value_type = "number"
-            case _:
-                raise ValueError(f"Unknown asset-type property value type: {value.value_type}")
+        value_type = AssetTypePropertyValueType._from_proto(value.value_type)
         if value.requirement not in (asset_pb2.REQUIRED, asset_pb2.SUGGESTED):
             raise ValueError(f"Unknown asset-type property requirement: {value.requirement}")
         return cls(value_type=value_type, required=value.requirement == asset_pb2.REQUIRED)

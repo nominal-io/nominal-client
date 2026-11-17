@@ -14,14 +14,14 @@ Use {py:meth}`~nominal.core.NominalClient.create_asset_type` to define the ident
 and {py:class}`~nominal.core.AssetTypeProperty` for additional property rules.
 
 ```python
-from nominal.core import AssetTypeProperty
+from nominal.core import AssetTypeProperty, AssetTypePropertyValueType
 
 pump_type = client.create_asset_type(
     "Pump",
     primary_key="serial_number",
     properties={
         "model": AssetTypeProperty(required=True),
-        "rated_power_kw": AssetTypeProperty(value_type="number"),
+        "rated_power_kw": AssetTypeProperty(value_type=AssetTypePropertyValueType.NUMBER),
     },
 )
 pump = client.create_asset(

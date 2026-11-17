@@ -7,7 +7,7 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
-from nominal.core.asset_type import AssetType, AssetTypeProperty
+from nominal.core.asset_type import AssetType, AssetTypeProperty, AssetTypePropertyValueType
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
 from nominal.core.channel import (
@@ -87,6 +87,7 @@ __all__ = [
     "Asset",
     "AssetType",
     "AssetTypeProperty",
+    "AssetTypePropertyValueType",
     "Attachment",
     "Bounds",
     "BatchAddChannelsResult",
