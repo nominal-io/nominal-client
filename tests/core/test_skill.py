@@ -212,13 +212,11 @@ def test_create_saves_nothing_when_a_file_is_refused(uploads) -> None:
     clients.skills.CreateSkill.assert_not_called()
 
 
-def test_create_removes_its_files_when_the_skill_cant_be_registered(uploads, fake_rpc_error) -> None:
-    """When the skills service refuses the new skill, create removes the files it saved, as they are now."""
+def test_create_removes_the_revisions_it_saved_when_the_skill_cant_be_registered(uploads, fake_rpc_error) -> None:
+    """When the skills service refuses the new skill, create removes the revisions it saved, all or none, so a file
+    another save has changed since is left alone.
+    """
     client, clients = _client()
-    clients.files.ListFiles.side_effect = [
-        _listing(),
-        _listing(_file(f"{_FOLDER}/SKILL.md", "rev-0"), _file(f"{_FOLDER}/methods/limits.md", "rev-1")),
-    ]
     clients.skills.CreateSkill.side_effect = fake_rpc_error(grpc.StatusCode.INVALID_ARGUMENT)
 
     with pytest.raises(NominalError) as raised:
@@ -226,13 +224,15 @@ def test_create_removes_its_files_when_the_skill_cant_be_registered(uploads, fak
 
     removal = clients.files.ApplyFileChanges.call_args_list[1].args[0]
     assert [change.remove.revision_rid for change in removal.changes] == ["rev-0", "rev-1"]
+    assert (removal.drive_rid, removal.failure_policy) == (_DRIVE, files_pb2.FAILURE_POLICY_ABORT)
+    # The revisions come from the save, not from listing the folder again.
+    assert clients.files.ListFiles.call_count == 1
     assert not getattr(raised.value, "__notes__", [])
 
 
 def test_create_says_where_its_files_are_when_removing_them_is_refused(uploads, fake_rpc_error) -> None:
     """File Store removes the files all or none, so a refused removal leaves every file, and the error says where."""
     client, clients = _client()
-    clients.files.ListFiles.side_effect = [_listing(), _listing(_file(f"{_FOLDER}/SKILL.md", "rev-0"))]
     clients.files.ApplyFileChanges.side_effect = [
         files_pb2.ApplyFileChangesResponse(results=[_saved(f"{_FOLDER}/SKILL.md", "rev-0")]),
         files_pb2.ApplyFileChangesResponse(
@@ -246,6 +246,7 @@ def test_create_says_where_its_files_are_when_removing_them_is_refused(uploads, 
 
     (note,) = raised.value.__notes__
     assert f"still in {_FOLDER} in the skills drive of workspace {_WORKSPACE}" in note
+    assert "Could not remove SKILL.md" in note
 
 
 def test_writes_without_the_edit_permission_save_nothing(uploads, fake_rpc_error) -> None:
@@ -330,16 +331,20 @@ def test_a_description_is_text_of_1_to_1024_characters(uploads, description) -> 
 
 
 @pytest.mark.parametrize(
-    "write",
+    ("listing", "write"),
     [
-        lambda client, skill: client.create_skill(_UNDESCRIBED_MD, enabled=False),
-        lambda client, skill: skill.update(content=_UNDESCRIBED_MD, enabled=False),
+        (_listing(), lambda client, skill: client.create_skill(_UNDESCRIBED_MD, enabled=False)),
+        (
+            _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1")),
+            lambda client, skill: skill.update(content=_UNDESCRIBED_MD, enabled=False),
+        ),
     ],
     ids=["create a draft", "update turning it off"],
 )
-def test_a_skill_left_off_saves_without_a_description(uploads, write) -> None:
+def test_a_skill_left_off_saves_without_a_description(uploads, listing, write) -> None:
     """A skill that isn't turned on can have SKILL.md without a description."""
     client, clients = _client()
+    clients.files.ListFiles.return_value = listing
     skill = Skill._from_proto(clients, _proto_skill())
 
     write(client, skill)
@@ -404,6 +409,22 @@ def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> No
     assert update.expected_version == 7
     assert skill.version == 8
     assert clients.skills.UpdateWorkspaceSkillsDrive.call_count == 1
+
+
+def test_content_update_refuses_a_skill_whose_skill_md_was_deleted(uploads) -> None:
+    """The skill's record points at its SKILL.md, so a new SKILL.md saved where it was deleted would go unrecorded;
+    the update raises before uploading anything.
+    """
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+
+    with pytest.raises(NominalNotFoundError, match="no SKILL.md"):
+        skill.update(content=_SKILL_MD)
+
+    assert uploads == {}
+    clients.files.ApplyFileChanges.assert_not_called()
+    clients.skills.UpdateSkill.assert_not_called()
 
 
 def test_content_update_from_a_stale_object_saves_nothing(uploads) -> None:

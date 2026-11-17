@@ -200,6 +200,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             NominalConflictError: If the skill changed since this object was fetched or last refreshed, or SKILL.md
                 changed while it was being saved. Nothing is saved.
             NominalAlreadyExistsError: If a skill already has the new name. Nothing is saved.
+            NominalNotFoundError: If `content` is given and the skill's folder has no SKILL.md, for example because
+                it was deleted in Drives. Nothing is saved.
         """
         if content is None and enabled is None:
             return self.refresh()
@@ -414,12 +416,13 @@ def _save_folder(
     put: Mapping[str, str],
     remove: Sequence[str] = (),
     rename_to: str | None = None,
-) -> dict[str, file_store_pb2.LogicalFile]:
-    """Change the files in the skill folder ``skills/<name>`` together or not at all, and return the files it saved,
-    by path in the folder.
+) -> tuple[_SkillFolder, dict[str, file_store_pb2.LogicalFile]]:
+    """Change the files in the skill folder ``skills/<name>`` together or not at all, and return the folder and the
+    files it saved, by path in the folder.
 
     The folder is in the drive `drive_rid`, or by default in the workspace's skills drive, where new skills are saved.
-    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name.
+    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name. An
+    existing skill's SKILL.md is only replaced, since the skill's record points at that file.
 
     Each text in `put` replaces the file at its path as it is now, or is saved as a new file where there is none, which
     File Store refuses if another save puts a file there first. Each path in `remove` is removed as it is now. With
@@ -429,7 +432,8 @@ def _save_folder(
         ValueError: If there are more than 100 files to change. Nothing is uploaded.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration. Nothing is uploaded.
         NominalAlreadyExistsError: If a new skill's folder, or the folder to rename to, has files. Nothing is changed.
-        NominalNotFoundError: If the folder has no file at a path in `remove`. Nothing is uploaded.
+        NominalNotFoundError: If the folder has no file at a path in `remove`, or an existing skill's folder has no
+            SKILL.md to replace. Nothing is uploaded.
         NominalConflictError: If another save changed or created one of the files first. Nothing is changed.
     """
     _require_one_batch(len(put) + len(remove))
@@ -437,8 +441,12 @@ def _save_folder(
     skills_drive_rid = _skills_drive_rid(clients, workspace_rid)
     folder = _SkillFolder(drive_rid=skills_drive_rid if drive_rid is None else drive_rid, name=name)
     current = _list_folder(clients, folder)
-    if new and current:
-        raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
+    if new:
+        if current:
+            raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
+    elif _ENTRY_FILE in put and _ENTRY_FILE not in current:
+        # A SKILL.md saved in place of a deleted one would be a new file, which the skill's record doesn't point at.
+        raise NominalNotFoundError(f"Skill {name} has no {_ENTRY_FILE} in {folder.root}. Nothing was saved")
     missing = [path for path in remove if path not in current]
     if missing:
         raise NominalNotFoundError(f"Skill {name} has no file at {', '.join(missing)}")
@@ -468,10 +476,23 @@ def _save_folder(
         getattr(move, "from").path = folder.root
         changes.append((f"save the move to {target.root}", files_pb2.FileChange(move_directory=move)))
     if not changes:
-        return {}
+        return folder, {}
+    results = _apply(clients, folder.drive_rid, changes)
+    # The puts come first in the batch, in the order of `put`.
+    return folder, {path: result.success.file for path, result in zip(keys, results)}
 
+
+def _apply(
+    clients: Skill._Clients, drive_rid: str, changes: Sequence[tuple[str, files_pb2.FileChange]]
+) -> Sequence[files_pb2.FileChangeResult]:
+    """Apply `changes` together or not at all, and return a result for each. Each change comes with a label saying
+    what it does, which names it in the error when File Store refuses it.
+
+    Raises:
+        NominalError: If File Store refuses a change, as the subclass `_refusal` picks for it. Nothing is changed.
+    """
     request = files_pb2.ApplyFileChangesRequest(
-        drive_rid=folder.drive_rid,
+        drive_rid=drive_rid,
         changes=[change for _, change in changes],
         failure_policy=files_pb2.FAILURE_POLICY_ABORT,
     )
@@ -489,8 +510,7 @@ def _save_folder(
             refused[0],
         )
         raise _refusal(*cause)
-    # The puts come first in the batch, in the order of `put`.
-    return {path: result.success.file for path, result in zip(keys, results)}
+    return results
 
 
 def _refusal(label: str, change: files_pb2.FileChange, failure: files_pb2.FileChangeFailure) -> NominalError:
@@ -521,7 +541,7 @@ def _create_skill(
     if enabled and description is None:
         raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to create the skill turned off")
     texts = {_ENTRY_FILE: content, **{_reference_path(path): text for path, text in (files or {}).items()}}
-    saved = _save_folder(clients, workspace_rid, name, new=True, put=texts)
+    folder, saved = _save_folder(clients, workspace_rid, name, new=True, put=texts)
     backing = skills_pb2.FileStoreSkillBacking(entry_file_identity=saved[_ENTRY_FILE].identity)
     request = skills_pb2.CreateSkillRequest(
         skill=skills_pb2.Skill(workspace_rid=workspace_rid, backing=skills_pb2.SkillBacking(file_store=backing))
@@ -530,13 +550,23 @@ def _create_skill(
         with translate_grpc_errors():
             skill = Skill._from_proto(clients, clients.skills.CreateSkill(request).skill)
     except NominalError as e:
-        # Remove the saved files, so the name is free to use again.
+        # Remove the revisions this call saved, so the name is free to use again. File Store refuses to remove a file
+        # that another save has changed since, and then removes none.
+        removals = [
+            (
+                f"remove {path}",
+                files_pb2.FileChange(
+                    remove=files_pb2.RemoveFile(revision_rid=file.current_revision.managed.file_revision_rid)
+                ),
+            )
+            for path, file in saved.items()
+        ]
         try:
-            _save_folder(clients, workspace_rid, name, put={}, remove=list(texts))
+            _apply(clients, folder.drive_rid, removals)
         except NominalError as removal_error:
             e.add_note(
-                f"The files this call saved couldn't be removed, so they are still in {_SKILLS_ROOT}/{name} in the "
-                f"skills drive of workspace {workspace_rid}: {removal_error}"
+                f"The files this call saved couldn't be removed, so they are still in {folder.root} in the skills "
+                f"drive of workspace {workspace_rid}: {removal_error}"
             )
         raise
     if enabled:
