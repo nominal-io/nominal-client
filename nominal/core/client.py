@@ -1432,6 +1432,8 @@ class NominalClient:
         ``properties`` must include the type's primary-key property as a nonempty
         string. Concurrent calls with the same identity resolve to one active asset.
         Archived assets are ignored, so their identity may create a new active asset.
+        Uses this client's default workspace. Returns a fresh snapshot without
+        refreshing previously retrieved asset objects.
 
         Args:
             asset_type: Type whose primary key identifies the asset; always assigned.
@@ -1439,8 +1441,9 @@ class NominalClient:
             properties: Complete properties, including all required type properties.
             update_if_exists: Defaults to False, returning an existing asset unchanged.
                 True replaces its name, description, properties, labels and memberships.
-            description: Description for creation or replacement; defaults to absent.
-            labels: Complete labels for creation or replacement.
+            description: Description for creation or replacement. Omitting it clears
+                the description when replacing an existing asset.
+            labels: Complete labels for creation or replacement. Defaults to no labels.
             types: Additional memberships, alongside ``asset_type``. Include every
                 membership you want to retain when ``update_if_exists=True``.
 
@@ -1495,14 +1498,17 @@ class NominalClient:
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
-        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
+
+        Separate filters are ANDed together. Within ``types``, membership in ANY
+        selected type is sufficient; within ``labels`` and ``properties``, ALL
+        supplied values must match.
 
         Args:
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
             types: Match ANY selected type. None omits the filter; an empty sequence matches no assets.
-            labels: A sequence of labels that must ALL be present on a asset to be included.
+            labels: A sequence of labels that must ALL be present on an asset to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
                 Integer values are converted to floats.

@@ -21,7 +21,9 @@ pump_type = client.create_asset_type(
     primary_key="serial_number",
     properties={
         "model": AssetTypeProperty(required=True),
-        "rated_power_kw": AssetTypeProperty(value_type=AssetTypePropertyValueType.NUMBER),
+        "rated_power_kw": AssetTypeProperty(
+            value_type=AssetTypePropertyValueType.NUMBER,
+        ),
     },
 )
 pump = client.create_asset(
@@ -42,6 +44,11 @@ a new resource; a name is not an identity. Save its RID and reuse it with
 `client.get_asset_type(rid)` on subsequent runs. Type objects and RIDs are both
 accepted wherever a type is assigned or selected.
 
+`AssetTypeProperty` defaults to `value_type=AssetTypePropertyValueType.STRING`
+and `required=False`. Suggested properties may be omitted; required properties
+must be present. The primary key is always required and must not be repeated in
+the additional property rules.
+
 ## Find types and their members
 
 {py:meth}`~nominal.core.NominalClient.search_asset_types` finds definitions;
@@ -59,6 +66,12 @@ Searches default to active resources in the client's default workspace. Pass
 accessible workspaces. `search_assets(types=[...])` matches **any** selected type;
 an empty list matches no assets, while `None` omits the filter.
 
+The type filter is ANDed with other filters. For example,
+`client.search_assets(types=[pump_type], labels=["production", "validated"])`
+requires membership in the pump type **and both labels**. With multiple types,
+membership in any one of them is sufficient; all supplied labels and property
+equalities must still match.
+
 `type_rids` is a snapshot. `get_types()` fetches definitions for those memberships;
 call `pump.refresh()` first if memberships may have changed remotely.
 
@@ -71,7 +84,10 @@ when repeated calls must resolve to the same active asset.
 same_pump = client.create_or_update_asset_by_primary_key(
     pump_type,
     name="Pump P-001",
-    properties={"serial_number": "P-001", "model": "Centrifugal"},
+    properties={
+        "serial_number": "P-001",
+        "model": "Centrifugal",
+    },
 )
 assert same_pump.rid == pump.rid
 ```
@@ -82,10 +98,21 @@ before creating and does not provide an atomic identity guarantee. Archived asse
 are ignored: an identity held only by an archived asset can create a new active asset.
 
 Existing assets are returned unchanged by default (`update_if_exists=False`).
-**`update_if_exists=True` replaces metadata and memberships; it is not a patch.** It replaces the
-name, description, properties and labels, clears links and legacy data scopes, and
-keeps only the identity type plus the additional `types` you supply. The server
-preserves attachments and attached data. Prefer `pump.update(...)` for partial edits.
+```{warning}
+`update_if_exists=True` replaces metadata and memberships; it is not a patch.
+It replaces the name, description, properties and labels, clears links and legacy
+data scopes, and keeps only the identity type plus the additional `types` you
+supply. Omitting `description` clears the existing description; omitting `labels`
+removes all labels, and omitting `types` removes other memberships. Properties
+absent from the supplied mapping are removed.
+
+The server preserves attachments and attached data. Prefer
+{py:meth}`~nominal.core.Asset.update` for partial metadata edits.
+```
+
+Both creation and replacement use the client's default workspace. Supply every
+required property for the identity type and any additional types. The returned
+object is a fresh snapshot; an earlier `pump` object is not refreshed by this call.
 
 ## Update definitions and memberships
 
