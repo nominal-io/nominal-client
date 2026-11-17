@@ -21,7 +21,9 @@ Rows are sorted by timestamp (stably, so rows sharing a timestamp keep file orde
 
 from __future__ import annotations
 
+import datetime
 import json
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -37,6 +39,8 @@ COLUMNS = ["timestamp", "channel", "value", "tags"]
 
 ENGINES = ("pandas", "polars")
 """The frame libraries a `Chunk` converts to."""
+
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 
 
 @dataclass(frozen=True, eq=False)
@@ -329,6 +333,45 @@ class ChunkBuilder:
 
     def _tag_codes(self, tags: Mapping[str, str] | None, n: int) -> np.ndarray[Any, Any]:
         return np.full(n, self._tag_code(tags), dtype=np.intp)
+
+
+def to_ns(t: Any) -> int:
+    """Convert a time to integer nanoseconds since the Unix epoch, treating a zoneless time as UTC.
+
+    Accepts a `datetime.datetime` (including `pandas.Timestamp`), a `numpy.datetime64`, an ISO 8601
+    string, or an integer (taken as nanoseconds).
+    """
+    if isinstance(t, (int, np.integer)) and not isinstance(t, bool):
+        return int(t)
+    if isinstance(t, np.datetime64):
+        return int(t.astype("datetime64[ns]").astype("int64"))
+    if hasattr(t, "value") and isinstance(t.value, int):  # pandas.Timestamp keeps nanoseconds
+        return int(t.value)
+    if isinstance(t, str):
+        t = datetime.datetime.fromisoformat(t)
+    if isinstance(t, datetime.datetime):
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=datetime.timezone.utc)
+        return int((t - _EPOCH) // datetime.timedelta(microseconds=1)) * 1000
+    raise TypeError(f"can't convert {type(t).__name__} to a time")
+
+
+def start_ns(start: Any, recorded: Any, name: str, *, stacklevel: int = 3) -> int:
+    """Return a recording's start time in nanoseconds: ``start``, else ``recorded``, else now (with a warning).
+
+    For readers of formats whose files may carry no absolute time. ``stacklevel`` points the
+    warning at the reader's caller.
+    """
+    if start is not None:
+        return to_ns(start)
+    if recorded is not None:
+        return to_ns(recorded)
+    warnings.warn(
+        f"{name!r} has no start time in its metadata and no start= was given; using the current time.",
+        UserWarning,
+        stacklevel=stacklevel,
+    )
+    return to_ns(datetime.datetime.now(datetime.timezone.utc))
 
 
 def validate_frame(df: pd.DataFrame) -> pd.DataFrame:

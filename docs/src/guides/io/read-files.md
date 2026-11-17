@@ -68,4 +68,9 @@ for chunk in nominal.io.read_chunks("capture.avro", engine="pandas", chunksize=5
 Keyword arguments other than `format` and `engine` go to the format's reader. Use them to read part of a file or set a start time.
 The instro readers take `chunksize`, the number of samples per piece. Each reader's options are in its reference entry.
 
+```python
+# The WFDB reader takes a start time and a range of samples
+df = nominal.io.read("119.hea", start="2026-01-01T12:00:00Z", sampfrom=0, sampto=21_600)
+```
+
 To read a format that isn't installed, see [Add a file format](/guides/io/write-a-reader.md).

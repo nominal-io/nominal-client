@@ -105,11 +105,15 @@ nominal-sphinx-theme = { git = "https://github.com/nominal-io/nominal-sphinx-the
 nominal = { workspace = true }
 nominal-ibis = { workspace = true }
 nominal-tdms = { workspace = true }
+nominal-io-wfdb = { workspace = true }
+nominal-io-sigmf = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
 avro = ["fastavro[snappy]>=1.9"]
 tdms = ["nominal-tdms>=1.143.0"]
+wfdb = ["nominal-io-wfdb>=0.1.0"]
+sigmf = ["nominal-io-sigmf>=0.1.0"]
 ibis = ["nominal-ibis>=0.1.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 compute = [
@@ -204,7 +208,7 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.tdms", "nominal.ibis"]
+packages = ["nominal", "nominal.tdms", "nominal.ibis", "nominal.io_wfdb", "nominal.io_sigmf"]
 # Ibis has untyped compiler and result conversion methods.
 untyped_calls_exclude = [
     "ibis.backends.sql.compilers.base.SQLGlotCompiler",
@@ -225,6 +229,10 @@ follow_untyped_imports = true
 
 [[tool.mypy.overrides]]
 module = "nptdms"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["wfdb", "wfdb.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
