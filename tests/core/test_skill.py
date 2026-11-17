@@ -202,6 +202,22 @@ def test_create_refuses_a_taken_name_before_uploading(uploads) -> None:
     clients.files.ApplyFileChanges.assert_not_called()
 
 
+def test_create_refuses_a_name_another_save_takes_first(uploads) -> None:
+    """Another create can put files in the folder after it was found empty; File Store then refuses the batch, and the
+    name is reported as taken.
+    """
+    client, clients = _client()
+    clients.files.ApplyFileChanges.side_effect = None
+    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+        results=[_refused(files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS)]
+    )
+
+    with pytest.raises(NominalAlreadyExistsError, match="already exists"):
+        client.create_skill(_SKILL_MD)
+
+    clients.skills.CreateSkill.assert_not_called()
+
+
 def test_create_saves_nothing_when_a_file_is_refused(uploads) -> None:
     """File Store saves a skill's files all or none, so a refused file leaves nothing to remove or register."""
     client, clients = _client()
@@ -258,6 +274,7 @@ def test_writes_without_the_edit_permission_save_nothing(uploads, fake_rpc_error
     """The skills service reports a user who can't edit the workspace's configuration as a missing workspace."""
     client, clients = _client()
     clients.skills.UpdateWorkspaceSkillsDrive.side_effect = fake_rpc_error(grpc.StatusCode.NOT_FOUND)
+    clients.files.ListFiles.return_value = _listing(_entry("rev-1"))
     skill = Skill._from_proto(clients, _proto_skill())
 
     with pytest.raises(NominalPermissionDeniedError):

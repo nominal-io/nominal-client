@@ -245,7 +245,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         """
         texts = {_reference_path(path): text for path, text in files.items()}
         folder = _SkillFolder.of(self._get_latest_api())
-        _save_folder(self._clients, self.workspace_rid, folder.name, drive_rid=folder.drive_rid, put=texts)
+        _save_changes(self._clients, self.workspace_rid, folder, _list_folder(self._clients, folder), put=texts)
         return self
 
     def remove_files(self, paths: Sequence[str]) -> Self:
@@ -264,7 +264,11 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         """
         targets = [_reference_path(path) for path in dict.fromkeys(paths)]
         folder = _SkillFolder.of(self._get_latest_api())
-        _save_folder(self._clients, self.workspace_rid, folder.name, drive_rid=folder.drive_rid, put={}, remove=targets)
+        current = _list_folder(self._clients, folder)
+        missing = [path for path in targets if path not in current]
+        if missing:
+            raise NominalNotFoundError(f"Skill {self.rid} has no file at {', '.join(missing)}")
+        _save_changes(self._clients, self.workspace_rid, folder, current, put={}, remove=targets)
         return self
 
     def archive(self) -> None:
@@ -324,18 +328,21 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         if latest.version != self.version:
             raise NominalConflictError(f"Skill {self.rid} changed since this object was fetched; refresh it")
         folder = _SkillFolder.of(latest)
-        rename_to = None if name == folder.name else name
-        if rename_to is not None and latest.state == skills_pb2.SKILL_STATE_ARCHIVED:
+        move_to = None if name == folder.name else _SkillFolder(drive_rid=folder.drive_rid, name=name)
+        if move_to is not None and latest.state == skills_pb2.SKILL_STATE_ARCHIVED:
             raise NominalError(f"Restore skill {self.rid} with unarchive() before renaming it")
-        _save_folder(
-            self._clients,
-            self.workspace_rid,
-            folder.name,
-            drive_rid=folder.drive_rid,
-            entry=latest.backing.file_store.entry_file_identity,
-            put={_ENTRY_FILE: content},
-            rename_to=rename_to,
-        )
+        current = _list_folder(self._clients, folder)
+        entry = current.get(_ENTRY_FILE)
+        if entry is None or entry.identity != latest.backing.file_store.entry_file_identity:
+            # A SKILL.md saved where the skill's was deleted, or over one re-created in Drives, is a different file
+            # from the one the skill's record points at, so the skill couldn't record it.
+            raise NominalNotFoundError(
+                f"The {_ENTRY_FILE} that skill {self.rid} points at is no longer in {folder.root}, for example because "
+                "it was deleted in Drives. Nothing was saved"
+            )
+        if move_to is not None and not _is_empty(self._clients, move_to):
+            raise NominalAlreadyExistsError(f"A skill named {name} already exists")
+        _save_changes(self._clients, self.workspace_rid, folder, current, put={_ENTRY_FILE: content}, move_to=move_to)
 
     def _update(
         self,
@@ -407,58 +414,32 @@ class _SkillFolder:
         return cls(drive_rid=backing.drive_rid, name=parts[1])
 
 
-def _save_folder(
+def _save_changes(
     clients: Skill._Clients,
     workspace_rid: str,
-    name: str,
+    folder: _SkillFolder,
+    current: Mapping[str, file_store_pb2.LogicalFile],
     *,
-    drive_rid: str | None = None,
-    new: bool = False,
-    entry: file_store_pb2.LogicalFileIdentity | None = None,
     put: Mapping[str, str],
     remove: Sequence[str] = (),
-    rename_to: str | None = None,
-) -> tuple[_SkillFolder, dict[str, file_store_pb2.LogicalFile]]:
-    """Change the files in the skill folder ``skills/<name>`` together or not at all, and return the folder and the
-    files it saved, by path in the folder.
+    move_to: _SkillFolder | None = None,
+) -> dict[str, file_store_pb2.LogicalFile]:
+    """Save the texts in `put` to `folder`, remove the files at `remove`, and then move the folder to `move_to`,
+    together or not at all, and return the files it saved, by path in the folder.
 
-    The folder is in the drive `drive_rid`, or by default in the workspace's skills drive, where new skills are saved.
-    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name. With
-    `entry`, the identity of the SKILL.md an existing skill's record points at, the folder's SKILL.md must be that file.
-
-    Each text in `put` replaces the file at its path as it is now, or is saved as a new file where there is none, which
-    File Store refuses if another save puts a file there first. Each path in `remove` is removed as it is now. With
-    `rename_to`, the folder then moves to ``skills/<rename_to>``.
+    `current` is the folder's files, as listed. Each text replaces the file at its path there, or is saved as a new file
+    where there is none, which File Store refuses if another save puts a file there first. Each path in `remove` must
+    be in `current`, and is removed as it was listed.
 
     Raises:
         ValueError: If there are more than 100 files to change. Nothing is uploaded.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration. Nothing is uploaded.
-        NominalAlreadyExistsError: If a new skill's folder, or the folder to rename to, has files. Nothing is changed.
-        NominalNotFoundError: If the folder has no file at a path in `remove`, or its SKILL.md isn't the `entry` file.
-            Nothing is uploaded.
+        NominalAlreadyExistsError: If another save takes `move_to` first. Nothing is changed.
         NominalConflictError: If another save changed or created one of the files first. Nothing is changed.
     """
     _require_one_batch(len(put) + len(remove))
     # Finding the skills drive also refuses a user who can't edit the workspace's configuration.
-    skills_drive_rid = _skills_drive_rid(clients, workspace_rid)
-    folder = _SkillFolder(drive_rid=skills_drive_rid if drive_rid is None else drive_rid, name=name)
-    current = _list_folder(clients, folder)
-    if new:
-        if current:
-            raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
-    elif entry is not None and (_ENTRY_FILE not in current or current[_ENTRY_FILE].identity != entry):
-        # A SKILL.md saved where the skill's was deleted, or over one re-created in Drives, is a different file from the
-        # one the skill's record points at, so the skill couldn't record it.
-        raise NominalNotFoundError(
-            f"The {_ENTRY_FILE} that skill {name} points at is no longer in {folder.root}, for example because it was "
-            "deleted in Drives. Nothing was saved"
-        )
-    missing = [path for path in remove if path not in current]
-    if missing:
-        raise NominalNotFoundError(f"Skill {name} has no file at {', '.join(missing)}")
-    target = None if rename_to is None else _SkillFolder(drive_rid=folder.drive_rid, name=rename_to)
-    if target is not None and not _is_empty(clients, target):
-        raise NominalAlreadyExistsError(f"A skill named {rename_to} already exists")
+    _skills_drive_rid(clients, workspace_rid)
 
     # Nothing is saved until the batch applies, so the uploads run at once.
     pool = ThreadPoolExecutor(max_workers=DEFAULT_NUM_WORKERS)
@@ -476,16 +457,16 @@ def _save_folder(
     for path in remove:
         removal = files_pb2.RemoveFile(revision_rid=current[path].current_revision.managed.file_revision_rid)
         changes.append((f"remove {path}", files_pb2.FileChange(remove=removal)))
-    if target is not None:
-        move = files_pb2.MoveDirectory(to=file_store_pb2.LogicalPath(path=target.root))
+    if move_to is not None:
+        move = files_pb2.MoveDirectory(to=file_store_pb2.LogicalPath(path=move_to.root))
         # The source field is named `from`, a Python keyword, so the constructor can't take it.
         getattr(move, "from").path = folder.root
-        changes.append((f"save the move to {target.root}", files_pb2.FileChange(move_directory=move)))
+        changes.append((f"save the move to {move_to.root}", files_pb2.FileChange(move_directory=move)))
     if not changes:
-        return folder, {}
+        return {}
     results = _apply(clients, folder.drive_rid, changes)
     # The puts come first in the batch, in the order of `put`.
-    return folder, {path: result.success.file for path, result in zip(keys, results)}
+    return {path: result.success.file for path, result in zip(keys, results)}
 
 
 def _apply(
@@ -547,7 +528,17 @@ def _create_skill(
     if enabled and description is None:
         raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to create the skill turned off")
     texts = {_ENTRY_FILE: content, **{_reference_path(path): text for path, text in (files or {}).items()}}
-    folder, saved = _save_folder(clients, workspace_rid, name, new=True, put=texts)
+    # Finding the skills drive also refuses a user who can't edit the workspace's configuration.
+    folder = _SkillFolder(drive_rid=_skills_drive_rid(clients, workspace_rid), name=name)
+    current = _list_folder(clients, folder)
+    # A folder with files but no SKILL.md is still taken by that name.
+    if current:
+        raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
+    try:
+        saved = _save_changes(clients, workspace_rid, folder, current, put=texts)
+    except NominalConflictError as e:
+        # Every put is a new file, so File Store refuses one only when another save put a file in the folder first.
+        raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}") from e
     backing = skills_pb2.FileStoreSkillBacking(entry_file_identity=saved[_ENTRY_FILE].identity)
     request = skills_pb2.CreateSkillRequest(
         skill=skills_pb2.Skill(workspace_rid=workspace_rid, backing=skills_pb2.SkillBacking(file_store=backing))
