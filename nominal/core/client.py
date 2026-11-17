@@ -1299,6 +1299,7 @@ class NominalClient:
 
         Raises:
             NominalNotFoundError: If the type does not exist or is not accessible.
+            ValueError: If a property value type or requirement is unknown to this client.
             NominalError: If the lookup fails.
         """
         return AssetType._from_proto(self._clients, _get_asset_type(self._clients, rid))
@@ -1317,6 +1318,8 @@ class NominalClient:
         accessible workspaces, or provide a workspace object or RID.
 
         Raises:
+            ValueError: If any result has a property value type or requirement unknown
+                to this client. The entire search fails rather than returning partial results.
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If the search fails.
         """

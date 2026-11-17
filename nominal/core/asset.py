@@ -29,7 +29,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated, search_runs_paginated
 from nominal.core._utils.properties import properties_from_proto, typed_property_update
 from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_runs_query
-from nominal.core.asset_type import AssetType
+from nominal.core.asset_type import AssetType, _get_asset_types
 from nominal.core.attachment import Attachment, _attachments_section, _get_accessible_attachments
 from nominal.core.dataset import Dataset, _create_dataset, _data_scope_nodes, _data_scopes_section
 from nominal.core.event import Event, _create_event, _search_events
@@ -161,15 +161,10 @@ class Asset(_DatasetScopeIngestMixin, HasRid, RefreshableGrpcMixin[asset_pb2.Ass
 
         Call ``refresh()`` first to fetch changed memberships. Missing or inaccessible
         definitions raise ``NominalNotFoundError`` rather than silently disappearing.
+        Unknown property value types or requirements raise ``ValueError`` for the
+        entire lookup; unsupported rules are not silently weakened.
         """
-        if not self.type_rids:
-            return []
-        with translate_grpc_errors():
-            response = self._clients.assets.GetTypes(asset_pb2.GetTypesRequest(rids=list(self.type_rids)))
-        missing = set(self.type_rids) - response.responses.keys()
-        if missing:
-            raise NominalNotFoundError(f"Asset types not found: {sorted(missing)!r}")
-        return [AssetType._from_proto(self._clients, response.responses[rid]) for rid in self.type_rids]
+        return [AssetType._from_proto(self._clients, raw) for raw in _get_asset_types(self._clients, self.type_rids)]
 
     def _get_latest_api(self) -> asset_pb2.Asset:
         return _get_asset(self._clients, self.rid)

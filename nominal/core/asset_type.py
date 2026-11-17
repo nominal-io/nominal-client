@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Self
+from typing import Iterable, Literal, Mapping, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
@@ -58,6 +58,10 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
 
     The primary key names a required nonempty string property, unique among active
     assets of this type. Other property definitions are stored in ``properties``.
+
+    Reading a definition with an unknown property value type or requirement raises
+    ``ValueError``, including during search, refresh, or update. Unsupported rules
+    are never interpreted as weaker constraints.
     """
 
     rid: str
@@ -149,11 +153,19 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
 
 
 def _get_asset_type(clients: AssetType._Clients, rid: str) -> asset_pb2.Type:
+    return _get_asset_types(clients, [rid])[0]
+
+
+def _get_asset_types(clients: AssetType._Clients, rids: Sequence[str]) -> Sequence[asset_pb2.Type]:
+    """Fetch all requested definitions in input order, failing if any are missing."""
+    if not rids:
+        return []
     with translate_grpc_errors():
-        response = clients.assets.GetTypes(asset_pb2.GetTypesRequest(rids=[rid]))
-    if rid not in response.responses:
-        raise NominalNotFoundError(f"No asset type found with RID {rid!r}")
-    return response.responses[rid]
+        response = clients.assets.GetTypes(asset_pb2.GetTypesRequest(rids=list(rids)))
+    missing = set(rids) - response.responses.keys()
+    if missing:
+        raise NominalNotFoundError(f"Asset types not found: {sorted(missing)!r}")
+    return [response.responses[rid] for rid in rids]
 
 
 def _search_asset_types(
