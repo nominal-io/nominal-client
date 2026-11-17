@@ -39,6 +39,14 @@ jobs:
           fi
           echo "SDK_VERSION=${TAG#v}" >> "$GITHUB_ENV"
           echo "BUNDLE=nominal-${TAG#v}-win-64-py3.12.tar.gz" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.8.x"
+          enable-cache: false
       - uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167 # v3
         with:
           miniforge-version: latest
@@ -49,10 +57,10 @@ jobs:
           conda install --yes --override-channels --channel conda-forge conda-pack
           conda create --yes --copy --no-default-packages --override-channels \
             --channel conda-forge --prefix "$RUNNER_TEMP/environment" python=3.12 pip
-          conda run --prefix "$RUNNER_TEMP/environment" python -m pip install \
-            --index-url https://pypi.org/simple --only-binary=:all: \
-            "nominal==$SDK_VERSION" numpy pandas scipy matplotlib plotly pyarrow \
-            openpyxl jupyterlab ipykernel nbconvert
+          # Read release dependencies without installing workspace packages from source.
+          uv pip install --python "$RUNNER_TEMP/environment/python.exe" \
+            --index-url https://pypi.org/simple --only-binary=:all: --no-sources \
+            --requirements pyproject.toml --all-extras --group dev "nominal==$SDK_VERSION"
           mkdir dist
           conda-pack --prefix "$RUNNER_TEMP/environment" --output "dist/$BUNDLE"
           cd dist
