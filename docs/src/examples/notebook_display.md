@@ -93,7 +93,7 @@ Each table becomes a [dataset](/guides/datasets/overview.md) on the rig, under i
 ```{code-cell} ipython3
 :tags: [hide-input]
 
-from nominal.thirdparty.pandas import upload_dataframe
+from nominal.pandas import upload_dataframe
 
 units = {"rotor_speed": "rad/s", "gearbox_temp": "°C", "accel_rms": "g"}
 for scope, table in tables.items():

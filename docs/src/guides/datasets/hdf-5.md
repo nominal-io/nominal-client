@@ -47,7 +47,7 @@ sensors/imu/time_s (10000,)
 
 ## Upload in batches
 
-Read a slice of each array into a pandas DataFrame and upload it with {py:func}`~nominal.thirdparty.pandas.upload_dataframe_to_dataset`.
+Read a slice of each array into a pandas DataFrame and upload it with {py:func}`~nominal.pandas.upload_dataframe_to_dataset`.
 Each batch adds to the same dataset.
 
 ```python
@@ -56,7 +56,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from nominal import ts
-from nominal.thirdparty.pandas import upload_dataframe_to_dataset
+from nominal.pandas import upload_dataframe_to_dataset
 
 dataset = client.create_dataset("IMU from HDF5")
 recording_start = datetime(2026, 9, 10, 14, 38, tzinfo=timezone.utc)

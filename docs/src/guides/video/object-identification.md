@@ -44,7 +44,7 @@ Convert the video first, as in [Video ingest](/guides/video/video-ingest.md#conv
 from datetime import datetime, timezone
 
 from nominal.experimental.video_processing import normalize_video
-from nominal.thirdparty.pandas import upload_dataframe
+from nominal.pandas import upload_dataframe
 
 dataset = upload_dataframe(
     client,

@@ -25,7 +25,7 @@
    nominal.io.testing
    nominal.io.instro
    nominal.thirdparty.matlab
-   nominal.thirdparty.pandas
+   nominal.pandas
    nominal.thirdparty.polars.polars_export_handler
    nominal.tdms
 

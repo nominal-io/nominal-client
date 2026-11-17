@@ -176,6 +176,7 @@ Overview <ref/index>
 Core <ref/core/index>
 Timestamps <ref/ts/index>
 io <ref/io/index>
+pandas <ref/pandas/index>
 Exceptions <ref/exceptions>
 ```
 

@@ -16,10 +16,10 @@ To download data from the terminal instead, see [Download data](/guides/cli/down
 
 ## Read a dataset into pandas
 
-{py:func}`~nominal.thirdparty.pandas.datasource_to_dataframe` returns a DataFrame indexed by timestamp, with one column per channel:
+{py:func}`~nominal.pandas.datasource_to_dataframe` returns a DataFrame indexed by timestamp, with one column per channel:
 
 ```python
-from nominal.thirdparty.pandas import datasource_to_dataframe
+from nominal.pandas import datasource_to_dataframe
 
 dataset = client.get_dataset("<DATASET_RID>")
 df = datasource_to_dataframe(dataset, channel_exact_match=["temperature"], start="2026-09-10T14:38:00Z")

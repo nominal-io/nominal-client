@@ -73,4 +73,5 @@ The instro readers take `chunksize`, the number of samples per piece. Each reade
 df = nominal.io.read("119.hea", start="2026-01-01T12:00:00Z", sampfrom=0, sampto=21_600)
 ```
 
+To filter, slice and reshape the DataFrame, use the [`df.nom` accessor](/ref/pandas/index.md#the-dfnom-accessor).
 To read a format that isn't installed, see [Add a file format](/guides/io/write-a-reader.md).

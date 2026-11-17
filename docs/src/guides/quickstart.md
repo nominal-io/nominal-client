@@ -114,7 +114,7 @@ Read more about [runs](/guides/runs.md) and [events](/guides/events.md).
 `datasource_to_dataframe` downloads channels into a pandas DataFrame indexed by timestamp.
 
 ```python
-from nominal.thirdparty.pandas import datasource_to_dataframe
+from nominal.pandas import datasource_to_dataframe
 
 df = datasource_to_dataframe(dataset, channel_exact_match=["rpm"])
 print(df.describe())

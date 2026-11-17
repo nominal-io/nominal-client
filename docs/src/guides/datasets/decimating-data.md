@@ -21,7 +21,7 @@ The chart needs `pip install plotly`, and zooming needs `ipywidgets` in [Jupyter
 ## Upload sample data
 
 One hour of a 200 Hz signal is 720,000 points.
-This example generates one, with a few spikes, and uploads it with {py:func}`~nominal.thirdparty.pandas.upload_dataframe`:
+This example generates one, with a few spikes, and uploads it with {py:func}`~nominal.pandas.upload_dataframe`:
 
 ```python
 from datetime import datetime, timedelta, timezone
@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from nominal.thirdparty.pandas import upload_dataframe
+from nominal.pandas import upload_dataframe
 
 start = datetime(2026, 9, 10, 14, 0, tzinfo=timezone.utc)
 end = start + timedelta(hours=1)
@@ -45,10 +45,10 @@ channel = dataset.get_channel("value")
 
 ## Read decimated data
 
-{py:func}`~nominal.thirdparty.pandas.channel_to_dataframe_decimated` returns one row per bucket:
+{py:func}`~nominal.pandas.channel_to_dataframe_decimated` returns one row per bucket:
 
 ```python
-from nominal.thirdparty.pandas import channel_to_dataframe_decimated
+from nominal.pandas import channel_to_dataframe_decimated
 
 df = channel_to_dataframe_decimated(channel, start, end, buckets=2000)
 ```

@@ -153,10 +153,10 @@ We may now be curious to inspect the data we uploaded. This is perhaps easiest d
 An analysis usually starts from a run, retrieved by the RID on its page in Nominal.
 {py:meth}`~nominal.core.Run.list_assets` returns the run's asset, and {py:meth}`~nominal.core.Asset.get_dataset` returns its `telemetry` dataset.
 The dataset holds every test on the helicopter, so read it between the run's start and end to get this test only.
-{py:func}`~nominal.thirdparty.pandas.datasource_to_dataframe` downloads that slice of the `rotor_speed` channel into a pandas DataFrame:
+{py:func}`~nominal.pandas.datasource_to_dataframe` downloads that slice of the `rotor_speed` channel into a pandas DataFrame:
 
 ```{code-cell} python
-from nominal.thirdparty.pandas import datasource_to_dataframe
+from nominal.pandas import datasource_to_dataframe
 
 run = client.get_run(run.rid)  # in practice, the RID from the run's page
 helicopter: Asset = run.list_assets()[0]
