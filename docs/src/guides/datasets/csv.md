@@ -31,7 +31,7 @@ file.poll_until_ingestion_completed()
 CSV files must use commas between values and periods for decimals, such as `3.14`.
 Convert files that use semicolons and decimal commas, such as `3,14`, before you upload them.
 
-To upload a pandas DataFrame without writing a file, use {py:func}`~nominal.thirdparty.pandas.upload_dataframe_to_dataset`.
+To upload a pandas DataFrame without writing a file, use {py:func}`~nominal.pandas.upload_dataframe_to_dataset`.
 
 ## Timestamp formats
 
