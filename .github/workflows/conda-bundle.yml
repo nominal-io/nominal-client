@@ -1,0 +1,83 @@
+name: Publish Conda bundle
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Published SDK release tag (e.g. v1.180.1)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published SDK release tag (e.g. v1.180.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conda-bundle-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - name: Validate release tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable SDK release tag such as v1.180.1" >&2
+            exit 1
+          fi
+          echo "SDK_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "BUNDLE=nominal-${TAG#v}-win-64-py3.12.tar.gz" >> "$GITHUB_ENV"
+      - uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167 # v3
+        with:
+          miniforge-version: latest
+          activate-environment: bundle-tools
+          python-version: '3.12'
+      - name: Create and pack environment
+        run: |
+          conda install --yes --override-channels --channel conda-forge conda-pack
+          conda create --yes --copy --no-default-packages --override-channels \
+            --channel conda-forge --prefix "$RUNNER_TEMP/environment" python=3.12 pip
+          conda run --prefix "$RUNNER_TEMP/environment" python -m pip install \
+            --index-url https://pypi.org/simple --only-binary=:all: \
+            "nominal==$SDK_VERSION" numpy pandas scipy matplotlib plotly pyarrow \
+            openpyxl jupyterlab ipykernel nbconvert
+          mkdir dist
+          conda-pack --prefix "$RUNNER_TEMP/environment" --output "dist/$BUNDLE"
+          cd dist
+          sha256sum "$BUNDLE" > "$BUNDLE.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: conda-bundle
+          path: dist/*
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  attach:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: conda-bundle
+          path: dist
+      - name: Attach bundle to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/*
