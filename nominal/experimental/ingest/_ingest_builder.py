@@ -84,7 +84,7 @@ def _source_path(source: PathLike | DriveFileRevision) -> Path:
 def _prepare_source(source: PathLike | DriveFileRevision, file_type: FileType) -> _Source:
     """Keep remote revisions as references and register local files for upload."""
     if isinstance(source, DriveFileRevision):
-        if source.state != DriveFileState.ACTIVE:
+        if source.state is DriveFileState.REMOVED:
             raise ValueError("cannot ingest a removal revision; select a revision with content")
         return source
     return _PendingFile(Path(source), file_type)

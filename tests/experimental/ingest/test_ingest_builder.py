@@ -498,8 +498,10 @@ def drive_revision() -> DriveFileRevision:
     )
 
 
-def test_drive_revision_bypasses_upload(drive_revision: DriveFileRevision) -> None:
-    """A Drive-only job keeps the revision identity, format options, and tags without uploading."""
+@pytest.mark.parametrize("state", [DriveFileState.ACTIVE, DriveFileState.UNKNOWN])
+def test_drive_revision_bypasses_upload(drive_revision: DriveFileRevision, state: DriveFileState) -> None:
+    """Active and unknown revisions reach the service by RID without uploading their content."""
+    drive_revision = dataclasses.replace(drive_revision, state=state)
     client = MagicMock()
     builder = IngestBuilder(client, "dataset", tags={"campaign": "test"})
     builder.add_tabular_data(drive_revision, "time", "epoch_seconds", tags={"sensor": "pressure"})

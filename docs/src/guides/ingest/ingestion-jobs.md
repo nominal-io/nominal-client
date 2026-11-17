@@ -89,8 +89,9 @@ job = (
 
 Choose the revision explicitly: subsequent changes to the Drive file do not change the
 registered input. Format inference uses the revision's recorded path. A removal revision
-has no content and is rejected when added. The service checks access and whether the
-revision's content is still retained.
+has no content and is rejected when added. Unknown revision states are passed through for
+the service to validate. The service also checks access and whether the revision's content
+is still retained.
 
 This input accepts managed file revisions; virtual Drive files and bare revision RIDs are
 not accepted. Uploading to a Drive alone does not submit an ingest job.
