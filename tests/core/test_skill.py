@@ -251,6 +251,23 @@ def test_create_removes_the_revisions_it_saved_when_the_skill_cant_be_registered
     assert not getattr(raised.value, "__notes__", [])
 
 
+@pytest.mark.parametrize("code", [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE])
+def test_create_keeps_its_files_when_its_unknown_whether_the_skill_was_registered(
+    uploads, fake_rpc_error, code
+) -> None:
+    """After a timeout or outage the skill may be registered, so create keeps its files and says so."""
+    client, clients = _client()
+    clients.skills.CreateSkill.side_effect = fake_rpc_error(code)
+
+    with pytest.raises(NominalError) as raised:
+        client.create_skill(_SKILL_MD)
+
+    assert clients.files.ApplyFileChanges.call_count == 1
+    (note,) = raised.value.__notes__
+    assert "unknown whether the skill was created" in note
+    assert f"still in {_FOLDER}" in note
+
+
 def test_create_says_where_its_files_are_when_removing_them_is_refused(uploads, fake_rpc_error) -> None:
     """File Store removes the files all or none, so a refused removal leaves every file, and the error says where."""
     client, clients = _client()
@@ -734,6 +751,20 @@ def test_export_refuses_a_path_that_could_leave_the_folder(downloads, tmp_path: 
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("path", ["C:x.md", "C:/Users/x.md", "notes:hidden.md"])
+def test_export_on_windows_refuses_a_drive_or_a_stream(downloads, tmp_path: Path, monkeypatch, path) -> None:
+    """Windows reads a colon as a drive or a file's hidden stream, so export writes nothing for such a path there."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/{path}", "rev-x"))
+    monkeypatch.setattr("nominal.core.skill._ON_WINDOWS", True)
+
+    with pytest.raises(ValueError):
+        skill.export(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_unarchive_checks_the_current_state_before_restoring() -> None:
     """Restoring reads the skill's current state, so a stale snapshot neither blocks a restore nor turns a skill off."""
     clients = _skill_clients()
@@ -833,6 +864,26 @@ def test_import_saves_skill_md_unchanged_and_skips_hidden_paths(uploads, tmp_pat
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
     assert uploads[puts[0].object.object_key] == _SKILL_MD.encode()
+
+
+def test_import_skips_links_that_can_lead_outside_the_folder(uploads, tmp_path: Path) -> None:
+    """A link in a folder can point anywhere, such as a key in the home folder, so links and what they reach are
+    skipped.
+    """
+    client, clients = _client()
+    folder = tmp_path / "post-test-review"
+    _write_skill_folder(folder)
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "key.md").write_text("secret")
+    (folder / "methods" / "key.md").symlink_to(secrets / "key.md")
+    (folder / "linked").symlink_to(secrets, target_is_directory=True)
+
+    client.import_skill(folder)
+
+    puts = _puts(clients)
+    assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
+    assert b"secret" not in uploads.values()
 
 
 def test_import_reads_the_folder_holding_a_zips_skill_md(uploads, tmp_path: Path) -> None:

@@ -630,9 +630,10 @@ class NominalClient:
         name in SKILL.md's frontmatter, and the skill is registered from that SKILL.md. An enabled skill reaches
         every Analyst user and connected agent in the workspace.
 
-        If a file can't be saved, or the skill can't be registered, the files this call saved are removed; if they
-        can't be removed, the error's notes say where they are. If the skill can't be turned on, for example because
-        SKILL.md isn't valid, it stays as a draft and the error's notes give its RID.
+        If a file can't be saved, or the skills service refuses the skill, the files this call saved are removed; if
+        they can't be removed, the error's notes say where they are. If it's unknown whether the skill was registered,
+        as after a timeout, the files stay and the error's notes say so. If the skill can't be turned on, for example
+        because SKILL.md isn't valid, it stays as a draft and the error's notes give its RID.
 
         Args:
             content: The skill's SKILL.md, frontmatter included. Its frontmatter names and describes the skill.

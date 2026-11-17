@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import zipfile
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -300,7 +301,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
         Raises:
             ValueError: If a file's path could lead outside the skill's folder on this system, such as a path with a
-                backslash. Nothing is written.
+                backslash or, on Windows, a drive or a colon. Nothing is written.
             FileExistsError: If `path` already has an entry with the skill's name.
             NominalError: If one of the skill's files is not UTF-8 text.
             requests.RequestException: If downloading a file fails.
@@ -310,13 +311,12 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         if target.exists():
             raise FileExistsError(f"{target} already exists")
         files = _list_folder(self._clients, folder)
-        # File Store accepts backslashes in paths, which Windows reads as separators, so check every path before
-        # reading or writing any file.
-        for file_path in files:
-            _file_path(file_path)
+        # File Store accepts paths this system may read as leaving the folder, so check every path before reading or
+        # writing any file.
+        destinations = {file_path: _export_destination(target, file_path) for file_path in files}
         texts = {file_path: _read_text(self._clients, file) for file_path, file in files.items()}
         for file_path, text in texts.items():
-            destination = target / file_path
+            destination = destinations[file_path]
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(text.encode("utf-8"))
         return target
@@ -516,6 +516,19 @@ def _refusal(label: str, change: files_pb2.FileChange, failure: files_pb2.FileCh
     return NominalError(message)
 
 
+# Refusals the skills service makes before it registers a skill, after which a failed create removes its files.
+_CREATE_REFUSALS = frozenset(
+    {
+        grpc.StatusCode.INVALID_ARGUMENT,
+        grpc.StatusCode.FAILED_PRECONDITION,
+        grpc.StatusCode.ALREADY_EXISTS,
+        grpc.StatusCode.PERMISSION_DENIED,
+        grpc.StatusCode.UNAUTHENTICATED,
+        grpc.StatusCode.NOT_FOUND,
+    }
+)
+
+
 def _create_skill(
     clients: Skill._Clients,
     *,
@@ -547,6 +560,15 @@ def _create_skill(
         with translate_grpc_errors():
             skill = Skill._from_proto(clients, clients.skills.CreateSkill(request).skill)
     except NominalError as e:
+        cause = e.__cause__
+        if not (isinstance(cause, grpc.RpcError) and cause.code() in _CREATE_REFUSALS):
+            # The skill may be registered, as after a timeout, so its files stay.
+            e.add_note(
+                f"It's unknown whether the skill was created, so the files this call saved are still in {folder.root} "
+                f"in the skills drive of workspace {workspace_rid}. Look for skill {name} with search_skills() before "
+                "creating it again."
+            )
+            raise
         # Remove the revisions this call saved, so the name is free to use again. File Store refuses to remove a file
         # that another save has changed since, and then removes none.
         removals = [
@@ -660,6 +682,23 @@ def _file_path(path: str) -> str:
     return path
 
 
+_ON_WINDOWS = os.name == "nt"
+
+
+def _export_destination(target: Path, path: str) -> Path:
+    """Where the file at `path` in a skill's folder is written under `target` on this system.
+
+    Raises:
+        ValueError: If the path could lead outside `target` here: a path with a backslash, or on Windows a drive or a
+            colon, which names a drive or a file's hidden stream.
+    """
+    relative = Path(_file_path(path))
+    destination = target / relative
+    if relative.anchor or (_ON_WINDOWS and ":" in path) or not destination.resolve().is_relative_to(target.resolve()):
+        raise ValueError(f"Not a path inside the skill's folder on this system: {path!r}")
+    return destination
+
+
 def _reference_path(path: str) -> str:
     if _file_path(path) == _ENTRY_FILE:
         raise ValueError("SKILL.md is not a reference file; change it with Skill.update(content=...)")
@@ -763,13 +802,18 @@ def _read_skill_folder(path: Path) -> dict[str, str]:
     """A skill folder's files as text, keyed by path inside the folder, as the app's Import Skills reads them.
 
     The folder is `path` itself, or in a .zip the folder holding its shallowest SKILL.md. Paths with a part that
-    starts with "." are skipped, such as `.git` and macOS's `._*` copies.
+    starts with "." are skipped, such as `.git` and macOS's `._*` copies. In a folder, symbolic links and the files
+    reached through them are skipped too, since a link can lead outside the folder.
     """
     if path.is_dir():
+        root = path.resolve()
         contents = {
             file.relative_to(path).as_posix(): file.read_bytes()
             for file in sorted(path.rglob("*"))
-            if file.is_file() and _is_importable(file.relative_to(path).as_posix())
+            if file.is_file()
+            and not file.is_symlink()
+            and file.resolve().is_relative_to(root)
+            and _is_importable(file.relative_to(path).as_posix())
         }
     else:
         with zipfile.ZipFile(path) as archive:
