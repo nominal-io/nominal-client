@@ -21,7 +21,7 @@ df = nominal.io.read("<path to file>")
 ```
 
 The DataFrame has one row per sample, sorted by time, with `timestamp`, `channel`, `value` and `tags` columns.
-The [reference](/ref/io/index.md#frame-layout) describes each column.
+The [reference](/ref/io/index.md) describes each column.
 
 Pass `engine="polars"` to get a polars DataFrame instead. Its layout is experimental and may change.
 
@@ -49,7 +49,7 @@ If it still can't tell, it raises an error that names the candidates. Pass the f
 df = nominal.io.read("<path to file>", format="<format name>")
 ```
 
-The [reference](/ref/io/index.md#how-a-format-is-chosen) gives the exact rules.
+The [reference](/ref/io/index.md) gives the exact rules.
 
 ## Read a large file in pieces
 

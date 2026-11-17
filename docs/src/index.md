@@ -175,7 +175,7 @@ examples/*
 Overview <ref/index>
 Core <ref/core/index>
 Timestamps <ref/ts/index>
-I/O <ref/io/index>
+io <ref/io/index>
 Exceptions <ref/exceptions>
 ```
 
