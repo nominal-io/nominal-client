@@ -3,12 +3,20 @@ name: Publish Conda bundle
 on:
   workflow_call:
     inputs:
+      publish:
+        description: Attach the bundle to the GitHub release
+        type: boolean
+        default: true
       tag:
         description: Published SDK release tag (e.g. v1.180.1)
         required: true
         type: string
   workflow_dispatch:
     inputs:
+      publish:
+        description: Attach the bundle to the GitHub release
+        type: boolean
+        default: false
       tag:
         description: Published SDK release tag (e.g. v1.180.1)
         required: true
@@ -75,6 +83,7 @@ jobs:
 
   attach:
     needs: build
+    if: inputs.publish
     runs-on: ubuntu-24.04
     permissions:
       contents: write
