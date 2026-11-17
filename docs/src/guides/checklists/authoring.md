@@ -86,7 +86,8 @@ For live data, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 | `event_type` | {py:class}`~nominal.core.EventType` of the events the check creates. `UNKNOWN` isn't allowed. | `ERROR` |
 | `event_labels` | Labels on the events the check creates. | None |
 
-A checklist can set priority instead of the check. The first one set is published:
+A checklist can set or override a check's priority. If priority is set in more than one place,
+the first in this list wins:
 
 1. `priority` passed to `add`
 2. the check's own `priority`
