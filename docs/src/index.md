@@ -107,6 +107,7 @@ Avro streams <guides/datasets/avro-streams>
 
 Runs <guides/runs>
 Assets <guides/assets>
+Asset types <guides/assets/asset-types>
 Workbooks <guides/workbooks>
 Events <guides/events>
 ```

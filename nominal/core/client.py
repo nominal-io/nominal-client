@@ -65,6 +65,7 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset, _get_assets
+from nominal.core.asset_type import AssetType, AssetTypeProperty, _get_asset_type, _search_asset_types
 from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.container_image import (
@@ -1262,6 +1263,75 @@ class NominalClient:
             )
         return [Unit._from_proto(unit) for unit in response.units]
 
+    def create_asset_type(
+        self,
+        name: str,
+        *,
+        primary_key: str,
+        properties: Mapping[str, AssetTypeProperty] | None = None,
+        description: str | None = None,
+        icon_name: str | None = None,
+    ) -> AssetType:
+        """Create an asset type in this client's default workspace.
+
+        ``primary_key`` names the required string property identifying each member.
+        Do not repeat it in ``properties``, which defines other required or suggested
+        string/numeric properties. Each call creates a new type; names are not identities.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If the definition is invalid or creation fails.
+        """
+        request = asset_pb2.CreateTypeRequest(
+            name=name,
+            primary_key=primary_key,
+            description=description,
+            icon_name=icon_name,
+            property_configs={key: value._to_proto() for key, value in (properties or {}).items()},
+            workspace=self._clients.resolve_default_workspace_rid(),
+        )
+        with translate_grpc_errors():
+            response = self._clients.assets.CreateType(request)
+        return AssetType._from_proto(self._clients, response.type)
+
+    def get_asset_type(self, rid: str) -> AssetType:
+        """Retrieve an asset type, including an archived type.
+
+        Raises:
+            NominalNotFoundError: If the type does not exist or is not accessible.
+            ValueError: If a property value type or requirement is unknown to this client.
+            NominalError: If the lookup fails.
+        """
+        return AssetType._from_proto(self._clients, _get_asset_type(self._clients, rid))
+
+    def search_asset_types(
+        self,
+        search_text: str | None = None,
+        *,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    ) -> Sequence[AssetType]:
+        """Find asset types, newest first, across all result pages.
+
+        Search text and workspace filters are ANDed. By default, search active types
+        in the client's default workspace. Use ``WorkspaceSearchType.ALL`` for all
+        accessible workspaces, or provide a workspace object or RID.
+
+        Raises:
+            ValueError: If any result has a property value type or requirement unknown
+                to this client. The entire search fails rather than returning partial results.
+            NominalConfigError: If the default workspace cannot be resolved.
+            NominalError: If the search fails.
+        """
+        return list(
+            _search_asset_types(
+                self._clients,
+                search_text,
+                self._workspace_rid_for_search(workspace),
+                archive_status,
+            )
+        )
+
     def create_asset(
         self,
         name: str,
@@ -1269,6 +1339,7 @@ class NominalClient:
         *,
         properties: NominalProperties | None = None,
         labels: Sequence[str] = (),
+        types: Sequence[AssetType | str] = (),
     ) -> Asset:
         """Create an asset.
 
@@ -1278,6 +1349,8 @@ class NominalClient:
             properties: String or numeric properties for the created asset.
                 Integers are stored as floats.
             labels: Labels to apply to the asset.
+            types: Asset-type objects or RIDs to assign. Properties must satisfy every
+                selected type, including its required nonempty string primary key.
 
         Raises:
             TypeError: If a property value is a boolean or is not a string, integer, or float.
@@ -1289,6 +1362,7 @@ class NominalClient:
             labels=list(labels),
             typed_properties=typed_properties_to_proto(properties),
             title=name,
+            types=[rid_from_instance_or_string(kind) for kind in types],
             workspace=self._clients.resolve_default_workspace_rid(),
         )
         with translate_grpc_errors():
@@ -1342,6 +1416,68 @@ class NominalClient:
 
         return self.create_asset(name=name, description=description, properties=properties, labels=labels)
 
+    def create_or_update_asset_by_primary_key(
+        self,
+        asset_type: AssetType | str,
+        *,
+        name: str,
+        properties: NominalProperties,
+        update_if_exists: bool = False,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        types: Sequence[AssetType | str] = (),
+    ) -> Asset:
+        """Atomically create or resolve an active asset by its type's identity key.
+
+        ``properties`` must include the type's primary-key property as a nonempty
+        string. Concurrent calls with the same identity resolve to one active asset.
+        Archived assets are ignored, so their identity may create a new active asset.
+        Uses this client's default workspace. Returns a fresh snapshot without
+        refreshing previously retrieved asset objects.
+
+        Args:
+            asset_type: Type whose primary key identifies the asset; always assigned.
+            name: Name for a newly created or replaced asset.
+            properties: Complete properties, including all required type properties.
+            update_if_exists: Defaults to False, returning an existing asset unchanged.
+                True replaces its name, description, properties, labels and memberships.
+            description: Description for creation or replacement. Omitting it clears
+                the description when replacing an existing asset.
+            labels: Complete labels for creation or replacement. Defaults to no labels.
+            types: Additional memberships, alongside ``asset_type``. Include every
+                membership you want to retain when ``update_if_exists=True``.
+
+        Warning:
+            ``update_if_exists=True`` is replacement, not a patch. It also clears existing links
+            and legacy data scopes, which this method does not supply. Attached data
+            and attachments are preserved by the server. Use ``asset.update()`` for
+            partial metadata edits on an existing asset.
+
+        Returns:
+            The created, unchanged, or replaced asset snapshot.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+            NominalError: If properties violate the type or the operation fails.
+        """
+        type_rid = rid_from_instance_or_string(asset_type)
+        type_rids = list(dict.fromkeys([type_rid, *(rid_from_instance_or_string(kind) for kind in types)]))
+        request = asset_pb2.CreateOrUpdateAssetByPrimaryKeyRequest(
+            type_rid=type_rid,
+            if_exists=asset_pb2.UPDATE_EXISTING if update_if_exists else asset_pb2.RETURN_EXISTING,
+            asset=asset_pb2.CreateAssetRequest(
+                title=name,
+                description=description,
+                typed_properties=typed_properties_to_proto(properties),
+                labels=list(labels),
+                types=type_rids,
+                workspace=self._clients.resolve_default_workspace_rid(),
+            ),
+        )
+        with translate_grpc_errors():
+            response = self._clients.assets.CreateOrUpdateAssetByPrimaryKey(request)
+        return Asset._from_proto(self._clients, response.asset)
+
     def _iter_search_assets(
         self,
         query: asset_pb2.SearchAssetsQuery,
@@ -1355,19 +1491,24 @@ class NominalClient:
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
+        types: Sequence[AssetType | str] | None = None,
         properties: NominalProperties | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
-        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
+
+        Separate filters are ANDed together. Within ``types``, membership in ANY
+        selected type is sufficient; within ``labels`` and ``properties``, ALL
+        supplied values must match.
 
         Args:
             search_text: Fuzzy match: tokenized across name, description, labels, and properties, with additional
                 substring and similarity matching on name and description, so results need not contain the given
                 text verbatim.
-            labels: A sequence of labels that must ALL be present on a asset to be included.
+            types: Match ANY selected type. None omits the filter; an empty sequence matches no assets.
+            labels: A sequence of labels that must ALL be present on an asset to be included.
             properties: Property equalities that must ALL match. String values match string properties;
                 numeric values match numeric properties, without coercing strings to numbers.
                 Integer values are converted to floats.
@@ -1393,6 +1534,7 @@ class NominalClient:
         """
         query = create_search_assets_query(
             search_text=search_text,
+            type_rids=None if types is None else [rid_from_instance_or_string(kind) for kind in types],
             labels=labels,
             properties=properties,
             exact_substring=exact_substring,
