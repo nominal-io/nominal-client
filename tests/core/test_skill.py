@@ -42,13 +42,18 @@ def _ref(revision: str) -> file_store_pb2.FileRevisionRef:
     return file_store_pb2.FileRevisionRef(managed=file_store_pb2.ManagedFileRevisionRef(file_revision_rid=revision))
 
 
-def _file(path: str, revision: str, size_bytes: int = 1) -> file_store_pb2.LogicalFile:
+def _file(path: str, revision: str, size_bytes: int = 1, identity: str | None = None) -> file_store_pb2.LogicalFile:
     return file_store_pb2.LogicalFile(
-        identity=_identity(revision),
+        identity=_identity(revision if identity is None else identity),
         path=file_store_pb2.LogicalPath(path=path),
         size_bytes=size_bytes,
         current_revision=_ref(revision),
     )
+
+
+def _entry(revision: str) -> file_store_pb2.LogicalFile:
+    """The skill's SKILL.md: the file its record points at."""
+    return _file(f"{_FOLDER}/SKILL.md", revision, identity="entry")
 
 
 def _saved(path: str, revision: str) -> files_pb2.FileChangeResult:
@@ -335,7 +340,7 @@ def test_a_description_is_text_of_1_to_1024_characters(uploads, description) -> 
     [
         (_listing(), lambda client, skill: client.create_skill(_UNDESCRIBED_MD, enabled=False)),
         (
-            _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1")),
+            _listing(_entry("rev-1")),
             lambda client, skill: skill.update(content=_UNDESCRIBED_MD, enabled=False),
         ),
     ],
@@ -391,7 +396,7 @@ def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> No
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1"))
+    clients.files.ListFiles.return_value = _listing(_entry("rev-1"))
     clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/SKILL.md", "rev-2")]
     )
@@ -411,15 +416,23 @@ def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> No
     assert clients.skills.UpdateWorkspaceSkillsDrive.call_count == 1
 
 
-def test_content_update_refuses_a_skill_whose_skill_md_was_deleted(uploads) -> None:
-    """The skill's record points at its SKILL.md, so a new SKILL.md saved where it was deleted would go unrecorded;
-    the update raises before uploading anything.
+@pytest.mark.parametrize(
+    "listing",
+    [
+        _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a")),
+        _listing(_file(f"{_FOLDER}/SKILL.md", "rev-new"), _file(f"{_FOLDER}/methods/a.md", "rev-a")),
+    ],
+    ids=["deleted", "deleted and re-created"],
+)
+def test_content_update_refuses_a_skill_md_the_skill_does_not_point_at(uploads, listing) -> None:
+    """The skill's record points at its SKILL.md, so a SKILL.md saved where it was deleted, or over one re-created in
+    Drives, would go unrecorded; the update raises before uploading anything.
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.files.ListFiles.return_value = listing
 
-    with pytest.raises(NominalNotFoundError, match="no SKILL.md"):
+    with pytest.raises(NominalNotFoundError, match="no longer in"):
         skill.update(content=_SKILL_MD)
 
     assert uploads == {}
@@ -446,7 +459,7 @@ def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(upload
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1"))})
+    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
     clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[
             _saved(f"{_FOLDER}/SKILL.md", "rev-2"),
@@ -480,7 +493,7 @@ def test_refused_move_saves_nothing(uploads, error, raised) -> None:
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1"))})
+    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
     clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_BATCH_FAILURE, _refused(error)]
     )
@@ -510,7 +523,7 @@ def test_rename_to_a_taken_name_saves_nothing(uploads) -> None:
     skill = Skill._from_proto(clients, _proto_skill())
     clients.files.ListFiles.side_effect = _list_folders(
         {
-            _FOLDER: _listing(_file(f"{_FOLDER}/SKILL.md", "rev-1")),
+            _FOLDER: _listing(_entry("rev-1")),
             "skills/flight-review": _listing(_file("skills/flight-review/SKILL.md", "rev-x")),
         }
     )

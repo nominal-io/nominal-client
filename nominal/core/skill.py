@@ -200,8 +200,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             NominalConflictError: If the skill changed since this object was fetched or last refreshed, or SKILL.md
                 changed while it was being saved. Nothing is saved.
             NominalAlreadyExistsError: If a skill already has the new name. Nothing is saved.
-            NominalNotFoundError: If `content` is given and the skill's folder has no SKILL.md, for example because
-                it was deleted in Drives. Nothing is saved.
+            NominalNotFoundError: If `content` is given and the SKILL.md the skill points at is no longer in its
+                folder, for example because it was deleted, or deleted and re-created, in Drives. Nothing is saved.
         """
         if content is None and enabled is None:
             return self.refresh()
@@ -332,6 +332,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             self.workspace_rid,
             folder.name,
             drive_rid=folder.drive_rid,
+            entry=latest.backing.file_store.entry_file_identity,
             put={_ENTRY_FILE: content},
             rename_to=rename_to,
         )
@@ -413,6 +414,7 @@ def _save_folder(
     *,
     drive_rid: str | None = None,
     new: bool = False,
+    entry: file_store_pb2.LogicalFileIdentity | None = None,
     put: Mapping[str, str],
     remove: Sequence[str] = (),
     rename_to: str | None = None,
@@ -421,8 +423,8 @@ def _save_folder(
     files it saved, by path in the folder.
 
     The folder is in the drive `drive_rid`, or by default in the workspace's skills drive, where new skills are saved.
-    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name. An
-    existing skill's SKILL.md is only replaced, since the skill's record points at that file.
+    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name. With
+    `entry`, the identity of the SKILL.md an existing skill's record points at, the folder's SKILL.md must be that file.
 
     Each text in `put` replaces the file at its path as it is now, or is saved as a new file where there is none, which
     File Store refuses if another save puts a file there first. Each path in `remove` is removed as it is now. With
@@ -432,8 +434,8 @@ def _save_folder(
         ValueError: If there are more than 100 files to change. Nothing is uploaded.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration. Nothing is uploaded.
         NominalAlreadyExistsError: If a new skill's folder, or the folder to rename to, has files. Nothing is changed.
-        NominalNotFoundError: If the folder has no file at a path in `remove`, or an existing skill's folder has no
-            SKILL.md to replace. Nothing is uploaded.
+        NominalNotFoundError: If the folder has no file at a path in `remove`, or its SKILL.md isn't the `entry` file.
+            Nothing is uploaded.
         NominalConflictError: If another save changed or created one of the files first. Nothing is changed.
     """
     _require_one_batch(len(put) + len(remove))
@@ -444,9 +446,13 @@ def _save_folder(
     if new:
         if current:
             raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
-    elif _ENTRY_FILE in put and _ENTRY_FILE not in current:
-        # A SKILL.md saved in place of a deleted one would be a new file, which the skill's record doesn't point at.
-        raise NominalNotFoundError(f"Skill {name} has no {_ENTRY_FILE} in {folder.root}. Nothing was saved")
+    elif entry is not None and (_ENTRY_FILE not in current or current[_ENTRY_FILE].identity != entry):
+        # A SKILL.md saved where the skill's was deleted, or over one re-created in Drives, is a different file from the
+        # one the skill's record points at, so the skill couldn't record it.
+        raise NominalNotFoundError(
+            f"The {_ENTRY_FILE} that skill {name} points at is no longer in {folder.root}, for example because it was "
+            "deleted in Drives. Nothing was saved"
+        )
     missing = [path for path in remove if path not in current]
     if missing:
         raise NominalNotFoundError(f"Skill {name} has no file at {', '.join(missing)}")
