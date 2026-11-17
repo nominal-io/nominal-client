@@ -17,6 +17,7 @@ from nominal.core._utils.multipart_downloader import (
     _DataChunkBounds,
     _PlannedDownload,
 )
+from nominal.exceptions import NominalDownloadRangeError, NominalError
 
 
 def _provider() -> PresignedURLProvider:
@@ -275,10 +276,11 @@ def test_fetch_range_bytes_stops_at_once_when_the_server_ignores_range(
     response.raw.stream.side_effect = whole_object
     mock_downloader.get.return_value = response
 
-    with pytest.raises(RuntimeError, match="may not support ranged downloads"):
+    with pytest.raises(NominalDownloadRangeError, match="may not support ranged downloads") as exc_info:
         downloader._fetch_range_bytes(_provider(), 4, 7, None, dest)
 
     assert mock_downloader.get.call_count == 1
+    assert isinstance(exc_info.value, NominalError)
     assert served == [b"abcd", b"efgh"]
     assert dest.read_bytes() == b"\x00" * 8
 

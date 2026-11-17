@@ -53,6 +53,13 @@ class NominalChecklistNotPublishedError(NominalError, ValueError):
     """
 
 
+class NominalDownloadRangeError(NominalError):
+    """A download response exceeded the requested byte range.
+
+    The oversized part is not written or retried; the server may not support ranged downloads.
+    """
+
+
 class NominalMultipartUploadError(NominalError):
     """A single failed multipart upload attempt."""
 
