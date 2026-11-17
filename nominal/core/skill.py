@@ -117,7 +117,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
 
     class _Clients(HasScoutParams, Protocol):
         @property
-        def files(self) -> files_pb2_grpc.FilesServiceStub: ...
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
         @property
         def skills(self) -> skills_pb2_grpc.SkillsServiceStub: ...
         @property
@@ -146,7 +146,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             identity=self._get_latest_api().backing.file_store.entry_file_identity
         )
         with translate_grpc_errors():
-            entry = self._clients.files.GetFileByIdentity(request).file
+            entry = self._clients.drive_files.GetFileByIdentity(request).file
         return _read_text(self._clients, entry)
 
     def list_files(self) -> Sequence[SkillFileInfo]:
@@ -173,7 +173,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             drive_rid=folder.drive_rid, path=file_store_pb2.LogicalPath(path=folder.path_of(_file_path(path)))
         )
         with translate_grpc_errors():
-            file = self._clients.files.GetFile(request).file
+            file = self._clients.drive_files.GetFile(request).file
         return _read_text(self._clients, file)
 
     def update(self, *, content: str | None = None, enabled: bool | None = None) -> Self:
@@ -360,7 +360,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         # read makes the save below refuse the stale revision, and one it recorded before fails the version check.
         request = files_pb2.GetFileByIdentityRequest(identity=identity)
         with translate_grpc_errors():
-            entry = self._clients.files.GetFileByIdentity(request).file
+            entry = self._clients.drive_files.GetFileByIdentity(request).file
         latest = self._get_latest_api()
         if latest.version != self.version:
             raise NominalConflictError(f"Skill {self.rid} changed since this object was fetched; refresh it")
@@ -493,7 +493,7 @@ def _apply(
         failure_policy=files_pb2.FAILURE_POLICY_ABORT,
     )
     with translate_grpc_errors():
-        results = clients.files.ApplyFileChanges(request).results
+        results = clients.drive_files.ApplyFileChanges(request).results
     refused = [
         (label, change, result.failure)
         for (label, change), result in zip(changes, results)
@@ -722,7 +722,7 @@ def _is_empty(clients: Skill._Clients, folder: _SkillFolder) -> bool:
         drive_rid=folder.drive_rid, parent_path=file_store_pb2.LogicalPath(path=folder.root), page_size=1
     )
     with translate_grpc_errors():
-        return not clients.files.ListFiles(request).entries
+        return not clients.drive_files.ListFiles(request).entries
 
 
 def _list_folder(clients: Skill._Clients, folder: _SkillFolder) -> dict[str, file_store_pb2.LogicalFile]:
@@ -738,7 +738,7 @@ def _list_folder(clients: Skill._Clients, folder: _SkillFolder) -> dict[str, fil
 
     return {
         entry.file.path.path.removeprefix(f"{folder.root}/"): entry.file
-        for response in paginate_grpc(clients.files.ListFiles, request_factory=factory)
+        for response in paginate_grpc(clients.drive_files.ListFiles, request_factory=factory)
         for entry in response.entries
         if entry.HasField("file")
     }
@@ -747,7 +747,7 @@ def _list_folder(clients: Skill._Clients, folder: _SkillFolder) -> dict[str, fil
 def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str:
     request = files_pb2.GetDownloadUrlRequest(source_ref=file.current_revision)
     with translate_grpc_errors():
-        url = clients.files.GetDownloadUrl(request).url
+        url = clients.drive_files.GetDownloadUrl(request).url
     session = create_multipart_request_session(pool_size=1, header_provider=clients.header_provider)
     response = session.get(url, timeout=_DOWNLOAD_TIMEOUT)
     response.raise_for_status()

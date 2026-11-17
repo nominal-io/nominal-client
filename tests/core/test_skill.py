@@ -136,8 +136,8 @@ def downloads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
 def _skill_clients() -> MagicMock:
     clients = MagicMock()
     clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_proto_skill())
-    clients.files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
-    clients.files.GetDownloadUrl.side_effect = lambda request: files_pb2.GetDownloadUrlResponse(
+    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
+    clients.drive_files.GetDownloadUrl.side_effect = lambda request: files_pb2.GetDownloadUrlResponse(
         url=f"https://storage/{request.source_ref.managed.file_revision_rid}"
     )
     return clients
@@ -149,8 +149,8 @@ def _client() -> tuple[NominalClient, MagicMock]:
     clients.skills.UpdateWorkspaceSkillsDrive.return_value = skills_pb2.UpdateWorkspaceSkillsDriveResponse(
         skills_drive=skills_pb2.WorkspaceSkillsDrive(drive=file_store_pb2.Drive(rid=_DRIVE))
     )
-    clients.files.ListFiles.return_value = _listing()
-    clients.files.ApplyFileChanges.side_effect = lambda request: files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.return_value = _listing()
+    clients.drive_files.ApplyFileChanges.side_effect = lambda request: files_pb2.ApplyFileChangesResponse(
         results=[_saved(change.put.destination.path.path.path, f"rev-{i}") for i, change in enumerate(request.changes)]
     )
     clients.skills.CreateSkill.return_value = skills_pb2.CreateSkillResponse(
@@ -161,7 +161,7 @@ def _client() -> tuple[NominalClient, MagicMock]:
 
 
 def _puts(clients: MagicMock, call: int = 0) -> list[files_pb2.PutFile]:
-    request = clients.files.ApplyFileChanges.call_args_list[call].args[0]
+    request = clients.drive_files.ApplyFileChanges.call_args_list[call].args[0]
     return [change.put for change in request.changes]
 
 
@@ -184,7 +184,7 @@ def test_create_saves_the_folder_then_registers_skill_md(uploads, enabled, state
     puts = _puts(clients)
     assert [put.destination.path.path.path for put in puts] == [f"{_FOLDER}/SKILL.md", f"{_FOLDER}/methods/limits.md"]
     assert [uploads[put.object.object_key] for put in puts] == [_SKILL_MD.encode(), b"Use the plan's limits.\n"]
-    assert clients.files.ApplyFileChanges.call_args.args[0].failure_policy == files_pb2.FAILURE_POLICY_ABORT
+    assert clients.drive_files.ApplyFileChanges.call_args.args[0].failure_policy == files_pb2.FAILURE_POLICY_ABORT
     registered = clients.skills.CreateSkill.call_args.args[0].skill
     assert registered.workspace_rid == _WORKSPACE
     assert registered.backing.file_store.entry_file_identity == _identity("rev-0")
@@ -197,13 +197,13 @@ def test_create_saves_the_folder_then_registers_skill_md(uploads, enabled, state
 def test_create_refuses_a_taken_name_before_uploading(uploads) -> None:
     """A folder that already holds files belongs to a skill, so create saves nothing."""
     client, clients = _client()
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/notes.md", "rev-x"))
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/notes.md", "rev-x"))
 
     with pytest.raises(NominalAlreadyExistsError):
         client.create_skill(_SKILL_MD)
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_create_refuses_a_name_another_save_takes_first(uploads) -> None:
@@ -211,8 +211,8 @@ def test_create_refuses_a_name_another_save_takes_first(uploads) -> None:
     name is reported as taken.
     """
     client, clients = _client()
-    clients.files.ApplyFileChanges.side_effect = None
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ApplyFileChanges.side_effect = None
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_refused(files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS)]
     )
 
@@ -225,15 +225,15 @@ def test_create_refuses_a_name_another_save_takes_first(uploads) -> None:
 def test_create_saves_nothing_when_a_file_is_refused(uploads) -> None:
     """File Store saves a skill's files all or none, so a refused file leaves nothing to remove or register."""
     client, clients = _client()
-    clients.files.ApplyFileChanges.side_effect = None
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ApplyFileChanges.side_effect = None
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_BATCH_FAILURE, _refused(files_pb2.FILE_CHANGE_ERROR_INVALID_LOGICAL_PATH)]
     )
 
     with pytest.raises(NominalError, match=r"methods/limits\.md.*Nothing was changed"):
         client.create_skill(_SKILL_MD, files={"methods/limits.md": "text"})
 
-    assert clients.files.ApplyFileChanges.call_count == 1
+    assert clients.drive_files.ApplyFileChanges.call_count == 1
     clients.skills.CreateSkill.assert_not_called()
 
 
@@ -247,11 +247,11 @@ def test_create_removes_the_revisions_it_saved_when_the_skill_cant_be_registered
     with pytest.raises(NominalError) as raised:
         client.create_skill(_SKILL_MD, files={"methods/limits.md": "text"})
 
-    removal = clients.files.ApplyFileChanges.call_args_list[1].args[0]
+    removal = clients.drive_files.ApplyFileChanges.call_args_list[1].args[0]
     assert [change.remove.revision_rid for change in removal.changes] == ["rev-0", "rev-1"]
     assert (removal.drive_rid, removal.failure_policy) == (_DRIVE, files_pb2.FAILURE_POLICY_ABORT)
     # The revisions come from the save, not from listing the folder again.
-    assert clients.files.ListFiles.call_count == 1
+    assert clients.drive_files.ListFiles.call_count == 1
     assert not getattr(raised.value, "__notes__", [])
 
 
@@ -266,7 +266,7 @@ def test_create_keeps_its_files_when_its_unknown_whether_the_skill_was_registere
     with pytest.raises(NominalError) as raised:
         client.create_skill(_SKILL_MD)
 
-    assert clients.files.ApplyFileChanges.call_count == 1
+    assert clients.drive_files.ApplyFileChanges.call_count == 1
     (note,) = raised.value.__notes__
     assert "unknown whether the skill was created" in note
     assert f"still in {_FOLDER}" in note
@@ -275,7 +275,7 @@ def test_create_keeps_its_files_when_its_unknown_whether_the_skill_was_registere
 def test_create_says_where_its_files_are_when_removing_them_is_refused(uploads, fake_rpc_error) -> None:
     """File Store removes the files all or none, so a refused removal leaves every file, and the error says where."""
     client, clients = _client()
-    clients.files.ApplyFileChanges.side_effect = [
+    clients.drive_files.ApplyFileChanges.side_effect = [
         files_pb2.ApplyFileChangesResponse(results=[_saved(f"{_FOLDER}/SKILL.md", "rev-0")]),
         files_pb2.ApplyFileChangesResponse(
             results=[_refused(files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED)]
@@ -295,7 +295,7 @@ def test_writes_without_the_edit_permission_save_nothing(uploads, fake_rpc_error
     """The skills service reports a user who can't edit the workspace's configuration as a missing workspace."""
     client, clients = _client()
     clients.skills.UpdateWorkspaceSkillsDrive.side_effect = fake_rpc_error(grpc.StatusCode.NOT_FOUND)
-    clients.files.ListFiles.return_value = _listing(_entry("rev-1"))
+    clients.drive_files.ListFiles.return_value = _listing(_entry("rev-1"))
     skill = Skill._from_proto(clients, _proto_skill())
 
     with pytest.raises(NominalPermissionDeniedError):
@@ -310,7 +310,7 @@ def test_writes_without_the_edit_permission_save_nothing(uploads, fake_rpc_error
         skill.archive()
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
     clients.skills.UpdateSkill.assert_not_called()
 
 
@@ -387,7 +387,7 @@ def test_a_description_is_text_of_1_to_1024_characters(uploads, description) -> 
 def test_a_skill_left_off_saves_without_a_description(uploads, listing, write) -> None:
     """A skill that isn't turned on can have SKILL.md without a description."""
     client, clients = _client()
-    clients.files.ListFiles.return_value = listing
+    clients.drive_files.ListFiles.return_value = listing
     skill = Skill._from_proto(clients, _proto_skill())
 
     write(client, skill)
@@ -410,7 +410,7 @@ def test_a_failed_upload_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(requests.ConnectionError):
         client.create_skill(_SKILL_MD, files={"methods/a.md": "A", "methods/b.md": "B"})
 
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 @pytest.mark.parametrize("path", ["SKILL.md", "../outside.md", "/methods/a.md", "methods//a.md", "methods\\a.md"])
@@ -425,7 +425,7 @@ def test_reference_paths_stay_inside_the_folder(uploads, path) -> None:
         skill.write_files({path: "text"})
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> None:
@@ -434,8 +434,8 @@ def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> No
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_entry("rev-1"))
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.return_value = _listing(_entry("rev-1"))
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/SKILL.md", "rev-2")]
     )
     clients.skills.UpdateSkill.return_value = skills_pb2.UpdateSkillResponse(skill=_proto_skill(version=8))
@@ -468,13 +468,13 @@ def test_content_update_refuses_a_skill_md_the_skill_does_not_point_at(uploads, 
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=entry)
+    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=entry)
 
     with pytest.raises(NominalNotFoundError, match="no longer in"):
         skill.update(content=_SKILL_MD)
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
     clients.skills.UpdateSkill.assert_not_called()
 
 
@@ -485,7 +485,7 @@ def test_content_update_reads_skill_md_before_checking_the_skills_version(upload
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
     reads: list[str] = []
-    clients.files.GetFileByIdentity.side_effect = lambda request: (
+    clients.drive_files.GetFileByIdentity.side_effect = lambda request: (
         reads.append("SKILL.md") or files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
     )
     versions = iter([7, 8])
@@ -498,14 +498,14 @@ def test_content_update_reads_skill_md_before_checking_the_skills_version(upload
 
     assert reads == ["skill", "SKILL.md", "skill"]
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_content_update_says_skill_md_is_saved_when_recording_it_fails(uploads, fake_rpc_error) -> None:
     """A conflict after SKILL.md saved isn't the conflict that saves nothing, so it isn't raised as one."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/SKILL.md", "rev-2")]
     )
     clients.skills.UpdateSkill.side_effect = fake_rpc_error(grpc.StatusCode.ABORTED)
@@ -540,7 +540,7 @@ def test_content_update_from_a_stale_object_saves_nothing(uploads) -> None:
         skill.update(content=_SKILL_MD)
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(uploads) -> None:
@@ -549,8 +549,8 @@ def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(upload
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[
             _saved(f"{_FOLDER}/SKILL.md", "rev-2"),
             files_pb2.FileChangeResult(directory_moved=files_pb2.MoveDirectorySuccess()),
@@ -559,13 +559,13 @@ def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(upload
 
     skill.update(content=_RENAMED_MD)
 
-    request = clients.files.ApplyFileChanges.call_args.args[0]
+    request = clients.drive_files.ApplyFileChanges.call_args.args[0]
     assert request.failure_policy == files_pb2.FAILURE_POLICY_ABORT
     put, move = request.changes[0].put, request.changes[1].move_directory
     assert put.destination.file_revision_rid == "rev-1"
     assert (getattr(move, "from").path, move.to.path) == (_FOLDER, "skills/flight-review")
-    clients.files.GetFile.assert_not_called()
-    assert clients.files.GetFileByIdentity.call_count == 1
+    clients.drive_files.GetFile.assert_not_called()
+    assert clients.drive_files.GetFileByIdentity.call_count == 1
     update = clients.skills.UpdateSkill.call_args.args[0]
     assert update.skill.backing.file_store.entry_file_identity == _identity("entry")
 
@@ -583,15 +583,15 @@ def test_refused_move_saves_nothing(uploads, error, raised) -> None:
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.side_effect = _list_folders({_FOLDER: _listing(_entry("rev-1"))})
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_BATCH_FAILURE, _refused(error)]
     )
 
     with pytest.raises(raised):
         skill.update(content=_RENAMED_MD)
 
-    assert clients.files.ApplyFileChanges.call_count == 1
+    assert clients.drive_files.ApplyFileChanges.call_count == 1
     clients.skills.UpdateSkill.assert_not_called()
 
 
@@ -604,14 +604,14 @@ def test_turning_on_an_archived_skill_saves_nothing(uploads) -> None:
         skill.update(content=_SKILL_MD, enabled=True)
 
     assert uploads == {}
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_rename_to_a_taken_name_saves_nothing(uploads) -> None:
     """Renaming to a name whose folder holds files raises before SKILL.md is uploaded."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = _list_folders(
+    clients.drive_files.ListFiles.side_effect = _list_folders(
         {
             _FOLDER: _listing(_entry("rev-1")),
             "skills/flight-review": _listing(_file("skills/flight-review/SKILL.md", "rev-x")),
@@ -652,10 +652,10 @@ def test_write_files_replaces_existing_files_and_creates_new_ones(uploads) -> No
     """A file already in the folder is replaced at its current revision; a new one is created at its path."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(
+    clients.drive_files.ListFiles.return_value = _listing(
         _file(f"{_FOLDER}/SKILL.md", "rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
     )
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/methods/a.md", "rev-a2"), _saved(f"{_FOLDER}/methods/b.md", "rev-b")]
     )
 
@@ -671,8 +671,8 @@ def test_write_files_reports_a_file_changed_meanwhile(uploads) -> None:
     """A file another save changed raises a conflict, and none of the files are saved."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_refused(files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED), _BATCH_FAILURE]
     )
 
@@ -684,26 +684,26 @@ def test_remove_files_refuses_a_missing_path_before_removing() -> None:
     """Removing a path the folder doesn't have raises before any file is removed."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
 
     with pytest.raises(NominalNotFoundError, match="methods/b.md"):
         skill.remove_files(["methods/a.md", "methods/b.md"])
 
-    clients.files.ApplyFileChanges.assert_not_called()
+    clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
 def test_remove_files_removes_each_file_at_its_current_revision() -> None:
     """Each file is removed by its current revision, so a file changed since is left alone."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
-    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/methods/a.md", "rev-a2")]
     )
 
     skill.remove_files(["methods/a.md"])
 
-    request = clients.files.ApplyFileChanges.call_args.args[0]
+    request = clients.drive_files.ApplyFileChanges.call_args.args[0]
     assert (request.drive_rid, [change.remove.revision_rid for change in request.changes]) == (_DRIVE, ["rev-a"])
 
 
@@ -711,14 +711,14 @@ def test_list_files_follows_pages_and_gives_paths_inside_the_folder() -> None:
     """Listing reads every page of the folder and gives each path relative to it, in path order."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.side_effect = [
+    clients.drive_files.ListFiles.side_effect = [
         _listing(_file(f"{_FOLDER}/methods/a.md", "r2", 9), next_page_token="next"),
         _listing(_file(f"{_FOLDER}/SKILL.md", "r1", 120)),
     ]
 
     files = skill.list_files()
 
-    first, second = (call.args[0] for call in clients.files.ListFiles.call_args_list)
+    first, second = (call.args[0] for call in clients.drive_files.ListFiles.call_args_list)
     assert [(file.path, file.size_bytes) for file in files] == [("SKILL.md", 120), ("methods/a.md", 9)]
     assert (first.parent_path.path, first.recursive, second.page_token) == (_FOLDER, True, "next")
 
@@ -727,14 +727,14 @@ def test_get_content_reads_the_skill_md_the_skill_points_at(downloads) -> None:
     """The content is the SKILL.md the skill's record points at, read at its current revision."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(
+    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(
         file=_file(f"{_FOLDER}/SKILL.md", "rev-1")
     )
     downloads["https://storage/rev-1"] = _SKILL_MD.encode()
 
     assert skill.get_content() == _SKILL_MD
     assert (
-        clients.files.GetFileByIdentity.call_args.args[0].identity
+        clients.drive_files.GetFileByIdentity.call_args.args[0].identity
         == _proto_skill().backing.file_store.entry_file_identity
     )
 
@@ -743,20 +743,20 @@ def test_read_file_downloads_the_current_revision_as_text(downloads) -> None:
     """Reading a file downloads its current revision and decodes it as UTF-8."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.GetFile.return_value = files_pb2.GetFileResponse(file=_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(file=_file(f"{_FOLDER}/methods/a.md", "rev-a"))
     downloads["https://storage/rev-a"] = "Méthode A.\n".encode()
 
     assert skill.read_file("methods/a.md") == "Méthode A.\n"
-    assert clients.files.GetFile.call_args.args[0].path.path == f"{_FOLDER}/methods/a.md"
+    assert clients.drive_files.GetFile.call_args.args[0].path.path == f"{_FOLDER}/methods/a.md"
     # The download names the revision reference File Store returned, as it is.
-    assert clients.files.GetDownloadUrl.call_args.args[0].source_ref == _ref("rev-a")
+    assert clients.drive_files.GetDownloadUrl.call_args.args[0].source_ref == _ref("rev-a")
 
 
 def test_read_file_refuses_a_file_that_is_not_text(downloads) -> None:
     """The client reads text only; a binary file in the skill's folder raises an error naming it."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.GetFile.return_value = files_pb2.GetFileResponse(file=_file(f"{_FOLDER}/diagram.png", "rev-d"))
+    clients.drive_files.GetFile.return_value = files_pb2.GetFileResponse(file=_file(f"{_FOLDER}/diagram.png", "rev-d"))
     downloads["https://storage/rev-d"] = b"\x89PNG\r\n\x1a\n\xff"
 
     with pytest.raises(NominalError, match="diagram.png"):
@@ -774,14 +774,14 @@ def test_file_operations_need_the_skill_folder() -> None:
 
     with pytest.raises(NominalError, match="notes/SKILL.md"):
         skill.list_files()
-    clients.files.ListFiles.assert_not_called()
+    clients.drive_files.ListFiles.assert_not_called()
 
 
 def test_export_writes_every_file_under_the_skill_name(downloads, tmp_path: Path) -> None:
     """Export writes the current files, SKILL.md included, into a folder named after the skill."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(
+    clients.drive_files.ListFiles.return_value = _listing(
         _file(f"{_FOLDER}/SKILL.md", "rev-entry"), _file(f"{_FOLDER}/m/a.md", "rev-a")
     )
     downloads.update({"https://storage/rev-entry": _SKILL_MD.encode(), "https://storage/rev-a": b"Method A.\r\n"})
@@ -799,7 +799,7 @@ def test_export_refuses_a_path_that_could_leave_the_folder(downloads, tmp_path: 
     """File Store accepts backslashes, which Windows reads as separators, so export writes nothing for such a path."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/..\\..\\evil.md", "rev-x"))
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/..\\..\\evil.md", "rev-x"))
 
     with pytest.raises(ValueError):
         skill.export(tmp_path)
@@ -829,7 +829,7 @@ def test_export_refuses_two_files_that_land_on_one(downloads, tmp_path: Path) ->
         pytest.skip("this file system tells names apart by case")
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(
+    clients.drive_files.ListFiles.return_value = _listing(
         _file(f"{_FOLDER}/Notes.md", "rev-a"), _file(f"{_FOLDER}/notes.md", "rev-b")
     )
     downloads.update({"https://storage/rev-a": b"A", "https://storage/rev-b": b"B"})
@@ -843,7 +843,7 @@ def test_export_on_windows_refuses_a_drive_or_a_stream(downloads, tmp_path: Path
     """Windows reads a colon as a drive or a file's hidden stream, so export writes nothing for such a path there."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/{path}", "rev-x"))
+    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/{path}", "rev-x"))
     monkeypatch.setattr("nominal.core.skill._ON_WINDOWS", True)
 
     with pytest.raises(ValueError):
