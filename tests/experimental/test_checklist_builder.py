@@ -428,13 +428,49 @@ def test_event_settings_captured_on_add(client: NominalClient, mock_clients: Mag
     assert check.generated_event_labels == ["thermal"]
 
 
-def test_unknown_event_type_rejected_before_add(client: NominalClient) -> None:
-    """The read-side unknown sentinel cannot be published as an event category."""
-    builder = ChecklistBuilder()
-    with pytest.raises(ValueError, match="UNKNOWN"):
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder", "expected"),
+    [
+        (EventType.INFO, EventType.FLAG, EventType.SUCCESS, event.EventType.INFO),
+        (None, EventType.FLAG, EventType.SUCCESS, event.EventType.FLAG),
+        (None, None, EventType.SUCCESS, event.EventType.SUCCESS),
+        (None, None, None, None),
+    ],
+)
+def test_event_type_prefers_add_then_check_then_builder(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_add: EventType | None,
+    from_check: EventType | None,
+    from_builder: EventType | None,
+    expected: event.EventType | None,
+) -> None:
+    """The add argument wins, then the check's event type, then the builder default, then the service default."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P1, event_type=from_check)
+    ChecklistBuilder(default_event_type=from_builder).add(check, inputs=SOC, event_type=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.generated_event_type == expected
+
+
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder"),
+    [
+        (EventType.UNKNOWN, None, None),
+        (None, EventType.UNKNOWN, None),
+        (None, None, EventType.UNKNOWN),
+    ],
+)
+def test_unknown_event_type_rejected_before_add(
+    client: NominalClient, from_add: EventType | None, from_check: EventType | None, from_builder: EventType | None
+) -> None:
+    """The read-side unknown sentinel cannot be published as an event category from any source."""
+    builder = ChecklistBuilder(default_event_type=from_builder)
+    with pytest.raises(ValueError, match="'Invalid': EventType.UNKNOWN"):
         builder.add(
-            CheckDefinition("Invalid", "(x > 0).ranges()", priority=Priority.P1, event_type=EventType.UNKNOWN),
+            CheckDefinition("Invalid", "(x > 0).ranges()", priority=Priority.P1, event_type=from_check),
             inputs={"x": ChannelBinding("telemetry", "temperature")},
+            event_type=from_add,
         )
     with pytest.raises(ValueError, match="at least one check"):
         builder.create(client, "Empty")
