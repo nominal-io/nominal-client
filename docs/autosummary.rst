@@ -21,6 +21,8 @@
    nominal.experimental.extractor.types
    nominal.experimental.extractor.runner
    nominal.experimental.migration
+   nominal.io
+   nominal.io.testing
    nominal.thirdparty.matlab
    nominal.thirdparty.pandas
    nominal.thirdparty.polars.polars_export_handler
