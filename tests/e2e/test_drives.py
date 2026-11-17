@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from nominal.core import NominalClient
+from nominal.core.dataset_file import IngestStatus
 from nominal.exceptions import NominalAlreadyExistsError, NominalNotFoundError
 from nominal.experimental import drives
 from nominal.experimental.drives import (
@@ -16,6 +17,8 @@ from nominal.experimental.drives import (
     ManagedDriveFile,
     NominalFileStoreError,
 )
+from nominal.experimental.ingest import IngestBuilder
+from tests.e2e import POLL_INTERVAL
 
 E2E_DRIVE_ID = "sdk-e2e"
 """Drives cannot be deleted and archiving one needs admin rights, so every run shares one drive
@@ -105,3 +108,26 @@ def test_putting_onto_a_file_adds_a_version_and_keeps_its_identity(
         assert second.download(tmp_path).read_bytes() == b"version two"
     finally:
         second.remove()
+
+
+def test_ingest_builder_uses_pinned_revision_alongside_local_file(
+    client: NominalClient, drive: Drive, run_dir: str, tmp_path: pathlib.Path, archive
+) -> None:
+    """Ingesting a captured revision reads its original content even after the Drive file changes."""
+    dataset = client.create_dataset(f"drive-ingest-e2e-{uuid4().hex[:8]}")
+    archive(dataset)
+    uploaded = drive.put_file_obj(io.BytesIO(b"time,original\n1767268800,1\n"), f"{run_dir}/readings.csv")
+    try:
+        (revision,) = uploaded.revisions()
+        builder = IngestBuilder(client, dataset).add_csv(revision, "time", "epoch_seconds")
+        uploaded = drive.put_file_obj(io.BytesIO(b"time,replacement\n1767268800,2\n"), uploaded)
+        local = tmp_path / "local.csv"
+        local.write_text("time,local\n1767268800,3\n")
+        job = builder.add_csv(local, "time", "epoch_seconds").submit()
+        results = list(job.as_files_ingested(poll_interval=POLL_INTERVAL))
+        assert len(results) == 2
+        assert all(result.ingest_status == IngestStatus.SUCCESS for result in results)
+        assert dataset.get_channel("original").name == "original"
+        assert dataset.get_channel("local").name == "local"
+    finally:
+        uploaded.remove()

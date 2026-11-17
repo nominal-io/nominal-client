@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import pathlib
@@ -13,6 +14,7 @@ import pytest
 from nominal import ts
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
+from nominal.experimental.drives import DownloadAvailability, DriveFileRevision, DriveFileState
 from nominal.experimental.ingest._ingest_builder import IngestBuilder, MultipartUploader
 
 WriteFile = Callable[[str, int], pathlib.Path]
@@ -477,3 +479,129 @@ def test_add_parquet_rejects_csv(empty_builder: tuple[MagicMock, IngestBuilder])
     with pytest.raises(ValueError, match="Parquet") as exc:
         builder.add_parquet("data.csv", "time", "epoch_seconds")
     assert ".parquet.zip" in str(exc.value)
+
+
+@pytest.fixture
+def drive_revision() -> DriveFileRevision:
+    """An active managed revision whose path does not exist locally."""
+    return DriveFileRevision(
+        rid="ri.file-store.test.file-revision.original",
+        file_rid="ri.file-store.test.file.source",
+        path="campaign/data.csv",
+        size_bytes=10,
+        state=DriveFileState.ACTIVE,
+        download_availability=DownloadAvailability.AVAILABLE,
+        created_at=None,
+        created_by_rid=None,
+        _drive_rid="ri.file-store.test.drive.source",
+        _clients=MagicMock(),
+    )
+
+
+@pytest.mark.parametrize("state", [DriveFileState.ACTIVE, DriveFileState.UNKNOWN])
+def test_drive_revision_bypasses_upload(drive_revision: DriveFileRevision, state: DriveFileState) -> None:
+    """Active and unknown revisions reach the service by RID without uploading their content."""
+    drive_revision = dataclasses.replace(drive_revision, state=state)
+    client = MagicMock()
+    builder = IngestBuilder(client, "dataset", tags={"campaign": "test"})
+    builder.add_tabular_data(drive_revision, "time", "epoch_seconds", tags={"sensor": "pressure"})
+    with patch.object(MultipartUploader, "create", autospec=True) as upload:
+        builder.submit()
+    upload.assert_not_called()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    assert request.items[0].file.source.file_store.file_revision_rid == drive_revision.rid
+    assert request.items[0].file.ingest.timestamp_metadata.column == "time"
+    assert request.items[0].file.ingest.HasField("csv")
+    assert dict(request.tags) == {"campaign": "test"}
+    assert dict(request.items[0].tags) == {"sensor": "pressure"}
+
+
+@pytest.mark.parametrize("allow_partial", [False, True])
+def test_mixed_sources_preserve_upload_failure_policy(
+    drive_revision: DriveFileRevision, write_file: WriteFile, allow_partial: bool
+) -> None:
+    """Local upload failures either block the whole job or leave remote-only items eligible."""
+    client = MagicMock()
+    builder = IngestBuilder(client, "dataset")
+    builder.add_csv(drive_revision, "time", "epoch_seconds")
+    local = write_file("failed.csv", 1)
+    builder.add_containerized("extractor", {"remote": drive_revision, "local": local})
+    fake = FakeUploader({"failed.csv": OSError("upload failed")})
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+        if allow_partial:
+            builder.submit(allow_partial=True)
+            (request,) = client._clients.ingest_v2.Ingest.call_args.args
+            assert len(request.items) == 1
+            assert request.items[0].file.source.file_store.file_revision_rid == drive_revision.rid
+        else:
+            with pytest.raises(NominalIngestUploadFailed):
+                builder.submit()
+            client._clients.ingest_v2.Ingest.assert_not_called()
+    assert fake.enqueued == [local]
+
+
+def test_mixed_containerized_sources(drive_revision: DriveFileRevision, write_file: WriteFile) -> None:
+    """Named extractor inputs retain their local or remote source without changing input names."""
+    client = MagicMock()
+    local = write_file("local.csv", 1)
+    builder = IngestBuilder(client, "dataset").add_containerized(
+        "extractor", {"remote": drive_revision, "local": local}
+    )
+    fake = FakeUploader({})
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+        builder.submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    sources = request.items[0].containerized.sources
+    assert sources["remote"].file_store.file_revision_rid == drive_revision.rid
+    assert sources["local"].s3.path == "s3://bucket/local.csv"
+    assert fake.enqueued == [local]
+
+
+def test_drive_video_uploads_only_generated_manifest(drive_revision: DriveFileRevision) -> None:
+    """Remote video content can be paired with a locally generated timestamp manifest."""
+    revision = dataclasses.replace(drive_revision, path="camera.mp4")
+    client = MagicMock()
+    builder = IngestBuilder(client, "dataset").add_video(revision, channel="camera", frame_timestamps=[1, 2, 3])
+    fake = FakeUploader({})
+    with patch.object(MultipartUploader, "create", autospec=True, return_value=fake):
+        builder.submit()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    video = request.items[0].video
+    assert video.source.file_store.file_revision_rid == revision.rid
+    assert len(fake.enqueued) == 1
+    assert video.ingest.timestamp_manifest.timestamp_manifest_files.sources[0].HasField("s3")
+    assert not fake.enqueued[0].exists()
+
+
+def test_removal_revision_rejected_before_submission(drive_revision: DriveFileRevision) -> None:
+    """A removal revision has no content to ingest and fails during registration."""
+    client = MagicMock()
+    builder = IngestBuilder(client, "dataset")
+    with pytest.raises(ValueError, match="removal revision"):
+        builder.add_csv(dataclasses.replace(drive_revision, state=DriveFileState.REMOVED), "time", "epoch_seconds")
+    client._clients.ingest_v2.Ingest.assert_not_called()
+
+
+def test_drive_sources_across_ingest_formats(drive_revision: DriveFileRevision) -> None:
+    """Each supported non-CSV format serializes a revision without creating local uploads."""
+    client = MagicMock()
+    builder = IngestBuilder(client, "dataset")
+    builder.add_parquet(dataclasses.replace(drive_revision, path="data.parquet"), "time", "epoch_seconds")
+    builder.add_avro_stream(dataclasses.replace(drive_revision, path="data.avro"))
+    builder.add_mcap(dataclasses.replace(drive_revision, path="data.mcap"), include_topics=["/sensor"])
+    builder.add_journal_json(dataclasses.replace(drive_revision, path="data.jsonl"), channel="logs")
+    builder.add_ardupilot_dataflash(dataclasses.replace(drive_revision, path="data.bin"))
+    with patch.object(MultipartUploader, "create", autospec=True) as upload:
+        builder.submit()
+    upload.assert_not_called()
+    (request,) = client._clients.ingest_v2.Ingest.call_args.args
+    sources = [
+        request.items[0].file.source,
+        request.items[1].file.source,
+        request.items[2].mcap.source,
+        request.items[3].log.source,
+        request.items[4].dataflash.source,
+    ]
+    assert all(source.file_store.file_revision_rid == drive_revision.rid for source in sources)
+    assert request.items[0].file.ingest.HasField("parquet")
+    assert request.items[1].file.ingest.HasField("avro")
