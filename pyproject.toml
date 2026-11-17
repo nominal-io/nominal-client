@@ -67,6 +67,7 @@ members = ["packages/*"]
 [dependency-groups]
 dev = [
     "coverage[toml]>=7.0.0",
+    "fastavro[snappy]>=1.9",
     "mypy>=1.18.2,<2",
     "pandas-stubs~=2.0",
     "pyarrow-stubs>=20.0.0.20260819",
@@ -107,6 +108,7 @@ nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
 mis = ["openpyxl>=3.1.0"]
+avro = ["fastavro[snappy]>=1.9"]
 tdms = ["nominal-tdms>=1.143.0"]
 ibis = ["nominal-ibis>=0.1.0"]
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
@@ -116,6 +118,11 @@ compute = [
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
 ]
+
+[project.entry-points."nominal.io.readers"]
+instro-csv = "nominal.io.instro:CSV_SPEC"
+instro-avro = "nominal.io.instro:AVRO_SPEC"
+instro-jsonl = "nominal.io.instro:JSONL_SPEC"
 
 [project.scripts]
 nom = 'nominal.cli:nom'

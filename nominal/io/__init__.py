@@ -39,6 +39,30 @@ The polars layout (``engine="polars"``) is experimental and may change. ``timest
 ``channel`` is ``String``. ``value`` is ``Float64``, null for a string sample, and ``value_str`` is ``String``, null for
 a numeric sample. ``tags`` is a list of ``{key, value}`` structs.
 
+.. rubric:: Formats
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - Extensions
+     - Reads
+     - Install
+   * - ``instro-csv``
+     - ``.csv``
+     - instro ``FilePublisher`` CSV.
+     - Included.
+   * - ``instro-avro``
+     - ``.avro``
+     - instro ``FilePublisher`` Avro (Nominal's ``AvroStream`` schema).
+     - ``nominal[avro]``
+   * - ``instro-jsonl``
+     - ``.jsonl``
+     - instro ``FilePublisher`` JSON Lines.
+     - Included.
+
+`nominal.io.instro.write_avro` writes a `Chunk` or a long-form pandas DataFrame as Avro that Nominal can ingest.
+
 .. rubric:: How a format is chosen
 
 `read` and `read_chunks` choose the format for a file in this order:
