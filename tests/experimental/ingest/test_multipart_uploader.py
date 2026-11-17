@@ -53,9 +53,9 @@ class FakeUploadService:
 
     def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
         self._record("initiate")
-        return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}")
+        return SimpleNamespace(key=request.filename, upload_id=f"uid-{request.filename}", bucket="bucket")
 
-    def sign_part(self, auth: str, key: str, part: int, upload_id: str) -> Any:
+    def sign_part(self, auth: str, key: str, part: int, upload_id: str, bucket: str | None = None) -> Any:
         self._record("sign")
         if self.fail_sign_for_key is not None and key == self.fail_sign_for_key:
             raise ConnectionError(f"sign failed for {key}")
@@ -74,7 +74,7 @@ class FakeUploadService:
         with self.lock:
             self.aborted.append(key)
 
-    def list_parts(self, auth: str, key: str, upload_id: str) -> None:
+    def list_parts(self, auth: str, key: str, upload_id: str, bucket: str | None = None) -> None:
         raise AssertionError("list_parts must not be called: etags come from the PUT responses")
 
     def upload_file(

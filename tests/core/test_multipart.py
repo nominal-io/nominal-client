@@ -235,6 +235,7 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
             max_workers=1,
         )
 
+    session.close.assert_called_once_with()
     assert location == "s3://bucket/key"
     upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid", bucket="uploads")
     _, _, _, parts = upload_client.complete_multipart_upload.call_args[0]
@@ -279,24 +280,29 @@ def _no_op_session() -> MagicMock:
     return MagicMock(spec=["put", "close"])
 
 
-def test_file_store_upload_sends_its_destination_and_handle() -> None:
+@pytest.mark.parametrize("data", [b"", b"data", b"abcdefgh"])
+def test_file_store_upload_sends_its_destination_and_handle(data: bytes) -> None:
     """A File Store upload must name its destination, and every follow-up call must carry the handle."""
     client = _upload_client_for_destination("FILE_STORE")
 
     with (
         patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
-        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})),
+        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})) as put_part,
     ):
         completed = multipart._put_multipart_upload_to(
             "Bearer token",
             "ri.workspace",
-            io.BytesIO(b"data"),
+            io.BytesIO(data),
             "run-001.csv",
             "text/csv",
             client,
             destination=ingest_api.UploadDestination.FILE_STORE,
+            chunk_size=4,
         )
 
+    assert sorted(call.args[2] for call in put_part.call_args_list) == sorted(
+        [data[i : i + 4] for i in range(0, len(data), 4)] or [b""]
+    )
     assert completed.key == "object-key"
     assert client.initiate_multipart_upload.call_args.args[1].destination == ingest_api.UploadDestination.FILE_STORE
     assert client.sign_part.call_args.kwargs["bucket"] == "FILE_STORE"

@@ -190,6 +190,8 @@ def _complete_multipart_upload(
 
 
 def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
+    # An empty object still needs one part for multipart completion.
+    yield f.read(chunk_size)
     while (data := f.read(chunk_size)) != b"":
         yield data
 
@@ -315,6 +317,9 @@ def _put_multipart_upload_to(
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e, bucket)
         raise e
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+        session.close()
 
 
 def upload_multipart_io(
