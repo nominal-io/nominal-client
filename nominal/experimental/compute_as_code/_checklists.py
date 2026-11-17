@@ -39,8 +39,9 @@ class CheckDefinition:
             matching ranges into success.
             ``EventType.UNKNOWN`` is not a valid category for creation.
         event_labels: Labels applied to generated events, not checklist grouping labels.
-            When omitted or empty, this check supplies no event labels.
-            Labels are copied when the definition is added to a builder.
+            When omitted or empty, this check supplies no event labels. Merged with the builder's
+            ``event_labels`` and any passed to ``ChecklistBuilder.add``. Labels are copied when the
+            definition is added to a builder.
         description: Description of the check.
         key: Optional stable identity, independent of title and source. The same key preserves
             lineage across revisions. Omit to generate an identity each time the check is added.
@@ -119,6 +120,7 @@ class ChecklistBuilder:
         strict: Reject unused input bindings when True. Missing bindings always raise.
         default_priority: Priority for checks that set none themselves and get none from ``add``.
         default_event_type: Event type for checks that set none themselves and get none from ``add``.
+        event_labels: Event labels for every check, merged with each check's own and any passed to ``add``.
 
     Example:
         ```python
@@ -139,10 +141,12 @@ class ChecklistBuilder:
         strict: bool = False,
         default_priority: Priority | None = None,
         default_event_type: EventType | None = None,
+        event_labels: Sequence[str] = (),
     ) -> None:
         self._strict = strict
         self._default_priority = default_priority
         self._default_event_type = default_event_type
+        self._event_labels = tuple(event_labels)
         self._checks: list[scout_checks_api.CreateCheckRequest] = []
         self._variables: list[scout_checks_api.UnresolvedChecklistVariable] = []
 
@@ -153,6 +157,7 @@ class ChecklistBuilder:
         inputs: Mapping[str, ChannelBinding],
         priority: Priority | None = None,
         event_type: EventType | None = None,
+        event_labels: Sequence[str] = (),
     ) -> Self:
         """Compile and bind a reusable check, capturing its source and channels locally.
 
@@ -164,6 +169,8 @@ class ChecklistBuilder:
                 builder's ``default_priority``.
             event_type: Event type for this check in this checklist. Overrides ``check.event_type`` and the
                 builder's ``default_event_type``.
+            event_labels: Event labels for this check in this checklist, merged with ``check.event_labels``
+                and the builder's ``event_labels``.
 
         Returns:
             This builder. A failed addition leaves it unchanged.
@@ -191,6 +198,7 @@ class ChecklistBuilder:
             event_type = check.event_type if check.event_type is not None else self._default_event_type
         if event_type is EventType.UNKNOWN:
             raise ValueError(f"Check {check.title!r}: EventType.UNKNOWN cannot be used for generated events")
+        labels = dict.fromkeys([*self._event_labels, *(check.event_labels or ()), *event_labels])
         compiler_references = {
             name: nc.CategoricalSeries.Reference(name)
             if binding.series_type == "categorical"
@@ -234,7 +242,7 @@ class ChecklistBuilder:
                 priority=scout_api.Priority(priority.name),
                 check_lineage_rid=str(check_id),
                 generated_event_type=None if event_type is None else event.EventType(event_type.value),
-                generated_event_labels=None if check.event_labels is None else list(check.event_labels),
+                generated_event_labels=None if check.event_labels is None and not labels else list(labels),
                 condition=scout_checks_api.UnresolvedCheckCondition(
                     num_ranges_v3=scout_checks_api.UnresolvedNumRangesConditionV3(
                         ranges=failure_reference,

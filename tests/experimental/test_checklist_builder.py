@@ -455,6 +455,33 @@ def test_event_type_prefers_add_then_check_then_builder(
 
 
 @pytest.mark.parametrize(
+    ("from_builder", "from_check", "from_add", "expected"),
+    [
+        ((), None, (), None),
+        ((), [], (), []),
+        ((), ["thermal"], (), ["thermal"]),
+        (["engine"], None, (), ["engine"]),
+        (["engine"], ["thermal"], ["stand-3"], ["engine", "thermal", "stand-3"]),
+        (["engine"], ["engine", "thermal"], ["thermal"], ["engine", "thermal"]),
+    ],
+)
+def test_event_labels_merge_builder_check_and_add(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_builder: list[str],
+    from_check: list[str] | None,
+    from_add: list[str],
+    expected: list[str] | None,
+) -> None:
+    """Labels from the builder, the check, and add are combined without duplicates."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P1, event_labels=from_check)
+    ChecklistBuilder(event_labels=from_builder).add(check, inputs=SOC, event_labels=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.generated_event_labels == expected
+
+
+@pytest.mark.parametrize(
     ("from_add", "from_check", "from_builder"),
     [
         (EventType.UNKNOWN, None, None),
