@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import gzip
+import io
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Iterator, Sequence, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from urllib3.response import HTTPResponse
 
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -178,7 +181,7 @@ def test_write_part_raises_on_short_write(tmp_path: Path) -> None:
         patch.object(Path, "open", return_value=mock_fh),
         pytest.raises(OSError, match=r"Short write to .* at offset 0: wrote 3/5 bytes"),
     ):
-        MultipartFileDownloader._write_part(path, 0, data)
+        MultipartFileDownloader._write_part(path, 0, len(data) - 1, [data])
 
 
 # ---- _fetch_range_bytes tests ----
@@ -191,10 +194,11 @@ def _mock_response(
 ) -> MagicMock:
     """Build a minimal fake requests.Response for _fetch_range_bytes tests."""
     r = MagicMock()
+    r.__enter__.return_value = r
     r.status_code = status_code
     r.ok = 200 <= status_code < 300
     r.headers = headers or {}
-    r.iter_content.return_value = [content] if content else []
+    r.raw.stream.return_value = [content] if content else []
     if not r.ok:
         err = requests.HTTPError(response=r)
         r.raise_for_status.side_effect = err
@@ -252,3 +256,102 @@ def test_fetch_range_bytes_invalidates_url_on_expired_response(
 
     mock_invalidate.assert_called_once()
     assert mock_downloader.get.call_count == 2
+
+
+def test_fetch_range_bytes_stops_at_once_when_the_server_ignores_range(
+    tmp_path: Path, downloader: MultipartFileDownloader, mock_downloader: MagicMock
+) -> None:
+    """A whole-object reply to a part is refused after one attempt, without reading or writing all of it."""
+    dest = tmp_path / "file.bin"
+    dest.write_bytes(b"\x00" * 8)
+    served: list[bytes] = []
+
+    def whole_object(_chunk_size: int, *, decode_content: bool) -> Iterator[bytes]:
+        for chunk in (b"abcd", b"efgh", b"ijkl"):
+            served.append(chunk)
+            yield chunk
+
+    response = _mock_response(200)
+    response.raw.stream.side_effect = whole_object
+    mock_downloader.get.return_value = response
+
+    with pytest.raises(RuntimeError, match="may not support ranged downloads"):
+        downloader._fetch_range_bytes(_provider(), 4, 7, None, dest)
+
+    assert mock_downloader.get.call_count == 1
+    assert served == [b"abcd", b"efgh"]
+    assert dest.read_bytes() == b"\x00" * 8
+
+
+def test_fetch_range_bytes_retries_a_truncated_body(
+    tmp_path: Path, downloader: MultipartFileDownloader, mock_downloader: MagicMock
+) -> None:
+    """A short body may be transient, so it is retried, and never written at the part's offset."""
+    dest = tmp_path / "file.bin"
+    dest.write_bytes(b"\x00" * 8)
+    mock_downloader.get.return_value = _mock_response(206, content=b"ef")
+
+    with pytest.raises(RuntimeError, match="Expected 4 bytes for range 4-7, got 2"):
+        downloader._fetch_range_bytes(_provider(), 4, 7, None, dest)
+
+    assert mock_downloader.get.call_count == downloader.max_part_retries
+    assert dest.read_bytes() == b"\x00" * 8
+
+
+@pytest.mark.parametrize(
+    "status,start,end,body,expected",
+    [
+        (200, 0, 3, b"data", b"data"),
+        (206, 3, 3, b"d", b"\x00\x00\x00d"),
+    ],
+)
+def test_fetch_range_bytes_accepts_complete_body_and_short_final_part(
+    tmp_path: Path,
+    downloader: MultipartFileDownloader,
+    mock_downloader: MagicMock,
+    status: int,
+    start: int,
+    end: int,
+    body: bytes,
+    expected: bytes,
+) -> None:
+    """Length validation accepts a full-file 200 response and a shorter final byte range."""
+    dest = tmp_path / "file.bin"
+    dest.write_bytes(b"\x00" * 4)
+    mock_downloader.get.return_value = _mock_response(status, content=body)
+
+    downloader._fetch_range_bytes(_provider(), start, end, None, dest)
+
+    assert dest.read_bytes() == expected
+    assert mock_downloader.get.call_count == 1
+
+
+@pytest.mark.parametrize("split", [False, True], ids=["single-part", "multiple-parts"])
+def test_encoded_download_preserves_stored_bytes(
+    tmp_path: Path, downloader: MultipartFileDownloader, mock_downloader: MagicMock, split: bool
+) -> None:
+    """Ranges count encoded bytes; gzip responses must be assembled without per-part decompression."""
+    stored = gzip.compress(b"readings\n" * 1024)
+    destination = tmp_path / "readings.gz"
+    destination.write_bytes(b"\x00" * len(stored))
+    part_size = len(stored) // 2 if split else len(stored)
+    ranges = [(start, min(start + part_size, len(stored))) for start in range(0, len(stored), part_size)]
+    responses = []
+    for start, stop in ranges:
+        response = requests.Response()
+        response.status_code = 206
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers["Content-Length"] = str(stop - start)
+        response.raw = HTTPResponse(
+            body=io.BytesIO(stored[start:stop]),
+            headers=response.headers,
+            preload_content=False,
+        )
+        responses.append(response)
+    mock_downloader.get.side_effect = responses
+
+    for start, stop in ranges:
+        downloader._fetch_range_bytes(_provider(), start, stop - 1, None, destination)
+
+    assert destination.read_bytes() == stored
+    assert mock_downloader.get.call_count == len(ranges)
