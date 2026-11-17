@@ -51,9 +51,12 @@ def _file(path: str, revision: str, size_bytes: int = 1, identity: str | None = 
     )
 
 
-def _entry(revision: str) -> file_store_pb2.LogicalFile:
+def _entry(revision: str, **kwargs) -> file_store_pb2.LogicalFile:
     """The skill's SKILL.md: the file its record points at."""
-    return _file(f"{_FOLDER}/SKILL.md", revision, identity="entry")
+    entry = _file(f"{_FOLDER}/SKILL.md", revision, identity="entry")
+    entry.state = file_store_pb2.FILE_STATE_ACTIVE
+    entry.MergeFrom(file_store_pb2.LogicalFile(**kwargs))
+    return entry
 
 
 def _saved(path: str, revision: str) -> files_pb2.FileChangeResult:
@@ -133,6 +136,7 @@ def downloads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
 def _skill_clients() -> MagicMock:
     clients = MagicMock()
     clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_proto_skill())
+    clients.files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
     clients.files.GetDownloadUrl.side_effect = lambda request: files_pb2.GetDownloadUrlResponse(
         url=f"https://storage/{request.source_ref.managed.file_revision_rid}"
     )
@@ -451,20 +455,20 @@ def test_content_update_replaces_skill_md_at_its_current_revision(uploads) -> No
 
 
 @pytest.mark.parametrize(
-    "listing",
+    "entry",
     [
-        _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a")),
-        _listing(_file(f"{_FOLDER}/SKILL.md", "rev-new"), _file(f"{_FOLDER}/methods/a.md", "rev-a")),
+        _entry("rev-1", state=file_store_pb2.FILE_STATE_REMOVED),
+        _entry("rev-1", path=file_store_pb2.LogicalPath(path="notes/SKILL.md")),
     ],
-    ids=["deleted", "deleted and re-created"],
+    ids=["deleted, or deleted and re-created", "moved out of the folder"],
 )
-def test_content_update_refuses_a_skill_md_the_skill_does_not_point_at(uploads, listing) -> None:
+def test_content_update_refuses_a_skill_md_the_skill_does_not_point_at(uploads, entry) -> None:
     """The skill's record points at its SKILL.md, so a SKILL.md saved where it was deleted, or over one re-created in
     Drives, would go unrecorded; the update raises before uploading anything.
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.files.ListFiles.return_value = listing
+    clients.files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=entry)
 
     with pytest.raises(NominalNotFoundError, match="no longer in"):
         skill.update(content=_SKILL_MD)
@@ -472,6 +476,58 @@ def test_content_update_refuses_a_skill_md_the_skill_does_not_point_at(uploads, 
     assert uploads == {}
     clients.files.ApplyFileChanges.assert_not_called()
     clients.skills.UpdateSkill.assert_not_called()
+
+
+def test_content_update_reads_skill_md_before_checking_the_skills_version(uploads) -> None:
+    """SKILL.md's revision is read before the skill's version is checked, so another update that saves SKILL.md and
+    records it in between fails the check, and one that saves after the read makes File Store refuse the stale revision.
+    """
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    reads: list[str] = []
+    clients.files.GetFileByIdentity.side_effect = lambda request: (
+        reads.append("SKILL.md") or files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
+    )
+    versions = iter([7, 8])
+    clients.skills.GetSkill.side_effect = lambda request: (
+        reads.append("skill") or skills_pb2.GetSkillResponse(skill=_proto_skill(version=next(versions)))
+    )
+
+    with pytest.raises(NominalConflictError):
+        skill.update(content=_SKILL_MD)
+
+    assert reads == ["skill", "SKILL.md", "skill"]
+    assert uploads == {}
+    clients.files.ApplyFileChanges.assert_not_called()
+
+
+def test_content_update_says_skill_md_is_saved_when_recording_it_fails(uploads, fake_rpc_error) -> None:
+    """A conflict after SKILL.md saved isn't the conflict that saves nothing, so it isn't raised as one."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
+        results=[_saved(f"{_FOLDER}/SKILL.md", "rev-2")]
+    )
+    clients.skills.UpdateSkill.side_effect = fake_rpc_error(grpc.StatusCode.ABORTED)
+
+    with pytest.raises(NominalError, match="SKILL.md is saved") as raised:
+        skill.update(content=_SKILL_MD)
+
+    assert type(raised.value) is NominalError
+
+
+def test_turning_off_an_archived_skill_restores_it_turned_off() -> None:
+    """update(enabled=False) sends the state unarchive() sends, so an archived skill comes back turned off."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill(state=skills_pb2.SKILL_STATE_ARCHIVED))
+    clients.skills.UpdateSkill.return_value = skills_pb2.UpdateSkillResponse(
+        skill=_proto_skill(state=skills_pb2.SKILL_STATE_DISABLED, version=8)
+    )
+
+    skill.update(enabled=False)
+
+    assert clients.skills.UpdateSkill.call_args.args[0].skill.state == skills_pb2.SKILL_STATE_DISABLED
+    assert not skill.is_archived
 
 
 def test_content_update_from_a_stale_object_saves_nothing(uploads) -> None:
@@ -489,7 +545,7 @@ def test_content_update_from_a_stale_object_saves_nothing(uploads) -> None:
 
 def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(uploads) -> None:
     """A new frontmatter name saves SKILL.md and moves the folder to skills/<new name> in one batch. SKILL.md keeps
-    its identity through both, so the skill records the identity it has without looking SKILL.md up again.
+    its identity through both, so the skill records the identity it has without looking SKILL.md up after the move.
     """
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
@@ -509,7 +565,7 @@ def test_rename_moves_the_folder_and_keeps_pointing_the_skill_at_skill_md(upload
     assert put.destination.file_revision_rid == "rev-1"
     assert (getattr(move, "from").path, move.to.path) == (_FOLDER, "skills/flight-review")
     clients.files.GetFile.assert_not_called()
-    clients.files.GetFileByIdentity.assert_not_called()
+    assert clients.files.GetFileByIdentity.call_count == 1
     update = clients.skills.UpdateSkill.call_args.args[0]
     assert update.skill.backing.file_store.entry_file_identity == _identity("entry")
 
@@ -749,6 +805,37 @@ def test_export_refuses_a_path_that_could_leave_the_folder(downloads, tmp_path: 
         skill.export(tmp_path)
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_export_on_windows_refuses_a_skill_name_with_a_drive(downloads, tmp_path: Path, monkeypatch) -> None:
+    """The skill's folder name is checked as its files' paths are, so a name such as D:review writes nothing."""
+    clients = _skill_clients()
+    backing = _proto_skill().backing
+    backing.file_store.entry_path.path = "skills/D:review/SKILL.md"
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(skill=_proto_skill(backing=backing))
+    monkeypatch.setattr("nominal.core.skill._ON_WINDOWS", True)
+
+    with pytest.raises(ValueError):
+        skill.export(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_export_refuses_two_files_that_land_on_one(downloads, tmp_path: Path) -> None:
+    """Where case is ignored, Notes.md and notes.md are one file, so export raises instead of keeping only one."""
+    (tmp_path / "probe").write_text("")
+    if not (tmp_path / "PROBE").exists():
+        pytest.skip("this file system tells names apart by case")
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.files.ListFiles.return_value = _listing(
+        _file(f"{_FOLDER}/Notes.md", "rev-a"), _file(f"{_FOLDER}/notes.md", "rev-b")
+    )
+    downloads.update({"https://storage/rev-a": b"A", "https://storage/rev-b": b"B"})
+
+    with pytest.raises(FileExistsError):
+        skill.export(tmp_path / "out")
 
 
 @pytest.mark.parametrize("path", ["C:x.md", "C:/Users/x.md", "notes:hidden.md"])
