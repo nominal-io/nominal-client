@@ -507,6 +507,10 @@ def _apply_one(
     request = files_pb2.ApplyFileChangesRequest(drive_rid=drive_rid, changes=[change])
     with translate_grpc_errors():
         (result,) = clients.drive_files.ApplyFileChanges(request).results
-    if result.WhichOneof("result") == "failure":
+    outcome = result.WhichOneof("result")
+    if outcome == "failure":
         raise NominalFileStoreError(FileStoreErrorCode._from_failure(result.failure), result.failure.message)
+    expected = "directory_moved" if change.HasField("move_directory") else "success"
+    if outcome != expected:
+        raise ValueError(f"File Store returned unexpected outcome {outcome!r}; expected {expected!r}")
     return result

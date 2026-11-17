@@ -253,6 +253,10 @@ Failures reported as gRPC statuses use the client's general exceptions, such as
 {py:class}`~nominal.exceptions.NominalNotFoundError`. Revision conflicts are surfaced to the
 caller rather than retried with a newer revision.
 
+If a single-operation response has a missing or unexpected outcome, the client raises
+`ValueError` without refreshing the input snapshot or replaying the request. The server
+may still have applied the change; reconcile its state before retrying.
+
 
 (drive-change-retries)=
 ## Recover after a transport error

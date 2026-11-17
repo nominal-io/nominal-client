@@ -217,3 +217,41 @@ def test_move_directory_reports_service_limits() -> None:
     with pytest.raises(NominalFileStoreError) as excinfo:
         managed_drive(clients).move_directory("data", "archive")
     assert excinfo.value.code.value == "DIRECTORY_MOVE_LIMIT_EXCEEDED"
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        files_pb2.FileChangeResult(),
+        files_pb2.FileChangeResult(directory_moved=files_pb2.MoveDirectorySuccess()),
+    ],
+    ids=["missing-outcome", "directory-outcome"],
+)
+def test_move_rejects_unexpected_outcome_without_refreshing(result: files_pb2.FileChangeResult) -> None:
+    """An unexpected result must not overwrite a file snapshot with protobuf defaults."""
+    clients = mock_clients()
+    file = _managed_file(clients)
+    original = (file.rid, file.path, file.current_revision_rid)
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(results=[result])
+
+    with pytest.raises(ValueError, match="unexpected outcome"):
+        file.move_to("archive/run-001.csv")
+
+    assert (file.rid, file.path, file.current_revision_rid) == original
+    assert clients.drive_files.ApplyFileChanges.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "result",
+    [files_pb2.FileChangeResult(), change_success().results[0]],
+    ids=["missing-outcome", "file-outcome"],
+)
+def test_directory_move_rejects_unexpected_outcome(result: files_pb2.FileChangeResult) -> None:
+    """A directory move requires its dedicated acknowledgement rather than any non-failure result."""
+    clients = mock_clients()
+    clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(results=[result])
+
+    with pytest.raises(ValueError, match="unexpected outcome"):
+        managed_drive(clients).move_directory("data", "archive")
+
+    assert clients.drive_files.ApplyFileChanges.call_count == 1
