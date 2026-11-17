@@ -28,6 +28,22 @@ uv run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 
 or with `just test-e2e-token <token>`.
 
+## Diagnosing slow E2E runs
+
+CI loads `-p tests.e2e_timing` for general, migration, and file-upload E2E tests.
+Add the same option to a local pytest command to emit `E2E_TIMING` JSON records.
+Each test phase (`setup`, `call`, `teardown`) emits a start record immediately and
+then a finish record with pytest's `duration_seconds` and `outcome`. `timestamp`
+is Unix time in seconds; `nodeid` identifies the test, including parametrization.
+Setup includes fixture creation and teardown includes fixture cleanup.
+
+Search the Actions job log for `E2E_TIMING` after a timeout. Finished phases show
+where the time went; the last start without a matching finish identifies the
+interrupted phase. Records are flushed outside pytest capture, so completed
+records remain available even if the process is terminated without a summary.
+A phase duration does not distinguish individual API calls or backend queue time.
+Collection and dependency installation happen before these test-phase records.
+
 ## Docs
 
 The docs site is built from `docs/src/` with Sphinx. Guides are MyST Markdown pages under `docs/src/guides/`, examples are MyST notebooks under `docs/src/examples/`, and the reference under `docs/src/ref/` is generated from docstrings, so a reference fix is a docstring fix.

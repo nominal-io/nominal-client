@@ -70,6 +70,7 @@ jobs:
             --ignore=tests/e2e/test_file_upload.py \
             --profile staging-e2e \
             --temporary-api-key \
+            -p tests.e2e_timing \
             --no-cov \
             -v
 
@@ -146,6 +147,7 @@ jobs:
             --impersonation-dest-user-rid "${IMPERSONATION_DEST_USER_RID}" \
             --fail-on-skip \
             --temporary-api-key \
+            -p tests.e2e_timing \
             --no-cov \
             -v
 
@@ -215,5 +217,6 @@ jobs:
           uv run pytest tests/e2e/test_file_upload.py \
             --profile file-upload-e2e \
             --temporary-api-key \
+            -p tests.e2e_timing \
             --no-cov \
             -v
