@@ -336,7 +336,21 @@ class MultipartFileDownloader:
             f.truncate(total_size_bytes)
 
     @staticmethod
-    def _write_part(path: pathlib.Path, start: int, data: bytes) -> None:
+    def _write_part(path: pathlib.Path, start: int, end: int, chunks: Iterable[bytes]) -> None:
+        """Read exactly one part, stopping oversized streams before writing to the destination."""
+        expected = end - start + 1
+        data = bytearray()
+        for chunk in chunks:
+            data += chunk
+            if len(data) > expected:
+                # A server that ignores Range answers with the whole object. Writing that at
+                # `start` would corrupt the file, so stop reading rather than buffer it all.
+                raise _RangeNotHonoredError(
+                    f"Expected {expected} bytes for range {start}-{end}, got more; "
+                    "the server may not support ranged downloads"
+                )
+        if len(data) != expected:
+            raise RuntimeError(f"Expected {expected} bytes for range {start}-{end}, got {len(data)}")
         # Open existing file in read + write binary mode
         # Not creating the file with `wb` as it is already pre-allocated before downloads begin
         with path.open("r+b") as f:
@@ -369,31 +383,17 @@ class MultipartFileDownloader:
         for _ in range(self.max_part_retries):
             url = provider.get_url()
             try:
-                r = self._session.get(url, headers=headers, stream=True, timeout=self.timeout)
-                if self._is_expired_status(r):
-                    provider.invalidate()
-                    continue  # refresh & retry
-                r.raise_for_status()
+                with self._session.get(url, headers=headers, stream=True, timeout=self.timeout) as r:
+                    if self._is_expired_status(r):
+                        provider.invalidate()
+                        continue  # refresh & retry
+                    r.raise_for_status()
 
-                if expected_etag and r.headers.get("ETag") and r.headers["ETag"] != expected_etag:
-                    raise RuntimeError("ETag mismatch across parts (object changed during download)")
+                    if expected_etag and r.headers.get("ETag") and r.headers["ETag"] != expected_etag:
+                        raise RuntimeError("ETag mismatch across parts (object changed during download)")
 
-                expected = end - start + 1
-                data = bytearray()
-                for chunk in r.iter_content(1024 * 1024):
-                    data += chunk
-                    if len(data) > expected:
-                        # A server that ignores Range answers with the whole object. Writing that at
-                        # `start` would corrupt the file, so stop reading rather than buffer it all.
-                        r.close()
-                        raise _RangeNotHonoredError(
-                            f"Expected {expected} bytes for range {start}-{end}, got more; "
-                            "the server may not support ranged downloads"
-                        )
-                if len(data) != expected:
-                    raise RuntimeError(f"Expected {expected} bytes for range {start}-{end}, got {len(data)}")
-                self._write_part(destination, start, bytes(data))
-                return
+                    self._write_part(destination, start, end, r.iter_content(1024 * 1024))
+                    return
 
             except _RangeNotHonoredError:
                 raise  # the server will answer the same way every time

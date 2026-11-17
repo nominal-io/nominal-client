@@ -178,7 +178,7 @@ def test_write_part_raises_on_short_write(tmp_path: Path) -> None:
         patch.object(Path, "open", return_value=mock_fh),
         pytest.raises(OSError, match=r"Short write to .* at offset 0: wrote 3/5 bytes"),
     ):
-        MultipartFileDownloader._write_part(path, 0, data)
+        MultipartFileDownloader._write_part(path, 0, len(data) - 1, [data])
 
 
 # ---- _fetch_range_bytes tests ----
@@ -191,6 +191,7 @@ def _mock_response(
 ) -> MagicMock:
     """Build a minimal fake requests.Response for _fetch_range_bytes tests."""
     r = MagicMock()
+    r.__enter__.return_value = r
     r.status_code = status_code
     r.ok = 200 <= status_code < 300
     r.headers = headers or {}
