@@ -11,7 +11,7 @@ from typing import BinaryIO, Iterable, Mapping
 import requests
 from nominal_api import ingest_api, upload_api
 
-from nominal.core._utils.filenames import resolve_upload_filename, sanitize_upload_filename
+from nominal.core._utils.filenames import resolve_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
@@ -320,57 +320,6 @@ def _put_multipart_upload_to(
     finally:
         pool.shutdown(wait=True, cancel_futures=True)
         session.close()
-
-
-def upload_file_store_object(
-    auth_header: str,
-    workspace_rid: str,
-    data: bytes,
-    filename: str,
-    mimetype: str,
-    upload_client: upload_api.UploadService,
-    header_provider: HeaderProvider | None = None,
-) -> str:
-    """Upload bytes in one part for File Store to commit as a file revision.
-
-    Unlike `put_multipart_upload`, this returns the upload's key, which is what a File Store put change names, rather
-    than the object's storage location.
-
-    Args:
-        auth_header: Nominal authorization token
-        workspace_rid: Workspace the file's drive belongs to
-        data: The file's bytes
-        filename: Name for the uploaded object; characters unsafe for storage are replaced
-        mimetype: Type of the file's contents
-        upload_client: Conjure upload client
-        header_provider: Optional provider for headers to include in requests to the object store
-
-    Returns: The object key to name in a File Store put change
-    """
-    # File Store uploads go to their own bucket, which every later call on the upload must name.
-    initiated = _initiate_multipart_upload(
-        upload_client,
-        auth_header,
-        sanitize_upload_filename(filename),
-        mimetype,
-        workspace_rid,
-        destination=ingest_api.UploadDestination.FILE_STORE,
-    )
-    key, upload_id, bucket = initiated.key, initiated.upload_id, initiated.bucket
-    session = create_multipart_request_session(pool_size=1, header_provider=header_provider)
-    try:
-        put_response = _sign_and_put_part(upload_client, session, auth_header, key, upload_id, 1, data, bucket=bucket)
-        etag = put_response.headers.get("ETag")
-        if not etag:
-            # Completing without the part's ETag would produce a corrupt object.
-            raise NominalMultipartUploadError(
-                f"storage provider returned no ETag for part 1 (key={key}, upload_id={upload_id})"
-            )
-        _complete_multipart_upload(upload_client, auth_header, key, upload_id, {1: etag}, bucket=bucket)
-    except Exception as e:
-        _abort(upload_client, auth_header, key, upload_id, e, bucket=bucket)
-        raise e
-    return key
 
 
 def upload_multipart_io(

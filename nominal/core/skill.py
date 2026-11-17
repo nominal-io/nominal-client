@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 import re
 import zipfile
@@ -14,13 +15,14 @@ from typing import Protocol, Self
 import grpc
 import yaml
 from google.protobuf import field_mask_pb2
-from nominal_api import upload_api
+from nominal_api import ingest_api, upload_api
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
+from nominal.core._utils.filenames import sanitize_upload_filename
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.multipart import DEFAULT_NUM_WORKERS, upload_file_store_object
+from nominal.core._utils.multipart import DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core._utils.pagination_tools import paginate_grpc, search_skills_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
@@ -759,15 +761,17 @@ def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str
 
 def _upload(clients: Skill._Clients, workspace_rid: str, path: str, text: str) -> str:
     """Upload `text` for File Store to save at `path`, and return the upload's key."""
-    return upload_file_store_object(
+    return _put_multipart_upload_to(
         clients.auth_header,
         workspace_rid,
-        text.encode("utf-8"),
-        PurePosixPath(path).name,
+        io.BytesIO(text.encode("utf-8")),
+        sanitize_upload_filename(PurePosixPath(path).name),
         _TEXT_MIMETYPE,
         clients.upload,
         header_provider=clients.header_provider,
-    )
+        destination=ingest_api.UploadDestination.FILE_STORE,
+        max_workers=1,
+    ).key
 
 
 def _at_path(path: str) -> files_pb2.Destination:

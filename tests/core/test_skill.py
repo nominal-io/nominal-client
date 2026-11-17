@@ -114,12 +114,12 @@ def uploads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     # Uploads run on several threads, so each key comes from one shared counter.
     counter = itertools.count()
 
-    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, header_provider=None) -> str:
+    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, **kwargs):
         key = f"key-{next(counter)}-{filename}"
-        uploaded[key] = data
-        return key
+        uploaded[key] = data.read()
+        return MagicMock(key=key)
 
-    monkeypatch.setattr("nominal.core.skill.upload_file_store_object", upload)
+    monkeypatch.setattr("nominal.core.skill._put_multipart_upload_to", upload)
     return uploaded
 
 
@@ -400,12 +400,12 @@ def test_a_failed_upload_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Files upload at once, and one that fails stops the save before File Store applies any."""
     client, clients = _client()
 
-    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, header_provider=None) -> str:
+    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, **kwargs):
         if filename == "b.md":
             raise requests.ConnectionError("upload failed")
-        return f"key-{filename}"
+        return MagicMock(key=f"key-{filename}")
 
-    monkeypatch.setattr("nominal.core.skill.upload_file_store_object", upload)
+    monkeypatch.setattr("nominal.core.skill._put_multipart_upload_to", upload)
 
     with pytest.raises(requests.ConnectionError):
         client.create_skill(_SKILL_MD, files={"methods/a.md": "A", "methods/b.md": "B"})

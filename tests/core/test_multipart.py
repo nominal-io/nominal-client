@@ -20,7 +20,7 @@ from nominal.core._utils.multipart import (
     _sign_and_put_part,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
+from nominal.exceptions import NominalMultipartUploadFailed
 
 
 def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) -> str:
@@ -250,54 +250,6 @@ def test_put_part_makes_exactly_one_request() -> None:
     with pytest.raises(requests.ConnectionError):
         _put_part(session, _sign_response(), b"chunk", verify=False, timeout=9.0)
     assert session.put.call_count == 1  # exactly one PUT; retrying is the caller's job
-
-
-def _file_store_upload_client() -> MagicMock:
-    # No list_parts: the part's ETag comes from its PUT response.
-    client = MagicMock(spec=["initiate_multipart_upload", "complete_multipart_upload", "abort_multipart_upload"])
-    client.initiate_multipart_upload.return_value = MagicMock(
-        key="objects/limits.md", upload_id="uid", bucket="file-store-bucket"
-    )
-    client.complete_multipart_upload.return_value = MagicMock(location="s3://bucket/objects/limits.md")
-    return client
-
-
-def test_upload_file_store_object_targets_file_store_and_returns_the_key() -> None:
-    """A File Store upload completes with its part's ETag from the PUT, names its bucket on every call after starting,
-    and returns the key a put change names.
-    """
-    client = _file_store_upload_client()
-
-    with patch.object(multipart, "_sign_and_put_part") as put_part:
-        put_part.return_value = MagicMock(headers={"ETag": '"e"'})
-        key = multipart.upload_file_store_object(
-            "auth", "ri.workspace", b"Use the limits.\n", "limits.md", "text/plain", client
-        )
-
-    request = client.initiate_multipart_upload.call_args.args[1]
-    assert request.destination == multipart.ingest_api.UploadDestination.FILE_STORE
-    assert put_part.call_args.args[5:] == (1, b"Use the limits.\n")
-    _, _, _, parts = client.complete_multipart_upload.call_args.args
-    assert [(p.part_number, p.etag) for p in parts] == [(1, '"e"')]
-    # The upload's bucket is not the default one, so signing and completing must name it.
-    assert put_part.call_args.kwargs["bucket"] == "file-store-bucket"
-    assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "file-store-bucket"
-    assert key == "objects/limits.md"
-
-
-def test_upload_file_store_object_aborts_a_part_without_an_etag() -> None:
-    """Completing without the part's ETag would produce a corrupt object, so the upload is aborted in its bucket."""
-    client = _file_store_upload_client()
-
-    with patch.object(multipart, "_sign_and_put_part") as put_part:
-        put_part.return_value = MagicMock(headers={})
-        with pytest.raises(NominalMultipartUploadError, match="no ETag"):
-            multipart.upload_file_store_object("auth", "ri.workspace", b"text", "limits.md", "text/plain", client)
-
-    client.complete_multipart_upload.assert_not_called()
-    client.abort_multipart_upload.assert_called_once_with(
-        "auth", "objects/limits.md", "uid", bucket="file-store-bucket"
-    )
 
 
 def _upload_client_for_destination(bucket: str) -> MagicMock:
