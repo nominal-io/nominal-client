@@ -31,8 +31,8 @@ class CheckDefinition:
         title: Display name of the check.
         expression: Source ending in a range expression describing violations. Assignments
             are allowed; omit imports. Convert boolean conditions with ``.ranges()``.
-        priority: Severity of violations, from P0 (most severe) to P4. May be left unset on a reusable
-            definition and supplied later with ``dataclasses.replace``; ``add`` requires it.
+        priority: Default severity of violations, from P0 (most severe) to P4. Overrides the builder's
+            ``default_priority``. A priority passed to ``ChecklistBuilder.add`` overrides this one.
         event_type: Category of generated events. When omitted, the service uses ``EventType.ERROR``.
             This does not change the condition or turn absence of matching ranges into success.
             ``EventType.UNKNOWN`` is not a valid category for creation.
@@ -115,6 +115,7 @@ class ChecklistBuilder:
 
     Args:
         strict: Reject unused input bindings when True. Missing bindings always raise.
+        default_priority: Priority for checks that set none themselves and get none from ``add``.
 
     Example:
         ```python
@@ -129,18 +130,23 @@ class ChecklistBuilder:
         ```
     """
 
-    def __init__(self, *, strict: bool = False) -> None:
+    def __init__(self, *, strict: bool = False, default_priority: Priority | None = None) -> None:
         self._strict = strict
+        self._default_priority = default_priority
         self._checks: list[scout_checks_api.CreateCheckRequest] = []
         self._variables: list[scout_checks_api.UnresolvedChecklistVariable] = []
 
-    def add(self, check: CheckDefinition, *, inputs: Mapping[str, ChannelBinding]) -> Self:
+    def add(
+        self, check: CheckDefinition, *, inputs: Mapping[str, ChannelBinding], priority: Priority | None = None
+    ) -> Self:
         """Compile and bind a reusable check, capturing its source and channels locally.
 
         Args:
             check: Failure condition and metadata. Source must compile to a range series.
             inputs: Map expression names to channels. Missing bindings always fail. Unused
                 bindings are omitted, or rejected when the builder has ``strict=True``.
+            priority: Priority for this check in this checklist. Overrides ``check.priority`` and the
+                builder's ``default_priority``.
 
         Returns:
             This builder. A failed addition leaves it unchanged.
@@ -148,15 +154,22 @@ class ChecklistBuilder:
         Raises:
             TypeError: The expression is not a source string or does not produce a range series.
             ValueError: Compilation fails, bindings are missing, strict bindings are unused,
-                a stable key is blank or duplicated, the priority is unset, or the event type is UNKNOWN.
+                a stable key is blank or duplicated, no priority has been set, or the event type is
+                UNKNOWN.
 
         Note:
             Compilation does not resolve live channels or establish streaming compatibility.
             Alignment, fill, and missing-data behavior follow service defaults. A check's
             ranges describe violations; absence of data does not establish a passing result.
         """
-        if check.priority is None:
-            raise ValueError(f"Check {check.title!r} has no priority; set one before adding it")
+        # Priority.P0 is falsy, so compare with None rather than chaining with `or`.
+        if priority is None:
+            priority = check.priority if check.priority is not None else self._default_priority
+        if priority is None:
+            raise ValueError(
+                f"Check {check.title!r} has no priority; pass priority to add, set it on the check, "
+                "or set default_priority on the builder"
+            )
         if check.event_type is EventType.UNKNOWN:
             raise ValueError("EventType.UNKNOWN cannot be used for generated events")
         compiler_references = {
@@ -199,7 +212,7 @@ class ChecklistBuilder:
             scout_checks_api.CreateCheckRequest(
                 title=check.title,
                 description=check.description,
-                priority=scout_api.Priority(check.priority.name),
+                priority=scout_api.Priority(priority.name),
                 check_lineage_rid=str(check_id),
                 generated_event_type=None if check.event_type is None else event.EventType(check.event_type.value),
                 generated_event_labels=None if check.event_labels is None else list(check.event_labels),

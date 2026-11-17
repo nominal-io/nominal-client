@@ -80,11 +80,29 @@ For live data, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 | --- | --- | --- |
 | `title` | Display name. | Required |
 | `expression` | Compute expression returning the time ranges where the check fails. | Required |
-| `priority` | Severity, from `Priority.P0`, the most severe, to `Priority.P4`. Can be set later with `dataclasses.replace`. | None; `add` fails without one |
+| `priority` | Default severity, from `Priority.P0`, the most severe, to `Priority.P4`. | None |
 | `description` | Longer explanation. | Empty |
 | `key` | Identity that stays the same across versions. | New identity on each `add` |
 | `event_type` | {py:class}`~nominal.core.EventType` of the events the check creates. `UNKNOWN` isn't allowed. | `ERROR` |
 | `event_labels` | Labels on the events the check creates. | None |
+
+A checklist can set priority instead of the check. The first one set is published:
+
+1. `priority` passed to `add`
+2. the check's own `priority`
+3. `default_priority` on `ChecklistBuilder`
+
+If none of these are set, `add` fails.
+
+```python
+overheating = CheckDefinition("Engine overheating", "(temperature > 100).ranges()")
+builder = ChecklistBuilder(default_priority=Priority.P3)
+builder.add(
+    overheating,
+    inputs={"temperature": ChannelBinding("telemetry", "engine.temperature")},
+    priority=Priority.P1,
+)
+```
 
 Give each check a `key` and keep it when you change the limit or rename the check, so Nominal treats it as the same check.
 Keys are case-sensitive and must be unique within a builder.

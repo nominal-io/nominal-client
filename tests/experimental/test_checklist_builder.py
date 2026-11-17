@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from unittest.mock import MagicMock
 from uuid import UUID, uuid5
 
@@ -213,13 +212,44 @@ def test_strict_rejects_unused_bindings() -> None:
         )
 
 
-def test_unset_priority_rejected_on_add() -> None:
-    """A reusable definition may omit priority, but adding it requires one and names the check."""
-    check = CheckDefinition("Battery low", "(soc < 40).ranges()")
+SOC = {"soc": ChannelBinding("telemetry", "soc")}
+
+
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder", "expected"),
+    [
+        (Priority.P1, Priority.P2, Priority.P3, scout_api.Priority.P1),
+        (None, Priority.P2, Priority.P3, scout_api.Priority.P2),
+        (None, None, Priority.P3, scout_api.Priority.P3),
+        (Priority.P0, Priority.P2, Priority.P3, scout_api.Priority.P0),
+        (None, Priority.P0, Priority.P3, scout_api.Priority.P0),
+        (Priority.P1, None, None, scout_api.Priority.P1),
+        (None, None, Priority.P0, scout_api.Priority.P0),
+    ],
+)
+def test_priority_prefers_add_then_check_then_builder(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_add: Priority | None,
+    from_check: Priority | None,
+    from_builder: Priority | None,
+    expected: scout_api.Priority,
+) -> None:
+    """The add argument wins, then the check's priority, then the builder default."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=from_check)
+    ChecklistBuilder(default_priority=from_builder).add(check, inputs=SOC, priority=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.priority == expected
+
+
+def test_unset_priority_rejected_on_add(client: NominalClient) -> None:
+    """With no priority at any level, add names the check and leaves the builder empty."""
     builder = ChecklistBuilder()
     with pytest.raises(ValueError, match="'Battery low' has no priority"):
-        builder.add(check, inputs={"soc": ChannelBinding("telemetry", "soc")})
-    builder.add(replace(check, priority=Priority.P2), inputs={"soc": ChannelBinding("telemetry", "soc")})
+        builder.add(CheckDefinition("Battery low", "(soc < 40).ranges()"), inputs=SOC)
+    with pytest.raises(ValueError, match="at least one check"):
+        builder.create(client, "Empty")
 
 
 CHECK_ID = uuid5(UUID("52e0d79d-a67f-4d15-8cb6-a294f8c64b4e"), "first")
