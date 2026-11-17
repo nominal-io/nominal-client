@@ -76,6 +76,24 @@ def df() -> pd.DataFrame:
     return instro.read_avro(DATA / "capture.avro")
 
 
+@pytest.fixture(autouse=True)
+def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A config file with default, docs and staging profiles, so no real config or profile variable is read."""
+    import yaml
+
+    path = tmp_path / "nominal" / "config.yml"
+    path.parent.mkdir()
+    profiles = {
+        n: {"base_url": f"https://{n}.test/api", "token": "secret", "workspace_rid": None}
+        for n in ("default", "docs", "staging")
+    }
+    path.write_text(yaml.dump({"version": 2, "profiles": profiles}))
+    monkeypatch.setattr("nominal.config._session._config_path", lambda: path)
+    monkeypatch.setattr("nominal.config._session._chosen", None)
+    for variable in ("NOMINAL_PROFILE", "PANOMINAL_PROFILE", "NOMINAL_WORKSPACE_RID"):
+        monkeypatch.delenv(variable, raising=False)
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
     """The client that the "default" profile gives."""
@@ -154,6 +172,15 @@ def test_wait(df: pd.DataFrame, client: FakeClient):
     """wait=True polls until Nominal has ingested the file."""
     _, _, file = df.nom.to_nominal(wait=True)
     assert file.polled
+
+
+def test_uses_active_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
+    """With no profile argument, to_nominal uses the active profile's client."""
+    clients = {"default": FakeClient(), "docs": FakeClient()}
+    monkeypatch.setattr("nominal.core.NominalClient.from_profile", lambda profile: clients[profile])
+    monkeypatch.setenv("NOMINAL_PROFILE", "docs")
+    df.nom.to_nominal()
+    assert [a.name for a in clients["docs"].assets] == ["nominal-pandas"] and not clients["default"].assets
 
 
 def test_profile(df: pd.DataFrame, monkeypatch: pytest.MonkeyPatch):
