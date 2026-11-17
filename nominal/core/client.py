@@ -630,9 +630,9 @@ class NominalClient:
         name in SKILL.md's frontmatter, and the skill is registered from that SKILL.md. An enabled skill reaches
         every Analyst user and connected agent in the workspace.
 
-        If a file can't be saved, or the skill can't be registered, the files this call saved are removed. If the
-        skill can't be turned on, for example because SKILL.md isn't valid, it stays as a draft and the error's
-        notes give its RID.
+        If a file can't be saved, or the skill can't be registered, the files this call saved are removed; if they
+        can't be removed, the error's notes say where they are. If the skill can't be turned on, for example because
+        SKILL.md isn't valid, it stays as a draft and the error's notes give its RID.
 
         Args:
             content: The skill's SKILL.md, frontmatter included. Its frontmatter names and describes the skill.
@@ -642,8 +642,9 @@ class NominalClient:
             workspace: Workspace or workspace RID for the skill. Defaults to the client's default workspace.
 
         Raises:
-            ValueError: If SKILL.md has no frontmatter with a valid name, a file's path is SKILL.md or leads
-                outside the skill's folder, or there are more than 99 reference files. Nothing is saved.
+            ValueError: If SKILL.md has no frontmatter with a valid name, `enabled` is True and SKILL.md has no
+                description of 1 to 1024 characters, a file's path is SKILL.md or leads outside the skill's folder,
+                or there are more than 99 reference files. Nothing is saved.
             NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
                 skill needs. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
@@ -679,7 +680,8 @@ class NominalClient:
 
         Raises:
             ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, a file is
-                not UTF-8 text, or SKILL.md has no frontmatter with a valid name. Nothing is saved.
+                not UTF-8 text, SKILL.md has no frontmatter with a valid name, or `enabled` is True and SKILL.md has
+                no description of 1 to 1024 characters. Nothing is saved.
             NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
                 skill needs. Nothing is saved.
             NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.

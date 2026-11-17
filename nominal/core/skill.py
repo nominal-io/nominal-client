@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import zipfile
 from collections.abc import Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -18,7 +19,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core._utils.multipart import upload_file_store_object
+from nominal.core._utils.multipart import DEFAULT_NUM_WORKERS, upload_file_store_object
 from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core._utils.pagination_tools import paginate_grpc, search_skills_paginated
 from nominal.core._utils.query_tools import ArchiveStatusFilter
@@ -37,6 +38,12 @@ _ENTRY_FILE = "SKILL.md"
 # The app and Analyst save each skill at skills/<name>/SKILL.md in the workspace's skills drive.
 _SKILLS_ROOT = "skills"
 _MAX_NAME_LENGTH = 64
+# Analyst loads a skill only when its description, trimmed, is 1 to this many characters.
+_MAX_DESCRIPTION_LENGTH = 1024
+_DESCRIPTION_NEEDED = (
+    f"A skill that is turned on needs a description in SKILL.md's frontmatter, of 1 to {_MAX_DESCRIPTION_LENGTH} "
+    "characters"
+)
 # Lowercase letters and numbers in groups joined by single hyphens.
 _SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 # A YAML frontmatter block at the very start of SKILL.md, with LF or CRLF line endings.
@@ -185,7 +192,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         its new name and description; if that fails, the error's notes say SKILL.md is saved.
 
         Raises:
-            ValueError: If `content` has no frontmatter with a valid name. Nothing is saved.
+            ValueError: If `content` has no frontmatter with a valid name, or the skill will be turned on and
+                `content` has no description of 1 to 1024 characters. Nothing is saved.
             NominalError: If `enabled` is True and the skill is archived. Nothing is saved.
             NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which changing a
                 skill needs. Nothing is saved.
@@ -197,23 +205,23 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             return self.refresh()
         if enabled and self.is_archived:
             raise NominalError(f"Restore skill {self.rid} with unarchive() before turning it on")
-        _skills_drive_rid(self._clients, self.workspace_rid)
-        skill = skills_pb2.Skill(skill_rid=self.rid)
-        paths = []
-        if content is not None:
-            skill.backing.file_store.entry_file_identity.CopyFrom(self._save_entry(content))
-            paths.append("backing")
+        state: skills_pb2.SkillState.ValueType | None = None
         if enabled is not None:
-            skill.state = skills_pb2.SKILL_STATE_ENABLED if enabled else skills_pb2.SKILL_STATE_DISABLED
-            paths.append("state")
-        request = skills_pb2.UpdateSkillRequest(
-            skill=skill, update_mask=field_mask_pb2.FieldMask(paths=paths), expected_version=self.version
-        )
+            state = skills_pb2.SKILL_STATE_ENABLED if enabled else skills_pb2.SKILL_STATE_DISABLED
+        if content is None:
+            return self._update(state=state)
+        name, description = _read_frontmatter(content)
+        if description is None and (self.is_enabled if enabled is None else enabled):
+            raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to turn the skill off with this SKILL.md")
+        latest = self._get_latest_api()
+        self._save_entry(latest, name, content)
+        # SKILL.md keeps its identity through the save and the folder's move, so the skill records the backing it
+        # has, which makes the service read SKILL.md again.
+        backing = skills_pb2.FileStoreSkillBacking(entry_file_identity=latest.backing.file_store.entry_file_identity)
         try:
-            return self._update(request)
+            return self._update(state=state, backing=backing)
         except NominalError as e:
-            if content is not None:
-                e.add_note(f"The new SKILL.md is saved, but skill {self.rid} hasn't recorded it.")
+            e.add_note(f"The new SKILL.md is saved, but skill {self.rid} hasn't recorded it.")
             raise
 
     def write_files(self, files: Mapping[str, str]) -> Self:
@@ -234,24 +242,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 Nothing is saved.
         """
         texts = {_reference_path(path): text for path, text in files.items()}
-        _require_one_batch(len(texts))
-        _skills_drive_rid(self._clients, self.workspace_rid)
         folder = _SkillFolder.of(self._get_latest_api())
-        current = _list_folder(self._clients, folder)
-        changes = [
-            _put(
-                self._clients,
-                self.workspace_rid,
-                path,
-                text,
-                _replacing(_head_revision(self._clients, current[path]))
-                if path in current
-                else _at_path(folder.path_of(path)),
-            )
-            for path, text in texts.items()
-        ]
-        if (error := _change_error(list(texts), _apply(self._clients, folder.drive_rid, changes), "save")) is not None:
-            raise error
+        _save_folder(self._clients, self.workspace_rid, folder.name, drive_rid=folder.drive_rid, put=texts)
         return self
 
     def remove_files(self, paths: Sequence[str]) -> Self:
@@ -269,19 +261,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 removed.
         """
         targets = [_reference_path(path) for path in dict.fromkeys(paths)]
-        _require_one_batch(len(targets))
-        _skills_drive_rid(self._clients, self.workspace_rid)
         folder = _SkillFolder.of(self._get_latest_api())
-        current = _list_folder(self._clients, folder)
-        missing = [path for path in targets if path not in current]
-        if missing:
-            raise NominalNotFoundError(f"Skill {self.rid} has no file at {', '.join(missing)}")
-        changes = [
-            files_pb2.FileChange(remove=files_pb2.RemoveFile(revision_rid=_head_revision(self._clients, current[path])))
-            for path in targets
-        ]
-        if (error := _change_error(targets, _apply(self._clients, folder.drive_rid, changes), "remove")) is not None:
-            raise error
+        _save_folder(self._clients, self.workspace_rid, folder.name, drive_rid=folder.drive_rid, put={}, remove=targets)
         return self
 
     def archive(self) -> None:
@@ -292,8 +273,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 skill needs.
             NominalConflictError: If the skill changed since this object was fetched or last refreshed.
         """
-        _skills_drive_rid(self._clients, self.workspace_rid)
-        self._update(_state_update(self.rid, skills_pb2.SKILL_STATE_ARCHIVED, self.version))
+        self._update(state=skills_pb2.SKILL_STATE_ARCHIVED)
 
     def unarchive(self) -> None:
         """Restore an archived skill. It comes back turned off; turn it on with ``update(enabled=True)``.
@@ -305,8 +285,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 skill needs.
         """
         if self.refresh().is_archived:
-            _skills_drive_rid(self._clients, self.workspace_rid)
-            self._update(_state_update(self.rid, skills_pb2.SKILL_STATE_DISABLED, self.version))
+            self._update(state=skills_pb2.SKILL_STATE_DISABLED)
 
     def export(self, path: PathLike) -> Path:
         """Write the skill's current folder, named after the skill, under `path`, and return the folder.
@@ -336,49 +315,47 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
             destination.write_bytes(text.encode("utf-8"))
         return target
 
-    def _save_entry(self, content: str) -> file_store_pb2.LogicalFileIdentity:
-        """Save SKILL.md, with the move of the skill's folder in the same batch when its name changes, and return the
-        identity to point the skill at.
+    def _save_entry(self, latest: skills_pb2.Skill, name: str, content: str) -> None:
+        """Save SKILL.md, named `name` in its frontmatter, with the move of the skill's folder in the same batch when
+        the name changes.
         """
-        name = _skill_name(content)
-        latest = self._get_latest_api()
         if latest.version != self.version:
             raise NominalConflictError(f"Skill {self.rid} changed since this object was fetched; refresh it")
         folder = _SkillFolder.of(latest)
-        target = _SkillFolder(drive_rid=folder.drive_rid, name=name)
-        renaming = name != folder.name
-        if renaming:
-            if latest.state == skills_pb2.SKILL_STATE_ARCHIVED:
-                raise NominalError(f"Restore skill {self.rid} with unarchive() before renaming it")
-            if not _is_empty(self._clients, target):
-                raise NominalAlreadyExistsError(f"A skill named {name} already exists")
-        entry_request = files_pb2.GetFileByIdentityRequest(identity=latest.backing.file_store.entry_file_identity)
-        with translate_grpc_errors():
-            entry = self._clients.files.GetFileByIdentity(entry_request).file
-        previous = _head_revision(self._clients, entry)
-        changes = [_put(self._clients, self.workspace_rid, _ENTRY_FILE, content, _replacing(previous))]
-        paths = [_ENTRY_FILE]
-        if renaming:
-            move = files_pb2.MoveDirectory(to=file_store_pb2.LogicalPath(path=target.root))
-            # The source field is named `from`, a Python keyword, so the constructor can't take it.
-            getattr(move, "from").path = folder.root
-            changes.append(files_pb2.FileChange(move_directory=move))
-            paths.append(f"the move to {target.root}")
-        results = _apply(self._clients, folder.drive_rid, changes)
-        if (error := _change_error(paths, results, "save")) is not None:
-            # Another save took the name after the check above.
-            if renaming and results[1].failure.change == files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS:
-                raise NominalAlreadyExistsError(f"A skill named {name} already exists") from error
-            raise error
-        if not renaming:
-            return entry.identity
-        request = files_pb2.GetFileRequest(
-            drive_rid=target.drive_rid, path=file_store_pb2.LogicalPath(path=target.path_of(_ENTRY_FILE))
+        rename_to = None if name == folder.name else name
+        if rename_to is not None and latest.state == skills_pb2.SKILL_STATE_ARCHIVED:
+            raise NominalError(f"Restore skill {self.rid} with unarchive() before renaming it")
+        _save_folder(
+            self._clients,
+            self.workspace_rid,
+            folder.name,
+            drive_rid=folder.drive_rid,
+            put={_ENTRY_FILE: content},
+            rename_to=rename_to,
         )
-        with translate_grpc_errors():
-            return self._clients.files.GetFile(request).file.identity
 
-    def _update(self, request: skills_pb2.UpdateSkillRequest) -> Self:
+    def _update(
+        self,
+        *,
+        state: skills_pb2.SkillState.ValueType | None = None,
+        backing: skills_pb2.FileStoreSkillBacking | None = None,
+    ) -> Self:
+        """Record the skill's new state, backing, or both, if its record hasn't changed since this object's version."""
+        skill = skills_pb2.Skill(skill_rid=self.rid)
+        paths = []
+        if backing is None:
+            # A backing change follows saving SKILL.md, which checked the permission; a state change saves no files,
+            # so it is checked here.
+            _skills_drive_rid(self._clients, self.workspace_rid)
+        else:
+            skill.backing.file_store.CopyFrom(backing)
+            paths.append("backing")
+        if state is not None:
+            skill.state = state
+            paths.append("state")
+        request = skills_pb2.UpdateSkillRequest(
+            skill=skill, update_mask=field_mask_pb2.FieldMask(paths=paths), expected_version=self.version
+        )
         with _translate_skill_errors():
             response = self._clients.skills.UpdateSkill(request)
         # The service omits the skill when returning it would disclose a source the caller can no longer read.
@@ -427,6 +404,111 @@ class _SkillFolder:
         return cls(drive_rid=backing.drive_rid, name=parts[1])
 
 
+def _save_folder(
+    clients: Skill._Clients,
+    workspace_rid: str,
+    name: str,
+    *,
+    drive_rid: str | None = None,
+    new: bool = False,
+    put: Mapping[str, str],
+    remove: Sequence[str] = (),
+    rename_to: str | None = None,
+) -> dict[str, file_store_pb2.LogicalFile]:
+    """Change the files in the skill folder ``skills/<name>`` together or not at all, and return the files it saved,
+    by path in the folder.
+
+    The folder is in the drive `drive_rid`, or by default in the workspace's skills drive, where new skills are saved.
+    A `new` skill's folder must be empty: a folder with other files but no SKILL.md is still taken by that name.
+
+    Each text in `put` replaces the file at its path as it is now, or is saved as a new file where there is none, which
+    File Store refuses if another save puts a file there first. Each path in `remove` is removed as it is now. With
+    `rename_to`, the folder then moves to ``skills/<rename_to>``.
+
+    Raises:
+        ValueError: If there are more than 100 files to change. Nothing is uploaded.
+        NominalPermissionDeniedError: If the user can't edit the workspace's configuration. Nothing is uploaded.
+        NominalAlreadyExistsError: If a new skill's folder, or the folder to rename to, has files. Nothing is changed.
+        NominalNotFoundError: If the folder has no file at a path in `remove`. Nothing is uploaded.
+        NominalConflictError: If another save changed or created one of the files first. Nothing is changed.
+    """
+    _require_one_batch(len(put) + len(remove))
+    # Finding the skills drive also refuses a user who can't edit the workspace's configuration.
+    skills_drive_rid = _skills_drive_rid(clients, workspace_rid)
+    folder = _SkillFolder(drive_rid=skills_drive_rid if drive_rid is None else drive_rid, name=name)
+    current = _list_folder(clients, folder)
+    if new and current:
+        raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
+    missing = [path for path in remove if path not in current]
+    if missing:
+        raise NominalNotFoundError(f"Skill {name} has no file at {', '.join(missing)}")
+    target = None if rename_to is None else _SkillFolder(drive_rid=folder.drive_rid, name=rename_to)
+    if target is not None and not _is_empty(clients, target):
+        raise NominalAlreadyExistsError(f"A skill named {rename_to} already exists")
+
+    # Nothing is saved until the batch applies, so the uploads run at once.
+    pool = ThreadPoolExecutor(max_workers=DEFAULT_NUM_WORKERS)
+    try:
+        keys = dict(zip(put, pool.map(lambda path: _upload(clients, workspace_rid, path, put[path]), put)))
+    finally:
+        pool.shutdown(cancel_futures=True)
+
+    # Each change with what it does, to name the one File Store refuses.
+    changes: list[tuple[str, files_pb2.FileChange]] = []
+    for path, key in keys.items():
+        destination = _replacing(current[path]) if path in current else _at_path(folder.path_of(path))
+        put_file = files_pb2.PutFile(object=files_pb2.UploadedObjectRef(object_key=key), destination=destination)
+        changes.append((f"save {path}", files_pb2.FileChange(put=put_file)))
+    for path in remove:
+        removal = files_pb2.RemoveFile(revision_rid=current[path].current_revision.managed.file_revision_rid)
+        changes.append((f"remove {path}", files_pb2.FileChange(remove=removal)))
+    if target is not None:
+        move = files_pb2.MoveDirectory(to=file_store_pb2.LogicalPath(path=target.root))
+        # The source field is named `from`, a Python keyword, so the constructor can't take it.
+        getattr(move, "from").path = folder.root
+        changes.append((f"save the move to {target.root}", files_pb2.FileChange(move_directory=move)))
+    if not changes:
+        return {}
+
+    request = files_pb2.ApplyFileChangesRequest(
+        drive_rid=folder.drive_rid,
+        changes=[change for _, change in changes],
+        failure_policy=files_pb2.FAILURE_POLICY_ABORT,
+    )
+    with translate_grpc_errors():
+        results = clients.files.ApplyFileChanges(request).results
+    refused = [
+        (label, change, result.failure)
+        for (label, change), result in zip(changes, results)
+        if result.HasField("failure")
+    ]
+    if refused:
+        # File Store refuses the batch for one change, which says why, and reports the others as batch failures.
+        cause = next(
+            (refusal for refusal in refused if refusal[2].change != files_pb2.FILE_CHANGE_ERROR_BATCH_FAILURE),
+            refused[0],
+        )
+        raise _refusal(*cause)
+    # The puts come first in the batch, in the order of `put`.
+    return {path: result.success.file for path, result in zip(keys, results)}
+
+
+def _refusal(label: str, change: files_pb2.FileChange, failure: files_pb2.FileChangeFailure) -> NominalError:
+    """The error for a batch File Store refused because of `change`, which `label` describes. The batch changed
+    nothing.
+    """
+    if failure.change == files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS and change.HasField("move_directory"):
+        # Another save took the new name after it was checked.
+        return NominalAlreadyExistsError(
+            f"A skill named {PurePosixPath(change.move_directory.to.path).name} already exists"
+        )
+    message = f"Could not {label}: {failure.message}. Nothing was changed"
+    stale = (files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED, files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS)
+    if failure.HasField("change") and failure.change in stale:
+        return NominalConflictError(message)
+    return NominalError(message)
+
+
 def _create_skill(
     clients: Skill._Clients,
     *,
@@ -435,33 +517,27 @@ def _create_skill(
     enabled: bool,
     workspace_rid: str,
 ) -> Skill:
-    name = _skill_name(content)
+    name, description = _read_frontmatter(content)
+    if enabled and description is None:
+        raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to create the skill turned off")
     texts = {_ENTRY_FILE: content, **{_reference_path(path): text for path, text in (files or {}).items()}}
-    _require_one_batch(len(texts))
-    folder = _SkillFolder(drive_rid=_skills_drive_rid(clients, workspace_rid), name=name)
-    # A folder with other files but no SKILL.md is still taken by that name.
-    if not _is_empty(clients, folder):
-        raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
-    changes = [_put(clients, workspace_rid, path, text, _at_path(folder.path_of(path))) for path, text in texts.items()]
-    results = _apply(clients, folder.drive_rid, changes)
-    if (error := _change_error(list(texts), results, "save")) is not None:
-        raise error
-    backing = skills_pb2.FileStoreSkillBacking(entry_file_identity=results[0].success.file.identity)
+    saved = _save_folder(clients, workspace_rid, name, new=True, put=texts)
+    backing = skills_pb2.FileStoreSkillBacking(entry_file_identity=saved[_ENTRY_FILE].identity)
     request = skills_pb2.CreateSkillRequest(
         skill=skills_pb2.Skill(workspace_rid=workspace_rid, backing=skills_pb2.SkillBacking(file_store=backing))
     )
     try:
         with translate_grpc_errors():
             skill = Skill._from_proto(clients, clients.skills.CreateSkill(request).skill)
-    except NominalError:
-        # Remove each saved file by the revision this call saved, so the name is free to use again.
-        removals = [
-            files_pb2.FileChange(
-                remove=files_pb2.RemoveFile(revision_rid=result.success.file_revision.ref.managed.file_revision_rid)
+    except NominalError as e:
+        # Remove the saved files, so the name is free to use again.
+        try:
+            _save_folder(clients, workspace_rid, name, put={}, remove=list(texts))
+        except NominalError as removal_error:
+            e.add_note(
+                f"The files this call saved couldn't be removed, so they are still in {_SKILLS_ROOT}/{name} in the "
+                f"skills drive of workspace {workspace_rid}: {removal_error}"
             )
-            for result in results
-        ]
-        _apply(clients, folder.drive_rid, removals)
         raise
     if enabled:
         try:
@@ -519,8 +595,11 @@ def _searched_states(
     return [state for state in states if (state == skills_pb2.SKILL_STATE_ENABLED) == enabled]
 
 
-def _skill_name(content: str) -> str:
-    """The name in SKILL.md's frontmatter, which names the skill's folder.
+def _read_frontmatter(content: str) -> tuple[str, str | None]:
+    """The name and description in SKILL.md's frontmatter. The name names the skill's folder.
+
+    The description is trimmed, and is None unless it is text of 1 to 1024 characters once trimmed, which Analyst
+    needs to load the skill.
 
     Raises:
         ValueError: If SKILL.md does not start with frontmatter holding a valid name.
@@ -530,13 +609,17 @@ def _skill_name(content: str) -> str:
         frontmatter = yaml.safe_load(match.group(1)) if match else None
     except yaml.YAMLError as ex:
         raise ValueError("SKILL.md's frontmatter is not valid YAML") from ex
-    name = frontmatter.get("name") if isinstance(frontmatter, dict) else None
+    fields = frontmatter if isinstance(frontmatter, dict) else {}
+    name = fields.get("name")
     if not isinstance(name, str) or len(name) > _MAX_NAME_LENGTH or not _SKILL_NAME.fullmatch(name):
         raise ValueError(
             "SKILL.md must start with frontmatter whose name is lowercase letters, numbers, and single hyphens, "
             f"at most {_MAX_NAME_LENGTH} characters"
         )
-    return name
+    description = fields.get("description")
+    if not isinstance(description, str) or not 0 < len(description.strip()) <= _MAX_DESCRIPTION_LENGTH:
+        return name, None
+    return name, description.strip()
 
 
 def _file_path(path: str) -> str:
@@ -583,17 +666,8 @@ def _list_folder(clients: Skill._Clients, folder: _SkillFolder) -> dict[str, fil
     }
 
 
-def _head_revision(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str:
-    """The RID of a file's current revision."""
-    if file.current_revision.HasField("managed"):
-        return file.current_revision.managed.file_revision_rid
-    request = files_pb2.ResolveFileRevisionRequest(source_ref=file.current_revision)
-    with translate_grpc_errors():
-        return clients.files.ResolveFileRevision(request).file_revision_rid
-
-
 def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str:
-    request = files_pb2.GetDownloadUrlRequest(file_revision_rid=_head_revision(clients, file))
+    request = files_pb2.GetDownloadUrlRequest(source_ref=file.current_revision)
     with translate_grpc_errors():
         url = clients.files.GetDownloadUrl(request).url
     session = create_multipart_request_session(pool_size=1, header_provider=clients.header_provider)
@@ -605,22 +679,17 @@ def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str
         raise NominalError(f"Not UTF-8 text, which the client can't read: {file.path.path}") from ex
 
 
-def _put(
-    clients: Skill._Clients, workspace_rid: str, path: str, text: str, destination: files_pb2.Destination
-) -> files_pb2.FileChange:
-    """Upload `text` and return the change that saves it at `destination`."""
-    data = text.encode("utf-8")
-    key = upload_file_store_object(
+def _upload(clients: Skill._Clients, workspace_rid: str, path: str, text: str) -> str:
+    """Upload `text` for File Store to save at `path`, and return the upload's key."""
+    return upload_file_store_object(
         clients.auth_header,
         workspace_rid,
-        data,
+        text.encode("utf-8"),
         PurePosixPath(path).name,
         _TEXT_MIMETYPE,
         clients.upload,
         header_provider=clients.header_provider,
     )
-    put = files_pb2.PutFile(object=files_pb2.UploadedObjectRef(object_key=key), destination=destination)
-    return files_pb2.FileChange(put=put)
 
 
 def _at_path(path: str) -> files_pb2.Destination:
@@ -628,27 +697,9 @@ def _at_path(path: str) -> files_pb2.Destination:
     return files_pb2.Destination(path=files_pb2.PathTarget(path=file_store_pb2.LogicalPath(path=path)))
 
 
-def _replacing(revision_rid: str) -> files_pb2.Destination:
-    """A destination replacing the file whose current revision is `revision_rid`, which File Store refuses if another
-    revision has replaced it since.
-    """
-    return files_pb2.Destination(file_revision_rid=revision_rid)
-
-
-def _apply(
-    clients: Skill._Clients, drive_rid: str, changes: Sequence[files_pb2.FileChange]
-) -> list[files_pb2.FileChangeResult]:
-    """Apply changes in order, all or none, with one result for each.
-
-    When File Store refuses a change, it applies none of them and reports the others as batch failures.
-    """
-    if not changes:
-        return []
-    request = files_pb2.ApplyFileChangesRequest(
-        drive_rid=drive_rid, changes=changes, failure_policy=files_pb2.FAILURE_POLICY_ABORT
-    )
-    with translate_grpc_errors():
-        return list(clients.files.ApplyFileChanges(request).results)
+def _replacing(file: file_store_pb2.LogicalFile) -> files_pb2.Destination:
+    """A destination replacing `file` as it is now, which File Store refuses if a newer revision has replaced it."""
+    return files_pb2.Destination(file_revision_rid=file.current_revision.managed.file_revision_rid)
 
 
 def _require_one_batch(count: int) -> None:
@@ -657,33 +708,13 @@ def _require_one_batch(count: int) -> None:
         raise ValueError(f"One save changes at most {_MAX_BATCH_CHANGES} files; split these {count} into several")
 
 
-def _change_error(
-    paths: Sequence[str], results: Sequence[files_pb2.FileChangeResult], action: str
-) -> NominalError | None:
-    """The error for a batch File Store refused, naming the change that caused it, or None when every change applied.
-
-    A refused batch changed nothing.
-    """
-    refused = [(path, result.failure) for path, result in zip(paths, results) if result.HasField("failure")]
-    if not refused:
-        return None
-    # The change that failed says why; File Store reports every other change in the batch as a batch failure.
-    path, failure = next(
-        ((path, failure) for path, failure in refused if failure.change != files_pb2.FILE_CHANGE_ERROR_BATCH_FAILURE),
-        refused[0],
-    )
-    message = f"Could not {action} {path}: {failure.message}. Nothing was changed"
-    stale = (files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED, files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS)
-    conflict = failure.HasField("change") and failure.change in stale
-    return NominalConflictError(message) if conflict else NominalError(message)
-
-
 def _skills_drive_rid(clients: Skill._Clients, workspace_rid: str) -> str:
     """The RID of the workspace's skills drive, found or created.
 
     The skills service returns it only to people who can edit the workspace's configuration, which every skill write
-    needs, and reports anyone else's request as a missing workspace. Each write calls this first, so a user without the
-    permission is refused before anything is saved; File Store checks only the drive's own permissions.
+    needs, and reports anyone else's request as a missing workspace. Saving files and changing a skill's state call
+    this first, so a user without the permission is refused before anything is saved; File Store checks only the
+    drive's own permissions.
 
     Raises:
         NominalPermissionDeniedError: If the workspace doesn't exist, or the user can't edit its configuration.
@@ -746,16 +777,6 @@ def _read_skill_folder(path: Path) -> dict[str, str]:
 
 def _is_importable(path: str) -> bool:
     return all(part and not part.startswith(".") for part in path.split("/"))
-
-
-def _state_update(
-    skill_rid: str, state: skills_pb2.SkillState.ValueType, expected_version: int
-) -> skills_pb2.UpdateSkillRequest:
-    return skills_pb2.UpdateSkillRequest(
-        skill=skills_pb2.Skill(skill_rid=skill_rid, state=state),
-        update_mask=field_mask_pb2.FieldMask(paths=["state"]),
-        expected_version=expected_version,
-    )
 
 
 @contextmanager
