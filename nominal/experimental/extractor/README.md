@@ -772,8 +772,8 @@ required for generation; omitting them is allowed for runtime-only declarations.
 extractors also require an explicit output format for generation. The helper raises `ValueError`
 when these registration settings are incomplete.
 
-`type=` and `default=` remain runtime settings; the current platform registration schema does not
-store them. Error mappings supply both runtime reporting and registered exit-code fallbacks.
+Direct SDK registration omits parameter types/defaults; catalog export includes them as described below.
+Error mappings supply both runtime reporting and registered exit-code fallbacks.
 The helper does not build or upload an image, choose its tag, create an extractor, or
 activate it. Keep those deployment decisions in registration code, as above.
 
@@ -837,12 +837,21 @@ it is safe. This is ordinary publishing code, not an SDK command-line or test fr
 |---|---|
 | Explicit export arguments | `id`, `version`, `display_name`, `description` |
 | `@input` | `inputs`: environment variable, suffix filters, and requiredness |
-| `@parameter` | `parameters`: environment variable, display name, optional description, and requiredness |
+| `@parameter` | `parameters`: environment variable, display name, optional description, requiredness, and supported type/default |
 | Extractor decorator | `output_file_format`, `default_timestamp_metadata` |
 | `@error` | `exit_code_mappings`: exit status, error code, static message, and retryability |
 
-The catalog schema omits input display names/descriptions and parameter converters/default values.
-Those remain in the runtime declarations; direct SDK registration retains input names/descriptions.
+The catalog omits input display metadata. Explicit and inferred parameter converters map as follows:
+
+| Parameter converter | Catalog `type` | Catalog `default` |
+|---|---|---|
+| `bool` | `boolean` | `"true"` or `"false"` |
+| `int` | `integer` | Base-10 integer string |
+| `float` | `double` | Finite numeric string from `repr(default)` |
+| `str` or a custom converter | Omitted (string) | String defaults unchanged; other defaults omitted |
+
+Missing/`None` defaults are omitted.
+
 Export validates the catalog's narrower contract and raises `ValueError` for unsupported declarations:
 
 - `id` uses lowercase letters/digits separated by hyphens, up to 64 characters. `version` is

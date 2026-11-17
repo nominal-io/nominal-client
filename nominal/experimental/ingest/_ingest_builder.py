@@ -28,6 +28,7 @@ from nominal.core import ContainerizedExtractor, Dataset, IngestionJob, NominalC
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.containerized_extractor import _normalize_containerized_arguments
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
 from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
@@ -806,7 +807,7 @@ class IngestBuilder:
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = ...,
+        arguments: Mapping[str, str | bool | int | float] | None = ...,
         tags: Mapping[str, str] | None = ...,
     ) -> Self: ...
     @overload
@@ -815,7 +816,7 @@ class IngestBuilder:
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = ...,
+        arguments: Mapping[str, str | bool | int | float] | None = ...,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         tags: Mapping[str, str] | None = ...,
@@ -825,7 +826,7 @@ class IngestBuilder:
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
@@ -840,7 +841,8 @@ class IngestBuilder:
             extractor: The containerized extractor to run, as a `ContainerizedExtractor` or its RID.
             sources: Mapping of each registered extractor input name to a local file to upload.
                 The names must match the extractor's registered inputs exactly.
-            arguments: Key-value input arguments passed to the extractor.
+            arguments: Input arguments; strings are unchanged, booleans use lowercase, numbers use
+                ``str``/``repr``. Values are copied when registered; floats must be finite.
             timestamp_column: Column, applied uniformly to the extractor's output files, holding
                 each row's timestamp.
             timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_seconds'.
@@ -850,12 +852,13 @@ class IngestBuilder:
             This builder, for chaining.
 
         Raises:
-            ValueError: if `sources` is empty, or if only one of `timestamp_column` /
-                `timestamp_type` is given.
+            ValueError: If an argument is a non-finite float, ``sources`` is empty, or only one of
+                ``timestamp_column`` and ``timestamp_type`` is given.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
         if not sources:
             raise ValueError("add_containerized requires at least one source")
+        normalized_arguments = None if arguments is None else _normalize_containerized_arguments(arguments)
         timestamp_meta = (
             common_pb2.TimestampMetadata(
                 column=timestamp_column, type=_to_typed_timestamp_type(timestamp_type)._to_proto()
@@ -870,8 +873,7 @@ class IngestBuilder:
                     name: _PendingFile(Path(source), FileType.from_path(Path(source)))
                     for name, source in sources.items()
                 },
-                # Copied so a caller mutating their dict after registration cannot alter the request.
-                arguments=None if arguments is None else dict(arguments),
+                arguments=normalized_arguments,
                 timestamp_metadata=timestamp_meta,
                 tags=dict(tags or {}),
             )

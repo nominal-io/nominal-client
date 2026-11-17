@@ -8,6 +8,7 @@ exactly one of which is active.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Protocol, Self, Sequence
@@ -294,6 +295,23 @@ class ContainerizedExtractor(HasRid, RefreshableGrpcMixin[containerized_extracto
             _workspace_rid=msg.workspace_rid,
             _clients=clients,
         )
+
+
+def _normalize_containerized_arguments(arguments: Mapping[str, str | bool | int | float]) -> dict[str, str]:
+    """Copy extractor arguments into wire strings, rejecting non-finite floats."""
+    normalized: dict[str, str] = {}
+    for name, value in arguments.items():
+        if isinstance(value, str):
+            normalized[name] = value
+        elif isinstance(value, bool):
+            normalized[name] = "true" if value else "false"
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                raise ValueError(f"Extractor argument {name!r} must be finite, got {value!r}")
+            normalized[name] = repr(value)
+        else:
+            normalized[name] = str(value)
+    return normalized
 
 
 def _create_containerized_extractor(

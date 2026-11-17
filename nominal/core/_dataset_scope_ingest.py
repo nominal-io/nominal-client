@@ -204,7 +204,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> IngestionJob: ...
     @overload
@@ -214,7 +214,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
@@ -225,7 +225,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
-        arguments: Mapping[str, str] | None = None,
+        arguments: Mapping[str, str | bool | int | float] | None = None,
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
@@ -243,7 +243,7 @@ class _DatasetScopeIngestMixin(abc.ABC):
 
         Raises:
             NominalNotFoundError: If no readable dataset has this data scope name.
-            ValueError: If only one of ``timestamp_column`` and ``timestamp_type`` is given.
+            ValueError: Only one timestamp setting is given, or an argument is a non-finite float.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
 
