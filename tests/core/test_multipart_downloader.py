@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import gzip
+import io
 from pathlib import Path
 from typing import Iterator, Sequence, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from urllib3.response import HTTPResponse
 
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -195,7 +198,7 @@ def _mock_response(
     r.status_code = status_code
     r.ok = 200 <= status_code < 300
     r.headers = headers or {}
-    r.iter_content.return_value = [content] if content else []
+    r.raw.stream.return_value = [content] if content else []
     if not r.ok:
         err = requests.HTTPError(response=r)
         r.raise_for_status.side_effect = err
@@ -263,13 +266,13 @@ def test_fetch_range_bytes_stops_at_once_when_the_server_ignores_range(
     dest.write_bytes(b"\x00" * 8)
     served: list[bytes] = []
 
-    def whole_object(_chunk_size: int) -> Iterator[bytes]:
+    def whole_object(_chunk_size: int, *, decode_content: bool) -> Iterator[bytes]:
         for chunk in (b"abcd", b"efgh", b"ijkl"):
             served.append(chunk)
             yield chunk
 
     response = _mock_response(200)
-    response.iter_content.side_effect = whole_object
+    response.raw.stream.side_effect = whole_object
     mock_downloader.get.return_value = response
 
     with pytest.raises(RuntimeError, match="may not support ranged downloads"):
@@ -321,3 +324,34 @@ def test_fetch_range_bytes_accepts_complete_body_and_short_final_part(
 
     assert dest.read_bytes() == expected
     assert mock_downloader.get.call_count == 1
+
+
+@pytest.mark.parametrize("split", [False, True], ids=["single-part", "multiple-parts"])
+def test_encoded_download_preserves_stored_bytes(
+    tmp_path: Path, downloader: MultipartFileDownloader, mock_downloader: MagicMock, split: bool
+) -> None:
+    """Ranges count encoded bytes; gzip responses must be assembled without per-part decompression."""
+    stored = gzip.compress(b"readings\n" * 1024)
+    destination = tmp_path / "readings.gz"
+    destination.write_bytes(b"\x00" * len(stored))
+    part_size = len(stored) // 2 if split else len(stored)
+    ranges = [(start, min(start + part_size, len(stored))) for start in range(0, len(stored), part_size)]
+    responses = []
+    for start, stop in ranges:
+        response = requests.Response()
+        response.status_code = 206
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers["Content-Length"] = str(stop - start)
+        response.raw = HTTPResponse(
+            body=io.BytesIO(stored[start:stop]),
+            headers=response.headers,
+            preload_content=False,
+        )
+        responses.append(response)
+    mock_downloader.get.side_effect = responses
+
+    for start, stop in ranges:
+        downloader._fetch_range_bytes(_provider(), start, stop - 1, None, destination)
+
+    assert destination.read_bytes() == stored
+    assert mock_downloader.get.call_count == len(ranges)
