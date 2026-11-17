@@ -295,3 +295,10 @@ Do not wrap these writes in an unconditional retry loop. Refreshing an input and
 without inspecting it can replace the original precondition with a newer revision and apply
 a change you did not intend. The same caution applies to prepared puts: their destination
 precondition remains pinned to preparation time, and an aborted batch does not undo the upload.
+
+## Ingest a stored revision
+
+Use {py:class}`~nominal.experimental.ingest.IngestBuilder` to ingest a managed file revision
+into a dataset without downloading or uploading it again. See
+{ref}`Ingest files already in a Drive <ingest-drive-revisions>` for a
+batch combining a Drive revision with a local file.

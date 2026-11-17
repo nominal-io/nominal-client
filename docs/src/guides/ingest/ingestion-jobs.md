@@ -55,6 +55,51 @@ A builder submits once. Make a new one for the next batch.
 If `submit` raises after sending its request, the job may still have started.
 [Search for it](#find-jobs) before you retry, so you don't ingest the files twice.
 
+(ingest-drive-revisions)=
+## Ingest files already in a Drive
+
+Pass a {py:class}`~nominal.experimental.drives.DriveFileRevision` to any `add_*` method
+instead of a local path. Nominal reads that exact revision server-side, so the builder does
+not download or re-upload its bytes. You can mix Drive revisions and local files in one job,
+including named inputs to `add_containerized`.
+
+```python
+from nominal.experimental import drives
+from nominal.experimental.ingest import IngestBuilder
+
+drive = drives.get_drive(client, "<DRIVE_RID>")
+file = drive.get_file("raw/readings.csv")
+assert isinstance(file, drives.ManagedDriveFile)
+revision = next(
+    r for r in file.revisions()
+    if r.rid == file.current_revision_rid
+)
+
+job = (
+    IngestBuilder(client, dataset)
+    .add_csv(
+        revision,
+        timestamp_column="time",
+        timestamp_type="epoch_seconds",
+    )
+    .add_mcap("recording.mcap")
+    .submit()
+)
+```
+
+Choose the revision explicitly: subsequent changes to the Drive file do not change the
+registered input. Format inference uses the revision's recorded path. A removal revision
+has no content and is rejected when added. The service checks access and whether the
+revision's content is still retained.
+
+This input accepts managed file revisions; virtual Drive files and bare revision RIDs are
+not accepted. Uploading to a Drive alone does not submit an ingest job.
+
+With `allow_partial=True`, a local upload failure drops the item that depends on it;
+Drive-only items remain eligible. Server-side ingestion errors are still reported by the
+job. For Drive videos, `frame_timestamps` creates and uploads a timestamp manifest while
+the video bytes stay in the Drive.
+
 ## Wait for the files
 
 {py:meth}`~nominal.core.IngestionJob.as_files_ingested` yields each file as it finishes, including files the job produces while you wait:

@@ -31,6 +31,7 @@ from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
 from nominal.exceptions import NominalIngestError, NominalIngestUploadFailed
+from nominal.experimental.drives import DriveFileRevision, DriveFileState
 from nominal.experimental.ingest._multipart_uploader import MultipartUploader
 from nominal.protos.ingest.v2 import (
     common_pb2,
@@ -69,34 +70,53 @@ class _PendingFile:
     file_type: FileType
 
 
-def _s3_source(location: str) -> common_pb2.IngestSource:
-    return common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=location))
-
-
+_Source = _PendingFile | DriveFileRevision
 _Locations = Mapping[_PendingFile, str]
 
-# One record class per item kind. Each owns the files it needs uploaded — as NAMED fields — and
-# builds its finished IngestItem in a single constructor call, looking each file's storage
-# location up by the file object itself. There is no positional locations protocol to keep in
-# sync, no partially-built protos to fill in later, and no way for uploads and items to desync:
-# a record cannot reference a file it does not own.
+
+def _source_path(source: PathLike | DriveFileRevision) -> Path:
+    """Use the revision's recorded path for format inference, without fetching content."""
+    if isinstance(source, DriveFileRevision):
+        return Path(source.path)
+    return Path(source)
+
+
+def _prepare_source(source: PathLike | DriveFileRevision, file_type: FileType) -> _Source:
+    """Keep remote revisions as references and register local files for upload."""
+    if isinstance(source, DriveFileRevision):
+        if source.state != DriveFileState.ACTIVE:
+            raise ValueError("cannot ingest a removal revision; select a revision with content")
+        return source
+    return _PendingFile(Path(source), file_type)
+
+
+def _uploads(*sources: _Source) -> tuple[_PendingFile, ...]:
+    """Select only the local upload dependencies of an ingest item."""
+    return tuple(source for source in sources if isinstance(source, _PendingFile))
+
+
+def _ingest_source(source: _Source, locations: _Locations) -> common_pb2.IngestSource:
+    """Reference a Drive revision directly or use the completed local upload."""
+    if isinstance(source, DriveFileRevision):
+        return common_pb2.IngestSource(file_store=common_pb2.FileStoreIngestSource(file_revision_rid=source.rid))
+    return common_pb2.IngestSource(s3=common_pb2.S3IngestSource(path=locations[source]))
 
 
 @dataclass(frozen=True)
 class _FileItem:
     """A tabular or avro-stream file and its fully-built ingest options."""
 
-    file: _PendingFile
+    file: _Source
     options: file_ingest_pb2.FileIngestOptions
     tags: Mapping[str, str]
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return (self.file,)
+        return _uploads(self.file)
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         return ingest_service_pb2.IngestItem(
-            file=file_ingest_pb2.FileIngestItem(ingest=self.options, source=_s3_source(locations[self.file])),
+            file=file_ingest_pb2.FileIngestItem(ingest=self.options, source=_ingest_source(self.file, locations)),
             tags=self.tags,
         )
 
@@ -105,19 +125,19 @@ class _FileItem:
 class _McapItem:
     """An MCAP file with optional topic selection."""
 
-    file: _PendingFile
+    file: _Source
     channels: mcap_ingest_pb2.McapChannelSelection | None
     ignore_invalid_topics: bool
     tags: Mapping[str, str]
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return (self.file,)
+        return _uploads(self.file)
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         return ingest_service_pb2.IngestItem(
             mcap=mcap_ingest_pb2.McapIngestItem(
-                source=_s3_source(locations[self.file]),
+                source=_ingest_source(self.file, locations),
                 channels=self.channels,
                 ignore_invalid_topics=self.ignore_invalid_topics,
             ),
@@ -129,21 +149,21 @@ class _McapItem:
 class _LogItem:
     """A journald-style log file with its channel and optional timestamp field."""
 
-    file: _PendingFile
+    file: _Source
     channel: str | None
     timestamp_metadata: common_pb2.TimestampMetadata | None
     tags: Mapping[str, str]
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return (self.file,)
+        return _uploads(self.file)
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         return ingest_service_pb2.IngestItem(
             log=log_ingest_pb2.LogIngestItem(
                 channel=self.channel,
                 timestamp_metadata=self.timestamp_metadata,
-                source=_s3_source(locations[self.file]),
+                source=_ingest_source(self.file, locations),
             ),
             tags=self.tags,
         )
@@ -153,16 +173,16 @@ class _LogItem:
 class _DataflashItem:
     """An ArduPilot Dataflash file."""
 
-    file: _PendingFile
+    file: _Source
     tags: Mapping[str, str]
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return (self.file,)
+        return _uploads(self.file)
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         return ingest_service_pb2.IngestItem(
-            dataflash=mcap_ingest_pb2.DataflashIngestItem(source=_s3_source(locations[self.file])),
+            dataflash=mcap_ingest_pb2.DataflashIngestItem(source=_ingest_source(self.file, locations)),
             tags=self.tags,
         )
 
@@ -174,7 +194,7 @@ class _VideoItem:
     Exactly one of `no_manifest` / `manifest` is set — `add_video` enforces it.
     """
 
-    video: _PendingFile
+    video: _Source
     channel: str
     no_manifest: video_ingest_pb2.NoTimestampManifest | None
     manifest: _PendingFile | None
@@ -182,7 +202,7 @@ class _VideoItem:
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return (self.video,) if self.manifest is None else (self.video, self.manifest)
+        return _uploads(self.video) if self.manifest is None else _uploads(self.video, self.manifest)
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         timestamp_manifest = (
@@ -190,13 +210,13 @@ class _VideoItem:
             if self.manifest is None
             else video_ingest_pb2.VideoTimestampManifest(
                 timestamp_manifest_files=video_ingest_pb2.TimestampManifestFiles(
-                    sources=[_s3_source(locations[self.manifest])]
+                    sources=[_ingest_source(self.manifest, locations)]
                 )
             )
         )
         return ingest_service_pb2.IngestItem(
             video=video_ingest_pb2.VideoIngestItem(
-                source=_s3_source(locations[self.video]),
+                source=_ingest_source(self.video, locations),
                 ingest=video_ingest_pb2.VideoIngestOptions(channel=self.channel, timestamp_manifest=timestamp_manifest),
             ),
             tags=self.tags,
@@ -208,14 +228,14 @@ class _ContainerizedItem:
     """A containerized-extractor run over named input files."""
 
     extractor_rid: str
-    sources: Mapping[str, _PendingFile]
+    sources: Mapping[str, _Source]
     arguments: Mapping[str, str] | None
     timestamp_metadata: common_pb2.TimestampMetadata | None
     tags: Mapping[str, str]
 
     @property
     def files(self) -> tuple[_PendingFile, ...]:
-        return tuple(self.sources.values())
+        return _uploads(*self.sources.values())
 
     def build(self, locations: _Locations) -> ingest_service_pb2.IngestItem:
         return ingest_service_pb2.IngestItem(
@@ -223,7 +243,7 @@ class _ContainerizedItem:
                 extractor_rid=self.extractor_rid,
                 arguments=self.arguments,
                 timestamp_metadata=self.timestamp_metadata,
-                sources={name: _s3_source(locations[file]) for name, file in self.sources.items()},
+                sources={name: _ingest_source(file, locations) for name, file in self.sources.items()},
             ),
             tags=self.tags,
         )
@@ -300,6 +320,10 @@ class IngestBuilder:
     endpoint does not create datasets. Build with `add_*` (fluent), then `submit()` exactly
     once: a builder is single-use, and a second `submit()` raises rather than re-uploading
     and re-ingesting everything it holds.
+
+    Pass a `~nominal.experimental.drives.DriveFileRevision` wherever a source path is accepted to ingest
+    its exact content server-side, without downloading or uploading it. Local files and revisions can share a
+    job. Revisions must contain content; retention and access are checked by the service.
     """
 
     def __init__(
@@ -339,7 +363,7 @@ class IngestBuilder:
 
     def add_tabular_data(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         *,
@@ -356,7 +380,7 @@ class IngestBuilder:
         the extension. Use :meth:`add_csv` for CSV-specific row options.
 
         Args:
-            path: Path to the file on disk.
+            path: Local file path or Drive revision. The revision's recorded path determines its format.
             timestamp_column: Column containing the timestamp for each row. This column is not
                 ingested as its own channel; it sets the timestamps for every other channel.
             timestamp_type: Type of the timestamp data in `timestamp_column`, e.g. 'epoch_seconds'.
@@ -372,12 +396,12 @@ class IngestBuilder:
         Raises:
             ValueError: The path is not a supported tabular format.
         """
-        file_path = Path(path)
+        file_path = _source_path(path)
         file_type = FileType.from_tabular(file_path)  # raises on non-tabular extensions
 
         add_file = self.add_csv if file_type.is_csv() else self.add_parquet
         return add_file(
-            file_path,
+            path,
             timestamp_column,
             timestamp_type,
             tag_columns=tag_columns,
@@ -389,7 +413,7 @@ class IngestBuilder:
 
     def add_csv(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         *,
@@ -409,7 +433,7 @@ class IngestBuilder:
         The backend validates row numbers and their ordering when the job is submitted.
 
         Args:
-            path: Path to a .csv or .csv.gz file.
+            path: Local .csv or .csv.gz path, or a Drive revision with that extension.
             timestamp_column: Column containing timestamps; not ingested as a data channel.
             timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
             tag_columns: Mapping of tag keys to columns supplying their values.
@@ -432,7 +456,7 @@ class IngestBuilder:
         Raises:
             ValueError: The path is not CSV.
         """
-        file_path = Path(path)
+        file_path = _source_path(path)
         file_type = FileType.from_csv(file_path)
 
         options = file_ingest_pb2.FileIngestOptions(
@@ -449,12 +473,12 @@ class IngestBuilder:
                 units_row=units_row,
             ),
         )
-        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        self._pending.append(_FileItem(file=_prepare_source(path, file_type), options=options, tags=dict(tags or {})))
         return self
 
     def add_parquet(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         *,
@@ -469,7 +493,7 @@ class IngestBuilder:
         Supports .parquet, .parquet.gz, .parquet.tar, .parquet.tar.gz, and .parquet.zip.
 
         Args:
-            path: Path to a Parquet file or archive.
+            path: Local Parquet file or archive path, or a Drive revision with that extension.
             timestamp_column: Column containing timestamps; not ingested as a data channel.
             timestamp_type: Type of the timestamp data, e.g. 'epoch_seconds'.
             tag_columns: Mapping of tag keys to columns supplying their values.
@@ -484,7 +508,7 @@ class IngestBuilder:
         Raises:
             ValueError: The path is not Parquet.
         """
-        file_path = Path(path)
+        file_path = _source_path(path)
         file_type = FileType.from_parquet(file_path)
 
         options = file_ingest_pb2.FileIngestOptions(
@@ -499,12 +523,12 @@ class IngestBuilder:
                 is_archive=file_type.is_parquet_archive(),
             ),
         )
-        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        self._pending.append(_FileItem(file=_prepare_source(path, file_type), options=options, tags=dict(tags or {})))
         return self
 
     def add_avro_stream(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         units: Mapping[str, str] | None = None,
         channel_prefix: str | None = None,
@@ -518,7 +542,7 @@ class IngestBuilder:
         no timestamp column -- only how to read the numbers in that field.
 
         Args:
-            path: Path to the .avro file on disk.
+            path: Local .avro path or Drive revision with an .avro path.
             units: Mapping of channel name to unit symbol.
             channel_prefix: Prefix prepended to every channel name ingested from this file.
             timestamp_type: How to read the file's numeric timestamps -- an absolute epoch
@@ -530,8 +554,8 @@ class IngestBuilder:
         Returns:
             This builder, for chaining.
         """
-        file_path = Path(path)
-        file_type = FileType.from_path(path)
+        file_path = _source_path(path)
+        file_type = FileType.from_path(file_path)
         if file_type is not FileTypes.AVRO_STREAM:
             raise ValueError(
                 f"Cannot add path '{file_path}' as avro stream: inferred file type {file_type} not avro stream!"
@@ -554,13 +578,13 @@ class IngestBuilder:
             channel_prefix=channel_prefix,
             avro=file_ingest_pb2.AvroIngestOptions(),
         )
-        self._pending.append(_FileItem(file=_PendingFile(file_path, file_type), options=options, tags=dict(tags or {})))
+        self._pending.append(_FileItem(file=_prepare_source(path, file_type), options=options, tags=dict(tags or {})))
         return self
 
     @overload
     def add_mcap(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         include_topics: Sequence[str] | None = ...,
         ignore_invalid_topics: bool | None = ...,
@@ -569,7 +593,7 @@ class IngestBuilder:
     @overload
     def add_mcap(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         exclude_topics: Sequence[str] | None = ...,
         ignore_invalid_topics: bool | None = ...,
@@ -577,7 +601,7 @@ class IngestBuilder:
     ) -> Self: ...
     def add_mcap(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         include_topics: Sequence[str] | None = None,
         exclude_topics: Sequence[str] | None = None,
@@ -590,7 +614,7 @@ class IngestBuilder:
         type error, and the runtime guard below rejects it for callers without a type checker.
 
         Args:
-            path: Path to the MCAP file on disk.
+            path: Local MCAP path or Drive revision.
             include_topics: If given, restrict ingestion to these topics. Defaults to all
                 protobuf-encoded topics present in the MCAP.
             exclude_topics: If given, ingest every topic except these.
@@ -605,7 +629,7 @@ class IngestBuilder:
         """
         if include_topics is not None and exclude_topics is not None:
             raise ValueError("pass at most one of include_topics or exclude_topics")
-        file_path = Path(path)
+        source = _prepare_source(path, FileTypes.MCAP)
 
         mcap_channels: mcap_ingest_pb2.McapChannelSelection | None = None
         if include_topics is not None or exclude_topics is not None:
@@ -620,7 +644,7 @@ class IngestBuilder:
 
         self._pending.append(
             _McapItem(
-                file=_PendingFile(file_path, FileTypes.MCAP),
+                file=source,
                 channels=mcap_channels,
                 # The proto field has no presence, so None (unset) and False are wire-identical.
                 ignore_invalid_topics=ignore_invalid_topics or False,
@@ -632,7 +656,7 @@ class IngestBuilder:
     @overload
     def add_journal_json(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         channel: str | None = ...,
         tags: Mapping[str, str] | None = ...,
@@ -640,7 +664,7 @@ class IngestBuilder:
     @overload
     def add_journal_json(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         channel: str | None = ...,
         timestamp_column: str,
@@ -649,7 +673,7 @@ class IngestBuilder:
     ) -> Self: ...
     def add_journal_json(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         *,
         channel: str | None = None,
         timestamp_column: str | None = None,
@@ -663,7 +687,7 @@ class IngestBuilder:
         checker.
 
         Args:
-            path: Path to the journal-json file on disk.
+            path: Local journal-json path or Drive revision.
             channel: Channel name to ingest the logs under. Defaults to 'logs' if omitted.
             timestamp_column: Field holding each record's timestamp. Omit to use the file's
                 default journald timestamp.
@@ -681,7 +705,7 @@ class IngestBuilder:
                 `timestamp_type` is not numeric.
         """
         _validate_timestamp_pair(timestamp_column, timestamp_type)
-        file_path = Path(path)
+        file_path = _source_path(path)
         file_type = FileType.from_path_journal_json(file_path)
         timestamp_meta = None
         if timestamp_column is not None and timestamp_type is not None:
@@ -696,7 +720,7 @@ class IngestBuilder:
             )
         self._pending.append(
             _LogItem(
-                file=_PendingFile(file_path, file_type),
+                file=_prepare_source(path, file_type),
                 channel=channel,
                 timestamp_metadata=timestamp_meta,
                 tags=dict(tags or {}),
@@ -704,24 +728,25 @@ class IngestBuilder:
         )
         return self
 
-    def add_ardupilot_dataflash(self, path: PathLike, *, tags: Mapping[str, str] | None = None) -> Self:
+    def add_ardupilot_dataflash(
+        self, path: PathLike | DriveFileRevision, *, tags: Mapping[str, str] | None = None
+    ) -> Self:
         """Register an ArduPilot Dataflash (.bin) file, mirroring `Dataset.add_ardupilot_dataflash`.
 
         Args:
-            path: Path to the Dataflash file on disk.
+            path: Local Dataflash path or Drive revision.
             tags: Key-value pairs applied as tags to all data from this file.
 
         Returns:
             This builder, for chaining.
         """
-        file_path = Path(path)
-        self._pending.append(_DataflashItem(file=_PendingFile(file_path, FileTypes.DATAFLASH), tags=dict(tags or {})))
+        self._pending.append(_DataflashItem(file=_prepare_source(path, FileTypes.DATAFLASH), tags=dict(tags or {})))
         return self
 
     @overload
     def add_video(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         channel: str,
         *,
         start: datetime | IntegralNanosecondsUTC,
@@ -730,7 +755,7 @@ class IngestBuilder:
     @overload
     def add_video(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         channel: str,
         *,
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
@@ -738,7 +763,7 @@ class IngestBuilder:
     ) -> Self: ...
     def add_video(
         self,
-        path: PathLike,
+        path: PathLike | DriveFileRevision,
         channel: str,
         *,
         start: datetime | IntegralNanosecondsUTC | None = None,
@@ -754,7 +779,7 @@ class IngestBuilder:
         is uploaded alongside the video.
 
         Args:
-            path: Path to the video file on disk.
+            path: Local video path or Drive revision. The extension determines the format.
             channel: Channel name to ingest the video under.
             start: Timestamp of the video's first frame.
             frame_timestamps: One epoch-nanosecond timestamp per video frame.
@@ -774,9 +799,10 @@ class IngestBuilder:
             raise ValueError("pass exactly one of start or frame_timestamps")
         if frame_timestamps is not None and not frame_timestamps:
             raise ValueError("frame_timestamps must contain at least one timestamp")
-        file_path = Path(path)
+        file_path = _source_path(path)
         file_type = FileType.from_video(file_path)  # fail fast, before any bytes are spent uploading
 
+        source = _prepare_source(path, file_type)
         no_manifest: video_ingest_pb2.NoTimestampManifest | None = None
         manifest_file: _PendingFile | None = None
         if start is not None:
@@ -791,7 +817,7 @@ class IngestBuilder:
 
         self._pending.append(
             _VideoItem(
-                video=_PendingFile(file_path, file_type),
+                video=source,
                 channel=channel,
                 no_manifest=no_manifest,
                 manifest=manifest_file,
@@ -804,7 +830,7 @@ class IngestBuilder:
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, PathLike],
+        sources: Mapping[str, PathLike | DriveFileRevision],
         *,
         arguments: Mapping[str, str] | None = ...,
         tags: Mapping[str, str] | None = ...,
@@ -813,7 +839,7 @@ class IngestBuilder:
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, PathLike],
+        sources: Mapping[str, PathLike | DriveFileRevision],
         *,
         arguments: Mapping[str, str] | None = ...,
         timestamp_column: str,
@@ -823,7 +849,7 @@ class IngestBuilder:
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, PathLike],
+        sources: Mapping[str, PathLike | DriveFileRevision],
         *,
         arguments: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
@@ -838,7 +864,7 @@ class IngestBuilder:
 
         Args:
             extractor: The containerized extractor to run, as a `ContainerizedExtractor` or its RID.
-            sources: Mapping of each registered extractor input name to a local file to upload.
+            sources: Mapping of each registered extractor input name to a local file or Drive revision.
                 The names must match the extractor's registered inputs exactly.
             arguments: Key-value input arguments passed to the extractor.
             timestamp_column: Column, applied uniformly to the extractor's output files, holding
@@ -867,7 +893,7 @@ class IngestBuilder:
             _ContainerizedItem(
                 extractor_rid=rid_from_instance_or_string(extractor),
                 sources={
-                    name: _PendingFile(Path(source), FileType.from_path(Path(source)))
+                    name: _prepare_source(source, FileType.from_path(_source_path(source)))
                     for name, source in sources.items()
                 },
                 # Copied so a caller mutating their dict after registration cannot alter the request.
@@ -879,14 +905,14 @@ class IngestBuilder:
         return self
 
     def submit(self, *, allow_partial: bool = False, runs_to_expand: Sequence[Run | str] | None = None) -> IngestionJob:
-        """Upload all registered files and trigger one ingest job.
+        """Upload local files and submit them alongside Drive revisions in one ingest job.
 
         Uploads run in parallel, with transient failures (network weather, throttling) retried
-        by the uploader's own per-file budget. By default the call is atomic and fail-fast: the
-        first file that fails permanently cancels the batch and raises, and no ingest is
-        triggered. With `allow_partial=True`, every file runs to settlement instead — items
-        whose files failed are logged and pruned, and one ingest job is triggered for the items
-        that uploaded cleanly.
+        by the uploader's own per-file budget. By default, the first permanent upload failure
+        cancels remaining uploads and raises without submitting an ingest job. With
+        `allow_partial=True`, uploads run to settlement; items with failed uploads are logged
+        and dropped. The job includes the remaining items, including Drive-only items.
+        Server-side ingestion can fail after submission; track the returned job's status.
 
         Single-use: one `submit()` consumes the builder, whether it succeeds or fails. A
         failed trigger request can have been committed server-side (a timeout, say), so there
@@ -896,7 +922,8 @@ class IngestBuilder:
             allow_partial: If true, items whose files failed to upload are dropped from the
                 job (each failure logged as an error) instead of failing the whole batch.
                 Deliberately reported through logs, not the return value — the job always
-                covers exactly the items that uploaded.
+                includes eligible Drive items as well as successfully uploaded local items.
+                It does not suppress server-side ingestion errors.
             runs_to_expand: If provided, runs (or their rids) to expand upon successful ingest.
                 This will only expand the bounds of the runs, not contract.
 
@@ -906,8 +933,8 @@ class IngestBuilder:
 
         Raises:
             NominalIngestError: this builder was already submitted.
-            NominalIngestUploadFailed: a file failed to upload — any file when
-                `allow_partial` is false, or every file when it is true. Members carry
+            NominalIngestUploadFailed: a local upload failed when `allow_partial` is false,
+                or upload failures left no eligible items when it is true. Members carry
                 per-file detail.
             ValueError: if no files have been added.
         """
