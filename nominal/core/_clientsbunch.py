@@ -32,6 +32,7 @@ from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.apikeys.v1 import api_keys_pb2_grpc
 from nominal.protos.authorization.markings.v1 import markings_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2_grpc
 from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.compute.v1 import compute_pb2_grpc
@@ -163,6 +164,7 @@ class ClientsBunch:
     assets: asset_pb2_grpc.AssetServiceStub
     attachment: attachments_pb2_grpc.AttachmentServiceStub
     channel_metadata: channel_metadata_pb2_grpc.ChannelMetadataServiceStub
+    channel_writer: nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub
     comments: comments_pb2_grpc.CommentsServiceStub
     containerized_extractor: containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub
     datareview: data_review_pb2_grpc.DataReviewServiceStub
@@ -309,11 +311,13 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
-            # A replay can mask a committed write with a refusal and trigger incorrect skill-file cleanup.
             no_retry_methods=(
+                # A replay can mask a committed write with a refusal and trigger incorrect skill-file cleanup.
                 ("nominal.file_store.v1.FilesService", "ApplyFileChanges"),
                 ("nominal.skills.v1.SkillsService", "CreateSkill"),
                 ("nominal.skills.v1.SkillsService", "UpdateSkill"),
+                # Column writes have no idempotency key; replay can duplicate accepted points.
+                ("nominal.channel_writer.v1.NominalChannelWriterService", "WriteColumnBatches"),
             ),
         )
 
@@ -351,6 +355,7 @@ class ClientsBunch:
             assets=grpc_factory(asset_pb2_grpc.AssetServiceStub),
             attachment=grpc_factory(attachments_pb2_grpc.AttachmentServiceStub),
             channel_metadata=grpc_factory(channel_metadata_pb2_grpc.ChannelMetadataServiceStub),
+            channel_writer=grpc_factory(nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub),
             comments=grpc_factory(comments_pb2_grpc.CommentsServiceStub),
             containerized_extractor=grpc_factory(containerized_extractor_pb2_grpc.ContainerizedExtractorServiceStub),
             datareview=grpc_factory(data_review_pb2_grpc.DataReviewServiceStub),

@@ -119,6 +119,7 @@ Skills <guides/skills>
 
 Overview <guides/streaming/overview>
 Logs <guides/streaming/logs>
+Frequency <guides/streaming/frequency>
 Trigger alerts <guides/streaming/streaming-checklists>
 ```
 
