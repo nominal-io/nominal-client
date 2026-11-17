@@ -24,6 +24,7 @@ def client(mock_clients: MagicMock) -> NominalClient:
         checklist_variables=[],
         checks=[],
         metadata=scout_checks_api.ChecklistMetadata(
+            asset_type_rids=[],
             title="Server title",
             description="Server description",
             author_rid="author-rid",
