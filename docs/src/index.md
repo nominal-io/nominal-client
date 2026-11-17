@@ -141,6 +141,14 @@ Object identification <guides/video/object-identification>
 
 ```{toctree}
 :hidden:
+:caption: File formats
+
+Read files into a DataFrame <guides/io/read-files>
+Add a file format <guides/io/write-a-reader>
+```
+
+```{toctree}
+:hidden:
 :caption: Ingest guides
 
 Ingest jobs <guides/ingest/ingestion-jobs>
