@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.184.0](https://github.com/nominal-io/nominal-client/compare/v1.183.0...v1.184.0) (2026-11-17)
+
+
+### Features
+
+* **experimental:** ingest Drive revisions with IngestBuilder ([#1311](https://github.com/nominal-io/nominal-client/issues/1311)) ([90348d1](https://github.com/nominal-io/nominal-client/commit/90348d1673f2a50175cc21df86332c71cdfa7a3f))
+
+
+### Bug Fixes
+
+* validate multipart download response lengths ([#1316](https://github.com/nominal-io/nominal-client/issues/1316)) ([f6a2d0f](https://github.com/nominal-io/nominal-client/commit/f6a2d0f2a2a2d9f5c1037e4c51ca57eddca3ccfb))
+
 ## [1.183.0](https://github.com/nominal-io/nominal-client/compare/v1.182.0...v1.183.0) (2026-11-17)
 
 
