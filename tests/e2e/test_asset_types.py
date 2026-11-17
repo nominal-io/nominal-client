@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from threading import Barrier
-from typing import Callable, Literal
+from typing import Callable
 from uuid import uuid4
 
 import pytest
@@ -67,7 +67,6 @@ def test_asset_type_identity_and_lifecycle(client: NominalClient, archive) -> No
         kind,
         name="Ignored",
         properties={"serial_number": "one", "power": 20.0},
-        if_exists="return",
     )
     assert existing.rid == asset.rid
     assert existing.name == name
@@ -76,7 +75,7 @@ def test_asset_type_identity_and_lifecycle(client: NominalClient, archive) -> No
         kind,
         name=name,
         properties={"serial_number": "one", "power": 20.0},
-        if_exists="update",
+        update_if_exists=True,
     )
     assert replaced.rid == asset.rid
     assert replaced.properties["power"] == 20.0
@@ -87,12 +86,12 @@ def test_asset_type_identity_and_lifecycle(client: NominalClient, archive) -> No
     assert asset.type_rids == (kind.rid,)
 
 
-@pytest.mark.parametrize("policy", ["return", "update"])
+@pytest.mark.parametrize("update_if_exists", [False, True])
 def test_concurrent_identity_calls_resolve_one_asset(
     client: NominalClient,
     identity_type: AssetType,
     archive: Callable[[object], None],
-    policy: Literal["return", "update"],
+    update_if_exists: bool,
 ) -> None:
     """Four simultaneous creates for one identity resolve to one active asset under either policy."""
     start = Barrier(4, timeout=30)
@@ -100,7 +99,7 @@ def test_concurrent_identity_calls_resolve_one_asset(
     def resolve() -> Asset:
         start.wait()
         return client.create_or_update_asset_by_primary_key(
-            identity_type, name="Concurrent pump", properties={"serial": "one"}, if_exists=policy
+            identity_type, name="Concurrent pump", properties={"serial": "one"}, update_if_exists=update_if_exists
         )
 
     futures = []
@@ -127,12 +126,12 @@ def test_archived_asset_identity_can_be_reused(
 ) -> None:
     """An archived identity creates a new active asset while retaining the archived resource."""
     original = client.create_or_update_asset_by_primary_key(
-        identity_type, name="Original", properties={"serial": "one"}, if_exists="return"
+        identity_type, name="Original", properties={"serial": "one"}
     )
     archive(original)
     original.archive()
     replacement = client.create_or_update_asset_by_primary_key(
-        identity_type, name="Replacement", properties={"serial": "one"}, if_exists="return"
+        identity_type, name="Replacement", properties={"serial": "one"}
     )
     archive(replacement)
     assert replacement.rid != original.rid
@@ -200,7 +199,7 @@ def test_identity_policies_preserve_or_replace_metadata_without_losing_attachmen
     asset.add_attachments([attachment])
 
     existing = client.create_or_update_asset_by_primary_key(
-        identity_type, name="Replacement", properties={"serial": "one", "power": 20.0}, if_exists="return"
+        identity_type, name="Replacement", properties={"serial": "one", "power": 20.0}
     )
     assert existing.rid == asset.rid
     assert existing.name == "Original"
@@ -210,7 +209,7 @@ def test_identity_policies_preserve_or_replace_metadata_without_losing_attachmen
     assert set(existing.type_rids) == {identity_type.rid, other_type.rid}
 
     replaced = client.create_or_update_asset_by_primary_key(
-        identity_type, name="Replacement", properties={"serial": "one", "power": 20.0}, if_exists="update"
+        identity_type, name="Replacement", properties={"serial": "one", "power": 20.0}, update_if_exists=True
     )
     assert replaced.rid == asset.rid
     assert replaced.name == "Replacement"

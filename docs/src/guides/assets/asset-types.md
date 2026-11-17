@@ -72,7 +72,6 @@ same_pump = client.create_or_update_asset_by_primary_key(
     pump_type,
     name="Pump P-001",
     properties={"serial_number": "P-001", "model": "Centrifugal"},
-    if_exists="return",
 )
 assert same_pump.rid == pump.rid
 ```
@@ -82,8 +81,8 @@ active asset. This differs from `get_or_create_asset_by_properties`, which searc
 before creating and does not provide an atomic identity guarantee. Archived assets
 are ignored: an identity held only by an archived asset can create a new active asset.
 
-You must choose an `if_exists` policy. `"return"` leaves existing assets unchanged.
-**`"update"` replaces metadata and memberships; it is not a patch.** It replaces the
+Existing assets are returned unchanged by default (`update_if_exists=False`).
+**`update_if_exists=True` replaces metadata and memberships; it is not a patch.** It replaces the
 name, description, properties and labels, clears links and legacy data scopes, and
 keeps only the identity type plus the additional `types` you supply. The server
 preserves attachments and attached data. Prefer `pump.update(...)` for partial edits.

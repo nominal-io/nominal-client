@@ -55,9 +55,9 @@ def test_asset_search_type_filter(types) -> None:
 
 
 @pytest.mark.parametrize(
-    ("policy", "expected"), [("return", asset_pb2.RETURN_EXISTING), ("update", asset_pb2.UPDATE_EXISTING)]
+    ("update_if_exists", "expected"), [(False, asset_pb2.RETURN_EXISTING), (True, asset_pb2.UPDATE_EXISTING)]
 )
-def test_identity_upsert_policies_and_memberships(policy, expected) -> None:
+def test_identity_upsert_policies_and_memberships(update_if_exists, expected) -> None:
     """Upsert retains the identity type alongside extra types and returns typed server metadata."""
     clients = MagicMock()
     clients.resolve_default_workspace_rid.return_value = "workspace-1"
@@ -74,7 +74,7 @@ def test_identity_upsert_policies_and_memberships(policy, expected) -> None:
         name="Pump",
         properties={"serial": "p-1", "power": 12.5},
         types=["other", "identity"],
-        if_exists=policy,
+        update_if_exists=update_if_exists,
     )
     request = clients.assets.CreateOrUpdateAssetByPrimaryKey.call_args.args[0]
     assert request.if_exists == expected
@@ -101,15 +101,14 @@ def test_get_types_preserves_membership_order_and_detects_missing() -> None:
         asset.get_types()
 
 
-def test_invalid_upsert_policy_does_not_issue_request() -> None:
-    """Reject unsupported policies before any network calls or writes."""
+def test_identity_upsert_defaults_to_return_existing() -> None:
+    """Omitting the update flag sends the non-mutating existing-asset policy."""
     clients = MagicMock()
-    with pytest.raises(ValueError, match="policy"):
-        NominalClient(_clients=clients).create_or_update_asset_by_primary_key(
-            "type-1",
-            name="Pump",
-            properties={"serial": "p-1"},
-            if_exists="invalid",
-        )
-    clients.assets.CreateOrUpdateAssetByPrimaryKey.assert_not_called()
-    clients.resolve_default_workspace_rid.assert_not_called()
+    clients.resolve_default_workspace_rid.return_value = "workspace-1"
+    clients.assets.CreateOrUpdateAssetByPrimaryKey.return_value = asset_pb2.CreateOrUpdateAssetByPrimaryKeyResponse(
+        asset=asset_pb2.Asset(rid="asset-1")
+    )
+    NominalClient(_clients=clients).create_or_update_asset_by_primary_key(
+        "type-1", name="Pump", properties={"serial": "p-1"}
+    )
+    assert clients.assets.CreateOrUpdateAssetByPrimaryKey.call_args.args[0].if_exists == asset_pb2.RETURN_EXISTING

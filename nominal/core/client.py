@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Literal, Mapping, Self, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -1422,7 +1422,7 @@ class NominalClient:
         *,
         name: str,
         properties: NominalProperties,
-        if_exists: Literal["return", "update"],
+        update_if_exists: bool = False,
         description: str | None = None,
         labels: Sequence[str] = (),
         types: Sequence[AssetType | str] = (),
@@ -1437,15 +1437,15 @@ class NominalClient:
             asset_type: Type whose primary key identifies the asset; always assigned.
             name: Name for a newly created or replaced asset.
             properties: Complete properties, including all required type properties.
-            if_exists: ``"return"`` leaves an existing asset unchanged. ``"update"``
-                replaces its name, description, properties, labels and memberships.
+            update_if_exists: Defaults to False, returning an existing asset unchanged.
+                True replaces its name, description, properties, labels and memberships.
             description: Description for creation or replacement; defaults to absent.
             labels: Complete labels for creation or replacement.
             types: Additional memberships, alongside ``asset_type``. Include every
-                membership you want to retain when using ``"update"``.
+                membership you want to retain when ``update_if_exists=True``.
 
         Warning:
-            ``"update"`` is replacement, not a patch. It also clears existing links
+            ``update_if_exists=True`` is replacement, not a patch. It also clears existing links
             and legacy data scopes, which this method does not supply. Attached data
             and attachments are preserved by the server. Use ``asset.update()`` for
             partial metadata edits on an existing asset.
@@ -1454,22 +1454,14 @@ class NominalClient:
             The created, unchanged, or replaced asset snapshot.
 
         Raises:
-            ValueError: If ``if_exists`` is not a supported policy.
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If properties violate the type or the operation fails.
         """
-        match if_exists:
-            case "return":
-                policy = asset_pb2.RETURN_EXISTING
-            case "update":
-                policy = asset_pb2.UPDATE_EXISTING
-            case _:
-                raise ValueError(f"Unknown if_exists policy: {if_exists!r}")
         type_rid = rid_from_instance_or_string(asset_type)
         type_rids = list(dict.fromkeys([type_rid, *(rid_from_instance_or_string(kind) for kind in types)]))
         request = asset_pb2.CreateOrUpdateAssetByPrimaryKeyRequest(
             type_rid=type_rid,
-            if_exists=policy,
+            if_exists=asset_pb2.UPDATE_EXISTING if update_if_exists else asset_pb2.RETURN_EXISTING,
             asset=asset_pb2.CreateAssetRequest(
                 title=name,
                 description=description,
