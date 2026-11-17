@@ -10,6 +10,7 @@ These modules provide experimental client functionality. Their APIs may change b
 - {doc}`compute-as-code`
 - {doc}`derived_datasets`
 - {doc}`extractors`
+- {doc}`drives`
 - {doc}`ingest`
 - {doc}`migration`
 - {doc}`spatial`
