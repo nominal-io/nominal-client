@@ -13,6 +13,7 @@
    nominal.experimental.compute.dsl.exprs
    nominal.experimental.derived_datasets
    nominal.experimental.spatial
+   nominal.experimental.drives
    nominal.experimental.ingest
    nominal.experimental.video_processing
    nominal.experimental.video

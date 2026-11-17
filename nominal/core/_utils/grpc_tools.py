@@ -8,7 +8,7 @@ The channel is configured to track the conjure HTTP transport as closely as gRPC
 
 - HTTP URLs allow plaintext gRPC only for literal loopback IP addresses; HTTPS URLs select TLS.
 - For TLS, roots combine the configured trust store and the OS trust store (`_grpc_root_certificates`).
-- Retry mirrors conjure's `RetryWithJitter` (`_service_config_json`).
+- Retry mirrors conjure's `RetryWithJitter`, with explicit per-method opt-outs (`_service_config_json`).
 - Per-call auth metadata and a default deadline are injected by client interceptors, so call sites never
   pass `metadata=` / `timeout=` themselves.
 """
@@ -108,13 +108,16 @@ def _grpc_root_certificates(trust_store_path: str | None) -> bytes | None:
     return b"\n".join(parts) if parts else None
 
 
-def _service_config_json(service_config: ServiceConfiguration) -> str:
-    """Build the gRPC service config JSON: native retry applied uniformly to every method on the channel.
+def _service_config_json(
+    service_config: ServiceConfiguration, no_retry_methods: tuple[tuple[str, str], ...] = ()
+) -> str:
+    """Build the gRPC service config JSON, with native retries and explicit per-method opt-outs.
 
     This mirrors the conjure HTTP path (`RetryWithJitter` in `_utils.networking`): the same attempt count
     (`max_num_retries`), the same status mapping (503 -> UNAVAILABLE, 429 -> RESOURCE_EXHAUSTED; 308 has no
     gRPC analogue), jittered exponential backoff (`initialBackoff = backoff_slot_size`, x2 per attempt,
-    capped at 120s), and retry for every method regardless of idempotency.
+    capped at 120s). ``no_retry_methods`` contains (fully-qualified service, method) pairs
+    whose application-level replay is unsafe. More-specific entries override the wildcard policy.
 
     Two intentional divergences from conjure's `RetryWithJitter`, accepted because gRPC's native retry is
     simpler/more robust and both are negligible for the unary RPCs this client makes today:
@@ -138,7 +141,8 @@ def _service_config_json(service_config: ServiceConfiguration) -> str:
                         "backoffMultiplier": 2,
                         "retryableStatusCodes": list(_RETRYABLE_STATUS),
                     },
-                }
+                },
+                *({"name": [{"service": service, "method": method}]} for service, method in no_retry_methods),
             ]
         }
     )
@@ -254,18 +258,20 @@ def create_grpc_channel(
     user_agent: str,
     auth_header: str,
     header_provider: HeaderProvider | None,
+    no_retry_methods: tuple[tuple[str, str], ...] = (),
 ) -> grpc.Channel:
     """Build the shared gRPC channel, allowing plaintext only for loopback HTTP URLs.
 
     Configures gzip compression, native retry, lifted message-size limits, the SDK user-agent, and the
     auth-metadata + default-deadline interceptors. TLS channels use the union trust bundle; plaintext
     channels do not load TLS credentials. All of a client's gRPC stubs share this one channel.
+    ``no_retry_methods`` disables application retries for the given (service, method) pairs.
 
     Raises:
         NominalConfigError: If the API URL is malformed, contains user information, or uses HTTP
             without a literal loopback address.
     """
-    channel = _build_grpc_channel(api_base_url, service_config, user_agent)
+    channel = _build_grpc_channel(api_base_url, service_config, user_agent, no_retry_methods)
     # The two interceptors are order-independent: one rewrites metadata, the other the deadline.
     return grpc.intercept_channel(
         channel,
@@ -274,12 +280,17 @@ def create_grpc_channel(
     )
 
 
-def _build_grpc_channel(api_base_url: str, service_config: ServiceConfiguration, user_agent: str) -> grpc.Channel:
+def _build_grpc_channel(
+    api_base_url: str,
+    service_config: ServiceConfiguration,
+    user_agent: str,
+    no_retry_methods: tuple[tuple[str, str], ...],
+) -> grpc.Channel:
     parsed = validate_api_base_url(api_base_url)
     options = [
         ("grpc.primary_user_agent", user_agent),
         ("grpc.enable_retries", 1),
-        ("grpc.service_config", _service_config_json(service_config)),
+        ("grpc.service_config", _service_config_json(service_config, no_retry_methods)),
         ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
         ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
     ]

@@ -142,6 +142,13 @@ Object identification <guides/video/object-identification>
 
 ```{toctree}
 :hidden:
+:caption: Drives
+
+Overview <guides/drives/overview>
+```
+
+```{toctree}
+:hidden:
 :caption: Ingest guides
 
 Ingest jobs <guides/ingest/ingestion-jobs>
@@ -188,6 +195,7 @@ ref/experimental/compute
 ref/experimental/compute-as-code
 ref/experimental/derived_datasets
 ref/experimental/extractors
+ref/experimental/drives
 ref/experimental/ingest
 ref/experimental/migration
 ref/experimental/spatial

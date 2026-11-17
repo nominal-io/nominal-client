@@ -98,8 +98,8 @@ def test_root_certificates_on_linux_union_the_default_cafile(tmp_path, monkeypat
     assert b"SYSTEM-CA" in result
 
 
-def test_service_config_json_applies_conjure_retry_to_every_method() -> None:
-    """The retry service-config applies conjure-derived retry uniformly to all methods on the channel."""
+def test_service_config_json_preserves_default_conjure_retry() -> None:
+    """The default retry policy stays unchanged for methods without a specific override."""
     config = json.loads(_service_config_json(_config()))["methodConfig"][0]
     assert config["name"] == [{}]  # every method
     policy = config["retryPolicy"]
