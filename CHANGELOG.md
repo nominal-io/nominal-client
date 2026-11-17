@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.183.0](https://github.com/nominal-io/nominal-client/compare/v1.182.0...v1.183.0) (2026-11-17)
+
+
+### Features
+
+* **experimental:** add Nominal Drives and batch file operations ([#933](https://github.com/nominal-io/nominal-client/issues/933)) ([c4941ae](https://github.com/nominal-io/nominal-client/commit/c4941ae3b8024a7d28ecdc0a33c9acfebe76ee0c))
+* support asset types and primary-key asset workflows ([#1204](https://github.com/nominal-io/nominal-client/issues/1204)) ([1fb4e31](https://github.com/nominal-io/nominal-client/commit/1fb4e31d061d8e0d7bb78290309e84e2be51dfa4))
+
 ## [1.182.0](https://github.com/nominal-io/nominal-client/compare/v1.181.0...v1.182.0) (2026-11-16)
 
 
