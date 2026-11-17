@@ -12,20 +12,20 @@ from __future__ import annotations
 import abc
 import pathlib
 from dataclasses import dataclass, field
-from typing import Sequence, TypeAlias
+from typing import Protocol, Sequence, TypeAlias
 
 from typing_extensions import Self
 
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import DownloadItem, MultipartFileDownloader, PresignedURLProvider
-from nominal.experimental.drives._clients import _Clients
 from nominal.experimental.drives._pagination import list_file_revisions_paginated
 from nominal.experimental.drives.enums import DownloadAvailability, DriveFileState, DriveSource
 from nominal.experimental.drives.errors import FileStoreErrorCode, NominalFileStoreError
-from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
+from nominal.protos.file_store.v1 import file_store_pb2, files_pb2, files_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -65,7 +65,7 @@ def _download_destination(output_directory: PathLike, drive_path: str) -> pathli
 
 
 def _download_revision(
-    clients: _Clients,
+    clients: DriveFileRevision._Clients,
     revision_ref: file_store_pb2.FileRevisionRef,
     destination: pathlib.Path,
     *,
@@ -131,6 +131,10 @@ class DriveFileRevision(HasRid):
     created_by_rid: str | None
     _drive_rid: str = field(repr=False)
     _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
 
     @classmethod
     def _from_proto(cls, clients: _Clients, drive_rid: str, msg: file_store_pb2.ManagedFileRevision) -> Self:
@@ -219,6 +223,10 @@ class DriveFile(DriveEntry, abc.ABC):
     """When the backend last observed this file."""
     _clients: _Clients = field(repr=False)
 
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
+
     @abc.abstractmethod
     def _content_revision_ref(self) -> file_store_pb2.FileRevisionRef:
         """Reference to the content this file currently shows."""
@@ -267,6 +275,11 @@ class ManagedDriveFile(DriveFile, HasRid, RefreshableMixin[file_store_pb2.Logica
     current_revision_rid: str | None
     """RID of the revision currently at this path, if the file has one."""
     _drive_rid: str = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
 
     @classmethod
     def _from_proto(cls, clients: _Clients, drive_rid: str, msg: file_store_pb2.LogicalFile) -> Self:
@@ -380,6 +393,11 @@ class VirtualDriveFile(DriveFile):
     """Which external provider backs this file."""
     # Keep pinned-content equality while excluding the unhashable message from the hash.
     _revision_ref: file_store_pb2.FileRevisionRef = field(repr=False, hash=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
 
     @classmethod
     def _from_proto(cls, clients: _Clients, msg: file_store_pb2.LogicalFile) -> Self:
@@ -421,13 +439,13 @@ _VIRTUAL_PROVIDERS = {
 }
 
 
-def _file_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.LogicalFile) -> DriveFile:
+def _file_from_proto(clients: DriveFile._Clients, drive_rid: str, msg: file_store_pb2.LogicalFile) -> DriveFile:
     if msg.identity.WhichOneof("identity") == "managed":
         return ManagedDriveFile._from_proto(clients, drive_rid, msg)
     return VirtualDriveFile._from_proto(clients, msg)
 
 
-def _entry_from_proto(clients: _Clients, drive_rid: str, msg: file_store_pb2.FileEntry) -> DriveEntry:
+def _entry_from_proto(clients: DriveFile._Clients, drive_rid: str, msg: file_store_pb2.FileEntry) -> DriveEntry:
     if msg.WhichOneof("entry") == "directory":
         return DriveDirectory(path=msg.directory.path.path)
     return _file_from_proto(clients, drive_rid, msg.file)
@@ -477,7 +495,9 @@ def _restore_change(revision: DriveFileRevision, destination: FileDestination) -
     )
 
 
-def _apply_one(clients: _Clients, drive_rid: str, change: files_pb2.FileChange) -> files_pb2.FileChangeResult:
+def _apply_one(
+    clients: ManagedDriveFile._Clients, drive_rid: str, change: files_pb2.FileChange
+) -> files_pb2.FileChangeResult:
     """Apply a single change, raising the backend's in-band failure as an exception.
 
     A failure is reported in the response rather than as a gRPC error, so it is decoded

@@ -8,7 +8,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Callable, Self, TypeAlias
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.experimental.drives._clients import _Clients
 from nominal.experimental.drives.errors import FileStoreErrorCode
 from nominal.experimental.drives.file import (
     DriveFileRevision,
@@ -236,7 +235,9 @@ FileChangeResult: TypeAlias = FileChangeSuccess | DirectoryMoveSuccess | FileCha
 """One outcome for each submitted change, in input order."""
 
 
-def _result_from_proto(clients: _Clients, drive_rid: str, result: files_pb2.FileChangeResult) -> FileChangeResult:
+def _result_from_proto(
+    clients: ManagedDriveFile._Clients, drive_rid: str, result: files_pb2.FileChangeResult
+) -> FileChangeResult:
     match result.WhichOneof("result"):
         case "success":
             return FileChangeSuccess(

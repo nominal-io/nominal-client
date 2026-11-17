@@ -10,18 +10,18 @@ from __future__ import annotations
 import io
 import pathlib
 from dataclasses import dataclass, field
-from typing import BinaryIO, Sequence, cast
+from typing import BinaryIO, Protocol, Sequence, cast
 
-from nominal_api import ingest_api
+from nominal_api import ingest_api, upload_api
 from typing_extensions import Self
 
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE, DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core.client import NominalClient
 from nominal.core.filetype import FileType
-from nominal.experimental.drives._clients import _Clients
 from nominal.experimental.drives._pagination import list_drives_paginated, list_files_paginated
 from nominal.experimental.drives.changes import DriveBatch, PreparedPut, _move_directory_change
 from nominal.experimental.drives.enums import DriveMutability, DriveSource, DriveState, VirtualDriveState
@@ -38,7 +38,7 @@ from nominal.experimental.drives.file import (
     _entry_from_proto,
     _file_from_proto,
 )
-from nominal.protos.file_store.v1 import drives_pb2, file_store_pb2, files_pb2
+from nominal.protos.file_store.v1 import drives_pb2, drives_pb2_grpc, file_store_pb2, files_pb2, files_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -82,6 +82,14 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
     subordinate_to_rid: str | None
     """Owning resource RID for a subordinate drive, otherwise ``None``."""
     _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drives(self) -> drives_pb2_grpc.DrivesServiceStub: ...
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
+        @property
+        def upload(self) -> upload_api.UploadService: ...
 
     def _get_latest_api(self) -> file_store_pb2.Drive:
         with translate_grpc_errors():
@@ -465,6 +473,16 @@ class VirtualDrive(Drive):
     Reads work exactly as they do on a managed drive. Writes raise `NominalFileStoreError`
     before any request is sent.
     """
+
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def drives(self) -> drives_pb2_grpc.DrivesServiceStub: ...
+        @property
+        def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
+        @property
+        def upload(self) -> upload_api.UploadService: ...
 
     def status(self) -> VirtualDriveStatus:
         """Probe the backing provider and report its current connectivity.
