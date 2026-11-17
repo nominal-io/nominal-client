@@ -20,6 +20,10 @@ from nominal.core._utils.networking import HeaderProvider, create_multipart_requ
 logger = logging.getLogger(__name__)
 
 
+class _RangeNotHonoredError(RuntimeError):
+    """A response carried more than the requested byte range, so retrying the request cannot help."""
+
+
 @dataclasses.dataclass
 class PresignedURLProvider:
     """Thread-safe presigned URL cache that refreshes on schedule or when invalidated."""
@@ -374,13 +378,25 @@ class MultipartFileDownloader:
                 if expected_etag and r.headers.get("ETag") and r.headers["ETag"] != expected_etag:
                     raise RuntimeError("ETag mismatch across parts (object changed during download)")
 
-                self._write_part(
-                    destination,
-                    start,
-                    b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk),
-                )
+                expected = end - start + 1
+                data = bytearray()
+                for chunk in r.iter_content(1024 * 1024):
+                    data += chunk
+                    if len(data) > expected:
+                        # A server that ignores Range answers with the whole object. Writing that at
+                        # `start` would corrupt the file, so stop reading rather than buffer it all.
+                        r.close()
+                        raise _RangeNotHonoredError(
+                            f"Expected {expected} bytes for range {start}-{end}, got more; "
+                            "the server may not support ranged downloads"
+                        )
+                if len(data) != expected:
+                    raise RuntimeError(f"Expected {expected} bytes for range {start}-{end}, got {len(data)}")
+                self._write_part(destination, start, bytes(data))
                 return
 
+            except _RangeNotHonoredError:
+                raise  # the server will answer the same way every time
             except Exception as ex:
                 last_ex = ex
                 if (
