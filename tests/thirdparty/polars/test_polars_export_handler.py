@@ -5,9 +5,15 @@ import datetime
 from unittest.mock import MagicMock
 
 import pytest
-from nominal_api import api, scout_compute_api
 
 from nominal.core.channel import ChannelDataType
+from nominal.protos.compute.v1 import (
+    categorical_results_pb2,
+    execution_results_pb2,
+    numeric_results_pb2,
+    result_common_pb2,
+)
+from nominal.protos.types.time import time_pb2
 from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
     _batch_channel_points_per_second,
@@ -25,17 +31,6 @@ TEN_SECONDS_NS = 10_000_000_000
 TWENTY_SECONDS_NS = 20_000_000_000
 
 
-def _empty_response() -> MagicMock:
-    """Create a ComputeNodeResponse with all union variants unset (the caller fills one in)."""
-    response = MagicMock(spec=scout_compute_api.ComputeNodeResponse)
-    response.bucketed_numeric = None
-    response.numeric = None
-    response.numeric_point = None
-    response.bucketed_enum = None
-    response.enum = None
-    return response
-
-
 # -- _extract_bucket_counts --
 
 
@@ -48,9 +43,11 @@ def test_extract_numeric_bucketed(make_numeric_response):
 
 def test_extract_numeric_undecimated():
     """Undecimated numeric series yields count=1 per timestamp."""
-    response = _empty_response()
-    response.numeric = MagicMock()
-    response.numeric.timestamps = [api.Timestamp(seconds=s, nanos=0) for s in (100, 200, 300)]
+    response = execution_results_pb2.ComputationResult(
+        numeric_samples=numeric_results_pb2.NumericSamples(
+            samples=[result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=s)) for s in (100, 200, 300)]
+        )
+    )
 
     result = _extract_bucket_counts(response)
 
@@ -60,9 +57,11 @@ def test_extract_numeric_undecimated():
 
 def test_extract_numeric_single_point():
     """A single numeric point yields one entry with count=1."""
-    response = _empty_response()
-    response.numeric_point = MagicMock()
-    response.numeric_point.timestamp = api.Timestamp(seconds=100, nanos=0)
+    response = execution_results_pb2.ComputationResult(
+        numeric_sample=execution_results_pb2.OptionalNumericSampleResult(
+            sample=result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=100))
+        )
+    )
 
     assert _extract_bucket_counts(response) == [(100_000_000_000, 1)]
 
@@ -76,9 +75,14 @@ def test_extract_enum_bucketed(make_enum_response):
 
 def test_extract_enum_undecimated():
     """Undecimated enum series yields count=1 per timestamp."""
-    response = _empty_response()
-    response.enum = MagicMock()
-    response.enum.timestamps = [api.Timestamp(seconds=s, nanos=0) for s in (100, 200)]
+    response = execution_results_pb2.ComputationResult(
+        categorical_samples=categorical_results_pb2.CategoricalSamples(
+            samples=[
+                categorical_results_pb2.CategoricalCodeSample(timestamp=time_pb2.Timestamp(seconds=s))
+                for s in (100, 200)
+            ]
+        )
+    )
 
     result = _extract_bucket_counts(response)
 
@@ -88,8 +92,7 @@ def test_extract_enum_undecimated():
 
 def test_extract_unrecognized_response_returns_empty():
     """An unrecognized response shape returns an empty list rather than raising."""
-    response = _empty_response()
-    response.type = "something_unknown"
+    response = execution_results_pb2.ComputationResult()
 
     assert _extract_bucket_counts(response) == []
 
@@ -161,7 +164,7 @@ def test_pps_supported_types_produce_positive_rates(
         if response_kind == "numeric"
         else make_enum_response([{0: 30, 1: 20}, {0: 10}])
     )
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[make_compute_result(success=response)]
     )
 
@@ -191,7 +194,7 @@ def test_pps_empty_success_returns_none(mock_client, make_channel, make_compute_
     Covers a malformed conjure response where both union variants are unset; the caller
     should see None rather than an AssertionError bubbling up.
     """
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[make_compute_result(success=None, error=None)]
     )
 
@@ -205,12 +208,12 @@ def test_pps_empty_channels_skips_api(mock_client):
     result = _batch_channel_points_per_second(mock_client, [], 0, TEN_SECONDS_NS, {}, 100)
 
     assert result == {}
-    mock_client._clients.compute.batch_compute_with_units.assert_not_called()
+    mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
 
 
 def test_pps_api_failure_returns_none_for_all(mock_client, make_channel):
     """If the compute API raises, all channels get None PPS so callers can distinguish failure from zero-data."""
-    mock_client._clients.compute.batch_compute_with_units.side_effect = RuntimeError("API down")
+    mock_client._clients.compute.BatchComputeWithUnits.side_effect = RuntimeError("API down")
 
     result = _batch_channel_points_per_second(
         mock_client, [make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, {}, 100
@@ -223,7 +226,7 @@ def test_pps_per_channel_error_returns_none_for_failed(
     mock_client, make_channel, make_numeric_response, make_compute_result
 ):
     """Individual channel errors produce None for that channel while peers still succeed."""
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[
             make_compute_result(success=make_numeric_response([50, 100])),
             make_compute_result(error="channel not found"),
@@ -388,7 +391,7 @@ def test_compute_export_jobs_excludes_zero_and_none_pps_channels(
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1, 1, 1])
     # PPS estimation: "known" gets a positive rate, "none_rate" errors (None), "zero_rate"
     # succeeds with no buckets (0.0).
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[
             make_compute_result(success=make_numeric_response([50, 100])),
             make_compute_result(error="compute failed"),
@@ -417,7 +420,7 @@ def test_compute_export_jobs_handles_cross_datasource_name_collision(
         make_channel("temp", ChannelDataType.INT, data_source="ds-b"),
     ]
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1, 1])
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[
             make_compute_result(success=make_numeric_response([50, 100])),
             make_compute_result(success=make_numeric_response([50, 100])),
@@ -449,7 +452,7 @@ def test_export_excludes_unsupported_channel_types(
     # Wire up just enough of the pipeline that it can reach (but not necessarily complete)
     # the data-presence check — which is what we care about observing.
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[make_compute_result(success=make_numeric_response([50, 100]))]
     )
     mock_client._clients.dataexport.export_channel_data.return_value = MagicMock()
@@ -496,7 +499,7 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     channel = make_channel("firehose", ChannelDataType.DOUBLE)
 
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
-    mock_client._clients.compute.batch_compute_with_units.return_value = MagicMock(
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[make_compute_result(success=make_numeric_response([1000, 1000]))]
     )
 

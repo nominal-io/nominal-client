@@ -6,7 +6,7 @@ import time
 from unittest.mock import MagicMock, NonCallableMock
 
 import pytest
-from nominal_api import api, datasource, scout_catalog, scout_compute_api
+from nominal_api import api, datasource, scout_catalog
 
 from nominal.core import (
     Asset,
@@ -24,7 +24,9 @@ from nominal.core import (
 from nominal.core.attachment import _attachments_section
 from nominal.core.retention import KeepForever
 from nominal.exceptions import NominalConfigError
+from nominal.protos.compute.v1 import compute_pb2, execution_results_pb2, numeric_results_pb2, result_common_pb2
 from nominal.protos.run.v1 import run_service_pb2
+from nominal.protos.types.time import time_pb2
 
 START = 1_767_225_600_000_000_000  # 2026-01-01T00:00:00Z
 SECOND = api.Timestamp(seconds=START // 1_000_000_000, nanos=0)
@@ -248,26 +250,34 @@ def test_attachments_link_to_their_downloads_by_name():
     assert section.has_more
 
 
-def _channel_with_response(response: scout_compute_api.ComputeNodeResponse) -> Channel:
+def _channel_with_response(response: execution_results_pb2.ComputationResult) -> Channel:
     clients = MagicMock()
     clients.catalog.get_enriched_datasets.return_value = [
         MagicMock(bounds=scout_catalog.Bounds(start=SECOND, end=SECOND, type=datasource.TimestampType.ABSOLUTE))
     ]
-    clients.compute.compute.return_value = response
+    clients.compute.Compute.return_value = compute_pb2.ComputeResponse(result=response)
     return Channel("rotor_speed", "ri.catalog.dataset.1", ChannelDataType.DOUBLE, "rad/s", None, clients)
 
 
 def test_channel_statistics_combine_buckets():
     """A numeric channel's card combines its buckets into whole-channel statistics and a chart."""
-    later = api.Timestamp(seconds=START // 1_000_000_000 + 2, nanos=0)
-    response = scout_compute_api.ComputeNodeResponse(
-        bucketed_numeric=scout_compute_api.BucketedNumericPlot(
-            # Buckets without first and last points fall back to their own timestamps.
-            timestamps=[SECOND, SECOND, later],
+    second = time_pb2.Timestamp(seconds=START // 1_000_000_000)
+    later = time_pb2.Timestamp(seconds=START // 1_000_000_000 + 2)
+    response = execution_results_pb2.ComputationResult(
+        numeric_buckets=numeric_results_pb2.NumericBuckets(
             buckets=[
-                scout_compute_api.NumericBucket(aggregations={}, count=3, min=1.0, max=4.0, mean=2.0),
-                scout_compute_api.NumericBucket(aggregations={}, count=0),
-                scout_compute_api.NumericBucket(aggregations={}, count=1, min=6.0, max=6.0, mean=6.0),
+                numeric_results_pb2.NumericResultBucket(
+                    end=second,
+                    statistics=numeric_results_pb2.NumericBucketStatistics(count=3, min=1.0, max=4.0, mean=2.0),
+                ),
+                numeric_results_pb2.NumericResultBucket(
+                    end=second,
+                    statistics=numeric_results_pb2.NumericBucketStatistics(count=0),
+                ),
+                numeric_results_pb2.NumericResultBucket(
+                    end=later,
+                    statistics=numeric_results_pb2.NumericBucketStatistics(count=1, min=6.0, max=6.0, mean=6.0),
+                ),
             ],
         )
     )
@@ -280,11 +290,37 @@ def test_channel_statistics_combine_buckets():
 
 def test_channel_statistics_of_a_single_point():
     """A channel with one sample comes back as a single point, which is its own statistics."""
-    response = scout_compute_api.ComputeNodeResponse(
-        numeric_point=scout_compute_api.NumericPoint(timestamp=SECOND, value=2.5)
+    response = execution_results_pb2.ComputationResult(
+        numeric_sample=execution_results_pb2.OptionalNumericSampleResult(
+            sample=result_common_pb2.NumericSample(
+                timestamp=time_pb2.Timestamp(seconds=START // 1_000_000_000), value=2.5
+            )
+        )
     )
     section = _channel_with_response(response)._data_section()
     assert section.rows[:4] == [["Samples", "1"], ["Min", "2.5 rad/s"], ["Max", "2.5 rad/s"], ["Mean", "2.5 rad/s"]]
+
+
+def test_channel_statistics_use_sample_bounds_and_keep_zero_values():
+    """Bucket sample timestamps override the bucket edge, and zero statistics remain valid."""
+    first = result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=1), value=0)
+    last = result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=2), value=0)
+    response = execution_results_pb2.ComputationResult(
+        numeric_buckets=numeric_results_pb2.NumericBuckets(
+            buckets=[
+                numeric_results_pb2.NumericResultBucket(
+                    end=time_pb2.Timestamp(seconds=10),
+                    statistics=numeric_results_pb2.NumericBucketStatistics(
+                        count=2, min=0, max=0, mean=0, first=first, last=last
+                    ),
+                )
+            ]
+        )
+    )
+    section = _channel_with_response(response)._data_section()
+    assert section.rows[:4] == [["Samples", "2"], ["Min", "0 rad/s"], ["Max", "0 rad/s"], ["Mean", "0 rad/s"]]
+    assert "1970-01-01T00:00:01Z" in section.rows[4][1]
+    assert "1970-01-01T00:00:02Z" in section.rows[5][1]
 
 
 def test_user_values_are_escaped():

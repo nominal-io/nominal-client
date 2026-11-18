@@ -5,9 +5,10 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping, Self
 
-from nominal_api import api, scout_compute_api, storage_writer_api
+from nominal_api import storage_writer_api
 
 from nominal._utils import batched
+from nominal.protos.compute.v1 import log_predicates_pb2, result_common_pb2
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 _EMPTY_MAP: Mapping[str, str] = MappingProxyType({})
@@ -44,11 +45,11 @@ class LogPoint:
         )
 
     @classmethod
-    def _from_compute_api(cls, point: scout_compute_api.LogValue, timestamp: api.Timestamp) -> Self:
+    def _from_proto(cls, point: result_common_pb2.LogSample) -> Self:
         return cls(
-            timestamp=_SecondsNanos.from_api(timestamp).to_nanoseconds(),
+            timestamp=_SecondsNanos.from_proto(point.timestamp).to_nanoseconds(),
             message=point.message,
-            args=point.args,
+            args=dict(point.attributes),
         )
 
     def _to_conjure(self) -> storage_writer_api.LogPoint:
@@ -63,19 +64,14 @@ class LogPoint:
 
 def _log_filter_operator(
     regex_match: str | None = None, insensitive_match: str | None = None
-) -> scout_compute_api.LogFilterOperator:
+) -> log_predicates_pb2.LogPredicate | None:
     if regex_match and insensitive_match:
         raise ValueError("Only one of `regex_match` or `insensitive_match` may be provided")
-    elif regex_match:
-        return scout_compute_api.LogFilterOperator(
-            regex_filter=scout_compute_api.LogRegexFilterOperator(regex=regex_match)
-        )
-    else:
-        return scout_compute_api.LogFilterOperator(
-            exact_match_case_insensitive_filter=scout_compute_api.LogExactMatchCaseInsensitiveFilter(
-                token=insensitive_match or ""
-            )
-        )
+    if regex_match:
+        return log_predicates_pb2.LogPredicate(message_regex=regex_match)
+    if insensitive_match:
+        return log_predicates_pb2.LogPredicate(message_contains_case_insensitive=insensitive_match)
+    return None
 
 
 def _write_logs(
