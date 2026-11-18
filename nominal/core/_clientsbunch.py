@@ -46,6 +46,7 @@ from nominal.protos.run.v1 import run_service_pb2_grpc
 from nominal.protos.sandbox.v1 import sandbox_workspace_pb2_grpc
 from nominal.protos.secrets.v1 import secrets_pb2_grpc
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2_grpc
+from nominal.protos.skills.v1 import skills_pb2_grpc
 from nominal.protos.spatial.v2 import spatial_pb2_grpc
 from nominal.protos.sql.v1 import sql_pb2_grpc
 from nominal.protos.storage.v1 import dataset_retention_pb2_grpc
@@ -177,6 +178,7 @@ class ClientsBunch:
     run: run_service_pb2_grpc.RunServiceStub
     sandbox_workspace: sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub
     secrets: secrets_pb2_grpc.SecretServiceStub
+    skills: skills_pb2_grpc.SkillsServiceStub
     spatial: spatial_pb2_grpc.SpatialServiceStub
     sql: sql_pb2_grpc.SqlServiceStub
     units: units_pb2_grpc.UnitsServiceStub
@@ -301,9 +303,12 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
-            # A lost ApplyFileChanges response is ambiguous: replay can report revision/path
-            # failures for changes already applied, hiding the original outcome.
-            no_retry_methods=(("nominal.file_store.v1.FilesService", "ApplyFileChanges"),),
+            # A replay can mask a committed write with a refusal and trigger incorrect skill-file cleanup.
+            no_retry_methods=(
+                ("nominal.file_store.v1.FilesService", "ApplyFileChanges"),
+                ("nominal.skills.v1.SkillsService", "CreateSkill"),
+                ("nominal.skills.v1.SkillsService", "UpdateSkill"),
+            ),
         )
 
         def grpc_factory(stub_class: GRPCStub[TStub]) -> TStub:
@@ -355,6 +360,7 @@ class ClientsBunch:
             run=grpc_factory(run_service_pb2_grpc.RunServiceStub),
             sandbox_workspace=grpc_factory(sandbox_workspace_pb2_grpc.SandboxWorkspaceServiceStub),
             secrets=grpc_factory(secrets_pb2_grpc.SecretServiceStub),
+            skills=grpc_factory(skills_pb2_grpc.SkillsServiceStub),
             spatial=grpc_factory(spatial_pb2_grpc.SpatialServiceStub),
             sql=grpc_factory(sql_pb2_grpc.SqlServiceStub),
             units=grpc_factory(units_pb2_grpc.UnitsServiceStub),
