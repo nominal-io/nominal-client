@@ -1,13 +1,11 @@
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Sequence
 
 from nominal_api import scout_catalog
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset, _create_dataset_request
-from nominal.core.dataset_file import DatasetFile, IngestStatus, wait_for_files_to_ingest
 
 POLL_INTERVAL = timedelta(seconds=0.1)
 """Default polling interval for `poll_until_ingestion_completed` calls in e2e tests."""
@@ -31,27 +29,13 @@ def create_legacy_dataset(client: NominalClient, name: str, description: str | N
 
 
 @dataclass(frozen=True)
-class StartedIngest:
-    """A dataset whose files were uploaded without waiting for them to ingest."""
+class DefaultBackedDatasets:
+    """The ingested datasets the `default_backed_datasets` fixture provides."""
 
-    dataset: Dataset
-    files: Sequence[DatasetFile]
-
-    def wait(self) -> Dataset:
-        """Block until every file has ingested successfully, then return the dataset."""
-        wait_for_files_to_ingest(self.files, poll_interval=POLL_INTERVAL)
-        assert all(file.ingest_status == IngestStatus.SUCCESS for file in self.files)
-        return self.dataset
-
-
-@dataclass(frozen=True)
-class DefaultBackedIngests:
-    """The suite's ingests into default-backed datasets; see `default_backed_ingests`."""
-
-    two_files: StartedIngest
-    vehicle_a: StartedIngest
-    vehicle_b: StartedIngest
-    mixed_vehicles: StartedIngest
+    two_files: Dataset
+    vehicle_a: Dataset
+    vehicle_b: Dataset
+    mixed_vehicles: Dataset
 
 
 def _create_random_start_end() -> tuple[datetime, datetime]:

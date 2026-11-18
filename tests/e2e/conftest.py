@@ -19,8 +19,8 @@ Shared resource fixtures
 ------------------------
 ``ingested_dataset`` — a single session-scoped dataset ingested from csv_data; shared
                        by all read-only channel/pandas tests to avoid redundant ingest calls.
-``default_backed_ingests`` — every ingest the suite makes into the environment's default dataset
-                       backing, started together so their waits overlap.
+``default_backed_datasets`` — the datasets ingested into the environment's default backing,
+                       uploaded together so their ingest waits overlap.
 
 Teardown helpers
 ----------------
@@ -31,18 +31,17 @@ Teardown helpers
 from __future__ import annotations
 
 import gzip
-from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, Sequence
 from uuid import uuid4
 
 import pytest
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.core.dataset_file import IngestStatus
-from tests.e2e import POLL_INTERVAL, DefaultBackedIngests, StartedIngest, create_legacy_dataset
+from nominal.core.dataset_file import DatasetFile, IngestStatus
+from tests.e2e import POLL_INTERVAL, DefaultBackedDatasets, create_legacy_dataset
 from tests.e2e.credentials import with_temporary_api_key
 
 
@@ -111,31 +110,58 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
         ds.archive()
 
 
+def _archive_all(datasets: Sequence[Dataset]) -> None:
+    """Archive every dataset, so one failure cannot strand the rest, and report the ones that failed.
+
+    Raising here turns a leaked dataset into a visible teardown error rather than a silent one left on the
+    stack for someone to find later.
+    """
+    failures = []
+    for dataset in datasets:
+        try:
+            dataset.archive()
+        except Exception as error:  # noqa: BLE001 — teardown reports every failure rather than stopping at one
+            failures.append(f"{dataset.rid}: {error!r}")
+    if failures:
+        raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
+
+
 @pytest.fixture(scope="session")
-def default_backed_ingests(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[DefaultBackedIngests]:
-    """Every ingest the suite makes into the environment's default dataset backing, started together.
+def default_backed_datasets(
+    client: NominalClient, csv_data: bytes, csv_data2: bytes
+) -> Iterator[DefaultBackedDatasets]:
+    """The datasets the suite ingests into the environment's default backing and then reads.
 
     That backing can take two minutes to ingest a ten-row file, but ingests started together take
-    about as long as one. The first test to ask for this fixture starts them all and waits only on its own with
-    `StartedIngest.wait`; by the time later tests ask, theirs have usually finished. `vehicle_a` and
-    `vehicle_b` cover disjoint time ranges, and `mixed_vehicles` holds both in one dataset.
+    about as long as one. So every upload is started before any is waited on, and a test that needs
+    another default-backed ingest should add it here rather than wait on its own.
+
+    `two_files` holds two untagged files. `vehicle_a` and `vehicle_b` carry one `vehicle` tag value
+    each over disjoint time ranges, and `mixed_vehicles` holds both in one dataset.
     """
-    with ExitStack() as archive_on_exit:
+    datasets: list[Dataset] = []
+    files: list[DatasetFile] = []
 
-        def start(label: str, *uploads: tuple[bytes, Mapping[str, str] | None]) -> StartedIngest:
-            dataset = client.create_dataset(f"dataset-e2e-{label}-{uuid4().hex[:8]}")
-            # Registered before the uploads it might not survive: the dataset exists either way.
-            archive_on_exit.callback(dataset.archive)
-            files = [dataset.add_from_io(BytesIO(data), "timestamp", "iso_8601", tags=tags) for data, tags in uploads]
-            return StartedIngest(dataset, files)
+    def start(label: str, *uploads: tuple[bytes, Mapping[str, str] | None]) -> Dataset:
+        dataset = client.create_dataset(f"dataset-e2e-{label}-{uuid4().hex[:8]}")
+        # Registered before the uploads it might not survive: the dataset exists either way.
+        datasets.append(dataset)
+        files.extend(dataset.add_from_io(BytesIO(data), "timestamp", "iso_8601", tags=tags) for data, tags in uploads)
+        return dataset
 
-        a, b = {"vehicle": "A"}, {"vehicle": "B"}
-        yield DefaultBackedIngests(
+    vehicle_a_tags, vehicle_b_tags = {"vehicle": "A"}, {"vehicle": "B"}
+    try:
+        started = DefaultBackedDatasets(
             two_files=start("two-files", (csv_data, None), (csv_data2, None)),
-            vehicle_a=start("vehicle-a", (csv_data, a)),
-            vehicle_b=start("vehicle-b", (csv_data2, b)),
-            mixed_vehicles=start("mixed-vehicles", (csv_data, a), (csv_data2, b)),
+            vehicle_a=start("vehicle-a", (csv_data, vehicle_a_tags)),
+            vehicle_b=start("vehicle-b", (csv_data2, vehicle_b_tags)),
+            mixed_vehicles=start("mixed-vehicles", (csv_data, vehicle_a_tags), (csv_data2, vehicle_b_tags)),
         )
+        for file in files:
+            file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+        yield started
+    finally:
+        _archive_all(datasets)
 
 
 @pytest.fixture(scope="session")

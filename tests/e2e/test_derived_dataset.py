@@ -10,8 +10,8 @@ Covers:
     time shift all take effect server-side, by the values that come back rather than by row counts
   - Listing one dataset twice, which the definition keeps but a channel export reads as one series
 
-The `tagged_datasets` fixture is session-scoped: two datasets are ingested once, each tagged with a
-different `vehicle` value, and reused by every test here.
+The input datasets come from the session-scoped `default_backed_datasets` fixture in conftest.py:
+they are ingested once, tagged with `vehicle` values, and reused by every test here.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from nominal.experimental.derived_datasets import (
 )
 from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
-from tests.e2e import DefaultBackedIngests
+from tests.e2e import DefaultBackedDatasets
 
 ArchiveFn = Callable[[object], None]
 
@@ -101,15 +101,15 @@ def _assert_temperatures(
 
 
 @pytest.fixture(scope="session")
-def tagged_datasets(default_backed_ingests: DefaultBackedIngests) -> tuple[Dataset, Dataset]:
+def tagged_datasets(default_backed_datasets: DefaultBackedDatasets) -> tuple[Dataset, Dataset]:
     """Two ingested datasets carrying `vehicle=A` and `vehicle=B` respectively, over disjoint time ranges."""
-    return default_backed_ingests.vehicle_a.wait(), default_backed_ingests.vehicle_b.wait()
+    return default_backed_datasets.vehicle_a, default_backed_datasets.vehicle_b
 
 
 @pytest.fixture(scope="session")
-def mixed_dataset(default_backed_ingests: DefaultBackedIngests) -> Dataset:
+def mixed_dataset(default_backed_datasets: DefaultBackedDatasets) -> Dataset:
     """One dataset holding both tag values, so filtering it proves series selection rather than input exclusion."""
-    return default_backed_ingests.mixed_vehicles.wait()
+    return default_backed_datasets.mixed_vehicles
 
 
 def test_create_derived_dataset_with_inputs(
