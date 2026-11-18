@@ -14,7 +14,7 @@ Add `--help` to any command for its options, or see the [CLI reference](/ref/cli
 
 | Command | Use it to | Guide |
 | --- | --- | --- |
-| `nom config` | Add, list, remove and migrate profiles | [API keys setup](/guides/api-keys-setup.md) |
+| `nom config` | Add, list, remove and migrate profiles | [API keys setup](/guides/api-keys-setup.md), [Migration to the Profile API](/guides/profile-migration.md) |
 | `nom container` | Register and manage file extractors and their images | [File extractors](/guides/extractors/overview.md#from-the-cli) |
 | `nom download` | Pick channels and a time range, and save them as CSV or Parquet | [Download data](/guides/cli/downloading-data.md) |
 | `nom mis` | Set channel units and descriptions from an instrumentation sheet | [Instrumentation sheets](/guides/cli/instrumentation-sheets.md) |
