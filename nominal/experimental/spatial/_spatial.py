@@ -20,7 +20,7 @@ from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import upload_multipart_file
 from nominal.core.filetype import FileTypes
-from nominal.core.ingestion_job import IngestionJob
+from nominal.core.ingestion_job import IngestionJob, _get_ingest_job
 from nominal.core.marking import _marking_rids
 from nominal.experimental.spatial._point_cloud import ColumnDataType, _describe_point_cloud_csv, _PointCloudCsv
 from nominal.protos.spatial.v2 import spatial_pb2, spatial_pb2_grpc
@@ -376,8 +376,8 @@ class Spatial(HasRid, RefreshableGrpcMixin[spatial_pb2.Spatial]):
             self.rid,
             response.ingest_job_rid,
         )
-        job = self._clients.ingest_jobs.get_ingest_job(self._clients.auth_header, response.ingest_job_rid)
-        return IngestionJob._from_conjure(self._clients, job)
+        job_proto = _get_ingest_job(self._clients, response.ingest_job_rid)
+        return IngestionJob._from_proto(self._clients, job_proto)
 
     def _record_ingest_metadata(self, source_handle: str, time_metadata: _PointCloudTimeMetadata | None) -> None:
         """Record provenance, and the measured time range when there is one.
