@@ -1,22 +1,19 @@
 ---
 myst:
   html_meta:
-    description: "Find, read, create, import, edit and export the skills Analyst and connected agents follow."
+    description: "Find, create, edit and share reusable instructions for Analyst with the Nominal Python Client."
 ---
 
 # Skills
 
 {.lead}
-A skill is a folder with a SKILL.md of instructions, and any reference files, that Analyst and connected agents follow for a repeatable task, such as a post-test review.
-Skills use the [Agent Skills](https://agentskills.io/specification) format, and each workspace has a skills library that every Analyst user and connected agent in the workspace shares.
-Each skill's files are in the folder `skills/<name>` of the workspace's skills drive.
-Creating and changing skills needs permission to edit the workspace's configuration.
-Without it, the methods that save raise {py:class}`~nominal.exceptions.NominalPermissionDeniedError` before saving anything.
+A skill gives Analyst, Nominal's AI assistant, instructions for a repeatable task such as a post-test review.
+Creating or changing a skill requires permission to edit the workspace's configuration.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
 
-These APIs are experimental and may change between releases.
+Import the experimental Analyst module. Its interfaces may change between releases:
 
 ```python
 from nominal.experimental import analyst
@@ -24,32 +21,32 @@ from nominal.experimental import analyst
 
 ## Find and read skills
 
-{py:func}`~nominal.experimental.analyst.search_skills` finds skills whose name or description contains your text, ignoring case, in name order.
-Without text, it lists every skill:
+Use {py:func}`~nominal.experimental.analyst.search_skills` to find skills by name or description:
 
 ```python
-skills = analyst.search_skills(client, "review")
+skills = analyst.search_skills(client, "review")  # Omit the text to list all unarchived skills.
+# Add enabled=True to search only skills that are turned on.
 for skill in skills:
+    # Load status is an enum such as AVAILABLE, INVALID, or MISSING.
     print(skill.name, skill.is_enabled, skill.get_load_status())
 ```
 
-{py:meth}`~nominal.experimental.analyst.Skill.get_load_status` checks SKILL.md and returns a {py:class}`~nominal.experimental.analyst.SkillLoadStatus`, such as `AVAILABLE`, `INVALID`, or `MISSING`.
-Pass `enabled=True` for only the skills that are turned on, or `archive_status` to include archived skills.
-
-Read a skill's SKILL.md, and its reference files:
+Read the instructions in SKILL.md and the files the skill refers to:
 
 ```python
-skill = analyst.get_skill(client, "<SKILL_RID>")
-print(skill.get_content())
+skill = analyst.get_skill(client, "<SKILL_RID>")  # Or use a skill returned by search_skills.
+print(skill.get_content())  # The current SKILL.md.
 for file in skill.list_files():
     print(file.path, file.size_bytes)
-print(skill.read_file("methods/limits.md"))
+    if file.path != "SKILL.md":
+        print(skill.read_file(file.path))
 ```
 
 ## Create or import a skill
 
-{py:func}`~nominal.experimental.analyst.create_skill` saves a skill from its SKILL.md and any reference files, keyed by path.
-SKILL.md's frontmatter names and describes the skill:
+Use {py:func}`~nominal.experimental.analyst.create_skill` to save instructions and reference files.
+SKILL.md follows the [Agent Skills](https://agentskills.io/specification) format, with a name and description in its YAML frontmatter.
+Each workspace shares a skills library. Skills are enabled by default, so pass `enabled=False` while preparing instructions you are not ready for others to use:
 
 ```python
 skill_md = """---
@@ -63,65 +60,48 @@ description: Review a test run against its test plan and flag anomalies.
 skill = analyst.create_skill(
     client,
     skill_md,
+    # Reference files are keyed by path within the skill's folder.
     files={"methods/limits.md": "Use the limits in the test plan's appendix.\n"},
+    enabled=False,
 )
 ```
 
-Names use lowercase letters, digits and single hyphens, are at most 64 characters long, and must be unused in the workspace.
-The client imports and writes UTF-8 text files only.
-Pass `enabled=False` to save a skill without turning it on.
+Choose a unique name in the workspace using lowercase letters, digits and single hyphens.
+The client reads and writes UTF-8 text files. See {py:func}`~nominal.experimental.analyst.create_skill` for validation rules.
 
-The files are saved in one batch, then the skill is registered and enabled by default.
-If registration or enabling fails, read the error and its notes before retrying. A timeout can leave the outcome unknown: the files may remain, or the skill may already exist.
-When the notes give a skill RID, fetch it with `analyst.get_skill(client, rid)` to check its state.
-
-{py:func}`~nominal.experimental.analyst.import_skill` creates a skill from a folder with SKILL.md at its top level, or a .zip holding one:
+If you already have a folder with SKILL.md at its top level, or a .zip containing one, use {py:func}`~nominal.experimental.analyst.import_skill` instead:
 
 ```python
-skill = analyst.import_skill(client, "skills/post-test-review")
+skill = analyst.import_skill(client, "skills/post-test-review", enabled=False)
 ```
 
-Import reads every file before saving any, and skips paths with a part that starts with ".", such as `.git`. Folder imports also skip symbolic links.
+Import skips dot-prefixed files and folders, such as `.git`, and folder imports skip symbolic links.
+If creation or import fails, check the error's notes before retrying. A timeout can leave a skill or its files saved. When the notes give a skill RID, fetch it with `analyst.get_skill(client, rid)` to check its state.
 
 ## Edit a skill
 
-{py:meth}`~nominal.experimental.analyst.Skill.update` replaces SKILL.md and turns the skill on or off.
-A new name in SKILL.md's frontmatter renames the skill and moves its folder.
-{py:meth}`~nominal.experimental.analyst.Skill.write_files` adds or replaces reference files, and {py:meth}`~nominal.experimental.analyst.Skill.remove_files` removes them:
+Use {py:meth}`~nominal.experimental.analyst.Skill.update` to replace SKILL.md or turn a skill on or off.
+Changing the name in its frontmatter renames the skill.
+Use {py:meth}`~nominal.experimental.analyst.Skill.write_files` to add or replace reference files, and {py:meth}`~nominal.experimental.analyst.Skill.remove_files` to remove them:
 
 ```python
-skill.update(content=skill_md.replace("flag anomalies", "flag and summarize anomalies"))
+content = skill.get_content()  # Start from the saved instructions, including edits made outside this script.
+skill.update(content=content.replace("flag anomalies", "flag and summarize anomalies"))
 skill.write_files({"templates/summary.md": "## Summary\n"})
-skill.remove_files(["methods/limits.md"])
+skill.remove_files(["templates/summary.md"])
+skill.update(enabled=True)  # Make the prepared skill available to Analyst.
 ```
 
-`update` saves only if the skill hasn't changed since you fetched it, and saves SKILL.md and a rename's folder move together or not at all.
-Edits made to the skill's files in Drives don't count as a change to the skill, so read SKILL.md with {py:meth}`~nominal.experimental.analyst.Skill.get_content` before replacing it.
-Each call to `write_files` or `remove_files` saves its files together or not at all, replacing each file as it is when you call it, and is refused if another save changes one of them at the same moment.
-Both raise {py:class}`~nominal.exceptions.NominalConflictError` and save nothing.
-Refresh the skill, read SKILL.md again, and apply your change to what you read, so you keep the other change:
+If the skill has changed since you fetched it, `update` raises {py:class}`~nominal.exceptions.NominalConflictError` without saving your edit.
+Call `skill.refresh()`, read `skill.get_content()` again, and reapply your edit to that content before retrying.
+`write_files` and `remove_files` can also raise this error when a file changes during a save. Review the current files before retrying those operations.
 
-```python
-from nominal.exceptions import NominalConflictError
-
-
-def summarize_anomalies(skill_md: str) -> str:
-    return skill_md.replace("flag anomalies", "flag and summarize anomalies")
-
-
-try:
-    skill.update(content=summarize_anomalies(skill.get_content()))
-except NominalConflictError:
-    skill.refresh()
-    skill.update(content=summarize_anomalies(skill.get_content()))
-```
-
-When replacing content, `update` saves the files before updating the skill record. If the second step fails, it raises {py:class}`~nominal.exceptions.NominalError` and reports that SKILL.md was saved. Fetch the skill and read its content before retrying; the conflict-retry example above does not handle this partial-success case.
+If an error says SKILL.md was saved but the skill record could not be updated, fetch the skill and read its content before retrying. Some changes have already been saved.
 
 ## Archive and restore a skill
 
-{py:meth}`~nominal.experimental.analyst.Skill.archive` hides a skill from the library, Analyst and connected agents.
-{py:meth}`~nominal.experimental.analyst.Skill.unarchive` restores it turned off:
+Use {py:meth}`~nominal.experimental.analyst.Skill.archive` to hide a skill from the library and stop making it available to agents.
+{py:meth}`~nominal.experimental.analyst.Skill.unarchive` brings it back turned off:
 
 ```python
 skill.archive()
@@ -129,13 +109,21 @@ skill.unarchive()
 skill.update(enabled=True)
 ```
 
-## Export a skill
-
-{py:meth}`~nominal.experimental.analyst.Skill.export` writes the skill's folder, named after the skill, and returns its path:
+To find an archived skill, include archived results in your search:
 
 ```python
-folder = skill.export("exported-skills")
+from nominal.core import ArchiveStatusFilter
+
+archived_skills = analyst.search_skills(client, archive_status=ArchiveStatusFilter.ARCHIVED)
 ```
 
-The folder holds SKILL.md and every reference file as stored, so you can keep it in git or import it into another workspace.
-Export creates a new folder named after the skill inside the supplied path and refuses to overwrite an existing folder.
+## Export a skill
+
+Use {py:meth}`~nominal.experimental.analyst.Skill.export` to save a local copy of SKILL.md and its reference files.
+Export creates a new folder named after the skill and refuses to overwrite an existing folder.
+Keep the folder in git, or import it into another workspace:
+
+```python
+folder = skill.export("exported-skills")  # exported-skills/post-test-review
+analyst.import_skill(client, folder, workspace="<WORKSPACE_RID>", enabled=False)
+```
