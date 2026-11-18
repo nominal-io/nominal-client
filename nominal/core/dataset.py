@@ -22,6 +22,7 @@ from nominal._utils import batched
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core import _display
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._frequency import _frequency_request
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.factory import create_dataset_stream
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
@@ -57,6 +58,7 @@ from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v1 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
 from nominal.protos.storage.v1 import dataset_retention_pb2, dataset_retention_pb2_grpc
@@ -113,6 +115,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
         @property
         def proto_write(self) -> ProtoWriteService: ...
+        @property
+        def channel_writer(self) -> nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub: ...
         @property
         def series_metadata(self) -> series_metadata_pb2_grpc.SeriesMetadataServiceStub: ...
         # Used by the experimental dataset-owner helpers.
@@ -1570,6 +1574,51 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 batch, self.rid, auth_header=self._clients.auth_header, storage_writer=self._clients.storage_writer
             ),
         )
+
+    def write_frequency(
+        self,
+        channel_name: str,
+        timestamps: Sequence[IntegralNanosecondsUTC],
+        frequencies_hz: Sequence[float],
+        values: Sequence[float],
+        *,
+        unit: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Queue one bounded batch of time-frequency points for this dataset.
+
+        Requires a dataset and deployment that support Frequency ingestion. Each index
+        identifies one timestamp, frequency and value; input order is preserved.
+        Repeat a timestamp to write several bins from the same capture.
+        Frequencies and measurements are converted with ``float()`` and must remain finite.
+
+        Args:
+            channel_name: Channel to receive the values.
+            timestamps: Integral UTC epoch nanoseconds in [0, 2**63 - 1].
+            frequencies_hz: Finite frequencies in Hz; negative frequencies are accepted.
+            values: Finite float64 measurements, one per timestamp and frequency.
+            unit: Unit set when the channel is first created. ``None`` omits it;
+                an empty string is sent explicitly. Existing channel units are unchanged.
+            tags: Tags shared by all points in this call.
+
+        Returns:
+            None after queued admission, before storage completion.
+
+        Raises:
+            TypeError: A timestamp is boolean or is not integral.
+            ValueError: Columns are empty or unequal, timestamps are out of range,
+                numbers cannot be represented as finite floats, or the request exceeds 10,000 points or 262,144
+                serialized protobuf bytes, including the dataset RID and metadata.
+            nominal.exceptions.NominalError: Admission failed or the response was lost.
+
+        Note:
+            Failed admissions are not automatically retried. A lost response
+            leaves acceptance unknown. Repeating the call can duplicate accepted data.
+            Earlier successful calls remain accepted if a later call fails.
+        """
+        request = _frequency_request(self.rid, channel_name, timestamps, frequencies_hz, values, unit, tags)
+        with translate_grpc_errors():
+            self._clients.channel_writer.WriteColumnBatches(request)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.

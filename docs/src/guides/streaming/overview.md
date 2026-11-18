@@ -11,6 +11,7 @@ A write stream sends values to a dataset as your program produces them, batching
 Use it for live telemetry. For files, see [Datasets](/guides/datasets/overview.md).
 
 For log messages, see [Stream logs](/guides/streaming/logs.md).
+For timestamped frequency bins, see [Write Frequency data](/guides/streaming/frequency.md).
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
