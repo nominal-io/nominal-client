@@ -432,6 +432,7 @@ def test_event_settings_captured_on_add(client: NominalClient, mock_clients: Mag
     ("from_add", "from_check", "from_builder", "expected"),
     [
         (EventType.INFO, EventType.FLAG, EventType.SUCCESS, event.EventType.INFO),
+        (EventType.INFO, EventType.UNKNOWN, EventType.UNKNOWN, event.EventType.INFO),
         (None, EventType.FLAG, EventType.SUCCESS, event.EventType.FLAG),
         (None, None, EventType.SUCCESS, event.EventType.SUCCESS),
         (None, None, None, None),
