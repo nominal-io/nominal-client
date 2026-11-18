@@ -15,7 +15,6 @@ from typing import Protocol, Self
 import grpc
 import yaml
 from google.protobuf import field_mask_pb2
-from nominal_api import ingest_api, upload_api
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
@@ -36,6 +35,7 @@ from nominal.experimental.drives.changes import _move_directory_change
 from nominal.experimental.drives.errors import FileStoreErrorCode
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2, files_pb2_grpc
 from nominal.protos.skills.v1 import skills_pb2, skills_pb2_grpc
+from nominal.protos.uploads.v1 import uploads_pb2, uploads_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 _ENTRY_FILE = "SKILL.md"
@@ -127,7 +127,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         @property
         def skills(self) -> skills_pb2_grpc.SkillsServiceStub: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
 
     def _get_latest_api(self) -> skills_pb2.Skill:
         request = skills_pb2.GetSkillRequest(skill_rid=self.rid)
@@ -741,14 +741,14 @@ def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str
 def _upload(clients: Skill._Clients, workspace_rid: str, path: str, text: str) -> str:
     """Upload `text` for File Store to save at `path`, and return the upload's key."""
     return _put_multipart_upload_to(
-        clients.auth_header,
         workspace_rid,
         io.BytesIO(text.encode("utf-8")),
         sanitize_upload_filename(PurePosixPath(path).name),
         _TEXT_MIMETYPE,
         clients.upload,
         header_provider=clients.header_provider,
-        destination=ingest_api.UploadDestination.FILE_STORE,
+        verify=clients.trust_store_path,
+        destination=uploads_pb2.UPLOAD_DESTINATION_FILE_STORE,
         max_workers=1,
     ).key
 
