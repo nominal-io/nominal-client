@@ -11,7 +11,7 @@ import pytest
 
 from nominal import ts
 from nominal.core import FileTypes, NominalClient
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 
 @pytest.mark.parametrize("compressed", [False, True], ids=["jsonl", "jsonl-gz"])
@@ -26,12 +26,12 @@ def test_journal_stream_with_explicit_suffix_matches_path_ingestion(
     path = tmp_path / f"journal{file_type.extension}"
     path.write_bytes(payload)
 
-    path_dataset = client.create_dataset(f"journal-path-{uuid4().hex[:8]}")
+    path_dataset = create_legacy_dataset(client, f"journal-path-{uuid4().hex[:8]}")
     archive(path_dataset)
     path_file = path_dataset.add_journal_json(path, timestamp_column="source_ts", timestamp_type=ts.EPOCH_SECONDS)
     path_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
-    stream_dataset = client.create_dataset(f"journal-stream-{uuid4().hex[:8]}")
+    stream_dataset = create_legacy_dataset(client, f"journal-stream-{uuid4().hex[:8]}")
     archive(stream_dataset)
     stream = BytesIO(payload)
     stream_file = stream_dataset.add_journal_json_from_io(

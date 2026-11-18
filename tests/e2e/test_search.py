@@ -29,7 +29,7 @@ from nominal.core.secret import Secret
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
-from tests.e2e import POLL_INTERVAL, _create_random_start_end
+from tests.e2e import POLL_INTERVAL, _create_random_start_end, create_legacy_dataset
 
 _DATASET_HEADER = b"timestamp,temperature,pressure\n"
 
@@ -155,7 +155,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     video_file = video.add_from_io(BytesIO(mp4_data), f"video-{tag}.mp4", start=start)
     video_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
-    dataset = client.create_dataset(f"dataset-{tag}")
+    dataset = create_legacy_dataset(client, f"dataset-{tag}")
     file_jan = dataset.add_from_io(
         BytesIO(_DATASET_HEADER + b"1704067200,20.1,1013.2\n1704070800,21.3,1012.8\n"),
         timestamp_column="timestamp",
