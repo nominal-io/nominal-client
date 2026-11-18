@@ -10,19 +10,16 @@ from nominal_api import api, scout_compute_api, scout_dataexport_api
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.compute import series_summary_input
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.protos.compute.v1 import (
-    computation_spec_pb2,
     compute_pb2,
-    execution_inputs_pb2,
     execution_options_pb2,
     execution_results_pb2,
-    expressions_pb2,
 )
-from nominal.protos.types.time import time_pb2
 from nominal.ts import (
     Epoch,
     IntegralNanosecondsDuration,
@@ -100,25 +97,6 @@ def _extract_bucket_counts(
         ]
     logger.warning("Unrecognized compute response type: %s", response.WhichOneof("kind"))
     return []
-
-
-def _build_compute_request(
-    series: expressions_pb2.SeriesExpression, start: time_pb2.Timestamp, end: time_pb2.Timestamp, num_buckets: int
-) -> execution_inputs_pb2.ExecutionInput:
-    """Build a decimation compute request for a single series."""
-    return execution_inputs_pb2.ExecutionInput(
-        context=expressions_pb2.ComputeContext(),
-        computation=computation_spec_pb2.ComputationSpec(
-            series_summary=computation_spec_pb2.SeriesSummarySpec(
-                input=series,
-                summarization=execution_options_pb2.SeriesSummarization(
-                    bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=num_buckets)
-                ),
-            )
-        ),
-        start=start,
-        end=end,
-    )
 
 
 def _peak_points_per_second(
@@ -200,8 +178,11 @@ def _batch_channel_points_per_second(
     api_end = _SecondsNanos.from_nanoseconds(end_ns).to_proto()
 
     try:
+        summarization = execution_options_pb2.SeriesSummarization(
+            bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=num_buckets)
+        )
         request = compute_pb2.BatchComputeWithUnitsRequest(
-            inputs=[_build_compute_request(s, api_start, api_end, num_buckets) for s in series_list]
+            inputs=[series_summary_input(series, api_start, api_end, summarization) for series in series_list]
         )
         with translate_grpc_errors():
             resp = client._clients.compute.BatchComputeWithUnits(request)
