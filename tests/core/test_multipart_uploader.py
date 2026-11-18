@@ -61,7 +61,11 @@ def install_test_gate() -> Callable[..., FakeClock]:
     def _install(up: MultipartUploader, *, deadline_seconds: float = 120.0) -> FakeClock:
         clock = FakeClock()
         up._streams.gate = _ThrottleGate(
-            max_concurrency=1000, deadline_seconds=deadline_seconds, clock=clock, sleep=clock.sleep, jitter=lambda d: d
+            max_concurrency=1000,
+            deadline_seconds=deadline_seconds,
+            clock=clock,
+            sleep=lambda delay, _: clock.sleep(delay),
+            jitter=lambda d: d,
         )
         return clock
 
@@ -75,10 +79,11 @@ class FakeUploadService:
     name — a counter would race, since initiates run concurrently.
     """
 
-    def __init__(self, *, fail_sign_for_key: str | None = None) -> None:
+    def __init__(self, *, fail_sign_for_key: str | None = None, throttle_once_at: str | None = None) -> None:
         """Start with every gate open, so a test opts in to holding a call."""
         self.lock = threading.Lock()
         self.calls: list[str] = []
+        self.throttle_once_at = throttle_once_at
         self.fail_sign_for_key = fail_sign_for_key
         self.aborted: list[str] = []
         self.completed_etags: dict[str, dict[int, str]] = {}  # key -> {part number: etag}
@@ -91,6 +96,9 @@ class FakeUploadService:
     def _record(self, name: str) -> None:
         with self.lock:
             self.calls.append(name)
+            if self.throttle_once_at == name:
+                self.throttle_once_at = None
+                raise _throttled()
 
     def initiate_multipart_upload(self, auth: str, request: Any) -> Any:
         self._record("initiate")
@@ -414,6 +422,26 @@ class TestFailureHandling:
 
 
 class TestClose:
+    def test_close_during_cancellation_waits_for_storage(
+        self, make_uploader: MakeUploader, write_file: WriteFile
+    ) -> None:
+        up, _, session = make_uploader(max_files_in_flight=1)
+        session.put_release.clear()
+        active = up.enqueue_file(write_file("active.csv", 10))
+        assert session.put_started.wait(timeout=5)
+        queued = up.enqueue_file(write_file("queued.csv", 10))
+        observed = []
+
+        def close_again(_: Future[str]) -> None:
+            session.put_release.set()
+            up.close()
+            observed.append((active.done(), session.closed))
+
+        # Future.cancel invokes callbacks on the closing thread, before the outer close joins.
+        queued.add_done_callback(close_again)
+        up.close(cancel_pending=True)
+        assert observed == [(True, True)]
+
     def test_close_drains_and_settles_everything(self, make_uploader: MakeUploader, write_file: WriteFile) -> None:
         """A plain close runs every enqueued file to completion before returning."""
         up, service, _ = make_uploader(max_files_in_flight=2)
@@ -685,91 +713,24 @@ def _throttled() -> requests.exceptions.HTTPError:
     return requests.exceptions.HTTPError("429 too many requests", response=response)
 
 
-def _throttle_once(original: Callable[..., Any]) -> tuple[Callable[..., Any], dict[str, int]]:
-    """Wrap `original` so its first call throttles; return the wrapper and a call counter."""
-    calls = {"n": 0}
-
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise _throttled()
-        return original(*args, **kwargs)
-
-    return wrapper, calls
-
-
-def _throttle_initiate_once(service: FakeUploadService) -> dict[str, int]:
-    """Make the first initiate call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.initiate_multipart_upload)
-    service.initiate_multipart_upload = wrapper
-    return calls
-
-
-def _throttle_sign_once(service: FakeUploadService) -> dict[str, int]:
-    """Make the first sign call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.sign_part)
-    service.sign_part = wrapper
-    return calls
-
-
-def _throttle_complete_once(service: FakeUploadService) -> dict[str, int]:
-    """Make the first complete call throttle; return its call counter."""
-    wrapper, calls = _throttle_once(service.complete_multipart_upload)
-    service.complete_multipart_upload = wrapper
-    return calls
-
-
 class TestThrottlingIsAbsorbedByTheGate:
-    """Every Nominal API request the uploader makes has to go through the gate.
-
-    A throttle is the server saying "later", not "no"; an ungated call site turns one into a
-    dead file. These pin each call site by throttling it and requiring the file to survive.
-    """
-
-    @pytest.mark.parametrize(
-        "throttle_endpoint_once",
-        [
-            pytest.param(_throttle_initiate_once, id="initiate"),
-            pytest.param(_throttle_sign_once, id="sign"),
-            pytest.param(_throttle_complete_once, id="complete"),
-        ],
-    )
-    def test_a_throttled_multipart_call_is_retried_rather_than_failing_the_file(
+    @pytest.mark.parametrize("endpoint", ["initiate", "sign", "complete", "upload_file"])
+    def test_throttled_file_completes_after_one_endpoint_retry(
         self,
-        throttle_endpoint_once: Callable[[FakeUploadService], dict[str, int]],
+        endpoint: str,
         make_uploader: MakeUploader,
         write_file: WriteFile,
-        install_test_gate: Callable[..., Any],
+        install_test_gate: Callable[..., FakeClock],
     ) -> None:
-        """A single throttle on any multipart call site is retried instead of failing the file."""
-        up, service, _ = make_uploader()
+        service = FakeUploadService(throttle_once_at=endpoint)
+        up, _, _ = make_uploader(
+            service=service, small_file_route_max_bytes=1024 if endpoint == "upload_file" else None
+        )
         install_test_gate(up)
-        calls = throttle_endpoint_once(service)
-        path = write_file("f.csv", 100)
-
         with up:
-            assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/f.csv"
-
-        assert calls["n"] == 2  # throttled once, retried inside the gate, then succeeded
+            assert up.enqueue_file(write_file("f.csv", 100)).result(timeout=10) == "s3://bucket/f.csv"
+        assert service.calls.count(endpoint) == 2
         assert service.aborted == []
-
-    def test_a_throttled_small_route_upload_is_retried_rather_than_failing_the_file(
-        self,
-        make_uploader: MakeUploader,
-        write_file: WriteFile,
-        install_test_gate: Callable[..., Any],
-    ) -> None:
-        """A single throttle on the single-shot route is retried instead of failing the file."""
-        up, service, _ = make_uploader(small_file_route_max_bytes=1024)
-        install_test_gate(up)
-        wrapper, calls = _throttle_once(service.upload_file)
-        service.upload_file = wrapper
-        path = write_file("small.csv", 100)
-
-        with up:
-            assert up.enqueue_file(path).result(timeout=10) == "s3://bucket/small.csv"
-
-        assert calls["n"] == 2
 
     def test_a_permanently_throttled_sign_spends_exactly_one_budget(
         self,
@@ -868,10 +829,9 @@ class TestFileLevelTransientRetry:
             with pytest.raises(NominalMultipartUploadFailed):
                 up.enqueue_file(path).result(timeout=10)
 
-        # Backoff doubles from 1s: sleeps 1+2+4+... land the clock past the 10s budget, and the
-        # final failure surfaces rather than waiting again.
-        assert fake_clock.now >= 10.0
-        assert service.calls.count("abort") >= 2  # multiple whole-file attempts each rolled back
+        # Attempts start at 0, 1, 3 and 7 seconds. Waking at the deadline surfaces the last failure.
+        assert fake_clock.now == 10.0
+        assert service.calls.count("abort") == 4
 
     def test_a_cancelling_close_interrupts_the_backoff_wait(
         self, make_uploader: MakeUploader, write_file: WriteFile

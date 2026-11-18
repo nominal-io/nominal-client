@@ -351,3 +351,27 @@ def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
 
     assert client.abort_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
     assert session.put.call_count == 3
+
+
+def test_failed_put_and_abort_report_safe_storage_diagnostics(caplog: pytest.LogCaptureFixture) -> None:
+    """A failed abort preserves the PUT error and logs no signed URL from either failure."""
+    signed_url = "https://storage.example/file?signature=sensitive-query"
+    response = requests.Response()
+    response.status_code = 403
+    response.url = signed_url
+    response.headers.update({"x-amz-request-id": "request-id", "Location": signed_url})
+    client = _upload_client_for_destination("uploads")
+    client.abort_multipart_upload.side_effect = requests.ConnectionError(signed_url)
+    with multipart.StreamUploader(client, "auth", None, max_workers=1, max_buffer_bytes=4, max_part_retries=1) as up:
+        up.session.put = MagicMock(return_value=response)
+        with pytest.raises(NominalMultipartUploadFailed) as failed:
+            up.upload_stream(io.BytesIO(b"data"), "file.csv", "text/csv", chunk_size=4)
+
+    attempt = failed.value.exceptions[0]
+    assert "HTTP 403" in str(attempt)
+    assert "request-id" in str(attempt)
+    assert signed_url not in str(attempt)
+    assert isinstance(attempt.__cause__, requests.HTTPError)
+    assert attempt.__cause__.response is response
+    assert "ConnectionError" in caplog.text
+    assert signed_url not in caplog.text

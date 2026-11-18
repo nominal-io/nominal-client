@@ -22,7 +22,6 @@ from nominal.core._utils.upload_pacing import (
     DEFAULT_MAX_BACKOFF_DURATION_S,
     DEFAULT_THROTTLE_DEADLINE_S,
     NOMINAL_MAX_CONCURRENCY,
-    _GlobalBackoff,
     _ThrottleGate,
 )
 from nominal.core.filetype import FileType
@@ -102,6 +101,7 @@ class MultipartUploader:
     _retry_clock: Callable[[], float] = field(default=time.monotonic, repr=False)
     _retry_wait: Callable[[float], bool] | None = field(default=None, repr=False)
     _retry_jitter: Callable[[float], float] = field(default=lambda delay: random.uniform(0.0, delay), repr=False)
+    _accepting_files: bool = field(default=True, repr=False)
     _closed: bool = field(default=False, repr=False)
     # Executors keep pending jobs alive. Weak references let completed batches release their
     # results and exceptions as soon as callers release the futures.
@@ -164,9 +164,11 @@ class MultipartUploader:
                 small uploads, signing and completion. Direct storage PUTs use their own pool.
             timeout: Per-request timeout for direct-to-storage part PUTs.
             max_part_retries: Attempts per part before the file fails.
-            per_request_retry_timeout: Budget in seconds for admission and retries of a
-                throttled Nominal request. An exhausted budget raises `NominalRequestThrottledError`.
-            max_backoff_duration: Maximum delay in seconds between throttled attempts.
+            per_request_retry_timeout: Time in seconds available to start or retry a Nominal
+                request. An exhausted budget raises `NominalRequestThrottledError`. An
+                in-flight transport request can finish after this deadline.
+            max_backoff_duration: Maximum local backoff in seconds. When Nominal supplies
+                a longer Retry-After delay, the batch waits until that delay expires.
             file_retry_timeout: Budget in seconds for retrying a local file from the beginning
                 after a transient failure, such as a connection timeout. Defaults to one hour.
                 Pass None to disable whole-file retries.
@@ -226,7 +228,7 @@ class MultipartUploader:
             gate=_ThrottleGate(
                 max_concurrency=max_nominal_concurrency,
                 deadline_seconds=per_request_retry_timeout,
-                backoff=_GlobalBackoff(cap=max_backoff_duration),
+                max_backoff_duration=max_backoff_duration,
             ),
         )
         return cls(
@@ -248,19 +250,21 @@ class MultipartUploader:
         with self._issue_lock:
             if self._closed:
                 return
-            self._closed = True
+            self._accepting_files = False
         if cancel_pending:
             self._streams.cancel()
             # Explicit cancel lets the executor notify wait()/as_completed() when it dequeues
             # the cancelled future. Draining its queue with cancel_futures=True skips that step.
             for future in self._issued_futures:
                 future.cancel()
-        try:
-            self._driver_pool.shutdown(wait=True)
-            self._small_pool.shutdown(wait=True)
-        finally:
-            # File drivers may still need storage workers for draining and aborting.
-            self._streams.close()
+        # Join outside the lock so another caller can cancel a batch that is already draining.
+        # File drivers may still need storage workers to finish or abort their uploads.
+        self._driver_pool.shutdown(wait=True)
+        self._small_pool.shutdown(wait=True)
+        with self._issue_lock:
+            if not self._closed:
+                self._streams.close()
+                self._closed = True
 
     def __enter__(self) -> Self:
         """Use this uploader for the lifetime of a batch."""
@@ -309,7 +313,7 @@ class MultipartUploader:
             Some providers require all non-final parts to be at least 5 MiB. Smaller values
             log a warning and may fail at completion.
         """
-        if self._closed:
+        if not self._accepting_files:
             raise RuntimeError("uploader is closed")
         file_type = file_type if file_type is not None else FileType.from_path(path)
         filename = resolve_upload_filename(name if name is not None else path.name, file_type.extension)
@@ -368,7 +372,7 @@ class MultipartUploader:
         # Issued under the lock so a future can never slip past close's cancel pass: once close
         # holds the lock, enqueueing raises here instead of racing the executors' own shutdown.
         with self._issue_lock:
-            if self._closed:
+            if not self._accepting_files:
                 raise RuntimeError("uploader is closed")
             pool = self._small_pool if small_route else self._driver_pool
             future = pool.submit(self._run_with_file_retry, upload_once, filename)
@@ -393,7 +397,7 @@ class MultipartUploader:
         while True:
             try:
                 return upload_once()
-            except BaseException as exc:
+            except Exception as exc:
                 if not _is_transient_upload_error(exc):
                     raise
                 remaining = deadline - self._retry_clock()
@@ -401,12 +405,14 @@ class MultipartUploader:
                     raise
                 wait_s = min(self._retry_jitter(delay), remaining)
                 logger.warning(
-                    "transient failure uploading %s; retrying in %.1fs (%.0fs of retry budget left): %s",
+                    "Transient %s uploading %s; retrying in %.1fs (%.0fs of retry budget left)",
+                    type(exc).__name__,
                     name,
                     wait_s,
                     remaining,
-                    exc,
                 )
                 if wait_for_drain(wait_s):
                     raise CancelledError("uploader is closing") from exc
+                if self._retry_clock() >= deadline:
+                    raise
                 delay = min(delay * 2.0, _FILE_RETRY_CAP_S)

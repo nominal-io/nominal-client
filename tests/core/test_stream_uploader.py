@@ -82,8 +82,12 @@ def test_keeping_an_upload_error_releases_the_buffered_payload(single_request: b
     url = "https://storage.example.test/file"
 
     def refuse(data: bytes) -> requests.Response:
-        # HTTP errors carry the prepared request, which owns its original body.
+        # A redirect preserves the upload body on both prepared requests.
+        redirect = requests.Response()
+        redirect.status_code = 307
+        redirect.request = requests.Request("PUT", url, data=data).prepare()
         response = requests.Response()
+        response.history = [redirect]
         response.request = requests.Request("PUT", url, data=data).prepare()
         response.status_code = 403
         response.raise_for_status()
@@ -105,3 +109,45 @@ def test_keeping_an_upload_error_releases_the_buffered_payload(single_request: b
     gc.collect()
     assert failure.value is not None
     assert released == [True]
+
+
+def test_partial_read_failure_releases_payload_before_another_file_reads() -> None:
+    """An unfinished PUT can delay the abort, while the failed read's bytes are reusable immediately."""
+    put_started, finish_put = Event(), Event()
+    read_failed, partial_released = Event(), Event()
+
+    class Partial(bytes):
+        def __del__(self) -> None:
+            partial_released.set()
+
+    class FailingSource(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            data = super().read(size)
+            if data == b"x":
+                assert put_started.wait(timeout=5)
+                return Partial(data)
+            if not data:
+                read_failed.set()
+                raise OSError("read failed")
+            return data
+
+    def put(*args: object, **kwargs: object) -> MagicMock:
+        put_started.set()
+        assert finish_put.wait(timeout=5)
+        return MagicMock()
+
+    client = MagicMock()
+    with (
+        StreamUploader(client, "auth", None, max_workers=1, max_buffer_bytes=8) as uploader,
+        ThreadPoolExecutor(1) as drivers,
+    ):
+        uploader.session.put = put
+        failed = drivers.submit(uploader.upload_stream, FailingSource(b"datax"), "large", "text/plain", chunk_size=4)
+        try:
+            assert read_failed.wait(timeout=5)
+            uploader.upload_small_file(io.BytesIO(b"more"), "small", size=4)
+            assert partial_released.is_set()
+        finally:
+            finish_put.set()
+        with pytest.raises(OSError, match="read failed"):
+            failed.result(timeout=5)

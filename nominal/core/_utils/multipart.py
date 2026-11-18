@@ -47,20 +47,17 @@ def _wrap_multipart_retry_exception(
     upload_id: str,
     attempt: int,
 ) -> NominalMultipartUploadError:
-    """Wrap a failed multipart upload attempt so that we can:
-    - add contextual information, especially response headers so that we can debug S3 errors
-    - AWS will want x-amz-request-id and x-amz-id-2 headers for debugging
-    """
-    response = getattr(ex, "response", None)
-    response_headers = (
-        ", ".join(f"{header}={value!r}" for header, value in sorted(response.headers.items()))
-        if response is not None and response.headers is not None
-        else "none"
-    )
-    wrapped = NominalMultipartUploadError(
+    """Identify the failed part and provider request without copying a signed URL into the summary."""
+    message = (
         f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part}, "
-        f"attempt={attempt}: {type(ex).__name__}: {ex}. Response headers: {response_headers}"
+        f"attempt={attempt}: {type(ex).__name__}"
     )
+    if isinstance(ex, requests.RequestException) and ex.response is not None:
+        message += f", HTTP {ex.response.status_code}"
+        for header in ("x-amz-request-id", "x-amz-id-2", "x-ms-request-id"):
+            if value := ex.response.headers.get(header):
+                message += f", {header}={value!r}"
+    wrapped = NominalMultipartUploadError(message)
     wrapped.__cause__ = ex
     return wrapped
 
@@ -178,8 +175,10 @@ def _release_error_payloads(error: BaseException) -> None:
         if isinstance(exc, requests.RequestException):
             if isinstance(exc.request, requests.PreparedRequest):
                 exc.request.body = None
-            if exc.response is not None and exc.response.request is not None:
-                exc.response.request.body = None
+            if exc.response is not None:
+                for response in (*exc.response.history, exc.response):
+                    if response.request is not None:
+                        response.request.body = None
         if isinstance(exc, BaseExceptionGroup):
             pending.extend(exc.exceptions)
         if exc.__cause__ is not None:
@@ -189,24 +188,21 @@ def _release_error_payloads(error: BaseException) -> None:
 
 
 @dataclass
-class _Buffer:
-    """One reservation, transferred from the reader to its storage worker on submission."""
-
-    size: int
-    data: bytes | _SegmentedBody | None = b""
-
-
-@dataclass
 class _Parts:
-    """State shared only by the reader and workers for one remote upload."""
+    """A stream's pending parts contain their payload until a worker claims it."""
 
-    pending: int = 0
+    max_pending: int
+    pending: dict[int, bytes | _SegmentedBody | None] = field(default_factory=dict)
     etags: dict[int, str] = field(default_factory=dict)
     error: BaseException | None = None
 
     def check(self) -> None:
         if self.error is not None:
             raise self.error
+
+    def can_read(self) -> bool:
+        self.check()
+        return len(self.pending) < self.max_pending
 
 
 class StreamUploader:
@@ -271,38 +267,30 @@ class StreamUploader:
             raise CancelledError("uploader is closing")
 
     def _call(self, operation: Callable[[], _T]) -> _T:
-        # Recheck on admission, including every retry after backing off from a 429.
-        def admitted() -> _T:
-            self._check_open()
-            return operation()
+        # Skip waiting for admission when already closing. The gate rechecks after admission.
+        self._check_open()
+        return self.gate.call(operation, cancel_event=self.draining)
 
-        return self.gate.call(admitted)
-
-    def _reserve(self, size: int, parts: _Parts) -> _Buffer:
-        """Reserve bytes before reading and cap lookahead even for tiny parts."""
+    def _reserve_bytes(self, size: int, can_read: Callable[[], bool] = lambda: True) -> None:
+        """Reserve capacity before reading. The caller holds the condition lock."""
         if size < 0 or size > self.max_buffer_bytes:
             raise ValueError(f"cannot reserve {size} bytes with max_buffer_bytes={self.max_buffer_bytes}")
-        with self._capacity:
-            while True:
-                self._check_open()
-                parts.check()
-                if size <= self._available and parts.pending < self._max_pending:
-                    self._available -= size
-                    parts.pending += 1
-                    return _Buffer(size)
-                self._capacity.wait()
+        while True:
+            self._check_open()
+            if can_read() and size <= self._available:
+                self._available -= size
+                return
+            self._capacity.wait()
 
-    def _release(self, buffer: _Buffer, parts: _Parts) -> None:
-        with self._capacity:
-            buffer.data = None
-            self._available += buffer.size
-            parts.pending -= 1
-            self._capacity.notify_all()
+    def _release_bytes(self, size: int) -> None:
+        """Return capacity after dropping the payload, under the condition lock."""
+        self._available += size
+        self._capacity.notify_all()
 
     def upload_small_file(self, stream: BinaryIO, filename: str, *, size: int) -> str:
         """Send a size-known file in a single Nominal request under the same byte budget."""
-        parts = _Parts()
-        buffer = self._reserve(size, parts)
+        with self._capacity:
+            self._reserve_bytes(size)
         try:
             data = _read_bytes(stream, size)
             if len(data) != size or _read_bytes(stream, 1):
@@ -316,7 +304,8 @@ class StreamUploader:
             raise
         finally:
             data = b""  # An escaping exception can keep this frame, including its local variables.
-            self._release(buffer, parts)
+            with self._capacity:
+                self._release_bytes(size)
 
     def upload_stream(
         self,
@@ -342,18 +331,16 @@ class StreamUploader:
         reservation = chunk_size if expected_size is None else min(expected_size, chunk_size)
         if reservation > self.max_buffer_bytes:
             raise ValueError(f"part requires {reservation} bytes, exceeding max_buffer_bytes={self.max_buffer_bytes}")
-        self._check_open()
         request = ingest_api.InitiateMultipartUploadRequest(
             filename=filename, filetype=mimetype, workspace=self._workspace, destination=destination
         )
         upload = self._call(lambda: self._client.initiate_multipart_upload(self._auth, request))
-        parts = _Parts()
+        parts = _Parts(self._max_pending)
         try:
             sent = self._send_stream(stream, chunk_size, expected_size, upload, parts, use_put_etags)
             with self._capacity:
-                self._capacity.wait_for(lambda: parts.pending == 0)
+                self._capacity.wait_for(lambda: not parts.pending)
                 parts.check()
-            self._check_open()
             etags = parts.etags
             if not use_put_etags:
                 listed = self._call(
@@ -376,7 +363,7 @@ class StreamUploader:
                     parts.error = exc
                 # A stream read, submit, or the success-path wait itself can be interrupted.
                 # Mark queued siblings first; let running PUTs finish before touching the upload ID.
-                self._capacity.wait_for(lambda: parts.pending == 0)
+                self._capacity.wait_for(lambda: not parts.pending)
             _release_error_payloads(exc)
             try:
                 self.gate.call(
@@ -385,8 +372,8 @@ class StreamUploader:
                     ),
                     deadline_seconds=_ABORT_THROTTLE_DEADLINE_S,
                 )
-            except Exception:
-                logger.warning("Could not abort multipart upload %s", upload.upload_id, exc_info=True)
+            except Exception as abort_error:
+                logger.warning("Could not abort multipart upload %s: %s", upload.upload_id, type(abort_error).__name__)
             raise
 
     def _send_stream(
@@ -401,22 +388,30 @@ class StreamUploader:
         number = 1
         while number == 1 or remaining != 0:
             size = chunk_size if remaining is None else min(chunk_size, remaining)
-            buffer = self._reserve(size, parts)
+            with self._capacity:
+                self._reserve_bytes(size, parts.can_read)
+                parts.pending[number] = b""
             try:
-                buffer.data = _read_part(stream, size)
-                count = len(buffer.data)
+                data = _read_part(stream, size)
+                count = len(data)
+                parts.pending[number] = data
+                del data
                 if remaining is not None and count != size:
                     raise ValueError(f"File ended early during upload of {upload.key!r}")
                 if not count and number > 1:
-                    self._release(buffer, parts)
+                    with self._capacity:
+                        del parts.pending[number]
+                        self._release_bytes(size)
                     break
-                self._pool.submit(self._run_part, upload, parts, number, buffer, use_put_etags)
-            except BaseException:
+                self._pool.submit(self._run_part, upload, parts, number, size, use_put_etags)
+            except BaseException as exc:
+                data = b""
+                _release_error_payloads(exc)
                 with self._capacity:
                     # An interrupted submit may already have handed the job to a worker.
-                    # Whoever owns the buffer releases it and decrements the settlement count.
-                    if buffer.data is not None:
-                        self._release(buffer, parts)
+                    if parts.pending.get(number) is not None:
+                        del parts.pending[number]
+                        self._release_bytes(size)
                 raise
             if remaining is not None:
                 remaining -= count
@@ -432,14 +427,14 @@ class StreamUploader:
         upload: ingest_api.InitiateMultipartUploadResponse,
         parts: _Parts,
         number: int,
-        buffer: _Buffer,
+        size: int,
         use_put_etags: bool,
     ) -> None:
         with self._capacity:
-            data = buffer.data
+            data = parts.pending.get(number)
             if data is None:
                 return
-            buffer.data = None
+            parts.pending[number] = None
         try:
             etag = self._send_part(upload, parts, number, data, use_put_etags)
             if etag is not None:
@@ -452,7 +447,9 @@ class StreamUploader:
                     parts.error = exc
         finally:
             del data
-            self._release(buffer, parts)
+            with self._capacity:
+                del parts.pending[number]
+                self._release_bytes(size)
 
     def _send_part(
         self,
@@ -463,7 +460,6 @@ class StreamUploader:
         use_put_etags: bool,
     ) -> str | None:
         def sign() -> ingest_api.SignPartResponse:
-            self._check_open()
             if parts.error is not None:
                 raise CancelledError("sibling part failed")
             return self._client.sign_part(self._auth, upload.key, number, upload.upload_id, bucket=upload.bucket)
@@ -471,7 +467,7 @@ class StreamUploader:
         errors = []
         for attempt in range(1, self.max_part_retries + 1):
             try:
-                signed = self.gate.call(sign)
+                signed = self._call(sign)
                 self._check_open()
                 if parts.error is not None:
                     raise CancelledError("sibling part failed")
