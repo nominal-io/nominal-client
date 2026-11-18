@@ -6,12 +6,17 @@ import time
 import weakref
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from email.utils import formatdate
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import requests
+from conjure_python_client import ServiceConfiguration
+from nominal_api import upload_api
 
 from nominal.core._utils.multipart import StreamUploader
+from nominal.core._utils.networking import create_conjure_service_client
 from nominal.core._utils.upload_pacing import _ThrottleGate, _wait_for_retry
 from nominal.exceptions import NominalRequestThrottledError
 
@@ -123,3 +128,42 @@ def test_cancellation_wakes_a_throttled_request() -> None:
         with pytest.raises(CancelledError):
             result.result(timeout=2)
     client.upload_file.assert_called_once()
+
+
+def test_generated_upload_client_shares_retry_after_between_files() -> None:
+    """A throttled upload reaches the shared gate, delaying the next file until the server's cooldown ends."""
+    sleeps: list[float] = []
+    received: list[tuple[str, float]] = []
+
+    class UploadEndpoint(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers["Content-Length"]))
+            filename = parse_qs(urlsplit(self.path).query)["fileName"][0]
+            received.append((filename, sum(sleeps)))
+            if len(received) == 1:
+                self.send_response(429)
+                self.send_header("Retry-After", "1")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'"s3://bucket/second.csv"')
+
+    gate = _ThrottleGate(
+        max_concurrency=1, deadline_seconds=0.75, clock=lambda: sum(sleeps), sleep=lambda delay, _: sleeps.append(delay)
+    )
+    with HTTPServer(("127.0.0.1", 0), UploadEndpoint) as server:
+        endpoint = f"http://127.0.0.1:{server.server_port}"
+        service = create_conjure_service_client(upload_api.UploadService, "test", ServiceConfiguration(uris=[endpoint]))
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        try:
+            with StreamUploader(service, "token", None, max_workers=1, max_buffer_bytes=1, gate=gate) as uploader:
+                with pytest.raises(NominalRequestThrottledError):
+                    uploader.upload_small_file(io.BytesIO(b"a"), "first.csv", size=1)
+                assert uploader.upload_small_file(io.BytesIO(b"b"), "second.csv", size=1) == "s3://bucket/second.csv"
+        finally:
+            server.shutdown()
+            thread.join()
+
+    assert received == [("first.csv", 0.0), ("second.csv", 1.0)]

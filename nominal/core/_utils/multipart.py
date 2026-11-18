@@ -189,9 +189,11 @@ def _release_error_payloads(error: BaseException) -> None:
 
 @dataclass
 class _Parts:
-    """A stream's pending parts contain their payload until a worker claims it."""
+    """Track the handoff from one stream reader to its storage workers."""
 
     max_pending: int
+    # The reader reserves a slot with b"" before reading, then stores the payload there.
+    # None means a worker has claimed it. Removing the entry means the part has settled.
     pending: dict[int, bytes | _SegmentedBody | None] = field(default_factory=dict)
     etags: dict[int, str] = field(default_factory=dict)
     error: BaseException | None = None
