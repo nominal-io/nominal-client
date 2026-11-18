@@ -32,36 +32,31 @@ def _parse_content_range(value: str) -> tuple[int, int, int | None]:
     return int(start), int(end), None if total == "*" else int(total)
 
 
-@dataclass
 class PresignedURLProvider:
     """Thread-safe presigned URL cache that refreshes on schedule or when invalidated."""
 
-    fetch_fn: Callable[[], str]
-    """Function used to fetch a fresh presigned URL when the current one expires"""
-    ttl_secs: float
-    """Time-to-Live for the presigned URLs"""
-    skew_secs: float
-    """Buffer around TTL to ensure that URLs are still fresh by the time they are used"""
+    def __init__(
+        self, fetch_fn: Callable[[], str], ttl_secs: float, skew_secs: float, *, initial_url: str | None = None
+    ) -> None:
+        self.fetch_fn = fetch_fn
+        self.ttl_secs = ttl_secs
+        self.skew_secs = skew_secs
+        self._url = initial_url
+        self._fetched_at = time.monotonic()
+        self._lock = threading.Lock()
 
-    # Pair of url + deadline, where the deadline is the latest monotonic clock time we consider the URL valid for
-    _stamped_url: tuple[str, float] | None = field(default=None, repr=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-
-    def get_url(self, *, force: bool = False) -> str:
-        now = time.monotonic()
+    def get_url(self) -> str:
         with self._lock:
-            if force or self._stamped_url is None or now >= self._stamped_url[1]:
-                url = self.fetch_fn()
-                deadline = now + max(0.0, self.ttl_secs - self.skew_secs)
-                self._stamped_url = (url, deadline)
-                logger.debug("Refreshed presigned URL with deadline %f", deadline)
+            now = time.monotonic()
+            if self._url is None or now - self._fetched_at >= self.ttl_secs - self.skew_secs:
+                self._url = self.fetch_fn()
+                self._fetched_at = now
+            return self._url
 
-            return self._stamped_url[0]
-
-    def invalidate(self) -> None:
+    def invalidate(self, rejected_url: str) -> None:
         with self._lock:
-            logger.info("Invalidating presigned URL")
-            self._stamped_url = None
+            if self._url == rejected_url:
+                self._url = None
 
 
 @dataclass(frozen=True)
@@ -157,13 +152,14 @@ class MultipartFileDownloader:
 
                 **Note:** Defaults to the number of CPU cores.
             timeout: Maximum amount of time before considering a connection dead
-            max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
-                4xx error, and source file changing mid download are all things that may cause a retry)
+            max_part_retries: Positive number of attempts per range, including the first request.
             header_provider: Additional headers to attach to every request issued by the session.
 
         Returns:
             Constructed MultipartFileDownloader prepared to begin downloading.
         """
+        if max_part_retries <= 0:
+            raise ValueError("max_part_retries must be positive")
         if max_workers is None:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
@@ -227,7 +223,6 @@ class MultipartFileDownloader:
                     plans.append(_PlannedDownload.create(item, size, etag))
                 except Exception as exc:
                     failed[item.destination] = exc
-                    logger.error("Planning failed for %s", item.destination, exc_info=exc)
             self._run_downloads(plans, failed)
         except BaseException:
             for plan in plans:
@@ -287,7 +282,7 @@ class MultipartFileDownloader:
     def _head_or_probe(self, provider: PresignedURLProvider) -> tuple[int, str | None]:
         """Discover the stored size and optional ETag, refreshing an expired URL when necessary."""
         for attempt in range(3):
-            url = provider.get_url(force=(attempt > 0))
+            url = provider.get_url()
 
             with self._session.head(url, timeout=self.timeout) as response:
                 if response.status_code == 200 and "Content-Length" in response.headers:
@@ -306,9 +301,10 @@ class MultipartFileDownloader:
                     return int(response.headers["Content-Length"]), response.headers.get("ETag")
                 if response.status_code == 416 and content_range == "bytes */0":
                     return 0, response.headers.get("ETag")
-                if self._is_expired_status(response) and attempt < 2:
-                    provider.invalidate()
-                    continue
+                if self._is_expired_status(response):
+                    provider.invalidate(url)
+                    if attempt < 2:
+                        continue
                 response.raise_for_status()
                 raise NominalDownloadRangeError(f"Unexpected HTTP {response.status_code} in size probe")
 
@@ -360,9 +356,10 @@ class MultipartFileDownloader:
             url = provider.get_url()
             try:
                 with self._session.get(url, headers=headers, stream=True, timeout=self.timeout) as r:
-                    if self._is_expired_status(r) and attempt + 1 < self.max_part_retries:
-                        provider.invalidate()
-                        continue  # refresh & retry
+                    if self._is_expired_status(r):
+                        provider.invalidate(url)
+                        if attempt + 1 < self.max_part_retries:
+                            continue
                     r.raise_for_status()
 
                     if plan.etag and r.headers.get("ETag") and r.headers["ETag"] != plan.etag:

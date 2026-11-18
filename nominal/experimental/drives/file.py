@@ -184,14 +184,14 @@ class DriveFileRevision(HasRid):
             output_directory: Directory to write into. The file is named after this
                 revision's path.
             part_size: Positive size in bytes of each ranged download request.
-            num_retries: Retries per part.
+            num_retries: Positive number of attempts per range, including the first request.
 
         Returns:
             Path the file was written to.
 
         Raises:
             ValueError: The revision's filename would not stay inside ``output_directory``,
-                for example because it contains a backslash.
+                for example because it contains a backslash, or the part size or attempt count is not positive.
             NotADirectoryError: ``output_directory`` exists but is not a directory.
             FileNotFoundError: ``output_directory`` does not exist.
             FileExistsError: A file already exists at the destination.
@@ -243,14 +243,14 @@ class DriveFile(DriveEntry, abc.ABC):
             output_directory: Directory to write into. The file is named after its path in
                 the drive.
             part_size: Positive size in bytes of each ranged download request.
-            num_retries: Retries per part.
+            num_retries: Positive number of attempts per range, including the first request.
 
         Returns:
             Path the file was written to.
 
         Raises:
             ValueError: The file's name would not stay inside ``output_directory``, for
-                example because it contains a backslash.
+                example because it contains a backslash, or the part size or attempt count is not positive.
             NotADirectoryError: ``output_directory`` exists but is not a directory.
             FileNotFoundError: ``output_directory`` does not exist.
             FileExistsError: A file already exists at the destination.

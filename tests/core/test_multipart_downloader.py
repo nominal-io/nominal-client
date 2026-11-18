@@ -44,8 +44,15 @@ def mock_downloader(downloader: MultipartFileDownloader) -> MagicMock:
     return cast(MagicMock, downloader._session)
 
 
+@pytest.mark.parametrize("max_part_retries", [0, -1])
+def test_downloader_requires_a_positive_attempt_count(max_part_retries: int) -> None:
+    """Reject a configuration that could never issue a range request before preparing any files."""
+    with pytest.raises(ValueError, match="max_part_retries must be positive"):
+        MultipartFileDownloader.create(max_part_retries=max_part_retries)
+
+
 def test_presigned_url_provider_caches_until_invalidated() -> None:
-    """URL is reused across calls until invalidate() is called, then a fresh URL is fetched."""
+    """A late rejection of the old URL leaves the refreshed URL available to other workers."""
     calls = 0
 
     def fetch() -> str:
@@ -58,8 +65,10 @@ def test_presigned_url_provider_caches_until_invalidated() -> None:
     assert provider.get_url() == "https://example.com/file/1"
     assert provider.get_url() == "https://example.com/file/1"
 
-    provider.invalidate()
+    provider.invalidate("https://example.com/file/1")
 
+    assert provider.get_url() == "https://example.com/file/2"
+    provider.invalidate("https://example.com/file/1")
     assert provider.get_url() == "https://example.com/file/2"
     assert calls == 2
 
