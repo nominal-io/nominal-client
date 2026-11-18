@@ -206,11 +206,9 @@ def test_complete_multipart_upload_raises_when_location_missing() -> None:
         _complete_multipart_upload(client, "auth", "key", "uid", {1: '"e"'})
 
 
-def test_put_multipart_upload_completes_via_list_parts() -> None:
-    """Regression lock: `put_multipart_upload` (the legacy path) never collects per-part ETags of
-    its own, so its completion must still ask the server for them via list_parts -- not the
-    ETag-based primitive the newer MultipartUploader uses.
-    """
+@pytest.mark.parametrize("data", [b"", b"data"])
+def test_put_multipart_upload_completes_single_part(data: bytes) -> None:
+    """Even an empty stream sends part one and completes with the ETag listed by the server."""
     upload_client = MagicMock(
         spec=["initiate_multipart_upload", "sign_part", "list_parts", "complete_multipart_upload", "_verify"]
     )
@@ -227,7 +225,7 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
         location = multipart.put_multipart_upload(
             "Bearer token",
             "ri.workspace",
-            io.BytesIO(b"data"),
+            io.BytesIO(data),
             "file.csv",
             "text/csv",
             upload_client,
@@ -235,10 +233,24 @@ def test_put_multipart_upload_completes_via_list_parts() -> None:
             max_workers=1,
         )
 
+    session.put.assert_called_once()
+    assert session.put.call_args.kwargs["data"] == data
+    assert upload_client.sign_part.call_args.args[2] == 1
     assert location == "s3://bucket/key"
     upload_client.list_parts.assert_called_once_with("Bearer token", "key", "uid", bucket="uploads")
     _, _, _, parts = upload_client.complete_multipart_upload.call_args[0]
     assert [(p.part_number, p.etag) for p in parts] == [(1, '"a"')]
+
+
+@pytest.mark.parametrize("chunk_size", [0, -1])
+def test_invalid_chunk_size_fails_before_upload(chunk_size: int) -> None:
+    """Reject invalid sizes before consuming input or opening a remote upload."""
+    client = MagicMock()
+    stream = io.BytesIO(b"data")
+    with pytest.raises(ValueError, match="chunk_size must be positive"):
+        multipart.put_multipart_upload("auth", None, stream, "file.csv", "text/csv", client, chunk_size=chunk_size)
+    assert stream.tell() == 0
+    client.initiate_multipart_upload.assert_not_called()
 
 
 def test_put_part_makes_exactly_one_request() -> None:

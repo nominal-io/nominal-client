@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nominal import core
+from nominal.core import containerized_extractor
 from nominal.core.container_image import FileOutputFormat
 from nominal.core.containerized_extractor import (
     ContainerizedExtractor,
@@ -36,10 +38,6 @@ def _img(rid: str, status: registry_pb2.ContainerImageStatus.ValueType) -> regis
 
 
 def _registrable_extractor(clients: MagicMock, tmp_path: Path) -> tuple[ContainerizedExtractor, Path]:
-    clients.upload.initiate_multipart_upload.return_value = MagicMock(key="image", upload_id="upload-id")
-    clients.upload.list_parts.return_value = []
-    clients.upload.complete_multipart_upload.return_value = MagicMock(location="s3://image")
-    # No file chunks means no object-store requests; upload service calls use the mock client.
     tarball = tmp_path / "extractor.tar"
     tarball.touch()
     return ContainerizedExtractor._from_proto(clients, _ext("ri.ext")), tarball
@@ -187,6 +185,14 @@ def test_register_image_rejects_non_ingestible_output_formats_before_uploading(
     clients.registry.CreateImage.assert_not_called()
 
 
+@pytest.fixture
+def uploaded_image() -> Iterator[None]:
+    """Give registration a completed tarball upload at the storage boundary."""
+    with patch.object(containerized_extractor, "upload_multipart_file", return_value="s3://image"):
+        yield
+
+
+@pytest.mark.usefixtures("uploaded_image")
 def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(tmp_path: Path) -> None:
     """Registration sends each error mapping and retains the mappings returned by the registry."""
     clients = _clients()
@@ -218,6 +224,7 @@ def test_register_image_sends_exit_code_mappings_and_returns_registered_errors(t
     assert tuple(image.exit_code_mappings) == tuple(mappings)
 
 
+@pytest.mark.usefixtures("uploaded_image")
 def test_register_image_sends_only_the_resource_fields_it_was_given(tmp_path: Path) -> None:
     """Registration sends each set resource field, omits unset ones rather than zeroing them, and adopts the echo."""
     clients = _clients()
@@ -240,6 +247,7 @@ def test_register_image_sends_only_the_resource_fields_it_was_given(tmp_path: Pa
     assert image.resources == core.ContainerResources(memory_gib=16)
 
 
+@pytest.mark.usefixtures("uploaded_image")
 def test_register_image_without_resources_sends_no_overrides(tmp_path: Path) -> None:
     """Omitting resources sends no override fields, so every resource uses the deployment-wide default."""
     clients = _clients()
