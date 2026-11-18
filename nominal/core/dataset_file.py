@@ -11,6 +11,7 @@ from functools import partial
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 from urllib.parse import unquote, urlparse
 
+import requests
 from nominal_api import api, ingest_api, scout_catalog, scout_video
 
 from nominal._utils.iterator_tools import batched
@@ -38,7 +39,11 @@ logger = logging.getLogger(__name__)
 
 
 def filename_from_uri(uri: str) -> str:
-    return unquote(pathlib.Path(urlparse(uri).path).name).replace(":", "_")
+    """Decode the final URL segment as a single filename usable inside the output directory."""
+    filename = unquote(urlparse(uri).path.rsplit("/", 1)[-1]).replace(":", "_")
+    if filename in {"", ".", ".."} or "/" in filename or "\\" in filename or "\x00" in filename:
+        raise ValueError("Storage URI must end in a single local filename")
+    return filename
 
 
 @dataclass(frozen=True)
@@ -166,16 +171,16 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
 
     def _origin_presigned_url_provider(
-        self, origin_path: str, ttl_secs: float = 60.0, skew_secs: float = 15.0
+        self, origin: scout_catalog.OriginFileUri, ttl_secs: float = 60.0, skew_secs: float = 15.0
     ) -> PresignedURLProvider:
         def fetch() -> str:
             for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id):
-                if uri.path == origin_path:
+                if uri.path == origin.path:
                     return uri.uri
 
-            raise ValueError(f"No such origin path: {origin_path}")
+            raise ValueError(f"No such origin path: {origin.path}")
 
-        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
+        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs, initial_url=origin.uri)
 
     def download(
         self,
@@ -188,8 +193,8 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
         Args:
             output_directory: Download file to the given directory
-            part_size: Size (in bytes) of chunks to use when downloading file.
-            num_retries: Number of retries to perform per part download if any exception occurs
+            part_size: Positive size in bytes of each download range.
+            num_retries: Positive number of attempts per range, including the first request.
 
         Returns:
             Path that the file was downloaded to
@@ -197,16 +202,16 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         Raises:
             FileNotFoundError: Output directory doesn't exist
             FileExistsError: File already exists at destination
+            ValueError: The storage URL does not name a single file, or `part_size` or `num_retries` is nonpositive.
             RuntimeError: Error downloading file
         """
         output_directory = pathlib.Path(output_directory)
         if output_directory.exists() and not output_directory.is_dir():
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
-        logger.info("Getting initial presigned ")
-        file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
-        destination = output_directory / filename_from_uri(file_uri)
-        item = DownloadItem(provider=self._presigned_url_provider(), destination=destination, part_size=part_size)
+        provider = self._presigned_url_provider()
+        destination = output_directory / filename_from_uri(provider.get_url())
+        item = DownloadItem(provider=provider, destination=destination, part_size=part_size)
         with MultipartFileDownloader.create(
             max_part_retries=num_retries, header_provider=self._clients.header_provider
         ) as dl:
@@ -223,8 +228,8 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
         Args:
             output_directory: Download file(s) to the given directory
-            part_size: Size (in bytes) of chunks to use when downloading files.
-            num_retries: Number of retries to perform per part download if any exception occurs
+            part_size: Positive size in bytes of each download range.
+            num_retries: Positive number of attempts per range, including the first request.
 
         Returns:
             Path(s) that the file(s) were downloaded to
@@ -232,7 +237,8 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         Raises:
             NotADirectoryError: Output directory exists, but is not a directory
             FileNotFoundError: Output directory doesn't exist
-            FileExistsError: File already exists at destination
+            FileExistsError: An output file already exists or two inputs have the same output filename.
+            ValueError: An input URL does not name a single file, or `part_size` or `num_retries` is nonpositive.
             RuntimeError: Failed to determine metadata about files to download
 
         Note:
@@ -249,7 +255,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
             dest = output_directory / filename_from_uri(uri.uri)
             items.append(
                 DownloadItem(
-                    provider=self._origin_presigned_url_provider(uri.path),
+                    provider=self._origin_presigned_url_provider(uri),
                     destination=dest,
                     part_size=part_size,
                 )
@@ -268,8 +274,12 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         ) as dl:
             results = dl.download_files(items)
 
-        for failed_path, ex in results.failed.items():
-            logger.error("Failed to download %s", failed_path, exc_info=ex)
+        # Storage exceptions can contain the signed request URL.
+        for failed_path, error in results.failed.items():
+            if isinstance(error, requests.HTTPError) and error.response is not None:
+                logger.error("Failed to download %s (HTTP %d)", failed_path, error.response.status_code)
+            else:
+                logger.error("Failed to download %s (%s)", failed_path, type(error).__name__)
 
         logger.info("Successfully downloaded %d/%d files", len(results.succeeded), len(items))
         return results.succeeded

@@ -49,14 +49,15 @@ def test_uploaded_bytes_download_unchanged_from_the_file_and_its_revision(
     drive: Drive, run_dir: str, tmp_path: pathlib.Path
 ) -> None:
     """A put stores exactly the bytes given, and both the file and its revision serve them back."""
-    content = uuid4().bytes * 4096
-    uploaded = drive.put_file_obj(io.BytesIO(content), f"{run_dir}/payload.bin")
+    part_size = 5 * 1024**2
+    content = b"a" * part_size + b"last part"
+    uploaded = drive.put_file_obj(io.BytesIO(content), f"{run_dir}/payload.bin", chunk_size=part_size)
     try:
         assert uploaded.size_bytes == len(content)
         assert drive.get_file(uploaded.path).rid == uploaded.rid
 
         (tmp_path / "file").mkdir()
-        assert uploaded.download(tmp_path / "file").read_bytes() == content
+        assert uploaded.download(tmp_path / "file", part_size=part_size).read_bytes() == content
         (revision,) = uploaded.revisions()
         (tmp_path / "revision").mkdir()
         assert revision.download(tmp_path / "revision").read_bytes() == content

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Callable
 from unittest.mock import MagicMock
 
 import grpc
@@ -115,3 +117,15 @@ def make_series_count_response():
 def fake_rpc_error():
     """Factory fixture for grpc.RpcError instances with a chosen status code (and optional details)."""
     return _FakeRpcError
+
+
+@pytest.fixture
+def write_file(tmp_path: Path) -> Callable[[str, int], Path]:
+    """Factory writing a `size`-byte file named `name` into this test's tmp dir."""
+
+    def _write(name: str, size: int) -> Path:
+        path = tmp_path / name
+        path.write_bytes(b"x" * size)
+        return path
+
+    return _write

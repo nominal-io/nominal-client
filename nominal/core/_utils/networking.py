@@ -15,6 +15,7 @@ import typing_extensions
 import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
+from nominal_api import upload_api
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
@@ -260,6 +261,14 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
 
+class _UploadRetry(RetryWithJitter):
+    """Let the upload gate see throttled responses and publish their Retry-After across files."""
+
+    def is_retry(self, method: str, status_code: int, has_retry_after: bool = False) -> bool:
+        # urllib3 also retries 429/503 with Retry-After independently of status_forcelist.
+        return status_code not in (429, 503) and super().is_retry(method, status_code, has_retry_after)
+
+
 def create_conjure_service_client(
     service_class: Type[T],
     user_agent: str,
@@ -288,7 +297,8 @@ def create_conjure_service_client(
     """
     # setup retry to match java remoting
     # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
-    retry = RetryWithJitter(
+    retry_type = _UploadRetry if service_class is upload_api.UploadService else RetryWithJitter
+    retry = retry_type(
         total=service_config.max_num_retries,
         connect=service_config.max_num_retries,  # Allow connection error retries
         read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)

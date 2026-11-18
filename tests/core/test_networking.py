@@ -9,6 +9,7 @@ import requests
 import zstandard
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
+from nominal_api import scout_catalog, upload_api
 from requests.adapters import HTTPAdapter
 
 from nominal.core._utils.networking import (
@@ -156,6 +157,22 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
     session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
     assert verify is None
     session.close()
+
+
+@pytest.mark.parametrize(
+    ("service_class", "retries_throttles"), [(upload_api.UploadService, False), (scout_catalog.CatalogService, True)]
+)
+def test_only_upload_calls_delegate_throttling_to_the_uploader(service_class: type, retries_throttles: bool) -> None:
+    url = "https://example.test"
+    client = create_conjure_service_client(service_class, "test", ServiceConfiguration(uris=[url], max_num_retries=2))
+    with client._requests_session as session:
+        retry = session.get_adapter(url).max_retries
+        for status in (429, 503):
+            assert retry.is_retry("POST", status, has_retry_after=True) is retries_throttles
+        assert retry.is_retry("POST", 308)
+        assert retry.is_retry("POST", 413, has_retry_after=True)
+        assert not retry.is_retry("POST", 413)
+        assert retry.connect == retry.read == 2
 
 
 def test_service_session_pool_holds_concurrent_upload_connections(session: requests.Session) -> None:

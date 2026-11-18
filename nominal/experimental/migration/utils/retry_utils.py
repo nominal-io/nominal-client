@@ -30,7 +30,7 @@ DEFAULT_BACKOFF_CAP_SECONDS = 60.0
 # (e.g. CDN 520–524). Enumerating specific 5xx codes is what left 502 unretried in the conjure
 # client's forcelist — match on the class instead. Any other 4xx means the request itself is
 # wrong and will fail identically on every attempt. Mirrors _is_transient_upload_error in
-# nominal/experimental/ingest/_multipart_uploader.py.
+# nominal/core/multipart_uploader.py.
 _RETRYABLE_EXACT_STATUS_CODES = frozenset({408, 429})
 
 # The standard retryable gRPC statuses: server unreachable, quota/throttle exhausted, or the

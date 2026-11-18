@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import threading
 import time
 from datetime import timedelta
-from typing import cast
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import Iterator, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import scout_catalog
 
 from nominal.core.dataset_file import (
     DatasetFile,
@@ -49,6 +53,104 @@ def _make_batch_file(file_id: str, dataset_rid: str, status: IngestStatus, clien
 def test_filename_from_uri_decodes_path_and_replaces_colons():
     """URI with encoded spaces and a colon in the filename decodes and sanitizes correctly."""
     assert filename_from_uri("s3://bucket/a%20b/video:01.mp4") == "video_01.mp4"
+
+
+@pytest.mark.parametrize("suffix", ["", ".", "..", "a%2Fb.csv", "a%5Cb.csv", "a%00b.csv"])
+def test_filename_from_uri_requires_a_single_local_filename(suffix: str) -> None:
+    """A decoded storage name must identify one file within the output directory on every platform."""
+    with pytest.raises(ValueError, match="filename"):
+        filename_from_uri(f"https://storage.example/folder/{suffix}?signature=private")
+
+
+def _downloadable_file(clients: MagicMock) -> DatasetFile:
+    return DatasetFile(
+        id="file-1",
+        dataset_rid="dataset-1",
+        name="output.csv",
+        bounds=None,
+        uploaded_at=0,
+        ingested_at=None,
+        deleted_at=None,
+        ingest_status=IngestStatus.SUCCESS,
+        timestamp_channel=None,
+        timestamp_type=None,
+        file_tags=None,
+        tag_columns=None,
+        _clients=clients,
+    )
+
+
+@pytest.fixture(scope="module")
+def storage_url() -> Iterator[str]:
+    """Serve a small object and a rejected presign through the downloader's actual HTTP transport."""
+
+    class Storage(BaseHTTPRequestHandler):
+        def do_HEAD(self) -> None:
+            if self.path.startswith("/denied/probe/"):
+                self.send_error(405)
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", "3")
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            if self.path.startswith("/denied/"):
+                self.send_error(403)
+                return
+            self.send_response(206)
+            self.send_header("Content-Length", "3")
+            self.send_header("Content-Range", "bytes 0-2/3")
+            self.end_headers()
+            self.wfile.write(b"abc")
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Storage) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}"
+        finally:
+            server.shutdown()
+            thread.join()
+
+
+def test_download_reuses_the_url_that_supplied_the_filename(tmp_path: Path, storage_url: str) -> None:
+    clients = MagicMock()
+    url = f"{storage_url}/run%201.csv?signature=private"
+    clients.catalog.get_dataset_file_uri.return_value = scout_catalog.DatasetFileUri(uri=url)
+    path = _downloadable_file(clients).download(tmp_path)
+
+    assert path == tmp_path / "run 1.csv"
+    assert path.read_bytes() == b"abc"
+    clients.catalog.get_dataset_file_uri.assert_called_once()
+
+
+def test_origin_downloads_use_urls_from_the_initial_listing(tmp_path: Path, storage_url: str) -> None:
+    clients = MagicMock()
+    clients.catalog.get_origin_file_uris.return_value = [
+        scout_catalog.OriginFileUri(path=name, uri=f"{storage_url}/{name}") for name in ("a", "b")
+    ]
+
+    paths = _downloadable_file(clients).download_original_files(tmp_path)
+    assert paths == [tmp_path / "a", tmp_path / "b"]
+    assert [path.read_bytes() for path in paths] == [b"abc", b"abc"]
+    clients.catalog.get_origin_file_uris.assert_called_once()
+
+
+@pytest.mark.parametrize("stage", ["probe", "range"])
+def test_origin_download_logs_status_without_signed_urls(
+    tmp_path: Path, storage_url: str, caplog: pytest.LogCaptureFixture, stage: str
+) -> None:
+    clients = MagicMock()
+    url = f"{storage_url}/denied/{stage}/file.csv?signature=private"
+    clients.catalog.get_origin_file_uris.return_value = [scout_catalog.OriginFileUri(path="file.csv", uri=url)]
+
+    assert _downloadable_file(clients).download_original_files(tmp_path) == []
+    assert "file.csv" in caplog.text
+    assert "403" in caplog.text
+    assert "signature=private" not in caplog.text
 
 
 def test_poll_until_ingestion_completed_sleeps_until_success():

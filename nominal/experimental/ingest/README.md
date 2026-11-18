@@ -87,28 +87,20 @@ exception group naming each failed file, and nothing is ingested. Pass
 `submit(allow_partial=True)` to instead drop failed items (logged as errors) and ingest
 everything that uploaded cleanly.
 
-## New Upload Machinery
+## Uploading files in a batch
 
-Under the hood, `submit()` uploads through a new experimental uploader (`MultipartUploader`, also
-exported from this package) that runs every file concurrently: small files take a one-request
-route, large files fan multipart parts out across a pool of direct-to-storage streams, and every
-Nominal API request passes through a fixed-width admission lane with retry and backoff handling
-tuned to the backend's throttling behavior.
+`submit()` sends local files through `nominal.core.MultipartUploader`. Small files use a single request to
+Nominal. Larger files share the core uploader's storage workers and payload memory budget.
+One gate across both routes backs off and retries when Nominal throttles requests.
 
-The uploader also rides out network weather on its own: transient failures (dropped connections,
-timeouts, throttling) retry each affected file on a backoff for up to an hour by default (the
-`file_retry_timeout` knob), so a wifi blip mid-batch pauses the upload rather than killing it.
-Permanent failures — a broken file, a rejected request — still surface immediately.
+When using `MultipartUploader.create()` directly, set `max_buffer_bytes` to limit the total
+bytes held for small request bodies and multipart chunks across the batch. The largest
+individual request body must fit this limit. Use a smaller `enqueue_file(part_size=...)` for
+hosts with limited memory. HTTP and executor overhead require additional memory.
 
-A typical experience on a strong network:
-
-- ~15 Mbps for many tiny (4 KiB) files — bound by per-file request rate limits, not bandwidth.
-- 400–500 Mbps for large (256 MiB+) files — bound by how quickly 64 MB parts stream to the
-  storage layer.
-
-Previously, the meta was uploading files sequentially or spinning up a threadpool over
-`Dataset.add_*` calls. The former suffers poor parallelism (especially under retries, or when
-files are a single part); the latter thrashes the system with too many threads and slows down.
+A transient connection failure can retry the affected local file from the beginning for up to
+`file_retry_timeout` (one hour by default). Permanent failures surface on the file's future.
+A failed multipart upload waits for its outstanding PUTs before aborting the remote upload.
 
 ## Tags Note
 

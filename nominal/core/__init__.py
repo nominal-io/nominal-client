@@ -55,6 +55,7 @@ from nominal.core.integration import (
 )
 from nominal.core.log import LogPoint
 from nominal.core.marking import Marking
+from nominal.core.multipart_uploader import MultipartUploader
 from nominal.core.retention import (
     KeepForever,
     KeepUntilExpiry,
@@ -131,6 +132,7 @@ __all__ = [
     "LogStream",
     "Marking",
     "Comment",
+    "MultipartUploader",
     "NominalClient",
     "NominalProperties",
     "OpsgenieIntegrationDetails",
