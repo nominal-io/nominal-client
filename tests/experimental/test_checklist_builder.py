@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import assert_type
 from unittest.mock import MagicMock
 from uuid import UUID, uuid5
 
@@ -10,7 +9,7 @@ from conjure_python_client import ConjureEncoder
 from nominal_api import event, scout_api, scout_checks_api, scout_versioning_api
 
 from nominal.core import Checklist, EventType, NominalClient, Priority, Workspace
-from nominal.experimental.compute_as_code import ChannelBinding, CheckDefinition, ChecklistBuilder, CheckTemplate
+from nominal.experimental.compute_as_code import ChannelBinding, CheckDefinition, ChecklistBuilder
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.datareview.v2 import data_review_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -237,7 +236,7 @@ def test_priority_prefers_add_then_check_then_builder(
     expected: scout_api.Priority,
 ) -> None:
     """The add argument wins, then the check's priority, then the builder default."""
-    check = CheckTemplate("Battery low", "(soc < 40).ranges()", priority=from_check)
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=from_check)
     ChecklistBuilder(default_priority=from_builder).add(check, inputs=SOC, priority=from_add).create(
         client, "Checks", assignee="user"
     )
@@ -245,7 +244,7 @@ def test_priority_prefers_add_then_check_then_builder(
 
 
 def test_reuse_check_definition_with_priority_override(client: NominalClient, mock_clients: MagicMock) -> None:
-    """Each builder captures its own priority while the definition retains its typed default."""
+    """Each builder captures its own priority while the definition retains its original priority."""
     check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P2)
     first = ChecklistBuilder().add(check, inputs=SOC, priority=Priority.P0)
     second = ChecklistBuilder(default_priority=Priority.P3).add(check, inputs=SOC)
@@ -256,14 +255,14 @@ def test_reuse_check_definition_with_priority_override(client: NominalClient, mo
         scout_api.Priority.P0,
         scout_api.Priority.P2,
     ]
-    assert assert_type(check.priority, Priority) is Priority.P2
+    assert check.priority is Priority.P2
 
 
 def test_unset_priority_rejected_on_add(client: NominalClient) -> None:
     """With no priority at any level, add names the check and leaves the builder empty."""
     builder = ChecklistBuilder()
     with pytest.raises(ValueError, match="'Battery low' has no priority"):
-        builder.add(CheckTemplate("Battery low", "(soc < 40).ranges()"), inputs=SOC)
+        builder.add(CheckDefinition("Battery low", "(soc < 40).ranges()"), inputs=SOC)
     with pytest.raises(ValueError, match="at least one check"):
         builder.create(client, "Empty")
 
