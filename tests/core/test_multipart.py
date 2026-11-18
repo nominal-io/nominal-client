@@ -17,10 +17,9 @@ from nominal.core._utils import multipart
 from nominal.core._utils.multipart import (
     _complete_multipart_upload,
     _put_part,
-    _sign_and_put_part,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.exceptions import NominalMultipartUploadFailed
+from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 
 
 def _filename_passed_downstream(name: str, file_type: FileType = FileTypes.CSV) -> str:
@@ -171,20 +170,6 @@ def _sign_response() -> MagicMock:
     return r
 
 
-def test_sign_and_put_part_raises_after_retries() -> None:
-    """The legacy retry wrapper spends exactly its retry budget, then fails with the public error."""
-    client = MagicMock(spec=["sign_part", "_verify"])
-    client._verify = True
-    client.sign_part.return_value = _sign_response()
-    session = MagicMock(spec=["put"])
-    session.put.side_effect = requests.ConnectionError("boom")
-
-    with pytest.raises(NominalMultipartUploadFailed):
-        _sign_and_put_part(client, session, "auth", "key", "uid", 3, b"chunk", num_retries=2)
-
-    assert session.put.call_count == 2
-
-
 def test_complete_multipart_upload_builds_parts_from_etags_in_order() -> None:
     """Completion sends parts in ascending part-number order, which the storage provider requires."""
     client = MagicMock(spec=["complete_multipart_upload"])
@@ -286,19 +271,11 @@ def _upload_client_for_destination(bucket: str) -> MagicMock:
     return client
 
 
-def _no_op_session() -> MagicMock:
-    """A session double for tests that patch `_put_part` directly and never touch the socket."""
-    return MagicMock(spec=["put", "close"])
-
-
 def test_file_store_upload_sends_its_destination_and_handle() -> None:
     """A File Store upload must name its destination, and every follow-up call must carry the handle."""
     client = _upload_client_for_destination("FILE_STORE")
 
-    with (
-        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
-        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})),
-    ):
+    with patch.object(multipart, "create_multipart_request_session", return_value=MagicMock(spec=["put", "close"])):
         completed = multipart._put_multipart_upload_to(
             "Bearer token",
             "ri.workspace",
@@ -316,14 +293,51 @@ def test_file_store_upload_sends_its_destination_and_handle() -> None:
     assert client.complete_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
 
 
+def test_short_reads_form_a_full_sized_replayable_put() -> None:
+    """A pipe's short reads fill one numbered part and can replay after a failed PUT."""
+
+    class Pipe(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            return super().read(min(size, 97))
+
+    data = bytes(range(256)) * 1024
+    source = Pipe(data + b"final part")
+    part = multipart._read_part(source, len(data))
+    request = requests.Request("PUT", "https://store.example/part1", data=part).prepare()
+    assert request.headers["Content-Length"] == str(len(data))
+    assert b"".join(request.body) == data
+    assert b"".join(request.body) == data
+    assert source.read(100) == b"final part"
+
+
+@pytest.mark.parametrize("reads", [[None], [b"a", None]])
+def test_nonblocking_stream_cannot_mistake_a_pause_for_eof(reads: list[bytes | None]) -> None:
+    """A raw stream with no data available yet must fail instead of completing a truncated part."""
+    stream = MagicMock(spec=io.RawIOBase)
+    stream.read.side_effect = reads
+    with pytest.raises(BlockingIOError):
+        multipart._read_part(stream, 4)
+
+
+def test_incomplete_server_listing_aborts_instead_of_completing_a_truncated_object() -> None:
+    """A successful PUT for every chunk still requires a matching set of stored part numbers."""
+    client = _upload_client_for_destination("uploads")
+    with patch.object(multipart, "create_multipart_request_session", return_value=MagicMock(spec=["put", "close"])):
+        with pytest.raises(NominalMultipartUploadError, match="expected parts"):
+            multipart.put_multipart_upload(
+                "auth", None, io.BytesIO(b"abcdefgh"), "test.csv", "text/csv", client, chunk_size=4
+            )
+    client.complete_multipart_upload.assert_not_called()
+    client.abort_multipart_upload.assert_called_once()
+
+
 def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
     """A failed File Store upload must abort against the handle initiate returned, or its parts are stranded."""
     client = _upload_client_for_destination("FILE_STORE")
 
-    with (
-        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
-        patch.object(multipart, "_put_part", side_effect=requests.ConnectionError("boom")),
-    ):
+    session = MagicMock(spec=["put", "close"])
+    session.put.side_effect = requests.ConnectionError("boom")
+    with patch.object(multipart, "create_multipart_request_session", return_value=session):
         with pytest.raises(NominalMultipartUploadFailed):
             multipart._put_multipart_upload_to(
                 "Bearer token",
@@ -336,3 +350,4 @@ def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
             )
 
     assert client.abort_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
+    assert session.put.call_count == 3

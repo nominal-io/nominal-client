@@ -1,4 +1,4 @@
-"""Request governance for the experimental uploader: two-layer backoff, throughput-first.
+"""Shared admission and backoff for upload requests to the Nominal API.
 
 The transport performs each request's own short jittered retries (the standard conjure
 client retries throttle statuses locally on a sub-second ladder). This module adds the two

@@ -1,25 +1,35 @@
 from __future__ import annotations
 
-import concurrent.futures
+import io
 import logging
 import pathlib
-from dataclasses import dataclass
-from functools import partial
-from queue import Queue
-from typing import BinaryIO, Iterable, Mapping
+import threading
+import traceback
+from concurrent.futures import CancelledError, ThreadPoolExecutor
+from dataclasses import dataclass, field
+from types import TracebackType
+from typing import BinaryIO, Callable, Iterator, Mapping, Self, TypeVar
 
 import requests
 from nominal_api import ingest_api, upload_api
 
 from nominal.core._utils.filenames import resolve_upload_filename
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
+from nominal.core._utils.upload_pacing import (
+    _ABORT_THROTTLE_DEADLINE_S,
+    DEFAULT_THROTTLE_DEADLINE_S,
+    NOMINAL_MAX_CONCURRENCY,
+    _ThrottleGate,
+)
 from nominal.core.filetype import FileType
-from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
+from nominal.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed, NominalRequestThrottledError
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -55,10 +65,58 @@ def _wrap_multipart_retry_exception(
     return wrapped
 
 
+@dataclass(frozen=True)
+class _SegmentedBody:
+    """A replayable requests body with a Content-Length, assembled from short reads."""
+
+    blocks: list[bytes]
+    length: int
+
+    def __iter__(self) -> Iterator[bytes]:
+        return iter(self.blocks)
+
+    def __len__(self) -> int:
+        return self.length
+
+
+def _read_bytes(stream: BinaryIO, size: int) -> bytes:
+    data = stream.read(size)
+    if data is None:  # RawIOBase returns None when a nonblocking read would block.
+        raise BlockingIOError("upload requires a blocking binary stream")
+    return data
+
+
+def _read_part(stream: BinaryIO, size: int) -> bytes | _SegmentedBody:
+    """Fill a part even when a pipe or raw stream returns short reads before EOF."""
+    first = _read_bytes(stream, size)
+    if not first or len(first) == size:
+        return first
+
+    # A short read may just be the final part of a file. Keep that fast path as bytes.
+    # For repeated short reads, combine tiny fragments in bounded 64 KiB blocks;
+    # requests can send and retry those blocks without a second part-sized allocation.
+    block_size = 64 * 1024
+    blocks = [first]
+    total = len(first)
+    block = io.BytesIO()
+    while total < size:
+        piece = _read_bytes(stream, min(size - total, block_size - block.tell()))
+        if not piece:
+            break
+        total += len(piece)
+        block.write(piece)
+        if block.tell() == block_size:
+            blocks.append(block.getvalue())
+            block = io.BytesIO()
+    if block.tell():
+        blocks.append(block.getvalue())
+    return first if len(blocks) == 1 else _SegmentedBody(blocks, total)
+
+
 def _put_part(
     multipart_session: requests.Session,
     sign_response: ingest_api.SignPartResponse,
-    data: bytes,
+    data: bytes | _SegmentedBody,
     *,
     verify: bool | str | None,
     timeout: float | None = None,
@@ -77,93 +135,6 @@ def _put_part(
     )
     put_response.raise_for_status()
     return put_response
-
-
-def _sign_and_put_part(
-    upload_client: upload_api.UploadService,
-    multipart_session: requests.Session,
-    auth_header: str,
-    key: str,
-    upload_id: str,
-    part: int,
-    data: bytes,
-    num_retries: int = 3,
-    bucket: str | None = None,
-) -> requests.Response:
-    """Sign and PUT a single in-memory part to S3, retrying transient failures.
-
-    The retry wrapper for the legacy single-stream path; the driver-model uploader runs its own
-    gated, drainable retry loop over the same `sign_part` endpoint and `_put_part` primitive.
-    """
-    attempt_errors: list[NominalMultipartUploadError] = []
-    for attempt in range(num_retries):
-        log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
-        try:
-            logger.debug("Signing part %d for upload", part, extra=log_extras)
-            sign_response = upload_client.sign_part(auth_header, key, part, upload_id, bucket=bucket)
-            logger.debug(
-                "Successfully signed part %d for upload",
-                part,
-                extra={"response.url": sign_response.url, **log_extras},
-            )
-
-            logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
-            put_response = _put_part(multipart_session, sign_response, data, verify=upload_client._verify)
-            logger.debug(
-                "Finished pushing part %d for multipart upload with status %d",
-                part,
-                put_response.status_code,
-                extra={"response.url": put_response.url, **log_extras},
-            )
-            return put_response
-        except Exception as ex:
-            logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
-            attempt_errors.append(
-                _wrap_multipart_retry_exception(ex=ex, key=key, part=part, upload_id=upload_id, attempt=attempt + 1)
-            )
-
-    if attempt_errors:
-        raise NominalMultipartUploadFailed(
-            f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part} after {num_retries} attempts",
-            attempt_errors,
-        )
-
-    raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
-
-
-def _sign_and_upload_part_job(
-    upload_client: upload_api.UploadService,
-    multipart_session: requests.Session,
-    auth_header: str,
-    key: str,
-    upload_id: str,
-    q: Queue[bytes],
-    part: int,
-    num_retries: int = 3,
-    bucket: str | None = None,
-) -> requests.Response:
-    data = q.get()
-    try:
-        return _sign_and_put_part(
-            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries, bucket
-        )
-    finally:
-        q.task_done()
-
-
-def _initiate_multipart_upload(
-    upload_client: upload_api.UploadService,
-    auth_header: str,
-    filename: str,
-    mimetype: str,
-    workspace_rid: str | None,
-    destination: ingest_api.UploadDestination | None = None,
-) -> ingest_api.InitiateMultipartUploadResponse:
-    """Initiate a multipart upload, in the default uploads destination unless another is given."""
-    request = ingest_api.InitiateMultipartUploadRequest(
-        filename=filename, filetype=mimetype, workspace=workspace_rid, destination=destination
-    )
-    return upload_client.initiate_multipart_upload(auth_header, request)
 
 
 def _complete_multipart_upload(
@@ -189,11 +160,344 @@ def _complete_multipart_upload(
     return response.location
 
 
-def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
-    # Multipart completion requires a first part even when the stream is empty.
-    yield f.read(chunk_size)
-    while (data := f.read(chunk_size)) != b"":
-        yield data
+def _release_error_payloads(error: BaseException) -> None:
+    """Keep diagnostic stacks and HTTP status without retaining a failed upload's bytes.
+
+    Batch callers may keep failed futures indefinitely. Both traceback locals and the
+    prepared request attached to a requests exception can otherwise pin the body.
+    """
+    pending = [error]
+    seen: set[int] = set()
+    while pending:
+        exc = pending.pop()
+        if id(exc) in seen:
+            continue
+        seen.add(id(exc))
+        if exc.__traceback__ is not None:
+            traceback.clear_frames(exc.__traceback__)
+        if isinstance(exc, requests.RequestException):
+            if isinstance(exc.request, requests.PreparedRequest):
+                exc.request.body = None
+            if exc.response is not None and exc.response.request is not None:
+                exc.response.request.body = None
+        if isinstance(exc, BaseExceptionGroup):
+            pending.extend(exc.exceptions)
+        if exc.__cause__ is not None:
+            pending.append(exc.__cause__)
+        if exc.__context__ is not None:
+            pending.append(exc.__context__)
+
+
+@dataclass
+class _Buffer:
+    """One reservation, transferred from the reader to its storage worker on submission."""
+
+    size: int
+    data: bytes | _SegmentedBody | None = b""
+
+
+@dataclass
+class _Parts:
+    """State shared only by the reader and workers for one remote upload."""
+
+    pending: int = 0
+    etags: dict[int, str] = field(default_factory=dict)
+    error: BaseException | None = None
+
+    def check(self) -> None:
+        if self.error is not None:
+            raise self.error
+
+
+class StreamUploader:
+    """Upload independent streams through one storage pool and one Nominal request gate.
+
+    Each caller drives its own stream. Storage workers only sign and send parts, so a
+    reader waiting for buffer capacity never takes a worker away from an active PUT.
+    Close after the callers have returned, or cancel first to stop accepting more parts.
+    """
+
+    def __init__(
+        self,
+        upload_client: upload_api.UploadService,
+        auth_header: str,
+        workspace_rid: str | None,
+        *,
+        max_workers: int,
+        max_buffer_bytes: int,
+        header_provider: HeaderProvider | None = None,
+        gate: _ThrottleGate | None = None,
+        timeout: float | None = None,
+        max_part_retries: int = 3,
+    ) -> None:
+        if max_workers <= 0 or max_buffer_bytes <= 0 or max_part_retries <= 0:
+            raise ValueError("max_workers, max_buffer_bytes and max_part_retries must be positive")
+        self._client = upload_client
+        self._auth = auth_header
+        self._workspace = workspace_rid
+        self.max_buffer_bytes = max_buffer_bytes
+        self.max_part_retries = max_part_retries
+        self.timeout = timeout
+        self.gate = gate or _ThrottleGate(
+            max_concurrency=NOMINAL_MAX_CONCURRENCY, deadline_seconds=DEFAULT_THROTTLE_DEADLINE_S
+        )
+        self.draining = threading.Event()
+        self._available = max_buffer_bytes
+        self._capacity = threading.Condition()
+        self._max_pending = 2 * max_workers
+        self.session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
+        self._pool = ThreadPoolExecutor(max_workers, thread_name_prefix="nominal-upload-part")
+
+    def cancel(self) -> None:
+        with self._capacity:
+            self.draining.set()
+            self._capacity.notify_all()
+
+    def close(self) -> None:
+        self.cancel()
+        self._pool.shutdown(wait=True)
+        self.session.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
+        self.close()
+
+    def _check_open(self) -> None:
+        if self.draining.is_set():
+            raise CancelledError("uploader is closing")
+
+    def _call(self, operation: Callable[[], _T]) -> _T:
+        # Recheck on admission, including every retry after backing off from a 429.
+        def admitted() -> _T:
+            self._check_open()
+            return operation()
+
+        return self.gate.call(admitted)
+
+    def _reserve(self, size: int, parts: _Parts) -> _Buffer:
+        """Reserve bytes before reading and cap lookahead even for tiny parts."""
+        if size < 0 or size > self.max_buffer_bytes:
+            raise ValueError(f"cannot reserve {size} bytes with max_buffer_bytes={self.max_buffer_bytes}")
+        with self._capacity:
+            while True:
+                self._check_open()
+                parts.check()
+                if size <= self._available and parts.pending < self._max_pending:
+                    self._available -= size
+                    parts.pending += 1
+                    return _Buffer(size)
+                self._capacity.wait()
+
+    def _release(self, buffer: _Buffer, parts: _Parts) -> None:
+        with self._capacity:
+            buffer.data = None
+            self._available += buffer.size
+            parts.pending -= 1
+            self._capacity.notify_all()
+
+    def upload_small_file(self, stream: BinaryIO, filename: str, *, size: int) -> str:
+        """Send a size-known file in a single Nominal request under the same byte budget."""
+        parts = _Parts()
+        buffer = self._reserve(size, parts)
+        try:
+            data = _read_bytes(stream, size)
+            if len(data) != size or _read_bytes(stream, 1):
+                raise ValueError(f"size of {filename!r} changed since enqueue")
+
+            return self._call(
+                lambda: self._client.upload_file(self._auth, data, filename, size_bytes=size, workspace=self._workspace)
+            )
+        except BaseException as exc:
+            _release_error_payloads(exc)
+            raise
+        finally:
+            data = b""  # An escaping exception can keep this frame, including its local variables.
+            self._release(buffer, parts)
+
+    def upload_stream(
+        self,
+        stream: BinaryIO,
+        filename: str,
+        mimetype: str,
+        *,
+        chunk_size: int,
+        expected_size: int | None = None,
+        destination: ingest_api.UploadDestination | None = None,
+        use_put_etags: bool = False,
+    ) -> _CompletedUpload:
+        """Upload from the current position. A known file size bounds the final read.
+
+        The driver reads and numbers each chunk together, then hands it to one worker.
+        Once every worker settles, complete using PUT receipts or list the stored parts.
+        On failure stop siblings, drain active PUTs, and only then abort the remote upload.
+        """
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if expected_size is not None and expected_size < 0:
+            raise ValueError("expected_size must be nonnegative")
+        reservation = chunk_size if expected_size is None else min(expected_size, chunk_size)
+        if reservation > self.max_buffer_bytes:
+            raise ValueError(f"part requires {reservation} bytes, exceeding max_buffer_bytes={self.max_buffer_bytes}")
+        self._check_open()
+        request = ingest_api.InitiateMultipartUploadRequest(
+            filename=filename, filetype=mimetype, workspace=self._workspace, destination=destination
+        )
+        upload = self._call(lambda: self._client.initiate_multipart_upload(self._auth, request))
+        parts = _Parts()
+        try:
+            sent = self._send_stream(stream, chunk_size, expected_size, upload, parts, use_put_etags)
+            with self._capacity:
+                self._capacity.wait_for(lambda: parts.pending == 0)
+                parts.check()
+            self._check_open()
+            etags = parts.etags
+            if not use_put_etags:
+                listed = self._call(
+                    lambda: self._client.list_parts(self._auth, upload.key, upload.upload_id, bucket=upload.bucket)
+                )
+                etags = {part.part_number: part.etag for part in listed}
+                if len(etags) != sent or any(n < 1 or n > sent for n in etags):
+                    raise NominalMultipartUploadError(
+                        f"Incomplete part listing for {upload.key!r}: expected parts 1–{sent}"
+                    )
+            location = self._call(
+                lambda: _complete_multipart_upload(
+                    self._client, self._auth, upload.key, upload.upload_id, etags, upload.bucket
+                )
+            )
+            return _CompletedUpload(upload.key, location)
+        except BaseException as exc:
+            with self._capacity:
+                if parts.error is None:
+                    parts.error = exc
+                # A stream read, submit, or the success-path wait itself can be interrupted.
+                # Mark queued siblings first; let running PUTs finish before touching the upload ID.
+                self._capacity.wait_for(lambda: parts.pending == 0)
+            _release_error_payloads(exc)
+            try:
+                self.gate.call(
+                    lambda: self._client.abort_multipart_upload(
+                        self._auth, upload.key, upload.upload_id, bucket=upload.bucket
+                    ),
+                    deadline_seconds=_ABORT_THROTTLE_DEADLINE_S,
+                )
+            except Exception:
+                logger.warning("Could not abort multipart upload %s", upload.upload_id, exc_info=True)
+            raise
+
+    def _send_stream(
+        self,
+        stream: BinaryIO,
+        chunk_size: int,
+        remaining: int | None,
+        upload: ingest_api.InitiateMultipartUploadResponse,
+        parts: _Parts,
+        use_put_etags: bool,
+    ) -> int:
+        number = 1
+        while number == 1 or remaining != 0:
+            size = chunk_size if remaining is None else min(chunk_size, remaining)
+            buffer = self._reserve(size, parts)
+            try:
+                buffer.data = _read_part(stream, size)
+                count = len(buffer.data)
+                if remaining is not None and count != size:
+                    raise ValueError(f"File ended early during upload of {upload.key!r}")
+                if not count and number > 1:
+                    self._release(buffer, parts)
+                    break
+                self._pool.submit(self._run_part, upload, parts, number, buffer, use_put_etags)
+            except BaseException:
+                with self._capacity:
+                    # An interrupted submit may already have handed the job to a worker.
+                    # Whoever owns the buffer releases it and decrements the settlement count.
+                    if buffer.data is not None:
+                        self._release(buffer, parts)
+                raise
+            if remaining is not None:
+                remaining -= count
+            number += 1
+            if count < size or not count:
+                break
+        if remaining == 0 and _read_bytes(stream, 1):
+            raise ValueError(f"File grew during upload of {upload.key!r}")
+        return number - 1
+
+    def _run_part(
+        self,
+        upload: ingest_api.InitiateMultipartUploadResponse,
+        parts: _Parts,
+        number: int,
+        buffer: _Buffer,
+        use_put_etags: bool,
+    ) -> None:
+        with self._capacity:
+            data = buffer.data
+            if data is None:
+                return
+            buffer.data = None
+        try:
+            etag = self._send_part(upload, parts, number, data, use_put_etags)
+            if etag is not None:
+                with self._capacity:
+                    parts.etags[number] = etag
+        except BaseException as exc:
+            _release_error_payloads(exc)
+            with self._capacity:
+                if parts.error is None:
+                    parts.error = exc
+        finally:
+            del data
+            self._release(buffer, parts)
+
+    def _send_part(
+        self,
+        upload: ingest_api.InitiateMultipartUploadResponse,
+        parts: _Parts,
+        number: int,
+        data: bytes | _SegmentedBody,
+        use_put_etags: bool,
+    ) -> str | None:
+        def sign() -> ingest_api.SignPartResponse:
+            self._check_open()
+            if parts.error is not None:
+                raise CancelledError("sibling part failed")
+            return self._client.sign_part(self._auth, upload.key, number, upload.upload_id, bucket=upload.bucket)
+
+        errors = []
+        for attempt in range(1, self.max_part_retries + 1):
+            try:
+                signed = self.gate.call(sign)
+                self._check_open()
+                if parts.error is not None:
+                    raise CancelledError("sibling part failed")
+                response = _put_part(self.session, signed, data, verify=self._client._verify, timeout=self.timeout)
+            except (CancelledError, NominalRequestThrottledError):
+                raise
+            except Exception as exc:
+                errors.append(
+                    _wrap_multipart_retry_exception(
+                        ex=exc, key=upload.key, part=number, upload_id=upload.upload_id, attempt=attempt
+                    )
+                )
+                continue
+            # A previous failed attempt can hold a traceback pointing back into this
+            # frame. Break the cycle so a successful retry frees its payload immediately.
+            errors.clear()
+            if not use_put_etags:
+                return None
+            if etag := response.headers.get("ETag"):
+                return etag
+            raise NominalMultipartUploadError(f"storage provider returned no ETag for part {number} (key={upload.key})")
+        raise NominalMultipartUploadFailed(
+            f"Multipart upload failed for key={upload.key}, upload_id={upload.upload_id}, "
+            f"part={number} after {len(errors)} attempts",
+            errors,
+        )
 
 
 def put_multipart_upload(
@@ -261,65 +565,15 @@ def _put_multipart_upload_to(
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
 
-    # muiltithreaded multipart upload:
-    # - create a worker thread pool and a queue for all threads to share
-    # - initialize the upload, getting the object key and upload id
-    # - the main thread will chunk the file up into "parts" and enqueue each part
-    # - each task will take a "part" from the queue, and sign and upload it
-    # - once all tasks are done, all parts will have been uploaded, so we "complete"
-    #   the upload and get the final s3 location.
-    # - if any error occurs after initializing, we abort the upload.
-
-    q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    initiated = _initiate_multipart_upload(
-        upload_client, auth_header, filename, mimetype, workspace_rid, destination=destination
-    )
-    key, upload_id, bucket = initiated.key, initiated.upload_id, initiated.bucket
-
-    # One session shared across all part jobs for this upload.
-    session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
-
-    # Prefill arguments for helper function
-    _sign_and_upload_part = partial(
-        _sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q, bucket=bucket
-    )
-
-    jobs: list[concurrent.futures.Future[requests.Response]] = []
-
-    try:
-        for part, chunk in enumerate(_iter_chunks(f, chunk_size), start=1):
-            q.put(chunk)
-            fut = pool.submit(_sign_and_upload_part, part)
-            jobs.append(fut)
-            logger.debug("submitted sign and upload job", extra={"part": part})
-
-        # block until all upload jobs are complete
-        done, not_done = concurrent.futures.wait(jobs, return_when="FIRST_EXCEPTION")
-
-        # if there was an error, not all jobs completed, so cancel any remaining tasks
-        for fut in not_done:
-            fut.cancel()
-
-        # re-raise any exception encountered to abort the upload
-        for fut in done:
-            maybe_exc = fut.exception()
-            if maybe_exc is not None:
-                raise maybe_exc
-
-        # if all tasks have successfully completed, the queue should be empty too
-        q.join()
-
-        # Mark the upload as completed. This single-stream path tracks no ETags of its own, so it
-        # asks the server which parts landed — one extra request vs supplying the ETags directly.
-        parts_with_size = upload_client.list_parts(auth_header, key, upload_id, bucket=bucket)
-        location = _complete_multipart_upload(
-            upload_client, auth_header, key, upload_id, {p.part_number: p.etag for p in parts_with_size}, bucket
-        )
-        return _CompletedUpload(key=key, location=location)
-    except Exception as e:
-        _abort(upload_client, auth_header, key, upload_id, e, bucket)
-        raise e
+    with StreamUploader(
+        upload_client,
+        auth_header,
+        workspace_rid,
+        max_workers=max_workers,
+        max_buffer_bytes=2 * max_workers * chunk_size,
+        header_provider=header_provider,
+    ) as uploader:
+        return uploader.upload_stream(f, filename, mimetype, chunk_size=chunk_size, destination=destination)
 
 
 def upload_multipart_io(
@@ -410,21 +664,3 @@ def upload_multipart_file(
             max_workers=max_workers,
             header_provider=header_provider,
         )
-
-
-def _abort(
-    upload_client: upload_api.UploadService,
-    auth_header: str,
-    key: str,
-    upload_id: str,
-    e: BaseException,
-    bucket: str | None = None,
-) -> None:
-    logger.error(
-        "aborting multipart upload due to an exception", exc_info=e, extra={"key": key, "upload_id": upload_id}
-    )
-    try:
-        upload_client.abort_multipart_upload(auth_header, key, upload_id, bucket=bucket)
-    except Exception as exc:
-        logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
-        raise exc from e
