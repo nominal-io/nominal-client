@@ -108,6 +108,9 @@ builder.add(
 Event type follows the same order, using `event_type` on `add`, then the check's own `event_type`,
 then `default_event_type` on `ChecklistBuilder`. If none of these are set, the check creates `ERROR` events.
 
+Event labels merge instead of overriding: a check's events get its own `event_labels` plus any
+passed as `event_labels` to `ChecklistBuilder` or `add`.
+
 Give each check a `key` and keep it when you change the limit or rename the check, so Nominal treats it as the same check.
 Keys are case-sensitive and must be unique within a builder.
 
