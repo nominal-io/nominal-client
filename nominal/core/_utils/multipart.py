@@ -3,9 +3,9 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import pathlib
+from contextlib import closing
 from dataclasses import dataclass
 from functools import partial
-from queue import Queue
 from typing import BinaryIO, Iterable, Mapping
 
 import requests
@@ -131,26 +131,6 @@ def _sign_and_put_part(
     raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
 
 
-def _sign_and_upload_part_job(
-    upload_client: upload_api.UploadService,
-    multipart_session: requests.Session,
-    auth_header: str,
-    key: str,
-    upload_id: str,
-    q: Queue[bytes],
-    part: int,
-    num_retries: int = 3,
-    bucket: str | None = None,
-) -> requests.Response:
-    data = q.get()
-    try:
-        return _sign_and_put_part(
-            upload_client, multipart_session, auth_header, key, upload_id, part, data, num_retries, bucket
-        )
-    finally:
-        q.task_done()
-
-
 def _initiate_multipart_upload(
     upload_client: upload_api.UploadService,
     auth_header: str,
@@ -215,7 +195,7 @@ def put_multipart_upload(
     Args:
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
-        f: Binary IO to upload
+        f: Binary stream to upload. An empty stream creates a zero-byte object.
         filename: filename to use when uploading; sent literally as the object name
         mimetype: Type of data contained within binary stream
         upload_client: Conjure upload client
@@ -258,54 +238,32 @@ def _put_multipart_upload_to(
     Every follow-up request passes back the ``bucket`` handle initiate returned, which is how
     the server finds an upload outside the default destination.
     """
-    # muiltithreaded multipart upload:
-    # - create a worker thread pool and a queue for all threads to share
-    # - initialize the upload, getting the object key and upload id
-    # - the main thread will chunk the file up into "parts" and enqueue each part
-    # - each task will take a "part" from the queue, and sign and upload it
-    # - once all tasks are done, all parts will have been uploaded, so we "complete"
-    #   the upload and get the final s3 location.
-    # - if any error occurs after initializing, we abort the upload.
-
-    q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     initiated = _initiate_multipart_upload(
         upload_client, auth_header, filename, mimetype, workspace_rid, destination=destination
     )
     key, upload_id, bucket = initiated.key, initiated.upload_id, initiated.bucket
 
-    # One session shared across all part jobs for this upload.
-    session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
-
-    # Prefill arguments for helper function
-    _sign_and_upload_part = partial(
-        _sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q, bucket=bucket
-    )
-
-    jobs: list[concurrent.futures.Future[requests.Response]] = []
-
     try:
-        for part, chunk in enumerate(_iter_chunks(f, chunk_size), start=1):
-            q.put(chunk)
-            fut = pool.submit(_sign_and_upload_part, part)
-            jobs.append(fut)
-            logger.debug("submitted sign and upload job", extra={"part": part})
-
-        # block until all upload jobs are complete
-        done, not_done = concurrent.futures.wait(jobs, return_when="FIRST_EXCEPTION")
-
-        # if there was an error, not all jobs completed, so cancel any remaining tasks
-        for fut in not_done:
-            fut.cancel()
-
-        # re-raise any exception encountered to abort the upload
-        for fut in done:
-            maybe_exc = fut.exception()
-            if maybe_exc is not None:
-                raise maybe_exc
-
-        # if all tasks have successfully completed, the queue should be empty too
-        q.join()
+        with closing(
+            create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
+        ) as session:
+            upload_part = partial(
+                _sign_and_put_part, upload_client, session, auth_header, key, upload_id, bucket=bucket
+            )
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+            pending: set[concurrent.futures.Future[requests.Response]] = set()
+            try:
+                for part, chunk in enumerate(_iter_chunks(f, chunk_size), start=1):
+                    pending.add(pool.submit(upload_part, part, chunk))
+                    # Bound buffered bytes even when storage is slower than the input stream.
+                    if len(pending) >= 2 * max_workers:
+                        done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+                        for job in done:
+                            job.result()
+                for job in concurrent.futures.as_completed(pending):
+                    job.result()
+            finally:
+                pool.shutdown(wait=True, cancel_futures=True)
 
         # Mark the upload as completed. This single-stream path tracks no ETags of its own, so it
         # asks the server which parts landed — one extra request vs supplying the ETags directly.
@@ -316,10 +274,7 @@ def _put_multipart_upload_to(
         return _CompletedUpload(key=key, location=location)
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e, bucket)
-        raise e
-    finally:
-        pool.shutdown(wait=True, cancel_futures=True)
-        session.close()
+        raise
 
 
 def upload_multipart_io(
@@ -338,7 +293,7 @@ def upload_multipart_io(
     Args:
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
-        f: Binary IO to upload
+        f: Binary stream to upload. An empty stream creates a zero-byte object.
         name: Upload filename. Existing extensions are preserved; only names without one use the default.
             Sent literally (no URL-encoding); unsafe storage characters raise ValueError.
         file_type: MIME type and default extension to use when the filename has none.

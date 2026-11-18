@@ -7,7 +7,8 @@ Regression lock for the encoding fix: the filename must reach object storage *un
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock, patch
+import threading
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 import requests
@@ -164,9 +165,9 @@ def test_unsafe_filename_rejected_before_upload(name: str) -> None:
     upload_client.initiate_multipart_upload.assert_not_called()
 
 
-def _sign_response() -> MagicMock:
+def _sign_response(url: str = "https://s3.example.com/signed") -> MagicMock:
     r = MagicMock()
-    r.url = "https://s3.example.com/signed"
+    r.url = url
     r.headers = {"x-amz-meta": "1"}
     return r
 
@@ -275,34 +276,42 @@ def _upload_client_for_destination(bucket: str) -> MagicMock:
     return client
 
 
-def _no_op_session() -> MagicMock:
-    """A session double for tests that patch `_put_part` directly and never touch the socket."""
-    return MagicMock(spec=["put", "close"])
-
-
-@pytest.mark.parametrize("data", [b"", b"data", b"abcdefgh"])
-def test_file_store_upload_sends_its_destination_and_handle(data: bytes) -> None:
-    """A File Store upload must name its destination, and every follow-up call must carry the handle."""
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [(b"", {1: b""}), (b"data", {1: b"data"}), (b"abcdefghi", {1: b"abcd", 2: b"efgh", 3: b"i"})],
+)
+def test_upload_sends_each_chunk_to_its_signed_part(data: bytes, expected: dict[int, bytes]) -> None:
+    """Each numbered PUT carries its slice of the input, including one empty part for an empty stream."""
     client = _upload_client_for_destination("FILE_STORE")
+    client.sign_part.side_effect = lambda auth, key, part, uid, bucket: _sign_response(url=f"https://store/{part}")
+    client.list_parts.return_value = [
+        ingest_api.PartWithSize(part_number=n, size=len(body), etag=str(n)) for n, body in expected.items()
+    ]
+    session = MagicMock(spec=["put", "close"])
+    with patch.object(multipart, "create_multipart_request_session", return_value=session):
+        multipart.put_multipart_upload("auth", None, io.BytesIO(data), "file.csv", "text/csv", client, chunk_size=4)
 
-    with (
-        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
-        patch.object(multipart, "_put_part", return_value=MagicMock(headers={"ETag": "etag-1"})) as put_part,
-    ):
+    assert sorted((call.args[0], call.kwargs["data"]) for call in session.put.call_args_list) == [
+        (f"https://store/{n}", body) for n, body in expected.items()
+    ]
+    parts = client.complete_multipart_upload.call_args.args[3]
+    assert [(part.part_number, part.etag) for part in parts] == [(n, str(n)) for n in expected]
+
+
+def test_file_store_upload_sends_its_destination_and_handle() -> None:
+    """A File Store upload names its destination and carries its handle on follow-up calls."""
+    client = _upload_client_for_destination("FILE_STORE")
+    with patch.object(multipart, "create_multipart_request_session", return_value=MagicMock(spec=["put", "close"])):
         completed = multipart._put_multipart_upload_to(
             "Bearer token",
             "ri.workspace",
-            io.BytesIO(data),
+            io.BytesIO(b"data"),
             "run-001.csv",
             "text/csv",
             client,
             destination=ingest_api.UploadDestination.FILE_STORE,
-            chunk_size=4,
         )
 
-    assert sorted(call.args[2] for call in put_part.call_args_list) == sorted(
-        [data[i : i + 4] for i in range(0, len(data), 4)] or [b""]
-    )
     assert completed.key == "object-key"
     assert client.initiate_multipart_upload.call_args.args[1].destination == ingest_api.UploadDestination.FILE_STORE
     assert client.sign_part.call_args.kwargs["bucket"] == "FILE_STORE"
@@ -314,19 +323,45 @@ def test_abort_carries_the_destination_bucket_when_the_upload_fails() -> None:
     """A failed File Store upload must abort against the handle initiate returned, or its parts are stranded."""
     client = _upload_client_for_destination("FILE_STORE")
 
-    with (
-        patch.object(multipart, "create_multipart_request_session", return_value=_no_op_session()),
-        patch.object(multipart, "_put_part", side_effect=requests.ConnectionError("boom")),
-    ):
+    session = MagicMock(spec=["put", "close"])
+    cleanup = MagicMock()
+    cleanup.attach_mock(session.close, "close")
+    cleanup.attach_mock(client.abort_multipart_upload, "abort")
+    successful_put = threading.Event()
+    workers: set[threading.Thread] = set()
+
+    def put(url: str, *, data: bytes, **kwargs: object) -> requests.Response:
+        if data == b"a":
+            workers.add(threading.current_thread())
+            successful_put.set()
+            response = requests.Response()
+            response.status_code = 200
+            return response
+        assert successful_put.wait(timeout=5)
+        raise requests.ConnectionError("boom")
+
+    workers_alive_at_abort: list[threading.Thread] = []
+    client.abort_multipart_upload.side_effect = lambda *args, **kwargs: workers_alive_at_abort.extend(
+        worker for worker in workers if worker.is_alive()
+    )
+    session.put.side_effect = put
+    with patch.object(multipart, "create_multipart_request_session", return_value=session):
         with pytest.raises(NominalMultipartUploadFailed):
             multipart._put_multipart_upload_to(
                 "Bearer token",
                 "ri.workspace",
-                io.BytesIO(b"data"),
+                io.BytesIO(b"ba"),
                 "run-001.csv",
                 "text/csv",
                 client,
+                max_workers=2,
+                chunk_size=1,
                 destination=ingest_api.UploadDestination.FILE_STORE,
             )
 
-    assert client.abort_multipart_upload.call_args.kwargs["bucket"] == "FILE_STORE"
+    assert cleanup.mock_calls == [
+        call.close(),
+        call.abort("Bearer token", "object-key", "upload-1", bucket="FILE_STORE"),
+    ]
+    assert successful_put.is_set()
+    assert not workers_alive_at_abort
