@@ -46,6 +46,7 @@ autosummary_ignore_module_all = False
 autosummary_filename_map = {"nominal.exceptions": "exceptions"}
 autosummary_context = {
     "module_data": {},
+    "class_aliases": {"nominal.experimental.ingest.MultipartUploader": "nominal.core.MultipartUploader"},
     "warning_names": [
         name for name, obj in vars(nominal.exceptions).items() if isinstance(obj, type) and issubclass(obj, Warning)
     ],
