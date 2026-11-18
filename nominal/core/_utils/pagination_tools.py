@@ -211,7 +211,7 @@ def search_checklists_paginated(
     auth_header: str,
     query: scout_checks_api.ChecklistSearchQuery,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
-) -> Iterable[scout_checks_api.VersionedChecklist]:
+) -> Iterable[scout_checks_api.SearchVersionedChecklist]:
     def factory(page_token: str | None) -> scout_checks_api.SearchChecklistsRequest:
         return scout_checks_api.SearchChecklistsRequest(
             query=query,
