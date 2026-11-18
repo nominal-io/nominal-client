@@ -11,6 +11,8 @@ readme = { text = "Ibis backend for the Nominal SQL API.", content-type = "text/
 requires-python = ">=3.10,<4"
 dependencies = [
     "nominal>=1.168.0",
+    # 0.1539.0 is the first release with SQL_CATALOG_SCALAR_TYPE_VARIANT.
+    "nominal-api-protos>=0.1539.0",
     "ibis-framework>=12,<13",
     "pyarrow>=15; python_version < '3.15'",
     # PyArrow 26 is the first release with Python 3.15 wheels.
