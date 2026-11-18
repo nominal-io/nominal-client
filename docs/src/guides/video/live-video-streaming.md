@@ -109,6 +109,9 @@ with VideoStream.create(dataset, Src.camera(), opts, channel="camera") as stream
 For encoded sources, set `transcode=True` to decode and encode them again so the options apply.
 `congestion_control`, on by default, lowers the bitrate when packets are lost.
 
+If the WHIP server rejects the stream's token, for example because it has expired, the stream asks Nominal for a new one and connects again.
+If the new token is rejected too, `open()` or `run()` raises `NominalVideoStreamError` without further retries.
+
 ## View the stream
 
 To watch the stream in a workbook, see [Live video in workbooks](https://docs.nominal.io/core/documentation/platform/workbooks/live-video-streaming).

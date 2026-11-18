@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from unittest.mock import MagicMock
 
 import pytest
@@ -79,3 +80,46 @@ def test_create_rejects_a_channel_for_a_legacy_video():
     with pytest.raises(ValueError, match="does not apply"):
         VideoStream.create(video, Src.file("in.mp4"), channel="camera/front")
     clients.video.generate_whip_stream.assert_not_called()
+
+
+def _mock_sink(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    sink = MagicMock()
+    monkeypatch.setattr("nominal.experimental.video._video_stream.Sink", sink)
+    return sink
+
+
+def test_refresh_requests_a_new_whip_stream_for_the_same_channel(monkeypatch: pytest.MonkeyPatch):
+    """The refresh hook asks Nominal for a fresh WHIP stream on the series from create() and returns its credentials."""
+    sink = _mock_sink(monkeypatch)
+    clients = MagicMock()
+    clients.video.generate_whip_stream_v2.side_effect = [
+        MagicMock(whip_url="https://mediamtx.example/whip/abc?token=tok1", ice_servers=[]),
+        MagicMock(whip_url="https://mediamtx.example/whip/def?token=tok2", ice_servers=[]),
+    ]
+    tags = {"vehicle": "alpha"}
+    VideoStream.create(_dataset(clients), Src.file("in.mp4"), channel="camera/front", tags=tags)
+    tags["vehicle"] = "beta"
+
+    whip_kwargs = sink.whip.call_args.kwargs
+    assert (whip_kwargs["endpoint"], whip_kwargs["token"]) == ("https://mediamtx.example/whip/abc", "tok1")
+    assert whip_kwargs["refresh_credentials"]() == ("https://mediamtx.example/whip/def", "tok2")
+    first, second = clients.video.generate_whip_stream_v2.call_args_list
+    assert first == second
+
+
+def test_refresh_for_a_legacy_video_does_not_warn(monkeypatch: pytest.MonkeyPatch):
+    """The deprecation warning fires once from create(), never from the refresh on nominal-video's thread."""
+    sink = _mock_sink(monkeypatch)
+    clients = _clients_returning_whip_url("generate_whip_stream")
+    video = MagicMock(spec=Video)
+    video.rid = "ri.video.v.1"
+    video._clients = clients
+
+    with pytest.warns(LegacyVideoDeprecationWarning):
+        VideoStream.create(video, Src.file("in.mp4"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", LegacyVideoDeprecationWarning)
+        sink.whip.call_args.kwargs["refresh_credentials"]()
+
+    assert clients.video.generate_whip_stream.call_count == 2
+    assert clients.video.generate_whip_stream.call_args[0][1] == "ri.video.v.1"
