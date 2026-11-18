@@ -64,6 +64,8 @@ jobs:
             -vv
 
       - name: Run e2e tests
+        # faulthandler_timeout prints every thread's stack when one test phase runs past two
+        # minutes, so a run cut off by the job timeout still shows which wait it was stuck in.
         run: |
           uv run pytest tests/e2e \
             --ignore=tests/e2e/migration \
@@ -71,6 +73,7 @@ jobs:
             --profile staging-e2e \
             --temporary-api-key \
             --no-cov \
+            -o faulthandler_timeout=120 \
             -v
 
   migration-e2e-tests:
