@@ -24,7 +24,6 @@ from nominal.core._utils.filenames import sanitize_upload_filename
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.multipart import DEFAULT_NUM_WORKERS, _put_multipart_upload_to
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core._utils.pagination_tools import paginate_grpc
 from nominal.exceptions import (
     NominalAlreadyExistsError,
     NominalConflictError,
@@ -32,6 +31,9 @@ from nominal.exceptions import (
     NominalNotFoundError,
     NominalPermissionDeniedError,
 )
+from nominal.experimental.drives._pagination import list_files_paginated
+from nominal.experimental.drives.changes import _move_directory_change
+from nominal.experimental.drives.errors import FileStoreErrorCode
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2, files_pb2_grpc
 from nominal.protos.skills.v1 import skills_pb2, skills_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
@@ -40,11 +42,11 @@ _ENTRY_FILE = "SKILL.md"
 # The app and Analyst save each skill at skills/<name>/SKILL.md in the workspace's skills drive.
 _SKILLS_ROOT = "skills"
 _MAX_NAME_LENGTH = 64
-# Analyst loads a skill only when its description, trimmed, is 1 to this many characters.
+# Mirrors Scout's SkillBackingResolver, which uses Java String.length() on the trimmed description.
 _MAX_DESCRIPTION_LENGTH = 1024
 _DESCRIPTION_NEEDED = (
     f"A skill that is turned on needs a description in SKILL.md's frontmatter, of 1 to {_MAX_DESCRIPTION_LENGTH} "
-    "characters"
+    "UTF-16 code units"
 )
 # Lowercase letters and numbers in groups joined by single hyphens.
 _SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -143,14 +145,13 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         """Read the skill's SKILL.md, frontmatter included: the content that `update(content=...)` replaces.
 
         Raises:
+            NominalNotFoundError: If the registered SKILL.md was removed or moved from its recorded folder.
             NominalError: If SKILL.md is not UTF-8 text.
             requests.RequestException: If downloading the file fails.
         """
-        request = files_pb2.GetFileByIdentityRequest(
-            identity=self._get_latest_api().backing.file_store.entry_file_identity
-        )
-        with translate_grpc_errors():
-            entry = self._clients.drive_files.GetFileByIdentity(request).file
+        latest = self._get_latest_api()
+        entry = self._get_entry(latest.backing.file_store.entry_file_identity)
+        _SkillFolder.of(latest).require_active_entry(entry)
         return _read_text(self._clients, entry)
 
     def list_files(self) -> Sequence[SkillFileInfo]:
@@ -180,11 +181,8 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         )
         with translate_grpc_errors():
             file = self._clients.drive_files.GetFile(request).file
-            entry = self._clients.drive_files.GetFileByIdentity(
-                files_pb2.GetFileByIdentityRequest(identity=latest.backing.file_store.entry_file_identity)
-            ).file
-        if entry.state != file_store_pb2.FILE_STATE_ACTIVE or entry.path.path != folder.path_of(_ENTRY_FILE):
-            raise NominalNotFoundError(f"Skill {self.rid} no longer owns {folder.root}")
+        entry = self._get_entry(latest.backing.file_store.entry_file_identity)
+        folder.require_active_entry(entry)
         return _read_text(self._clients, file)
 
     def update(self, *, content: str | None = None, enabled: bool | None = None) -> Self:
@@ -363,6 +361,12 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 written.write(text.encode("utf-8"))
         return target
 
+    def _get_entry(self, identity: file_store_pb2.LogicalFileIdentity) -> file_store_pb2.LogicalFile:
+        with translate_grpc_errors():
+            return self._clients.drive_files.GetFileByIdentity(
+                files_pb2.GetFileByIdentityRequest(identity=identity)
+            ).file
+
     def _save_entry(self, name: str, content: str) -> file_store_pb2.LogicalFileIdentity:
         """Save SKILL.md, named `name` in its frontmatter, with the move of the skill's folder in the same batch when
         the name changes, and return the identity of the SKILL.md the skill records.
@@ -370,20 +374,12 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         identity = self._get_latest_api().backing.file_store.entry_file_identity
         # SKILL.md's revision is read before the skill's version is checked: another update's SKILL.md saved after this
         # read makes the save below refuse the stale revision, and one it recorded before fails the version check.
-        request = files_pb2.GetFileByIdentityRequest(identity=identity)
-        with translate_grpc_errors():
-            entry = self._clients.drive_files.GetFileByIdentity(request).file
+        entry = self._get_entry(identity)
         latest = self._get_latest_api()
         if latest.version != self.version:
             raise NominalConflictError(f"Skill {self.rid} changed since this object was fetched; refresh it")
         folder = _SkillFolder.of(latest)
-        if entry.state != file_store_pb2.FILE_STATE_ACTIVE or entry.path.path != folder.path_of(_ENTRY_FILE):
-            # A SKILL.md saved where the skill's was deleted, or over one re-created in Drives, is a different file
-            # from the one the skill's record points at, so the skill couldn't record it.
-            raise NominalNotFoundError(
-                f"The {_ENTRY_FILE} that skill {self.rid} points at is no longer in {folder.root}, for example because "
-                "it was deleted in Drives. Nothing was saved"
-            )
+        folder.require_active_entry(entry)
         move_to = None if name == folder.name else _SkillFolder(drive_rid=folder.drive_rid, name=name)
         if move_to is not None:
             if latest.state == skills_pb2.SKILL_STATE_ARCHIVED:
@@ -392,10 +388,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
                 raise NominalAlreadyExistsError(f"A skill named {name} already exists")
         changes = _put_changes(self._clients, self.workspace_rid, {_ENTRY_FILE: (content, _replacing(entry))})
         if move_to is not None:
-            move = files_pb2.MoveDirectory(to=file_store_pb2.LogicalPath(path=move_to.root))
-            # The source field is named `from`, a Python keyword, so the constructor can't take it.
-            getattr(move, "from").path = folder.root
-            changes.append((f"save the move to {move_to.root}", files_pb2.FileChange(move_directory=move)))
+            changes.append((f"save the move to {move_to.root}", _move_directory_change(folder.root, move_to.root)))
         _apply(self._clients, folder.drive_rid, changes)
         return identity
 
@@ -453,10 +446,18 @@ class _SkillFolder:
     def path_of(self, path: str) -> str:
         return f"{self.root}/{path}"
 
+    def require_active_entry(self, entry: file_store_pb2.LogicalFile) -> None:
+        if entry.state != file_store_pb2.FILE_STATE_ACTIVE or entry.path.path != self.path_of(_ENTRY_FILE):
+            raise NominalNotFoundError(f"The registered SKILL.md is no longer in {self.root}")
+
     def list_registered_files(
         self, clients: Skill._Clients, identity: file_store_pb2.LogicalFileIdentity
     ) -> dict[str, file_store_pb2.LogicalFile]:
-        files = _list_folder(clients, self)
+        files = {
+            entry.file.path.path.removeprefix(f"{self.root}/"): entry.file
+            for entry in list_files_paginated(clients.drive_files, self.drive_rid, self.root, recursive=True)
+            if entry.HasField("file")
+        }
         entry = files.get(_ENTRY_FILE)
         if entry is None or entry.identity != identity:
             raise NominalNotFoundError(f"The registered SKILL.md is no longer in {self.root}")
@@ -523,7 +524,11 @@ def _apply(
     if refused:
         # File Store refuses the batch for one change, which says why, and reports the others as batch failures.
         cause = next(
-            (refusal for refusal in refused if refusal[2].change != files_pb2.FILE_CHANGE_ERROR_BATCH_FAILURE),
+            (
+                refusal
+                for refusal in refused
+                if FileStoreErrorCode._from_failure(refusal[2]) != FileStoreErrorCode.BATCH_FAILURE
+            ),
             refused[0],
         )
         raise _refusal(*cause)
@@ -534,14 +539,14 @@ def _refusal(label: str, change: files_pb2.FileChange, failure: files_pb2.FileCh
     """The error for a batch File Store refused because of `change`, which `label` describes. The batch changed
     nothing.
     """
-    if failure.change == files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS and change.HasField("move_directory"):
+    code = FileStoreErrorCode._from_failure(failure)
+    if code == FileStoreErrorCode.PATH_ALREADY_EXISTS and change.HasField("move_directory"):
         # Another save took the new name after it was checked.
         return NominalAlreadyExistsError(
             f"A skill named {PurePosixPath(change.move_directory.to.path).name} already exists"
         )
     message = f"Could not {label}: {failure.message}. Nothing was changed"
-    stale = (files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED, files_pb2.FILE_CHANGE_ERROR_PATH_ALREADY_EXISTS)
-    if failure.HasField("change") and failure.change in stale:
+    if code in (FileStoreErrorCode.REVISION_PRECONDITION_FAILED, FileStoreErrorCode.PATH_ALREADY_EXISTS):
         return NominalConflictError(message)
     return NominalError(message)
 
@@ -715,25 +720,6 @@ def _is_empty(clients: Skill._Clients, folder: _SkillFolder) -> bool:
     )
     with translate_grpc_errors():
         return not clients.drive_files.ListFiles(request).entries
-
-
-def _list_folder(clients: Skill._Clients, folder: _SkillFolder) -> dict[str, file_store_pb2.LogicalFile]:
-    """Every file in a skill's folder, at any depth, keyed by its path relative to the folder, in path order."""
-
-    def factory(page_token: str | None) -> files_pb2.ListFilesRequest:
-        return files_pb2.ListFilesRequest(
-            drive_rid=folder.drive_rid,
-            parent_path=file_store_pb2.LogicalPath(path=folder.root),
-            recursive=True,
-            page_token=page_token,
-        )
-
-    return {
-        entry.file.path.path.removeprefix(f"{folder.root}/"): entry.file
-        for response in paginate_grpc(clients.drive_files.ListFiles, request_factory=factory)
-        for entry in response.entries
-        if entry.HasField("file")
-    }
 
 
 def _read_text(clients: Skill._Clients, file: file_store_pb2.LogicalFile) -> str:

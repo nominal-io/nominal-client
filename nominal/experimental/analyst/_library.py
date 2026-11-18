@@ -41,7 +41,7 @@ def create_skill(
 
     Raises:
         ValueError: If SKILL.md has no frontmatter with a valid name, `enabled` is True and SKILL.md has no
-            description of 1 to 1024 characters, a file's path is SKILL.md or leads outside the skill's folder,
+            description of 1 to 1024 UTF-16 code units, a file's path is SKILL.md or leads outside the skill's folder,
             or there are more than 99 reference files. Enabled entries must fit in 64 KiB and
             provide valid optional frontmatter fields. Nothing is saved.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
@@ -83,7 +83,7 @@ def import_skill(
     Raises:
         ValueError: If the folder or .zip has no SKILL.md, the .zip holds more than one skill folder, a file is
             not UTF-8 text, SKILL.md has no frontmatter with a valid name, or `enabled` is True and SKILL.md has
-            no description of 1 to 1024 characters. Nothing is saved.
+            no description of 1 to 1024 UTF-16 code units. Nothing is saved.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
             skill needs. Nothing is saved.
         NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.

@@ -736,9 +736,7 @@ def test_get_content_reads_the_skill_md_the_skill_points_at(downloads) -> None:
     """The content is the SKILL.md the skill's record points at, read at its current revision."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(
-        file=_file(f"{_FOLDER}/SKILL.md", "rev-1")
-    )
+    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=_entry("rev-1"))
     downloads["https://storage/rev-1"] = _SKILL_MD.encode()
 
     assert skill.get_content() == _SKILL_MD
@@ -746,6 +744,25 @@ def test_get_content_reads_the_skill_md_the_skill_points_at(downloads) -> None:
         clients.drive_files.GetFileByIdentity.call_args.args[0].identity
         == _proto_skill().backing.file_store.entry_file_identity
     )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        _entry("rev-1", state=file_store_pb2.FILE_STATE_REMOVED),
+        _entry("rev-1", path=file_store_pb2.LogicalPath(path="notes/SKILL.md")),
+    ],
+    ids=["deleted, or deleted and re-created", "moved out of the folder"],
+)
+def test_get_content_refuses_removed_or_moved_entry(downloads, entry) -> None:
+    """Reading current content must not download the last revision of a missing entry."""
+    downloads["https://storage/rev-1"] = b"old content"
+    clients = _skill_clients()
+    clients.drive_files.GetFileByIdentity.return_value = files_pb2.GetFileByIdentityResponse(file=entry)
+    skill = Skill._from_proto(clients, _proto_skill())
+    with pytest.raises(NominalNotFoundError):
+        skill.get_content()
+    clients.drive_files.GetDownloadUrl.assert_not_called()
 
 
 def test_read_file_downloads_the_current_revision_as_text(downloads) -> None:
