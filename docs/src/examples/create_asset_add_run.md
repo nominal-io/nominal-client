@@ -59,15 +59,26 @@ Each later test finds the registered helicopter by its properties with {py:meth}
 ```{code-cell} python
 :tags: [remove-cell]
 
-# Start each execution with the helicopter registered, no runs and an empty dataset.
-# The client cannot delete, so old runs and datasets are archived. The page does not show this cell.
+# Start each execution with one registered helicopter, no runs and an empty dataset.
+# The client cannot delete, so old runs, datasets and duplicate assets are archived.
+# The page does not show this cell.
 from nominal.core import NominalClient
 
 client = NominalClient.from_profile("default")
-helicopter = client.get_or_create_asset_by_properties(
-    {"tail_number": "N123HX"},
-    name="Helicopter N123HX",
-    description="Light utility helicopter",
+helicopters = sorted(
+    client.search_assets(properties={"tail_number": "N123HX"}),
+    key=lambda asset: asset.created_at,
+)
+for duplicate in helicopters[1:]:
+    duplicate.archive()
+helicopter = (
+    helicopters[0]
+    if helicopters
+    else client.create_asset(
+        "Helicopter N123HX",
+        description="Light utility helicopter",
+        properties={"tail_number": "N123HX"},
+    )
 )
 for old_run in helicopter.list_runs():
     old_run.archive()
