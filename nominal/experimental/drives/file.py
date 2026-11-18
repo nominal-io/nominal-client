@@ -183,7 +183,7 @@ class DriveFileRevision(HasRid):
         Args:
             output_directory: Directory to write into. The file is named after this
                 revision's path.
-            part_size: Size in bytes of each ranged download request.
+            part_size: Positive size in bytes of each ranged download request.
             num_retries: Retries per part.
 
         Returns:
@@ -242,7 +242,7 @@ class DriveFile(DriveEntry, abc.ABC):
         Args:
             output_directory: Directory to write into. The file is named after its path in
                 the drive.
-            part_size: Size in bytes of each ranged download request.
+            part_size: Positive size in bytes of each ranged download request.
             num_retries: Retries per part.
 
         Returns:

@@ -188,7 +188,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
         Args:
             output_directory: Download file to the given directory
-            part_size: Size (in bytes) of chunks to use when downloading file.
+            part_size: Positive size in bytes of each download range.
             num_retries: Number of retries to perform per part download if any exception occurs
 
         Returns:
@@ -223,7 +223,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
 
         Args:
             output_directory: Download file(s) to the given directory
-            part_size: Size (in bytes) of chunks to use when downloading files.
+            part_size: Positive size in bytes of each download range.
             num_retries: Number of retries to perform per part download if any exception occurs
 
         Returns:
@@ -232,7 +232,7 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         Raises:
             NotADirectoryError: Output directory exists, but is not a directory
             FileNotFoundError: Output directory doesn't exist
-            FileExistsError: File already exists at destination
+            FileExistsError: An output file already exists or two inputs have the same output filename.
             RuntimeError: Failed to determine metadata about files to download
 
         Note:
