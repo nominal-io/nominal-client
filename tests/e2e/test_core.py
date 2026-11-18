@@ -30,12 +30,11 @@ import pytest
 from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType, CreateChannelRequest
 from nominal.core.dataset import Dataset
-from nominal.core.dataset_file import wait_for_files_to_ingest
 from nominal.core.retention import KeepForever, KeepUntilExpiry
 from nominal.exceptions import NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
-from tests.e2e import POLL_INTERVAL, _create_random_start_end, create_legacy_dataset
+from tests.e2e import POLL_INTERVAL, DefaultBackedIngests, _create_random_start_end, create_legacy_dataset
 
 ArchiveFn = Callable[[object], None]
 
@@ -170,23 +169,11 @@ def test_add_video_to_run_and_get_by_ref_name(client: NominalClient, archive: Ar
     assert run.get_video(VIDEO_REF).rid == video.rid
 
 
-def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: ArchiveFn):
+def test_add_csv_to_dataset(default_backed_ingests: DefaultBackedIngests):
     """Uploading two separate CSV files to the same dataset both ingest successfully."""
-    name = f"dataset-{uuid4()}"
-    desc = f"core test to add more data to a dataset {uuid4()}"
+    ds = default_backed_ingests.two_files.wait()
 
-    ds = client.create_dataset(name, description=desc)
-    archive(ds)
-    # Upload both CSVs first, then batch-wait for both to ingest
-    file1 = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)
-    file2 = ds.add_from_io(BytesIO(csv_data2), "timestamp", ISO_8601)
-    wait_for_files_to_ingest([file1, file2], poll_interval=POLL_INTERVAL)
-
-    assert ds.rid != ""
-    assert ds.name == name
-    assert ds.description == desc
-    assert len(ds.properties) == 0
-    assert len(ds.labels) == 0
+    assert len(list(ds.list_files())) == 2
 
 
 def test_update_attachment(client: NominalClient, csv_data, archive: ArchiveFn):

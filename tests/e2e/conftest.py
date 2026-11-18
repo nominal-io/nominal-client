@@ -19,6 +19,8 @@ Shared resource fixtures
 ------------------------
 ``ingested_dataset`` — a single session-scoped dataset ingested from csv_data; shared
                        by all read-only channel/pandas tests to avoid redundant ingest calls.
+``default_backed_ingests`` — every ingest the suite makes into the environment's default dataset
+                       backing, started together so their waits overlap.
 
 Teardown helpers
 ----------------
@@ -29,9 +31,10 @@ Teardown helpers
 from __future__ import annotations
 
 import gzip
+from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Mapping
 from uuid import uuid4
 
 import pytest
@@ -39,7 +42,7 @@ import pytest
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import IngestStatus
-from tests.e2e import POLL_INTERVAL, create_legacy_dataset
+from tests.e2e import POLL_INTERVAL, DefaultBackedIngests, StartedIngest, create_legacy_dataset
 from tests.e2e.credentials import with_temporary_api_key
 
 
@@ -106,6 +109,33 @@ def ingested_dataset(client: NominalClient, csv_data: bytes) -> Iterator[Dataset
         yield ds
     finally:
         ds.archive()
+
+
+@pytest.fixture(scope="session")
+def default_backed_ingests(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[DefaultBackedIngests]:
+    """Every ingest the suite makes into the environment's default dataset backing, started together.
+
+    That backing can take two minutes to ingest a ten-row file, but ingests started together take
+    about as long as one. The first test to ask for this fixture starts them all and waits only on its own with
+    `StartedIngest.wait`; by the time later tests ask, theirs have usually finished. `vehicle_a` and
+    `vehicle_b` cover disjoint time ranges, and `mixed_vehicles` holds both in one dataset.
+    """
+    with ExitStack() as archive_on_exit:
+
+        def start(label: str, *uploads: tuple[bytes, Mapping[str, str] | None]) -> StartedIngest:
+            dataset = client.create_dataset(f"dataset-e2e-{label}-{uuid4().hex[:8]}")
+            # Registered before the uploads it might not survive: the dataset exists either way.
+            archive_on_exit.callback(dataset.archive)
+            files = [dataset.add_from_io(BytesIO(data), "timestamp", "iso_8601", tags=tags) for data, tags in uploads]
+            return StartedIngest(dataset, files)
+
+        a, b = {"vehicle": "A"}, {"vehicle": "B"}
+        yield DefaultBackedIngests(
+            two_files=start("two-files", (csv_data, None), (csv_data2, None)),
+            vehicle_a=start("vehicle-a", (csv_data, a)),
+            vehicle_b=start("vehicle-b", (csv_data2, b)),
+            mixed_vehicles=start("mixed-vehicles", (csv_data, a), (csv_data2, b)),
+        )
 
 
 @pytest.fixture(scope="session")
