@@ -159,6 +159,7 @@ def default_backed_datasets(
         )
         for file in files:
             file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+            assert file.ingest_status == IngestStatus.SUCCESS
         yield started
     finally:
         _archive_all(datasets)

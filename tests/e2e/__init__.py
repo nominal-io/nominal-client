@@ -14,9 +14,9 @@ POLL_INTERVAL = timedelta(seconds=0.1)
 def create_legacy_dataset(client: NominalClient, name: str, description: str | None = None) -> Dataset:
     """Create a LEGACY-backed dataset, for tests that ingest a file but are not about the backing type.
 
-    The environment default backing can take minutes to ingest a ten-row file, and reads can trail
-    the reported ingest success. LEGACY completes within seconds and is readable as soon as it
-    does. Tests of the default ingest path call `client.create_dataset` instead.
+    The environment default backing can take two minutes to ingest a ten-row file, where LEGACY takes
+    seconds. Tests that need the default backing get their datasets from the `default_backed_datasets`
+    fixture instead.
     """
     clients = client._clients
     request = _create_dataset_request(
